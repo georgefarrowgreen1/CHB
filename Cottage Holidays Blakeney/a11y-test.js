@@ -50,6 +50,9 @@ const { boot } = require('./ui-test-lib');
 const DIR = __dirname;
 const budget = JSON.parse(fs.readFileSync(path.join(DIR, 'a11y-budget.json'), 'utf8'));
 let fails = 0;
+// §1d's ratchet: how many focusable families change SHAPE when focused. Budgeted
+// at 0 — a focus ring reports where you are, it does not redraw the control.
+let focusRadius = 0;
 const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails++; };
 
 // ---------- colour maths (WCAG 2.x relative luminance) ----------
@@ -72,9 +75,33 @@ const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l
 // really is, which is the safe direction for a gate to be wrong in. What no static
 // value can model is the workspace showing through the blur; that is a real limit
 // of measuring glass by arithmetic, and the reason the value is conservative.
+// #ededed is the DESKTOP LIGHT MODAL, and it is a composite rather than a value
+// anyone declared: a .modal-box is white glass over the dark scrim, so what the
+// labels really sit on is the blend. It used to be 78% white and sampled
+// rgb(216,216,216), where the muted labels measured 4.32:1 and the body copy
+// 3.76:1 — under the bar on five sheets at once (auth, enquiry, welcome book,
+// security, suggest) while the SAME labels on the 390 opaque sheet read 5.62:1.
+// At 90% the sampled ground round the labels is rgb(237,237,238), which is what
+// is registered here. Below 640 those sheets are opaque --sheet-surface and this
+// ground does not exist; it is the desktop case the arithmetic could not see.
 const SURFACES = {
-    light: { '#fdfcfa': 'card cream', '#f5f1e9': 'linen panel', '#ffffff': 'white', '#f0f0f0': 'timeline band', '#f7f4ee': 'search window' },
+    light: { '#fdfcfa': 'card cream', '#f5f1e9': 'linen panel', '#ffffff': 'white', '#f0f0f0': 'timeline band', '#f7f4ee': 'search window', '#ededed': 'desktop light modal' },
     dark: { '#121316': 'page ground', '#1c2e3a': 'raised panel', '#22333f': 'glass over panel', '#14181d': 'search window' },
+};
+// §1b MEASURES AGAINST A NARROWER SET, and that is this file's own doctrine
+// rather than an escape hatch: §1b's header already refuses to test "every
+// percentage against every token" because it would "invent failures for pairings
+// that do not exist on screen". The desktop modal composite is exactly such a
+// ground for a TINTED pill — .cmdk-dt-pill and .gb-seg are search-window and
+// guest-book components that can never sit inside a .modal-box, and measured,
+// registering it into the shared map failed those three by 0.05–0.09 against a
+// surface they never touch. §1 is the whole-app question ("does this ink work on
+// every ground the app paints"), so it keeps the full map; §1b is the component
+// question, so it drops the composite. The guest sheets' own status strips
+// (.enq-modal-msg, .auth-msg) DO sit on it and clear it either way.
+const TINT_SURFACES = {
+    light: Object.fromEntries(Object.entries(SURFACES.light).filter(([hex]) => hex !== '#ededed')),
+    dark: SURFACES.dark,
 };
 
 // Read a token block out of app.css. `:root` is the DARK theme (the default);
@@ -169,7 +196,7 @@ for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
         }
         const inkC = hex2rgb(inkV), fill = hex2rgb(fillV);
         let worst = Infinity, worstOn = '';
-        for (const [bg, label] of Object.entries(SURFACES[theme])) {
+        for (const [bg, label] of Object.entries(TINT_SURFACES[theme])) {
             const ground = hex2rgb(bg);
             const tinted = fill.map((c, i) => c * pct + ground[i] * (1 - pct));
             const r = ratio(inkC, tinted);
@@ -377,6 +404,20 @@ const stub = (page) => page.route(/\.php/, (r) => {
     // A real deposit liability, so the "Move money out" screen renders its two
     // number fields rather than the failed-query sentence (which has no controls
     // for §3/§5 to look at).
+    // The GUEST PAY SCREEN's summary. It had no scene here at all, which is how
+    // three inks on it shipped under AA (a 0.75 opacity on already-muted ink, an
+    // undefined --bg fallback painting white on a muted disc, and a 0.45 on the
+    // narrated steps). The shape is ui-test-pay's own deposit fixture.
+    if (url.includes('pay.php')) return json({
+        ok: true, propName: 'Annex', propKey: '21a', guestName: 'Debbie McGoldrick',
+        checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
+        total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
+        damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
+        part: { min: 20, max: 175 }, quote: '8:deposit:225.00:0123456789abcdef0123456789abcdef',
+        autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
+        instalmentOffer: { n: 3, per: 175, last: 175, due: '2026-10-28', dates: ['2026-08-28', '2026-09-28', '2026-10-28'] },
+    });
+    if (url.includes('square-config.php')) return json({ enabled: true, applicationId: 'app-id', locationId: 'loc-id', environment: 'sandbox' });
     if (url.includes('accounts.php')) return json({
         years: [], deposit_liability: {
             gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
@@ -413,13 +454,115 @@ const stub = (page) => page.route(/\.php/, (r) => {
     const t = await boot({ viewport: { width: 390, height: 2600 } });
     const page = t.page;
     await stub(page);
+    // The pay screen's card form asks for Square's SDK; stub it so the screen
+    // renders rather than sitting on its loading skeleton.
+    await page.addInitScript(() => {
+        window.Square = {
+            payments: () => ({
+                card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok' }) }),
+                paymentRequest: () => { throw new Error('no wallets in this gate'); },
+            }),
+        };
+    });
     await page.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1700);
+
+    // ── §1d FOCUS MUST NOT RESHAPE THE CONTROL ────────────────────────────────
+    // A global `:focus-visible` rule used to carry `border-radius: 6px` at (0,1,1),
+    // beating every component rule at (0,1,0) — so focus rewrote the GEOMETRY of
+    // whatever it landed on: a 999px pill squared off, a 12px field dropped to 6px,
+    // the Add-booking name field (autofocused on open) rendered at 6px for its whole
+    // life, and a keyboard-opened dialog CONTAINER (tabindex="-1", focused on open so
+    // a screen reader announces the sheet) took a 2px accent ring around a 760px box.
+    // Neither the a11y gate nor ui-test-radii could see it: one measures names and
+    // sizes, the other measures radii AT REST. So this section focuses one control
+    // per family and asks whether the shape MOVED.
+    //
+    // Two things make it non-vacuous. It asserts the ring is really THERE on the
+    // three focusable families (a fix by deletion would pass a radius check and
+    // fail this one), and it asserts each control actually matched :focus-visible —
+    // Chromium only grants that to a programmatic focus when the last input
+    // modality was the keyboard, which is why a Tab is pressed first.
+    console.log('\n== 1d. keyboard focus draws a ring and does NOT change the shape ==');
+    {
+        const fp = await t.browser.newPage({ viewport: { width: 390, height: 900 } });
+        try {
+            await stub(fp);
+            await fp.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+            await fp.waitForTimeout(1700);
+            await fp.evaluate(() => { openProperty('21a'); });
+            await fp.waitForTimeout(700);
+            await fp.evaluate(() => { openEnquireModal(); });
+            await fp.waitForTimeout(700);
+            await fp.evaluate(() => { try { openDatePicker(); } catch (e) {} });
+            await fp.waitForTimeout(700);
+            await fp.evaluate(() => { try { openAllReviews('21a'); } catch (e) {} });
+            await fp.waitForTimeout(600);
+            // Sets the input modality to KEYBOARD, so a scripted .focus() below is
+            // granted :focus-visible the way a real Tab-walk would be.
+            await fp.keyboard.press('Tab');
+            await fp.waitForTimeout(120);
+
+            const FAMILIES = [
+                ['a pill button', '.btn-glass'],
+                ['a 12px field', '.input-glass'],
+                ['a calendar cell', '.dp-day[data-act]'],
+            ];
+            for (const [what, sel] of FAMILIES) {
+                const r = await fp.evaluate((s) => {
+                    const el = [...document.querySelectorAll(s)].find((e) => e.getClientRects().length);
+                    if (!el) return null;
+                    const rest = getComputedStyle(el).borderRadius;
+                    el.focus();
+                    const cs = getComputedStyle(el);
+                    return { rest, focused: cs.borderRadius, outline: cs.outlineStyle, fv: el.matches(':focus-visible') };
+                }, sel);
+                if (!r) { ok(false, `(fixture) ${what} — no ${sel} on screen to focus`); continue; }
+                ok(r.fv, `(fixture) ${what} takes :focus-visible when focused from the keyboard`);
+                ok(r.outline === 'solid', `${what} draws the ring when focused (outline-style ${r.outline})`);
+                ok(r.focused === r.rest, `${what} keeps its shape when focused (${r.rest} at rest, ${r.focused} focused)`);
+                if (r.focused !== r.rest) focusRadius++;
+            }
+            // THE CONTAINER CASE. These boxes carry tabindex="-1" and are focused on
+            // open ON PURPOSE — a documented decision, so a screen reader announces
+            // the dialog rather than its close button — so the rule must EXCLUDE them
+            // rather than the app moving focus elsewhere.
+            const box = await fp.evaluate(() => {
+                const el = [...document.querySelectorAll('.reviews-modal-box, .modal-box, .glass-dialog-box')]
+                    .find((e) => e.getAttribute('tabindex') === '-1' && e.getClientRects().length);
+                if (!el) return null;
+                const rest = getComputedStyle(el).borderRadius;
+                el.focus();
+                const cs = getComputedStyle(el);
+                return { id: el.id || el.className, rest, focused: cs.borderRadius, outline: cs.outlineStyle };
+            });
+            if (!box) ok(false, '(fixture) no tabindex="-1" dialog box on screen to focus');
+            else {
+                ok(box.outline === 'none', `a programmatically-focused dialog box is NOT outlined whole (${box.id}: outline-style ${box.outline})`);
+                ok(box.focused === box.rest, `…and keeps its panel radius (${box.rest} at rest, ${box.focused} focused)`);
+                if (box.focused !== box.rest) focusRadius++;
+            }
+        } finally {
+            await fp.close();
+        }
+    }
+    ok(focusRadius <= budget.focusRadius, `controls whose radius changed on focus: ${focusRadius} (budget ${budget.focusRadius})`);
 
     const VIEWS = [
         ['home', null],
         ['cottage', "openProperty('21a')"],
         ['enquire', "(async()=>{openEnquireModal();})()"],
+        // TWO GUEST SCENES THIS GATE HAD NEVER WALKED, and both were carrying inks
+        // under AA because of it. The PAY SCREEN is where a guest hands over a card:
+        // its deposit sub-line, its step digits and its narrated steps were all muted
+        // twice (a token plus an opacity), which §1's token sweep cannot see — the
+        // documented "ink outside the token set" class. The SIGN-IN SHEET is where the
+        // account status lines live; they set the raw --danger / --ok FILLS as ink and
+        // are display:none until something happens, so nothing had ever rendered them.
+        // Both are driven with a message SHOWN, or the scene measures an empty box.
+        ['pay', "(async()=>{closeEnquireModal();await openPayView('a11ytok','8','deposit');await new Promise(r=>setTimeout(r,1300));try{payStepsArm();}catch(e){}await new Promise(r=>setTimeout(r,700));})()"],
+        ['signin', "(async()=>{nav('view-main');openGuestAuthModal();await new Promise(r=>setTimeout(r,600));const e=document.getElementById('login-error');if(e){e.textContent='That email and password do not match.';e.style.display='block';}const m=document.getElementById('magic-link-msg');if(m){m.className='auth-msg is-ok';m.textContent='Check your inbox \\u2014 a sign-in link is on its way.';m.style.display='block';}await new Promise(r=>setTimeout(r,400));})()"],
+        ['signin-off', "(async()=>{closeGuestAuthModal();nav('view-main');await new Promise(r=>setTimeout(r,500));})()"],
         ['admin-today', "(async()=>{closeEnquireModal();isAuthenticated=true;document.body.classList.add('owner-mode');await loadAdminBundle();await initBackOffice();})()"],
         ['admin-rates', "(async()=>{await openArea('cottages');settingsOpen('seasongrid');})()"],
         ['admin-health', "(async()=>{await openArea('settings');settingsOpen('diagnostics');})()"],

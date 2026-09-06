@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 593;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 251;
+const ADMIN_CSS_V = 252;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3442,7 +3442,9 @@ function renderStayedBefore() {
                       year: 'numeric',
                   })
                 : '';
-            html = `<div class="stayed-before-chip">You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
+            // The accent lives on the MARK, not on the words — see the
+            // .stayed-before-chip rule for the measurement that moved it.
+            html = `<div class="stayed-before-chip"><span class="sb-tick" aria-hidden="true">✓</span>You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
         }
     }
     el.innerHTML = html;
@@ -3468,7 +3470,12 @@ async function saveGuestProfile() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3558,7 +3565,12 @@ async function changeGuestPassword() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3831,7 +3843,12 @@ async function requestMagicLink() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -6867,7 +6884,9 @@ async function submitGuestPhoto() {
     const msg = document.getElementById('pu-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -11403,7 +11422,9 @@ async function submitNewsletter(ev) {
     const email = ((el && el.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -12248,7 +12269,10 @@ function renderPropStats(propKey) {
         ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(2)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
         : `<div class="prop-stat"><div class="prop-stat-top">New</div><div class="prop-stat-sub">no reviews yet</div></div>`;
     const favCell = fav
-        ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:var(--fs-sub);letter-spacing:0;">Guest favourite</div></div>`
+        ? // ONE RULE FOR .prop-stat-sub: the inline style here overrode the class
+          // with a second size and a second ink, so the two sub-captions in the same
+          // row disagreed. The class already says --fs-caption / --text-muted.
+          `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub">Guest favourite</div></div>`
         : '';
     const reviewsCell = count
         ? `<div class="prop-stat"><div class="prop-stat-top">${count}</div><div class="prop-stat-sub">review${count === 1 ? '' : 's'}</div></div>`
@@ -13045,7 +13069,11 @@ function injectPropColors() {
                 `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}` +
                 // Light mode: accent-on-pale-tint is too faint — darken towards ink
                 // (same treatment app.css gives the three built-in cottages).
-                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 55%,#1b2a34);}` +
+                // 45%, NOT 55 — and it must match app.css's own three literals or an
+                // owner-ADDED cottage ships under AA while the built-in three pass.
+                // Measured by pixel at 55%: 21A 3.75:1, Jollyboat 4.15:1 on the light
+                // list card; at 45% they clear the mark with a shade to spare.
+                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 45%,#1b2a34);}` +
                 // Timeline bar text INHERITS the theme ink (matches the built-in bars).
                 `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);}`;
         });
@@ -18740,7 +18768,9 @@ async function submitExperienceSuggestion() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.style.display = 'block';
         }
     };
@@ -18892,7 +18922,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'halofix1';
+    const BUILD = 'higink1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

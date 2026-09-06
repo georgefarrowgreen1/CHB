@@ -2,9 +2,9 @@
   "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid, and text-transform: uppercase rule blocks (the brand voice keeps five in app.css). These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint / a multiple of 4 instead. Re-baseline after a cleanup with: node check-css-conventions.js --update",
   "app.css": {
     "breakpoints": 12,
-    "rawHex": 70,
+    "rawHex": 69,
     "rawEnv": 0,
-    "offGrid": 573,
+    "offGrid": 571,
     "uppercase": 5,
     "rawRadii": 0,
     "rawType": 0

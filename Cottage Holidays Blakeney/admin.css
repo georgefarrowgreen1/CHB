@@ -488,12 +488,20 @@ body.light-mode {
   position: relative;
   text-align: center;
   font-size: var(--fs-micro); /* the 11px floor — 0.66 was 10.6px on every day of the timeline */
-  color: var(--text-muted);
+  /* The day NUMBER is a BARE TEXT NODE — it cannot be given a colour of its own
+     without wrapping it — so the CELL carries the ink and the letter beside it
+     takes the muted one. On --text-muted the number measured 3.68:1 on the plain
+     light ground and 3.29:1 on the weekend tint; on --text-light it clears. */
+  color: var(--text-light);
   padding-top: 14px;
   border-left: 1px solid rgba(255, 255, 255, 0.04);
 }.tl-day i {
   font-style: normal;
-  opacity: 0.55;
+  /* NO OPACITY: 0.55 on 11px text measured 1.84:1 light / 2.62:1 dark — the
+     weekday letters were barely on the screen. The hierarchy is the muted token
+     beside the cell's body ink, not a second dimming. Do NOT swap it for a
+     smaller size: 11px is a11y-test §4's floor. */
+  color: var(--text-muted);
   margin-right: 2px;
   /* was 0.58rem = 9.3px, then 0.66 = 10.6 */
   font-size: var(--fs-micro);
@@ -1331,19 +1339,26 @@ body.light-mode .ny-act {
   margin-top: 12px;
   padding: 12px 16px;
   border-radius: var(--r-lg);
-  background: rgba(255, 167, 38, 0.09);
-  border: 1px solid rgba(255, 167, 38, 0.26);
+  /* TOKENS, NOT RAW rgba — .is-gone below is the model. The literals were the
+     --warn / --ok values written out, so the pairing passed by luck rather than
+     by the gate: a11y-test §1b discovers a pair by finding a `--X-text` colour on
+     a `color-mix(… var(--X) N% …)` background, which a raw rgba dodges (and
+     check-css-conventions counts hex, not rgba, which is how they survived).
+     Byte-identical paint today — neither fill token is retuned for light mode —
+     so this is the gate reaching them, not a restyle. */
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
   font-size: var(--fs-body);
 }.bhub-next.is-clear {
-  background: rgba(76, 175, 80, 0.08);
-  border-color: rgba(76, 175, 80, 0.22);
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 22%, transparent);
   color: var(--text-muted);
 }/* The enquiry page's state card: the calendar answer IS the page's state.
    Ready = green and stating the tap's consequence; gone = red, naming who
    took the dates, Approve withdrawn. */
 .bhub-next.is-ready {
-  background: rgba(76, 175, 80, 0.09);
-  border-color: rgba(76, 175, 80, 0.24);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 24%, transparent);
 }.bhub-next.is-ready .bhub-next-cap {
   color: var(--ok-text);
 }.bhub-next.is-gone {

@@ -66,17 +66,34 @@ textarea {
   min-width: 0;
   max-width: 100%;
 }
-/* Consistent, on-brand keyboard focus ring across interactive elements
-           (mouse/touch users never see it — only keyboard navigation does). */
+/* Keyboard focus ring (mouse/touch never see it). TWO THINGS IT MUST NOT DO:
+   (1) CHANGE THE CONTROL'S SHAPE. It carried `border-radius: 6px` at (0,1,1),
+   beating every component rule at (0,1,0), so focus RESHAPED what it landed on
+   — a 999px pill squared off, a 12px field dropped to 6, and the autofocused
+   Add-booking name field rendered at 6 for its whole life. Chromium 94+ /
+   Safari 16.4+ / Firefox draw the outline round the element's own radius, so
+   nothing replaces it; an unrounded element wanting a soft ring gets its own.
+   (2) OUTLINE A WHOLE DIALOG. .reviews-modal-box / .modal-box /
+   .glass-dialog-box carry tabindex="-1" and are focused on open ON PURPOSE, so
+   a screen reader announces the sheet — a documented decision, not focus to
+   move. Opened by keyboard they took a 2px ring round a 760px panel.
+   :not([tabindex="-1"]) excludes exactly that case; safe for the picker, whose
+   dpSeatFocus sets tabindex="0" before focusing. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-[tabindex]:focus-visible {
+[tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+}
+/* …and the UA's ring goes with ours: excluding the containers above left
+   Chromium's own `:focus-visible { outline: auto }` drawing round the sheet. A
+   tabindex="-1" element is focused by SCRIPT — announcing a surface, not marking
+   a control — so it takes no ring in either engine. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
 }
 /* Visually-hidden but available to screen readers (status announcements etc). */
 .sr-only {
@@ -1028,11 +1045,16 @@ nav a:focus-visible,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* THE FIELD RING, WHICH HAD NO DECLARATIONS OF ITS OWN: these two selectors were
+   WELDED onto `select.input-glass` below — a comment sat between them and the
+   brace — so the intended ring was never a rule and a focused text field
+   inherited `appearance: none; cursor: pointer`. */
 .input-glass:focus-visible,
-.date-range-trigger:focus-visible,
-/* The input itself is transparent now (see .terms-box) — the ring is drawn on
-   the box instead, beside that rule. */
-
+.date-range-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--text-light);
+}
 select.input-glass {
   appearance: none;
   -webkit-appearance: none;
@@ -2107,8 +2129,10 @@ a.card {
   flex-direction: column;
   gap: 12px;
 }
+/* A STAR GLYPH IS TEXT TO A RENDERER, so it takes --accent-text, not the fill:
+   measured by pixel on the light review card, bare --accent read 2.89:1. */
 .review-stars {
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 3px;
   font-size: var(--fs-body);
 }
@@ -2382,10 +2406,14 @@ a.card {
   gap: 6px;
   line-height: 1.1;
 }
+/* ONE ★ INK ON ONE PAGE. The cottage page painted the star three ways — amber
+   here, bare accent on the review cards, body ink in the score — so the same mark
+   meant three things. All three are the accent as TEXT now; the letter-spacing
+   goes with the amber (it was compensating for a tint that no longer applies). */
 .prop-stat-stars {
-  color: var(--warn-text);
+  color: var(--accent-text);
   font-size: var(--fs-caption);
-  letter-spacing: 1px;
+  letter-spacing: 0;
   margin-top: 3px;
 }
 .prop-stat-sub {
@@ -3132,8 +3160,12 @@ a.card {
   line-height: 1;
   transition: all 0.2s ease;
 }
+/* KEEP THE RED — the vocabulary above is a deliberate borrow from the hub, and
+   "outstanding" is not "error". Fix the contrast INSIDE it: --danger is a FILL
+   token and never retunes, so at 65% it composited to ≈(236,166,163) on the light
+   sheet — 1.81:1 as a ring, under the 3:1 non-text bar. --danger-text does. */
 .enq-dot.todo {
-  border: 1.5px solid color-mix(in srgb, var(--danger) 65%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--danger-text) 70%, transparent);
 }
 .enq-dot.done {
   border: 1.5px solid color-mix(in srgb, var(--ok) 50%, transparent);
@@ -3260,20 +3292,46 @@ a.card {
   flex-shrink: 0;
   margin-top: 1px;
 }
-/* Inline validation message inside the two-step enquiry popup (replaces blocking pop-ups) */
+/* The ONE sentence that says why a send did not go, on FIVE slots (enq-msg-review,
+   enq-msg-details, enq-acct-msg, wl-msg, enq-email-msg). It hardcoded #ffce7a on a
+   raw amber tint with no light retune: 1.22:1, pixel-sampled on the light sheet.
+   On the tokens it is also the shape a11y-test §1b DISCOVERS, so it is measured
+   every run rather than by luck. */
 .enq-modal-msg {
   display: none;
   margin: 14px 0 0;
   padding: 11px 14px;
   border-radius: var(--r-sm);
-  background: rgba(255, 176, 32, 0.12);
-  border: 1px solid rgba(255, 176, 32, 0.35);
-  color: #ffce7a;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn-text);
   font-size: var(--fs-sub);
   line-height: 1.4;
 }
 .enq-modal-msg.show {
   display: block;
+}
+/* THE ACCOUNT SCREENS' STATUS LINE — same block, same tokens. #login-error,
+   #reg-error, #magic-link-msg, #pw-msg and #profile-msg each set a raw --danger /
+   --ok as INK, and those are FILL tokens: pixel-sampled on the light ground the
+   login refusal read 2.46:1 and the magic-link confirmation 2.33:1 (dark passed,
+   which is how they survived). Deliberately the TINT shape, because that is what
+   a11y-test §1b discovers — no list for anyone to maintain. */
+.auth-msg {
+  font-size: var(--fs-sub);
+  line-height: 1.4;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+}
+.auth-msg.is-ok {
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
+}
+.auth-msg.is-bad {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 /* Guest online-payment view (Square) */
 .pay-wrap {
@@ -3343,10 +3401,13 @@ a.card {
 }
 /* The deposit's one explanation, on its own line so a long label can never
    push the figure off the edge. */
+/* NO SECOND DIMMING: --text-muted at 0.75 measured 2.95:1 in light on the white
+   card, for the 12px "returned after your stay" — the sentence that says the £75
+   comes back. The 12px size is the hierarchy. */
 .pay-line-lbl small {
   display: block;
   font-size: var(--fs-caption);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 /* Never shrinks, never wraps: a clipped amount is a different number. */
 .pay-line-amt {
@@ -3482,7 +3543,11 @@ a.card {
   margin-right: 7px;
   border-radius: 999px;
   background: var(--text-muted);
-  color: var(--bg, #fff);
+  /* --bg IS NOT A TOKEN IN THIS SHEET (getPropertyValue('--bg') === ''), so this
+     fell to the #fff fallback and the step digits were white on the muted fill:
+     1.98:1 in dark. --dark-grey is the page ground in BOTH themes and is the
+     right ink on a --text-muted disc (≈9.5:1 dark, 5.4:1 light). */
+  color: var(--dark-grey);
   font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0;
@@ -3723,9 +3788,13 @@ a.card {
   align-items: center;
   gap: 10px;
 }
+/* 24px, not the UA's ~20: WCAG 2.2's 2.5.8 floor, on the control that chooses how
+   a guest's money is taken. Found the day a11y-test gained a pay scene. */
 .pay-ap-optrow input {
   accent-color: var(--accent);
   flex: none;
+  width: 24px;
+  height: 24px;
 }
 .pay-ap-opttxt {
   min-width: 0;
@@ -4057,13 +4126,18 @@ a.card {
   color: var(--text-muted);
   padding: 11px 15px 2px;
 }
+/* A PENDING STEP IS STILL READ. At 0.45 the sentence "one payment of £340.00 —
+   nothing else is taken" measured 1.79:1 light — the line promising no second
+   charge, where a guest is handing over a card. 0.7 was measured too and is still
+   under the bar (3.16:1), so the opacity goes: the pending state is carried by the
+   dot and by .is-run's accent label. */
 .pay-step {
   display: flex;
   align-items: flex-start;
   gap: 11px;
   padding: 9px 15px;
   position: relative;
-  opacity: 0.45;
+  opacity: 1;
   transition: opacity 0.25s ease;
 }
 .pay-step + .pay-step::before {
@@ -4696,7 +4770,14 @@ body.owner-mode #reserve-enquire-btn {
   font-size: var(--fs-headline);
   transition: border 0.3s;
 }
-.input-glass:focus {
+/* A MOUSE CLICK ON A FIELD PAINTS NO RING, a keyboard focus does. This used to be
+   a bare `:focus`, which is (0,1,0) and later in the sheet than the global ring
+   above, so it DELETED the ring on every focused field and left a 1px dark border
+   in its place. `:focus:not(:focus-visible)` is the pointer case only.
+   NB a text input always matches :focus-visible, so a TAPPED field on a phone now
+   shows the ring — the same treatment the search field already gives, and the
+   intended outcome. */
+.input-glass:focus:not(:focus-visible) {
   outline: none;
   border-color: var(--text-light);
 }
@@ -5359,20 +5440,25 @@ body.light-mode .ov-card {
 }
 /* Light mode: white-on-pale-tint is unreadable — use the cottage accent
    darkened towards ink (plain-ink fallback where color-mix is missing).
-   Owner-added cottages get the same rule from injectPropColors(). */
+   45%, NOT 55: the pill's fill is a 30% cottage tint over a translucent glass
+   ground, which is why a stylesheet read cannot see this — sampled by pixel at
+   55% the blue read 3.75:1 and the green 4.15:1 (only the purple cleared AA at
+   5.49). 12px/600, so the bar is 4.5.
+   THE SAME NUMBER LIVES IN injectPropColors() (app.js) for owner-ADDED cottages,
+   and the two must move together or a new cottage ships under AA. */
 body.light-mode .tag-21a,
 body.light-mode .tag-jollyboat,
 body.light-mode .tag-pimpernel {
   color: #1b2a34;
 }
 body.light-mode .tag-21a {
-  color: color-mix(in srgb, var(--prop-21a) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-21a) 45%, #1b2a34);
 }
 body.light-mode .tag-jollyboat {
-  color: color-mix(in srgb, var(--prop-jollyboat) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-jollyboat) 45%, #1b2a34);
 }
 body.light-mode .tag-pimpernel {
-  color: color-mix(in srgb, var(--prop-pimpernel) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-pimpernel) 45%, #1b2a34);
 }
 
 /* Back-office layout: calendar (left) + enquiries sidebar (right) */
@@ -5552,8 +5638,11 @@ body.light-mode .tag-pimpernel {
   opacity: 0.7;
   margin-top: 4px;
 }
-/* Read receipt on the owner's latest reply: muted "Sent" until the guest opens
-   the thread, then green "Read". */
+/* Read receipt on the owner's latest reply: "Sent" until the guest opens it, then
+   "Read". THE GLYPH CARRIES THE STATE, NOT A COLOUR — iOS Messages' own grammar.
+   --ok-text on the rose-gold bubble is invisible: pixel-sampled 1.13:1 dark (no
+   pixel in the receipt's box came closer to the declared green than the tan
+   itself), 2.07:1 light. It inherits the bubble's ink now. */
 .chat-receipt {
   font-weight: 600;
   white-space: nowrap;
@@ -5561,6 +5650,19 @@ body.light-mode .tag-pimpernel {
 .chat-receipt.seen {
   color: var(--ok-text);
   opacity: 0.95;
+}
+.chat-msg.me .chat-receipt.seen {
+  color: inherit;
+  opacity: 1;
+}
+/* The bubble's meta line is 11px on the same fill and was dimmed AGAIN by
+   .chat-meta's opacity: 0.7 — the container-opacity trap, measured 2.94:1 dark /
+   3.18:1 light, on the one line that says whether the guest has read your reply.
+   --accent-ink is the design system's ink-on-an-accent-fill token. (.chat-msg.them
+   is deliberately untouched: measured 8.18:1 on its own glass.) */
+.chat-msg.me .chat-meta {
+  color: var(--accent-ink);
+  opacity: 1;
 }
 /* Live "typing…" bubble (three bouncing dots), styled like a received message. */
 .chat-typing {
@@ -8415,8 +8517,11 @@ body.light-mode .feed-dot-bad {
 .guestwords-meta.fading {
   opacity: 0;
 }
+/* The brief asked for this one to be CHECKED separately rather than assumed —
+   checked, and it is the same defect: measured 2.63:1 on the light linen ground
+   (dark reads 8.60, the two tokens being equal there). Same rule, same fix. */
 .guestwords-meta .gw-stars {
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 2px;
 }
 
@@ -8505,15 +8610,24 @@ body.light-mode .feed-dot-bad {
     align-items: flex-start;
   }
 }
+/* A SENTENCE IS NOT A CHIP: a 999px stadium round a paragraph that wraps to two
+   lines at 390px, with --accent-text on a raw 10% accent tint — sampled 3.95:1 at
+   390 light, 4.03:1 at 1280. The words take body ink (14+:1 either theme) and the
+   accent stays where it is a MARK, the leading ✓ renderStayedBefore emits. */
 .stayed-before-chip {
-  display: inline-block;
+  display: block;
   margin: 10px 0 2px;
-  padding: 7px 13px;
-  border-radius: 999px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
   font-size: var(--fs-sub);
+  color: var(--text-light);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 0;
+}
+.stayed-before-chip .sb-tick {
   color: var(--accent-text);
-  background: rgba(214, 167, 133, 0.1);
-  border: 1px solid rgba(214, 167, 133, 0.25);
+  font-weight: 700;
+  margin-right: 6px;
 }
 /* Homepage live availability: per-card chip + late-availability spotlight.
    THE ONLY .avail-chip RULE — a second, orphaned from the enquiry card, left the
@@ -10673,6 +10787,29 @@ body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
   display: none !important;
 }
+/* THE FOOTER'S FINE PRINT, WITH NO SECOND DIMMING. Both were inline styles with an
+   opacity on already-muted ink — the container-opacity trap — so pixel-sampled the
+   NAP line read 2.06:1 light / 3.09:1 dark and the build stamp 2.18:1 / 3.44:1.
+   (.footer-meta is untouched: no opacity, and 5.47:1 measured.) AND THE BUILD ID IS
+   DEVELOPER CHROME — the owner's, not the customer's; nothing but app.js reads
+   #build-stamp, so the element stays and the gate is a display rule. */
+.footer-nap,
+.footer-build {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+.footer-nap {
+  margin: 14px 0 4px;
+}
+.footer-build {
+  margin: 4px 0 0;
+  letter-spacing: normal;
+  display: none;
+}
+body.owner-mode .footer-build {
+  display: block;
+}
 /* The admin nav lives in the HEADER now, so the back office clears it at the TOP
            and needs nothing reserved at the bottom (the 110px that cleared the old
            floating dock was just a void once it moved). */
@@ -10989,10 +11126,14 @@ body.light-mode .hs-field:hover {
   font-size: var(--fs-sub);
   min-width: 54px;
 }
-/* Age band beside Adults / Children: quieter than the label it qualifies. */
+/* Age band beside Adults / Children: quieter than the label it qualifies.
+   THE 12px SIZE IS THE HIERARCHY — the opacity was a second dimming on ink that
+   is already muted (the container-opacity trap), and these two words carry the
+   one rule the party count depends on (a child is under 16 — the register and
+   the child rate both hinge on it). Measured by pixel at 0.72: 2.71:1 light,
+   3.80:1 dark. */
 .hs-gband {
   font-size: var(--fs-caption);
-  opacity: 0.72;
   white-space: nowrap;
 }
 .hs-step {
@@ -11495,6 +11636,22 @@ body.light-mode .glass-panel {
 body.light-mode .modal-box,
 body.light-mode .datepicker-pop {
   box-shadow: 0 18px 48px rgba(20, 22, 34, 0.18);
+}
+/* THE LIGHT DESKTOP MODAL WAS A GREY CARD, NOT GLASS — and SYSTEMIC, not the
+   suggest sheet's: every desktop .modal-box (auth, enquiry, welcome book, security,
+   suggest) shares the 78% --glass-bg, which over the dark scrim composites flat.
+   Sampled at 1280 light the ground was rgb(216,216,216), the muted labels 4.32:1 and
+   the body copy 3.76:1 — the SAME labels on the 390 opaque sheet read 5.62:1. Raised
+   once for all of them; the blur stays (ui-test-hig asserts the glass at 1280), and
+   below 640 the .chb-sheet rule is (0,3,0) and still wins with --sheet-surface. */
+body.light-mode .modal-box {
+  background: rgba(255, 255, 255, 0.9);
+}
+/* A PLACEHOLDER IS OUR INK, NOT THE UA'S. It was the browser's rgb(117,117,117),
+   which follows neither theme and is a raw literal nothing can retune. */
+.input-glass::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 .hs-banner {
   background: rgba(255, 167, 38, 0.16);
@@ -12098,8 +12255,17 @@ body.light-mode #hero-headline-panel {
   background: rgba(255, 255, 255, 0.66);
   border-color: rgba(255, 255, 255, 0.6);
 }
-body.light-mode .hero-kicker {
-  color: var(--sea);
+/* THE HERO PANEL'S GROUND IS A PHOTOGRAPH, so muted ink is the wrong choice: the
+   panel is white at 66% and what is behind it sets the composite. Pixel-sampled
+   over a mid photo the kicker read 4.08:1 and the subtitle 3.96:1; over a dark
+   one, 2.85:1 both. Body ink holds on any photo, where lifting the glass to 80%
+   would still leave --text-muted at 3.9:1.
+   THE SELECTOR IS THE POINT: `body.light-mode .hero-kicker` is (0,2,0) and LOSES
+   to `body.light-mode .hero p` (0,2,1) below — which is why .hero-kicker's own
+   two colour declarations have never painted in either theme. The id wins. */
+body.light-mode #hero-headline-panel > p,
+body.light-mode #hero-headline-panel .hero-kicker {
+  color: var(--text-light);
 }
 
 /* --- Airier typography (guest-facing headings/leads only) --- */
