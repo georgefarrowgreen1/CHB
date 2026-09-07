@@ -470,15 +470,15 @@
                 </button>
                 <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" data-act="settingsOpen" data-arg="photos">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -614,12 +614,14 @@
             <!-- Messages → Follow-up emails (enquiry + anniversary nudges) -->
             <div class="settings-sec" id="sec-follow-ups" style="display:none;">
                 <div style="max-width:640px;">
-                <div class="acr-cap">Gentle automatic emails — no lifting a finger</div>
+                <div class="acr-cap">Enquiry follow-ups</div>
+                <div class="acr-capsub">Gentle automatic emails — no lifting a finger.</div>
                 <div class="acr-well">
                     <div class="acr-row"><span class="acr-lbl">Enquiry follow-up<small>a friendly nudge to enquirers who haven't booked after 2 days, plus a one-off &ldquo;finish your enquiry&rdquo; note to visitors who started one but never sent it</small></span><span class="chb-switch"><input type="checkbox" id="enq-nudge-toggle" data-act-change="saveContentToggle" data-key="enquiry-nudge-off" data-invert="1" aria-label="Enquiry follow-up emails"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
                     <div class="acr-row"><span class="acr-lbl">Come-back invitation<small>invite last year's guests back with a one-off email, timed to how far ahead they book</small></span><span class="chb-switch"><input type="checkbox" id="anniv-nudge-toggle" data-act-change="saveContentToggle" data-key="anniversary-nudge-off" data-invert="1" aria-label="Come-back invitation emails"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
                 </div>
-                <div class="acr-cap" style="margin-top:18px;">The one you may want to read first</div>
+                <div class="acr-cap" style="margin-top:20px;">Arrival emails</div>
+                <div class="acr-capsub">The one you may want to read first.</div>
                 <div class="acr-well">
                     <!-- NOT inverted: '1' means review. Off = today's behaviour,
                          the email goes on its own three days before arrival. -->
@@ -655,7 +657,8 @@
             <!-- API keys / integrations -->
             <div class="settings-sec" id="sec-apis" style="display:none;">
                 <div style="max-width:640px;">
-                <div class="acr-cap">Tide data — worldtides.info</div>
+                <div class="acr-cap">Tide data</div>
+                <div class="acr-capsub">From worldtides.info.</div>
                 <div class="acr-well">
                     <div class="acw-frow"><label for="apikey-tides-input">WorldTides API key</label><input type="text" id="apikey-tides-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;"><small class="acw-tip" style="color:var(--text-muted);">Powers the tide-times widget on each cottage page — a free key from worldtides.info (Account → API key). Stored encrypted; never shown on the public site. Leave blank to hide the widget.</small></div>
                     <div class="acw-acts"><button class="btn-sm btn-edit" data-act="saveApiKey" data-arg="tides">Save key</button><span id="apikey-tides-msg" style="font-size:var(--fs-sub);color:var(--ok);"></span></div>
@@ -733,7 +736,7 @@
 
             <!-- Host profile -->
             <div class="settings-sec" id="sec-host" style="display:none;">
-                <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: 18px;">
+                <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: var(--r-lg);">
                     <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
                         <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background-color:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
                         <button type="button" class="btn-sm btn-edit" data-act="uploadHostPhoto">Change photo</button>
@@ -845,7 +848,7 @@
             <div class="settings-sec" id="sec-newsletter" style="display:none;">
                 <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
                 <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
-                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:var(--r-lg);">
                     <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 12px;">Compose broadcast</h3>
                     <label class="modal-label" for="nl-subject">Subject</label>
                     <input type="text" id="nl-subject" class="input-glass" placeholder="e.g. Autumn by the Norfolk coast — midweek offer" style="margin-bottom:12px;">
@@ -861,7 +864,7 @@
             <!-- Security -->
             <div class="settings-sec" id="sec-security" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
-                    <div class="label">Admin Password</div>
+                    <div class="label">Admin password</div>
                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
                     <button class="btn-sm btn-edit" data-act="changeAdminPassword">Change password</button>
                 </div>

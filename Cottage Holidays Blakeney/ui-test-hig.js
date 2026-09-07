@@ -20,7 +20,10 @@
 //       three pages put a third bordered surface round every field.
 //    §2 STATE IS SAID ONCE — no left rail or icon tile on a duty row; a
 //       Payments row TITLE stays in ink; the calm capsule is quiet text.
-//    §3 ONE CAPTION TIER — in-card captions are sentence case.
+//    §3 ONE CAPTION TIER — in-card captions are sentence case; §3b sweeps the
+//       ten in-container rules that were still tracked caps (the modal sections,
+//       the plan caption, the act card, the stat tiles, the season count) across
+//       five screens, and pins that the OUTSIDE-container tier still shouts.
 //    §4 THE CHEVRON IS A SYMBOL.
 //    §5 THE PHONE'S CHROME — the spine is a sentence + ONE scrolling chip row
 //       ≤640, every chip still routes; the condensed title stands down <480.
@@ -291,6 +294,44 @@ const NEST = (rootSel) => {
   await open(page, "(async () => { await openEnquiryHub(11); })()", 1200);
   const enq = await page.evaluate(() => ['.bhub-eyebrow', '.bhub-next-cap', '.bhub-msg-cap'].map((s) => { const el = document.querySelector('#enquiry-hub-content ' + s) || document.querySelector(s); return el ? getComputedStyle(el).textTransform + ':' + el.textContent.trim().slice(0, 30) : 'missing'; }));
   ok(enq.every((e) => e.startsWith('none:')), `all three captions sentence case (${enq.join(' | ')})`);
+
+  // §3b THE REST OF THE TIER. §3 pinned the two hubs' captions; ten more rules
+  // were still shouting INSIDE a container at three different weights — 'THE
+  // STAY' in the Edit-booking modal, 'PAYMENT PLAN' in the money fold, 'BLOCK
+  // DATES' on the chat's act card, the tile labels on Search learning (which
+  // wrapped to three lines at 390 as tracked caps). The rule is unchanged:
+  // tracked uppercase is the SECTION header OUTSIDE a container (.acr-cap,
+  // .bhub-grpcap, .cmdk-board-cap — deliberately untouched); inside one it is
+  // sentence case at 600.
+  console.log('§3b One caption tier — the in-container rules across five screens');
+  const capSpec = `(sel) => { const el = [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length)[0]; if (!el) return null; const c = getComputedStyle(el); return { sel, tt: c.textTransform, w: c.fontWeight, ls: c.letterSpacing, t: (el.textContent || '').trim().slice(0, 26) }; }`;
+  const caps = [];
+  const grabCaps = async (sels) => { for (const s of sels) { const r = await page.evaluate('(' + capSpec + ')(' + JSON.stringify(s) + ')'); if (r) caps.push(r); } };
+  await open(page, "(async () => { await openBookingHub('b2'); ['money', 'guest'].forEach((k) => { const f = document.getElementById('bhub-fold-' + k); if (f && f.hidden) bhubFoldToggle(k); }); const m = document.getElementById('bhub-money-more'); if (m && m.hidden) bhubMoneyExpand(); })()", 1300);
+  await grabCaps(['#booking-hub-content .bhub-plan-cap', '#booking-hub-content .bhub-kv-label']);
+  await open(page, "(async () => { await openEditBookingNow('b2'); })()", 1200);
+  await grabCaps(['.modal-sec', '.modal-foot-cap']);
+  await open(page, 'closeModal()', 400);
+  await open(page, "(async () => { await openArea('settings'); settingsOpen('search-learning'); })()", 1400);
+  await grabCaps(['.sl-stat-l']);
+  await open(page, "settingsOpen('seasongrid')", 1200);
+  await grabCaps(['#sg-count']);
+  await open(page, "settingsOpen('diagnostics')", 1300);
+  await grabCaps(['.status-okcat-title', '.night-setup > summary']);
+  await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [{ who: 'you', text: 'block jollyboat', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } }] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
+  await grabCaps(['.mc-act-t']);
+  await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);
+  const shouty = caps.filter((c) => c.tt !== 'none');
+  const tracked = caps.filter((c) => c.ls !== 'normal' && parseFloat(c.ls) > 0.2);
+  ok(caps.length >= 9, `${caps.length} in-container captions painted across five screens: ${caps.map((c) => c.sel.split(' ').pop()).join(', ')} (vacuity guard)`);
+  ok(shouty.length === 0, `none of them shouts${shouty.length ? ' — ' + shouty.map((c) => c.sel + ' "' + c.t + '"').join(', ') : ''}`);
+  ok(tracked.length === 0, `and none of them is tracked${tracked.length ? ' — ' + tracked.map((c) => c.sel + ' ' + c.ls).join(', ') : ''}`);
+  // The badge beside the plan caption STAYS (an owner's ask, gated both ways in
+  // ui-test-hub) — only its own 0.1em track went, so caption and chip read as one.
+  // …and the OUTSIDE-container tier is untouched: a section header still shouts.
+  await open(page, "(async () => { await openArea('settings'); })()", 1200);
+  const outside = await page.evaluate("(() => { const el = [...document.querySelectorAll('.settings-section-label, #manage-verdicts .bhub-grpcap')].filter((e) => e.getClientRects().length)[0]; return el ? { tt: getComputedStyle(el).textTransform, t: el.textContent.trim().slice(0, 24) } : null; })()");
+  ok(outside && outside.tt === 'uppercase', `the OUTSIDE-container tier still shouts ("${outside && outside.t}")`);
 
   console.log('§2 Payments — row titles in ink, the capsule carries the state');
   await open(page, "(async () => { await openAccounts(); })()", 1200);

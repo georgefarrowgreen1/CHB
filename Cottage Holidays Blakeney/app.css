@@ -110,7 +110,7 @@ textarea:focus-visible,
 /* On-brand text selection in form fields. */
 ::selection {
   background: var(--accent-soft);
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 @media (prefers-reduced-motion: reduce) {
   /* `*` does not match pseudo-elements — 11 of 14 ::before/::after motions kept running. */
@@ -1973,7 +1973,7 @@ html.js-reveal .reveal.in-view {
 .section-title {
   font-family: var(--font-serif);
   font-size: var(--fs-h1);
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   font-weight: 400;
 }
 .lead {
@@ -2134,7 +2134,7 @@ a.card {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 24px;
-  margin-top: 30px;
+  margin-top: 32px;
 }
 .review-card {
   padding: 24px 28px;
@@ -2326,7 +2326,7 @@ a.card {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 30px;
+  margin-top: 32px;
 }
 .amenities .amenity-pill {
   flex: 0 1 auto;
@@ -2397,7 +2397,7 @@ a.card {
 .prop-subtitle {
   color: var(--text-muted);
   font-size: var(--fs-body);
-  margin: 6px 0 20px;
+  margin: 8px 0 20px;
 }
 .prop-stats {
   display: flex;
@@ -2405,7 +2405,7 @@ a.card {
 }
 .prop-stat {
   flex: 1;
-  padding: 4px 6px;
+  padding: 4px 8px;
 }
 .prop-stat + .prop-stat {
   border-left: 1px solid var(--glass-border);
@@ -2442,7 +2442,7 @@ a.card {
 .prop-divider {
   height: 1px;
   background: var(--glass-border);
-  margin: 22px 0;
+  margin: 24px 0;
 }
 .prop-section-h {
   text-align: left;
@@ -2451,7 +2451,7 @@ a.card {
 }
 /* Meet your host */
 .host-card {
-  padding: 22px;
+  padding: 24px;
   border-radius: var(--r-panel);
 }
 .host-top {
@@ -2479,7 +2479,7 @@ a.card {
 }
 .host-stats {
   display: flex;
-  margin: 18px 0;
+  margin: 16px 0;
 }
 .host-stats > div {
   flex: 1;
@@ -2749,7 +2749,7 @@ a.card {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: #1a191b;
+  background: var(--accent-ink);
   border: 3px solid #fff;
   /* Warm and lighter: 0.5 black cast a grey halo on a pale basemap. */
   box-shadow: 0 4px 14px rgba(58, 46, 30, 0.3);
@@ -2788,7 +2788,7 @@ a.card {
   right: 14px;
   bottom: 14px;
   background: rgba(255, 255, 255, 0.92);
-  color: #1a191b;
+  color: var(--accent-ink);
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: var(--r-sm);
   padding: 9px 14px;
@@ -3450,7 +3450,7 @@ a.card {
   text-decoration: none;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: background 0.16s var(--fluid-bezier), border-color 0.16s var(--fluid-bezier);
 }
@@ -3461,10 +3461,10 @@ a.card {
   }
 }
 .pay-part-row {
-  margin-top: 10px;
-  padding: 14px;
+  margin-top: 12px;
+  padding: 16px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 .pay-part-lbl {
@@ -3576,7 +3576,7 @@ a.card {
   color: var(--text-light);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   padding: 11px 13px;
   margin-bottom: 14px;
 }
@@ -3585,7 +3585,7 @@ a.card {
   color: var(--text-light);
   background: rgba(127, 127, 127, 0.06);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   padding: 11px 13px;
   margin: 12px 0 2px;
 }
@@ -3781,7 +3781,7 @@ a.card {
 .pay-ap-opt {
   display: block;
   padding: 11px 13px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   border: 1px solid var(--glass-border);
   cursor: pointer;
   /* The pill-control press from the #1000 makeover — these are the same
@@ -4016,7 +4016,7 @@ a.card {
 .pay-journey {
   margin-top: 16px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   overflow: hidden;
   text-align: left;
 }
@@ -4130,7 +4130,7 @@ a.card {
 .pay-steps.is-open { grid-template-rows: 1fr; }
 .pay-steps-in {
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   margin-top: 12px;
   text-align: left;
 }
@@ -4204,8 +4204,8 @@ a.card {
 /* The loading wait wears the shape of the coming screen (index.html). */
 .pay-sk-box {
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 14px;
+  border-radius: var(--r-lg);
+  padding: 16px;
   margin-bottom: 12px;
 }
 /* MONEY COMING BACK (guestDepositTrackerHtml, My Stays): issued → your bank,
@@ -4843,7 +4843,7 @@ textarea.input-glass.field-sm {
 .gallery-container {
   height: 80vh;
   border-radius: var(--r-panel);
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   position: relative;
   overflow: hidden;
   background: var(--dark-grey);
@@ -5463,16 +5463,16 @@ body.light-mode .ov-card {
 body.light-mode .tag-21a,
 body.light-mode .tag-jollyboat,
 body.light-mode .tag-pimpernel {
-  color: #1b2a34;
+  color: var(--text-light);
 }
 body.light-mode .tag-21a {
-  color: color-mix(in srgb, var(--prop-21a) 45%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-21a) 45%, var(--text-light));
 }
 body.light-mode .tag-jollyboat {
-  color: color-mix(in srgb, var(--prop-jollyboat) 45%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-jollyboat) 45%, var(--text-light));
 }
 body.light-mode .tag-pimpernel {
-  color: color-mix(in srgb, var(--prop-pimpernel) 45%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-pimpernel) 45%, var(--text-light));
 }
 
 /* Back-office layout: calendar (left) + enquiries sidebar (right) */
@@ -5482,9 +5482,27 @@ body.light-mode .tag-pimpernel {
   gap: 30px;
   align-items: start;
 }
+/* ONE COUNT BADGE: the class for a bare count, and the three that already
+   existed adopt its pair. Geometry stays each one's own — a dock disc, a
+   heading badge and a segment chip are three sizes of one thing. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  vertical-align: middle;
+}
+.count-badge, .admin-dock-badge, .inbox-badge, .ifold-count {
+  background: var(--danger);
+  color: var(--accent-ink);
+}
 .inbox-badge {
-  background: var(--warn);
-  color: #1a1a1a;
   font-family: var(--font-sans);
   font-size: var(--fs-sub);
   font-weight: 600;
@@ -5556,7 +5574,7 @@ body.light-mode .tag-pimpernel {
 .chat-msg.me {
   align-self: flex-end;
   background: rgba(214, 167, 133, 0.92);
-  color: #1a191b;
+  color: var(--accent-ink);
   border-bottom-right-radius: 5px;
 }
 /* ---- A MESSAGE ARRIVES LIKE A MESSAGE ----
@@ -5876,7 +5894,7 @@ body.light-mode .tag-pimpernel {
   cursor: pointer;
   border: 1px solid var(--glass-highlight);
   background: rgba(214, 167, 133, 0.95);
-  color: #1a191b;
+  color: var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6107,7 +6125,7 @@ body.light-mode .tag-pimpernel {
 .trip-chip.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 .msg-thread-row {
@@ -6321,7 +6339,7 @@ body.light-mode .tag-pimpernel {
 .msg-filter-chip.on {
   background: var(--warn);
   border-color: var(--warn);
-  color: #1a1a1a;
+  color: var(--accent-ink);
 }
 /* "Needs reply" pill on a thread row (last message is the guest's, unanswered) */
 .needs-reply-pill {
@@ -6388,7 +6406,7 @@ body.light-mode .tag-pimpernel {
   border-radius: 50%;
   border: 1px solid var(--glass-highlight);
   background: rgba(214, 167, 133, 0.95);
-  color: #1a191b;
+  color: var(--accent-ink);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -6699,8 +6717,6 @@ body.owner-mode .chat-widget {
   padding: 0 5px;
   margin-left: 4px;
   border-radius: var(--r-pill);
-  background: var(--warn);
-  color: #1a1a1a;
   font-size: var(--fs-micro);
   font-weight: 600;
   vertical-align: middle;
@@ -6777,9 +6793,9 @@ body.owner-mode .chat-widget {
   transition: filter var(--fluid-bezier, ease) 0.2s;
 }
 .inbox-sort-btn.is-on {
-  background: rgba(199, 154, 100, 0.16);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent-text);
-  border-color: rgba(199, 154, 100, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 /* "Returning guest" pill on an enquiry whose email matches past stays. */
 .repeat-badge {
@@ -6852,7 +6868,7 @@ body.owner-mode .chat-widget {
 /* Read-only availability calendar on cottage pages */
 .avail-cal {
   margin-top: 28px;
-  padding: 20px 22px;
+  padding: 20px;
   border-radius: var(--r-lg);
 }
 /* On desktop the calendar is moved inside the reserve card (just above
@@ -7344,9 +7360,9 @@ body.owner-mode .chat-widget {
 .settings-group {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   overflow: hidden;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 .settings-row {
   display: flex;
@@ -7503,7 +7519,7 @@ body.owner-mode .chat-widget {
 .cancel-card.selected .cancel-card-check {
   background: var(--glass-highlight);
   border-color: var(--glass-highlight);
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 
 /* Reserve two lines for the label so a wrapping title (e.g. "Arrivals (next 30
@@ -8302,7 +8318,7 @@ body.light-mode .feed-dot-bad {
 }
 .ana-seg-btn.on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 /* CSV export: a calm full-width action at the foot of the report. */
@@ -10381,7 +10397,7 @@ body.light-mode .theme-switch .ts-i-sun {
 /* Guest Log In / Create Account tabs use the site's rose-gold accent, not green. */
 .toggle-btn.guest-tab.active-mode {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: var(--accent);
 }
 
@@ -10518,7 +10534,7 @@ body.has-queued .offline-pill {
   padding: 0 3px;
   border-radius: 8px;
   background: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   font-size: var(--fs-micro);
   font-weight: 700;
   display: flex;
@@ -10759,7 +10775,7 @@ p.lead[data-edit-text] {
     flex-wrap: wrap;
   }
   .section-title {
-    margin-bottom: 22px;
+    margin-bottom: 24px;
   }
 }
 
@@ -11003,7 +11019,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
            button just flips its icon dark and nudges it up a touch as the pill arrives. */
 .admin-dock-btn.current {
   background: transparent;
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 .admin-dock-btn.current:hover {
   background: transparent;
@@ -11148,8 +11164,6 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   min-width: 19px;
   height: 19px;
   padding: 0 5px;
-  background: #e5533c;
-  color: #fff;
   font-size: var(--fs-micro);
   font-weight: 700;
   border-radius: var(--r-pill);
@@ -11358,7 +11372,7 @@ body.light-mode .hs-field:hover {
 }
 .hs-chip.is-on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -11394,14 +11408,14 @@ body.light-mode .hs-field:hover {
 }
 .hs-mode-btn.is-on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 /* Premium primary CTA: accent-filled, not a pale outline. */
 #hs-search-btn,
 .btn-glass.btn-accent {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: transparent;
   font-weight: 600;
   padding: 17px;
@@ -11418,7 +11432,7 @@ body.light-mode .hs-field:hover {
 }
 .btn-glass.btn-accent:hover {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   filter: brightness(1.05);
 }
 .flex-opts {
@@ -11492,7 +11506,7 @@ body.light-mode .hs-field:hover {
   align-items: center;
   gap: 5px;
   background: rgba(255, 255, 255, 0.96);
-  color: #1f1f1f;
+  color: var(--accent-ink);
   font-size: var(--fs-caption);
   font-weight: 700;
   padding: 5px 10px;
@@ -11545,7 +11559,7 @@ body.light-mode .hs-field:hover {
   white-space: nowrap;
   transform: translate(-50%, -50%);
   background: #fff;
-  color: #1f1f1f;
+  color: var(--accent-ink);
   font-family: var(--font-sans);
   font-weight: 700;
   font-size: var(--fs-sub);
@@ -11561,7 +11575,7 @@ body.light-mode .hs-field:hover {
 }
 .map-price-pill .mp-pill:hover,
 .map-price-pill.is-active .mp-pill {
-  background: #1f1f1f;
+  background: var(--accent-ink);
   color: #fff;
   transform: translate(-50%, -50%) scale(1.07);
   z-index: 5;
@@ -12031,7 +12045,7 @@ body.light-mode .help-disclosure > summary {
 }
 #preview-banner button {
   background: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   border: 0;
   border-radius: 8px;
   padding: 5px 14px;

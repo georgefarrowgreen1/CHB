@@ -1,10 +1,10 @@
 {
-  "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid, and text-transform: uppercase rule blocks (the brand voice keeps five in app.css). These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint / a multiple of 4 instead. Re-baseline after a cleanup with: node check-css-conventions.js --update",
+  "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid, and text-transform: uppercase rule blocks (the brand voice keeps five in app.css). The `markup` block is the same three rules read out of a `style` attribute in index.html / admin-views.html / app.js / admin.js, where a 14px card recipe and fourteen tracked-caps captions were invisible to the stylesheet scan. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint / a multiple of 4 instead. Re-baseline after a cleanup with: node check-css-conventions.js --update",
   "app.css": {
     "breakpoints": 12,
-    "rawHex": 69,
+    "rawHex": 40,
     "rawEnv": 0,
-    "offGrid": 569,
+    "offGrid": 555,
     "uppercase": 5,
     "rawRadii": 0,
     "rawType": 0
@@ -13,18 +13,23 @@
     "breakpoints": 1,
     "rawHex": 2,
     "rawEnv": 0,
-    "offGrid": 476,
-    "uppercase": 29,
+    "offGrid": 457,
+    "uppercase": 20,
     "rawRadii": 0,
     "rawType": 0
   },
   "guest-app.css": {
     "breakpoints": 1,
-    "rawHex": 5,
+    "rawHex": 2,
     "rawEnv": 0,
     "offGrid": 15,
     "uppercase": 0,
     "rawRadii": 0,
     "rawType": 0
+  },
+  "markup": {
+    "inlineRadii": 0,
+    "inlineType": 0,
+    "inlineUppercase": 0
   }
 }

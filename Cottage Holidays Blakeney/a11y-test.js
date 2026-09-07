@@ -206,6 +206,39 @@ for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
     }
 }
 
+// §1b-2 — INK ON A SOLID FILL. §1b measures text on a TINT; a badge, a chip and a
+// filled button sit on the token at FULL strength, and that pairing had drifted the
+// same way: one count badge was a raw #e5533c with WHITE ink (3.73:1, measured on
+// Today at 390) beside another count of the same duties in amber. Routing all of
+// them onto --danger with the design system's dark ink is only safe if the pair is
+// measured, so it is — and DISCOVERED, like §1b's, so the next filled badge is
+// covered the day it is written: any rule that sets `color: var(--accent-ink)` and
+// `background: var(--<status or accent token>)` is ink on a solid fill.
+const solidPairs = new Map();
+for (const f of ['app.css', 'admin.css', 'guest-app.css']) {
+    const css = stripC(fs.readFileSync(path.join(DIR, f), 'utf8'));
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const bg = m[2].match(/background(?:-color)?\s*:\s*var\(--(ok|warn|danger|info|accent)\)\s*(?:;|$)/m);
+        const col = m[2].match(/(?:^|;)\s*color\s*:\s*var\(--accent-ink\)/);
+        if (!bg || !col) continue;
+        const key = bg[1];
+        if (!solidPairs.has(key)) solidPairs.set(key, { fill: `--${bg[1]}`, where: `${f} ${m[1].trim().split('\n').pop().trim().slice(0, 40)}` });
+    }
+}
+console.log('\n== 1b-2. dark ink on a SOLID token fill (badges, chips, filled buttons) ==');
+if (!solidPairs.size) ok(false, 'no ink-on-a-solid-fill pairs found — the scanner has stopped seeing them');
+for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
+    for (const { fill: fillTok, where } of solidPairs.values()) {
+        const inkV = themeTokens['--accent-ink'], fillV = themeTokens[fillTok];
+        if (!inkV || !fillV || !/^#[0-9a-fA-F]{6}$/.test(inkV) || !/^#[0-9a-fA-F]{6}$/.test(fillV)) {
+            console.log(`  · ${theme}: --accent-ink/${fillTok} not a plain hex pair, skipped`);
+            continue;
+        }
+        const r = ratio(hex2rgb(inkV), hex2rgb(fillV));
+        ok(r >= 4.5, `${theme}: --accent-ink on ${fillTok} ${fillV} — ${r.toFixed(2)}:1 (${where})`);
+    }
+}
+
 // §1c — the ASSISTANT'S STATE COLOURS, which are information and not decoration.
 // The model state (ready / understood / by-meaning / best-guess / learning) is
 // reported by the knot glyph's COLOUR ALONE — there is no worded pill, by design —

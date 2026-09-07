@@ -181,6 +181,57 @@ function uppercaseRules(cssRaw) {
     return out;
 }
 
+// --- THE MARKUP HALF: the same three rules, inside `style="…"` ---------------
+// Everything above reads the three STYLESHEETS, which is where the system is
+// stated — and roughly half of what the app paints is written in a template.
+// Measured before this scan existed: fourteen `text-transform: uppercase` sites
+// lived inline in admin.js (so the sheet's count of 30 was really 44, and two of
+// them were whole sentences), a `border-radius:14px` card recipe was repeated in
+// five templates, and two modal boxes carried an 18px radius — none of it
+// visible to rawRadii/uppercase, because a stylesheet scan has nothing to scan.
+// Same ratchet contract: these only ever go DOWN.
+const MARKUP_FILES = ['index.html', 'admin-views.html', 'app.js', 'admin.js'];
+function inlineStyles(src) {
+    return [...src.matchAll(/style="([^"]*)"/g)].map((m) => m[1]);
+}
+function inlineRadii(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const d of v.matchAll(/border-(?:[a-z]+-)?radius\s*:\s*([^;"]+)/g)) {
+                for (const tok of d[1].trim().split(/\s+/)) {
+                    const m = tok.match(/^(\d+(?:\.\d+)?)px$/);
+                    if (!m) continue;
+                    const px = parseFloat(m[1]);
+                    if (px > 8 && px !== 12 && px !== 20 && px < 999) out.push(`${i + 1}: ${tok}`);
+                }
+            }
+        }
+    });
+    return out;
+}
+function inlineType(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const d of v.matchAll(/font-size\s*:\s*(\d*\.?\d+)(rem|px)\b/g)) {
+                const px = d[2] === 'px' ? parseFloat(d[1]) : parseFloat(d[1]) * 16;
+                if (px > 0 && px <= 40) out.push(`${i + 1}: ${d[1]}${d[2]}`);
+            }
+        }
+    });
+    return out;
+}
+function inlineUppercase(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const _ of v.matchAll(/text-transform\s*:\s*uppercase/g)) out.push(`${i + 1}: text-transform: uppercase`);
+        }
+    });
+    return out;
+}
+
 // --- run ------------------------------------------------------------------
 const found = {};
 for (const f of FILES) {
@@ -193,6 +244,23 @@ for (const f of FILES) {
     }
     found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css) };
 }
+// The markup half, counted as ONE tail across the four files that carry
+// templates — the line reports name the file, so a new one still points at itself.
+found.markup = { inlineRadii: [], inlineType: [], inlineUppercase: [] };
+let inlineSeen = 0;
+for (const f of MARKUP_FILES) {
+    let src;
+    try {
+        src = fs.readFileSync(path.join(DIR, f), 'utf8');
+    } catch (e) {
+        console.error(`  ✗ ${f} — not readable (${e.message})`);
+        process.exit(1);
+    }
+    inlineSeen += inlineStyles(src).length;
+    for (const [key, fn] of [['inlineRadii', inlineRadii], ['inlineType', inlineType], ['inlineUppercase', inlineUppercase]]) {
+        for (const hit of fn(src)) found.markup[key].push(`${f}:${hit}`);
+    }
+}
 
 const DIMS = [
     { key: 'breakpoints', label: 'stray media-query width', fix: 'use one of 480 / 640 / 900 / 1200 (or the complement of one)' },
@@ -202,6 +270,11 @@ const DIMS = [
     { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
     { key: 'rawRadii', label: 'raw corner radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) for a cell or field, var(--r-lg) for a card, var(--r-pill) for a pill' },
     { key: 'rawType', label: 'raw font-size off the eight steps', fix: 'use var(--fs-micro/caption/sub/body/headline/title/display/hero) — 11 · 12 · 13 · 15 · 17 · 22 · 28 · 34' },
+];
+const MARKUP_DIMS = [
+    { key: 'inlineRadii', label: 'inline border-radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) / var(--r-lg) / var(--r-pill) in the style attribute, or give the element a class' },
+    { key: 'inlineType', label: 'inline font-size off the eight steps', fix: 'use one of the --fs-* steps in the style attribute' },
+    { key: 'inlineUppercase', label: 'inline text-transform: uppercase', fix: 'sentence case at 600 is the house label — .acw-cap inside a container, .acr-cap for a section header' },
 ];
 
 if (update) {
@@ -217,9 +290,11 @@ if (update) {
     for (const f of FILES) {
         next[f] = Object.fromEntries(DIMS.map((d) => [d.key, found[f][d.key].length]));
     }
+    next.markup = Object.fromEntries(MARKUP_DIMS.map((d) => [d.key, found.markup[d.key].length]));
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
     for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type`);
+    console.log(`  markup (${MARKUP_FILES.join(', ')}) — ${next.markup.inlineRadii} inline radii, ${next.markup.inlineType} inline type, ${next.markup.inlineUppercase} inline uppercase`);
     process.exit(0);
 }
 
@@ -306,6 +381,34 @@ for (const f of FILES) {
             nudges.push(`${f}.${key}: ${max} → ${n}`);
         } else {
             console.log(`  ✓ ${f} — ${n} ${label}(s) (at baseline)`);
+        }
+    }
+}
+
+// The markup half. A vacuity guard first: if the scan stops finding style
+// attributes at all (a quoting change, a renamed file), it must FAIL rather
+// than report a clean zero for rules it is no longer measuring.
+if (inlineSeen < 200) {
+    failed++;
+    console.log(`  ✗ markup — only ${inlineSeen} style attributes seen across ${MARKUP_FILES.join(', ')}; the inline scan is not reading the templates`);
+} else {
+    for (const { key, label, fix } of MARKUP_DIMS) {
+        const n = found.markup[key].length;
+        const max = ((budget.markup || {})[key] != null) ? budget.markup[key] : null;
+        if (max == null) {
+            console.log(`  ✗ markup ${key} — no baseline in css-budget.json (run --update)`);
+            failed++;
+            continue;
+        }
+        if (n > max) {
+            failed++;
+            console.log(`  ✗ markup — ${n} ${label}(s), baseline ${max} (+${n - max}). ${fix}.`);
+            console.log(`      present: ${found.markup[key].slice(0, 8).join(', ')}${n > 8 ? ' …' : ''}`);
+        } else if (n < max) {
+            console.log(`  ✓ markup — ${n} ${label}(s) (baseline ${max})`);
+            nudges.push(`markup.${key}: ${max} → ${n}`);
+        } else {
+            console.log(`  ✓ markup — ${n} ${label}(s) (at baseline)`);
         }
     }
 }

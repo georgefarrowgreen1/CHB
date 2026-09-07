@@ -263,9 +263,9 @@ body.light-mode {
   justify-content: center;
   font-family: var(--font-serif);
   font-size: var(--fs-headline);
-  background: rgba(199, 154, 100, 0.18);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
-  border: 1px solid rgba(199, 154, 100, 0.3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }.enq-ctx-name {
   font-weight: 600;
   font-size: var(--fs-body);
@@ -308,6 +308,8 @@ body.light-mode {
 }.area-ov-card {
   display: block;
   width: 100%;
+  /* A CARD, not a sheet: --r-panel is 28/40 on a 190px tile. */
+  border-radius: var(--r-lg);
   color: var(--text-light);
   transition:
     background 0.4s var(--fluid-bezier),
@@ -599,7 +601,7 @@ body.light-mode .tl-cell.is-mstart {
 }body.light-mode .tl-cell.is-wknd {
   background: rgba(27, 42, 52, 0.055);
 }.tl-cell.is-today {
-  background: rgba(199, 154, 100, 0.09); /* a whisper of accent anchors today down every lane */
+  background: color-mix(in srgb, var(--accent) 9%, transparent); /* a whisper of accent anchors today down every lane */
 /* THE GRID AND THE HOVER, in the DEFAULT theme. The weekend/month tints above
    got light counterparts and these did not, so every day-column separator
    vanished and pointing at a free cell — the two-tap range control — showed
@@ -641,7 +643,7 @@ body.light-mode .tl-cell {
   border-radius: 2px;
   z-index: 2;
   pointer-events: none;
-  box-shadow: 0 0 6px rgba(199, 154, 100, 0.55);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .tl-nowline::before {
   content: '';
@@ -1244,8 +1246,10 @@ body.light-mode .ny-act {
   /* Identity on the PAGE GROUND (the only-what-needs-seeing demo): the
      tinted to-do card and the Money group are the surfaces, not a panel
      around the lot. */
-  padding: 4px 2px 0;
-  margin-top: 10px;
+  /* No inset: those 2px were the last of three rails (the card's caption at 33
+     against every fold label's 31, measured at 390). */
+  padding: 4px 0 0;
+  margin-top: 12px;
   /* AND IT OUT-RANKS THE STICKY BAR, because .bhub-menu cannot. The entrance
      animation above ends `both`, so a transform persists and .bhub-head is a
      permanent STACKING CONTEXT — which scopes the menu's z-index inside it, and
@@ -1431,7 +1435,8 @@ body.light-mode .ny-act {
 }/* THE MESSAGE NEVER FOLDS — the enquiry's one must-read, styled as its own
    quiet card with the draft row on a hairline beneath. */
 .bhub-msg {
-  padding: 14px 18px 6px;
+  /* The card's own rail. NB ≤640 the .bhub-card override wins on order. */
+  padding: 16px 16px 8px;
   /* A FOURTH MATERIAL, on a page whose cards are flat 12 and 20: it inherited
      .bhub-card's --r-panel and .glass-panel's drop shadow, so the message was
      the one RAISED, 28/40px-rounded element between a 20px state card and 12px
@@ -1516,8 +1521,8 @@ body.light-mode .ny-act {
 }.bhub-hist-row {
   display: grid;
   grid-template-columns: 130px 1fr auto;
-  gap: 10px;
-  padding: 7px 0;
+  gap: 12px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--glass-border);
   font-size: var(--fs-sub);
 }.bhub-hist-row:last-child {
@@ -1534,10 +1539,10 @@ body.light-mode .ny-act {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   margin-top: 8px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--glass-border);
@@ -1677,9 +1682,10 @@ body.light-mode .ny-act {
   padding: 16px 18px;
   margin-top: 12px;
 }.mo-card-title {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--text-muted);
   margin-bottom: 6px;
 }.yoy-cmp .mo-good {
@@ -2337,7 +2343,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   text-align: left;
   background: none;
   border: none;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   padding: 8px 12px;
   cursor: pointer;
   color: var(--text-light);
@@ -2370,7 +2376,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: none;
   color: var(--accent-text);
   transition: transform 0.14s var(--spring, var(--fluid-bezier));
@@ -2559,7 +2565,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   background: var(--glass-hover);
   border: none;
   box-shadow: inset 0 0 0 1px var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   color: var(--text-light);
   font-size: var(--cmdk-fs-row);
   text-align: left;
@@ -2842,9 +2848,9 @@ body.light-mode .cmdk-editor-input {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 2px 12px 10px 54px;
+  margin: 2px 12px 12px 54px;
   padding: 4px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--accent) 4%, var(--glass-hover));
   border: 1px solid var(--glass-border);
   -webkit-backdrop-filter: saturate(1.1) blur(6px);
@@ -2877,7 +2883,7 @@ body.light-mode .cmdk-editor-input {
   font-weight: 500;
   background: none;
   border: none;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   cursor: pointer;
   color: var(--accent-text);
 }
@@ -2937,8 +2943,8 @@ body.light-mode .cmdk-editor-input {
 .coach-ring {
   position: fixed;
   border: 2px solid var(--accent);
-  border-radius: var(--r-md);
-  box-shadow: 0 0 0 4px rgba(199, 154, 100, 0.35), 0 0 0 9999px rgba(10, 14, 18, 0.58);
+  border-radius: calc(var(--r-sm) + 4px);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 0 9999px rgba(10, 14, 18, 0.58);
   pointer-events: none;
   transition: left 0.2s var(--fluid-bezier), top 0.2s var(--fluid-bezier), width 0.2s var(--fluid-bezier), height 0.2s var(--fluid-bezier);
 }
@@ -2948,7 +2954,7 @@ body.light-mode .cmdk-editor-input {
   background: rgba(26, 25, 27, 0.98);
   color: #f4f5f7;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: var(--r-panel);
+  border-radius: var(--r-lg);
   padding: 12px 14px;
   box-shadow: var(--shadow-float);
   z-index: 4001;
@@ -3230,10 +3236,10 @@ body.light-mode .cmdk-editor-input {
 .status-okcat { margin-bottom: 16px; }
 .status-okcat:last-child { margin-bottom: 4px; }
 .status-okcat-title {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 700;
+  font-size: var(--fs-sub);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
   color: var(--text-muted);
   opacity: 0.8;
   margin-bottom: 9px;
@@ -3486,10 +3492,12 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   color: var(--accent-text, var(--accent));
   line-height: 1;
 }
+/* Tracked caps wrapped these to 2/2/3 lines at 390 ('DEAD-/ENDS/WAITING'). */
 .sl-stat-l {
   font-size: var(--fs-caption);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-muted);
 }
 .sl-note {
@@ -4676,7 +4684,7 @@ body.cmdk-open {
 }
 .bhub-sticky {
     position: sticky; bottom: 0; z-index: 40; display: flex; gap: 8px; align-items: center;
-    padding: 10px 2px calc(10px + var(--safe-b, 0px));
+    padding: 12px 0 calc(12px + var(--safe-b, 0px));
     background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 30%);
 }
 .bhub-sticky-btn {
@@ -4723,12 +4731,15 @@ body.cmdk-open {
        the tinted payask band and the dashed gap chip — three different edges
        in one section read as clutter, not structure. A hairline above is the
        whole separation. */
-    margin-top: 14px; padding: 12px 0 0;
+    margin-top: 16px; padding: 12px 0 0;
     border-top: 1px solid var(--glass-border);
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex; flex-direction: column; gap: 8px;
 }
+/* ONE CAPTION TIER: tracked caps are the section header OUTSIDE a container;
+   inside one it is sentence case at 600 (the .bhub-msg-cap spec). This shouted
+   "PAYMENT PLAN" beside four sentence-case siblings in the money fold. */
 .bhub-plan-cap {
-    font-size: var(--fs-micro); letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none;
     color: var(--text-muted);
 }
 .bhub-plan-row {
@@ -4761,7 +4772,9 @@ body.cmdk-open {
     /* 0.62rem measured 9.9px — under the app's own 10px floor, on the badge that
        says whether a booking's money follows the standard plan or a custom one.
        a11y-test §4 caught it once the booking hub became a scene there. */
-    border-radius: 999px; font-size: var(--fs-micro); letter-spacing: 0.1em;
+    /* The badge STAYS (an owner's ask, gated both ways) — only its track went,
+       so caption and chip read as one tier. */
+    border-radius: 999px; font-size: var(--fs-micro); letter-spacing: 0;
     text-transform: uppercase; color: var(--accent-text);
 }
 /* The standard badge is QUIET — custom stays the one that draws the eye. */
@@ -4800,7 +4813,7 @@ body.cmdk-open {
 .bhub-actlink {
     display: flex; align-items: center; justify-content: space-between;
     width: 100%; text-align: left; gap: 12px;
-    background: none; border: none; padding: 10px 2px; min-height: 44px;
+    background: none; border: none; padding: 12px 0; min-height: 44px;
     font-family: inherit; font-size: var(--fs-body); color: var(--accent-text);
     cursor: pointer;
 }
@@ -4828,9 +4841,10 @@ body.cmdk-open {
     font-size: var(--fs-body);
 }
 .bhub-kv:first-child { border-top: none; padding-top: 2px; }
+/* The type is DEAD here — the round-eight rule below sets basis/size/track/
+   transform — so its `uppercase` measured nothing and only the ratchet saw it. */
 .bhub-kv-label {
-    flex: 0 0 84px; font-size: var(--fs-micro); letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--text-muted);
+    flex: 0 0 84px; color: var(--text-muted);
 }
 .bhub-kv-val { min-width: 0; overflow-wrap: anywhere; color: var(--text-light); }
 
@@ -4948,8 +4962,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 50px;
-  padding: 12px 18px;
+  min-height: 52px;
+  padding: 12px 16px;
   background: none;
   border: none;
   color: var(--text-light);
@@ -4992,7 +5006,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    `.acr-body`, and the Inbox's folds hold one re-parented folder div. ---- */
 .bhub-fold {
   border-top: 1px solid var(--glass-border);
-  padding: 12px 18px 14px;
+  padding: 12px 16px 16px;
   display: grid;
   grid-template-rows: 1fr;
   transition:
@@ -5108,7 +5122,17 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* FLAT body — the .rate-prop panel spent 26px a side and starved the labels. */
 .acr-body { padding-top: 2px; }
 .acr-lbl { flex: 1 1 auto; }
+/* A CAPTION IS A NOUN, NOT A SENTENCE: tracked caps work on two or three words,
+   and the FAQ well's 80-character one painted 320×53 — three shouted lines above
+   an empty box. The explanation goes on .acr-capsub under it. */
 .acr-cap { font-size: var(--fs-micro); letter-spacing: 0.09em; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 14px 2px 6px; }
+/* That line: sentence case at reading size, above the well it introduces. */
+.acr-capsub { font-size: var(--fs-sub); line-height: 1.45; color: var(--text-muted); margin: -4px 2px 8px; text-wrap: pretty; }
+/* A caption INSIDE a container, stated once so a template need not spell it
+   inline (14 did, in tracked caps the stylesheet ratchet could not see). */
+.acw-cap { font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-muted); margin-bottom: 8px; }
+/* Inside the sticky bar, so it takes the in-container tier. */
+#sg-count { font-size: var(--fs-sub); letter-spacing: 0; text-transform: none; }
 .acr-well { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
 /* A sentence UNDER a well, saying where what you just typed shows up. */
 .acr-note { font-size: var(--fs-sub); line-height: 1.5; color: var(--text-muted); margin: 8px 4px 0; }
@@ -5164,6 +5188,20 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acr-well .list-edit-row { margin: 0; padding: 4px 8px 4px 14px; }
 .acr-well .list-edit-row + .list-edit-row, .acr-well .faq-row + .faq-row, .acr-well .welcome-row + .welcome-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 .acr-well .list-edit-row .input-glass { border: 0; background: none; box-shadow: none; }
+/* THE ROW'S OWN RULE, not the inline recipe reviewRowHtml / faqRowHtml /
+   welcomeRowHtml each spelled out — and an inline style OUTRANKS a stylesheet,
+   so the flattening rule below could never apply: measured, every FAQ and
+   welcome row painted as a raised 14px card inside the well meant to flatten it. */
+.review-row, .faq-row, .welcome-row {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--glass-bg);
+}
+/* A plain owner-side card and its row, once rather than inline twice. */
+.adm-card { border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 16px; margin: 0 0 20px; background: var(--glass-bg); }
+.adm-row { border: 1px solid var(--glass-border); border-radius: var(--r-sm); padding: 12px; margin-bottom: 12px; background: var(--glass-bg); }
 .acr-well .faq-row, .acr-well .welcome-row { border: 0; background: none; border-radius: 0; padding: 11px 14px; margin: 0; box-shadow: none; }
 /* the photo GRID: 3-up cells, MAIN badged on the first, the four actions as
    compact glyphs under each thumb — same composer, same data-acts */
@@ -5182,7 +5220,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* the home-page-card LIVE PREVIEW (the badge trick) + its photo row */
 .acw-thumb { width: 54px; height: 42px; border-radius: var(--r-sm); background-size: cover; background-position: center; flex: 0 0 auto; }
 .acw-linkbtn { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-weight: 600; text-transform: none; letter-spacing: normal; font-size: var(--fs-sub); padding: 6px 0; }
-.acw-homecard { max-width: 250px; border-radius: var(--r-md); overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
+.acw-homecard { max-width: 250px; border-radius: var(--r-lg); overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
 .acw-hc-img { height: 92px; background-size: cover; background-position: center; background-color: color-mix(in srgb, var(--text-light) 8%, transparent); }
 .acw-hc-t { padding: 9px 12px 3px; font-family: var(--font-serif); font-size: var(--fs-body); color: var(--text-light); }
 .acw-hc-m { padding: 0 12px 10px; font-size: var(--fs-caption); color: var(--text-muted); }
@@ -5224,7 +5262,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acw-prow + .acw-prow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 /* moderation item rows (reviews, and any queue that adopts them): the quote
    leads, the verdict pills sit in one quiet action line. */
-.acw-qrow { border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-md); background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 13px 14px; margin-bottom: 10px; }
+.acw-qrow { border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 12px 16px; margin-bottom: 12px; }
 .acw-modacts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; padding: 7px 14px; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
 .acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
@@ -5427,8 +5465,10 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
     border-radius: 50%; border: 1px solid var(--glass-border); background: none;
     color: var(--text-light); font-family: inherit; font-size: var(--fs-body); cursor: pointer; z-index: 3;
 }
+/* Inside the box, so sentence case at 600 — 'The stay' / 'The guest' / 'Money'
+   were the last tracked-caps captions in a modal. */
 .modal-sec {
-    font-size: var(--fs-micro); letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none;
     color: var(--text-muted); margin: 2px 0 12px; padding-top: 16px;
     border-top: 1px solid var(--glass-border);
 }
@@ -5447,7 +5487,7 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 /* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
 .modal-foot-total { flex: 0 0 auto; }
 .modal-foot-cap {
-    display: block; font-size: var(--fs-micro); letter-spacing: 0.1em; text-transform: uppercase;
+    display: block; font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none;
     color: var(--text-muted); white-space: nowrap;
 }
 .modal-foot-fig { font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); white-space: nowrap; }
@@ -6057,7 +6097,7 @@ body.offline-snap .ods-mark {
 .night-setup { margin-top: 14px; }
 .night-setup > summary {
     cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
-    font-size: var(--fs-caption); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+    font-size: var(--fs-sub); letter-spacing: 0; text-transform: none; font-weight: 600;
     color: var(--text-muted); padding: 6px 0; min-height: 44px;
 }
 .night-setup > summary::-webkit-details-marker { display: none; }
@@ -6180,9 +6220,9 @@ body.offline-snap .ods-mark {
 .mc-day-go:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 .mc-day-note{margin-top:8px;font-size: var(--fs-micro);color:var(--text-muted)}
 /* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
-.mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:var(--r-md);
+.mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:var(--r-lg);
   padding:12px 14px;background:color-mix(in srgb,var(--accent) 7%,transparent)}
-.mc-act-t{font:700 var(--fs-micro) var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;
+.mc-act-t{font:600 var(--fs-sub) var(--font-sans);letter-spacing:0;text-transform:none;
   color:var(--accent-text);margin-bottom:5px}
 .mc-act-f{font-size: var(--fs-sub);line-height:1.5;color:var(--text-light)}
 .mc-act-btns{display:flex;gap:8px;margin-top:10px}

@@ -9399,7 +9399,7 @@ function cmdkPickCottage(sec) {
     const rows = keys
         .map((k) => {
             const m = propertyMeta[k] || {};
-            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:var(--fs-body);color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:13px;padding:14px 16px;margin:0 0 8px;cursor:pointer;">
+            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:var(--fs-body);color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:14px 16px;margin:0 0 8px;cursor:pointer;">
                         <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${escapeHtml(m.accent || '#c6885e')};"></span>
                         <span style="flex:1;">${escapeHtml(m.name || k)}</span>
                         <svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5;"><path d="M9 6l6 6-6 6"/></svg>
@@ -13626,7 +13626,8 @@ async function renderPricingCoach() {
         .sort((a, b) => (a.week || '').localeCompare(b.week || ''));
     const radar = radarWeeks.length
         ? `
-                <div class="acr-cap">Demand radar · weeks guests searched for</div>
+                <div class="acr-cap">Demand radar</div>
+                <div class="acr-capsub">The weeks guests searched for.</div>
                 <div class="acr-well pc-well" style="max-width:640px;margin:0 0 16px;">
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">${radarWeeks
                         .map((w) => {
@@ -14656,12 +14657,12 @@ function calendarPropBoxHtml(key, label, data) {
         return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:var(--fs-sub);margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
     }).join('');
     return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
+                    <div class="acw-cap">Export</div><div class="acr-capsub">Paste this into each platform's calendar import.</div>
                     <div style="display:flex;gap:8px;margin-bottom:14px;">
                         <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:var(--fs-sub);flex:1;min-width:0;">
                         <button class="btn-sm btn-edit" ${chbAttrs('copyIcalExport', String(key))} style="flex-shrink:0;">Copy</button>
                     </div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
+                    <div class="acw-cap">Import</div><div class="acr-capsub">Paste the platform calendar links here.</div>
                     ${inputs}
                     <div style="margin-top:2px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
@@ -15151,7 +15152,7 @@ async function renderAccounts() {
         : '';
 
     const quarterly = `<div class="feed-list" style="padding:4px 16px;">
-                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
+                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:12px;font-size:var(--fs-caption);font-weight:600;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
                     ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
                 </div>`;
 
@@ -16046,7 +16047,7 @@ function renderExpenses() {
                   const items = rowsByYear[y];
                   const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                   return `<div style="margin-top:18px;">
-                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);font-weight:600;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
                     ${items
                         .map(
                             (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
@@ -17250,7 +17251,8 @@ async function renderMoneyFeed() {
     // ink stays the tokens' text variants — --ok/--danger are FILLS.
     const recon =
         grossIn > 0
-            ? `<div class="acr-cap">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
+            ? `<div class="acr-cap">Card reconciliation</div>
+               <div class="acr-capsub">Gross, fees and net across the card payments below.</div>
                <div class="acr-well mf-recon">
                     <div class="mf-line"><span>Gross</span><span class="acw-fig">${gbp(grossIn)}</span></div>
                     <div class="mf-line"><span>Square fees</span><span class="acw-fig" style="color:var(--danger-text);">− ${gbp(feeSum)}</span></div>
@@ -17628,7 +17630,7 @@ async function loadAdminPasskeys() {
             .map(
                 (
                     k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
                     <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
                 </div>`,
@@ -18553,7 +18555,7 @@ function apFloorLadderRows(floor) {
 }
 function apFloorLadderHtml(floor) {
     const { rows, line } = apFloorLadderRows(floor);
-    let html = '<div style="font-size:var(--fs-micro);letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">What guests are offered, by time left</div>';
+    let html = '<div class="acw-cap">What guests are offered</div><div class="acr-capsub">By how long is left before they arrive.</div>';
     rows.forEach((r, i) => {
         if (i === line) html += `<div class="apfl-line"><span>Your floor · ${floor} months</span></div>`;
         html += `<div class="apfl-rung${r.dim ? ' is-dim' : ''}"><span class="apfl-lead">${r.lead}</span><span class="apfl-dots"></span><span class="apfl-offer">${r.offer}</span></div>`;
@@ -22580,7 +22582,8 @@ function renderChatAnswersEditor() {
     const host = document.getElementById('chat-answers-editor');
     if (!host) return;
     host.innerHTML =
-        '<div class="acr-cap">The chat\u2019s quick-question chips — blank uses the default</div>' +
+        '<div class="acr-cap">Quick-question chips</div>' +
+        '<div class="acr-capsub">The chat\u2019s own chips \u2014 leave one blank to use the default.</div>' +
         '<div class="acr-well">' +
         CHAT_FAQ_ORDER.map((which) => {
             const f = CHAT_FAQ[which];
@@ -22611,7 +22614,8 @@ function renderChatAwayEditor() {
         return o;
     };
     host.innerHTML =
-        '<div class="acr-cap">Sent at most once every few hours — never right after you\u2019ve replied</div>' +
+        '<div class="acr-cap">Away reply</div>' +
+        '<div class="acr-capsub">Sent at most once every few hours \u2014 never right after you\u2019ve replied.</div>' +
         `<div class="acr-well">
             <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
             <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We\u2019re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
@@ -22820,7 +22824,8 @@ function accomSectionHtml(k, sec) {
             };
             const imgEl = document.querySelector('[data-edit-img="' + ck.img + '"]');
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
-            return `<div class="acr-cap">The tile guests tap — its detail-page photos &amp; text live in Photos and Text</div>
+            return `<div class="acr-cap">Home-page tile</div>
+                    <div class="acr-capsub">The tile guests tap. Its detail-page photos and text live in Photos and Text.</div>
                     <div class="acr-well">
                         <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
                             <span class="acr-lbl" style="flex:1;">Home-page photo</span><button class="btn-sm btn-edit acw-linkbtn" ${chbAttrs('contentEditImage', String(ck.img))}>Replace…</button></div>
@@ -22834,7 +22839,8 @@ function accomSectionHtml(k, sec) {
         }
         case 'photos': {
             const imgs = accomImages(k);
-            return `<div class="acr-cap">Gallery — the first photo is the main image</div>
+            return `<div class="acr-cap">Gallery</div>
+                    <div class="acr-capsub">The first photo is the main image.</div>
                     <div class="acr-well">
                         <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
@@ -22924,7 +22930,8 @@ function accomSectionHtml(k, sec) {
                         <div class="acr-row"><span class="acr-lbl">Minimum nights</span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '-1')} aria-label="Minimum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-minNights" type="number" min="1" step="1" value="${r.minNights || 1}" ${chbChange('updateRuleField', String(k), 'minNights', CHB_VALUE)} aria-label="Minimum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '1')} aria-label="Minimum nights — more">+</button></span></div>
                         <div class="acr-row"><span class="acr-lbl">Maximum nights<small>0 = no limit</small></span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '-1')} aria-label="Maximum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-maxNights" type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)} aria-label="Maximum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '1')} aria-label="Maximum nights — more">+</button></span></div>
                     </div>
-                    <div class="acr-cap">Arrival days — none ticked = any day</div>
+                    <div class="acr-cap">Arrival days</div>
+                    <div class="acr-capsub">None ticked means guests may arrive any day.</div>
                     <div class="acr-well">
                         <div class="arrival-days acw-days">${[
                             'Sun',
@@ -22989,7 +22996,8 @@ function accomSectionHtml(k, sec) {
         }
         case 'safety':
             return `
-                    <div class="acr-cap">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page</div>
+                    <div class="acr-cap">Safety notes</div>
+                    <div class="acr-capsub">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page.</div>
                     <div class="acr-well">
                         <div id="accom-safety-rows-${k}" class="acw-list">${accomSafetyList(k)
                             .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
@@ -23022,7 +23030,8 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         case 'arrival':
             return `
-                    <div class="acr-cap">Directions, key collection, wifi — private to booked guests</div>
+                    <div class="acr-cap">Arrival info</div>
+                    <div class="acr-capsub">Directions, key collection, wifi — private to booked guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
                         <small class="acw-tip">✓ Saves by itself — emailed before check-in, and unlocks on the guest&rsquo;s account at the cottage door (see Location)</small></div>
@@ -23037,14 +23046,16 @@ function accomSectionHtml(k, sec) {
             // burst pipe with no signal still finds the stopcock.
             return `
                     <label class="chb-switch-row"><span class="chb-switch"><input type="checkbox" id="ks-toggle-${k}" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}><span class="chb-switch-track" aria-hidden="true"></span></span><span>Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</span></label>
-                    <div class="acr-cap">For you only — never shown to guests</div>
+                    <div class="acr-cap">Private notes</div>
+                    <div class="acr-capsub">For you only — never shown to guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea>
                         <small class="acw-tip">✓ Saves by itself — carried in your phone&rsquo;s offline day sheet, readable at the door with no signal</small></div>
                     </div>`;
         case 'location':
             return `
-                    <div class="acr-cap">Address — shown to guests</div>
+                    <div class="acr-cap">Address</div>
+                    <div class="acr-capsub">Shown to guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="2" class="input-glass" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)} aria-label="Address">${escapeHtml(r.address || '')}</textarea></div>
                     </div>
@@ -23065,18 +23076,21 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         case 'local':
             return `
-                    <div class="acr-cap">Dark skies — shown on Experiences, site-wide</div>
+                    <div class="acr-cap">Dark skies</div>
+                    <div class="acr-capsub">Shown on Experiences, site-wide.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="3" class="input-glass" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)} aria-label="Dark skies note">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
                     </div>
-                    <div class="acr-cap">Accessibility — shown on the cottage page</div>
+                    <div class="acr-cap">Accessibility</div>
+                    <div class="acr-capsub">Shown on the cottage page.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="4" class="input-glass" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)} aria-label="Accessibility">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea>
                         <small class="acw-tip">Steps, parking distance, ground-floor sleeping, bathroom layout — both save by themselves</small></div>
                     </div>`;
         case 'faq':
             return `
-                    <div class="acr-cap">Instant answers — the &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script</div>
+                    <div class="acr-cap">Instant answers</div>
+                    <div class="acr-capsub">The &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script.</div>
                     <div class="acr-well">
                         <div id="faq-editor-${k}" class="acw-list">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
                         <div class="acw-acts">
@@ -23089,7 +23103,8 @@ function accomSectionHtml(k, sec) {
                 ? adminPrivateContent['welcome-' + k]
                 : [];
             return `
-                    <div class="acr-cap">Private — only guests who&rsquo;ve booked this cottage see it</div>
+                    <div class="acr-cap">Welcome book</div>
+                    <div class="acr-capsub">Private — only guests who&rsquo;ve booked this cottage see it.</div>
                     <div class="acr-well">
                         <div id="welcome-editor-${k}" class="acw-list">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
                         <div class="acw-acts">
@@ -23126,7 +23141,7 @@ function reviewRowHtml(r) {
                 `<option value="${s}" ${(r.source || '') === s ? 'selected' : ''}>${s || '(no source)'}</option>`,
         )
         .join('');
-    return `<div class="review-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="review-row">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Guest name" value="${escapeHtml(r.name || '')}" data-rf="name" style="flex:1 1 140px;min-width:120px;">
                     <select class="input-glass field-sm" data-rf="stars">${starOpts}</select>
@@ -23147,7 +23162,7 @@ function renderReviewsEditor() {
 // ---- Per-cottage FAQ editor (Settings, inside each rate panel) ----
 function faqRowHtml(propKey, f) {
     f = f || { icon: '', q: '', a: '' };
-    return `<div class="faq-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="faq-row">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Emoji" value="${escapeHtml(f.icon || '')}" data-fq="icon" style="width:64px;text-align:center;" maxlength="4">
                     <input type="text" class="input-glass field-sm" placeholder="Question (e.g. What time is check-in?)" value="${escapeHtml(f.q || '')}" data-fq="q" style="flex:1 1 240px;min-width:160px;">
@@ -23191,7 +23206,7 @@ async function saveFaqs(propKey) {
 // ---- Welcome book editor (per cottage, private) ----
 function welcomeRowHtml(propKey, s) {
     s = s || { title: '', body: '' };
-    return `<div class="welcome-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="welcome-row">
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Section title (e.g. Wi-Fi, Heating, Bins)" value="${escapeHtml(s.title || '')}" data-wb="title" style="flex:1 1 240px;min-width:160px;">
                     <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".welcome-row" title="Remove section"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -23685,8 +23700,8 @@ async function loadAnalytics(days = 30) {
                         <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
                         <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
                     </div>
-                    ${topMonthsHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
+                    ${topMonthsHtml ? `<div class="acw-cap" style="margin:4px 0 8px;">Most-requested months</div>${topMonthsHtml}` : ''}
+                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
                 `,
                 )}` +
         exportRow;
@@ -23761,8 +23776,8 @@ async function loadNewsletter() {
         : `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
     stats.innerHTML = `<div class="accounts-stat" style="max-width:640px;">
                 <div style="display:flex;gap:26px;flex-wrap:wrap;">
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Active subscribers</div></div>
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div class="acw-cap" style="margin-bottom:0;">Active subscribers</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div class="acw-cap" style="margin-bottom:0;">Unsubscribed</div></div>
                 </div>${list}</div>`;
 }
 // ---- System check (Manage → System check) ----
@@ -24944,9 +24959,9 @@ async function tcRenderBooking() {
         .map((b) => {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
-                    <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
+                    <div class="label">${escapeHtml(name)} · #${b.id} <span class="count-badge" style="margin-left:6px;">TEST</span></div>
                     <div style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
+                    <div class="acw-cap">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, CHB_SELF)}>Open pay page ↗</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcMarkPaid', b.id, CHB_SELF)}>Mark paid in full</button>
@@ -24954,7 +24969,7 @@ async function tcRenderBooking() {
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
                     </div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
+                    <div class="acw-cap">Daily automations (run now, as the cron would)</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'pre_arrival', CHB_SELF)}>Pre-arrival email</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'balance_reminder', CHB_SELF)}>Balance reminder</button>
@@ -25371,8 +25386,8 @@ function renderReviewLinks() {
                     </div>`;
         })
         .join('');
-    wrap.innerHTML = `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:16px;margin:0 0 20px;background:var(--glass-bg);">
-                <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Review links to share with guests</div>
+    wrap.innerHTML = `<div class="adm-card">
+                <div class="acw-cap">Review links</div>
                 <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
                 ${rows}
             </div>`;
@@ -25428,11 +25443,11 @@ function leadCardHtml(l) {
     const excluded = ar > 0 && ar < 3
         ? `<div style="font-size:var(--fs-caption);color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
         : '';
-    return `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="adm-row">
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">
                     <strong>${escapeHtml(l.name)}</strong>
                     <span style="color:var(--text-muted);">${escapeHtml(cott)}</span>
-                    <span style="font-size:var(--fs-micro);letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
+                    <span style="font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:var(--r-pill);padding:1px 8px;">${escapeHtml(src)}</span>
                     <span class="star-static">${stars}</span>
                     <span style="margin-left:auto;">${leadStatusPill(l.status)}</span>
                 </div>
@@ -25442,7 +25457,7 @@ function leadCardHtml(l) {
                     <button class="btn-sm btn-delete" ${chbAttrs('deleteLead', l.id)}>Delete</button>
                 </div>
                 <div style="margin-top:12px;border-top:1px dashed var(--glass-border);padding-top:12px;">
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
+                    <div class="acw-cap">
                         <svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         Rate this guest — private, never shown to them</div>
                     <div class="lead-prate" data-id="${l.id}" data-val="${ar}" style="display:flex;gap:3px;margin-bottom:8px;">${priv}</div>

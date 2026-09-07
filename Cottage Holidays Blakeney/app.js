@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 596;
+const ADMIN_BUNDLE_V = 597;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 255;
+const ADMIN_CSS_V = 256;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4060,7 +4060,7 @@ async function loadPasskeys() {
             .map(
                 (
                     k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
                     <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deletePasskey', k.id)}>Remove</button>
                 </div>`,
@@ -10220,7 +10220,7 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // Classed so the Activity feed can hold it to the story's own
                 // type size — it carries no font-size of its own and inherited
                 // the card base, rendering 16px among 13.12px event rows.
-                return `<div class="bhub-ledger-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
+                return `<div class="bhub-ledger-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--glass-border);">
                         <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
@@ -12716,7 +12716,7 @@ async function loadGuestPhotosAdmin() {
             const meta = propertyMeta[p.prop_key] || { name: p.prop_key };
             const pend = p.status === 'pending';
             const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
-            return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
+            return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r-lg);overflow:hidden;">
                     <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
@@ -18944,7 +18944,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higlist1';
+    const BUILD = 'higtoken1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

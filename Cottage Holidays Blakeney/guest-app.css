@@ -263,7 +263,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
   letter-spacing: 0.3px;
   white-space: nowrap;
   cursor: pointer;
-  color: #1b1208;
+  color: var(--accent-ink);
   background: var(--accent);
   border: none;
   border-radius: var(--r-pill);
@@ -357,7 +357,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
 }
 /* Current section: icon flips dark to sit over the white indicator + nudges up. */
 .guest-dock-btn.current {
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 .guest-dock-btn.current svg {
   transform: scale(1.08);
@@ -791,7 +791,7 @@ body.light-mode.guest-app:not(.owner-mode) .guest-dock {
 }
 /* Icons become ink-slate on the white dock (were white on dark). */
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn {
-  color: #1b2a34;
+  color: var(--text-light);
 }
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:hover,
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:focus-visible {
