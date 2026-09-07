@@ -113,6 +113,44 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => (window.__alerts || []).some((m) => /did not match/i.test(m))),
     'and the owner is told why');
 
+  // ---- 4b. THE CHOICE HAS A WAY OUT --------------------------------------
+  // The passkey step used to explain buttons it did not have ("OK = Face ID …
+  // Cancel = type your password") while the pair read "Use a passkey" /
+  // "Cancel" — so the only word that reads as backing out opened the password
+  // box, and the only way out of a refund was cancelling twice. The two ways
+  // to prove it are named on their own buttons now, and Escape (which resolves
+  // the `tri` confirm as NULL) means neither: nothing sends, nothing is asked.
+  console.log('4b. Escape is a true cancel, not "continue with a password"');
+  pwOk = true;
+  reauthed = false;
+  await page.evaluate(() => {
+    window.__pwAsked = 0;
+    window.glassForm = async () => { window.__pwAsked++; return null; };
+    // Escape / the backdrop on a `tri` confirm resolve NULL, never false.
+    window.glassConfirm = async () => null;
+  });
+  const before4b = posts.length;
+  const r4b = await page.evaluate(async () => {
+    try {
+      await chbWithReauth('returning £60.00', () =>
+        apiPost('bookings.php', { action: 'return_deposit', id: 12, amount: 60 }));
+      return { threw: false, asked: window.__pwAsked };
+    } catch (e) { return { threw: true, code: e.code || '', msg: e.message || '', asked: window.__pwAsked }; }
+  });
+  ok(r4b.threw && r4b.code === 'reauth_cancelled',
+    `backing out of the choice cancels the whole thing (${r4b.code})`);
+  ok(r4b.asked === 0, `…without opening the password box the owner did not ask for (${r4b.asked} asked)`);
+  ok(posts.slice(before4b).filter((p) => p.action === 'return_deposit').length === 1,
+    'and the refund is tried once and never retried');
+  // Cancel is still the SECOND CHOICE, so `false` must go on to the password.
+  await page.evaluate(() => { window.__pwAsked = 0; window.glassConfirm = async () => false; });
+  reauthed = false;
+  await page.evaluate(async () => {
+    try { await chbWithReauth('returning £60.00', () => apiPost('bookings.php', { action: 'return_deposit', id: 13, amount: 60 })); } catch (e) {}
+  });
+  ok(await page.evaluate(() => window.__pwAsked) === 1,
+    'while "Type my password" still opens the password box — the two are different answers');
+
   console.log('5. what moves no money is never gated');
   pwOk = true;
   const before5 = posts.length;

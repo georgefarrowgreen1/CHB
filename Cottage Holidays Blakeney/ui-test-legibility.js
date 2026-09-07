@@ -11,7 +11,11 @@
 //     clock is pinned below rather than left to the run date.
 //  §2 NO SUMMARY SUB IS CUT OFF on a phone. `.bhub-fold-sub` is nowrap +
 //     ellipsis and the right rail takes the figure, so the sentence was being
-//     cut mid-word — measured, up to 51% of the words lost at 360px.
+//     cut mid-word — measured, up to 51% of the words lost at 360px. AND NO
+//     `.acr-cap` CAPTION WRAPS: that tier is 11px tracked uppercase, which only
+//     works on a NOUN, and nine cottage-page captions were whole sentences
+//     wearing it (the worst painted three lines above an empty well). Asserted
+//     as one painted line, with a floor so "shorten it" cannot become a stub.
 //  §3 A SETTINGS ROW'S DESCRIPTION does not drop a lone word.
 //
 // 360px is the width that matters for §2 and §3: it is the narrowest phone in
@@ -89,7 +93,14 @@ const ORPHANS = (sel) => {
     if (u.includes('rates.php')) return j({ properties: PROPS, seasons: {}, occupancy: {} });
     if (u.includes('accounts.php')) return j({ ok: true, total: 18204.11, card_fees: 210.4, kept_deposits: 0, payments: [],
       deposit_liability: { net: 150, items: [{ name: 'Sarah Pemberton', net: 75, check_in: d(3), check_out: d(7) }],
-        payouts: { known: 4, inBank: 1852.62, lookback: 90, items: { inBank: [{ name: 'Tom Ashby', kind: 'balance', movable: 900 }], unknown: [] } } } });
+        // `unknown` carries a 40-DAY-OLD charge on purpose: it is what makes the
+        // Money landing render its "Square hasn't said" exception, whose sub the
+        // fixture had never once produced — so the gate had not seen the one sub
+        // on that page that was actually being cut ("…it should be by…" at 390).
+        payouts: { known: 4, inBank: 1852.62, lookback: 90, items: {
+          inBank: [{ name: 'Tom Ashby', kind: 'balance', movable: 900 }],
+          unknown: [{ name: 'Ines Duarte', kind: 'deposit', movable: 491.25, paid_on: d(-40) }],
+        } } } });
     if (u.includes('bookings.php') && b.action === 'recent_payments') return j({ ok: true, payments: [{ name: 'Tom Ashby', kind: 'balance', amount: '900.00', created_at: d(-1) + ' 10:00:00' }] });
     return j({ ok: true, bookings: BK, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: PROPS });
   });
@@ -167,6 +178,43 @@ const ORPHANS = (sel) => {
       .filter((e) => e.getClientRects().length)
       .map((e) => (e.textContent || '').trim().length)));
   ok(shortest >= 10, `every sub is still a phrase, not a stub (shortest ${shortest} chars)`);
+
+  // A CAPTION IS A NOUN, NOT A SENTENCE — the same rule one tier up. `.acr-cap`
+  // is 11px TRACKED UPPERCASE, which only works on two or three words: measured
+  // before this check, nine of the cottage page's captions were 41–80-character
+  // sentences and the worst painted 320×53 — three shouted lines above an empty
+  // well. The explanation moved to `.acr-capsub` under it, in sentence case.
+  // Asserted as ONE PAINTED LINE (a Range over the ink, not the box), so the
+  // copy cannot re-grow, plus a floor so "shorten it" cannot become a stub.
+  for (const w of [360, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(150);
+    await page.evaluate(async () => {
+      await openArea('manage');
+      settingsOpen('accom');
+      settingsOpenAccom('21a');
+      ['photos', 'web', 'faq', 'welcome', 'arrival', 'local', 'safety', 'opsnotes', 'location'].forEach((sec) => settingsOpenAccomSec('21a', sec));
+    });
+    await page.waitForTimeout(600);
+    const caps = await page.evaluate(() => {
+      const out = [];
+      for (const el of document.querySelectorAll('.acr-cap')) {
+        if (!el.getClientRects().length) continue;
+        const r = document.createRange(); r.selectNodeContents(el);
+        const lines = [...r.getClientRects()].filter((x) => x.width > 1).length;
+        out.push({ t: (el.textContent || '').trim(), lines });
+      }
+      return out;
+    });
+    const multi = caps.filter((c) => c.lines > 1);
+    ok(caps.length >= 6, `${w}px cottage sections: ${caps.length} captions painted (vacuity guard)`);
+    ok(multi.length === 0, `${w}px: every caption is one line${multi.length ? ' — ' + multi.map((c) => `“${c.t}” ${c.lines} lines`).join('; ') : ''}`);
+    ok(caps.every((c) => c.t.length >= 3), 'and none of them is a stub');
+    if (w === 390) {
+      const subs = await page.evaluate(() => [...document.querySelectorAll('.acr-capsub')].filter((e) => e.getClientRects().length).map((e) => (e.textContent || '').trim().length));
+      ok(subs.length >= 4 && Math.min(...subs) >= 12, `the explanations moved to the sub line beneath (${subs.length} of them, shortest ${Math.min(...subs)} chars)`);
+    }
+  }
 
   // ------------------------------------------------------- §3 the orphans
   console.log('\n§3 A settings row’s description does not drop a lone word');

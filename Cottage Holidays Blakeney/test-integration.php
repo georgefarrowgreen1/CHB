@@ -696,7 +696,13 @@ echo "\n== 10b. Money audit fixes ==\n";
 // ledger AHEAD — a payment recorded but reconciliation unfinished — the guest was
 // asked for more than the card would take. £400 total, £100 on the booking row,
 // £250 in the ledger: the balance due is £150, not £300.
-$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Ledger Ahead','la@x.co','2027-03-01','2027-03-04',2,0,'deposit',100,400,400,0,3)");
+// Hoisted: fixtures ABOVE the old definition site now use it too. A fixture
+// date must move with the clock — a fixed one is eventually swept by a
+// relative one and the collision fails a check for a few days, then heals.
+$dd = fn($n) => date('Y-m-d', strtotime("+$n days"));
+$dLedgerIn = $dd(840);
+$dLedgerOut = $dd(843);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Ledger Ahead','la@x.co','$dLedgerIn','$dLedgerOut',2,0,'deposit',100,400,400,0,3)");
 $laId = (int) $rootDb->lastInsertId();
 $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($laId,'deposit',250,'COMPLETED','sq_la_dep', NOW())");
 // The quoted figure itself is asserted in test-payrail.php: pay.php and
@@ -729,7 +735,9 @@ it_check('a ledger row is stored with its status UPPERCASED', $ncStatus === strt
 // (D) THE CANCELLATION REFUND IS CAPPED like the per-row refund. Without it a typo was
 // only caught by Square rejecting it — which aborts the cancellation too, so the owner
 // cannot cancel at all until they guess a workable number.
-$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Over Refund','or@x.co','2027-04-01','2027-04-04',2,0,'deposit',100,400,400,0,3)");
+$dOverIn = $dd(850);
+$dOverOut = $dd(853);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Over Refund','or@x.co','$dOverIn','$dOverOut',2,0,'deposit',100,400,400,0,3)");
 $orId = (int) $rootDb->lastInsertId();
 $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($orId,'deposit',100,'COMPLETED','sq_or_dep', NOW())");
 it_reauth($admin); // money out → step-up first (see the helper above)
@@ -956,7 +964,6 @@ it_check('a kept- net row is counted at face value, not double-netted (£50, not
 // booking refused for no reason. The turnover cases (e, f) are the second kind and
 // are exactly what an off-by-one in the overlap test would break.
 echo "\n== 15. The calendar cannot be double-booked ==\n";
-$dd = fn($n) => date('Y-m-d', strtotime("+$n days"));
 $bookingsOn = function ($from, $to) use ($rootDb, $propKey) {
     $q = $rootDb->prepare('SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?');
     $q->execute([$propKey, $to, $from]);
@@ -1329,12 +1336,14 @@ $rootDb->exec('UPDATE bookings SET deposit_paid = ' . $dep . ' WHERE id = ' . $n
 $row = $acct();
 it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
 it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
-// CLEAN UP the Due Date Guest, whose dates are RELATIVE (+260 days). Later
-// sections use FIXED 2027-05 dates, so on days where +260 lands in that
-// window the two collided and refused the op-ledger phone enquiry as a
-// clash — a clock-dependent flake (green one day, red the next) that had
-// nothing to do with the code under test. Deleting it here removes the
-// collision at its source.
+// CLEAN UP the Due Date Guest, whose dates are RELATIVE (+260 days). This
+// delete was the NARROW fix for one instance of a general defect: a fixed
+// fixture date is eventually swept by a relative one, and whichever of the two
+// goes through a clash-checked endpoint then fails for a few days and heals
+// itself — green one day, red the next, for reasons nothing to do with the
+// code under test. The general fix is above: every fixture a booking endpoint
+// touches is relative now, so the two can never converge. The delete stays as
+// tidiness, not as the guard.
 if ($dueBookingId > 0) { $rootDb->exec('DELETE FROM bookings WHERE id = ' . $dueBookingId); }
 
 // ---- 17. THE SERVER STAMPS ITS OWN CLOCK ON EVERY REPLY --------------------
@@ -1424,7 +1433,9 @@ it_check('correcting a finished stay keeps its stamp', ($r['json']['ok'] ?? fals
 // ══════════════════════════════════════════════════════════════════════════
 echo "\n\xC2\xA717 the op ledger\n";
 
-$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Op Ledger','op@gmail.com','2027-03-01','2027-03-04',2,0,'unpaid',0,300,300,0,3)");
+$dOpLedIn = $dd(860);
+$dOpLedOut = $dd(863);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Op Ledger','op@gmail.com','$dOpLedIn','$dOpLedOut',2,0,'unpaid',0,300,300,0,3)");
 $opBid = (int) $rootDb->lastInsertId();
 $dep = fn() => (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $opBid")->fetchColumn();
 
@@ -1455,17 +1466,19 @@ it_check('…while a DIFFERENT op_id is a genuine second expense', $expCount() =
 // (d) The phone-enquiry capture: admin submit with no address, replayed once.
 $op3 = 'op-int-' . bin2hex(random_bytes(6));
 $enqCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM enquiries WHERE name = 'Op Phone Enquiry'")->fetchColumn();
-$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => '2027-05-10', 'check_out' => '2027-05-13', 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => $dd(880), 'check_out' => $dd(883), 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
 it_check('a phone enquiry saves with NO address (admin-exempt)', ($r['json']['ok'] ?? false) && $enqCount() === 1, $r['raw']);
-$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => '2027-05-10', 'check_out' => '2027-05-13', 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => $dd(880), 'check_out' => $dd(883), 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
 it_check('…and its replay lands ONE enquiry, not two', $enqCount() === 1 && ($r['json']['replayed'] ?? false) === true, 'rows=' . $enqCount());
 
 // (e) ERRORS ARE NEVER STORED: a clash-refused enquiry re-refuses on replay
 // (a stored refusal would freeze a fixable one forever) — and the refusal
 // still refuses after the ledger has seen the id once.
-$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Clash Holder','ch@gmail.com','2027-06-10','2027-06-13',2,0,'unpaid',0,300,300,0,3)");
+$clashIn = $dd(890);
+$clashOut = $dd(893);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Clash Holder','ch@gmail.com','$clashIn','$clashOut',2,0,'unpaid',0,300,300,0,3)");
 $op4 = 'op-int-' . bin2hex(random_bytes(6));
-$mk = fn() => http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Clash Enquiry', 'phone' => '07700 900234', 'check_in' => '2027-06-11', 'check_out' => '2027-06-12', 'adults' => 2, 'children' => 0, 'message' => 'x', 'op_id' => $op4]);
+$mk = fn() => http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Clash Enquiry', 'phone' => '07700 900234', 'check_in' => $dd(891), 'check_out' => $dd(892), 'adults' => 2, 'children' => 0, 'message' => 'x', 'op_id' => $op4]);
 $r = $mk();
 it_check('a clashing enquiry is refused (dates already taken)', ($r['json']['error'] ?? '') !== '', $r['raw']);
 $r = $mk();
@@ -1483,7 +1496,7 @@ it_check('a malformed op_id degrades to a plain write', ($r['json']['ok'] ?? fal
 // stores, and a replay of the whole ladder is answered at post one.
 $op5 = 'op-int-' . bin2hex(random_bytes(6));
 $addCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE name = 'Op Direct Add'")->fetchColumn();
-$mkAdd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => '2027-07-10', 'check_out' => '2027-07-13', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op5]);
+$mkAdd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => $dd(900), 'check_out' => $dd(903), 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op5]);
 $r = $mkAdd();
 it_check('a booking add with an op_id applies once', ($r['json']['ok'] ?? false) && $addCount() === 1, $r['raw']);
 $newBid = (int) ($r['json']['id'] ?? 0);
@@ -1493,13 +1506,13 @@ it_check('…and a hand retry lands ONE booking, not two', $addCount() === 1 && 
 // (h) 'update' replays with its verdict intact (`material` rides the stored
 // response), and the row is not re-walked through the warn ladder.
 $op6 = 'op-int-' . bin2hex(random_bytes(6));
-$mkUpd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $newBid, 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => '2027-07-11', 'check_out' => '2027-07-14', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op6]);
+$mkUpd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $newBid, 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => $dd(901), 'check_out' => $dd(904), 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op6]);
 $r = $mkUpd();
 it_check('an update with an op_id applies (dates moved = material)', ($r['json']['ok'] ?? false) && ($r['json']['material'] ?? false) === true, $r['raw']);
 $r = $mkUpd();
 it_check('…and its replay is answered from the ledger, material intact', ($r['json']['replayed'] ?? false) === true && ($r['json']['material'] ?? false) === true, $r['raw']);
 $ci2 = (string) $rootDb->query("SELECT check_in FROM bookings WHERE id = $newBid")->fetchColumn();
-it_check('…with the row exactly as the first write left it', $ci2 === '2027-07-11', 'check_in=' . $ci2);
+it_check('…with the row exactly as the first write left it', $ci2 === $dd(901), 'check_in=' . $ci2);
 
 // (i) THE CLASH LADDER UNDER ONE ID: the refusal exit stores NOTHING (a
 // refusal must re-run), the override write stores, and the retried ladder is
@@ -1507,7 +1520,7 @@ it_check('…with the row exactly as the first write left it', $ci2 === '2027-07
 // re-sent override_clash.
 $op7 = 'op-int-' . bin2hex(random_bytes(6));
 $ladCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE name = 'Op Ladder Add'")->fetchColumn();
-$ladder = fn(array $extra = []) => http($admin, 'POST', '/bookings.php', array_merge(['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Ladder Add', 'check_in' => '2027-07-11', 'check_out' => '2027-07-12', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op7], $extra));
+$ladder = fn(array $extra = []) => http($admin, 'POST', '/bookings.php', array_merge(['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Ladder Add', 'check_in' => $dd(901), 'check_out' => $dd(902), 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op7], $extra));
 $r = $ladder();
 it_check('post one of the ladder is refused as a clash (stored nothing)', ($r['json']['clash'] ?? false) === true && $ladCount() === 0, $r['raw']);
 $r = $ladder(['override_clash' => true]);
@@ -3870,7 +3883,9 @@ $rootDb->exec('DELETE FROM enquiries');
 // pure punctuation stripped to '' and '%%' LIKE-matched EVERY booking's
 // synthesized ref — six arbitrary bookings ranked as matches for "££".
 echo "\n== §28 search never matches on nothing ==\n";
-$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, deposit_paid) VALUES ('jollyboat', 'Ref Probe Guest', 'refprobe@x.test', '2027-03-01', '2027-03-04', 2, 0)");
+$dRefIn = $dd(870);
+$dRefOut = $dd(873);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, deposit_paid) VALUES ('jollyboat', 'Ref Probe Guest', 'refprobe@x.test', '$dRefIn', '$dRefOut', 2, 0)");
 $r = http($admin, 'POST', '/search.php', ['q' => '££']);
 $s28 = array_filter(is_array($r['json']['results'] ?? null) ? $r['json']['results'] : [], function ($x) { return ($x['type'] ?? '') === 'booking'; });
 it_check('a pure-punctuation query returns NO booking rows', $r['code'] === 200 && count($s28) === 0, $r['raw']);

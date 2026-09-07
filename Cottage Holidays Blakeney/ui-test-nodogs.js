@@ -154,8 +154,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   }, { ci, co, ranges });
   const free = await verdict(d(40), d(43), [{ start: d(50), end: d(55) }]);
-  ok(free.capShown && /available/.test(free.capText) && /\bok\b/.test(free.capClass),
-    `free dates → ✓ available (${free.capText})`);
+  ok(free.capShown && /Looks free/.test(free.capText) && /\bok\b/.test(free.capClass),
+    `free dates → ✓ Looks free (${free.capText})`);
   ok(!free.wait, '…and no waitlist row');
   const taken = await verdict(d(49), d(52), [{ start: d(50), end: d(55) }]);
   ok(taken.capShown && /taken/.test(taken.capText) && /warn/.test(taken.capClass),
@@ -192,7 +192,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'outside the window → deposit row + balance row');
   const mDep = far.sched.match(/25% deposit £([\d.,]+)/);
   const mBal = far.sched.match(/£([\d.,]+) balance/);
-  const mTot = far.box.match(/From\s*£([\d.,]+)/);
+  // "From" was the label over an EXACT figure for a chosen range — the finding this
+  // row's copy change closes — so the total is located by its honest label now. The
+  // COHERENCE property being asserted is unchanged; only the word it is found by moved.
+  const mTot = far.box.match(/Estimated total\s*£([\d.,]+)/);
   ok(mDep && mBal && mTot && Math.abs(money(mDep[1]) + money(mBal[1]) - money(mTot[1])) < 0.01,
     `deposit ${mDep && mDep[1]} + balance ${mBal && mBal[1]} = total ${mTot && mTot[1]}`);
   // innerText reflects the CSS text-transform (the when-column renders

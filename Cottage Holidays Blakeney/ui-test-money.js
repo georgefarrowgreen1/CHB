@@ -456,6 +456,23 @@ let mailWillFail = false;
   ok(rails.cash && rails.cash.ret && rails.cash.keep,
     `a CASH deposit can be kept for damage, not only given back (${rails.cash && rails.cash.say.slice(0, 60)})`);
   ok(rails.card && rails.card.keep, '…and the card rail is unchanged');
+  // STATE IS SAID ONCE on this queue too: the row used to paint an amber hairline
+  // round the whole card (`.money-row.due-soon`) beside the words that say it and
+  // the chip that carries it — state as chrome — on an off-scale 16px radius.
+  const depRow = await page.evaluate(() => {
+    const r = document.querySelector('#deposits-due .money-row');
+    if (!r) return null;
+    const c = getComputedStyle(r);
+    const page2 = getComputedStyle(document.body);
+    const probe = document.createElement('span'); probe.style.borderColor = page2.getPropertyValue('--glass-border').trim(); document.body.appendChild(probe);
+    const hair = getComputedStyle(probe).borderTopColor; probe.remove();
+    return { r: c.borderTopLeftRadius, top: c.borderTopColor, left: c.borderLeftColor, hair, sh: c.boxShadow };
+  });
+  ok(depRow, 'a deposit row is on screen (vacuity guard)');
+  ok(depRow && depRow.r === '12px', `a deposit row is a list CELL, not an off-scale 16 (${depRow && depRow.r})`);
+  ok(depRow && depRow.top === depRow.hair && depRow.left === depRow.hair,
+    `…and its border is the plain hairline, not an amber ring (${depRow && depRow.top})`);
+  ok(depRow && depRow.sh === 'none', `…and it casts no drop shadow — a queue is a list, not islands (${depRow && depRow.sh})`);
   // THE IDENTITY PILL SURVIVES THREE PILLS AT PHONE WIDTH (the UI pass:
   // "Pimpernel" crushed to "P" under paid-state + arrives-soon chips — the
   // no-shrink chips took the row and the ellipsised tag absorbed it all).
@@ -471,7 +488,7 @@ let mailWillFail = false;
     if (!row || !tag) return null;
     const chip = document.createElement('span');
     chip.className = 'bk-chip danger';
-    chip.innerHTML = '<span class="bk-dot"></span>Arrives in 4d';
+    chip.innerHTML = '<span class="bk-dot"></span>Arrives in 4 days';
     row.appendChild(chip);
     const out = { txt: tag.textContent, clipped: tag.scrollWidth > tag.clientWidth + 1 };
     chip.remove();
@@ -488,7 +505,7 @@ let mailWillFail = false;
     const root = document.querySelector('#booking-hub-content') || document.getElementById('view-booking-hub');
     return {
       name: (root.querySelector('.bhub-name') || {}).textContent || '',
-      hasRecord: /Record payment/.test(root.textContent),
+      hasRecord: /Record a payment/.test(root.textContent),
       hasInvoice: /Invoice \(PDF\)/.test(root.textContent),
       // The money folds to one line now — the balance leads from the next-action
       // banner ("… £490.00 due."), not an in-page "Balance due" breakdown row.
@@ -498,7 +515,7 @@ let mailWillFail = false;
   });
   ok(hub.name === 'Owes Money' && hub.balance, `row opened the right hub with the balance on the banner (${hub.name})`);
   console.log('    money card: ' + hub.moneyText);
-  ok(hub.hasRecord && hub.hasInvoice, 'hub Money card has Record payment + Invoice');
+  ok(hub.hasRecord && hub.hasInvoice, 'hub Money card has Record a payment + Invoice');
   const rec = page.evaluate(() => recordPayment('b1'));
   await page.waitForSelector('#gdf-amount', { timeout: 8000 });
   await page.waitForTimeout(250);
@@ -1108,7 +1125,11 @@ let mailWillFail = false;
   // it reported £147.38 ("Keep in the account") as the transfer figure.
   const headline = await page.evaluate(() => {
     const c = document.querySelector('#sweep-body .accounts-stat');
-    const el = c && c.querySelector('div[style*="--font-display"]');
+    // The CLASS, not an attribute-substring on a token that never existed:
+    // `var(--font-display)` was undefined in all three sheets (four money
+    // figures rendered in Montserrat), so this selector was load-bearing for a
+    // defect. `.sweep-fig` is the serif class those four carry now.
+    const el = c && c.querySelector('.sweep-fig');
     return el ? el.textContent.trim() : '';
   });
   ok(headline === '', `no transfer figure is offered once everything is marked (${headline || 'none'})`);
@@ -1117,7 +1138,7 @@ let mailWillFail = false;
   // IT SAYS WHEN YOU SAID SO. `moved_at` was computed on the server, carried to
   // the client and rendered NOWHERE — built with no way in, the shape this
   // codebase keeps finding. It is the fact that makes the group checkable against
-  // a bank statement, and without it the group's own "you told me" cannot be dated.
+  // a bank statement, and without it the group's own "you recorded" cannot be dated.
   const movedGroupTx = await page.evaluate(() => {
     const g = [...document.querySelectorAll('#sweep-body .accounts-stat')]
       .find((el) => /Already transferred out/i.test(el.textContent));
@@ -1388,7 +1409,7 @@ let mailWillFail = false;
   // for the estimate sentence, and if the stale repaint won the race,
   // re-render once from the current stub and poll again.
   const estUp = () => page.waitForFunction(
-    () => /you told me/.test((document.getElementById('asec-sweep') || {}).textContent || ''),
+    () => /you recorded on/.test((document.getElementById('asec-sweep') || {}).textContent || ''),
     { timeout: 4000 },
   ).then(() => true).catch(() => false);
   if (!(await estUp())) {
@@ -1401,7 +1422,7 @@ let mailWillFail = false;
   // £2,000.00 — the HOUSE gbp with its thousands separator: two local
   // comma-less shadows of the formatter painted £1852.62 on the sweep's own
   // headline (the UI pass) and this check had pinned the shadow's format.
-  ok(/estimate/.test(sB) && /£2,000\.00 you told me/.test(sB), 'labelled an estimate, from the figure they stated');
+  ok(/estimate/.test(sB) && /£2,000\.00 you recorded/.test(sB), 'labelled an estimate, from the figure they stated');
   ok(/plus £604\.05 Square has paid in since/.test(sB) && /less £73\.92 it has taken back/.test(sB), 'and it shows its working both ways');
   ok(/Remember this balance/.test(sB), 'with a way to store the corrected figure');
   // Typing must never be overwritten by a re-render.

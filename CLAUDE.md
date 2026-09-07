@@ -7431,9 +7431,43 @@ defaced map.
   blocked and paint an empty box with no error. And `maxZoom` is **19**,
   because OSM answers **400** above it; the old prop-map copy said 20, so a
   guest pinching to full zoom would have got blank tiles.
-- **`MAP_TILES` is the URL stated ONCE.** The two maps each carried their own
-  copy and had already drifted — maxZoom 20 against 19 — which is how the
-  zoom trap above was sitting there before the provider change.
+- **`MAP_TILES` is ONE DECLARATION, TWO THEME URLS** (superseding "the URL
+  stated ONCE"). The two maps each carried their own copy and had already
+  drifted — maxZoom 20 against 19 — which is how the zoom trap above was
+  sitting there before the provider change; and the one URL left was
+  `light_all` whatever the body class, so in the DEFAULT DARK theme the map was
+  a sheet of white on a near-black page (measured on the screenshot: the map
+  box mean luminance **240.5** against a page ground of **21.7** — the
+  brightest thing on the page and the only surface ignoring the theme). CARTO
+  serves Dark Matter from the SAME host under the SAME key, so the CSP entry,
+  `{s}`, `{r}` and the ceiling are unchanged and only the style slug differs;
+  after, the same box measures **11.9**. Verified by hand that the key is
+  load-bearing on BOTH styles — `dark_all` with the key is 25,002 bytes and
+  with a bogus key or none returns a byte-identical WATERMARKED tile, exactly
+  as `light_all` does. **THREE THINGS MOVE TOGETHER OR THE FIX IS WORSE THAN
+  THE DEFECT**: `mapTileUrl()` is the one picker both mounts read;
+  `toggleTheme` calls `chbMapTheme()`, which `setUrl()`s the MOUNTED layers
+  (both maps outlive a toggle, and the controls are CSS and flip instantly, so
+  a layer that waited for the next mount would leave dark controls on a white
+  map for as long as the page is open); and the whole `--map-*` set is
+  theme-aware now (ink / sub / ground / ctl-bg / ctl-hover / ctl-press /
+  ctl-edge / ctl-line / ctl-dim / ctl-shadow / attr-bg), the block having
+  carried an explicit "Not theme-aware on purpose … the basemap is light in
+  either theme" that became false in the same commit. Measured on the
+  composited paint over the dark tile ground: zoom ink 15.3:1, attribution
+  11.7:1. **NB Leaflet's own stylesheet paints `.leaflet-container` `#ddd` at
+  (0,1,0) and is injected into `<head>` AFTER app.css, so it wins the tie on
+  order** — both maps read rgb(221,221,221) under the tiles until the ground
+  was restated at (0,2,0), which is what stops a light-grey square flashing
+  behind a dark map while the tiles arrive.
+- **A BOUNDARY RATIO IS THE WRONG CLAIM FOR A MAP CONTROL**, and the gate's
+  first draft made it: a white control on a white basemap measures **1.08:1**
+  by construction and always did — its distinctness comes from its ring and its
+  shadow, not its fill. What must hold is that the control and the map are the
+  same SIDE of the theme, which is what ui-test-cottagepage §2 asserts (fill
+  luminance < 0.15 dark, > 0.4 light) alongside the ink-on-its-own-ground AA
+  reading. Same shape as the lightbox half: a dark disc on a dark scrim is
+  1.03:1 and rightly so, because the glyph is the affordance.
 - **What is NOT as good, said plainly**: OSM standard serves no `@2x` tiles,
   so on a retina phone the map is a touch softer than the CARTO layer was.
   Legible beats defaced. Restoring Voyager needs a CARTO account and key,
@@ -7447,8 +7481,10 @@ defaced map.
   0.40 washed the channel and the saltmarsh to the same grey as the houses,
   which is a real loss on a coastal village where the water is half of why
   anyone opens the map. Labels are ink, so saturation never costs legibility.
-- **`test-maptiles.js`** (18 checks, CI-wired, deploy-excluded) gates what is
-  cheaply checkable: one URL literal, both call sites reading the const, the
+- **`test-maptiles.js`** (26 checks, CI-wired, deploy-excluded) gates what is
+  cheaply checkable: TWO URL literals both inside the one declaration and
+  differing ONLY in the style slug, both call sites reading `mapTileUrl()`,
+  `toggleTheme` swapping the live layer, a key on EVERY theme's URL, the
   host permitted by the SHIPPED `img-src`, and the zoom inside the provider's
   ceiling. Deliberately **no network** — a suite that fetches live tiles fails
   for reasons that are nothing to do with this codebase, the call `test-ical.php`

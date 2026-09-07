@@ -7,12 +7,18 @@
 //  and picker cells), the CARD (--r-lg 20: cards, wells, the to-do card) and the
 //  PILL (999). Sheets keep their panel radius. check-css-conventions ratchets the
 //  raw values in the stylesheets; this suite reads the PAINT:
-//    §1 a fold group's outer corners are the cell radius; a card is the card radius
+//    §1 a fold group's outer corners are the cell radius; a card is the card
+//       radius; a .bk-row LIST CELL is the cell radius too (it was the SHEET
+//       radius — 28 on a phone, 40 on a desktop — on four screens)
 //    §2 the picker's cells are 44px tall and the card is padded to fit seven at 390
 //    §3 Move money out's fields are 44px at 17px type (no iOS zoom on focus)
 //    §4 the chat header is a 52px bar; the terms sheet carries ONE close
 //    §5 the system check's mark is a 28px symbol, Re-run is a text button,
 //       the income headline has no stripe
+//    §6 THE SWEEP: every painted corner on view-pay, the assistant (three
+//       states), the AI chat and the Manage landing is 12, 20, a pill or
+//       --r-panel on a sheet — read COMPUTED, so a var() cannot hide a fourth
+//       step (--r-md, 16px, was painting on 65 rules)
 //  Break-tested: the token edit (§1), the picker padding (§2), the field height
 //  (§3), the terms foot (§4), the status mark (§5).
 // ============================================================
@@ -62,6 +68,15 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   console.log('§1 three radii — cells at 12, cards at 20');
   let page = await newPage(390);
   await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
+  const rows = await page.evaluate(() => {
+    const rs = [...document.querySelectorAll('#bookings-list .bk-row')].filter((r) => r.getClientRects().length);
+    if (!rs.length) return null;
+    const c = getComputedStyle(rs[0]);
+    return { n: rs.length, tl: c.borderTopLeftRadius, sh: c.boxShadow };
+  });
+  ok(rows && rows.n >= 1, `the bookings list renders (${rows && rows.n} row(s))`);
+  ok(rows && rows.tl === '12px', `a booking row is a list CELL, not a sheet (${rows && rows.tl})`);
+  ok(rows && (rows.sh === 'none' || /inset/.test(rows.sh)), `…and casts no shadow (${rows && rows.sh})`);
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const r1 = await page.evaluate(() => {
     const grps = [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp')];
@@ -124,6 +139,96 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   const terms = await page.evaluate(() => ({ foot: !!document.querySelector('.terms-modal-foot'), closes: [...document.querySelectorAll('#terms-modal [data-act="closeTermsModal"]')].filter((b) => b.getClientRects().length).length }));
   ok(!terms.foot && terms.closes === 1, `the terms sheet carries ONE close, the ✕ — no bottom bar (${terms.closes} close control(s))`);
   await open(page, 'closeTermsModal()', 400);
+  await page.close();
+
+  // ============================================================
+  //  §6 THE SWEEP — every painted corner on four screens is one of the three.
+  //
+  //  §1–§5 assert NAMED elements. What they cannot see is a fourth step arriving
+  //  through a TOKEN: `--r-md` is 16px and check-css-conventions' rawRadii counts
+  //  px literals only, so 65 rules painted a radius off the scale and no gate
+  //  said a word (measured: the pay screen carried three container radii within
+  //  40px of each other, and the assistant's rows, its icon boxes, its
+  //  quick-action well and the chat's act card were all 16). This reads the
+  //  COMPUTED value, so a var() cannot hide one.
+  //
+  //  Allowed: 0, 12 (cell), 20 (card), a pill (≥999 or 50%), and --r-panel on a
+  //  SHEET — a top-level surface, named below, which is the one thing that keeps
+  //  its own radius. 1–8px inner curves are left alone (rawRadii's own rule).
+  // ============================================================
+  console.log('§6 the sweep — every painted radius is a cell, a card or a pill');
+  const SWEEP = `(() => {
+    const root = getComputedStyle(document.documentElement);
+    const panel = root.getPropertyValue('--r-panel').trim();
+    // The sheets: a top-level surface keeps --r-panel (DESIGN.md's one curvature).
+    const SHEET = '.cmdk-box, .modal-box, .glass-dialog-box, .reviews-modal-box, .terms-modal-box, .datepicker-card, .acct-preview-shell, .pay-card, .chb-sheet, header, .hero, .modal-overlay';
+    const okOne = (v) => {
+      if (!v) return true;
+      if (v.endsWith('%')) return true;                 // a circle / an ellipse
+      const px = parseFloat(v);
+      if (!isFinite(px)) return true;
+      if (px <= 8) return true;                          // hairline inner curves
+      return px === 12 || px === 20 || px >= 999;
+    };
+    const bad = [];
+    for (const el of document.querySelectorAll(SCOPE + ' *, ' + SCOPE)) {
+      if (!el.getClientRects().length) continue;
+      const c = getComputedStyle(el);
+      if (c.visibility === 'hidden') continue;
+      const corners = [c.borderTopLeftRadius, c.borderTopRightRadius, c.borderBottomRightRadius, c.borderBottomLeftRadius];
+      const offs = corners.filter((v) => !okOne((v || '').split(' ')[0]));
+      if (!offs.length) continue;
+      // A sheet (or anything inside one that IS the sheet) may wear --r-panel.
+      if (el.matches(SHEET) && offs.every((v) => v.split(' ')[0] === panel)) continue;
+      bad.push((el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : el.tagName.toLowerCase()) + ' → ' + offs[0]);
+    }
+    return { panel, bad: [...new Set(bad)].slice(0, 10), n: document.querySelectorAll(SCOPE + ' *').length };
+  })()`;
+  const sweepScope = (page, scope) => page.evaluate('(() => { const SCOPE = ' + JSON.stringify(scope) + '; return ' + SWEEP + '; })()');
+
+  page = await newPage(390);
+  // The guest's pay screen — which this suite did not sweep at all before.
+  await page.route(/square-config\.php/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled: true, applicationId: 'app', locationId: 'loc', environment: 'sandbox' }) }));
+  await page.route(/pay\.php/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, propName: '21A Westgate', propKey: '21a', guestName: 'Debbie McGoldrick', checkIn: d(20), checkOut: d(24), currency: 'GBP', kind: 'deposit', total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175, damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: d(10), part: { min: 20, max: 175 }, quote: 'q', autopayTerms: { amount: 525, due: d(40) }, autopayState: 'off', instalmentOffer: { n: 3, per: 175, last: 175, due: d(40), dates: [d(10), d(25), d(40)] } }) }));
+  await page.addInitScript(() => { window.Square = { payments: () => ({ card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tk' }) }), paymentRequest: () => { throw new Error('no wallets'); } }) }; });
+  await page.reload({ waitUntil: 'networkidle' });
+  await open(page, "openPayView('paytok','8','deposit')", 1800);
+  await open(page, "(async () => { const t = document.getElementById('pay-part-toggle'); if (t) t.click(); })()", 600);
+  let s6 = await sweepScope(page, '#view-pay');
+  ok(s6.n > 40, `the pay screen paints (${s6.n} elements swept)`);
+  ok(s6.bad.length === 0, `every corner on the pay screen is a cell, a card or a pill${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
+  await page.close();
+
+  page = await newPage(390);
+  await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
+  // The assistant, in its three states: the landing, an answer, a record's actions.
+  await open(page, 'openCmdK()', 900);
+  s6 = await sweepScope(page, '#cmdk');
+  ok(s6.n > 30, `the assistant's landing paints (${s6.n} elements)`);
+  ok(s6.bad.length === 0, `…and every corner in it is on the scale${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
+  await open(page, "(async () => { const f = document.getElementById('cmdk-input'); f.value = 'who owes me money'; f.dispatchEvent(new Event('input', { bubbles: true })); })()", 1200);
+  s6 = await sweepScope(page, '#cmdk');
+  ok(s6.bad.length === 0, `an ANSWER keeps the three${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
+  await open(page, "(async () => { const f = document.getElementById('cmdk-input'); f.value = 'Debbie'; f.dispatchEvent(new Event('input', { bubbles: true })); })()", 1300);
+  const qa = await page.evaluate(() => document.querySelectorAll('.cmdk-qa-row').length);
+  s6 = await sweepScope(page, '#cmdk');
+  ok(qa > 0, `a selected record shows its quick actions (${qa} row(s)) — the state that renders .cmdk-qa`);
+  ok(s6.bad.length === 0, `…and they are cells inside a card${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
+  await open(page, 'closeCmdK()', 400);
+
+  // The AI chat — the act card is the one that wore the 16px.
+  await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [ { who: 'you', text: 'block jollyboat for the boiler', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those dates.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04', note: 'boiler' } } ] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
+await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);
+    const act = await page.evaluate(() => document.querySelectorAll('#mc-log .mc-act').length);
+  s6 = await sweepScope(page, '#view-aichat');
+  ok(act > 0, `the chat's action card renders (${act})`);
+  ok(s6.bad.length === 0, `the AI chat's corners are on the scale${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
+
+  // Manage's landing — the toolbox cards and the cottage tiles.
+  await open(page, "(async () => { await openArea('settings'); })()", 1500);
+  s6 = await sweepScope(page, '#view-settings');
+  ok(s6.n > 100, `the Manage landing paints (${s6.n} elements)`);
+  ok(s6.bad.length === 0, `every card and row on Manage is on the scale${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
   await page.close();
 
   console.log(fails.length ? `\n  ${fails.length} RADII CHECK(S) FAILED ❌` : '\n  RADII SUITE PASSED ✅');

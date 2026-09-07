@@ -168,6 +168,40 @@ function rawType(cssRaw) {
     return out;
 }
 
+// An INTERACTIVE transition on an off-token easing. The motion system is four
+// curves — --out / --in / --settle / --sheet (plus --unfold for a height) — and a
+// `transition:` is the app's response to a state change, i.e. the one place a
+// curve is felt rather than watched. Measured before the sweep: 35 of them ran on
+// a raw `ease`/`linear` or on no easing at all (the CSS default, which is `ease`),
+// and one chevron turned on two different clocks depending on which fold it was
+// in.
+//
+// DELIBERATELY TRANSITIONS ONLY, not `animation:`. A spinner MUST be `linear`
+// (chbSpin, mcSpin, paySpin, the knot travel) and the ambient keyframes are
+// watched rather than felt, so counting them would fail on correct code and the
+// allow-list needed to green it would gut the check — the same reason the
+// duration ratchet in ui-test-motion-system §1 was not widened to every rule.
+// A 0s part is skipped: `visibility 0s linear 0.32s` is a SWITCH, not a curve.
+const OFF_TOKEN_EASE = /^(ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end|steps\()/;
+function offTokenEasings(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    for (const m of css.matchAll(/(?:^|[;{])\s*transition\s*:\s*([^;}]+)/g)) {
+        const val = m[1].trim();
+        if (/^(none|inherit|initial|unset)\b/.test(val)) continue;
+        const line = css.slice(0, m.index).split('\n').length;
+        // split on top-level commas only — cubic-bezier(…) carries its own
+        for (const part of val.split(/,(?![^(]*\))/)) {
+            const toks = part.trim().split(/\s+(?![^(]*\))/).filter(Boolean);
+            const dur = toks.find((t) => /^-?\d*\.?\d+m?s$/.test(t));
+            if (!dur || parseFloat(dur) === 0) continue;
+            if (toks.some((t) => /^var\(--/.test(t) || /^cubic-bezier\(/.test(t))) continue;
+            out.push(`${line}: ${part.trim()}` + (toks.some((t) => OFF_TOKEN_EASE.test(t)) ? '' : ' (default ease)'));
+        }
+    }
+    return out;
+}
+
 // Tracked uppercase on words: text-transform: uppercase rule blocks. The
 // sentence-case pass took app.css from 49 to the brand voice's five (nav, the
 // hero kicker and subtitle, the section kicker); counted so the shout cannot
@@ -181,6 +215,57 @@ function uppercaseRules(cssRaw) {
     return out;
 }
 
+// --- THE MARKUP HALF: the same three rules, inside `style="…"` ---------------
+// Everything above reads the three STYLESHEETS, which is where the system is
+// stated — and roughly half of what the app paints is written in a template.
+// Measured before this scan existed: fourteen `text-transform: uppercase` sites
+// lived inline in admin.js (so the sheet's count of 30 was really 44, and two of
+// them were whole sentences), a `border-radius:14px` card recipe was repeated in
+// five templates, and two modal boxes carried an 18px radius — none of it
+// visible to rawRadii/uppercase, because a stylesheet scan has nothing to scan.
+// Same ratchet contract: these only ever go DOWN.
+const MARKUP_FILES = ['index.html', 'admin-views.html', 'app.js', 'admin.js'];
+function inlineStyles(src) {
+    return [...src.matchAll(/style="([^"]*)"/g)].map((m) => m[1]);
+}
+function inlineRadii(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const d of v.matchAll(/border-(?:[a-z]+-)?radius\s*:\s*([^;"]+)/g)) {
+                for (const tok of d[1].trim().split(/\s+/)) {
+                    const m = tok.match(/^(\d+(?:\.\d+)?)px$/);
+                    if (!m) continue;
+                    const px = parseFloat(m[1]);
+                    if (px > 8 && px !== 12 && px !== 20 && px < 999) out.push(`${i + 1}: ${tok}`);
+                }
+            }
+        }
+    });
+    return out;
+}
+function inlineType(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const d of v.matchAll(/font-size\s*:\s*(\d*\.?\d+)(rem|px)\b/g)) {
+                const px = d[2] === 'px' ? parseFloat(d[1]) : parseFloat(d[1]) * 16;
+                if (px > 0 && px <= 40) out.push(`${i + 1}: ${d[1]}${d[2]}`);
+            }
+        }
+    });
+    return out;
+}
+function inlineUppercase(src) {
+    const out = [];
+    src.split('\n').forEach((line, i) => {
+        for (const v of inlineStyles(line)) {
+            for (const _ of v.matchAll(/text-transform\s*:\s*uppercase/g)) out.push(`${i + 1}: text-transform: uppercase`);
+        }
+    });
+    return out;
+}
+
 // --- run ------------------------------------------------------------------
 const found = {};
 for (const f of FILES) {
@@ -191,7 +276,24 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css), offTokenEasings: offTokenEasings(css) };
+}
+// The markup half, counted as ONE tail across the four files that carry
+// templates — the line reports name the file, so a new one still points at itself.
+found.markup = { inlineRadii: [], inlineType: [], inlineUppercase: [] };
+let inlineSeen = 0;
+for (const f of MARKUP_FILES) {
+    let src;
+    try {
+        src = fs.readFileSync(path.join(DIR, f), 'utf8');
+    } catch (e) {
+        console.error(`  ✗ ${f} — not readable (${e.message})`);
+        process.exit(1);
+    }
+    inlineSeen += inlineStyles(src).length;
+    for (const [key, fn] of [['inlineRadii', inlineRadii], ['inlineType', inlineType], ['inlineUppercase', inlineUppercase]]) {
+        for (const hit of fn(src)) found.markup[key].push(`${f}:${hit}`);
+    }
 }
 
 const DIMS = [
@@ -202,6 +304,12 @@ const DIMS = [
     { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
     { key: 'rawRadii', label: 'raw corner radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) for a cell or field, var(--r-lg) for a card, var(--r-pill) for a pill' },
     { key: 'rawType', label: 'raw font-size off the eight steps', fix: 'use var(--fs-micro/caption/sub/body/headline/title/display/hero) — 11 · 12 · 13 · 15 · 17 · 22 · 28 · 34' },
+    { key: 'offTokenEasings', label: 'transition on an off-token easing', fix: 'use one of the four curves — var(--out) arriving, var(--in) leaving, var(--settle) landing, var(--sheet) travelling (var(--unfold) for a height)' },
+];
+const MARKUP_DIMS = [
+    { key: 'inlineRadii', label: 'inline border-radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) / var(--r-lg) / var(--r-pill) in the style attribute, or give the element a class' },
+    { key: 'inlineType', label: 'inline font-size off the eight steps', fix: 'use one of the --fs-* steps in the style attribute' },
+    { key: 'inlineUppercase', label: 'inline text-transform: uppercase', fix: 'sentence case at 600 is the house label — .acw-cap inside a container, .acr-cap for a section header' },
 ];
 
 if (update) {
@@ -217,9 +325,11 @@ if (update) {
     for (const f of FILES) {
         next[f] = Object.fromEntries(DIMS.map((d) => [d.key, found[f][d.key].length]));
     }
+    next.markup = Object.fromEntries(MARKUP_DIMS.map((d) => [d.key, found.markup[d.key].length]));
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type, ${next[f].offTokenEasings} off-token easing(s)`);
+    console.log(`  markup (${MARKUP_FILES.join(', ')}) — ${next.markup.inlineRadii} inline radii, ${next.markup.inlineType} inline type, ${next.markup.inlineUppercase} inline uppercase`);
     process.exit(0);
 }
 
@@ -306,6 +416,34 @@ for (const f of FILES) {
             nudges.push(`${f}.${key}: ${max} → ${n}`);
         } else {
             console.log(`  ✓ ${f} — ${n} ${label}(s) (at baseline)`);
+        }
+    }
+}
+
+// The markup half. A vacuity guard first: if the scan stops finding style
+// attributes at all (a quoting change, a renamed file), it must FAIL rather
+// than report a clean zero for rules it is no longer measuring.
+if (inlineSeen < 200) {
+    failed++;
+    console.log(`  ✗ markup — only ${inlineSeen} style attributes seen across ${MARKUP_FILES.join(', ')}; the inline scan is not reading the templates`);
+} else {
+    for (const { key, label, fix } of MARKUP_DIMS) {
+        const n = found.markup[key].length;
+        const max = ((budget.markup || {})[key] != null) ? budget.markup[key] : null;
+        if (max == null) {
+            console.log(`  ✗ markup ${key} — no baseline in css-budget.json (run --update)`);
+            failed++;
+            continue;
+        }
+        if (n > max) {
+            failed++;
+            console.log(`  ✗ markup — ${n} ${label}(s), baseline ${max} (+${n - max}). ${fix}.`);
+            console.log(`      present: ${found.markup[key].slice(0, 8).join(', ')}${n > 8 ? ' …' : ''}`);
+        } else if (n < max) {
+            console.log(`  ✓ markup — ${n} ${label}(s) (baseline ${max})`);
+            nudges.push(`markup.${key}: ${max} → ${n}`);
+        } else {
+            console.log(`  ✓ markup — ${n} ${label}(s) (at baseline)`);
         }
     }
 }

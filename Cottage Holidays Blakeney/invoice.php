@@ -147,7 +147,7 @@ function render_invoice_html($d)
     // the table summing to £770.25 under a stated total of £695.25. Its history is
     // then in Payments — the dated return row, plus the sentence below the card.
     if ($damages > 0) {
-        $charge .= $row('Refundable damages deposit', $money($damages), $e($depStatus));
+        $charge .= $row('Refundable deposit', $money($damages), $e($depStatus));
     }
 
     // MONEY IN reduces what is outstanding, so it reads as a credit; money going
@@ -320,7 +320,7 @@ function render_invoice_html($d)
         // the deposit has left the total, so it is no longer a charge — but it was
         // taken, and the document says so in words where the movement is recorded
         ($depAmt > 0 && $damages <= 0.005 && $depStatus !== ''
-            ? '<p class="fine">Refundable damages deposit of ' . $money($depAmt) . ' — ' . $e($depStatus) . '</p>'
+            ? '<p class="fine">Refundable deposit of ' . $money($depAmt) . ' — ' . $e($depStatus) . '</p>'
             : '') .
 
         '<h2>Your stay</h2>' .

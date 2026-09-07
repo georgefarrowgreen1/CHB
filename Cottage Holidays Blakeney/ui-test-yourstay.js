@@ -114,7 +114,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       // winning a specificity fight, which a computed read answers exactly. The
       // painted height rides along in the message for context.
       short: (() => {
-        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass')]
+        // .hub-code-copy joins the sweep (PR2): it is a control on this screen
+        // and it was 40px, but it is neither .btn-sm nor .btn-glass, so the
+        // sweep could not see it.
+        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass, #view-guest-bookings .hub-code-copy')]
           .filter((e) => e.getClientRects().length)
           .map((e) => ({
             min: parseFloat(getComputedStyle(e).minHeight) || 0,
@@ -305,7 +308,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const box = document.querySelector('.guest-price-box');
     return box ? box.innerText.replace(/\s+/g, ' ') : '';
   });
-  ok(/Refundable damages deposit £50\.00/.test(money), `the card quotes the deposit actually taken (${money.slice(0, 120)})`);
+  ok(/Refundable deposit £50\.00/.test(money), `the card quotes the deposit actually taken (${money.slice(0, 120)})`);
   ok(!/£90\.00/.test(money), 'the agreed figure the owner later typed is nowhere on it');
   ok(/Total \(incl\. deposit\) £440\.00/.test(money), 'the total folds in that same £50, not the £90');
   ok(/Paid in full £440\.00/.test(money), '…and the paid line agrees with it, so no phantom balance appears');

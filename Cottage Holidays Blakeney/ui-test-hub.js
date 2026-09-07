@@ -1372,15 +1372,22 @@ let approveWill409 = false;
   // Fire-and-forget: glassAlert RESOLVES only when dismissed, so awaiting its
   // promise inside evaluate deadlocks against the click below (measured: the
   // suite hung right here for 10 minutes).
+  // Every shared option — title, accessible name, both button labels and the
+  // destructive style — must be REASSIGNED on each open. The claim is that this
+  // dialog shows its OWN, not that any particular word is on the button: the
+  // literal 'OK' held that only while most confirms had no label to leak.
   await page.evaluate(() => { glassAlert('plain message'); });
   await page.waitForTimeout(250);
   const plainDlg = await page.evaluate(() => ({
     shown: (document.getElementById('glass-dialog-title') || { style: {} }).style.display !== 'none',
     named: document.getElementById('glass-dialog').getAttribute('aria-labelledby'),
     ok: (document.getElementById('glass-dialog-ok') || {}).textContent,
+    cancel: (document.getElementById('glass-dialog-cancel') || {}).textContent,
+    danger: (document.getElementById('glass-dialog-ok') || { classList: { contains: () => false } }).classList.contains('is-danger'),
   }));
-  ok(!plainDlg.shown && plainDlg.named === 'glass-dialog-msg' && plainDlg.ok === 'OK',
-    'a plain dialog after it carries NO leaked title, name or label');
+  ok(!plainDlg.shown && plainDlg.named === 'glass-dialog-msg' && plainDlg.ok === 'OK'
+     && plainDlg.cancel === 'Cancel' && !plainDlg.danger,
+    `a plain dialog after it carries NO leaked title, name, label or style (${plainDlg.ok} / ${plainDlg.cancel} / danger=${plainDlg.danger})`);
   await page.click('#glass-dialog-ok');
   await page.waitForTimeout(250);
   const planPost = posts.filter((p) => p.action === 'set_payment_plan').pop();
@@ -1829,6 +1836,16 @@ let approveWill409 = false;
       return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
     })(),
     draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'),
+    // A FOURTH MATERIAL: the message card inherited .bhub-card's --r-panel and
+    // .glass-panel's drop shadow, so it was the one RAISED, 28/40px-rounded
+    // element between a 20px state card and 12px fold groups. It leads by SIZE.
+    msgMaterial: (() => {
+      const m = document.querySelector('#inbox-detail-pane .bhub-msg');
+      const t = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      if (!m || !t) return null;
+      const c = getComputedStyle(m);
+      return { r: c.borderTopLeftRadius, sh: c.boxShadow, fs: Math.round(parseFloat(getComputedStyle(t).fontSize)) };
+    })(),
     menuItems: document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]').length,
     dangerLast: (() => {
       const rows = document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]');
@@ -1859,6 +1876,9 @@ let approveWill409 = false;
   ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
   ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
   ok(j1.msgOpen && j1.draftRow, 'the MESSAGE never folds, with the ✨ draft row beneath it');
+  ok(j1.msgMaterial && j1.msgMaterial.r === '20px' && j1.msgMaterial.sh === 'none',
+    `…on the page's own flat CARD material, not a raised 28/40px island (${j1.msgMaterial && j1.msgMaterial.r}, ${j1.msgMaterial && j1.msgMaterial.sh})`);
+  ok(j1.msgMaterial && j1.msgMaterial.fs === 17, `…and the quote leads by SIZE instead (${j1.msgMaterial && j1.msgMaterial.fs}px)`);
   ok(j1.menuItems === 3 && j1.dangerLast && j1.dangerInk, `Edit/Email/Decline live behind the ⋯; Decline last, painted in danger ink (${j1.menuItems})`);
   ok(j1.mailtos === 0 && j1.emailKvBtn && j1.priceBtn, 'contact email routes to the composer (no mailto); agreed-price stays');
   ok(/^£/.test(j1.quoteFig), `the quote is ONE row with the figure on it (${j1.quoteFig})`);
@@ -2082,13 +2102,20 @@ let approveWill409 = false;
   });
   ok(l1.count >= 1 && l1.actionCards === 0, `payments section is find-rows, not action cards (${l1.count} rows)`);
   ok(l1.edge === 'pay-danger' && /Unpaid/.test(l1.chip), `unpaid row: red edge + chip with balance (${l1.chip.trim()})`);
-  ok(/received/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
+  // RE-AIMED to the PROPERTY, not the word. The row's sub is a two-line clamp
+  // and the composed line overran it ("5–12 Nov 2026 · £300.00 of £960.00
+  // received · £50.00 deposit held" wanted 420px of 309), so the DEPOSIT — the
+  // last fact, and the one nothing else on this screen states — was what fell
+  // off. The copy dropped "received" (the chip directly above already says
+  // Part-paid) and the pennies; what must hold is that the row still states
+  // what has come in AGAINST the total.
+  ok(/£[\d,.]+ of £[\d,.]+/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
   ok(l1.owed, 'owed banner still leads the section');
   await page.click('#money-panel .bk-row');
   await page.waitForTimeout(800);
   const l2 = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
-    recordBtn: /Record payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
+    recordBtn: /Record a payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
   }));
   ok((l2.active === 'view-booking-hub' || l2.active === 'view-backoffice') && l2.recordBtn, `money row opens the booking hub (${l2.active})`);
   await page.evaluate(() => bookingHubBack());

@@ -834,10 +834,16 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }), 'the sheet lists the queued write in words — what, when, and what happens next');
   await page.locator('#offline-pill').click();
   await page.waitForTimeout(400);
+  // The tray is ROWS now, in the same {label, sub} shape #ods-queue renders
+  // above — not a typed bullet list in one block of prose. It is read off the
+  // dialog as a whole: the heading sits in the title tier, each item in its
+  // own row.
   ok(await page.evaluate(() => {
-    const m = document.getElementById('glass-dialog-msg');
-    return !!m && /Waiting to send/.test(m.textContent || '') && /Expense/.test(m.textContent || '');
-  }), 'tapping the pill opens the same tray from anywhere');
+    const t = (document.getElementById('glass-dialog-title') || {}).textContent || '';
+    const rows = [...document.querySelectorAll('#glass-dialog-rows .ods-qrow')];
+    return /Waiting to send/.test(t) && rows.length > 0
+      && rows.some((r) => /Expense/.test(r.textContent) && /saved /.test(r.textContent));
+  }), 'tapping the pill opens the same tray from anywhere — as rows, not prose');
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(300);
   // (d) a stale snapshot is GRADED, not just dated

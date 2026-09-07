@@ -23,12 +23,27 @@ The three signature moves:
    surfaces are glass: header, hero panels, cards, modals, admin panels. Cards
    and the hero panels additionally get a gradient border rim (`::before`,
    `border-radius: inherit`) warming to rose-gold at the base.
-2. **One curvature** — `--r-panel` (40px, 28px on phones ≤768) is the header's
-   radius and every top-level surface shares it. Nested elements step DOWN the
-   scale (`--r-lg` mid cards → `--r-md` fields → `--r-sm` small controls →
-   `--r-pill` chips/toggles). An element inside a panel never repeats the
-   panel's radius; images inside padded cards are rounded concentrically
+2. **Three radii, and one curvature above them** — the system is **the CELL
+   (`--r-sm`, 12) · the CARD (`--r-lg`, 20) · the PILL**, and a SHEET —
+   a top-level surface: the header, a modal box, the search window, the pay
+   card — keeps `--r-panel` (40px, 28px on phones ≤768). Everything else is one
+   of the three; nested elements still step DOWN (a card holds cells, a cell
+   holds pills), and an element inside a panel never repeats the panel's radius.
+   Images inside padded cards are rounded concentrically
    (`calc(var(--r-panel) - padding)`).
+   **THE CARD IS 20, and that is the decision** — the three-radii pass wins over
+   the older reading that blessed `--r-panel` on every card, because a 190px tile
+   wearing the header's 40px curve reads as a sheet rather than a card (measured
+   on Manage's cottage tiles and the walkthrough's 250px tooltip).
+   **`--r-md` (16) is NOT a step of that scale.** It is still live (34 rules in
+   app.css, 9 in admin.css, down from 45 and 20) and correct where it sits — a
+   FIELD's own radius — but it was painting on containers and rows too, where
+   the ratchet could not see it (it counts px literals, and a token is not one). Those named container/row misuses were
+   converted (view-pay, the assistant's rows, the chat's act card, Manage's
+   cards, the coach's tip and ring); retiring the token itself is a separate
+   pass, and `ui-test-radii.js` §6 is what holds the line meanwhile — it sweeps
+   four screens and fails on any painted corner that is not 12 / 20 / a pill /
+   `--r-panel` on a sheet, reading the COMPUTED value so a `var()` cannot hide.
 3. **Fluid motion** — `--fluid-bezier` for fades/colour, `--spring` for
    physical movement (lift, scale, dock indicator). No plain `ease`/`linear`.
    Every animated affordance must respect `prefers-reduced-motion`.
@@ -38,7 +53,7 @@ The three signature moves:
 | Concern | Tokens |
 | --- | --- |
 | Glass material | `--glass-blur`, `--glass-filter` (blur + saturate + brightness), `--glass-rim` (specular edge) |
-| Radius | `--r-sm` `--r-md` `--r-lg` `--r-panel` `--r-pill` |
+| Radius | `--r-sm` (cell, 12) `--r-lg` (card, 20) `--r-pill` — plus `--r-panel` for a SHEET, and `--r-md` for a field only (not a step of the three) |
 | Spacing | `--space-1`…`--space-6` (8/16/24/40/64/96) — section padding, stack gaps, insets |
 | Type scale | `--fs-h1` `--fs-h2` `--fs-h3` (serif via `--font-serif`) |
 | Accent | `--accent` `--accent-soft` |

@@ -567,7 +567,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     }
     const btn = document.getElementById('pay-btn');
     btn.classList.add('is-busy');
-    const spin = getComputedStyle(btn, '::after').animationName;
+    // ONE SPINNER, TWO PSEUDO-ELEMENTS WITH DIFFERENT JOBS. This used to read
+    // ::after and assert 'paySpin' — which pinned an OLDER 13px trailing ring
+    // (`#pay-btn.is-busy::after`) that beat the shimmer sweep on animation while
+    // inheriting its `position:absolute; inset:0`, so the button painted a
+    // second ring half-clipped at its top-left corner and the sweep never
+    // appeared. The ring is ::before (beside "Processing…"); ::after is the
+    // sweep behind it.
+    const spin = getComputedStyle(btn, '::before').animationName;
+    const sweep = getComputedStyle(btn, '::after').animationName;
     btn.classList.remove('is-busy');
     return {
       body: an(document.getElementById('pay-body')),
@@ -579,6 +587,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       partDelay: parseFloat(getComputedStyle(document.getElementById('pay-part')).animationDelay),
       expressDelay: parseFloat(getComputedStyle(document.getElementById('pay-express')).animationDelay),
       spin,
+      sweep,
       rmRule,
       rmStroke,
     };
@@ -588,6 +597,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(motion.amt === 'payAmtSwap' && motion.swapClass, `the hero ticks over when its figure changes (${motion.amt})`);
   ok(motion.expressDelay > motion.partDelay, `the form blocks CASCADE like the Apple Pay sheet (${motion.partDelay}s → ${motion.expressDelay}s)`);
   ok(motion.spin === 'paySpin', `the Pay button carries a spinner while money moves (${motion.spin})`);
+  ok(motion.sweep === 'paySweep', `…and the shimmer behind it, not a second ring (${motion.sweep})`);
   ok(motion.rmRule, 'reduced motion stands ALL of it down — asserted as the rule, not a computed read');
   ok(motion.rmStroke, '…and restores the drawn tick\'s strokes, or the setting would delete the mark');
 

@@ -143,7 +143,9 @@ const OFF = { on: false, ready: false, sid_set: false, sid_tail: '', token_set: 
     state: (document.getElementById('sms-state') || {}).textContent || '',
     locked: ['sms-on', 'sms-sid', 'sms-from', 'sms-token'].every((id) => (document.getElementById(id) || {}).disabled === true),
   }));
-  ok(/config\.php/.test(v.state), `the page says where the live settings come from (${v.state.slice(0, 70)})`);
+  // Re-aimed: the claim is that the page NAMES where the live settings come from,
+  // not that it prints a PHP filename at the owner (the copy pass took that out).
+  ok(/server/i.test(v.state) && /read-only/i.test(v.state), `the page says where the live settings come from (${v.state.slice(0, 70)})`);
   ok(v.locked, '…and every field is disabled, rather than inviting an edit that cannot apply');
   await page.close();
 

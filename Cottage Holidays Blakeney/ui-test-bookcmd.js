@@ -34,7 +34,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ci: (document.getElementById('modal-checkin') || {}).value,
     co: (document.getElementById('modal-checkout') || {}).value,
   }));
-  ok(/Edit \/ Move/.test(st.title || ''), `move opens the EDIT modal (${st.title})`);
+  ok(/Edit or move/i.test(st.title || ''), `move opens the EDIT modal (${st.title})`);
   ok(String(st.id).length > 0, `record id carried (${st.id})`);
   ok(st.ci === d(17) && st.co === d(20), `proposed dates prefilled (${st.ci} → ${st.co})`);
   await page.evaluate(() => closeModal());

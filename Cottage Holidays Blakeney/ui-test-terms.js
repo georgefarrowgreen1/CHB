@@ -101,8 +101,8 @@ const clause = (text, n) => {
   ok(!/£75/.test(t.text), 'no hardcoded £75 (this cottage\'s deposit is £60)');
 
   console.log('3. the security deposit is THIS cottage\'s figure');
-  ok(/Security deposit:\s*a refundable £60\.00 charged together with your first payment/.test(defs),
-    `the definition names the cottage's own deposit (${(defs.match(/Security deposit: [^\n]*/) || [''])[0]})`);
+  ok(/Refundable deposit:\s*a refundable £60\.00 charged together with your first payment/.test(defs),
+    `the definition names the cottage's own deposit (${(defs.match(/Refundable deposit: [^\n]*/) || [''])[0]})`);
 
   console.log('4. a cottage with NO deposit promises no figure');
   // The generic sentence, not "a refundable £0.00" — which would read as a term
@@ -110,8 +110,8 @@ const clause = (text, n) => {
   const zero = await openSite(browser, base, { payment: { deposit_pct: 30, balance_days: 45 }, fee: 0 });
   const zt = await termsText(zero);
   const zdefs = clause(zt.text, 1);
-  ok(/Security deposit:\s*a refundable amount, shown with your price before you book,/.test(zdefs),
-    `no deposit set → no figure invented (${(zdefs.match(/Security deposit: [^\n]*/) || [''])[0]})`);
+  ok(/Refundable deposit:\s*a refundable amount, shown with your price before you book,/.test(zdefs),
+    `no deposit set → no figure invented (${(zdefs.match(/Refundable deposit: [^\n]*/) || [''])[0]})`);
   ok(!/£0\.00/.test(zdefs), '…and it never prints £0.00 as the deposit');
 
   console.log('5. an older server (no payment block) keeps the honest defaults');

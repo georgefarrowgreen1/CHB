@@ -470,16 +470,29 @@ const stub = (page) => page.route(/\.php/, (r) => {
 
   // The OK button is ONE shared node, so a custom label has to be reassigned every
   // time or "Send 2 requests" turns up on the next ordinary confirm the owner sees.
+  //
+  // The invariant is that the button shows THIS dialog's own label, not the
+  // previous dialog's — asserted against a second custom label as well as the
+  // default. It used to pin the literal 'OK', which was the same claim only
+  // while most confirms had no label of their own; now that every one names its
+  // result, a check that can only see 'OK' would stop covering the leak.
   const leak = await page.evaluate(async () => {
     const until = async (fn, ms = 5000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
-    const p = glassConfirm('Just an ordinary question?');
-    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
-    const label = document.getElementById('glass-dialog-ok').textContent.trim();
-    document.getElementById('glass-dialog-cancel').click();
-    await p;
-    return label;
+    const shot = async (p) => {
+      await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+      const label = document.getElementById('glass-dialog-ok').textContent.trim();
+      document.getElementById('glass-dialog-cancel').click();
+      await p;
+      await new Promise((r) => setTimeout(r, 300));
+      return label;
+    };
+    return {
+      next: await shot(glassConfirm('Another question?', 'Do that instead')),
+      plain: await shot(glassConfirm('Just an ordinary question?')),
+    };
   });
-  ok(leak === 'OK', `BULK: a custom button label never leaks into the next plain confirm (${leak})`);
+  ok(leak.next === 'Do that instead' && leak.plain === 'OK',
+    `BULK: a custom button label never leaks — each dialog shows its own (${leak.next} / ${leak.plain})`);
 
   // A confirm that LISTS its set is as long as the set. Measured without the
   // scroller, 30 owers pushed Send/Cancel to y=995 in a 780px viewport — a dialog

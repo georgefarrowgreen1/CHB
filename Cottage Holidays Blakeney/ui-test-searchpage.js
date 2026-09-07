@@ -793,6 +793,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const wide = await page.evaluate(async () => {
     const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
     const box = () => Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width);
+    // THE FRAME MOVES NOW, so the shape has to be read once it has STOPPED. The box
+    // takes 320ms var(--sheet) between 520 and 860 (it is margin-centred, and that
+    // 170px re-centre used to happen in one frame); a fixed 250ms wait read it
+    // mid-flight and reported the wide box as 520 — sample by state, never a clock.
+    const settled = async () => { const b = document.querySelector('#cmdk .cmdk-box'); const t0 = Date.now(); while (b.getAnimations().length && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 40)); await new Promise((r) => setTimeout(r, 60)); };
     const isWide = () => document.getElementById('cmdk').classList.contains('cmdk-wide');
     const out = {};
     try { closeCmdK(); } catch (e) {}
@@ -804,13 +809,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await until(() => __cmdkResults.some((r) => r && r.type === 'booking'));
     __cmdkSel = __cmdkResults.findIndex((r) => r && r.type === 'booking'); cmdkRender();
     await new Promise((r) => setTimeout(r, 250));
+    await settled();
     out.withPane = { w: box(), wide: isWide(), pane: !!document.querySelector('#cmdk .cmdk-detail') };
     // …then each branch that returns early.
     i.value = ''; cmdkSearchCore('', false);
     await new Promise((r) => setTimeout(r, 300));
+    await settled();
     out.landing = { w: box(), wide: isWide(), cols: new Set([...document.querySelectorAll('#cmdk .cmdk-board')].map((b) => Math.round(b.getBoundingClientRect().top))).size };
     i.value = 'zzzqqqxxx'; cmdkSearchCore('zzzqqqxxx', false);
     await new Promise((r) => setTimeout(r, 300));
+    await settled();
     out.none = { w: box(), wide: isWide() };
     return out;
   });
@@ -2214,7 +2222,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(st.fb, 'the abstain renders the honest fallback first');
   ok(!st.shim && !macAsks.some((b) => b.action === 'ask'), 'no ask files before the settle delay');
+  // WAIT ON THE THING THIS CHECK ASSERTS. The shimmer row and the ask POST are two
+  // different events — the row is painted by the render that ARMS the ask, so waiting
+  // on the row and then reading the body is a race the row usually, but not always,
+  // loses. Measured: 0 failures in 4 runs on one tree and 2 in 4 on another, for a
+  // change that touches no search code — the window simply moved. The row is still
+  // asserted, three lines below, where it is the actual subject.
   await page.waitForFunction(() => __cmdkResults.some((r) => r && r.id === 'mac-recover'), null, { timeout: 6000 });
+  // macAsks is filled node-side by the route handler, so this is a plain wait on it.
+  for (let i = 0; i < 40 && !macAsks.some((b) => b.action === 'ask'); i++) await page.waitForTimeout(100);
   const askBody = macAsks.find((b) => b.action === 'ask');
   ok(!!askBody && askBody.kind === 'intent' && askBody.question === oddQ.toLowerCase()
     && Array.isArray(askBody.options) && askBody.options.includes('who owes me money'),

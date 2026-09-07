@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 593;
+const ADMIN_BUNDLE_V = 607;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 251;
+const ADMIN_CSS_V = 266;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -925,10 +925,20 @@ function updateOnlineStatus() {
             b.style.display = n > 0 ? 'flex' : 'none';
         }
         const pill = document.getElementById('offline-pill');
-        if (pill)
-            pill.title =
+        if (pill) {
+            // The ACCESSIBLE NAME moves with the title. It used to write `title`
+            // alone, so the markup's static aria-label ("Offline — tap to see
+            // what's waiting to send") outranked it and a screen reader was
+            // told "offline" while the pill said "Reconnecting… — 2 changes
+            // waiting to sync". aria-label wins over title, so setting only the
+            // one nobody hears is the announcement never changing.
+            const say =
                 (offline ? 'No internet connection' : 'Reconnecting…') +
-                (n ? ` — ${n} change${n === 1 ? '' : 's'} waiting to sync` : '');
+                (n ? ` — ${n} change${n === 1 ? '' : 's'} waiting to sync` : '') +
+                ' — tap to see what’s waiting to send';
+            pill.title = say;
+            pill.setAttribute('aria-label', say);
+        }
     } catch (e) {}
 }
 // Ask the service worker to replay the queue in the background (when supported).
@@ -1028,9 +1038,19 @@ async function oqTrayOpen() {
         toast(__chbNetOff ? 'Nothing waiting to send.' : 'Nothing waiting — every change is on the server.');
         return;
     }
-    const lines = items.map((it) => '• ' + (it.label || it.endpoint || 'a change') + (it.at ? ' — saved ' + oqAgo(it.at) : ''));
-    glassAlert('Waiting to send when the signal returns:\n\n' + lines.join('\n')
-        + '\n\nThese post themselves the moment the connection comes back.');
+    // ROWS, not a typed bullet list — the {label, sub} shape #ods-queue already
+    // renders, so the queue reads the same wherever it is seen. It stays a
+    // DIALOG rather than scrolling to that section: the pill is reachable from
+    // every view, and a control that behaves differently by view is worse.
+    glassDialog({
+        type: 'alert',
+        title: 'Waiting to send',
+        message: 'These post themselves the moment the connection comes back.',
+        rows: items.map((it) => ({
+            label: it.label || it.endpoint || 'A change',
+            sub: 'saved ' + oqAgo(it.at) + ' · posts itself when the signal returns',
+        })),
+    });
 }
 let __oqFlushing = false;
 async function oqFlush() {
@@ -1444,7 +1464,7 @@ async function apiPost(endpoint, payload) {
         if (res.status === 401) maybeHandleStaleAdmin();
         // `code` where the endpoint gives one, so a caller can tell apart outcomes that
         // both arrive as "not done": `already_sent` means the guest HAS the email.
-        throw apiErr(data.error || 'Request failed (' + res.status + ')', res.status, data.code);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
     }
     chbClockSync(data.srv);
     // A request that just SUCCEEDED is the only honest connectivity probe there
@@ -1483,7 +1503,7 @@ async function apiGet(endpoint) {
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin();
-        throw new Error(data.error || 'Request failed (' + res.status + ')');
+        throw new Error(data.error || 'That didn’t go through — check your signal and try again.');
     }
     chbClockSync(data.srv);
     return data;
@@ -2058,7 +2078,7 @@ function trackEvent(name, prop) {
 // Hero CTA → smooth-scroll to the "Check availability" panel (dates-first homepage).
 function scrollToAvailability() {
     const el = document.getElementById('home-availability');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) chbScroll(el, { block: 'start' });
 }
 // Progressive scroll-reveal: fade + rise sections as they enter view. Does nothing
 // under reduced-motion (so .reveal elements stay fully visible), and only arms the
@@ -2336,10 +2356,10 @@ function nav(viewId, anchorId = null) {
             if (!el) return;
             const offsetPosition =
                 el.getBoundingClientRect().top - document.body.getBoundingClientRect().top - 90;
-            window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+            chbScroll(window, { top: offsetPosition });
         }, 150);
     } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        chbScroll(window, { top: 0 });
     }
     // Every view change re-arms the layout sentinel (see its definition above).
     try {
@@ -2512,6 +2532,7 @@ function toggleTheme() {
         localStorage.setItem('chb-theme', isLight ? 'light' : 'dark');
     } catch (e) {}
     setThemeLabel();
+    chbMapTheme(); // the basemap follows the switch, not only the next mount
 }
 
 function toggleMobileMenu() {
@@ -3113,16 +3134,13 @@ function unseenEnquiries() {
     if (!Array.isArray(enquiries)) return 0;
     return enquiries.filter(function (e) { return !(e && e.seenAt); }).length;
 }
-// Keep the dock's pending-enquiries count badge live.
+// Keep the dock's count badges live. ONE WRITER: this used to paint
+// #dock-badge-enquiries itself, a second derivation of a number
+// refreshInboxBadge() owns — whichever ran last decided what the pip said.
 async function refreshOwnerHomeBadges() {
     try {
         await loadData();
-        const pending = unseenEnquiries();
-        const dockBadge = document.getElementById('dock-badge-enquiries');
-        if (dockBadge) {
-            dockBadge.textContent = pending;
-            dockBadge.style.display = pending > 0 ? 'flex' : 'none';
-        }
+        refreshInboxBadge();
     } catch (e) {
         /* badges are a nicety; never block the page */
     }
@@ -3415,7 +3433,7 @@ function renderWelcomeBack() {
             </div>
             <div class="wb-actions">
                 <a class="btn-glass btn-accent" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${fav.pk}">Check ${escapeHtml(cname)} dates</a>
-                <button type="button" class="btn-glass" data-act="wbOpenStays">Your stays</button>
+                <button type="button" class="btn-glass" data-act="wbOpenStays">My stays</button>
             </div>
         </div>`;
 }
@@ -3442,7 +3460,9 @@ function renderStayedBefore() {
                       year: 'numeric',
                   })
                 : '';
-            html = `<div class="stayed-before-chip">You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
+            // The accent lives on the MARK, not on the words — see the
+            // .stayed-before-chip rule for the measurement that moved it.
+            html = `<div class="stayed-before-chip"><span class="sb-tick" aria-hidden="true">✓</span>You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
         }
     }
     el.innerHTML = html;
@@ -3468,7 +3488,12 @@ async function saveGuestProfile() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3558,7 +3583,12 @@ async function changeGuestPassword() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3612,6 +3642,7 @@ async function exportGuestData(btn) {
 async function deleteGuestAccount() {
     const ok = await glassConfirm(
         'Delete your account?\n\nThis erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised (your name & contact details removed). This cannot be undone.',
+        'Delete my account', { danger: true },
     );
     if (!ok) return;
     try {
@@ -3831,7 +3862,12 @@ async function requestMagicLink() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3882,7 +3918,7 @@ async function maybeConsumeMagicLink() {
         nav('view-guest-bookings');
         await renderGuestBookings();
         try {
-            toast('Signed in — welcome back!');
+            toast('Signed in — welcome back.');
         } catch (e) {}
     } catch (e) {
         clean();
@@ -4033,7 +4069,7 @@ async function loadPasskeys() {
             .map(
                 (
                     k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
                     <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deletePasskey', k.id)}>Remove</button>
                 </div>`,
@@ -4044,7 +4080,7 @@ async function loadPasskeys() {
     }
 }
 async function deletePasskey(id) {
-    if (!(await glassConfirm('Remove this passkey?'))) return;
+    if (!(await glassConfirm('Remove this passkey?', 'Remove the passkey', { danger: true }))) return;
     try {
         await apiPost('passkeys.php', { action: 'delete', id });
         loadPasskeys();
@@ -4098,7 +4134,7 @@ function guestPriceBoxHtml(p, o) {
     if (!custom && fin(p.txFee) && fin(p.transactionPct))
         rows.push(`<div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>`);
     if (o.dep > 0)
-        rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
+        rows.push(`<div class="price-row"><span>Refundable deposit</span><span>${gbp(o.dep)}</span></div>`);
     rows.push(`<div class="price-row total"><span>Total${o.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(o.total)}</span></div>`);
     if (o.extraRows) rows.push(o.extraRows);
     // THE DEPOSIT'S STATE, not just its amount. One static sentence served every
@@ -4114,7 +4150,7 @@ function guestPriceBoxHtml(p, o) {
     const depShow = o.dep > 0 ? o.dep : Math.round((Number(o.depWas) || 0) * 100) / 100;
     if (depShow > 0) {
         const say = depositInvoiceStatus(depShow, o.holdStatus, o.damagesReturned, o.settledDate);
-        rows.push(`<p style="color:var(--text-muted);font-size:var(--fs-caption);margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
+        rows.push(`<p style="color:var(--text-muted);font-size:var(--fs-caption);margin:6px 0 0;">Refundable deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
     }
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
@@ -4269,9 +4305,9 @@ async function renderGuestBookings() {
         // fact available here.
         const returning = completedStays > 0;
         list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
+                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No bookings yet'}</p>
                     <p style="font-size:var(--fs-body);">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
-                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse Cottages'}</button>
+                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse the cottages'}</button>
                 </div>`;
         return;
     }
@@ -4443,7 +4479,12 @@ async function renderGuestBookings() {
         const __card = `
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
-                    <h3 class="gb2-name"><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
+                    <!-- STATE SAID ONCE: the .gb2-band twelve pixels above already
+                         carries the cottage colour and the badge carries the stage,
+                         so the legend swatch that sat here said the cottage twice.
+                         The badge + heading pair is a pinned decision (guestrepairs
+                         §5) and stays. -->
+                    <h3 class="gb2-name">${escapeHtml(meta.name)} ${statusTag}</h3>
                     <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
                     <button type="button" class="gb2-payline" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}>
                         <span class="gb2-pl1">${pl1}</span>
@@ -4454,7 +4495,7 @@ async function renderGuestBookings() {
                         <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
                     </div></div>
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
-                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:var(--accent);border-color:transparent;color:var(--accent-ink);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
+                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
                     ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
@@ -4481,13 +4522,25 @@ async function renderGuestBookings() {
         // booking card below).
         if (currentStay) {
             const nightsLeft = Math.max(0, nightsBetween(todayStr, b.checkOut));
+            // "Until 06/09/2026 · 10:00 · 0 nights left" is a database read-out on
+            // the one morning it matters most. The COUNTER is what changes — not
+            // the date form, which stays DD/MM/YYYY like every other screen date
+            // (switching it to the spoken form would put this line at odds with
+            // the house rule for a gain the counter already delivers).
+            const outTime = b.checkOutTime || '10:00';
+            const stayLeft =
+                nightsLeft === 0
+                    ? `Checkout today by ${escapeHtml(outTime)}`
+                    : nightsLeft === 1
+                      ? `Last night — checkout tomorrow by ${escapeHtml(outTime)}`
+                      : `Until ${fmtDate(b.checkOut)} · ${escapeHtml(outTime)} · ${nightsLeft} nights left`;
             hubCards.push(`
                     <div class="glass-panel my-stay-hub">
                         <div class="hub-head">
                             <span class="legend-swatch swatch-${propKey}"></span>
                             <div>
                                 <div class="hub-title">You're staying at <strong>${escapeHtml(meta.name)}</strong></div>
-                                <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
+                                <div class="hub-sub">${stayLeft}</div>
                             </div>
                         </div>
                         ${guestDoorCodeHeroHtml(b)}
@@ -4956,7 +5009,10 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <span class="legend-swatch swatch-${propKey}"></span>
                 <div class="hub-head-text">
                     <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong></div>
-                    <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${escapeHtml(b.checkInTime || '15:00')} · ${ready}</div>
+                    <!-- THE SUB IS THE ASK, and only the ask: the "Check in DD/MM/YYYY ·
+                         from 15:00 ·" prefix said, in a second date grammar, what the
+                         timeline's own "Your stay" row states directly below. -->
+                    <div class="hub-sub">${ready}</div>
                 </div>
                 <div class="hub-count chb-appear" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
             </div>
@@ -5127,7 +5183,7 @@ function showPayError(text, retry) {
     // #pay-error is role=alert — reveal it before the message lands so the alert
     // fires on visible content rather than into a hidden node.
     if (err) err.style.display = '';
-    if (msg) msg.textContent = text || 'Something went wrong.';
+    if (msg) msg.textContent = text || 'The payment didn’t go through — nothing has been charged. Try again, or use another card.';
 }
 // A REFUSAL, not a hiccup: retrying any of these returns the same answer. 500 is
 // deliberately NOT here (a server error can pass), and a transport failure carries no
@@ -5342,14 +5398,28 @@ function payStepsEnd(ok) {
         }, 350);
     }
 }
+// THE PAGE TITLE IS THE PAGE'S OWN STATE. "Pay for your stay" is an instruction
+// and it stayed on screen above a receipt that had already been paid — so the
+// done panel renames it and openPayView puts it back on every open (a guest can
+// come straight back to pay the rest). One writer, both directions.
+function payHeadTitle(done) {
+    const h1 = document.querySelector('#view-pay .pay-head h1');
+    if (h1) h1.textContent = done ? 'Your payment' : 'Pay for your stay';
+}
 // WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
 // never dead-ends. Additive beside the (unchanged) spoken sub.
 function payDoneNextRender(res, rem) {
     const el = document.getElementById('pay-done-next');
     if (!el) return;
     const apo = res && res.autopay;
+    // THE RECEIPT IS SAID ONCE. This row read "Payment received" under an h2
+    // reading "Payment received" under an h1 still reading "Pay for your stay",
+    // with a toast saying it a fourth time — four statements of one fact on one
+    // screen. The heading owns the news; this row states what happens NEXT.
     const rows = [
-        payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
+        payState.kind === 'deposit'
+            ? payJourneyRow('done', 'Your dates are confirmed', 'A receipt is on its way to your inbox', '')
+            : payJourneyRow('done', 'Receipt on its way', "We've emailed it to you", ''),
     ];
     // Gate each row on the FACT it states, not on `rem`: a whole DEPOSIT pays
     // rem=0, so `if (rem>0.005)` deleted the balance, its date and the arranged
@@ -5398,6 +5468,11 @@ async function openPayView(token, bookingId, kind) {
         const e = document.getElementById(id);
         if (e) e.style.display = 'none';
     });
+    // Back to the ASK: the done panel renames both headings, and a guest
+    // returns here to pay the rest. Reset where every open passes.
+    payHeadTitle(false);
+    const doneTitle = document.getElementById('pay-done-title');
+    if (doneTitle) doneTitle.textContent = 'Payment received';
     const ld = document.getElementById('pay-loading');
     if (ld) ld.style.display = '';
     const cardEl = document.getElementById('sq-card');
@@ -5470,7 +5545,11 @@ async function openPayView(token, bookingId, kind) {
             const chip = s.propKey
                 ? `<span class="prop-tag tag-${escapeHtml(String(s.propKey))}">${escapeHtml(s.propName || '')}</span> `
                 : escapeHtml(s.propName || '') + ' · ';
-            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)} · ${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
+            // EVERY SEPARATOR TRAVELS WITH THE UNIT THAT FOLLOWS IT. At 390 this
+            // 304px line wraps, and it broke AFTER the "·" — flush against the
+            // column edge. The arrow would dangle next, so both glue forward: a
+            // line may START with one and can never END with one.
+            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} →&nbsp;${fmtDate(s.checkOut)} ·&nbsp;${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
         }
         // The headline says WHEN, from the booking's own payment plan — once
         // the date has passed it stays plain "Balance due" (it is due now).
@@ -5620,7 +5699,7 @@ async function openPayView(token, bookingId, kind) {
                 }
                 if (anote) {
                     anote.textContent =
-                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My Stays.';
+                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My stays.';
                     anote.style.display = '';
                 }
             } else {
@@ -5734,11 +5813,16 @@ async function payWithToken(sourceId, partOverride) {
         // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
         // a change made while it is display:none is not reliably announced.
         document.getElementById('pay-done').style.display = '';
+        payHeadTitle(true);
+        // A HOLD IS NOT A PAYMENT: the shared panel's heading said "Payment
+        // received" directly above "held, not charged".
+        const holdTitle = document.getElementById('pay-done-title');
+        if (holdTitle) holdTitle.textContent = 'Card hold placed';
         document.getElementById('pay-done-sub').textContent =
             "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
         try { payDoneBackRetarget(); } catch (e) {}
         try {
-            toast('Card hold placed — thank you!');
+            toast('Card hold placed — thank you.');
         } catch (e) {}
         return;
     }
@@ -5784,6 +5868,7 @@ async function payWithToken(sourceId, partOverride) {
     // mis-charge to the guest.
     // Reveal BEFORE writing the text — see the hold branch above.
     document.getElementById('pay-done').style.display = '';
+    payHeadTitle(true);
     // A PART PAYMENT'S DONE SCREEN IS NOT A DEAD END: `remaining` is what is
     // left of the ask just read (the hint's "£X would remain", server-derived)
     // — before fullyPaid, since a max-bound slice settles the rental with the
@@ -5806,7 +5891,7 @@ async function payWithToken(sourceId, partOverride) {
                 : apo && apo.ok
                   ? `Thank you — ${took} received. That's everything arranged — we'll collect the remaining ${gbp(apo.per)} automatically on ${fmtDate(apo.due)}, with an email before.`
                   : apo && !apo.ok
-                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My Stays.`
+                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My stays.`
                     : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
     // What happens next, as the journey's own rows — additive beside the sub.
     try { payDoneNextRender(res, rem); } catch (e) {}
@@ -5816,9 +5901,9 @@ async function payWithToken(sourceId, partOverride) {
         restBtn.style.display = rem > 0.005 ? '' : 'none';
         restBtn.textContent = rem > 0.005 ? `Pay the remaining ${gbp(rem)}` : '';
     }
-    try {
-        toast('Payment received — thank you!');
-    } catch (e) {}
+    // NO TOAST. The panel draws its own tick, is role="status" and says it in
+    // its heading — the toast was a fourth statement of one fact, over the
+    // Messages pill. The HOLD branch keeps its own: that is different news.
 }
 // THE RECEIPT LANDS WHERE ITS PROMISES LIVE: everything the done panel names
 // (plan, arrival email, deposit back) is on My Stays, so a SIGNED-IN guest's
@@ -5883,12 +5968,44 @@ function payPartToggle() {
 // nothing and the hint says what is needed — deliberately NOT clamped as they
 // type, which would turn "5" on the way to "50" into the minimum under their
 // fingers.
+// THE FIELD IS TEXT NOW, so it takes strings a number input used to refuse:
+// `parseFloat('12,50')` is 12, and a guest typing the European decimal comma
+// would have paid twelve pounds instead of twelve fifty, silently. One reader,
+// used by BOTH callers.
+//
+// A SEPARATOR IS DECIDED BY WHAT FOLLOWS IT, never by which character it is —
+// a naive `.replace(',', '.')` turns a four-figure balance typed "1,234.50"
+// into "1.234.50", which parseFloat reads as 1.23. That one is not silent (it
+// lands under the minimum, so the commit snaps it up and says so) but being
+// bounced to the minimum for typing a thousands separator is its own defect,
+// and half-normalising money is how the first bug got here.
+function payPartNum(raw) {
+    let s = String(raw == null ? '' : raw).replace(/[£\s]/g, '');
+    const dot = s.lastIndexOf('.');
+    const comma = s.lastIndexOf(',');
+    if (dot > -1 && comma > -1) {
+        // Both kinds present: the LAST one is the decimal point and every
+        // earlier separator groups thousands, in either convention.
+        const dec = Math.max(dot, comma);
+        s = s.slice(0, dec).replace(/[.,]/g, '') + '.' + s.slice(dec + 1);
+    } else if (comma > -1) {
+        // Commas only, and the grouping is the only signal: a comma followed by
+        // exactly three digits groups thousands ("1,234"), anything else is the
+        // decimal comma ("12,50").
+        s = /,\d{3}(?:\D|$)/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+    } else if ((s.match(/\./g) || []).length > 1) {
+        // "1.234.567" can only be grouped; a single dot stays a decimal point,
+        // which is the house convention on a £ field.
+        s = s.replace(/\./g, '');
+    }
+    return Math.round(parseFloat(s) * 100) / 100;
+}
 function payPartSync() {
     const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
     const p = payState.part;
     if (!amt || !p) return;
     payState.partSnap = ''; // typing resumed — any earlier auto-correct note is stale
-    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    const v = payPartNum(amt.value);
     payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
     payPartRender();
     payWalletsSchedule(); // re-price Apple/Google Pay to the slice once typing settles
@@ -5903,10 +6020,20 @@ function payPartClamp() {
     const p = payState.part;
     if (!amt || !p) return;
     if (String(amt.value).trim() === '') return;
-    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    const v = payPartNum(amt.value);
     if (!isFinite(v)) return; // unreadable — the hint is already asking for a number
     const snapped = v < p.min ? p.min : v > p.max ? p.max : null;
-    if (snapped === null) return;
+    // ON COMMIT THE FIELD SHOWS WHAT WILL BE CHARGED — never "12,50" over a
+    // £12.50 ask. Only when the normalisation MOVED something, so "120.50" is
+    // left exactly as typed.
+    const cleaned = String(amt.value).trim().replace(/[£\s]/g, '').replace(',', '.');
+    if (snapped === null) {
+        if (cleaned !== String(amt.value).trim()) {
+            amt.value = cleaned;
+            payPartSync();
+        }
+        return;
+    }
     amt.value = String(snapped);
     payPartSync();
     payState.partSnap = snapped === p.min ? 'min' : 'max';
@@ -6077,10 +6204,10 @@ function payAutopayRender() {
         </div>
         <p class="pay-ap-fine">${
             sel === 'monthly'
-                ? "We'll email you 3 days before each payment, and you can turn this off any time from My Stays."
+                ? "We'll email you 3 days before each payment, and you can turn this off any time from My stays."
                 : sel === 'one'
-                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My Stays."
-                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My Stays."}</p>`;
+                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My stays."
+                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My stays."}</p>`;
     payMethodsSync();
 }
 function payAutopayChoice() {
@@ -6742,7 +6869,7 @@ function renderNotifyEmails(primary, extras) {
     if (!box) return;
     const primaryRow = primary
         ? `<div class="notify-row"><span class="notify-addr">${escapeHtml(primary)}</span><span class="notify-primary-tag">Primary</span></div>`
-        : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No primary owner email set in config.php</span></div>`;
+        : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No owner email set on the server</span></div>`;
     const extraRows = (extras || [])
         .map(
             (e) =>
@@ -6752,7 +6879,7 @@ function renderNotifyEmails(primary, extras) {
     box.innerHTML = primaryRow + extraRows;
 }
 async function removeNotifyEmail(email) {
-    if (!(await glassConfirm(`Stop sending owner alerts to ${email}?`))) return;
+    if (!(await glassConfirm(`Stop sending owner alerts to ${email}?`, 'Stop the alerts'))) return;
     try {
         await apiPost('notify-recipients.php', { action: 'remove', email });
         const list = await apiPost('notify-recipients.php', { action: 'list' });
@@ -6818,7 +6945,7 @@ async function openWelcomeBook(propKey) {
     }
     if (!bodyEl) return;
     if (!sections.length) {
-        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">Your host hasn't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
+        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">We haven't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
         return;
     }
     bodyEl.innerHTML = sections
@@ -6842,8 +6969,11 @@ function openPhotoUpload(propKey) {
     const meta = propertyMeta[propKey] || { name: propKey };
     const nameEl = document.getElementById('pu-prop-name');
     if (nameEl) nameEl.textContent = meta.name;
-    const fileEl = document.getElementById('pu-file');
-    if (fileEl) fileEl.value = '';
+    const fileEl = /** @type {HTMLInputElement|null} */ (document.getElementById('pu-file'));
+    if (fileEl) {
+        fileEl.value = '';
+        filePickSync(fileEl);
+    }
     const capEl = document.getElementById('pu-caption');
     if (capEl) capEl.value = '';
     const msg = document.getElementById('pu-msg');
@@ -6867,7 +6997,9 @@ async function submitGuestPhoto() {
     const msg = document.getElementById('pu-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -6894,7 +7026,7 @@ async function submitGuestPhoto() {
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'Upload failed.');
-        show('Thank you! Your photo will appear once we approve it.', true);
+        show('Thank you — your photo will appear once we approve it.', true);
         setTimeout(closePhotoUpload, 1600);
     } catch (e) {
         show(e.message || 'Could not upload your photo.', false);
@@ -6915,7 +7047,7 @@ function guestReviewForm(propKey) {
     // asserts the absence). A JS comment, not an HTML one: a comment inside this
     // template would ship, quoting the wrong sentence back at the guest.
     const note = existing && existing.status === 'approved'
-        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
+        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you.</div>`
         : '';
     // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
     // tappable star row — two controls for one question, able to disagree until a
@@ -7120,7 +7252,7 @@ function definitionParagraphs(propKey) {
     const defs = (termsSections.find((s) => s.h.startsWith('1.')) || { p: [] }).p;
     return defs.map((par) => {
         const label = (par.match(/^([^:]{1,26}):\s/) || [])[1];
-        if (label === 'Security deposit') return label + ': ' + termsSecurityDeposit(propKey);
+        if (label === 'Refundable deposit') return label + ': ' + termsSecurityDeposit(propKey);
         if (label === 'House Rules') return label + ': ' + termsHouseRules(propKey);
         if (label && TERMS_MONEY_DEFS[label]) return label + ': ' + TERMS_MONEY_DEFS[label]();
         return par;
@@ -7580,7 +7712,7 @@ async function downloadInvoice(bookingId) {
             ? { label: 'Agreed price for your stay', sub: `${p.nights} night${p.nights === 1 ? '' : 's'}`, value: gbp(p.total) }
             : { label: `${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, sub: `${meta.name}  ·  ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`, value: gbp(p.nightly) },
         priceIsCustom(p) ? null : { label: `Transaction fee (${p.transactionPct}%)`, value: gbp(p.txFee) },
-        gt.dep > 0 ? { label: 'Refundable damages deposit', sub: depStatus, value: gbp(gt.dep) } : null,
+        gt.dep > 0 ? { label: 'Refundable deposit', sub: depStatus, value: gbp(gt.dep) } : null,
         { label: 'Total', value: gbp(gt.total), foot: true },
     ]);
 
@@ -7600,7 +7732,7 @@ async function downloadInvoice(bookingId) {
     ]);
     // …and once the deposit has gone back it is no longer a charge, but it was taken.
     if (depAmt > 0 && gt.dep <= 0.005 && depStatus) {
-        fine(`Refundable damages deposit of ${gbp(depAmt)} — ${depStatus}`, 16);
+        fine(`Refundable deposit of ${gbp(depAmt)} — ${depStatus}`, 16);
     }
 
     // ── Your stay ─────────────────────────────────────────────────────────
@@ -7839,7 +7971,9 @@ async function adminPasskeyFirst(skipConfirm) {
     if (
         !skipConfirm &&
         !(await glassConfirm(
-            'Sign in with a passkey?\n\nOK = use Face ID / Touch ID / device PIN\nCancel = use username & password',
+            'Face ID, Touch ID or your device PIN.',
+            'Use a passkey',
+            { title: 'Sign in', cancelLabel: 'Use my password' },
         ))
     )
         return false;
@@ -7924,10 +8058,26 @@ async function loadContent(pre) {
 }
 
 // Apply stored text/image content to elements within a root node.
+// A SEPARATOR TRAVELS WITH THE FACT AFTER IT, never hangs at a line end. The
+// cottage's facts line broke as "Townhouse in Blakeney · Sleeps 6 · 3 bedrooms ·"
+// / "2 bathrooms" at 390 — a dot alone at the end of one line and an orphan on
+// the next. NB the reverse (binding the dot to the fact BEFORE it, "\u00a0· ")
+// is what produces exactly that hanging separator; it has to be " ·\u00a0".
+// A nowrap span would be the tidier answer and cannot be used here:
+// applyContentOverrides writes textContent, so any markup is destroyed the
+// moment the owner's own <prop>-subtitle override lands.
+const CHB_SEP_BIND = '.prop-subtitle';
+function chbBindSeps(t) {
+    return String(t == null ? '' : t).replace(/ ([·•]) /g, ' $1\u00a0');
+}
 function applyContentOverrides(root) {
     root.querySelectorAll('[data-edit-text]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-text')];
-        if (typeof v === 'string') el.textContent = decodeEntities(v);
+        if (typeof v !== 'string') return;
+        const txt = decodeEntities(v);
+        // The owner-typed override goes through the same binding as the default,
+        // or the fix reaches only the string nobody has edited.
+        el.textContent = el.matches(CHB_SEP_BIND) ? chbBindSeps(txt) : txt;
     });
     root.querySelectorAll('[data-edit-img]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-img')];
@@ -8415,7 +8565,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-08b';
+const TERMS_VERSION = '2026-09a';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -8434,7 +8584,7 @@ const termsSections = [
             // cottage's own deposit. See definitionParagraphs().
             'Deposit: (generated)',
             'Balance due date: (generated)',
-            'Security deposit: (generated)',
+            'Refundable deposit: (generated)',
             // LABEL ONLY — generated per cottage by termsHouseRules(). The text
             // after the colon is discarded, so the old claim about a separate
             // document cannot drift back in.
@@ -8460,7 +8610,7 @@ const termsSections = [
         h: '3. Looking after the property',
         p: [
             'Please treat the property and everything in it with care, and leave it as you found it. If something is damaged or not working, tell us as soon as you notice.',
-            'You may lose your security deposit, or be charged, for any damage or loss.',
+            'You may lose your refundable deposit, or be charged, for any damage or loss.',
             'Use of the property and grounds is at your own risk; please follow the House Rules and any safety instructions.',
             'We, or our representatives, may need to enter the property to inspect it or carry out repairs.',
             'We can ask you to leave without a refund if you or your Group behave unreasonably or illegally, or in a way that endangers or seriously disturbs others or the property.',
@@ -8525,7 +8675,7 @@ const termsSections = [
     },
     {
         h: '10. Your personal information',
-        p: ['We use the information you give us in line with our Privacy Policy.'],
+        p: ['We use the information you give us in line with our privacy policy.'],
     },
     {
         h: '11. Changes to your booking or these terms',
@@ -8562,10 +8712,10 @@ const propertyContent = {
         title: 'Jollyboat',
         desc: 'An intimate coastal bolthole for two. Cosy, characterful and perfectly placed for romantic getaways, with the saltmarshes and quay just steps from the door.',
         amenities: [
-            'Snug Double Bedroom',
-            'Wood-Burning Stove',
-            'Quayside Location',
-            'Welcome Hamper',
+            'Snug double bedroom',
+            'Wood-burning stove',
+            'Quayside location',
+            'Welcome hamper',
         ],
         images: ['jollyboat-1.jpg', 'jollyboat-2.jpg', 'jollyboat-3.jpg'],
     },
@@ -8843,24 +8993,51 @@ function renderHouseRules(propKey) {
         .join('');
 }
 
-// The basemap, stated ONCE (the two maps had copies and drifted: maxZoom 20 vs
-// 19). CARTO Positron, KEYED — unkeyed, the CDN defaces every tile with "API
-// KEY REQUIRED" while still answering 200, so the key is what makes the map
-// exist. The parameter is `key`: `api_key` is the obvious guess and is silently
-// IGNORED (measured — a bogus key and no key return byte-identical watermarked
-// tiles, so a wrong param name looks exactly like a wrong key and neither
-// errors). {r} is back for retina; maxZoom 20 is CARTO's raster ceiling.
-// The key is PUBLIC by design — it rides every tile URL a browser requests, so
-// it cannot be secret; domain-restrict it in the CARTO console instead.
+// The basemap: ONE DECLARATION, TWO THEME URLS (the two maps once had copies and
+// drifted, maxZoom 20 vs 19). CARTO Positron / Dark Matter, KEYED — unkeyed, the
+// CDN defaces every tile with "API KEY REQUIRED" while still answering 200, so
+// the key is what makes the map exist. The parameter is `key`: `api_key` is the
+// obvious guess and is silently IGNORED (measured — a bogus key and no key
+// return byte-identical watermarked tiles, so a wrong param name looks exactly
+// like a wrong key and neither errors; verified on BOTH styles). {r} is retina;
+// maxZoom 20 is CARTO's raster ceiling. The key is PUBLIC by design — it rides
+// every tile URL a browser requests, so it cannot be secret; domain-restrict it
+// in the CARTO console instead.
+// WHY TWO. It was light_all whatever the theme, so in the default dark theme the
+// map was the brightest thing on the page by a factor of twelve (measured: the
+// map box mean luminance 240 against a body ground of 19 — the only surface that
+// ignored the theme). A CSS invert reads synthetic; the real Dark Matter style
+// comes from the SAME host under the SAME key, so the CSP entry, {s}, {r} and
+// the ceiling are unchanged and only the style slug differs.
 const MAP_TILES = {
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
     subdomains: 'abcd',
     maxZoom: 20,
     attribution: '© OpenStreetMap, © CARTO',
 };
+// The one place the theme picks a basemap — read by both mounts AND by the live
+// swap, so a map already on screen cannot disagree with one mounted after.
+function mapTileUrl() {
+    return document.body.classList.contains('light-mode') ? MAP_TILES.light : MAP_TILES.dark;
+}
+// A MOUNTED MAP MUST FOLLOW THE SWITCH. Both maps are long-lived (the cottages
+// pane is sticky, the cottage page's survives a nav), so without this the tiles
+// stay whatever theme they were built in — and the controls, which are CSS, flip
+// underneath them. setUrl repaints in place; a map that isn't up is simply null.
+function chbMapTheme() {
+    const u = mapTileUrl();
+    [__propTiles, __cottagesTiles].forEach((t) => {
+        if (!t) return;
+        try {
+            t.setUrl(u);
+        } catch (e) {}
+    });
+}
 
 // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
 let __propMap = null;
+let __propTiles = null;
 async function renderLocationMap(propKey) {
     const el = document.getElementById('prop-map');
     if (!el) return;
@@ -8881,11 +9058,12 @@ async function renderLocationMap(propKey) {
             __propMap.remove();
         } catch (e) {}
         __propMap = null;
+        __propTiles = null;
     }
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer(MAP_TILES.url, {
+    __propTiles = L.tileLayer(mapTileUrl(), {
         maxZoom: MAP_TILES.maxZoom,
         subdomains: MAP_TILES.subdomains,
         attribution: MAP_TILES.attribution,
@@ -8910,6 +9088,7 @@ async function renderLocationMap(propKey) {
 // A sticky interactive map alongside the cards, one clickable "From £x" price pin
 // per cottage. Reuses Leaflet + the cottages' saved coordinates (geo-<key>).
 let __cottagesMap = null;
+let __cottagesTiles = null;
 let __cottagesMarkers = {};
 function highlightCottageCard(k, on) {
     const card = document.querySelector('#cottages a[data-prop="' + k + '"]');
@@ -8945,11 +9124,19 @@ async function renderCottagesMap() {
     }
     el.classList.remove('is-empty');
     if (split) split.classList.remove('no-map');
+    // A WAIT IS A STATE AND MUST SAY SO. loadLeaflet() is a CDN fetch, so on a
+    // slow connection the pane sat as an empty 509×780 hairline box beside a
+    // screen of cards with no word in it — which reads as broken rather than as
+    // loading. A FAILED load already collapses the pane (is-empty + no-map);
+    // only the interim had nothing. L.map's own mount clears the node, so this
+    // needs no undoing on the success path.
+    el.innerHTML = '<p class="map-wait">Loading the map…</p>';
     try {
         await loadLeaflet();
     } catch (e) {
         el.classList.add('is-empty');
         if (split) split.classList.add('no-map');
+        el.innerHTML = '';
         return;
     }
     if (__cottagesMap) {
@@ -8957,12 +9144,13 @@ async function renderCottagesMap() {
             __cottagesMap.remove();
         } catch (e) {}
         __cottagesMap = null;
+        __cottagesTiles = null;
     }
     __cottagesMarkers = {};
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer(MAP_TILES.url, {
+    __cottagesTiles = L.tileLayer(mapTileUrl(), {
         maxZoom: MAP_TILES.maxZoom,
         subdomains: MAP_TILES.subdomains,
         attribution: MAP_TILES.attribution,
@@ -9035,8 +9223,8 @@ async function renderCottagesMap() {
 
 // Payment status config: label + colour. Keys are stored on each booking.
 const paymentMeta = {
-    paid: { label: 'Paid in Full', color: 'var(--ok)', dot: 'var(--ok)' },
-    deposit: { label: 'Deposit Paid', color: 'var(--warn)', dot: 'var(--warn)' },
+    paid: { label: 'Paid in full', color: 'var(--ok)', dot: 'var(--ok)' },
+    deposit: { label: 'Deposit paid', color: 'var(--warn)', dot: 'var(--warn)' },
     unpaid: { label: 'Unpaid', color: 'var(--danger)', dot: 'var(--danger)' },
 };
 
@@ -9662,6 +9850,17 @@ function guestFlowHtml(propKey, b, payToken) {
         const strip = guestPayCta(b, gt);
         const stripCta = payToken && !bookingOwnerArranged(b) ? ` — use “Pay ${strip.word}” below.` : '.';
         next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${stripCta}</span></div>`;
+    } else if (flow.inStay) {
+        // A GUEST ALREADY IN THE COTTAGE IS NOT WAITING FOR ARRIVAL INFO. Both
+        // sentences below are about a stay that has not started — "we'll send
+        // your arrival info nearer the time" and "we can't wait to welcome you"
+        // — and this card renders under a hub reading "You're staying at
+        // Jollyboat". Checked BEFORE preArrivalSent, because the stay stage
+        // being `now` outranks whether the arrival email has gone.
+        next = `<div class="bkflow-next is-clear"><span>You’re here — checkout is by ${escapeHtml(b.checkOutTime || '10:00')} on ${fmtDate(b.checkOut)}, and everything you need is in the card at the top of this page.</span></div>`;
+        // (No `past` branch: the route only calls this for a stay that has not
+        // ended — a finished one renders guestDepositTrackerHtml instead, which
+        // is where the deposit-back story already lives.)
     } else if (!b.preArrivalSent) {
         next = `<div class="bkflow-next is-clear"><span>You’re paid up. We’ll send your arrival info (directions &amp; key) nearer the time.</span></div>`;
     } else {
@@ -10186,7 +10385,10 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // Classed so the Activity feed can hold it to the story's own
                 // type size — it carries no font-size of its own and inherited
                 // the card base, rendering 16px among 13.12px event rows.
-                return `<div class="bhub-ledger-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
+                // Layout in admin.css's .bhub-ledger-row now (both surfaces
+                // are owner-only), so the feed can drop the row's own border
+                // and padding when it wraps it in a dated cell.
+                return `<div class="bhub-ledger-row">
                         <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
@@ -10214,6 +10416,7 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
             ? `This charge took ${gbp(maxAmount + dep)} — ${gbp(maxAmount)} of the stay plus a ${gbp(dep)} refundable deposit.\nRefund up to ${gbp(maxAmount)} here. The ${gbp(dep)} goes back through “Return deposit”, which records that it has.`
             : `Refund amount (£). Up to ${gbp(maxAmount)}:`,
         String(maxAmount),
+        { title: 'Refund to the card', okLabel: 'Continue' },
     );
     if (entered === null) return;
     const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
@@ -10225,7 +10428,7 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
         );
         return;
     }
-    if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`))) return;
+    if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`, `Refund ${gbp(amount)}`, { danger: true }))) return;
     try {
         // Money out → the server asks for a fresh confirmation (require_reauth).
         // chbWithReauth prompts and retries; it lives in admin.js, so this
@@ -10332,7 +10535,7 @@ function showChangeoverToasts() {
                         <span class="toast-prop"><span class="legend-swatch swatch-${c.propKey}"></span> ${escapeHtml(meta.name)}</span><br>
                         <strong>${escapeHtml(c.leaving.name || 'Guest')}</strong> checks out (by ${c.leaving.checkOutTime || '10:00'}) and
                         <strong>${escapeHtml(c.arriving.name || 'Guest')}</strong> checks in (from ${escapeHtml(c.arriving.checkInTime || '15:00')}).
-                        <div class="toast-date">${c.date}</div>
+                        <div class="toast-date">${fmtDate(c.date)}</div>
                     </div>
                     <button class="btn-sm btn-edit toast-dismiss">Got it — dismiss</button>`;
         const dismiss = () => dismissChangeover(c.key, el);
@@ -11403,7 +11606,9 @@ async function submitNewsletter(ev) {
     const email = ((el && el.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -11419,7 +11624,7 @@ async function submitNewsletter(ev) {
             source: 'footer',
         });
         if (el) el.value = '';
-        show("You're in — thank you! We'll only email occasionally.", true);
+        show("You're in — thank you. We'll only email occasionally.", true);
     } catch (e) {
         show(e.message || 'Could not sign you up just now.', false);
     }
@@ -11658,7 +11863,7 @@ async function chatSendArrival(bid) {
 }
 async function chatSendBalance(bid) {
     if (!__msgThreadId) return;
-    if (!(await glassConfirm('Email this guest a secure link to pay their balance?'))) return;
+    if (!(await glassConfirm('Email this guest a secure link to pay their balance?', 'Send the link'))) return;
     try {
         await apiPost('messages.php', {
             action: 'send_balance',
@@ -11822,7 +12027,7 @@ async function archiveCurrentThread() {
 // Permanently delete the open conversation and its messages.
 async function deleteCurrentThread() {
     if (!__msgThreadId) return;
-    if (!(await glassConfirm('Delete this conversation and all its messages permanently?'))) return;
+    if (!(await glassConfirm('Delete this conversation and all its messages permanently?', 'Delete the conversation', { danger: true }))) return;
     try {
         await apiPost('messages.php', { action: 'delete', thread_id: __msgThreadId });
         closeMessagesModal();
@@ -11880,18 +12085,25 @@ function accomImages(k) {
         : ((propertyContent[k] || {}).images || []).slice();
 }
 function accomPhotoRow(k, url, i, n) {
-    // A grid CELL now (the unified editors): thumb + MAIN badge + order
-    // number, the same four actions as compact glyphs beneath. Classes and
-    // data-acts unchanged — accomSavePhotos re-renders through this composer,
-    // so reorder/replace/remove keep working on every repaint.
+    // A grid CELL (the unified editors): thumb + MAIN badge + order number, and
+    // the four actions behind ONE ⋯ menu — the hub's own bhubMenu, so the
+    // markup, the click-away, Escape and the placement are all the existing
+    // mechanism. They were four 22px glyphs jammed edge to edge with the
+    // destructive ✕ 22px from Replace, and a 44px hit region at a 22px pitch
+    // would have overlapped its neighbour by half. Every data-act is unchanged —
+    // accomSavePhotos re-renders through this composer, so reorder / replace /
+    // remove keep working on every repaint.
     return `<div class="content-edit-row accom-photo-row acp-cell">
                 <div class="exp-edit-thumb acp-thumb" style="background-image:url('${escapeHtml(url)}');">${i === 0 ? '<span class="acp-main">MAIN</span>' : ''}<span class="acp-n">${i + 1}</span></div>
                 <div class="accom-photo-label sr-only">Photo ${i + 1}${i === 0 ? ' · main' : ''}</div>
                 <div class="accom-photo-actions acp-acts">
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move photo ${i + 1} earlier" title="Move earlier">↑</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move photo ${i + 1} later" title="Move later">↓</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomReplacePhoto', String(k), i)} aria-label="Replace photo ${i + 1}" title="Replace">⟳</button>
-                    <button class="btn-sm btn-delete" ${chbAttrs('accomRemovePhoto', String(k), i)} aria-label="Remove photo ${i + 1}" title="Remove">✕</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Photo ${i + 1} options" title="Move, replace or remove">⋯</button>
+                    <div class="bhub-menu glass-panel acp-menu" role="menu" style="display:none;">
+                        <button role="menuitem" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move photo ${i + 1} earlier">Move earlier</button>
+                        <button role="menuitem" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move photo ${i + 1} later">Move later</button>
+                        <button role="menuitem" ${chbAttrs('accomReplacePhoto', String(k), i)} aria-label="Replace photo ${i + 1}">Replace photo</button>
+                        <button role="menuitem" class="bhub-menu-danger" ${chbAttrs('accomRemovePhoto', String(k), i)} aria-label="Remove photo ${i + 1}">Remove photo</button>
+                    </div>
                 </div></div>`;
 }
 async function accomSavePhotos(k, imgs) {
@@ -11922,7 +12134,7 @@ async function accomMovePhoto(k, i, dir) {
     await accomSavePhotos(k, imgs);
 }
 async function accomRemovePhoto(k, i) {
-    if (!(await glassConfirm('Remove this photo?'))) return;
+    if (!(await glassConfirm('Remove this photo?', 'Remove the photo', { danger: true }))) return;
     const imgs = accomImages(k);
     imgs.splice(i, 1);
     await accomSavePhotos(k, imgs);
@@ -12020,7 +12232,7 @@ function faqBlockHtml(propKey) {
         : [];
     const valid = faqs.filter((f) => (f.q || '').trim() && (f.a || '').trim());
     if (!valid.length) return '';
-    return `<button class="btn-sm btn-edit" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to Know</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to know</button>`;
 }
 // Build the accordion items for a cottage and show them in the floating modal
 function openFaqModal(propKey) {
@@ -12032,7 +12244,7 @@ function openFaqModal(propKey) {
         Array.isArray(siteContent['faqs-' + propKey]) ? siteContent['faqs-' + propKey] : []
     ).filter((f) => (f.q || '').trim() && (f.a || '').trim());
     const meta = propertyMeta[propKey] || { name: propKey };
-    if (title) title.innerText = 'Good to Know — ' + meta.name;
+    if (title) title.innerText = 'Good to know — ' + meta.name;
     // A cottage with no FAQs opened a sheet with a heading and NOTHING under it —
     // which reads as broken rather than as empty, on a guest surface whose whole
     // job is answering questions. Name the alternative instead: a person.
@@ -12141,9 +12353,18 @@ function toggleFaq(id) {
     }
 }
 
-function reviewCardHtml(r) {
+// `scoped` = this list has already been FILTERED to one cottage, so naming it on
+// every card says nothing and costs a line (measured: "Tom & Priya — 21A Westgate
+// Street" wrapped to two lines in a 240px card and pushed the one fact that DOES
+// vary between cards — the source tag — onto a third). Gated on the FILTER, not
+// on a propKey being passed: openAllReviews is also called with no key from the
+// footer's "Guest reviews" link, where the cottage name is the informative half.
+// NB `list.map(reviewCardHtml)` would pass the ARRAY INDEX as this argument, so
+// every call site has to spell the lambda out.
+function reviewCardHtml(r, opts) {
     const stars = Math.max(0, Math.min(5, parseInt(r.stars) || 5));
-    const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+    const scoped = !!(opts && opts.scoped);
+    const propName = !scoped && r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
     const src = r.source ? ` <span class="review-source">via ${escapeHtml(r.source)}</span>` : '';
     return `<div class="review-card glass-panel">
                 <div class="review-stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</div>
@@ -12180,8 +12401,9 @@ function openAllReviews(propKey) {
     const body = document.getElementById('reviews-modal-list');
     if (!m || !body) return;
     let list = allReviews();
-    if (propKey) list = list.filter((r) => r.prop === propKey);
-    body.innerHTML = list.map(reviewCardHtml).join('');
+    const scoped = !!propKey;
+    if (scoped) list = list.filter((r) => r.prop === propKey);
+    body.innerHTML = list.map((r) => reviewCardHtml(r, { scoped })).join('');
     overlayHistPush(); // Back closes this overlay
     m.classList.add('open');
 }
@@ -12217,7 +12439,7 @@ function renderPropReviews(propKey) {
                     <span class="prop-reviews-score">★ ${avg.toFixed(1)}</span>
                     <span class="prop-reviews-count">${count} review${count === 1 ? '' : 's'}</span>
                 </div>
-                <div class="reviews-grid">${show.map(reviewCardHtml).join('')}</div>
+                <div class="reviews-grid">${show.map((r) => reviewCardHtml(r, { scoped: true })).join('')}</div>
                 ${more}`;
 }
 function closeAllReviews() {
@@ -12248,7 +12470,10 @@ function renderPropStats(propKey) {
         ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(2)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
         : `<div class="prop-stat"><div class="prop-stat-top">New</div><div class="prop-stat-sub">no reviews yet</div></div>`;
     const favCell = fav
-        ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:var(--fs-sub);letter-spacing:0;">Guest favourite</div></div>`
+        ? // ONE RULE FOR .prop-stat-sub: the inline style here overrode the class
+          // with a second size and a second ink, so the two sub-captions in the same
+          // row disagreed. The class already says --fs-caption / --text-muted.
+          `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub">Guest favourite</div></div>`
         : '';
     const reviewsCell = count
         ? `<div class="prop-stat"><div class="prop-stat-top">${count}</div><div class="prop-stat-sub">review${count === 1 ? '' : 's'}</div></div>`
@@ -12474,6 +12699,25 @@ function enquireDraftClear() {
     clearTimeout(__enqSyncTimer);
     __enqSyncedSig = '';
 }
+// THE HOUSE FILE FIELD NAMES ITS FILE. The real <input type=file> is sr-only
+// under a <label for> styled as a pill, so the picker opens natively with no
+// handler on the button — but then nothing on screen says what was chosen,
+// which the UA control did do. ONE delegated change listener covers both photo
+// sheets and any future one; the span keeps its own "No file chosen" when the
+// picker is dismissed.
+const FILE_PICK_EMPTY = 'No file chosen';
+function filePickSync(input) {
+    if (!input) return;
+    const span = document.getElementById(input.id + '-name');
+    if (!span) return;
+    const f = input.files && input.files[0];
+    span.textContent = f ? f.name : FILE_PICK_EMPTY;
+}
+document.addEventListener('change', (e) => {
+    const t = /** @type {HTMLInputElement} */ (e.target);
+    if (t && t.type === 'file' && t.closest && t.closest('.file-pick')) filePickSync(t);
+});
+
 // Autosave while the visitor types anywhere in the enquiry form. Debounced so the
 // synchronous localStorage write doesn't run on every keystroke (that can add
 // input latency while typing, especially on mobile).
@@ -12662,7 +12906,7 @@ async function loadGuestPhotosAdmin() {
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My Bookings.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My stays.</p>`;
         return;
     }
     wrap.innerHTML = `<div class="guest-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">${rows
@@ -12670,7 +12914,7 @@ async function loadGuestPhotosAdmin() {
             const meta = propertyMeta[p.prop_key] || { name: p.prop_key };
             const pend = p.status === 'pending';
             const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
-            return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
+            return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r-lg);overflow:hidden;">
                     <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
@@ -12685,7 +12929,7 @@ async function loadGuestPhotosAdmin() {
         .join('')}</div>`;
 }
 async function moderatePhoto(id, action) {
-    if (action === 'delete' && !(await glassConfirm('Delete this photo permanently?'))) return;
+    if (action === 'delete' && !(await glassConfirm('Delete this photo permanently?', 'Delete the photo', { danger: true }))) return;
     try {
         await apiPost('photos.php', { action, id });
         loadGuestPhotosAdmin();
@@ -12757,7 +13001,7 @@ function renderCardRatings() {
         const rs = all.filter((r) => r.prop === k);
         let html;
         if (!rs.length) {
-            html = `<span class="cr-new">New — be the first to review</span>`;
+            html = `<span class="cr-new">New · no reviews yet</span>`;
             if (fav) fav.hidden = true;
         } else {
             const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
@@ -13045,7 +13289,11 @@ function injectPropColors() {
                 `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}` +
                 // Light mode: accent-on-pale-tint is too faint — darken towards ink
                 // (same treatment app.css gives the three built-in cottages).
-                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 55%,#1b2a34);}` +
+                // 45%, NOT 55 — and it must match app.css's own three literals or an
+                // owner-ADDED cottage ships under AA while the built-in three pass.
+                // Measured by pixel at 55%: 21A 3.75:1, Jollyboat 4.15:1 on the light
+                // list card; at 45% they clear the mark with a shade to spare.
+                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 45%,#1b2a34);}` +
                 // Timeline bar text INHERITS the theme ink (matches the built-in bars).
                 `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);}`;
         });
@@ -13330,6 +13578,32 @@ function glassDialog(opts) {
                 return;
             }
             msg.innerText = opts.message || '';
+            msg.style.display = opts.message ? '' : 'none';
+            // Optional ROWS — {label, sub} in the day sheet's .ods-qrow shape (the
+            // queue tray). A NARROW slot, never a raw-HTML one: the shared dialog
+            // must not gain an injection point for one caller, so both halves go
+            // through escapeHtml. Emptied on every open — the okLabel rule.
+            let rowsEl = document.getElementById('glass-dialog-rows');
+            if (!rowsEl && Array.isArray(opts.rows) && opts.rows.length) {
+                rowsEl = document.createElement('div');
+                rowsEl.id = 'glass-dialog-rows';
+                rowsEl.className = 'glass-dialog-rows';
+                msg.insertAdjacentElement('afterend', rowsEl);
+            }
+            if (rowsEl) {
+                const rws = Array.isArray(opts.rows) ? opts.rows : [];
+                rowsEl.innerHTML = rws
+                    .map(
+                        (r) =>
+                            '<div class="ods-qrow"><span class="ods-qlabel">' +
+                            escapeHtml(String((r && r.label) || '')) +
+                            '</span>' +
+                            (r && r.sub ? '<span class="ods-qsub">' + escapeHtml(String(r.sub)) + '</span>' : '') +
+                            '</div>',
+                    )
+                    .join('');
+                rowsEl.style.display = rws.length ? 'block' : 'none';
+            }
             // Optional PHOTO (data: URI) — the deposit sweep's evidence. The
             // node is SHARED, so it is reassigned on each open (the okLabel
             // rule) or a photo haunts the next plain confirm.
@@ -13407,6 +13681,13 @@ function glassDialog(opts) {
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
                                 (f.min != null ? ` min="${f.min}"` : '') +
                                 (f.step != null ? ` step="${f.step}"` : '') +
+                                // KEYBOARD HINTS — a four-digit key-safe code used to
+                                // raise the full QWERTY board and invite autofill for a
+                                // secret. Additive: absent, the field renders as before.
+                                (f.inputmode ? ` inputmode="${escapeHtml(String(f.inputmode))}"` : '') +
+                                (f.pattern ? ` pattern="${escapeHtml(String(f.pattern))}"` : '') +
+                                (f.maxlength != null ? ` maxlength="${Number(f.maxlength)}"` : '') +
+                                (f.autocomplete ? ` autocomplete="${escapeHtml(String(f.autocomplete))}"` : '') +
                                 // Prefill (the key safe dialog's generated code) —
                                 // additive: absent def renders exactly as before.
                                 (f.def != null ? ` value="${escapeHtml(String(f.def))}"` : '') +
@@ -13426,12 +13707,20 @@ function glassDialog(opts) {
                 if (!isForm) fields.innerHTML = '';
             }
             cancel.style.display = opts.type === 'alert' ? 'none' : 'inline-block';
-            // The OK button may NAME what it is about to do ("Send 2 requests"), so a
-            // confirm over several records can state its count in the button rather
-            // than only in the prose. Always reassigned — the node is shared by every
-            // dialog, so a custom label must not leak into the next plain confirm.
+            // The OK button NAMES what it does ("Delete the booking"), and Cancel
+            // may name the OTHER outcome where backing out is itself a choice
+            // ("Keep the booking"). BOTH are shared nodes, so BOTH are reassigned
+            // on every open — a label must never leak into the next plain confirm.
             const okBtn = document.getElementById('glass-dialog-ok');
-            if (okBtn) okBtn.textContent = opts.okLabel || 'OK';
+            if (okBtn) {
+                okBtn.textContent = opts.okLabel || 'OK';
+                // The primary looks primary (the accent fill) — except when it is
+                // DESTRUCTIVE, where the ink goes red on no fill rather than
+                // dressing "Delete" as the inviting default.
+                okBtn.classList.toggle('btn-accent', !opts.danger);
+                okBtn.classList.toggle('is-danger', !!opts.danger);
+            }
+            cancel.textContent = opts.cancelLabel || 'Cancel';
             __glassDlgResolve = (ok) => {
                 let formVals = null;
                 if (isForm && ok) {
@@ -13449,7 +13738,11 @@ function glassDialog(opts) {
                 __glassDlgResolve = null;
                 if (opts.type === 'prompt') resolve(ok ? inp.value : null);
                 else if (opts.type === 'form') resolve(ok ? formVals : null);
-                else if (opts.type === 'confirm') resolve(!!ok);
+                // `tri`: a confirm whose Cancel is a real SECOND CHOICE, not a
+                // way out ("Use a passkey" / "Type my password"). Escape and the
+                // backdrop then have to mean NEITHER — resolving them as Cancel
+                // would make backing out of a refund start a password box.
+                else if (opts.type === 'confirm') resolve(opts.tri && ok === null ? null : !!ok);
                 else resolve(true);
             };
             o.classList.add('open');
@@ -13494,11 +13787,18 @@ function gdfOpenDates(id) {
 function glassAlert(message) {
     return glassDialog({ type: 'alert', message });
 }
-function glassConfirm(message, okLabel) {
-    return glassDialog({ type: 'confirm', message, okLabel });
+// opts may carry {title, cancelLabel, danger, tri} — see glassDialog.
+function glassConfirm(message, okLabel, opts) {
+    return glassDialog(Object.assign({ type: 'confirm', message, okLabel }, opts || {}));
 }
+// opts: {password, title, okLabel, cancelLabel, danger} — a typed answer can
+// name itself and say what pressing the button will do.
 function glassPrompt(message, def, opts) {
-    return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) });
+    const o = opts || {};
+    return glassDialog({
+        type: 'prompt', message, def, password: !!o.password,
+        title: o.title, okLabel: o.okLabel, cancelLabel: o.cancelLabel, danger: o.danger,
+    });
 }
 // Several labelled inputs on one dialog. fields: [{id,label,type,value,min,step,
 // placeholder,hint}]. Resolves {id:value,…} on OK, null on Cancel. opts may
@@ -13533,7 +13833,7 @@ async function previewAndSendEmail(opts) {
     } catch (e) {}
     const ok = got
         ? await showSendConfirm({ subject, html, text, to: opts.to, sendLabel: opts.sendLabel })
-        : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`);
+        : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`, opts.sendLabel || 'Send it');
     if (!ok) return false;
     // Report whether it WENT, not whether the owner CONFIRMED. It used to `return !!ok`,
     // so an inline act strip said "sent" for a send that had failed or been refused —
@@ -13709,7 +14009,10 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'Escape') {
         e.preventDefault();
-        glassDialogResolve(false);
+        // NULL, not false: on an ordinary dialog the resolver folds it back to
+        // Cancel, but on a `tri` confirm (whose Cancel is a second choice)
+        // Escape has to mean "neither" or there is no way out at all.
+        glassDialogResolve(null);
     }
 });
 // Close the reviews modal on Escape or backdrop click
@@ -14360,9 +14663,11 @@ function renderDatePicker() {
         else hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
         const n = nightsBetween(dpState.start, dpState.end) + (dpTarget && dpTarget.inclusive ? 1 : 0);
+        // NBSP AFTER THE MIDDOT: the separator binds to what FOLLOWS it, so a wrap
+        // can never leave a line ending on a bare "·" (measured at 390).
         const span = dpVoice
-            ? `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`
-            : `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+            ? `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`
+            : `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
         // "✓ LOOKS FREE" ONLY WHERE IT IS TRUE BY THIS MODE'S OWN RULES: the
         // enquiry picker refuses crossed nights, so a completed range here is
         // clear — but a SEEDED range (the hero search seeds any dates into this
@@ -14386,7 +14691,7 @@ function renderDatePicker() {
             hint.innerHTML =
                 freeCap +
                 escapeHtml(span) +
-                ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
+                ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
                 t.adults + ' adult' + (t.adults === 1 ? '' : 's') +
                 (t.children > 0 ? ', ' + t.children + ' child' + (t.children === 1 ? '' : 'ren') : '');
         } else {
@@ -15567,7 +15872,7 @@ function showHeroResults() {
     }
     if (sec) {
         sec.classList.add('results-mode');
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        chbScroll(sec, { block: 'start' });
     }
 }
 // Anti-stuck escape: clear the results and glide back to the search so the guest
@@ -15583,7 +15888,7 @@ function backToSearch() {
     }
     if (sec) {
         sec.classList.remove('results-mode');
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        chbScroll(sec, { block: 'start' });
     }
 }
 // Open the cottage with the chosen dates + party pre-filled, ready to send.
@@ -15616,7 +15921,7 @@ function startBooking(key, ci, co) {
     const target =
         document.getElementById('enq-date-trigger') || document.getElementById('enq-name');
     if (target)
-        setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 160);
+        setTimeout(() => chbScroll(target, { block: 'center' }), 160);
 }
 // One-tap "Book again" from a past stay: open that cottage and start a fresh
 // enquiry (the guest picks new dates; their saved details prefill as usual).
@@ -15639,7 +15944,7 @@ function refreshDateTrigger() {
     const display = document.getElementById('enq-date-display');
     if (!trigger || !display) return;
     if (ci && co) {
-        display.innerText = `${dpPretty(ci)}  →  ${dpPretty(co)}`;
+        display.innerText = `${dpSpoken(ci)} → ${dpSpokenEnd(co)}`;
         trigger.classList.add('has-dates');
     } else {
         display.innerText = 'Select your stay dates';
@@ -15700,8 +16005,8 @@ function guestSummary(adults, children) {
     adults = Number(adults) || 0;
     children = Number(children) || 0;
     const parts = [];
-    parts.push(`${adults} Adult${adults === 1 ? '' : 's'}`);
-    if (children > 0) parts.push(`${children} Child${children === 1 ? '' : 'ren'}`);
+    parts.push(`${adults} adult${adults === 1 ? '' : 's'}`);
+    if (children > 0) parts.push(`${children} child${children === 1 ? '' : 'ren'}`);
     return parts.join(', ');
 }
 
@@ -16185,7 +16490,7 @@ function openProperty(propKey) {
     document.getElementById('prop-title').innerText = c.title;
     document.getElementById('prop-desc').innerText = c.desc;
     const subEl = document.getElementById('prop-subtitle');
-    if (subEl) subEl.innerText = propSubtitleDefault[propKey] || '';
+    if (subEl) subEl.innerText = chbBindSeps(propSubtitleDefault[propKey] || '');
 
     // Dynamic price heading (couple rate from Settings & Fees)
     updatePropPriceHeading();
@@ -16201,6 +16506,15 @@ function openProperty(propKey) {
     // Safety & property list (editable per cottage)
     activePropSafety = Array.isArray(c.safety) ? c.safety.slice() : DEFAULT_SAFETY.slice();
     renderSafety(propKey);
+
+    // THE COTTAGE'S OWN Q&A GETS A DOOR. openFaqModal's only openers were the My
+    // Stays booking cards, so a guest CHOOSING a cottage could not reach its
+    // parking/wifi/dogs answers from the page they were choosing on — CLAUDE.md
+    // said this button was on the cottage page and it was not. Same composer as
+    // My Stays, so there is one button and one modal; it returns '' when the
+    // cottage has no answers, and .things-door:empty then paints nothing.
+    const faqDoor = document.getElementById('prop-faq-door');
+    if (faqDoor) faqDoor.innerHTML = faqBlockHtml(propKey);
 
     // Point this cottage's elements at its namespaced content keys
     // (data-edit-* is the rendering path applyContentOverrides reads).
@@ -16408,7 +16722,7 @@ function enqAvailSync(state) {
         if (state === 'free' || state === 'taken') {
             cap.style.display = '';
             cap.className = 'enq-cap ' + (state === 'taken' ? 'warn' : 'ok');
-            cap.textContent = state === 'taken' ? '⚠ dates taken' : '✓ available';
+            cap.textContent = state === 'taken' ? '⚠ Dates taken' : '✓ Looks free';
         } else cap.style.display = 'none';
     }
     const wait = document.getElementById('enq-wait-row');
@@ -16472,8 +16786,13 @@ function enqFirstProblem(propKey) {
     const adults = Math.max(1, parseInt(val('enq-adults'), 10) || 0);
     const children = Math.max(0, parseInt(val('enq-children'), 10) || 0);
     const message = val('enq-message');
-    if (!name || !checkIn || !checkOut)
-        return { msg: 'Please fill in your name and both dates.', focus: !name ? 'enq-name' : 'enq-date-trigger' };
+    // TWO RUNGS, NOT ONE. "Please fill in your name and both dates" was returned
+    // whenever ANY of the three was missing — so a guest who had chosen their dates
+    // and left the name blank was told the dates were missing while the trigger
+    // above read "Wed 9 Sept → 12 Sept". A refusal that names a field the guest has
+    // already filled reads as the app not having noticed them.
+    if (!name) return { msg: 'Please tell us your name.', focus: 'enq-name' };
+    if (!checkIn || !checkOut) return { msg: 'Please choose your dates.', focus: 'enq-date-trigger' };
     if (!address) return { msg: 'Please enter your UK address.', focus: 'enq-address' };
     // We must be able to reply: an email or a phone number is required, and a
     // typed email has to look like one (the server re-checks both).
@@ -16497,7 +16816,7 @@ function enqFirstProblem(propKey) {
         return { msg: 'Please confirm you will not be bringing a dog before sending your enquiry.' };
     const termsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-terms'));
     if (!termsBox || !termsBox.checked)
-        return { msg: 'Please read and accept the Booking Terms & Conditions before sending your enquiry.' };
+        return { msg: 'Please read and accept the booking terms & conditions before sending your enquiry.' };
     // Last look at the availability data we hold before posting — a tab that
     // sat open while someone else booked gets a clear message here instead of
     // a server rejection (the server re-checks authoritatively either way).
@@ -16522,6 +16841,14 @@ function enqLiveSync() {
         dotEl.classList.toggle('done', !prob);
         dotEl.classList.toggle('todo', !!prob);
     }
+    // THE ALERT IS THE ANSWER TO A TAP; THIS LINE IS THE PREDICTION — so the alert
+    // may never outlive the state it answered. It was set at Send and never cleared
+    // by anything but another Send, so typing the missing name left "Please tell us
+    // your name" standing in red while this line had already moved on to the
+    // address: two sentences about one form, contradicting each other. Anything the
+    // freshly computed ladder no longer says is stale, and stale goes.
+    const alertEl = document.getElementById('enq-msg-details');
+    if (alertEl && alertEl.textContent && alertEl.textContent !== (prob ? prob.msg : '')) setEnqMsg('details', '');
     if (prob) {
         el.textContent = prob.msg;
         return;
@@ -16620,7 +16947,12 @@ function updateEnquiryPrice() {
 
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
-        box.innerHTML = `<p style="color: var(--text-light); font-size:var(--fs-body); text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size:var(--fs-sub);">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+        // THE FROM-PRICE IS SAID ONCE. The heading directly above this well already
+        // reads "From £130.00 / night" with "per couple" under it, and the well
+        // restated both 170px later — so an empty step 1 stated one price twice and
+        // the second copy was the one carrying the deposit, which is the only fact
+        // here the heading does NOT have. Left-aligned like everything else in the card.
+        box.innerHTML = `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: left; margin: 0;">Refundable deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</p>`;
         enqAvailSync(null);
         try {
             enqReactSync(false, adults, children);
@@ -16651,10 +16983,10 @@ function updateEnquiryPrice() {
     } catch (e) {}
     const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
-                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
-                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
+                <div class="price-row total" style="border-top:none;padding-top:0;"><span>Estimated total</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">includes fees</span></span></div>
+                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
                 ${sched}
-                <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
+                <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: left; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
         updateBookBar();
@@ -16841,9 +17173,27 @@ async function submitEnquiry(propKey) {
     if (prob) {
         setEnqMsg('details', prob.msg);
         if (prob.focus) {
-            const f = document.getElementById(prob.focus);
+            let f = document.getElementById(prob.focus);
+            // A REFUSAL MUST POINT AT A CONTROL THE GUEST CAN REACH. The date
+            // trigger lives on STEP ONE, so naming it from step two focused a
+            // display:none element — which does nothing at all, silently, leaving
+            // the guest marked at whatever they last touched. Take them back to
+            // the step that owns the control and carry the sentence with them.
+            // SCOPED TO A STEP-ONE CONTROL ON PURPOSE, and the scope is the STEP
+            // rather than the id, so a future control moved onto step one is
+            // covered without being named here. Every other rung points at a
+            // field on step two, where the guest already is when Send is tapped —
+            // so widening this to "any invisible target" would only ever fire in
+            // a state no guest can reach (a harness calling submitEnquiry while
+            // step one is showing), and there it would move the sentence to a
+            // different element for no one's benefit.
+            if (f && !f.getClientRects().length && f.closest('#enquire-step-review')) {
+                try { enquireBack(); } catch (e) {}
+                setEnqMsg('review', prob.msg);
+                f = document.getElementById(prob.focus);
+            }
             // NUDGE: the message named the field in words and never pointed at it.
-            if (f) { f.focus(); chbNudge(f); }
+            if (f && f.getClientRects().length) { f.focus(); chbNudge(f); }
         }
         // Stale-tab clash: refresh what we hold so the picker can show why
         // (the server re-checks authoritatively either way).
@@ -16938,7 +17288,7 @@ async function submitEnquiry(propKey) {
                 const pName = (propertyMeta[pk] || {}).name || pk || '';
                 const pb = priceBreakdown(pk, adults, children, checkIn, checkOut);
                 const ppl = adults + children;
-                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpPretty(checkIn))} → ${escapeHtml(dpPretty(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
+                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpSpoken(checkIn))} → ${escapeHtml(dpSpokenEnd(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
                 sum.style.display = '';
             } catch (e) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
@@ -16992,17 +17342,18 @@ async function submitEnquiry(propKey) {
             am.textContent = '';
             am.classList.remove('show');
         }
+        // THE SENT MOMENT LEADS WITH THE TICK. The optional password field used to be
+        // focused 80ms in, with no preventScroll — which scrolled the sheet 111px and
+        // cut the progress row under the grabber, so the screen that exists to say
+        // "sent" opened on an OPTIONAL account form. setEnqStep(3) already focuses
+        // #enq-h-sent (preventScroll), which is what announces the change; the field
+        // is still cleared, and it is one tab away.
         if (!exists) {
             const pw = document.getElementById('enq-acct-password');
-            if (pw) {
-                pw.value = '';
-                setTimeout(() => {
-                    try {
-                        pw.focus();
-                    } catch (e) {}
-                }, 80);
-            }
+            if (pw) pw.value = '';
         }
+        const sheet = document.querySelector('#enquire-modal .modal-box');
+        if (sheet) sheet.scrollTop = 0;
         return;
     }
 
@@ -17184,25 +17535,54 @@ function refreshInboxBadge() {
     if (badge) {
         badge.innerText = n;
         badge.classList.toggle('zero', n === 0);
+        // UNSEEN IS NOT WAITING, AND THE WORDS SAY WHICH: the Inbox counts
+        // enquiries nobody has opened (Mail's own sidebar badge), Today counts
+        // what needs the owner. Two honest numbers — but a bare "2" beside a
+        // bare "8" reads as a disagreement, so this one names itself.
+        badge.setAttribute('aria-label', n + ' unseen');
+        badge.setAttribute('title', n + ' unseen');
     }
     // Inbox folder-switch chip (comms dashboard) — same pending count.
     const folderChip = document.getElementById('ifold-count-enq');
     if (folderChip) folderChip.textContent = n > 0 ? n : '';
+    // A BADGE INSIDE A LABELLED BUTTON IS NEVER ANNOUNCED: the dock buttons
+    // carry an explicit aria-label, so their contents are not traversed for the
+    // accessible name — a bare aria-label on the pip itself (a span with no
+    // role) buys nothing. The count goes in the BUTTON's name, and the pip
+    // keeps a title for the sighted hover.
+    const pipName = (el, count, word) => {
+        if (!el) return;
+        el.title = count + ' ' + word;
+        const btn = el.parentElement;
+        const base = btn && btn.getAttribute('data-label');
+        if (btn && base) btn.setAttribute('aria-label', count > 0 ? `${base}, ${count} ${word}` : base);
+    };
     // Dock Inbox pip.
     const dock = document.getElementById('dock-badge-inbox');
     if (dock) {
         dock.textContent = n;
         dock.style.display = n > 0 ? '' : 'none';
+        pipName(dock, n, 'unseen');
         dockBadgePop(dock, n);
     }
-    // The Today pip shows the same pending-enquiries count — keep it in step here
-    // too so it can't lag behind the Inbox pip (this runs from far more places than
-    // refreshOwnerHomeBadges does).
+    // THE TODAY PIP COUNTS DUTIES, NOT ENQUIRIES — one fact, one number. It read
+    // unseenEnquiries() while the Needs-you strip 90px below it and the rail's
+    // Today row both read chbDuties(): "2" on the icon over "Needs you 8", and 8
+    // at 1440 for the same owner. ONE WRITER, guarded on __ADMIN_LOADED (the
+    // facade shape the chbFrameSync() call below uses) rather than moved into
+    // renderNeedsYou, which enquirySeen() does not call and whose adjacency to
+    // setAppBadgeCount test-webpush.php scans.
+    let todayN = n;
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbDuties === 'function') todayN = (w.chbDuties() || []).length;
+    } catch (e) {}
     const today = document.getElementById('dock-badge-enquiries');
     if (today) {
-        today.textContent = n;
-        today.style.display = n > 0 ? 'flex' : 'none';
-        dockBadgePop(today, n);
+        today.textContent = todayN;
+        today.style.display = todayN > 0 ? 'flex' : 'none';
+        pipName(today, todayN, 'needing you');
+        dockBadgePop(today, todayN);
     }
     // The rail's Inbox count is this number said in its own slot — refresh it
     // wherever the pips refresh, so the two can never disagree.
@@ -17210,11 +17590,10 @@ function refreshInboxBadge() {
         const w = /** @type {any} */ (window);
         if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
     } catch (e) {}
-    // Pending enquiries is the FALLBACK count, used only until the back office is
-    // loaded. Once it is, admin.js sets the badge from chbDuties() — the real
-    // "needs you" number, which also counts balances to chase, deposits to return
-    // and waiting chats. Guarded on __ADMIN_LOADED (the sanctioned facade signal)
-    // rather than reaching for an admin global from here.
+    // Pending enquiries is the FALLBACK count for the HOME SCREEN icon, used only
+    // until the back office is loaded. Once it is, renderNeedsYou() sets the app
+    // badge from chbDuties() — the real "needs you" number, which also counts
+    // balances to chase, deposits to return and waiting chats.
     if (!(/** @type {any} */ (window).__ADMIN_LOADED)) setAppBadgeCount(n);
 }
 
@@ -17256,10 +17635,18 @@ function decodeEntities(str) {
 // ===================================================================
 function openModal() {
     document.getElementById('edit-modal').classList.add('open');
-    // Land the owner ready to type (guest name is the first blank on an add).
+    // THE FORM OPENS AT ITS TOP. Focusing the name field scrolled it into view
+    // — measured scrollTop 337 at open — so the STAY (cottage + dates, what this
+    // form leads with) was already off screen, and on a phone the keyboard
+    // covered the rest: the rule the guest enquiry form already records. Kept
+    // only where the pointer is fine, with preventScroll and a reset.
+    const sc = document.querySelector('#edit-modal .modal-scroll');
+    if (sc) sc.scrollTop = 0;
     setTimeout(() => {
-        const nm = document.getElementById('modal-name');
-        if (nm && !nm.value) nm.focus();
+        const nm = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-name'));
+        const fine = typeof matchMedia === 'function' && matchMedia('(hover: hover) and (pointer: fine)').matches;
+        if (nm && !nm.value && fine) nm.focus({ preventScroll: true });
+        if (sc) sc.scrollTop = 0;
     }, 120);
 }
 function closeModal() {
@@ -17563,7 +17950,7 @@ function populateBookingPropertySelect(selectedKey) {
         typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     if (selectedKey && selectedKey !== '__new__' && !keys.includes(selectedKey))
         keys.unshift(selectedKey);
-    const newOpt = '<option value="__new__">➕ New property…</option>';
+    const newOpt = '<option value="__new__">New cottage…</option>';
     if (!keys.length) {
         // rates not loaded — keep the static fallback cottages, just ensure the
         // "New property…" option is present.
@@ -18031,7 +18418,7 @@ function openEditBooking(bookingId) {
     // stays auditable via the hub's change history either way. Non-past bookings
     // open synchronously (cmdkPrefillEditDates relies on that).
     if (typeof hasCheckedOut === 'function' && hasCheckedOut(b)) {
-        glassConfirm('This stay is finished — it’s a record now (invoices and history point at it). Edit anyway?').then((okGo) => {
+        glassConfirm('This stay is finished — it’s a record now (invoices and history point at it). Edit anyway?', 'Edit it anyway').then((okGo) => {
             if (okGo) openEditBookingNow(bookingId);
         });
         return;
@@ -18050,7 +18437,7 @@ function openEditBookingNow(bookingId) {
     // edits — money is managed on the Payments card from then on. Hide them.
     const ps = typeof paymentSummary === 'function' ? paymentSummary(loc.propKey, b) : null;
     const fullyPaid = !!(ps && ps.fullyPaid);
-    document.getElementById('modal-title').innerText = arrived ? 'Edit Booking' : 'Edit / Move Booking';
+    document.getElementById('modal-title').innerText = arrived ? 'Edit booking' : 'Edit or move booking';
     document.getElementById('modal-mode').value = 'booking';
     document.getElementById('modal-record-id').value = b.id;
     setModalFields({
@@ -18136,7 +18523,7 @@ function togglePaymentField(show) {
     if (show) togglePaymentDetails();
     // Relabel the notes field
     const notesLabel = document.getElementById('modal-notes').previousElementSibling;
-    if (notesLabel) notesLabel.innerText = show ? 'Staff Notes' : 'Guest Message';
+    if (notesLabel) notesLabel.innerText = show ? 'Staff notes' : 'Guest message';
 }
 
 // Show the inline amount/date/method fields when a payment status is chosen
@@ -18198,8 +18585,9 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
     if (res && res.email_warn) {
         if (res.suggest) {
             const useIt = await glassConfirm(
-                res.message +
-                    `\n\nDid you mean ${res.suggest}?\n\nOK = use ${res.suggest}\nCancel = keep ${payload.email}`,
+                res.message + `\n\nDid you mean ${res.suggest}?`,
+                `Use ${res.suggest}`,
+                { cancelLabel: `Keep ${payload.email}` },
             );
             if (useIt) {
                 payload.email = res.suggest; // corrected address re-validates cleanly
@@ -18207,20 +18595,20 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
                 extra.override_email = true; // keep as typed, proceed
             }
         } else {
-            if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?'))) return null;
+            if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?', 'Save it anyway'))) return null;
             extra.override_email = true;
         }
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
     // Occupancy (party over the property's normal limit) — deliberate confirm.
     if (res && res.occupancy_warn) {
-        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?'))) return null;
+        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?', 'Save it anyway'))) return null;
         extra.override_occupancy = true;
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
     // Date clash.
     if (res && res.clash) {
-        if (!(await glassConfirm(res.message + '\n\n' + clashPrompt))) return null;
+        if (!(await glassConfirm(res.message + '\n\n' + clashPrompt, 'Save it anyway'))) return null;
         extra.override_clash = true;
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
@@ -18276,7 +18664,7 @@ async function saveModal() {
     if (!propKey) {
         const nm = cur.newName;
         if (!nm) {
-            showErr('Choose a property, or pick “New property…” and type a name.');
+            showErr('Choose a cottage, or pick “New cottage…” and type a name.');
             return;
         }
         __customBooking = { name: nm, setup: null };
@@ -18474,6 +18862,7 @@ async function saveModal() {
                     payment !== 'paid' &&
                     (await glassConfirm(
                         `Email ${payload.email} a secure card link for the deposit now?`,
+                        'Send the link',
                     ))
                 ) {
                     try {
@@ -18508,7 +18897,7 @@ async function deleteBooking(bookingId) {
         );
         return;
     }
-    if (!(await glassConfirm('Delete this booking permanently?'))) return;
+    if (!(await glassConfirm('Delete this booking permanently?', 'Delete the booking', { danger: true }))) return;
     try {
         await apiPost('bookings.php', { action: 'delete', id: b.dbId });
         await loadData();
@@ -18714,6 +19103,11 @@ function openExperienceSuggest() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const photo = /** @type {HTMLInputElement|null} */ (document.getElementById('exp-s-photo'));
+    if (photo) {
+        photo.value = '';
+        filePickSync(photo);
+    }
     const msg = document.getElementById('exp-s-msg');
     if (msg) msg.style.display = 'none';
     const m = document.getElementById('exp-suggest-modal');
@@ -18740,7 +19134,9 @@ async function submitExperienceSuggestion() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.style.display = 'block';
         }
     };
@@ -18789,12 +19185,37 @@ async function submitExperienceSuggestion() {
 function chbReducedMotion() {
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
 }
+// SCROLL — reduced motion reaches the JS scrolls too. The CSS killswitch sets
+// `scroll-behavior: auto`, and that property cannot touch a `behavior: 'smooth'`
+// passed as an ARGUMENT: measured with the preference on, `nav('view-backoffice')`
+// from a scrolled hub read scrollY 359 at 60ms and 0 at 660ms — a full glide —
+// while every CSS animation on the same page was at 0.01ms. Twenty-four call
+// sites went through this one helper so the preference is read in ONE place.
+//   chbScroll(el, {block:'center'})            → el.scrollIntoView
+//   chbScroll(window, {top: 0})                → window.scrollTo
+//   chbScroll(host, {left: x})                 → host.scrollTo
+function chbScroll(target, opts) {
+    if (!target) return;
+    const o = Object.assign({}, opts || {}, { behavior: chbReducedMotion() ? 'auto' : 'smooth' });
+    try {
+        // scrollTo takes an absolute position (top/left); scrollIntoView takes an
+        // alignment (block/inline). Which one is meant is decided by the KEYS, so a
+        // caller never has to say, and window is always the former.
+        if (target === window || o.top !== undefined || o.left !== undefined) target.scrollTo(o);
+        else target.scrollIntoView(o);
+    } catch (e) {}
+}
 // PRESS — a constant 4px of depth. A fixed scale moves a 324px button ten times
 // further than a 38px arrow (measured 16.2px against 1.5px), so the scale is
 // computed from the control's width on the way DOWN and read by the :active rule
 // as --sc. One delegated listener, one style write per tap.
 function chbPressDepth(e) {
-    const t = e.target && e.target.closest && e.target.closest('button, [data-act], a.btn-sm, .card, .hs-field, .flex-opt, .dp-day, .back-link, .gb2-payline, header nav a');
+    // `[role="button"]` names the AFFORDANCE rather than four more classes: it is
+    // the gallery slide, the photo-grid cell and the guest photo — divs that open
+    // the lightbox and had no depth written for them. Small, checked blast radius
+    // (the only other holder is .back-link, which already presses). `a.bhub-icbtn`
+    // is the hub sticky's tel:/mailto: pair, which are anchors rather than buttons.
+    const t = e.target && e.target.closest && e.target.closest('button, [data-act], [role="button"], a.btn-sm, a.bhub-icbtn, .card, .hs-field, .flex-opt, .dp-day, .back-link, .gb2-payline, header nav a');
     if (!t) return;
     const w = t.offsetWidth || 0;
     if (w > 0) t.style.setProperty('--sc', String(Math.max(0.88, 1 - 4 / w).toFixed(3)));
@@ -18892,7 +19313,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'halofix1';
+    const BUILD = 'higmoney1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

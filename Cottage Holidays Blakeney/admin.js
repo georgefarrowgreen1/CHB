@@ -292,7 +292,7 @@ function cmdkRegistry() {
         { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
         { id: 'content', label: 'Home page & menu', sub: 'Hero, menu & site name', kw: 'website hero photo text logo homepage', sec: 'content' },
-        { id: 'experiences', label: 'Experiences', sub: 'Local things to do', kw: 'things to do activities', sec: 'experiences' },
+        { id: 'experiences', label: 'Things to do', sub: 'Local places and activities', kw: 'things to do activities experiences', sec: 'experiences' },
         { id: 'reviews', label: 'Reviews', sub: 'Approve & import', kw: 'google review testimonial star', sec: 'reviews' },
         { id: 'photos', label: 'Guest photos', sub: 'Approve shared photos', kw: 'photo wall gallery', sec: 'photos' },
         { id: 'chat-answers', label: 'Instant chat answers', sub: 'Auto-answers to chat chips', kw: 'automation faq quick reply bot', sec: 'chat-answers' },
@@ -386,7 +386,7 @@ function cmdkActions(q) {
         A('security', 'Change your sign-in', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint sign in login security change reset', /(change|reset|update|set).{0,14}(password|sign.?in|log ?in|passkey|security)/, toManage('security')),
         A('notify', 'Notifications', 'Phone alerts', 'notification push alert phone owner', /(edit|change|manage|set|turn).{0,12}notification|push alert/, toManage('notify')),
         A('newsletter', 'Newsletter & broadcasts', 'Mailing list', 'newsletter broadcast mailing subscribers marketing bulk', /(send|manage|edit|write).{0,12}(newsletter|broadcast|mailing)/, toManage('newsletter')),
-        A('experiences', 'Experiences', 'Local things to do', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
+        A('experiences', 'Things to do', 'Local places and activities', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
         A('reviews', 'Approve reviews', 'Moderate guest reviews', 'review testimonial star approve moderate import google', /(approve|moderate|manage|import).{0,10}review/, toManage('reviews')),
         A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
         A('guests', 'Guest accounts', 'Look up or reset a guest', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
@@ -1605,7 +1605,7 @@ function cmdkBookingActions(b, pk) {
                 return sent ? { say: `${bKind === 'balance' ? 'Balance' : 'Deposit'} request sent to ${chbSayFirst(b.name || 'the guest')}` } : null;
             },
         });
-        acts.push({ key: 'record', label: 'Record payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
+        acts.push({ key: 'record', label: 'Record a payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
         // …and the standing version of the same question, for when you would rather
         // be told than remember to look.
         const watchBal = chbWatchBalanceAction(b, pk, ps);
@@ -2211,7 +2211,7 @@ function openAccountPreview(bookingId, name) {
                          with "Customer account · " pushed the name into an ellipsis on a
                          phone — exactly the wrong half to lose.) -->
                     <span class="acct-preview-title">${name ? escapeHtml(name) : 'Customer account'}</span>
-                    <span class="acct-preview-note">Customer account · read-only, exactly what they see</span>
+                    <span class="acct-preview-note">Read-only · exactly what they see</span>
                 </div>
                 <button type="button" class="btn-sm btn-edit" data-act="closeAccountPreview" aria-label="Close preview">Close</button>
             </div>
@@ -3459,17 +3459,17 @@ function chbNlgSocial(q) {
         const tod = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
         const brief = chbNlgBrief();
         const briefCap = brief ? ' ' + brief.charAt(0).toUpperCase() + brief.slice(1) + '.' : '';
-        return { kind: 'greet', text: `${tod}!${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
+        return { kind: 'greet', text: `${tod}.${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
     }
     // Bare single adjectives (good/nice/cool/great/magic/right/sure/fine) are
     // dropped: they're common PREFIXES of guest names/places ("good"→Goodwin,
     // "magic"→a listing), so while typing them the social reply hijacked the Top
     // Hit above the real fuzzy match. Keep the unambiguous gratitude phrases.
     if (/^(thanks?|thank you|thankyou|cheers|ta|nice one|perfect|lovely|brilliant|thx|excellent|amazing|spot on|thats great|thats brilliant)$/.test(s)) {
-        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
+        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome.", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
     }
     if (/^(bye|goodbye|see you|see ya|thats all|that is all|nothing else|nothing more|done|thats it|im done|no thanks|no thank you)$/.test(s)) {
-        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me.", 'Any time you need me.']) };
+        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio.', "I'm here whenever you need me.", 'Any time you need me.']) };
     }
     if (/^(ok|okay|kk|righto|got it|understood|alright|no worries|no problem)$/.test(s)) {
         return { kind: 'ack', text: nlgPick(s, ['👍', 'Right.', 'Whenever you\'re ready.', 'Just say the word.']) };
@@ -4142,7 +4142,7 @@ function chbAlmanac(q0) {
             if (next) {
                 const dt = new Date(next[0] + 'T00:00:00');
                 const days = Math.round((dt - new Date(today + 'T00:00:00')) / 864e5);
-                return row(`The next bank holiday is ${next[1]} — ${dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${days > 0 ? `, ${days} days away` : ' — today!'}.`, 'England & Wales');
+                return row(`The next bank holiday is ${next[1]} — ${dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${days > 0 ? `, ${days} days away` : ' — today'}.`, 'England & Wales');
             }
         }
         const yr = (q.match(/\b(20\d\d)\b/) || [null, today.slice(0, 4)])[1];
@@ -5262,7 +5262,7 @@ function cmdkIntent(q) {
         const autoOk = typeof __nyCronQuiet === 'undefined' ? true : !__nyCronQuiet;
         const head = {
             type: autoOk ? 'answer' : 'figure', id: 'sdsr',
-            label: autoOk && !ny ? 'All systems operational' : 'System status',
+            label: autoOk && !ny ? 'Everything’s running' : 'System status',
             sub: `${autoOk ? 'Automation running' : 'Automation looks stopped'} · ${ny ? ny + ' thing' + (ny === 1 ? '' : 's') + ' need you' : 'nothing needs you'}`,
             run: toMng('diagnostics'),
         };
@@ -5569,7 +5569,7 @@ function cmdkIntent(q) {
         const out = [head];
         if (m.rev) out.push({ type: 'review', id: 'mod-rev', label: `${m.rev} review${m.rev === 1 ? '' : 's'} to approve`, sub: 'Manage · Reviews', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('reviews')); } });
         if (m.ph) out.push({ type: 'review', id: 'mod-ph', label: `${m.ph} photo${m.ph === 1 ? '' : 's'} to approve`, sub: 'Manage · Guest photos', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('photos')); } });
-        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Experiences', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); } });
+        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Things to do', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); } });
         return out;
     }
     return null;
@@ -5600,7 +5600,7 @@ function helpTopics() {
             related: ['take-payment', 'block-dates'] },
         { id: 'take-payment', title: 'Take a payment or request one', cat: 'Money',
             kw: 'take payment charge card request deposit balance money collect pay invoice link',
-            steps: ['Open the booking from Today or Bookings.', 'On the banner at the top of the booking, tap “Request the balance by card” to email a secure link — or “Record payment” for one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
+            steps: ['Open the booking from Today or Bookings.', 'On the banner at the top of the booking, tap “Request the balance by card” to email a secure link — or “Record a payment” for one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
             doIt: { label: 'Bookings to chase', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
             showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
             related: ['chase-balance', 'deposit-explained'] },
@@ -5670,7 +5670,7 @@ function helpTopics() {
             related: ['edit-photos', 'edit-welcome'] },
         { id: 'add-cottage', title: 'Add a new cottage', cat: 'Cottages',
             kw: 'add new cottage accommodation property create another listing place',
-            steps: ['Open Cottages and use “Add accommodation”.', 'Give it a name and a couple rate — it generates the page; then fill in photos, text and rules.'],
+            steps: ['Open Cottages and use “Add a cottage”.', 'Give it a name and a couple rate — it generates the page; then fill in photos, text and rules.'],
             doIt: { label: 'Open Cottages', run: sec('accom') },
             related: ['hide-cottage'] },
         { id: 'hide-cottage', title: 'Hide a cottage from the website', cat: 'Cottages',
@@ -5738,7 +5738,7 @@ function helpTopics() {
             doIt: { label: 'Open Notifications', run: sec('notify') } },
         { id: 'record-payment', title: 'Record a payment I took another way', cat: 'Money',
             kw: 'record manual payment cash bank transfer cheque took offline mark paid add money received',
-            steps: ['Open the booking.', 'In the Payments section tap “Record payment” and enter the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
+            steps: ['Open the booking.', 'In the Payments section tap “Record a payment” and enter the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
             doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
             related: ['take-payment'] },
         { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
@@ -5790,10 +5790,10 @@ function helpTopics() {
             kw: 'host profile bio about me photo owner introduction contact number your details',
             steps: ['Search “host bio” to edit it inline, or open Manage → Profile.', 'Update your introduction, photo and contact number.'],
             doIt: { label: 'Open Profile', run: sec('host') } },
-        { id: 'experiences', title: 'Edit things-to-do / experiences', cat: 'Marketing',
+        { id: 'experiences', title: 'Edit things to do', cat: 'Marketing',
             kw: 'experiences things to do activities local attractions seal trips walks add edit guide',
-            steps: ['Open Manage → Experiences.', 'Add or edit the local things-to-do shown on the Experiences page.'],
-            doIt: { label: 'Open Experiences', run: sec('experiences') } },
+            steps: ['Open Manage → Things to do.', 'Add or edit the local places and activities shown on your Things to do page.'],
+            doIt: { label: 'Open things to do', run: sec('experiences') } },
         { id: 'reset-guest', title: 'Reset a guest’s login', cat: 'Guests',
             kw: 'guest account reset password login look up find user cant sign in help customer',
             steps: ['Open Manage → Guests.', 'Find the guest and reset their access — they can also use the “email me a link” option themselves.'],
@@ -6008,7 +6008,7 @@ let __coachTarget = null;
 function coachMark(sel, text, opts) {
     const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
     if (!el) { if (opts && typeof opts.fallback === 'function') opts.fallback(); return; }
-    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+    try { chbScroll(el, { block: 'center' }); } catch (e) {}
     setTimeout(() => coachPaint(el, text), 240);
 }
 function coachPaint(el, text) {
@@ -7473,7 +7473,7 @@ function cmdkServerItem(x) {
 // render asynchronously, so poll briefly for the target element before giving up.
 function cmdkFlash(el) {
     if (!el || !el.scrollIntoView) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    chbScroll(el, { block: 'center' });
     el.classList.add('cmdk-reveal');
     setTimeout(() => el.classList.remove('cmdk-reveal'), 2200);
 }
@@ -7891,8 +7891,8 @@ function cmdkContentMatches(ql) {
         out.push({
             type: 'content',
             id: 'exp-' + (x.id != null ? x.id : normNo(x.title)),
-            label: x.title || 'Experience',
-            sub: 'Experiences · ' + (desc.length > 64 ? desc.slice(0, 63) + '…' : desc || 'things to do'),
+            label: x.title || 'Something to do',
+            sub: 'Things to do · ' + (desc.length > 64 ? desc.slice(0, 63) + '…' : desc || 'things to do'),
             run: () => { closeCmdK(); if (typeof nav === 'function') nav('view-experiences'); },
         });
     });
@@ -8046,7 +8046,7 @@ async function cmdkFieldBack() {
     const inp = document.getElementById('cmdk-editor-field');
     if (inp && inp.value !== __cmdkFieldOrig) {
         let ok = true;
-        try { ok = await glassConfirm('Discard your unsaved changes?'); } catch (e) { ok = true; }
+        try { ok = await glassConfirm('Discard your unsaved changes?', 'Discard the changes', { danger: true }); } catch (e) { ok = true; }
         if (!ok) { try { inp.focus(); } catch (e) {} return; }
     }
     __cmdkField = null;
@@ -8599,13 +8599,42 @@ function cmdkDetailHtml() {
     // NB propName is a LOCAL in other functions, not a global — same trap the
     // business-pulse composer documents. Read the meta map directly.
     if (pk) bits.push(escapeHtml((propertyMeta[pk] || {}).name || pk));
-    if (b.checkIn) bits.push(escapeHtml(fmtDate(b.checkIn) + (b.checkOut ? ' → ' + fmtDate(b.checkOut) : '')));
+    // THE DATES ARE ONE UNIT. "16/09/2026 → 19/09/2026" broke across two lines in
+    // a 228px pane, the arrow ending line one — so the house's own compact form
+    // (fmtStayRange) inside a nowrap span, with the nights beside it, which is
+    // the fact the two dates were being read FOR.
+    if (b.checkIn && b.checkOut) {
+        const n = nightsBetween(b.checkIn, b.checkOut) || 0;
+        bits.push(`<span class="bhub-nowrap">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))}</span>`);
+        if (n) bits.push(escapeHtml(n + (n === 1 ? ' night' : ' nights')));
+    } else if (b.checkIn) {
+        bits.push(`<span class="bhub-nowrap">${escapeHtml(fmtDate(b.checkIn))}</span>`);
+    }
     let money = '';
+    // THE PANE STATES THE NEXT ACTION. Its body was "Actions for this booking are
+    // under the row." — a sentence about the interface, in the one place a
+    // selected record has to say what it needs. The hub already derives this
+    // (hubAskKind / hubAskAmount / bookingPlanDueDate), so the pane quotes THAT
+    // rather than deriving a second answer.
+    let next = '';
     try {
         const ps = bookingDue(pk, b);
         money = ps.fullyPaid
             ? `<span class="cmdk-dt-pill is-ok">Paid in full</span>`
             : `<span class="cmdk-dt-pill is-due">${escapeHtml(gbp(ps.balance))} still due</span>`;
+        if (ps.fullyPaid) {
+            next = 'Paid in full ✓';
+        } else {
+            const rental = paymentSummary(pk, b);
+            const past = (b.checkOut || '') <= todayDashed();
+            const kind = hubAskKind(ps, past, b, rental);
+            const amt = hubAskAmount(b, rental, ps, kind);
+            const due = kind === 'balance' ? bookingPlanDueDate(b) : '';
+            next = (kind === 'balance' ? 'Balance ' : 'Deposit ') + gbp(amt > 0.005 ? amt : ps.balance)
+                + (due ? ' due by ' + fmtDate(due) : ' due');
+        }
+        const party = (b.adults || 0) + (b.children || 0);
+        if (party > 0) next += ' · ' + party + (party === 1 ? ' guest' : ' guests');
     } catch (e) {}
     // chbGuestIntel returns {stays, ordinal, nights, revenue, favName, lastStay,
     // mentions} — composed here rather than assumed, and null for a first-timer
@@ -8627,7 +8656,7 @@ function cmdkDetailHtml() {
         ${bits.length ? `<p class="cmdk-dt-meta">${bits.join(' · ')}</p>` : ''}
         ${money ? `<p class="cmdk-dt-pills">${money}</p>` : ''}
         ${intel ? `<p class="cmdk-dt-intel">${intel}</p>` : ''}
-        <p class="cmdk-dt-hint">Actions for this booking are under the row.</p>
+        ${next ? `<p class="cmdk-dt-hint">${escapeHtml(next)}</p>` : ''}
     </aside>`;
 }
 const CMDK_THREAD_MAX = 3;
@@ -8657,7 +8686,13 @@ function cmdkThreadHtml() {
         </div>`).join('')}</div>`;
 }
 function cmdkHeroFigure(label) {
-    const esc = escapeHtml(String(label || ''));
+    // NO BREAK AT A HARD HYPHEN. "Priya's your only check-in today." at the hero's
+    // 22px wraps AT the hyphen on a phone: "check-" ends line one and "in" opens
+    // line two. U+2011 (non-breaking hyphen) is applied to the ESCAPED OUTPUT only,
+    // so `__cmdkResults` data is untouched and every golden/search-test regex that
+    // matches on `check-in` still matches. Same shape waits in every chbSay
+    // sentence carrying check-in / check-out / changeover-day.
+    const esc = escapeHtml(String(label || '')).replace(/(check|changeover)-(in|out|day)\b/gi, '$1‑$2');
     // First money amount, else a leading count ("3 guests arrive today"). Not global:
     // exactly one figure carries the answer, and marking every number is confetti.
     // MONEY takes the house serif (serif = money, the payline's mark); a COUNT
@@ -8673,6 +8708,14 @@ function cmdkHeroHtml(it, i) {
                 <span class="cmdk-hero-main">
                     <span class="cmdk-hero-label">${cmdkHeroFigure(it.label)}</span>
                     ${it.sub ? `<span class="cmdk-hero-sub" title="${escapeHtml(String(it.sub))}">${escapeHtml(String(it.sub))}</span>` : ''}
+                    ${/* THE ANSWER, not just its title. A generated how-to carries its
+                          flowing paragraph on `nlgBody` — the one thing the query asked
+                          for — and cmdkRowHtml has always rendered it. A how-to is
+                          ALWAYS the hero, so the moment the hero existed the steps
+                          stopped appearing on screen entirely: "How to take a payment
+                          or request one / Money · 3 steps" and nothing else. Same line
+                          the row uses; the sub stays the caption. */ ''}
+                    ${it.nlgBody ? `<span class="cmdk-nlg-body">${escapeHtml(String(it.nlgBody))}</span>` : ''}
                 </span>
             </button>` + cmdkRowExtrasHtml(it, i);
 }
@@ -8851,7 +8894,7 @@ function cmdkDeepCta() {
 const CMDK_DEEP_ORDER = ['booking', 'enquiry', 'guest', 'message', 'email', 'payment', 'review', 'activity', 'expense', 'waitlist', 'subscriber', 'experience'];
 // Deep search names each SOURCE precisely (the quick palette's cmdkSection groups
 // several types under one heading, which is too coarse for "search everything").
-const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Experiences' };
+const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Things to do' };
 const cmdkDeepLabel = (t) => CMDK_DEEP_LABELS[t] || t;
 // The recency window for deep results ('' = all time; else an ISO floor).
 let __cmdkDeepPeriod = 'all';
@@ -9399,7 +9442,7 @@ function cmdkPickCottage(sec) {
     const rows = keys
         .map((k) => {
             const m = propertyMeta[k] || {};
-            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:var(--fs-body);color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:13px;padding:14px 16px;margin:0 0 8px;cursor:pointer;">
+            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:var(--fs-body);color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:14px 16px;margin:0 0 8px;cursor:pointer;">
                         <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${escapeHtml(m.accent || '#c6885e')};"></span>
                         <span style="flex:1;">${escapeHtml(m.name || k)}</span>
                         <svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5;"><path d="M9 6l6 6-6 6"/></svg>
@@ -10120,15 +10163,31 @@ function inboxVerdicts() {
         if (el) el.textContent = text;
     };
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
-    // Enquiries — the waiting queue itself.
+    // Enquiries — the waiting queue itself. …UNLESS THE DRAWER IS OPEN: the
+    // fold label renames to "Declined enquiries" and the list beneath it is
+    // declined, so leaving "⚠ 3 waiting" and a WAITING enquirer's name above it
+    // described a list that was not on screen. The verdict names its own list,
+    // the rule the h2 already follows.
     const enqs = Array.isArray(enquiries) ? enquiries : [];
-    fig('iv-sum-enquiries', enqs.length ? 'warn' : 'ok', enqs.length ? `${enqs.length} waiting` : '0 waiting');
-    // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
-    const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
     const nDecl = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
-    sub('iv-sub-enquiries', newest
-        ? `${newest.name || 'Guest'} · ${newest.received ? relTime(newest.received) : 'new'}`
-        : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
+    if (__inboxTab === 'declined') {
+        // Muted, and no warning triangle: a decline is a DECISION, not a fault.
+        fig('iv-sum-enquiries', 'unk', nDecl === 1 ? '1 declined' : `${nDecl} declined`);
+        const dNew = (Array.isArray(__declinedEnq) ? __declinedEnq : []).slice()
+            .sort((a, z) => String(z.declinedAt || '').localeCompare(String(a.declinedAt || '')))[0];
+        sub('iv-sub-enquiries', __declinedEnq === null
+            ? 'looking for declined enquiries…'
+            : dNew
+              ? `${dNew.name || 'Guest'} · declined ${dNew.declinedAt ? relTime(dNew.declinedAt) : 'recently'}`
+              : 'anything you turn down is kept here');
+    } else {
+        fig('iv-sum-enquiries', enqs.length ? 'warn' : 'ok', enqs.length ? `${enqs.length} waiting` : '0 waiting');
+        // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
+        const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
+        sub('iv-sub-enquiries', newest
+            ? `${newest.name || 'Guest'} · ${newest.received ? relTime(newest.received) : 'new'}`
+            : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
+    }
     // Messages — unread count from the same chip loadAdminMessages writes.
     const msgN = chip('ifold-count-msg');
     fig('iv-sum-messages', msgN ? 'warn' : 'ok', msgN ? `${msgN} unread` : 'All read');
@@ -10162,7 +10221,7 @@ function inboxVerdicts() {
         const latest = (Array.isArray(__mbxMessages) ? __mbxMessages : []).find((m) => !m.seen);
         sub('iv-sub-email', latest
             ? `${(mbxSender(latest.fromRaw, latest.from).name || latest.from || '')} · ${latest.subject || ''}`.slice(0, 70)
-            : 'no unread customer mail');
+            : 'no unread guest mail');
     }
     // Exceptions — an enquiry that has waited past the amber flag doesn't hide
     // behind a fold; it is a red row with the reply actions under it. A clean
@@ -10178,10 +10237,20 @@ function inboxVerdicts() {
                       const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
                       est = e.priceOverride != null ? gbp(e.priceOverride) : pr && pr.total > 0 ? gbp(pr.total) : '';
                   } catch (err) {}
+                  // A CAPSULE IS A STATE, A SERIF FIGURE IS MONEY. "⚠ £370.80
+                  // stay" dressed the value of a stay as an alarm — the
+                  // triangle saying "warning" about a number. The capsule now
+                  // states what the row is FOR (the label above it already
+                  // carries how long they have waited) and the figure joins the
+                  // facts in the sub, where it reads as one. "asked N ago" went
+                  // with it: the label says "Waiting N days", so the sub was
+                  // saying the same thing again — and with the figure added it
+                  // ran past its two-line clamp at 360 (round eight's sweep
+                  // caught it the first time this shipped).
                   return bhubFoldGrp('iva' + i,
                       `Waiting ${enquiryAgeDays(e)} days — ${escapeHtml(e.name || 'Guest')}`,
-                      escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${e.received ? ' · asked ' + relTime(e.received) : ''}`),
-                      stCap('bad', est ? est + ' stay' : 'needs a reply'),
+                      escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${est ? ' · ' + est : ''}`),
+                      stCap('bad', 'Needs a reply'),
                       `${(e.message || '').trim() ? `<div class="bhub-mut" style="margin-bottom:4px;">&ldquo;${escapeHtml((e.message || '').trim().slice(0, 160))}&rdquo;</div>` : ''}
                        <div class="bhub-btn-row bhub-act-links">
                           <button class="bhub-actlink" ${chbAttrs('openEnquiryHub', String(e.id))}>Open the enquiry</button>
@@ -10228,7 +10297,7 @@ async function openBookings() {
     } catch (e) {}
     renderBookings();
     const ws = document.getElementById('bookings-workspace');
-    if (ws) ws.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (ws) chbScroll(ws, { block: 'start' });
 }
 // 'YYYY-MM-DD HH:MM:SS' → 'D Mon YYYY · HH:MM'.
 function fmtLogWhen(at) {
@@ -10542,9 +10611,12 @@ function bhubMenuToggle(ev) {
     const btn = ev.currentTarget;
     const menu = btn.parentElement.querySelector('.bhub-menu');
     if (!menu) return;
-    const wasOpen = menu.style.display !== 'none';
+    // A menu MID-EXIT counts as closed: the second of two fast taps must re-open
+    // it, not read the fading node as still open and swallow the tap.
+    const wasOpen = menu.style.display !== 'none' && !menu.classList.contains('bhub-menu-out');
     bhubMenuClose();
     if (!wasOpen) {
+        menu.classList.remove('bhub-menu-out');
         menu.style.display = 'flex';
         btn.setAttribute('aria-expanded', 'true');
         bhubMenuPlace(btn, menu);
@@ -10597,6 +10669,28 @@ function bhubMenuPlace(btn, menu) {
 function __bhubMenuEsc(e) {
     if (e.key === 'Escape') bhubMenuClose();
 }
+// THE MENU LEAVES THE WAY IT ARRIVED. `display: none` stays the switch every gate
+// and every caller reads, so it is set at the END of a 140ms exit rather than
+// replaced by a class. A RE-OPEN MID-EXIT WINS: bhubMenuToggle clears the class,
+// and the stale timer then finds it gone and does nothing — the same rule
+// chbCloseOverlay follows for the twenty-two overlays.
+function bhubMenuHide(m) {
+    if (!m || m.style.display === 'none') return;
+    const done = () => {
+        if (!m.classList.contains('bhub-menu-out')) return; // re-opened; not ours to hide
+        m.classList.remove('bhub-menu-out');
+        m.style.display = 'none';
+        // Drop the placement with it: an inline top/bottom/max-height left behind is a
+        // measurement of the window as it WAS, and the next open would inherit it.
+        m.style.top = '';
+        m.style.bottom = '';
+        m.style.maxHeight = '';
+    };
+    if (chbReducedMotion()) { m.classList.add('bhub-menu-out'); done(); return; }
+    m.classList.add('bhub-menu-out');
+    m.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 160); // belt: an animation that never starts must still close it
+}
 let __bhubMenuResize = null;
 function bhubMenuClose() {
     if (__bhubMenuResize) {
@@ -10613,12 +10707,7 @@ function bhubMenuClose() {
     document.removeEventListener('click', bhubMenuClose);
     document.querySelectorAll('.bhub-menu').forEach((el) => {
         const m = /** @type {HTMLElement} */ (el);
-        m.style.display = 'none';
-        // Drop the placement with it: an inline top/bottom/max-height left behind is a
-        // measurement of the window as it WAS, and the next open would inherit it.
-        m.style.top = '';
-        m.style.bottom = '';
-        m.style.maxHeight = '';
+        bhubMenuHide(m);
     });
     document
         .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
@@ -10739,7 +10828,7 @@ async function openBookingHub(bookingId, quiet) {
         // Money/Inbox) — bring the docked hub into view so the action visibly
         // lands somewhere. `quiet` = the dashboard's own auto-select, which
         // must never yank the owner down the page.
-        if (pane && !quiet) pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (pane && !quiet) chbScroll(pane, { block: 'nearest' });
     } else {
         const home = document.getElementById('view-booking-hub');
         if (content && home && content.parentElement !== home) home.appendChild(content);
@@ -10970,7 +11059,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
-    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
+    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, capKey?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
     let next = null;
     if (!gt.fullyPaid && !past) {
         const canCard = squareAdminEnabled && b.email;
@@ -10983,7 +11072,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                     : `Nothing received yet — ${gbp(askAmt)} due.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
-                btnShort: canCard ? 'Email a card link' : 'Record a payment',
+                btnShort: canCard ? 'Email a card link' : 'Record payment',
                 fig: askAmt,
                 money: true,
             };
@@ -10998,7 +11087,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                     : `${gbp(askAmt)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? (askKind === 'deposit' ? 'Request the rest by card' : 'Request the balance by card') : 'Record a payment',
-                btnShort: canCard ? 'Request by card' : 'Record a payment',
+                btnShort: canCard ? 'Request by card' : 'Record payment',
                 fig: askAmt,
                 money: true,
             };
@@ -11014,7 +11103,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             text: `${gbp(askAmt)} still owed from this finished stay.`,
             onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
-            btnShort: canCard ? 'Request by card' : 'Record a payment',
+            btnShort: canCard ? 'Request by card' : 'Record payment',
             fig: askAmt,
             money: true,
         };
@@ -11050,6 +11139,11 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
                 onclick: chbAttrs('returnDeposit', String(b.id)),
                 btn: 'Return the deposit',
+                // NAMES ITS OWN STAGE. capLabel only RENAMES — it leaves the
+                // index where the flow cursor left it, so a finished stay read
+                // "Next · 4 of 6 · Arrival info" over a sentence about the
+                // deposit. capKey moves the index too.
+                capKey: 'depositback',
                 // …AND KEEPING IT IS OFFERED HERE TOO. The hub is where both the duty
                 // and the Money overview route, and it offered only Return — so with
                 // damage, the owner's one action on this screen was to give back money
@@ -11062,6 +11156,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `Checkout is today — ${gbp(dh.held)} refundable damage deposit goes back once they've left.`,
                 onclick: chbAttrs('openBookingHub', String(b.id)),
                 btn: 'Review after checkout',
+                capKey: 'depositback',
             };
         }
     }
@@ -11079,6 +11174,9 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
         const key = askKind === 'deposit' ? 'deposit' : 'paid';
         const i = stages.findIndex((s) => s.key === key);
         if (i > -1) { capIdx = i; capLbl = key === 'deposit' ? 'Deposit' : 'Balance'; }
+    } else if (next && next.capKey) {
+        const i = stages.findIndex((s) => s.key === next.capKey);
+        if (i > -1) { capIdx = i; capLbl = capLabel(stages[i]); }
     } else if (next && next.capLabel) {
         capLbl = next.capLabel;
     }
@@ -11380,7 +11478,7 @@ async function gbSave(id) {
 async function gbRemove(id) {
     const b = findBookingById(id);
     if (!b || !b.guestRating) return;
-    if (!(await glassConfirm('Remove this rating from the guest book? Deleting really deletes it.'))) return;
+    if (!(await glassConfirm('Remove this rating from the guest book? Deleting really deletes it.', 'Remove the rating', { danger: true }))) return;
     try {
         await apiPost('bookings.php', { action: 'rate_guest', id: b.dbId, overall: 0 });
         b.guestRating = null;
@@ -11400,19 +11498,24 @@ function hubIntelOpen(i) {
 }
 function hubIntelCardHtml(intel) {
     if (!intel) return '';
+    // THE FOLD KEEPS ONLY WHAT THE ROW DOES NOT SAY. Its first line used to be
+    // "2nd stay · £1,080.00 lifetime · 7 nights all-time" directly under a
+    // summary reading the first two of those word for word.
     const bits = [];
-    if (intel.ordinal) bits.push(`<strong>${escapeHtml(intel.ordinal)}</strong>`);
-    if (intel.stays >= 2) bits.push(`${gbp(intel.revenue)} lifetime`, `${intel.nights} night${intel.nights === 1 ? '' : 's'} all-time`);
+    if (intel.stays >= 2) bits.push(`${intel.nights} night${intel.nights === 1 ? '' : 's'} all-time`);
     const line2 = [];
     if (intel.favName) line2.push(`Usually books ${escapeHtml(intel.favName)}`);
     if (intel.lastStay) line2.push(`last stayed ${escapeHtml(intel.lastStay)}`);
-    // A disclosure group like its siblings — the summary row carries the one
-    // fact worth a glance (which visit this is, what they're worth), the
-    // detail + history mentions fold underneath.
-    const sum = intel.ordinal
+    // A disclosure group like its siblings — the one fact worth a glance
+    // (which visit this is, what they're worth) rides the row's SUB, the
+    // second-line slot every other group uses. As a right-rail SUMMARY it
+    // squeezed "Knows your guest" onto two lines at 390 (110px, flex 0 1 auto)
+    // and made the row 92px where its neighbours are 88 — a label wrapping
+    // beside a one-line value, to say something the fold then repeated.
+    const sub = intel.ordinal
         ? escapeHtml(intel.ordinal) + (intel.stays >= 2 ? ' · ' + gbp(intel.revenue) + ' lifetime' : '')
         : 'in your records';
-    return bhubFoldGrp('intel', 'Knows your guest', '', `<span class="bhub-sum-val">${sum}</span>`, `
+    return bhubFoldGrp('intel', 'Knows your guest', sub, '', `
             ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
             ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
             ${gbSummaryHtml(intel.gb)}
@@ -11473,7 +11576,7 @@ function renderBookingHub() {
 
     // ---- Payments block (built first — the header template embeds it) ----
     const agreedNote = b.agreedPrice
-        ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
+        ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · agreed ' + fmtDate(b.agreedPrice.agreedOn) : ''} — locked at the rates in effect when booked.</div>`
         : '';
     // A custom price is ONE line (priceIsCustom, app.js — the shared decision):
     // with a price_override the snapshot's per-night lines cannot reach the agreed
@@ -11600,7 +11703,7 @@ function renderBookingHub() {
                 ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
                     ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
-                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
+                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
                       story. Shown only once money has actually been taken and
@@ -11627,9 +11730,9 @@ function renderBookingHub() {
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
                          destructive action stays a deliberate two-tap instead
                          of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="${arrived ? 'Edit this booking' : 'Edit, move or cancel this booking'}" title="${arrived ? 'Edit' : 'Edit / Move / Cancel'}">⋯</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="${arrived ? 'Edit this booking' : 'Edit, move or cancel this booking'}" title="${arrived ? 'Edit' : 'Edit, move or cancel'}">⋯</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit or move'}</button>
                         <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
                         <button role="menuitem" ${chbAttrs('shareStayDetails', String(b.id))}>Share stay details</button>
                         ${
@@ -11714,7 +11817,7 @@ function renderBookingHub() {
                         }
                         <button class="bhub-actlink" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
                     </div>`
-        : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>';
+        : '<div class="bhub-mut">No guest email on file — add one via Edit or move to send anything.</div>';
     const emailsCard = bhubFoldGrp('emails', 'Emails', '', emailsSum, emailsFold);
 
     // ---- Guest card (contact + notes + their other stays) ----
@@ -11734,7 +11837,7 @@ function renderBookingHub() {
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${fmtDate(x.checkIn)} → ${fmtDate(x.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span><span class="bhub-mut">open →</span></button>`,
               )
               .join('')
         : '';
@@ -11754,7 +11857,7 @@ function renderBookingHub() {
             : '';
     const noContact =
         !b.email && !b.phone
-            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the Edit/Move/Cancel menu → Edit / Move.</div>`
+            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the ⋯ menu → Edit or move.</div>`
             : '';
     // ---- Guest details — the summary states the CONCLUSION: all in → "All
     // recorded ✓"; else "N not recorded", counting exactly what the rows
@@ -11906,7 +12009,12 @@ function hubActivityHtml(bundle, bookingId) {
         // history list beside "Booking created from enquiry". The capability
         // moved to the money surface — "Refund a card payment" in the Payments
         // block's action row (hubRefundPicker).
-        html: hubLedgerRowHtml(p, bookingId, true),
+        // A FEED SORTED BY TIME PRINTS THE TIME. The rows are ordered on
+        // `at: p.created_at` and the money row was the one line in the story
+        // with no when — so it read as floating between two dated events.
+        // Wrapped HERE only: hubLedgerRowHtml is shared with the Payments
+        // screen, where the ledger is the content rather than one strand.
+        html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(p.created_at || ''))}</span><span class="bhub-hist-what">${hubLedgerRowHtml(p, bookingId, true)}</span></div>`,
     }));
     const evs = (bundle.events || [])
         .filter((e) => e.action !== 'payment.card')
@@ -12037,7 +12145,7 @@ const SETTINGS_TITLES = {
     analytics: 'Analytics',
     waitlist: 'Waitlist',
     newsletter: 'Newsletter',
-    experiences: 'Experiences',
+    experiences: 'Things to do',
     content: 'Home page & menu',
     photos: 'Guest photos',
     sms: 'Text messages',
@@ -12127,7 +12235,7 @@ function settingsShowIndex() {
     if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
     try { chbFrameSync(); } catch (e) {} // Cottages row stands down with its section
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function settingsOpen(section) {
     // The email client moved from Manage into the Inbox (comms dashboard) —
@@ -12175,7 +12283,7 @@ function settingsOpen(section) {
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
     // nav() hook alone would miss this drill-in.
     try { chbFrameSync(); } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Populate one Manage section's live content. Extracted from settingsOpen so the
 // ⌘K Tier-2 sheet can render the SAME section into the palette (search-first
@@ -12960,7 +13068,7 @@ function acNewChat() {
 // The destructive one — this conversation only, said so, behind a confirm.
 async function acClearChat() {
     acSheetClose();
-    const okGo = await glassConfirm('Clear this conversation? It goes on every device — the others in the rail stay.');
+    const okGo = await glassConfirm('Clear this conversation? It goes on every device — the others in the rail stay.', 'Clear the conversation', { danger: true });
     if (!okGo) return;
     try { await apiPost('nightshift.php', { action: 'chat_clear', convo: __mcConvo || 0 }); } catch (e) {}
     __mcConvo = 0; // the server lands on the newest surviving conversation
@@ -13002,7 +13110,7 @@ async function acMemoryEdit() {
 async function acInstrEdit() {
     acSheetClose();
     const cur = (__mcState && __mcState.instr) || '';
-    const v = await glassPrompt('A standing instruction the model reads on every turn of this conversation — “two sentences, no lists”. Empty clears it.', cur);
+    const v = await glassPrompt('A standing instruction the model reads on every turn of this conversation — “two sentences, no lists”. Empty clears it.', cur, { title: 'Standing instruction', okLabel: 'Save the instruction' });
     if (v === null || v === undefined) return;
     try {
         const r = await apiPost('nightshift.php', { action: 'chat_instr', text: String(v) });
@@ -13435,7 +13543,7 @@ async function slAddFaq(q, prop, prefill) {
     if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
     const name = (propertyMeta[pk] || {}).name || pk;
     let a = '';
-    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || '')); } catch (e) { return; }
+    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || ''), { title: 'Answer this question', okLabel: 'Save the answer' }); } catch (e) { return; }
     a = (a || '').trim();
     if (!a) return; // cancelled or empty — leave the question in the list
     try {
@@ -13626,7 +13734,8 @@ async function renderPricingCoach() {
         .sort((a, b) => (a.week || '').localeCompare(b.week || ''));
     const radar = radarWeeks.length
         ? `
-                <div class="acr-cap">Demand radar · weeks guests searched for</div>
+                <div class="acr-cap">Demand radar</div>
+                <div class="acr-capsub">The weeks guests searched for.</div>
                 <div class="acr-well pc-well" style="max-width:640px;margin:0 0 16px;">
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">${radarWeeks
                         .map((w) => {
@@ -13876,7 +13985,7 @@ function smsPaintState(st) {
     if (st === null) return say('Checking…', 'var(--text-muted)');
     if (st === 'error') return say("Couldn't check whether texts are set up.", 'var(--warn-text)');
     if (st.from_config) {
-        return say('Texts are set up in config.php on the server. Those settings win, so this page is read-only.', 'var(--ok-text)');
+        return say('Texts are already set up on the server, and those settings win — so this page is read-only.', 'var(--ok-text)');
     }
     if (st.ready) {
         return say('Texts are on. Guests who tick the box get balance reminders and arrival info.', 'var(--ok-text)');
@@ -14006,7 +14115,7 @@ async function renderAccomList() {
     list.style.display = '';
     const emptyHint = Object.keys(propertyMeta).length
         ? ''
-        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add accommodation” below to create your first one.</p>';
+        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add a cottage” below to create your first one.</p>';
     list.innerHTML =
         emptyHint +
         `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
@@ -14048,7 +14157,7 @@ function accomAddRowHtml() {
     return `<div class="settings-group" style="margin-top:14px;">
                 <button class="settings-row" data-act="addAccommodationPrompt">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Add accommodation</span><span class="settings-row-sub">Create a new cottage, then fill in its details</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Add a cottage</span><span class="settings-row-sub">Create it, then fill in its details</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>`;
 }
@@ -14064,7 +14173,7 @@ function accomAddRowHtml() {
 // enquirable at once. glassForm resolves null on both.
 async function addAccommodationPrompt() {
     const vals = await glassForm(
-        'A new accommodation needs a name and a nightly price for a couple. You can change everything else afterwards.',
+        'A new cottage needs a name and a nightly price for a couple. You can change everything else afterwards.',
         [
             { id: 'name', label: 'Name', type: 'text', placeholder: 'e.g. Harbour Cottage' },
             { id: 'rate', label: 'Nightly price for a couple (£)', type: 'number', placeholder: '130' },
@@ -14117,6 +14226,7 @@ async function setAccommodationPrivate(k, makePrivate) {
     if (makePrivate) {
         const ok = await glassConfirm(
             `Make "${name}" private?\n\nIt will be removed from your public website, but its bookings, payments and history are kept and you can still take new bookings for it in the back office.`,
+            'Make it private',
         );
         if (!ok) return;
     }
@@ -14236,7 +14346,7 @@ const ACCOM_SECTIONS = [
     {
         id: 'local',
         label: 'Area & access',
-        sub: 'Dark-skies note (shown on Experiences) and this cottage’s accessibility',
+        sub: 'Dark-skies note (shown on Things to do) and this cottage’s accessibility',
         ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>',
     },
     {
@@ -14356,7 +14466,7 @@ function settingsOpenAccom(k) {
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
     settingsBackTarget = () => settingsOpen('accom');
     __settingsPath = { section: 'accom', prop: k };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Jump STRAIGHT to a cottage's section from anywhere (e.g. search) — reveals the
 // Cottages panel and hides the cottage list first, since settingsOpenAccomSec on
@@ -14394,18 +14504,35 @@ function acrOta(k, value) {
     saveLocalContent('ota-price-' + k, value);
     acrSync(k);
 }
+// A DERIVED FIGURE THAT CHANGED SAYS SO — and one that did not says nothing.
+// The stepper's own <input> is deliberately NOT animated: repainting a field
+// mid-edit is the bank-details trap, and there is no roll to give a value the
+// owner is typing over. What settles is the CONSEQUENCE acrSync rewrites — the
+// weekend figure, the last-minute line, the book-direct badge, the serif rate —
+// and only when the WORDS really moved (the capsule rule: a re-render that
+// produced the same sentence must not flash it).
+function acrSettle(el, write) {
+    if (!el) return;
+    const before = (el.textContent || '').trim();
+    write();
+    const after = (el.textContent || '').trim();
+    if (!before || before === after) return; // a first fill is an arrival, not a change
+    el.classList.remove('acr-settle');
+    void el.offsetWidth; // re-adding a class already present restarts nothing
+    el.classList.add('acr-settle');
+}
 function acrSync(k, quiet) {
     const r = propertyRates[k] || defaultRates[k] || {};
     const couple = parseFloat(r.coupleRate) || 0;
     const wk = document.getElementById('acr-wk-sub-' + k);
-    if (wk) {
+    acrSettle(wk, () => {
         const pct = parseFloat(r.weekendPct) || 0;
         wk.innerHTML = pct > 0
             ? `Fri &amp; Sat nights become <em>${gbp(couple * (1 + pct / 100)).replace('.00', '')}</em>`
             : 'Off — weekends price like any other night';
-    }
+    });
     const lm = document.getElementById('acr-lm-sub-' + k);
-    if (lm) {
+    acrSettle(lm, () => {
         const pct = parseFloat(r.lastminPct) || 0;
         const days = parseFloat(r.lastminDays) || 0;
         const on = pct > 0 && days > 0;
@@ -14413,9 +14540,9 @@ function acrSync(k, quiet) {
         lm.textContent = on
             ? `On — a stay arriving inside ${days} day${days === 1 ? '' : 's'} is ${gbp(couple * (1 - pct / 100)).replace('.00', '')}/night.`
             : 'Off — a hands-off way to fill near-term gaps. Both above 0 turns it on.';
-    }
+    });
     const badge = document.getElementById('acr-badge-' + k);
-    if (badge) {
+    acrSettle(badge, () => {
         // renderLocalGuide's own gate AND its own words, verbatim.
         const ota = parseFloat(siteContent['ota-price-' + k]);
         if (ota > 0 && couple > 0 && ota > couple) {
@@ -14425,9 +14552,9 @@ function acrSync(k, quiet) {
             badge.className = 'acr-badge is-none';
             badge.textContent = ota > 0 ? 'No badge — the Airbnb price isn\u2019t higher than yours' : 'No badge until a price is set';
         }
-    }
+    });
     const fig = document.getElementById('ac-fig-' + k);
-    if (fig && couple > 0) fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span>`;
+    if (fig && couple > 0) acrSettle(fig, () => { fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span>`; });
     if (!quiet) {
         const sv = document.getElementById('ac-saved-' + k);
         if (sv) {
@@ -14474,7 +14601,7 @@ function settingsOpenAccomSec(k, sec) {
     if (fold && fold.hidden) bhubFoldToggle(key);
     __settingsPath = { section: 'accom', prop: k, accomSec: sec };
     const grp = document.querySelector(`#accom-detail [data-grp="${key}"]`);
-    if (grp) setTimeout(() => { try { grp.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 60);
+    if (grp) setTimeout(() => { try { chbScroll(grp, { block: 'start' }); } catch (e) {} }, 60);
 }
 function renderCalendarList() {
     const list = document.getElementById('calendar-list');
@@ -14535,7 +14662,7 @@ async function settingsOpenCalendar(k) {
     settingsBackTarget = () => settingsOpen('calendar');
     __settingsPath = { section: 'calendar', prop: k };
     await loadCalendarSyncProp(k);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Settings: list of cottages → each drills into its policy picker.
 function cancelRowsHtml() {
@@ -14593,7 +14720,7 @@ function settingsOpenCancel(propKey) {
     if (title) title.textContent = propertyMeta[propKey] ? propertyMeta[propKey].name : propKey;
     settingsBackTarget = () => settingsOpen('cancel');
     __settingsPath = { section: 'cancel', prop: propKey };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
 // AWAIT IT, and only then claim it. The save was fire-and-forget while the mirror,
@@ -14656,12 +14783,12 @@ function calendarPropBoxHtml(key, label, data) {
         return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:var(--fs-sub);margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
     }).join('');
     return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
+                    <div class="acw-cap">Export</div><div class="acr-capsub">Paste this into each platform's calendar import.</div>
                     <div style="display:flex;gap:8px;margin-bottom:14px;">
                         <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:var(--fs-sub);flex:1;min-width:0;">
                         <button class="btn-sm btn-edit" ${chbAttrs('copyIcalExport', String(key))} style="flex-shrink:0;">Copy</button>
                     </div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
+                    <div class="acw-cap">Import</div><div class="acr-capsub">Paste the platform calendar links here.</div>
                     ${inputs}
                     <div style="margin-top:2px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
@@ -14833,7 +14960,7 @@ async function loadGuestList() {
 async function reinviteGuest(btn) {
     const email = btn.getAttribute('data-email') || '';
     if (!email) return;
-    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`))) return;
+    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`, 'Send the invitation'))) return;
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = 'Sending…';
@@ -14856,9 +14983,9 @@ async function resetGuestPassword(email) {
         return;
     }
     const next = await glassPrompt(
-        `Set a NEW password for ${email}\n\n(at least 4 characters — you'll tell the guest this):`,
+        `At least 4 characters — you'll tell the guest this.`,
         '',
-        { password: true },
+        { password: true, title: `New password for ${email}`, okLabel: 'Set the password' },
     );
     if (next === null) return;
     if (next.trim().length < 4) {
@@ -14868,7 +14995,7 @@ async function resetGuestPassword(email) {
     try {
         await apiPost('auth.php', { action: 'guest_reset_password', email, next });
         glassAlert(
-            `Password reset for ${email}.\n\nGive them the new password and ask them to log in and change it.`,
+            `Password reset for ${email}.\n\nGive them the new password and ask them to sign in and change it.`,
         );
     } catch (e) {
         glassAlert("Couldn't reset password: " + e.message);
@@ -14880,18 +15007,18 @@ async function changeAdminPassword() {
         tryAccessBackOffice();
         return;
     }
-    const current = await glassPrompt('Enter your CURRENT admin password:', '', { password: true });
+    const current = await glassPrompt('Enter your current admin password.', '', { password: true, title: 'Change your password', okLabel: 'Continue' });
     if (current === null) return;
-    const next = await glassPrompt('Enter a NEW password (at least 4 characters):', '', {
-        password: true,
+    const next = await glassPrompt('Enter a new password — at least 4 characters.', '', {
+        password: true, title: 'Change your password', okLabel: 'Continue',
     });
     if (next === null) return;
     if (next.trim().length < 4) {
         glassAlert('Password must be at least 4 characters.');
         return;
     }
-    const confirmNext = await glassPrompt('Re-enter the NEW password to confirm:', '', {
-        password: true,
+    const confirmNext = await glassPrompt('Re-enter the new password to confirm.', '', {
+        password: true, title: 'Change your password', okLabel: 'Change my password',
     });
     if (confirmNext === null) return;
     if (confirmNext !== next) {
@@ -14997,7 +15124,7 @@ function accountsShowIndex() {
     try {
         renderMoneyOverview();
     } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function accountsOpen(section) {
     adminHistPush('view-accounts', section);
@@ -15036,7 +15163,7 @@ function accountsOpen(section) {
             renderPricingCoach();
         }
     } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function accountsBack() {
     accountsShowIndex();
@@ -15151,7 +15278,7 @@ async function renderAccounts() {
         : '';
 
     const quarterly = `<div class="feed-list" style="padding:4px 16px;">
-                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
+                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:12px;font-size:var(--fs-caption);font-weight:600;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
                     ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
                 </div>`;
 
@@ -15172,14 +15299,18 @@ async function renderAccounts() {
                     ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
                 </div>`;
     content.innerHTML = `
-                <div class="accounts-stat headline" style="max-width:460px;">
+                <div class="accounts-stat headline" style="max-width:640px;">
                     <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
                     <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
                 </div>
                 <div style="margin-top:12px;">
                 ${bhubFoldGrp('incmath', 'The arithmetic', escapeHtml(`${gbp(total + keptIncome)} in · ${gbp(cardFees + expTotal)} costs`), '', mathFold)}
                 ${bhubFoldGrp('incq', 'Quarterly (Making Tax Digital)', 'the same year in UK tax quarters', '', quarterly)}
-                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · platform stays sit outside it`), '', scopeFold)}
+                ${/* "platform stays sit outside it" left "it" alone on line two of
+                      the two-line clamp — the hero-kicker orphan at caption size.
+                      Shortened rather than re-wrapped: a sub names WHAT, and the
+                      fold below it carries the sentence. */ ''}
+                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · no platform stays`), '', scopeFold)}
                 </div>
                 <div class="accounts-actions" style="margin-top:14px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
@@ -15622,7 +15753,7 @@ async function renderSweep(refetch) {
                 <div>${rows.map((r) => txRow(r, canMark)).join('')}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(total)}</span>
+                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(total)}</span>
                 </div>
                </div>`;
     // Fallback for an install with no payout data at all (Square off, or the cron
@@ -15675,7 +15806,7 @@ async function renderSweep(refetch) {
                   ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">${movedItems.length
                         ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
                         : `Type what the account holds below and I'll work it out.`}</p>`
-                  : `<div style="font-family:var(--font-display);font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
+                  : `<div class="sweep-fig" style="font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
                      <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">${hasBal
                         ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
                         : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}${movedItems.length ? `, and not counting ${gbp(P.moved)} you have already transferred` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
@@ -15686,8 +15817,8 @@ async function renderSweep(refetch) {
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
             </div>
             <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">${est
-                ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
-                : `There's no bank feed, so the balance is the one figure I can't work out for you.`}</p>
+                ? `Starting from the ${gbp(est.from)} you recorded on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
+                : `There's no bank feed, so the balance is the one figure this page cannot work out.`}</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
                 ${hasBal && short <= 0
                     ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
@@ -15768,7 +15899,7 @@ async function renderSweep(refetch) {
         ? ''
         : `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
-            <div style="font-family:var(--font-display);font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
+            <div class="sweep-fig" style="font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
             <div>${rows}</div>
            </div>`;
@@ -15825,7 +15956,7 @@ async function renderSweep(refetch) {
                 <div>${txFlat}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(T.movable)}</span>
+                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(T.movable)}</span>
                 </div>
                 <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
                </div>`
@@ -15836,7 +15967,7 @@ async function renderSweep(refetch) {
         alertHtml +
         confirmHtml +
         `<details class="sweep-detail"${__sweepWorkingsOpen ? ' open' : ''} style="max-width:620px;margin-top:14px;">
-            <summary style="cursor:pointer;padding:12px 2px;font-size:var(--fs-sub);color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
+            <summary>Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
          </details>` +
         `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:14px 0 0;max-width:620px;">
@@ -16046,7 +16177,7 @@ function renderExpenses() {
                   const items = rowsByYear[y];
                   const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                   return `<div style="margin-top:18px;">
-                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);font-weight:600;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
                     ${items
                         .map(
                             (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
@@ -16055,7 +16186,7 @@ function renderExpenses() {
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
                         ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <span style="display:flex;gap:2px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
+                        <span style="display:flex;gap:12px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
                       <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`,
@@ -16069,7 +16200,7 @@ function renderExpenses() {
     wrap.innerHTML = `
                 ${chart}
                 <details class="exp-add-details" id="exp-add-details">
-                  <summary class="exp-add-summary">＋ Add an expense</summary>
+                  <summary class="exp-add-summary">Add an expense</summary>
                   <div class="accounts-stat" style="max-width:680px;margin-top:10px;">
                     <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;align-items:flex-end;">
                         <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
@@ -16078,7 +16209,7 @@ function renderExpenses() {
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
                         <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sub);color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
-                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">Scan a photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <button class="btn-sm btn-edit exp-add-btn" data-act="addExpense">Add</button>
                         <button class="btn-sm exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button>
                     </div>
@@ -16117,7 +16248,7 @@ function editExpense(id) {
     const dt = document.getElementById('exp-add-details');
     if (dt) dt.open = true; // reveal the (collapsed) form so the edit is visible
     const form = document.querySelector('.exp-add-form');
-    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (form) chbScroll(form, { block: 'center' });
     const amt = document.getElementById('exp-amount');
     if (amt) amt.focus();
 }
@@ -16205,6 +16336,7 @@ async function repeatExpense(id) {
     if (
         !(await glassConfirm(
             `Add a copy of "${x.category}${x.description ? ' · ' + x.description : ''}" (${gbp(x.amount)}) dated ${nd}?`,
+            'Add the copy',
         ))
     )
         return;
@@ -16232,7 +16364,7 @@ async function repeatExpense(id) {
     }
 }
 async function deleteExpense(id) {
-    if (!(await glassConfirm('Remove this expense?'))) return;
+    if (!(await glassConfirm('Remove this expense?', 'Remove the expense', { danger: true }))) return;
     try {
         await apiPost('expenses.php', { action: 'delete', id });
         await loadExpenses();
@@ -16358,8 +16490,9 @@ async function returnDeposit(bookingId) {
         return;
     }
     const entered = await glassPrompt(
-        `Amount to return (£). Collected: ${gbp(dh.held)}. Enter less to retain some for damage:`,
+        `Collected ${gbp(dh.held)}. Enter less to retain some for damage.`,
         String(dh.held),
+        { title: `Return ${chbSayFirst(booking.name || 'the guest')}’s deposit`, okLabel: 'Continue' },
     );
     if (entered === null) return;
     const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
@@ -16370,13 +16503,14 @@ async function returnDeposit(bookingId) {
     let note = '';
     if (amount < dh.held - 0.001) {
         const r = await glassPrompt(
-            'Reason for retaining the rest (shown to the guest), e.g. "broken lamp":',
+            'Reason for retaining the rest (shown to the guest), e.g. "broken lamp".',
             '',
+            { title: 'Why some is being kept', okLabel: 'Continue' },
         );
         if (r === null) return;
         note = r.trim();
     }
-    if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)))
+    if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`, `Return ${gbp(amount)}`)))
         return;
     try {
         const r = await chbWithReauth('returning ' + gbp(amount), () =>
@@ -16424,24 +16558,40 @@ async function cancelBooking(bookingId) {
     const loc = findBookingLocation(bookingId);
     const propKey = loc ? loc.propKey : '21a';
     const ps = paymentSummary(propKey, booking);
-    const entered = await glassPrompt(
-        `Cancel this booking. Rental refund (£) to the guest — 0 for none. Received so far: ${gbp(ps.deposit)}. (Any refundable damage deposit is returned automatically — don't add it here.)`,
-        String(ps.deposit || 0),
+    // ONE DIALOG, not three. This was glassPrompt(refund) → glassPrompt(reason)
+    // → glassConfirm, so a 5-line paragraph was the only label a prefilled
+    // number field had, and the first pop-up's buttons read "Cancel / OK" under
+    // a message beginning "Cancel this booking" — where Cancel meant KEEP it.
+    // glassForm exists for exactly this ("so recording a payment isn't three
+    // pop-ups in a row"); both outcomes are named on their own buttons.
+    const vals = await glassForm(
+        'This frees the dates and emails the guest. The refundable damage deposit is returned automatically.',
+        [
+            {
+                id: 'refund',
+                label: 'Rental refund to the guest (£)',
+                type: 'number',
+                min: 0,
+                step: 0.01,
+                value: ps.deposit || 0,
+                hint: `Received so far ${gbp(ps.deposit)} — 0 for none. Don't add the damage deposit here.`,
+            },
+            { id: 'reason', label: 'Reason (optional, shown to the guest)', type: 'text' },
+        ],
+        {
+            title: `Cancel ${chbSayFirst(booking.name || 'the guest')}’s booking`,
+            okLabel: 'Cancel the booking',
+            cancelLabel: 'Keep the booking',
+            danger: true,
+        },
     );
-    if (entered === null) return;
-    const refund = Math.round((parseFloat(entered) || 0) * 100) / 100;
+    if (vals === null) return;
+    const refund = Math.round((parseFloat(vals.refund) || 0) * 100) / 100;
     if (refund < 0) {
         glassAlert('Refund cannot be negative.');
         return;
     }
-    const reason = await glassPrompt('Reason for cancellation (optional, shown to the guest):', '');
-    if (reason === null) return;
-    if (
-        !(await glassConfirm(
-            `Cancel ${booking.name}'s booking${refund > 0 ? ` and refund ${gbp(refund)}` : ''}? This frees the dates and emails the guest.`,
-        ))
-    )
-        return;
+    const reason = String(vals.reason || '');
     try {
         // Deterministic op id over the payload (the saveModal discipline): a hand
         // retry of the SAME cancellation is answered from the op ledger instead of
@@ -16673,7 +16823,10 @@ function renderMoneyOverview() {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         months.push({
             key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
-            short: d.toLocaleDateString('en-GB', { month: 'short' }),
+            // slice(0,3): en-GB's "short" month is FOUR letters for September
+            // ("Sept"), and the axis columns are equal-width flex tracks, so the
+            // one long label overflowed into its neighbour and painted "AugSept".
+            short: d.toLocaleDateString('en-GB', { month: 'short' }).slice(0, 3),
             received: 0,
         });
     }
@@ -16840,8 +16993,13 @@ function renderMoneyOverview() {
     const collectTotal = dueNowSum + laterSum;
     const kvDot = (cls) => `<span class="bhub-chip-dot ${cls}" aria-hidden="true"></span>`;
     const stage = (r) => (!(r.dg.paid > 0.005) ? 'first payment' : 'balance');
-    const bkRow = (r, valHtml) =>
-        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
+    // A ROW'S VALUE IS MONEY, AND ONLY MONEY. The date used to ride the value
+    // ("£660.00 · due 05/10/2026"), which took 204px of a 390px rail and left
+    // the guest's NAME — the thing you scan for — cut to "Richard Be…" in 95px.
+    // Name (two-line clamp) above its own quiet sub line; the figure on the
+    // right, nowrap, in a column that shrink-wraps to it.
+    const bkRow = (r, valHtml, subHtml) =>
+        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span>${subHtml ? `<span class="bhub-kv-sub">${subHtml}</span>` : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
 
     // The pulse line — money in this month, paced against last year to the
     // same point (the yoy derivation above).
@@ -16869,15 +17027,23 @@ function renderMoneyOverview() {
 
     // The five verdicts.
     const collectFold =
-        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate && r.dg.paid > 0.005 ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
-        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
+        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate && r.dg.paid > 0.005 ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
+        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
         `<div class="bhub-btn-row bhub-act-links">
             ${dueNowRows.filter((r) => !r.arranged && r.b.email && squareAdminEnabled).length >= 2 ? `<button class="bhub-actlink" data-act="moChaseDue">Chase everyone due (${dueNowRows.filter((r) => !r.arranged && r.b.email).length})</button>` : ''}
             <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button>
         </div>`;
+    // THE TWO "TO COLLECT" FIGURES RECONCILE IN WORDS. The day spine's sentence
+    // says what the WHOLE fleet owes (chbOpsParts) while this fold's figure is
+    // the QUEUE — the overdue sits above as an exception and is deliberately not
+    // folded in (a pinned, break-tested decision: "an EXCEPTION row in Needs
+    // attention, NOT a queue row"). So the two disagreed by exactly the overdue,
+    // 70px apart on one screen, with nothing saying why. The sub names the
+    // difference and points at the row that holds it.
+    const overdueSum = overdueRows.reduce((s, r) => s + r.dg.balance, 0);
     const collectGrp = collectTotal > 0.005
-        ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
-            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}`),
+        ? bhubFoldGrp('mocollect', 'To collect',
+            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}${overdueRows.length ? ` · ${gbp(overdueSum)} overdue above` : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
         : bhubFoldGrp('mocollect', 'To collect',
             // "Paid up" is a claim — with an overdue row above, the sub AND
@@ -16994,7 +17160,7 @@ function moAsyncFill() {
             if (P && P.known > 0 && Number(P.inBank) > 0) {
                 moveFig.innerHTML = `<span class="bhub-payline-fig">${gbp(Number(P.inBank))}</span>`;
                 const items = (P.items && P.items.inBank) || [];
-                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
+                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
             } else {
                 moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
                 if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
@@ -17015,7 +17181,7 @@ function moAsyncFill() {
                 // return" under a headline correctly reading £147.38, on the screen
                 // that tells the owner what to hand back. The sibling renderer on Move
                 // money out already prints it.net.
-                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
+                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
             } else if (backFig) {
                 backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';
@@ -17044,10 +17210,15 @@ function moAsyncFill() {
                 const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
                 const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
                 if (oldDays > 7) {
+                    // The sub is a nowrap right-rail caption beside a capsule —
+                    // measured at 390 it had 197px for 66 characters and painted
+                    // "…it should be by…". It names the FACT; the sentence that
+                    // explains it lives inside the fold, where it has the width.
                     holder.innerHTML = bhubFoldGrp('mounk', `Square hasn’t said`,
-                        `a ${oldDays}-day-old charge isn’t in the payout data — it should be by now`,
+                        `${oldDays}-day-old charge · not in the payout data`,
                         stCap('warn', gbp(total)),
-                        `${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}${it.paid_on ? ' · taken ' + fmtDate(String(it.paid_on).slice(0, 10)) : ''}</span></div>`).join('')}
+                        `<div class="bhub-mut" style="margin-bottom:6px;">Square has reported other payouts, so ${unk.length === 1 ? 'this charge' : 'these charges'} should have appeared by now.</div>
+                         ${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}${it.paid_on ? ' · taken ' + escapeHtml(fmtDate(String(it.paid_on).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('')}
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
                     const cap = document.getElementById('mo-attn-cap');
                     if (cap) cap.hidden = false;
@@ -17073,7 +17244,11 @@ function moAsyncFill() {
             }
             const latest = list[0];
             if (sum) sum.textContent = `${(latest.name || 'a guest').split(' ')[0]} · ${gbp(Math.abs(parseFloat(latest.amount)) || 0)}`;
-            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')} · ${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}</span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}${p.created_at ? ' · ' + fmtDate(String(p.created_at).slice(0, 10)) : ''}</span></div>`).join('');
+            // The NAME is the label and everything else is the sub: "Alexandrina
+            // Featherstonehaugh-Smythe · damages return" still ran past a two-line
+            // clamp at 360 (measured by the gate on its first run), and the name
+            // is the half you scan for.
+            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}${p.created_at ? ' · ' + escapeHtml(fmtDate(String(p.created_at).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}</span></div>`).join('');
             moLand(sum, 3);
             moLand(rowsEl, 3);
         })
@@ -17138,6 +17313,17 @@ function renderMoneyPanel() {
     // Find-rows, not action cards: the booking hub's Money card is the ONE
     // place a booking's money is handled (request/record/refund/invoice/
     // history all live there) — each row here just locates and opens it.
+    // THE MONEY FACTS SURVIVE THE RAIL. The row's sub is a two-line clamp (round
+    // eight) and the composed line still overran it: "5–12 Nov 2026 · £300.00 of
+    // £960.00 received · £50.00 deposit held" wanted 420px of 309, so the deposit
+    // — the LAST fact and the one nothing else on this screen states — was what
+    // fell off. Nothing here is derived twice: the year is dropped only when it is
+    // THIS year (the DD/MM rule governs comparable dates; this is a stay range in
+    // the house's own compact form), the pennies only when they are .00, and
+    // "received" goes because the chip directly above already says Part-paid.
+    const mpYear = ' ' + chbNow().getFullYear();
+    const mpRange = (ci, co) => { const s = fmtStayRange(ci, co); return s.endsWith(mpYear) ? s.slice(0, -mpYear.length) : s; };
+    const mpShort = (v) => gbp(v).replace(/\.00$/, '');
     const cards = rows
         .map(({ propKey, b, ps, gt }) => {
             const meta = propertyMeta[propKey] || { name: propKey };
@@ -17148,10 +17334,10 @@ function renderMoneyPanel() {
             const days = ci && t0 ? Math.round((ci - t0) / 86400000) : 99;
             const dueSoon = !ps.fullyPaid && days <= 7; // within a week, today, or already started
             const dueChip = dueSoon
-                ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + 'd'}</span>`
+                ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + (days === 1 ? ' day' : ' days')}</span>`
                 : '';
             const dh = damageHeld(propKey, b);
-            const depBit = dh.held > 0 ? ` · ${gbp(dh.held)} deposit held` : '';
+            const depBit = dh.held > 0 ? ` · ${mpShort(dh.held)} deposit held` : '';
             return `
                 <button type="button" class="bk-row glass-panel pay-${payClass}" data-bkid="${b.id}" ${chbAttrs('openBookingHub', String(b.id))}>
                     <span class="bk-row-body">
@@ -17161,7 +17347,7 @@ function renderMoneyPanel() {
                             ${dueChip}
                         </span>
                         <strong class="bk-row-name" title="${escapeHtml(b.name || 'Guest')}">${escapeHtml(b.name || 'Guest')}</strong>
-                        <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${gbp(gt.paid)} of ${gbp(gt.total)} received${depBit}</span>
+                        <span class="bk-row-dates">${mpRange(b.checkIn, b.checkOut)} · ${mpShort(gt.paid)} of ${mpShort(gt.total)}${depBit}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
                 </button>`;
@@ -17230,17 +17416,26 @@ async function renderMoneyFeed() {
                 (p.name || 'Guest') +
                 (deleted ? ' · deleted booking' : '') +
                 (note ? ' · ' + note : '');
-            // Status shows as a traffic-light DOT (green done / amber in-progress /
-            // red problem) — the word rides along as its hover + screen-reader label
-            // so the meaning is never colour-only.
+            // THE STATE IS SAID IN WORDS, AND THE FIGURE AGREES WITH IT. The status
+            // was a bare traffic-light DOT with the word only in a title/aria-label —
+            // unreachable on touch — while the AMOUNT was inked green for every
+            // charge whatever its status, so a FAILED £110.00 painted success-green
+            // beside a red dot. The house capsule carries the word; a failure takes
+            // danger ink and a pending charge goes muted, because green is a claim
+            // that the money arrived.
             const sMeta = paymentStatusMeta(p.kind, p.status);
+            const capTone = sMeta.level === 'ok' ? 'ok' : sMeta.level === 'bad' ? 'bad' : 'warn';
+            const amtInk =
+                sMeta.level === 'bad' ? 'var(--danger-text)'
+                    : sMeta.level === 'wait' ? 'var(--text-muted)'
+                        : isReturn ? 'var(--danger-text)' : 'var(--ok-text)';
             return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
                     <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
-                    <span class="feed-amt" style="${isReturn ? 'color:var(--danger-text);' : 'color:var(--ok-text);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
-                    <span class="feed-status" role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>
+                    <span class="feed-amt" style="color:${amtInk};"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
+                    <span class="feed-status">${stCap(capTone, escapeHtml(sMeta.label))}</span>
                 </div>`;
         })
         .join('');
@@ -17250,7 +17445,8 @@ async function renderMoneyFeed() {
     // ink stays the tokens' text variants — --ok/--danger are FILLS.
     const recon =
         grossIn > 0
-            ? `<div class="acr-cap">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
+            ? `<div class="acr-cap">Card reconciliation</div>
+               <div class="acr-capsub">Gross, fees and net across the card payments below.</div>
                <div class="acr-well mf-recon">
                     <div class="mf-line"><span>Gross</span><span class="acw-fig">${gbp(grossIn)}</span></div>
                     <div class="mf-line"><span>Square fees</span><span class="acw-fig" style="color:var(--danger-text);">− ${gbp(feeSum)}</span></div>
@@ -17313,12 +17509,14 @@ function renderMoneyForecast() {
         .map((m) => {
             const daysInMonth = m.end.getDate();
             const occ = Math.round((m.nights.size / (daysInMonth * propCount)) * 100);
-            return `<tr>
-                    <td>${escapeHtml(m.label)}</td>
-                    <td class="num">${gbp(m.revenue)}</td>
-                    <td class="num">${m.bookings}</td>
-                    <td class="num">${occ}%</td>
-                </tr>`;
+            // A ROW, NOT A TABLE COLUMN. The four-column <table> ran to 548px in a
+            // 362px box with `overflow-x: visible`, so at 390 the page simply CLIPPED
+            // Bookings and Occupancy — two of its four facts unreachable, with no
+            // scrollbar and nothing saying they were there. The same six figures also
+            // sat in the bar chart directly above it, which is the duplication that
+            // made the table look optional. The chart stays as the VISUAL; the rows
+            // are the FIGURES, and every one of the four facts is on screen at 360.
+            return `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(m.label)}</span><span class="bhub-kv-sub">${m.bookings} booking${m.bookings === 1 ? '' : 's'} · ${occ}% occupancy</span></span><span class="bhub-kv-val">${gbp(m.revenue)}</span></div>`;
         })
         .join('');
     const projTotal = months.reduce((s, m) => s + m.revenue, 0);
@@ -17330,16 +17528,15 @@ function renderMoneyForecast() {
         })),
         moneyShort,
     );
-    el.innerHTML = `<h3 class="accounts-section-title">Income forecast (next 6 months)</h3>
-                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
-                    <div class="label">Projected revenue by month</div>
-                    ${chart}
+    // The block wears the page's own anatomy — a fold group whose summary is the
+    // projected total — instead of a serif h3 above two competing cards.
+    el.innerHTML = bhubFoldGrp('incforecast', 'Income forecast', 'next 6 months',
+        `<span class="bhub-payline-fig">${gbp(projTotal)}</span>`,
+        `<div class="mo-card"><div class="mo-card-title">Projected revenue by month</div>${chart}</div>
+                <div class="bhub-kvs">${body}
+                    <div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label"><strong>Total projected</strong></span></span><span class="bhub-kv-val"><strong>${gbp(projTotal)}</strong></span></div>
                 </div>
-                <table class="accounts-table">
-                    <thead><tr><th>Month</th><th class="num">Projected revenue</th><th class="num">Bookings</th><th class="num">Occupancy</th></tr></thead>
-                    <tbody>${body}<tr style="font-weight:600;"><td>Total projected</td><td class="num">${gbp(projTotal)}</td><td class="num"></td><td class="num"></td></tr></tbody>
-                </table>
-                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`;
+                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`);
 }
 // Refresh after any payment change: re-render the money panel if we're on the
 // Money & income view, otherwise re-open the booking detail pop-up (calendar).
@@ -17628,7 +17825,7 @@ async function loadAdminPasskeys() {
             .map(
                 (
                     k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
                     <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
                 </div>`,
@@ -17639,7 +17836,7 @@ async function loadAdminPasskeys() {
     }
 }
 async function deleteAdminPasskey(id) {
-    if (!(await glassConfirm('Remove this passkey? You can still sign in with your password.')))
+    if (!(await glassConfirm('Remove this passkey? You can still sign in with your password.', 'Remove the passkey', { danger: true })))
         return;
     try {
         await apiPost('passkeys.php', { action: 'admin_delete', id });
@@ -17789,7 +17986,7 @@ async function enableOwnerPush() {
         }
         const key = await getVapidKey();
         if (!key) {
-            glassAlert('Push isn’t configured on the server yet (VAPID keys in config.php).');
+            glassAlert('Push notifications aren’t set up on the server yet.');
             return;
         }
         const reg = await registerServiceWorker();
@@ -17961,7 +18158,7 @@ async function addNotifyEmail(ev) {
 async function tryAccessBackOffice() {
     if (!isAuthenticated) {
         // First sign-in lands on the friendly owner home, not straight into the calendar.
-        openAdminLogin('Owner Login', 'Sign in to manage your cottages.', async () => {
+        openAdminLogin('Owner sign-in', 'Sign in to manage your cottages.', async () => {
             nav('view-backoffice');
             adminHistPush('view-backoffice');
             refreshOwnerHomeBadges();
@@ -17975,7 +18172,7 @@ async function tryAccessBackOffice() {
 async function openAdminLogin(title, sub, onSuccess) {
     adminLoginOnSuccess = onSuccess || null;
     const m = document.getElementById('admin-login-modal');
-    document.getElementById('admin-login-title').innerText = title || 'Owner Login';
+    document.getElementById('admin-login-title').innerText = title || 'Owner sign-in';
     document.getElementById('admin-login-sub').innerText = sub || '';
     document.getElementById('admin-login-user').value = '';
     document.getElementById('admin-login-pass').value = '';
@@ -18171,8 +18368,9 @@ async function recordPayment(bookingId) {
             value: booking.depositPaid > total + 0.001 ? 'yes' : 'no',
         });
     const vals = await glassForm(
-        `Record a payment from ${booking.name || 'the guest'}.\nRental total ${gbp(total)}${askDep ? ` + ${gbp(dmg)} refundable damages deposit` : ''} — enter the rental received so far.`,
+        `Rental total ${gbp(total)}${askDep ? ` + ${gbp(dmg)} refundable deposit` : ''}.`,
         fields,
+        { title: `Record a payment from ${chbSayFirst(booking.name || 'the guest')}`, okLabel: 'Record it' },
     );
     if (vals === null) return;
     let dep = Math.max(0, parseFloat(vals.amount) || 0);
@@ -18353,7 +18551,7 @@ function renderSquareSettings() {
     if (st)
         st.innerHTML = squareAdminEnabled
             ? '<span style="color:var(--ok-text);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
-            : '<span style="color:var(--warn-text);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
+            : '<span style="color:var(--warn-text);">●</span> Not set up — Square hasn’t been connected on the server yet, so card payments are off.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
@@ -18553,7 +18751,7 @@ function apFloorLadderRows(floor) {
 }
 function apFloorLadderHtml(floor) {
     const { rows, line } = apFloorLadderRows(floor);
-    let html = '<div style="font-size:var(--fs-micro);letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">What guests are offered, by time left</div>';
+    let html = '<div class="acw-cap">What guests are offered</div><div class="acr-capsub">By how long is left before they arrive.</div>';
     rows.forEach((r, i) => {
         if (i === line) html += `<div class="apfl-line"><span>Your floor · ${floor} months</span></div>`;
         html += `<div class="apfl-rung${r.dim ? ' is-dim' : ''}"><span class="apfl-lead">${r.lead}</span><span class="apfl-dots"></span><span class="apfl-offer">${r.offer}</span></div>`;
@@ -18992,6 +19190,7 @@ async function keepDeposit(bookingId) {
     if (
         !(await glassConfirm(
             'Keep the damage deposit (there was damage)? The guest will NOT be refunded. This is recorded as retained income.',
+            'Keep it',
         ))
     )
         return;
@@ -19013,6 +19212,7 @@ async function captureHold(bookingId) {
     if (
         !(await glassConfirm(
             'Capture the full damage hold? Use this only if there IS damage — it takes the held amount. (If the damage was less, capture then refund the difference.)',
+            'Capture the hold',
         ))
     )
         return;
@@ -19033,6 +19233,7 @@ async function releaseHold(bookingId) {
     if (
         !(await glassConfirm(
             "Release the damage hold? This frees the held funds on the guest's card.",
+            'Release the hold',
         ))
     )
         return;
@@ -20186,12 +20387,18 @@ function needsYouExpand() {
 // The frame (day spine + rail counts) rides every duty refresh — this function
 // is THE "duties changed" moment (a dozen call sites), and its sync call sits
 // before the early returns, or a strip that empties would leave stale chips.
-// The call is a single bare line ON PURPOSE: test-webpush's badge check scans
-// a 700-char window from this function's name to setAppBadgeCount, and a
+// refreshInboxBadge() rides beside it for the same reason: the Today dock pip
+// reads chbDuties() now (one fact, one number — it used to say "2 unseen
+// enquiries" 90px above "Needs you 8"), so the duties-changed moment is where
+// it has to be repainted.
+// BOTH calls are single bare lines ON PURPOSE: test-webpush's badge check scans
+// a 700-char window from this function's NAME to setAppBadgeCount, and a
 // five-line comment inside the window pushed it past — the CI-only failure
-// this comment is standing where it can't repeat.
+// this comment is standing where it can't repeat. Measured headroom is small;
+// put new prose HERE, above the declaration, never inside the body.
 function renderNeedsYou() {
     try { chbFrameSync(); } catch (e) {}
+    try { refreshInboxBadge(); } catch (e) {}
     const wrap = document.getElementById('needs-you');
     const list = document.getElementById('needs-you-list');
     if (!wrap || !list) return;
@@ -20199,10 +20406,7 @@ function renderNeedsYou() {
     try {
         items = needsYouItems();
     } catch (e) {}
-    // The Home Screen badge means "things needing you", not "unread enquiries" —
-    // this is the same list the strip renders, so the number on the icon and the
-    // number of rows on Today can never disagree. app.js owns the Badging API call
-    // and only sets its enquiries-based fallback before the bundle loads.
+    // The Home Screen icon counts THINGS NEEDING YOU, from this same list.
     try {
         setAppBadgeCount(items.length);
     } catch (e) {}
@@ -20574,7 +20778,12 @@ function chbFrameSync() {
     // exists there, names it exactly as it always did. There is no width at
     // which the place is missing, so a place here would be a second name for
     // a fact already on screen.
-    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties">${chips}${more}</span>`;
+    // THE INNER SPAN IS THE FOLD'S ONE CHILD. A 0fr grid collapses only the FIRST
+    // track (the .bhub-fold rule), so the chips cannot be direct children of the
+    // row that has to collapse. It is `display: contents` everywhere the row is
+    // not collapsing, which is why the phone's scrolling chip row and the default
+    // wrap are byte-for-byte what they were.
+    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties"><span class="spine-dutiesin">${chips}${more}</span></span>`;
     // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
     // and an unconditional innerHTML would destroy keyboard focus (and any
     // mid-press tap) on a chip every time data lands with nothing new to say.
@@ -20648,7 +20857,16 @@ function todayOpsLine() {
     // booking-row badge). The tuples carry those judgements; chbOpsParts owns
     // the words, shared with the offline day sheet.
     const { parts, owed } = chbOpsParts(chbDayTuples());
-    if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
+    // THE MONEY UNIT CARRIES ITS OWN SEPARATOR. As a plain member of the join,
+    // the "·" before the £ button sat at the END of line one and the button
+    // dropped alone to line two — measured at 390 on a Saturday: "…1 arrival ·"
+    // inked to 261 of a 362px rail, the button 121px wide, so it broke AFTER
+    // the separator. A nowrap span holding "· <button>" means the line can only
+    // break BEFORE the "·". textContent is unchanged, so every gate reading
+    // "£… to collect" still fires.
+    const owedHtml = owed > 0.005
+        ? '<span class="ops-unit">· <button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button></span>'
+        : '';
     // On rail screens Today opens the way every other screen now does — the
     // serif day sentence — so the GREETING joins this line there (CSS gives
     // it the spine's scale and hides the h1 above; below the rail this
@@ -20662,7 +20880,10 @@ function todayOpsLine() {
         try { greet = '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + ' — </span>'; } catch (e) {}
     }
     // innerHTML: every part is generated (counts + the owed button) — no user text.
-    const opsHtml = greet + escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    const opsHtml = greet + escapeHtml(date) +
+        (parts.length || owedHtml
+            ? (parts.length ? ' · ' + parts.join(' · ') : '') + (owedHtml ? ' ' + owedHtml : '')
+            : ' · all quiet today');
     // The guard checks the DOM's TRUTH, not just its own memory: initBackOffice
     // paints this node with the bare date the instant the page opens (before
     // data lands), so a memo-only guard believed itself up to date and left
@@ -21069,19 +21290,22 @@ function renderKeysafe() {
         const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
         // The verdict — and the sub tells the story: who's coming, and whose
         // code is on the dial.
+        // ONE CASE. Four of the seven capsules were lowercase ("rotate now",
+        // "rotate at changeover", "not recorded yet") against "✓ Code on the
+        // safe" — the same tier, on the same page, disagreeing about case.
         const cap = !rec.code
-            ? stCap('unk', 'not recorded yet')
+            ? stCap('unk', 'Not recorded yet')
             : !next
-              ? stCap('unk', 'no upcoming booking')
+              ? stCap('unk', 'No upcoming booking')
               : nextMine
                 ? stCap('ok', 'Code on the safe')
                 : due
                   ? d0.dep
-                    ? stCap('warn', 'rotate after ' + d0.dep.out)
-                    : stCap('bad', 'rotate now')
+                    ? stCap('warn', 'Rotate after ' + d0.dep.out)
+                    : stCap('bad', 'Rotate now')
                   : d0.state === 'inres'
-                    ? stCap('warn', 'rotate at changeover')
-                    : stCap('warn', 'new code needed');
+                    ? stCap('warn', 'Rotate at changeover')
+                    : stCap('warn', 'New code needed');
         // The sub tells the TIMED story: an in-residence guest names the day
         // the rotation becomes possible; an arrival names the day it's needed.
         const whenTxt = next
@@ -21100,8 +21324,13 @@ function renderKeysafe() {
             : rec.setAt
               ? e('last set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : ''))
               : 'rotate it once and the keeper takes over';
+        // ks-prose when there is NO CODE: the value is then a SENTENCE ("not
+        // recorded yet — rotate it once and the keeper takes over"), and a
+        // sentence right-aligned beside a two-line label is the exact shape the
+        // row below was already fixed for. With a code the value is a FIGURE and
+        // keeps the two-column row.
         const fold =
-            '<div class="ks-kv"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
+            '<div class="ks-kv' + (rec.code ? '' : ' ks-prose') + '"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
             + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span>'
                 : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
             + (next
@@ -21194,7 +21423,7 @@ async function keysafeRotate(pk) {
         next
             ? `${next.name || 'The next guest'} ${next.checkIn <= todayDashed() ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — they see this code on their booking page only after you confirm.`
             : 'No upcoming booking — the new code is recorded for the cottage.',
-        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
+        [{ id: 'code', label: 'New 4-digit code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
         { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
     );
     if (!vals) return; // backed out: nothing recorded, nothing shown to anyone
@@ -21238,7 +21467,7 @@ async function odsKeysafe(pk) {
                 ? `${next.name || 'A platform guest'} — share the code in the platform’s messages once it’s set; platform guests don’t see this site.`
                 : `${next.name || 'The next guest'} — their code goes live on their booking page when the signal returns, never before the safe is set.`
             : 'Recorded for the cottage; posts itself when the signal returns.'),
-        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
+        [{ id: 'code', label: 'New 4-digit code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
         { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
     );
     if (!vals) return;
@@ -21435,7 +21664,7 @@ function renderOfflineDaySheet() {
         + odsOpsLineHtml(s.rows || [], s.__live)
         // the action row sits where online's does — right under the ops line
         + '<div class="ods-btns" style="margin:4px 0 14px;">'
-        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>+ Save an enquiry</button>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Save an enquiry</button>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
         + '</div>'
         + odsDutiesHtml(s.rows || [])
@@ -22236,7 +22465,7 @@ async function openBlockDates(prefill) {
     // and here it is load-bearing: the guided walkthrough's one step says "tap
     // Block", and against the default "OK" that instruction named a button the
     // dialog did not have. ui-test-coach holds the two in step.
-    const vals = await glassForm('Block out dates', [
+    const vals = await glassForm('', [
         {
             id: 'prop',
             label: 'Cottage',
@@ -22256,7 +22485,7 @@ async function openBlockDates(prefill) {
             bothMsg: 'Pick the free-again morning too',
             hint: 'The second date is the checkout morning — the cottage is free again from then.',
         },
-    ], { okLabel: BLOCK_DATES_OK });
+    ], { title: 'Block out dates', okLabel: BLOCK_DATES_OK });
     if (vals === null) return;
     const key = (vals.prop || '').trim();
     const from = ((vals.range && vals.range.from) || '').trim();
@@ -22376,9 +22605,9 @@ function relTime(at) {
     const now = chbNow();
     const secs = (now - d) / 1000;
     if (secs < 60) return 'now';
-    if (secs < 3600) return Math.floor(secs / 60) + 'm';
+    if (secs < 3600) return Math.floor(secs / 60) + ' min';
     const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) return Math.floor(secs / 3600) + 'h';
+    if (sameDay) { const h = Math.floor(secs / 3600); return h + (h === 1 ? ' hour' : ' hours'); }
     const y = new Date(now);
     y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
@@ -22580,7 +22809,8 @@ function renderChatAnswersEditor() {
     const host = document.getElementById('chat-answers-editor');
     if (!host) return;
     host.innerHTML =
-        '<div class="acr-cap">The chat\u2019s quick-question chips — blank uses the default</div>' +
+        '<div class="acr-cap">Quick-question chips</div>' +
+        '<div class="acr-capsub">The chat\u2019s own chips \u2014 leave one blank to use the default.</div>' +
         '<div class="acr-well">' +
         CHAT_FAQ_ORDER.map((which) => {
             const f = CHAT_FAQ[which];
@@ -22611,10 +22841,11 @@ function renderChatAwayEditor() {
         return o;
     };
     host.innerHTML =
-        '<div class="acr-cap">Sent at most once every few hours — never right after you\u2019ve replied</div>' +
+        '<div class="acr-cap">Away reply</div>' +
+        '<div class="acr-capsub">Sent at most once every few hours \u2014 never right after you\u2019ve replied.</div>' +
         `<div class="acr-well">
             <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
-            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We\u2019re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
+            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
             <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
                 <span style="display:flex;gap:6px;align-items:center;">
                 <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
@@ -22820,7 +23051,8 @@ function accomSectionHtml(k, sec) {
             };
             const imgEl = document.querySelector('[data-edit-img="' + ck.img + '"]');
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
-            return `<div class="acr-cap">The tile guests tap — its detail-page photos &amp; text live in Photos and Text</div>
+            return `<div class="acr-cap">Home-page tile</div>
+                    <div class="acr-capsub">The tile guests tap. Its detail-page photos and text live in Photos and Text.</div>
                     <div class="acr-well">
                         <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
                             <span class="acr-lbl" style="flex:1;">Home-page photo</span><button class="btn-sm btn-edit acw-linkbtn" ${chbAttrs('contentEditImage', String(ck.img))}>Replace…</button></div>
@@ -22834,10 +23066,11 @@ function accomSectionHtml(k, sec) {
         }
         case 'photos': {
             const imgs = accomImages(k);
-            return `<div class="acr-cap">Gallery — the first photo is the main image</div>
+            return `<div class="acr-cap">Gallery</div>
+                    <div class="acr-capsub">The first photo is the main image.</div>
                     <div class="acr-well">
                         <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
-                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>Add a photo</button></div>
                     </div>`;
         }
         case 'amenities': {
@@ -22850,7 +23083,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-well">
                         <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add amenity</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>Add an amenity</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save amenities</button>
                             <span id="accom-am-msg-${k}" style="font-size:var(--fs-sub);"></span>
                         </div>
@@ -22924,7 +23157,8 @@ function accomSectionHtml(k, sec) {
                         <div class="acr-row"><span class="acr-lbl">Minimum nights</span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '-1')} aria-label="Minimum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-minNights" type="number" min="1" step="1" value="${r.minNights || 1}" ${chbChange('updateRuleField', String(k), 'minNights', CHB_VALUE)} aria-label="Minimum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '1')} aria-label="Minimum nights — more">+</button></span></div>
                         <div class="acr-row"><span class="acr-lbl">Maximum nights<small>0 = no limit</small></span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '-1')} aria-label="Maximum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-maxNights" type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)} aria-label="Maximum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '1')} aria-label="Maximum nights — more">+</button></span></div>
                     </div>
-                    <div class="acr-cap">Arrival days — none ticked = any day</div>
+                    <div class="acr-cap">Arrival days</div>
+                    <div class="acr-capsub">None ticked means guests may arrive any day.</div>
                     <div class="acr-well">
                         <div class="arrival-days acw-days">${[
                             'Sun',
@@ -22981,7 +23215,7 @@ function accomSectionHtml(k, sec) {
                             .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
                             .join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>Add a rule</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save house rules</button>
                         </div>
                     </div>
@@ -22989,13 +23223,14 @@ function accomSectionHtml(k, sec) {
         }
         case 'safety':
             return `
-                    <div class="acr-cap">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page</div>
+                    <div class="acr-cap">Safety notes</div>
+                    <div class="acr-capsub">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page.</div>
                     <div class="acr-well">
                         <div id="accom-safety-rows-${k}" class="acw-list">${accomSafetyList(k)
                             .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
                             .join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>＋ Add item</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>Add an item</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
                         </div>
                     </div>`;
@@ -23022,7 +23257,8 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         case 'arrival':
             return `
-                    <div class="acr-cap">Directions, key collection, wifi — private to booked guests</div>
+                    <div class="acr-cap">Arrival info</div>
+                    <div class="acr-capsub">Directions, key collection, wifi — private to booked guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
                         <small class="acw-tip">✓ Saves by itself — emailed before check-in, and unlocks on the guest&rsquo;s account at the cottage door (see Location)</small></div>
@@ -23037,14 +23273,16 @@ function accomSectionHtml(k, sec) {
             // burst pipe with no signal still finds the stopcock.
             return `
                     <label class="chb-switch-row"><span class="chb-switch"><input type="checkbox" id="ks-toggle-${k}" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}><span class="chb-switch-track" aria-hidden="true"></span></span><span>Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</span></label>
-                    <div class="acr-cap">For you only — never shown to guests</div>
+                    <div class="acr-cap">Private notes</div>
+                    <div class="acr-capsub">For you only — never shown to guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea>
                         <small class="acw-tip">✓ Saves by itself — carried in your phone&rsquo;s offline day sheet, readable at the door with no signal</small></div>
                     </div>`;
         case 'location':
             return `
-                    <div class="acr-cap">Address — shown to guests</div>
+                    <div class="acr-cap">Address</div>
+                    <div class="acr-capsub">Shown to guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="2" class="input-glass" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)} aria-label="Address">${escapeHtml(r.address || '')}</textarea></div>
                     </div>
@@ -23065,22 +23303,25 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         case 'local':
             return `
-                    <div class="acr-cap">Dark skies — shown on Experiences, site-wide</div>
+                    <div class="acr-cap">Dark skies</div>
+                    <div class="acr-capsub">Shown on Things to do, site-wide.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="3" class="input-glass" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)} aria-label="Dark skies note">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
                     </div>
-                    <div class="acr-cap">Accessibility — shown on the cottage page</div>
+                    <div class="acr-cap">Accessibility</div>
+                    <div class="acr-capsub">Shown on the cottage page.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="4" class="input-glass" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)} aria-label="Accessibility">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea>
                         <small class="acw-tip">Steps, parking distance, ground-floor sleeping, bathroom layout — both save by themselves</small></div>
                     </div>`;
         case 'faq':
             return `
-                    <div class="acr-cap">Instant answers — the &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script</div>
+                    <div class="acr-cap">Instant answers</div>
+                    <div class="acr-capsub">The &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script.</div>
                     <div class="acr-well">
                         <div id="faq-editor-${k}" class="acw-list">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>＋ Add question</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>Add a question</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
                         </div>
                     </div>`;
@@ -23089,11 +23330,12 @@ function accomSectionHtml(k, sec) {
                 ? adminPrivateContent['welcome-' + k]
                 : [];
             return `
-                    <div class="acr-cap">Private — only guests who&rsquo;ve booked this cottage see it</div>
+                    <div class="acr-cap">Welcome book</div>
+                    <div class="acr-capsub">Private — only guests who&rsquo;ve booked this cottage see it.</div>
                     <div class="acr-well">
                         <div id="welcome-editor-${k}" class="acw-list">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>＋ Add section</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>Add a section</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
                         </div>
                     </div>`;
@@ -23126,7 +23368,7 @@ function reviewRowHtml(r) {
                 `<option value="${s}" ${(r.source || '') === s ? 'selected' : ''}>${s || '(no source)'}</option>`,
         )
         .join('');
-    return `<div class="review-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="review-row">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Guest name" value="${escapeHtml(r.name || '')}" data-rf="name" style="flex:1 1 140px;min-width:120px;">
                     <select class="input-glass field-sm" data-rf="stars">${starOpts}</select>
@@ -23147,7 +23389,7 @@ function renderReviewsEditor() {
 // ---- Per-cottage FAQ editor (Settings, inside each rate panel) ----
 function faqRowHtml(propKey, f) {
     f = f || { icon: '', q: '', a: '' };
-    return `<div class="faq-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="faq-row">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Emoji" value="${escapeHtml(f.icon || '')}" data-fq="icon" style="width:64px;text-align:center;" maxlength="4">
                     <input type="text" class="input-glass field-sm" placeholder="Question (e.g. What time is check-in?)" value="${escapeHtml(f.q || '')}" data-fq="q" style="flex:1 1 240px;min-width:160px;">
@@ -23191,7 +23433,7 @@ async function saveFaqs(propKey) {
 // ---- Welcome book editor (per cottage, private) ----
 function welcomeRowHtml(propKey, s) {
     s = s || { title: '', body: '' };
-    return `<div class="welcome-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="welcome-row">
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Section title (e.g. Wi-Fi, Heating, Bins)" value="${escapeHtml(s.title || '')}" data-wb="title" style="flex:1 1 240px;min-width:160px;">
                     <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".welcome-row" title="Remove section"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -23378,7 +23620,7 @@ async function loadAnalytics(days = 30) {
     const PAGE_LABELS = {
         'view-main': 'Home',
         'view-cottages': 'All cottages',
-        'view-experiences': 'Experiences',
+        'view-experiences': 'Things to do',
         'view-21a': 'A cottage page',
         'view-guest-bookings': 'My stays',
         'view-pay': 'Payment',
@@ -23671,7 +23913,7 @@ async function loadAnalytics(days = 30) {
 
                 <div class="ana-group-title">Where visitors come from</div>
                 ${grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml))}
-                ${grid2(moCard('Campaign sources <span style="opacity:0.6;">(utm_source)</span>', sourcesHtml), moCard('Top referrers', refsHtml))}
+                ${grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))}
 
                 <div class="ana-group-title">On-site behaviour</div>
                 ${grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml))}
@@ -23685,8 +23927,8 @@ async function loadAnalytics(days = 30) {
                         <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
                         <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
                     </div>
-                    ${topMonthsHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
+                    ${topMonthsHtml ? `<div class="acw-cap" style="margin:4px 0 8px;">Most-requested months</div>${topMonthsHtml}` : ''}
+                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
                 `,
                 )}` +
         exportRow;
@@ -23755,14 +23997,19 @@ async function loadNewsletter() {
     }
     const active = r.active || 0,
         total = r.total || 0;
+    // Stashed so the send confirm's BUTTON can state the scale ("Send to 412
+    // subscribers") — the bulk chase's informed-confirm posture. This page is
+    // the only route to that button, so the figure is the one just rendered;
+    // unknown falls back to a countless label rather than inventing a number.
+    __nlActive = active;
     const recent = (r.recent || []).filter((s) => !s.unsubscribed_at).slice(0, 12);
     const list = recent.length
         ? `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
         : `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
     stats.innerHTML = `<div class="accounts-stat" style="max-width:640px;">
                 <div style="display:flex;gap:26px;flex-wrap:wrap;">
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Active subscribers</div></div>
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div class="acw-cap" style="margin-bottom:0;">Active subscribers</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div class="acw-cap" style="margin-bottom:0;">Unsubscribed</div></div>
                 </div>${list}</div>`;
 }
 // ---- System check (Manage → System check) ----
@@ -23871,20 +24118,23 @@ async function loadDiagnostics() {
     const oks = checks.filter((c) => c.status === 'ok');
     const attention = fails.concat(warns); // hard failures lead, then warnings
     // ---- Overall verdict (the one-glance answer) ----
+    // ONE SENTENCE for the healthy state, in the house voice, and the sub says
+    // WHAT was checked and WHEN rather than restating it. ('All systems
+    // operational' is a hosting status page, not a person.)
     const tone = fails.length ? 'danger' : warns.length ? 'warn' : 'ok';
+    const now = chbNow();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const title = fails.length
         ? `${fails.length} issue${fails.length === 1 ? '' : 's'} need${fails.length === 1 ? 's' : ''} your attention`
         : warns.length
           ? `${warns.length} thing${warns.length === 1 ? '' : 's'} worth a look`
-          : 'All systems operational';
+          : 'Everything’s running.';
     const sub = fails.length
         ? 'Something core needs fixing — the details are below.'
         : warns.length
           ? "Nothing's broken, but these could use a moment."
-          : "Everything's running as it should.";
+          : 'Daily jobs, calendar feeds, backups and mail — all checked.';
     const mark = tone === 'ok' ? '✓' : tone === 'warn' ? '!' : '✕';
-    const now = chbNow();
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const chip = (n, cls, label) => (n > 0 ? `<span class="status-count ${cls}">${n} ${label}</span>` : '');
     let html = `
         <div class="status-hero is-${tone} glass-panel">
@@ -23911,12 +24161,15 @@ async function loadDiagnostics() {
         : null;
     const item = (c) => {
         const route = c.status === 'optional' || c.status === 'warn' ? routeFor(c.label) : null;
-        const chipCls = c.status === 'fail' ? 'fail' : c.status;
+        // STATE IS SAID ONCE — the house capsule, sentence case. It used to be a
+        // coloured 3px rail AND a 9px dot AND an uppercase chip, three amber
+        // statements on one 76px row; the rail keeps its geometry and loses its
+        // colour (admin.css), the dot is gone, the capsule is the statement.
+        const capTone = c.status === 'fail' ? 'bad' : c.status === 'warn' ? 'warn' : c.status === 'ok' ? 'ok' : 'unk';
         return `
         <div class="status-item is-${c.status}">
-            <span class="status-item-dot" style="background:${dotColor(c.status)};"></span>
             <div class="status-item-body">
-                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span><span class="status-item-chip ${chipCls}">${word(c.status)}</span></div>
+                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span>${stCap(capTone, escapeHtml(word(c.status)))}</div>
                 <div class="status-item-detail">${escapeHtml(c.detail || '')}</div>
                 ${c.hint ? `<div class="status-item-hint">${escapeHtml(c.hint)}</div>` : ''}
                 ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" ${route.fn}>${route.t}</button></div>` : ''}
@@ -24331,6 +24584,7 @@ async function saveNightAppUrl(btn) {
     const v = await glassPrompt(
         'Paste an address of your own to download the Mac app from — your web space, a shared drive, anywhere https.\n\nLeave it empty to go back to the newest build GitHub made.',
         now,
+        { title: 'Where the Mac app downloads from', okLabel: 'Save the address' },
     );
     if (v === null) return; // cancelled: nothing said, nothing changed
     const url = String(v).trim();
@@ -24533,7 +24787,7 @@ async function saveBackupPass(btn) {
         glassAlert('That passphrase is too short — use at least 12 characters. A few unrelated words is ideal.');
         return;
     }
-    if (!v && !(await glassConfirm('Clear the passphrase? Monday\'s email will then carry the report only, with no copy of the backup attached.'))) return;
+    if (!v && !(await glassConfirm('Clear the passphrase? Monday\'s email will then carry the report only, with no copy of the backup attached.', 'Clear the passphrase', { danger: true }))) return;
     try {
         await saveContent('backup-passphrase', v);
     } catch (e) {
@@ -24651,7 +24905,7 @@ function renderTestCentreList() {
     if (title) title.textContent = SETTINGS_TITLES.testcentre;
     if (!list) return;
     list.style.display = '';
-    list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
+    list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every guest-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
                 <div class="settings-group">${TC_PAGES.map(
                     (p) => `
                     <button class="settings-row" ${chbAttrs('tcOpen', String(p.id))}>
@@ -24679,7 +24933,7 @@ function tcOpen(page) {
     else if (page === 'emails') detail.innerHTML = tcPageEmails();
     else if (page === 'booking') tcRenderBooking();
     else if (page === 'data') tcRenderData();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // ---- Set the stage: a full pretend business, one tap ----
 function tcPageStage() {
@@ -24833,7 +25087,7 @@ function tcPagePreview() {
         )
         .join('');
     return `<div class="rate-prop">
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, things to do, the enquiry form — nothing is saved.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" data-act="tcPreview" data-arg="index.html">Open homepage as a guest ↗</button>
                 <div class="rule-divider">Jump straight to a cottage page</div>
                 ${cottages || '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No live cottages.</p>'}</div>`;
@@ -24927,7 +25181,7 @@ async function tcRenderBooking() {
     const bk = data.bookings || [];
     const intro = `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
     const sqNote = tcSquare.production
-        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
+        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch it to test mode on the server to try things safely.</div>`
         : tcSquare.enabled
           ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
           : `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
@@ -24941,9 +25195,9 @@ async function tcRenderBooking() {
         .map((b) => {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
-                    <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
+                    <div class="label">${escapeHtml(name)} · #${b.id} <span class="count-badge" style="margin-left:6px;">TEST</span></div>
                     <div style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
+                    <div class="acw-cap">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, CHB_SELF)}>Open pay page ↗</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcMarkPaid', b.id, CHB_SELF)}>Mark paid in full</button>
@@ -24951,7 +25205,7 @@ async function tcRenderBooking() {
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
                     </div>
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
+                    <div class="acw-cap">Daily automations (run now, as the cron would)</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'pre_arrival', CHB_SELF)}>Pre-arrival email</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'balance_reminder', CHB_SELF)}>Balance reminder</button>
@@ -25081,6 +25335,7 @@ async function tcGuestLogin(btn) {
     if (
         !(await glassConfirm(
             'Open the guest app signed in as a test guest?\n\nThis signs THIS browser in as the guest, which ends your admin session here. Tip: open it in a private/incognito window to stay signed in as admin in this one.',
+            'Sign in as the test guest',
         ))
     )
         return;
@@ -25090,7 +25345,7 @@ async function tcGuestLogin(btn) {
         if (r && r.url) window.open(r.url, '_blank', 'noopener');
         else glassAlert((r && r.error) || "Couldn't set up the test guest.");
     } catch (e) {
-        glassAlert(e.message || 'Failed.');
+        glassAlert(e.message || 'Couldn’t set up the test guest — try again in a moment.');
     }
     if (btn) btn.disabled = false;
 }
@@ -25139,6 +25394,8 @@ async function tcPay(id, btn) {
         tcSquare.production &&
         !(await glassConfirm(
             'Square is in PRODUCTION (live) mode — paying will make a REAL charge. Continue?',
+            'Make a real charge',
+            { danger: true },
         ))
     )
         return;
@@ -25184,7 +25441,7 @@ async function tcBookingEmail(id, action, btn) {
     }
 }
 async function tcDeleteBooking(id) {
-    if (!(await glassConfirm('Delete this test booking?'))) return;
+    if (!(await glassConfirm('Delete this test booking?', 'Delete the test booking', { danger: true }))) return;
     try {
         await apiPost('testcentre.php', { action: 'delete_data', type: 'booking', id });
         toast('Test booking deleted.');
@@ -25261,6 +25518,8 @@ async function tcPurgeData() {
     if (
         !(await glassConfirm(
             'Remove ALL test data? This deletes every [CHB-TEST] booking and its payments.',
+            'Remove all test data',
+            { danger: true },
         ))
     )
         return;
@@ -25272,6 +25531,9 @@ async function tcPurgeData() {
         glassAlert(e.message || "Couldn't purge.");
     }
 }
+// The active-subscriber count last rendered by the newsletter page (null until
+// it has been). Read only by the send confirm's button label.
+let __nlActive = null;
 async function sendBroadcast() {
     const subEl = document.getElementById('nl-subject'),
         bodyEl = document.getElementById('nl-body');
@@ -25288,7 +25550,14 @@ async function sendBroadcast() {
         show('A subject and a message are both required.', false);
         return;
     }
-    if (!(await glassConfirm('Send this to all active subscribers now?'))) return;
+    const nSub = __nlActive;
+    if (
+        !(await glassConfirm(
+            'Send this to all active subscribers now?',
+            nSub == null ? 'Send it now' : `Send to ${nSub} subscriber${nSub === 1 ? '' : 's'}`,
+        ))
+    )
+        return;
     show('Sending…', true);
     try {
         const r = await apiPost('newsletter.php', { action: 'broadcast', subject, body: bodyText });
@@ -25305,7 +25574,7 @@ async function sendBroadcast() {
     }
 }
 async function notifyWaitlist(id) {
-    if (!(await glassConfirm('Email this guest that dates may now be available?'))) return;
+    if (!(await glassConfirm('Email this guest that dates may now be available?', 'Send the email'))) return;
     try {
         await apiPost('waitlist.php', { action: 'notify', id });
         toast('Guest emailed.');
@@ -25315,7 +25584,7 @@ async function notifyWaitlist(id) {
     }
 }
 async function deleteWaitlist(id) {
-    if (!(await glassConfirm('Remove this waitlist entry?'))) return;
+    if (!(await glassConfirm('Remove this waitlist entry?', 'Remove the entry', { danger: true }))) return;
     try {
         await apiPost('waitlist.php', { action: 'delete', id });
         loadWaitlist();
@@ -25368,11 +25637,13 @@ function renderReviewLinks() {
                     </div>`;
         })
         .join('');
-    wrap.innerHTML = `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:16px;margin:0 0 20px;background:var(--glass-bg);">
-                <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Review links to share with guests</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
-                ${rows}
-            </div>`;
+    // THE QUEUE COMES FIRST. This block is a set-up task done once per cottage
+    // and it led the page every visit — three URL fields and their Copy buttons,
+    // ~550px, pushing the reviews actually WAITING for a verdict to y=920 on a
+    // phone. It sits after them now (the markup order moved with this), folded.
+    wrap.innerHTML = bhubFoldGrp('revlinks', 'Share a review link', 'per cottage', '',
+        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
+                ${rows}`);
 }
 // Copy a cottage's review link (mirrors copyIcalExport).
 async function copyReviewLink(key) {
@@ -25425,11 +25696,11 @@ function leadCardHtml(l) {
     const excluded = ar > 0 && ar < 3
         ? `<div style="font-size:var(--fs-caption);color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
         : '';
-    return `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+    return `<div class="adm-row">
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">
                     <strong>${escapeHtml(l.name)}</strong>
                     <span style="color:var(--text-muted);">${escapeHtml(cott)}</span>
-                    <span style="font-size:var(--fs-micro);letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
+                    <span style="font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:var(--r-pill);padding:1px 8px;">${escapeHtml(src)}</span>
                     <span class="star-static">${stars}</span>
                     <span style="margin-left:auto;">${leadStatusPill(l.status)}</span>
                 </div>
@@ -25439,7 +25710,7 @@ function leadCardHtml(l) {
                     <button class="btn-sm btn-delete" ${chbAttrs('deleteLead', l.id)}>Delete</button>
                 </div>
                 <div style="margin-top:12px;border-top:1px dashed var(--glass-border);padding-top:12px;">
-                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
+                    <div class="acw-cap">
                         <svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         Rate this guest — private, never shown to them</div>
                     <div class="lead-prate" data-id="${l.id}" data-val="${ar}" style="display:flex;gap:3px;margin-bottom:8px;">${priv}</div>
@@ -25484,7 +25755,7 @@ async function setLeadStatus(id, status) {
     }
 }
 async function deleteLead(id) {
-    if (!(await glassConfirm('Delete this review permanently?'))) return;
+    if (!(await glassConfirm('Delete this review permanently?', 'Delete the review', { danger: true }))) return;
     try {
         await apiPost('leads.php', { action: 'delete', id });
         await loadLeadModeration();
@@ -25589,7 +25860,7 @@ async function setReviewStatus(id, status) {
     }
 }
 async function deleteGuestReview(id) {
-    if (!(await glassConfirm('Delete this guest review permanently?'))) return;
+    if (!(await glassConfirm('Delete this guest review permanently?', 'Delete the review', { danger: true }))) return;
     try {
         await apiPost('reviews.php', { action: 'delete', id });
         await loadGuestReviewModeration();
@@ -25716,7 +25987,7 @@ function bulkImportReviews() {
             (added === 1 ? '' : 's') +
             ' added below — check them over, then “Save imported reviews”.',
     );
-    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    chbScroll(wrap, { block: 'nearest' });
 }
 async function saveReviews() {
     const wrap = document.getElementById('reviews-editor');
@@ -25750,9 +26021,9 @@ async function saveReviews() {
                 ? 'One review has no cottage set.'
                 : `${stranded} reviews have no cottage set.`) +
                 '\n\nA review with no cottage does not appear on any cottage page, and it is left out of' +
-                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.' +
-                '\n\nOK = save anyway  ·  Cancel = go back and pick a cottage',
+                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.',
             'Save anyway',
+            { cancelLabel: 'Go back and pick one' },
         );
         if (!ok) return;
     }
@@ -25848,7 +26119,7 @@ function renderSeasonGrid() {
                         ? bands.map(seasonCardHtml).join('')
                         : seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true })
                 }</div>
-                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">＋ Add a season</button></div>
+                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">Add a season</button></div>
                 <div id="sg-savebar">
                     <span id="season-grid-msg" role="status"></span>
                     <button type="button" class="sg-save" data-act="saveSeasonGrid">Save all cottages</button>
@@ -26155,7 +26426,7 @@ async function checkSystemHealth() {
         // No failures and no actionable warnings (optional/off features don't
         // count) → the calm green "all clear" state.
         pill.className = 'cron-pill ok';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>All systems operational`;
+        pill.innerHTML = `<span class="cron-pill-dot"></span>Everything’s running`;
     }
     pill.style.display = '';
 }
@@ -26343,7 +26614,7 @@ const CHB_WEEKLY_EMAILS = {
 async function sendWeeklyEmailNow(which, btn) {
     const spec = CHB_WEEKLY_EMAILS[which];
     if (!spec) return;
-    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`))) {
+    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`, 'Send it to me'))) {
         return;
     }
     const was = btn ? btn.textContent : '';
@@ -26375,6 +26646,7 @@ async function sendSampleEmails(btn) {
     if (
         !(await glassConfirm(
             'Send a [SAMPLE]-marked copy of every guest email (confirmation, arrival info, payment request, receipt, review request…) to your owner inbox?',
+            'Send the samples',
         ))
     )
         return;
@@ -26471,12 +26743,12 @@ function changeMonth(dir) {
         grew = true;
     }
     if (grew) renderCalendar();
-    host.scrollTo({ left: targetIdx * tlDayW(), behavior: 'smooth' });
+    chbScroll(host, { left: targetIdx * tlDayW() });
 }
 function timelineToday() {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollTo({ left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()), behavior: 'smooth' });
+    chbScroll(host, { left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()) });
 }
 // Free timeline day tapped → start an Add Booking on that cottage + date.
 // The header's "£X to collect" is a LINK: straight to Bookings, pre-filtered
@@ -26618,7 +26890,7 @@ function osDonut(pct, color) {
     return `<svg class="os-donut" viewBox="0 0 64 64" role="img" aria-label="${pct}%">
                 <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--glass-border)" stroke-width="7"/>
                 <circle cx="32" cy="32" r="${R}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>
-                <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" font-size="16" fill="var(--text-light)">${pct}%</text>
+                <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" style="font-size:var(--fs-body);" fill="var(--text-light)">${pct}%</text>
             </svg>`;
 }
 // ---- Reusable mini-chart helpers (inline SVG/CSS, no library) ----
@@ -26631,7 +26903,9 @@ function moneyShort(v) {
 // percentage — the bar sits in an auto-height flex column, and a % height against
 // an indefinite parent resolves to nothing: measured, every chart this composer
 // ever drew painted its bars at 0px on every browser (three surfaces — only the
-// labels showed, which read as "no graph"). And a DENSE window (the 30-day daily
+// labels showed, which read as "no graph"). A ZERO bar carries NO value label — ten
+// "£0"s over ten empty months on the trailing-12 chart is ink saying nothing, and the
+// missing bar is already the fact. And a DENSE window (the 30-day daily
 // trend gives each column ~4px at phone width) drops the per-bar value labels
 // (the title tooltip keeps the figure) and thins the axis to ~8 ticks + the last,
 // or 31 nowrap labels overprint into an unreadable digit soup.
@@ -26648,7 +26922,7 @@ function osVBars(items, fmt) {
                 const h = Math.max(3, Math.round(((i.value || 0) / peak) * AREA));
                 const tick = !dense || ix % every === 0 || ix === items.length - 1;
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
-                    ${dense ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
+                    ${dense || !(i.value > 0) ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
                     <div class="osv-bar" style="width:100%;max-width:36px;min-width:2px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}px;"></div>
                     <span class="osv-tick" style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${tick ? escapeHtml(i.short || i.label) : ''}</span>
                 </div>`;
@@ -26953,7 +27227,7 @@ function renderCalendar() {
                 // "Bob · 3n" answers the next question without opening the hub.
                 const nights = Math.max(1, Math.round((dpParse(b.checkOut) - dpParse(b.checkIn)) / 864e5));
                 const visDays = Math.min(N, idxOf(b.checkOut)) - Math.max(0, idxOf(b.checkIn));
-                const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights}n</i>` : '';
+                const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights} night${nights === 1 ? '' : 's'}</i>` : '';
                 const dm = drawMark();
                 bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}${dm.c}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ${nights} night${nights === 1 ? '' : 's'}">${escapeHtml((b.name || 'Guest').split(' ')[0])}${nTag}</button>`;
             });
@@ -27150,6 +27424,11 @@ async function inboxTab(which) {
         }
     }
     renderInbox();
+    // THE DRAWER APPEARS ON THE TAP THAT ASKED FOR IT. Stacked, the enquiries
+    // list lives inside a fold on the landing — so switching to Declined
+    // renamed a fold that was still shut and the rows were out of sight until a
+    // second tap. Wide, the list is always on screen and this is a no-op.
+    if (window.matchMedia('(max-width: 1199px)').matches) inboxFolder('enquiries');
 }
 function declinedInboxHtml() {
     if (__declinedEnq === null) {
@@ -27337,18 +27616,32 @@ function renderInbox() {
                               ? ` · est. ${gbp(pr.total)}`
                               : '';
                 } catch (err) {}
-                const chip = av
-                    ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · ${days}d waiting` : ''}</span>`
-                    : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `${days}d waiting` : 'New enquiry'}</span>`;
+                // THE ROW'S ANATOMY MUST NOT DEPEND ON VARIABLE TEXT. The chip
+                // used to read "Dates available · 5d waiting" or "Clashes with
+                // Alexandrina" — a pixel comparison against the enquiry's AGE
+                // and the blocker's NAME, so one row wrapped its chip under the
+                // cottage pill and stood 145px tall beside neighbours at 109.
+                // The capsule states the DECISION ("can I say yes?") in two
+                // fixed words; the wait moves to the sub, where it is words
+                // rather than a chip's width, and the clash's blocker is named
+                // on the hub the row opens. .bk-row-top keeps its flex-wrap —
+                // it is the documented safety valve for a long cottage name
+                // (three no-shrink chips once crushed the pill to one letter).
+                const cap = av
+                    ? stCap(av.free ? 'ok' : 'bad', av.free ? 'Dates free' : 'Dates taken')
+                    : stCap('unk', 'New enquiry');
+                const waitTxt = stale
+                    ? ` · <span class="bk-row-wait">waiting ${days} day${days === 1 ? '' : 's'}</span>`
+                    : '';
                 return `
                 <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" ${chbAttrs('openEnquiryHub', String(e.id))}>
                     <span class="bk-row-body">
                         <span class="bk-row-top">
                             <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
-                            ${chip}
+                            ${cap}
                         </span>
                         <strong class="bk-row-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}${(e.priorStays || 0) > 0 ? ' ★' : ''}</strong>
-                        <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}</span>
+                        <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}${waitTxt}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
                 </button>`;
@@ -27894,15 +28187,23 @@ function renderEnquiryHub() {
     // folded behind. ----
     const fin = (n) => typeof n === 'number' && isFinite(n);
     const custom = e.priceOverride != null && std != null && Math.abs(Number(e.priceOverride) - std) > 0.005;
-    const quoteRows = (e.priceOverride != null
-        ? `<div class="bhub-kv"><span class="bhub-kv-label">Agreed price${custom ? ' (custom)' : ''} · ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(Number(e.priceOverride))}</span></div>` +
-          (custom ? `<div class="bhub-kv"><span class="bhub-kv-label">Standard price</span><span class="bhub-kv-val bhub-mut">${gbp(std)}</span></div>` : '')
+    // THE BOOKING HUB'S OWN BREAKDOWN, not a second one. These rows were
+    // .bhub-kv — a 96px LABEL COLUMN, which is right for "Email / Phone /
+    // Address" and wrong for a price list: at 390 "Refundable deposit (charged
+    // with the first payment)" took FIVE lines in 96px beside 170px of empty
+    // rail, while the booking hub renders the identical sums as full-width
+    // .price-row lines with the figure on the right. One shape for one thing.
+    const quoteRows = `<div class="price-box" style="margin-bottom:0;">` +
+        (e.priceOverride != null
+        ? `<div class="price-row"><span>Agreed price${custom ? ' (custom)' : ''} · ${nights} night${nights === 1 ? '' : 's'}</span><span>${gbp(Number(e.priceOverride))}</span></div>` +
+          (custom ? `<div class="price-row"><span>Standard price</span><span class="bhub-mut">${gbp(std)}</span></div>` : '')
         : pr && fin(pr.perNight)
-          ? `<div class="bhub-kv"><span class="bhub-kv-label">${gbp(pr.perNight)} × ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(pr.nightly)}</span></div>` +
-            (pr.txFee > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Transaction fee</span><span class="bhub-kv-val">${gbp(pr.txFee)}</span></div>` : '')
+          ? `<div class="price-row"><span>${gbp(pr.perNight)} × ${nights} night${nights === 1 ? '' : 's'}</span><span>${gbp(pr.nightly)}</span></div>` +
+            (pr.txFee > 0 ? `<div class="price-row"><span>Transaction fee</span><span>${gbp(pr.txFee)}</span></div>` : '')
           : '') +
-        (dmg > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Refundable deposit (charged with the first payment)</span><span class="bhub-kv-val">${gbp(dmg)}</span></div>` : '') +
-        (askFig != null ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Their first payment</strong></span><span class="bhub-kv-val"><strong>${gbp(askFig)}</strong></span></div>` : '') +
+        (dmg > 0 ? `<div class="price-row"><span>Refundable deposit<small class="bhub-mut">charged with the first payment</small></span><span>${gbp(dmg)}</span></div>` : '') +
+        (askFig != null ? `<div class="price-row total"><span>Their first payment</span><span class="price-amount">${gbp(askFig)}</span></div>` : '') +
+        `</div>` +
         (enquiryHasPlan(e) ? `<div class="bhub-mut" style="margin:8px 0 2px;">Approving will use ${escapeHtml(enquiryPlanWords(e))}.</div>` : '') +
         `<div class="bhub-btn-row bhub-act-links">
             <button class="bhub-actlink" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
@@ -27956,9 +28257,9 @@ function renderEnquiryHub() {
     // page leads with the yes. ----
     const menu = `
         <div class="bhub-actions">
-            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Edit, email or decline this enquiry" title="Edit / Email / Decline">⋯</button>
+            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Edit, email or decline this enquiry" title="Edit, email or decline">⋯</button>
             <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                <button role="menuitem" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
+                <button role="menuitem" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit or move</button>
                 ${e.email ? `<button role="menuitem" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email the guest</button>` : ''}
                 <button role="menuitem" class="bhub-menu-danger" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
             </div>
@@ -27977,7 +28278,7 @@ function renderEnquiryHub() {
             <div class="bhub-head-top">
                 <div class="bhub-iden">
                     <span class="prop-tag tag-${e.propKey}">${escapeHtml(meta.name)}</span>
-                    <div class="bhub-eyebrow">Enquiry${ageRaw && !/invalid/i.test(String(ageRaw)) ? ' · asked ' + escapeHtml(String(ageRaw)) : ''}${stale ? ` <span class="bhub-eyebrow-warn">· ${days}d waiting</span>` : ''}</div>
+                    <div class="bhub-eyebrow">Enquiry${ageRaw && !/invalid/i.test(String(ageRaw)) ? ' · asked ' + escapeHtml(String(ageRaw)) : ''}${stale ? ` <span class="bhub-eyebrow-warn">· waiting ${days} day${days === 1 ? '' : 's'}</span>` : ''}</div>
                     <h1 class="bhub-name">${escapeHtml(e.name || 'Guest')}</h1>
                     <div class="bhub-sub">${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(e.guests || '')}</div>
                 </div>
@@ -28080,7 +28381,7 @@ async function draftEnquiryReply() {
     if (!t || t.kind !== 'enquiry' || !t.enq) return;
     const body = document.getElementById('enq-email-body');
     if (!body) return;
-    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?"))) return;
+    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?", 'Replace it'))) return;
     body.value = chbDraftEnquiryReply(t.enq);
     body.focus();
     try { body.setSelectionRange(0, 0); body.scrollTop = 0; } catch (e) {}
@@ -28418,7 +28719,7 @@ function etplRender() {
             ? `<div class="etpl-actbar">
                 <span class="etpl-actlab">Buttons in this email</span>
                 ${undoBit}
-                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : '+ Add a button'}</button>
+                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : 'Add a button'}</button>
             </div>
             ${__etplChosen.length ? `<div class="etpl-chips">${chips}</div>` : ''}
             ${pick}`
@@ -28612,7 +28913,7 @@ async function emailTplEditSave(id) {
 async function emailTplDelete(id) {
     const t = emailTplList().find((x) => x.id === id);
     if (!t) return;
-    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`);
+    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`, 'Delete the template', { danger: true });
     if (!okGo) return;
     const prev = siteContent[EMAIL_TPL_KEY];
     const list = emailTplList().filter((x) => x.id !== id);
@@ -28640,6 +28941,17 @@ function draftComposeReply() {
         return;
     }
     return draftEnquiryReply();
+}
+// The composer's context fold shows ONE line closed: who this email is going to
+// and for which stay. Written by both openers, so the summary and the panel
+// beneath it can never describe different records.
+function composeCtxSummary(text) {
+    const el = document.getElementById('enq-email-ctxsum');
+    if (el) el.textContent = String(text || 'Their details');
+    // Always opens CLOSED: the Subject and Message fields are the work, and a
+    // panel that reopens itself every time is the 340px this fold removed.
+    const fold = /** @type {HTMLDetailsElement|null} */ (document.getElementById('enq-email-ctxfold'));
+    if (fold) fold.open = false;
 }
 // Takes an id OR the enquiry itself. The object form is load-bearing: declining
 // is a soft delete, so once loadData() has run the row is out of `enquiries`
@@ -28697,6 +29009,8 @@ function openEnquiryEmail(enqId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(enq.guests)}${enq.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(enq.phone)}</span>` : ''}</span></div>
             ${priceRow}
             ${enq.message ? `<div class="enq-ctx-quote">“${escapeHtml(enq.message)}”</div>` : ''}`;
+        // The fold's one visible line: who this is going to and for which stay.
+        composeCtxSummary(`${enq.name || 'Guest'} · ${propName} · ${fmtStayRange(enq.checkIn, enq.checkOut)}`);
     }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your enquiry — ${propName}, ${fmtDate(enq.checkIn)} to ${fmtDate(enq.checkOut)}`;
@@ -28953,15 +29267,22 @@ async function chbReauthPasskey() {
 async function chbReauthPrompt(what) {
     const askedFor = what || 'this';
     if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
-        const useKey = await glassConfirm(
-            'Confirm it is you before ' + askedFor + '.\n\nOK = Face ID / Touch ID / device PIN\nCancel = type your password',
-            'Use a passkey',
-        );
+        // TWO WAYS TO PROVE IT, ONE ON EACH BUTTON. This used to explain buttons
+        // it did not have ("OK = Face ID … Cancel = type your password") while
+        // the pair read "Use a passkey" / "Cancel" — so Cancel, the only word
+        // that reads as backing out, opened the password box instead. `tri`
+        // makes Escape and the backdrop mean NEITHER, which is the way out.
+        const useKey = await glassConfirm('Before ' + askedFor + '.', 'Use a passkey', {
+            title: 'Confirm it’s you',
+            cancelLabel: 'Type my password',
+            tri: true,
+        });
+        if (useKey === null) return false; // backed out — nothing is confirmed
         if (useKey && (await chbReauthPasskey())) return true;
     }
-    const got = await glassForm('Confirm it is you before ' + askedFor + '.', [
+    const got = await glassForm('Before ' + askedFor + '.', [
         { id: 'pw', label: 'Your password', type: 'password' },
-    ], { okLabel: 'Confirm' });
+    ], { title: 'Confirm it’s you', okLabel: 'Confirm it’s me' });
     if (!got || !got.pw) return false;
     try {
         await apiPost('auth.php', { action: 'admin_reauth_password', password: got.pw });
@@ -29121,6 +29442,7 @@ function openBookingEmail(bookingId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
+        composeCtxSummary(`${b.name || 'Guest'} · ${propName} · ${fmtStayRange(b.checkIn, b.checkOut)}`);
         // The ✨ Draft control is the SHARED one beside Message
         // (draftComposeReply) — a second copy injected here put the same
         // action twice in one screen-height, running different code.
@@ -29311,6 +29633,7 @@ async function approveEnquiry(enqId) {
         if (
             !(await glassConfirm(
                 `Heads up: these dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propName}. Approve anyway?`,
+                'Approve it anyway',
             ))
         )
             return;
@@ -29404,7 +29727,7 @@ async function approveEnquiry(enqId) {
 }
 
 function openAddBooking() {
-    document.getElementById('modal-title').innerText = 'Add Booking';
+    document.getElementById('modal-title').innerText = 'Add a booking';
     document.getElementById('modal-mode').value = 'add';
     document.getElementById('modal-record-id').value = '';
     setModalFields({}); // blank form, default times
@@ -29460,7 +29783,7 @@ function modalNameSuggestClose() {
 function openEditEnquiry(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
-    document.getElementById('modal-title').innerText = 'Edit / Move Enquiry';
+    document.getElementById('modal-title').innerText = 'Edit or move enquiry';
     document.getElementById('modal-mode').value = 'enquiry';
     document.getElementById('modal-record-id').value = enq.id;
     setModalFields({
@@ -29562,16 +29885,16 @@ async function loadExperiencesAdmin() {
         html += pending.map(expPendingHtml).join('');
         html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
     }
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">＋ Add experience</button></div>`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">Add something to do</button></div>`;
     html +=
         `<div id="exp-admin-list">` +
         (published.length
             ? published.map(expEditHtml).join('')
             : emptyState({
                   icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>',
-                  title: 'No experiences yet',
+                  title: 'Nothing listed yet',
                   sub: 'Add local things to do — seal trips, coast walks, the best pubs — to show guests on your site.',
-                  actionLabel: '＋ Add experience',
+                  actionLabel: 'Add something to do',
                   onClick: 'data-act="expAddNew"',
               })) +
         `</div>`;
@@ -29689,7 +30012,7 @@ async function expDelete(id) {
         if (row) row.remove();
         return;
     }
-    if (!(await glassConfirm('Delete this experience?'))) return;
+    if (!(await glassConfirm('Delete this listing?', 'Delete the listing', { danger: true }))) return;
     try {
         await apiPost('experiences.php', { action: 'delete', id });
         await loadExperiencesAdmin();
@@ -29895,8 +30218,9 @@ function mbxContextHtml(fromEmail, shownName) {
     if (up) {
         try {
             const dg = bookingDue(up.pk, up.b);
+            // Same rule: the capsule says the STATE, the figure is a figure.
             verdict = dg && dg.balance > 0.005
-                ? stCap('warn', `${gbp(dg.balance)} to pay`)
+                ? stCap('warn', 'Balance due') + `<span class="mbx-ctx-fig">${gbp(dg.balance)}</span>`
                 : stCap('ok', 'Paid in full');
         } catch (err) {}
     }
@@ -30037,7 +30361,7 @@ function renderMailboxList(keepSearchFocus) {
                 <span class="bk-row-top">
                     ${t.unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
                     ${n > 1 ? `<span class="bk-chip"><span class="bk-dot"></span>${n} emails</span>` : ''}
-                    <span class="mbx-when">${mbxEsc(mbxWhen(t.date))}</span>
+                    <span class="mbx-when">${mbxEsc(relTime(t.date))}</span>
                 </span>
                 <strong class="bk-row-name" title="${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}">${mbxEsc(mbxSender(t.fromRaw, t.from).name || mbxSender(t.fromRaw, t.from).addr || 'Unknown sender')}</strong>
                 <span class="bk-row-dates">${mbxEsc(t.subject)}</span>
@@ -30067,7 +30391,7 @@ function renderMailboxList(keepSearchFocus) {
         <div class="mbx-item" data-sent-id="${m.id}">
         <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" ${chbAttrs('mailboxOpenSent', m.id)} aria-expanded="false">
             <span class="bk-row-body">
-                <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
+                <span class="bk-row-top"><span class="mbx-when">${mbxEsc(relTime(m.sent_at))}</span></span>
                 <strong class="bk-row-name" title="To: ${mbxEsc(m.to_email)}">To: ${mbxEsc(m.to_email)}</strong>
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
@@ -30092,12 +30416,12 @@ function renderMailboxList(keepSearchFocus) {
                 <button type="button" class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" aria-selected="${__mbxTab === 'sent'}" ${chbAttrs('mailboxTab', 'sent')}>Sent</button>
             </div>
             <div class="cal-actions">
-                <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">+ New email</button>
+                <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">New email</button>
                 <button class="cal-refresh-btn" data-act="loadMailbox" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
             </div>
         </div>
         <div class="bo-search" style="margin-bottom:14px;">
-            <input type="search" class="input-glass" id="mbx-search" aria-label="Find an email" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
+            <input type="search" class="input-glass" id="mbx-search" aria-label="Find an email" placeholder="Search sender or subject" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
         </div>
         ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'All caught up — nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;
@@ -30343,7 +30667,7 @@ function mailboxCompose(presetTo) {
     pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
         <h2 class="bhub-card-title">New email</h2><div id="mbx-compose"></div></section>`;
     mailboxComposeForm(document.getElementById('mbx-compose'), presetTo || '');
-    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    chbScroll(pane, { block: 'nearest' });
 }
 function mailboxReply(uid) {
     const box = document.getElementById('mbx-compose');
@@ -30409,7 +30733,7 @@ async function mailboxMarkUnread(uid) {
     }
 }
 async function mailboxDelete(uid) {
-    if (!(await glassConfirm('Delete this email from the mailbox? This can’t be undone.'))) return;
+    if (!(await glassConfirm('Delete this email from the mailbox? This can’t be undone.', 'Delete the email', { danger: true }))) return;
     try {
         await apiPost('mailbox.php', { action: 'delete', uid });
         __mbxMessages = __mbxMessages.filter((m) => m.uid !== uid);

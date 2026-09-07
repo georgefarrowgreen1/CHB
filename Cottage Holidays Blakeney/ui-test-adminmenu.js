@@ -186,6 +186,11 @@ const stub = (page) => page.route(/\.php/, (r) => {
 
     // ---- where a name FITS (480), the condensed bar names the screen ----
     await page.setViewportSize({ width: 480, height: 844 });
+    // The resize must have LANDED before the title is read: `#admin-head-title`
+    // is display:none below 480, so a read that beats the resize measures the
+    // 390 rule and reports the bar as nameless (a one-in-several flake under
+    // the runner's full load).
+    await page.waitForFunction(() => window.innerWidth >= 480 && getComputedStyle(document.getElementById('admin-head-title')).display !== 'none', { timeout: 5000 });
     const wide = await page.evaluate(async () => {
         const av = document.querySelector('.page-view.active') || document.body;
         const spacer = document.createElement('div');
@@ -194,7 +199,12 @@ const stub = (page) => page.route(/\.php/, (r) => {
         av.appendChild(spacer);
         await new Promise((r) => setTimeout(r, 100));
         window.scrollTo(0, 600);
-        await new Promise((r) => setTimeout(r, 900));
+        // WAIT ON THE STATE, not a clock: under the runner's full concurrent
+        // load a fixed 900ms sleep sometimes read the title before the scroll
+        // handler had condensed the bar (passes alone, fails one run in several).
+        const h = document.querySelector('header');
+        for (let i = 0; i < 60 && !(h && h.classList.contains('header-condensed')); i++) await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 350));
         const ttl = document.getElementById('admin-head-title');
         const out = { title: ttl ? ttl.textContent : null, opacity: ttl ? getComputedStyle(ttl).opacity : null, display: ttl ? getComputedStyle(ttl).display : null };
         window.scrollTo(0, 0);

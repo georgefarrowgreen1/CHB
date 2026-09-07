@@ -66,17 +66,34 @@ textarea {
   min-width: 0;
   max-width: 100%;
 }
-/* Consistent, on-brand keyboard focus ring across interactive elements
-           (mouse/touch users never see it — only keyboard navigation does). */
+/* Keyboard focus ring (mouse/touch never see it). TWO THINGS IT MUST NOT DO:
+   (1) CHANGE THE CONTROL'S SHAPE. It carried `border-radius: 6px` at (0,1,1),
+   beating every component rule at (0,1,0), so focus RESHAPED what it landed on
+   — a 999px pill squared off, a 12px field dropped to 6, and the autofocused
+   Add-booking name field rendered at 6 for its whole life. Chromium 94+ /
+   Safari 16.4+ / Firefox draw the outline round the element's own radius, so
+   nothing replaces it; an unrounded element wanting a soft ring gets its own.
+   (2) OUTLINE A WHOLE DIALOG. .reviews-modal-box / .modal-box /
+   .glass-dialog-box carry tabindex="-1" and are focused on open ON PURPOSE, so
+   a screen reader announces the sheet — a documented decision, not focus to
+   move. Opened by keyboard they took a 2px ring round a 760px panel.
+   :not([tabindex="-1"]) excludes exactly that case; safe for the picker, whose
+   dpSeatFocus sets tabindex="0" before focusing. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-[tabindex]:focus-visible {
+[tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+}
+/* …and the UA's ring goes with ours: excluding the containers above left
+   Chromium's own `:focus-visible { outline: auto }` drawing round the sheet. A
+   tabindex="-1" element is focused by SCRIPT — announcing a surface, not marking
+   a control — so it takes no ring in either engine. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
 }
 /* Visually-hidden but available to screen readers (status announcements etc). */
 .sr-only {
@@ -93,7 +110,7 @@ textarea:focus-visible,
 /* On-brand text selection in form fields. */
 ::selection {
   background: var(--accent-soft);
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 @media (prefers-reduced-motion: reduce) {
   /* `*` does not match pseudo-elements — 11 of 14 ::before/::after motions kept running. */
@@ -152,13 +169,38 @@ textarea:focus-visible,
      fails WCAG contrast; every accent-filled control uses this dark ink. */
   --accent-ink: #1b1208;
   --accent-soft: rgba(214, 167, 133, 0.55);
-  /* ON THE BASEMAP — deliberately NOT retuned for light mode, which is why
-     they exist: tiles are a light ground in EITHER theme, so a control on
-     them has a constant background and a theme-aware ink would vanish.
-     10.4:1 on the 94% white control, 4.9:1 on the attribution strip. */
-  --map-ink: #3a2e1e;
-  --map-sub: #6b6257;
-  --map-ground: #ecebe7;
+  /* ON THE BASEMAP — theme-aware NOW, because the basemap is. It used to be a
+     CARTO light_all sheet in either theme, which in the default dark theme made
+     the map the brightest thing on the page by a factor of twelve (measured:
+     mean luminance 240 against a body ground of 19). The tiles follow the theme
+     (MAP_TILES.dark = CARTO Dark Matter, mean luminance 9.6, modal ground
+     #060606) so the controls have to follow with them, or they become the light
+     island the map was. THESE ARE THE DARK VALUES; body.light-mode restates the
+     pale-map set that was here before, unchanged.
+     Measured on the composited paint over the dark tile ground:
+       ink #F4F5F7 on the control    15.3:1
+       sub #C9CBD2 on the attribution 11.7:1
+       the control's own stroke        3.5:1 against the map (1.4.11's bar). */
+  --map-ink: #f4f5f7;
+  --map-sub: #c9cbd2;
+  --map-ground: #0b0b0c;
+  --map-ctl-bg: rgba(30, 32, 36, 0.92);
+  --map-ctl-hover: rgba(44, 47, 53, 0.96);
+  --map-ctl-press: rgba(255, 255, 255, 0.12);
+  --map-ctl-edge: rgba(255, 255, 255, 0.38);
+  --map-ctl-line: rgba(255, 255, 255, 0.14);
+  --map-ctl-dim: rgba(244, 245, 247, 0.34);
+  --map-ctl-shadow: rgba(0, 0, 0, 0.5);
+  --map-attr-bg: rgba(18, 19, 22, 0.86);
+  /* ON THE LIGHTBOX SCRIM — FIXED, never --text-light. The scrim is
+     rgba(8,9,11,0.92) in BOTH themes, so a theme-aware ink turns near-black on
+     near-black the moment the guest is in light mode: measured, every one of
+     the three controls painted rgb(27,42,52) on that scrim. These are the one
+     place in the app where the ground does not move, so neither may the ink. */
+  --lb-ink: #fff;
+  --lb-sub: rgba(255, 255, 255, 0.75);
+  --lb-disc: rgba(18, 19, 22, 0.55);
+  --lb-disc-hover: rgba(18, 19, 22, 0.82);
   /* Radius scale — use these for new components: sm = small controls,
                md = cards/fields, lg = nested/mid cards, panel = top-level surfaces
                (the header's curvature — panels, cards, modals, galleries),
@@ -225,6 +267,16 @@ textarea:focus-visible,
   --fs-hero: 2.125rem;      /* 34 */
   --fs-h2: var(--fs-title);
   --fs-h3: var(--fs-headline);
+  /* THE LAYER ORDER, STATED: bars < sheets < dialogs < toasts.
+     Thirty z-index values on two unrelated scales, one of them a real collision:
+     `.toast-stack` (2000) EQUALLED `.modal-overlay` (2000), so a toast stacked
+     over a modal by source order alone. This pass routes only the TOAST layer
+     onto these tokens; the site-wide re-route and a `rawZ` ratchet are a
+     follow-on, one layer at a time with ui-test-overlays green between each. */
+  --z-bar: 1400;
+  --z-sheet: 1900;
+  --z-dialog: 2000;
+  --z-toast: 2600;
   /* Ambient background blobs (themeable) */
   --blob-1: #2a2d3a;
   --blob-2: #1b1e28;
@@ -249,6 +301,18 @@ textarea:focus-visible,
   --settle: var(--ios-settle);
   --sheet: cubic-bezier(0.32, 0.72, 0, 1);
   --unfold: cubic-bezier(0, 0, 0.58, 1);
+  /* PRESS, second family: a row in a joined run acknowledges the tap with its
+     GROUND rather than the system's 4px scale — one cell of a 561-cell timeline
+     lane or one of fourteen search rows pulling away from its neighbours'
+     hairlines reads as a fault, not a response. A wash of the theme's own INK at
+     12% — twice --glass-hover's 6%, so a press is visibly deeper than a hover —
+     and light enough that nothing printed on it moves measurably during the 80ms
+     it is up. RESTATED under body.light-mode, not written as
+     color-mix(var(--text-light)) once: a custom property substitutes at the
+     element that DECLARES it, so a :root definition reading --text-light bakes in
+     the DARK theme's near-white and inherits that resolved value into light mode.
+     Measured — the press painted a 12% white wash on a white panel. */
+  --press-ground: rgba(255, 255, 255, 0.12);
   /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
      and a test can override these to fake a notch (env() reports 0px on desktop,
      so the bug is otherwise invisible to CI). Use as
@@ -289,6 +353,7 @@ body.light-mode {
   --well-bg: rgba(255, 255, 255, 0.55);
   --sheet-surface: #f7f4ee;
   --glass-hover: rgba(255, 255, 255, 0.92);
+  --press-ground: rgba(27, 42, 52, 0.12);
   --glass-border: rgba(28, 46, 58, 0.12);
   --bar-bg: rgba(247, 244, 238, 0.72);
   --glass-highlight: rgba(28, 46, 58, 0.2);
@@ -312,6 +377,20 @@ body.light-mode {
   --danger-text: #bc2626; /* 4.66:1 on its own 15% tint (was #c62828 → 4.30) */
   --info-text: #316784; /* 4.64:1 on its own 14% --info tint (was #35708f -> 4.08) */
   --info-bg: rgba(56, 132, 197, 0.12); /* lighter sea-blue fill for light glass */
+  /* ON THE BASEMAP — the pale-map set, byte for byte what shipped before the
+     tiles learned the theme. light_all's ground is #f6f6f5 (measured, 49% of
+     the tile); ink 10.4:1 on the 94% white control, sub 4.9:1 on the strip. */
+  --map-ink: #3a2e1e;
+  --map-sub: #6b6257;
+  --map-ground: #ecebe7;
+  --map-ctl-bg: rgba(255, 255, 255, 0.94);
+  --map-ctl-hover: #fff;
+  --map-ctl-press: rgba(58, 46, 30, 0.08);
+  --map-ctl-edge: rgba(58, 46, 30, 0.1);
+  --map-ctl-line: rgba(58, 46, 30, 0.1);
+  --map-ctl-dim: rgba(58, 46, 30, 0.3);
+  --map-ctl-shadow: rgba(58, 46, 30, 0.16);
+  --map-attr-bg: rgba(255, 255, 255, 0.78);
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
   --sky: #5aa9de;
@@ -505,6 +584,31 @@ select,
   animation-duration: 30s;
 }
 
+/* THE DRIFT IS PAUSED WHERE IT CAN ONLY COST. Measured at rest, owner 1280:
+   rAF cadence over 2.5s ran 98 frames / p50 25.0ms (40fps); with ONLY these
+   three `fluidFloat` animations paused, 146 frames / p50 16.7ms (60fps) — and
+   pausing everything else as well bought 144, i.e. the blobs were the whole
+   third. They are 50vw circles under `filter: blur(100px)` (704px wide at 1280)
+   on a translate + scale, so the blurred layer re-rasterises every frame.
+   NOT DELETED: DESIGN.md names the night-sky ground as the site's signature, and
+   swapping it for a pre-blurred gradient is a VISUAL change that belongs in its
+   own demo with the owner. So it keeps drifting exactly where it is the
+   signature — the guest's home screen — and stands still on the back office,
+   which never shows the hero, and behind any other view, where the page's own
+   content covers it anyway. `animation-play-state` freezes the layer in place;
+   nothing moves, nothing disappears.
+   NB measured on this container's SOFTWARE rasteriser; the shape of the win is
+   real (three blurred 704px layers re-rasterising per frame), the fps figures
+   are not a claim about real hardware. */
+body.owner-mode .blob {
+  animation-play-state: paused;
+}
+/* Its own rule, NOT a second selector on the one above: a selector list is
+   dropped WHOLE if any part of it fails to parse, so an engine without :has()
+   would lose the back office's pause along with this one. */
+body:not(:has(#view-main.page-view.active)) .blob {
+  animation-play-state: paused;
+}
 @keyframes fluidFloat {
   0% {
     transform: translate(0, 0) scale(1);
@@ -581,17 +685,35 @@ select,
      browsers) the page must still show. */
   opacity: 1;
   transform: none;
-  animation: fluidFadeIn 0.7s var(--fluid-bezier);
+  /* ONE ARRIVAL PER NAVIGATION, and ONE definition of it. This was 700ms and
+     22px while the guest shell's own swap (gtFade, guest-app.css) was 380ms and
+     10px — the same gesture at two speeds, and the slower one on the surface
+     that navigates most. iOS pushes a screen in ~350ms. The guest figure wins,
+     the guest override is gone, and everything that fades a swapped-in block
+     reads the same keyframe. NB the CARDS inside a page must not rise again on
+     top of this: `bhubIn` is scoped to IN-PLACE docking (admin.css).
+     400, not the guest shell's measured 380: 380 is not on the motion system's
+     sanctioned duration set and 400 is, so taking the nearest step keeps §1's
+     'every system duration is on the set' true rather than widening the set for
+     one animation. 20ms nobody can see, against a gate that stays whole. */
+  animation: chbPageIn 400ms var(--out);
 }
-@keyframes fluidFadeIn {
+@keyframes chbPageIn {
   from {
     opacity: 0;
-    transform: translateY(22px) scale(0.992);
+    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+/* THE DAY SHEET APPEARS AT ONCE. A nav() page transition was REFUSED as a
+   feature for exactly this reason (CLAUDE.md): with no signal the sheet must be
+   THERE, not arriving. One already ships, so retiming it does not reopen that
+   pin — but the surface the refusal was about gets none of it. */
+body.offline-snap .page-view.active {
+  animation: none;
 }
 /* Staggered "rise" for the cottage cards on entry. Added by initCardRise and
            cleared on animationend so the hover lift still works afterwards. */
@@ -982,6 +1104,15 @@ nav a:hover {
   cursor: progress;
   pointer-events: none;
 }
+/* …AND A BUSY BUTTON THAT IS ALSO DISABLED IS STILL BUSY. `disabled` stays — the
+   documented guard against a slow connection double-submitting an enquiry, and
+   pointer-events alone does not stop keyboard activation — but the two together
+   computed 0.6, so "Sending…" faded to 60% while it worked, which is exactly what
+   the WORK rule refuses. Busy is the spinner; only a genuinely unavailable
+   control dims. */
+.btn-glass.is-busy:disabled {
+  opacity: 1;
+}
 .btn-glass.is-busy::before {
   content: '';
   display: inline-block;
@@ -1028,11 +1159,16 @@ nav a:focus-visible,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* THE FIELD RING, WHICH HAD NO DECLARATIONS OF ITS OWN: these two selectors were
+   WELDED onto `select.input-glass` below — a comment sat between them and the
+   brace — so the intended ring was never a rule and a focused text field
+   inherited `appearance: none; cursor: pointer`. */
 .input-glass:focus-visible,
-.date-range-trigger:focus-visible,
-/* The input itself is transparent now (see .terms-box) — the ring is drawn on
-   the box instead, beside that rule. */
-
+.date-range-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--text-light);
+}
 select.input-glass {
   appearance: none;
   -webkit-appearance: none;
@@ -1169,14 +1305,70 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .glass-dialog-fields .input-glass {
   margin-bottom: 0;
 }
+/* {label, sub} rows — the day sheet's own .ods-qrow shape, so the queue reads
+   the same in the tray as it does on the sheet. */
+.glass-dialog-rows {
+  margin-top: 12px;
+  text-align: left;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.glass-dialog-rows .ods-qrow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.glass-dialog-rows .ods-qlabel {
+  font-weight: 600;
+  font-size: var(--fs-body);
+}
+.glass-dialog-rows .ods-qsub {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
 .glass-dialog-btns {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
   margin-top: 24px;
+  /* TWO NAMED OUTCOMES DO NOT ALWAYS FIT ONE ROW. Once Cancel says "Keep the
+     booking" beside "Cancel the booking", the pair needs 41px more than a
+     360px dialog has — measured, and both labels ran past their own pills.
+     They stack instead of shrinking: a clipped destructive label is the one
+     thing this must not do. `wrap-reverse` is what puts the action ON TOP and
+     the way out beneath it when they do (the iOS stacked-alert order); on a
+     single line it changes nothing at all. */
+  flex-wrap: wrap-reverse;
 }
-.glass-dialog-btns .btn-glass {
+.glass-dialog-btns > button {
+  min-width: max-content;
+  /* One PAIR: one size, one reach. Above the phone media block that lifts the
+     small controls, these measured 43 and 36px — the house floor is 44 and a
+     dialog's two answers should not differ in height either. */
+  min-height: 44px;
+}
+/* THE PRIMARY LOOKS PRIMARY. The pair was two outlined pills differing by 2px
+   of type and 9% of a border, so nothing said which button acts. OK takes the
+   accent fill; Cancel comes up to the same size and stays outlined. The
+   .btn-accent arm holds the geometry — that rule's guest-CTA 17px padding sits
+   LATER in the file and would make the primary 12px taller than its neighbour. */
+.glass-dialog-btns .btn-glass,
+.glass-dialog-btns .btn-glass.btn-accent {
   padding: 11px 26px;
+}
+#glass-dialog-cancel {
+  font-size: var(--fs-body);
+}
+/* DESTRUCTIVE: red ink, no fill. A "Delete the booking" dressed as the
+   inviting accent default is the one thing this pass must not ship. */
+#glass-dialog-ok.is-danger,
+#glass-dialog-ok.is-danger:hover {
+  background: none;
+  color: var(--danger-text);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  filter: none;
 }
 
 /* ---- Custom glass date-range picker (customer booking form) ---- */
@@ -1302,6 +1494,23 @@ body.light-mode ::-webkit-scrollbar-thumb {
   max-height: min(90dvh, calc(100dvh - var(--safe-t) - var(--safe-b) - 40px));
   overflow-y: auto;
 }
+/* THE CARD STOPS MOVING UNDER THE FINGER. The pop is a CENTRED flex column and
+   the card's height changes twice per selection — the hint grows above the grid
+   and the foot's receipt below it — so the whole calendar walked up the screen
+   between the tap that chose a check-in and the tap that chose a check-out
+   (measured at 390: card top 204.3 → 178.3, the grid moving with it). Anchoring
+   the card to the top makes its own height irrelevant to where it sits. The cap
+   becomes the CONTAINER's remaining space rather than the viewport's, so
+   top-anchoring still cannot push the foot off screen on a short phone. */
+@media (max-width: 640px) {
+  .datepicker-pop {
+    align-items: flex-start;
+    padding-top: max(12vh, calc(var(--safe-t) + 24px));
+  }
+  .datepicker-card {
+    max-height: min(90dvh, 100%);
+  }
+}
 .dp-head {
   display: flex;
   align-items: center;
@@ -1329,12 +1538,16 @@ body.light-mode ::-webkit-scrollbar-thumb {
   border-color: var(--glass-highlight);
   background: var(--glass-hover);
 }
+/* THE ONLY GROWTH ABOVE THE GRID. The hint goes from one line ("When would you
+   like to arrive?") to two ("✓ Looks free … · 3 nights · £339.90 for 2 adults"),
+   which pushed the calendar down under the finger that had just tapped it.
+   Reserving the taller state costs nothing above a grid and stops the move. */
 .dp-hint {
   font-size: var(--fs-caption);
   color: var(--text-muted);
   text-align: center;
   margin-bottom: 14px;
-  min-height: 1.1em;
+  min-height: 2.8em;
 }
 .dp-weekdays,
 .dp-grid {
@@ -1365,8 +1578,8 @@ body.light-mode ::-webkit-scrollbar-thumb {
   cursor: pointer;
   border: 1px solid transparent;
   transition:
-    background 0.2s,
-    border-color 0.2s,
+    background 200ms var(--out),
+    border-color 200ms var(--out),
     transform 320ms var(--settle),
     filter 320ms var(--settle),
     opacity 300ms var(--settle);
@@ -1507,7 +1720,12 @@ body.light-mode ::-webkit-scrollbar-thumb {
    just looked half the size of what they can hit. */
 .terms-accept {
   display: flex;
-  align-items: flex-start;
+  /* THE BOX SITS ON THE LINE IT BELONGS TO. flex-start with a 44px min-height put
+     the drawn box's centre on the ROW's centre while the first text line sat at its
+     top — measured 12.3px apart on both declarations at both widths, so the green
+     tick hung under the words it confirms. The input stays absolutely positioned at
+     top:50%, so the hit region is untouched. */
+  align-items: center;
   gap: 10px;
   margin: 4px 0 18px;
   min-height: 44px;
@@ -1557,7 +1775,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   width: 72%;
   height: 72%;
   opacity: 0;
-  transition: opacity 0.12s linear;
+  transition: opacity 160ms var(--out);
 }
 .terms-box svg path {
   fill: none;
@@ -1743,7 +1961,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
   padding: 10px;
-  animation: cueBob 2.6s ease-in-out infinite;
+  /* On a house curve, and on `translate` rather than `transform`: the button is
+     centred with transform: translateX(-50%), and an animation on transform wins
+     outright over a transitioned one, so a press on the cue could never paint. */
+  animation: cueBob 2.6s var(--settle) infinite;
   display: none;
 }
 .hero-scroll-cue:hover,
@@ -1753,10 +1974,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
 @keyframes cueBob {
   0%,
   100% {
-    transform: translateX(-50%) translateY(0);
+    translate: 0 0;
   }
   50% {
-    transform: translateX(-50%) translateY(7px);
+    translate: 0 7px;
   }
 }
 @media (min-width: 900px) and (min-height: 700px) {
@@ -1941,7 +2162,7 @@ html.js-reveal .reveal.in-view {
 .section-title {
   font-family: var(--font-serif);
   font-size: var(--fs-h1);
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   font-weight: 400;
 }
 .lead {
@@ -1989,10 +2210,20 @@ a.card {
   text-decoration: none;
   color: var(--text-light);
 }
-/* A touch more lift + scale than the generic glass panel, with springy easing. */
+/* THREE SIGNALS FOR ONE HOVER: the card lifted 7px, scaled 1.012 AND glowed
+   rose (the accent layer the HIG pass had already taken off filled buttons),
+   while the photo inside scaled 1.05. The lift stays — .glass-panel's hover is
+   a documented card affordance — and the photo's zoom is the ONE moving thing;
+   the scale and the accent shadow layer (below) are gone. */
+/* `:not(:active)` is the whole reason a card presses on a Mac. `.card:hover` and
+   `.card:active` are BOTH (0,2,0) and this one sits ~1450 lines later, so the
+   hover won for the entire hold: measured with a real held mouse press, the card
+   computed matrix(1.0121, 0, 0, 1.0121, 0, -7) with :active true — the lift, not
+   the press. Written as an exclusion rather than by moving the press rule,
+   because the press has to keep winning over `.glass-panel:hover` too. */
 @media (hover: hover) {
-  .card:hover {
-    transform: translateY(-7px) scale(1.012);
+  .card:hover:not(:active) {
+    transform: translateY(-7px);
   }
 }
 .card-img {
@@ -2098,7 +2329,7 @@ a.card {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 24px;
-  margin-top: 30px;
+  margin-top: 32px;
 }
 .review-card {
   padding: 24px 28px;
@@ -2107,8 +2338,10 @@ a.card {
   flex-direction: column;
   gap: 12px;
 }
+/* A STAR GLYPH IS TEXT TO A RENDERER, so it takes --accent-text, not the fill:
+   measured by pixel on the light review card, bare --accent read 2.89:1. */
 .review-stars {
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 3px;
   font-size: var(--fs-body);
 }
@@ -2237,7 +2470,7 @@ a.card {
   cursor: pointer;
   font-size: var(--fs-body);
   flex-shrink: 0;
-  transition: background 0.2s;
+  transition: background 200ms var(--out);
 }
 .reviews-modal-close:hover {
   background: var(--glass-hover);
@@ -2288,7 +2521,7 @@ a.card {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 30px;
+  margin-top: 32px;
 }
 .amenities .amenity-pill {
   flex: 0 1 auto;
@@ -2359,7 +2592,7 @@ a.card {
 .prop-subtitle {
   color: var(--text-muted);
   font-size: var(--fs-body);
-  margin: 6px 0 20px;
+  margin: 8px 0 20px;
 }
 .prop-stats {
   display: flex;
@@ -2367,7 +2600,7 @@ a.card {
 }
 .prop-stat {
   flex: 1;
-  padding: 4px 6px;
+  padding: 4px 8px;
 }
 .prop-stat + .prop-stat {
   border-left: 1px solid var(--glass-border);
@@ -2382,10 +2615,14 @@ a.card {
   gap: 6px;
   line-height: 1.1;
 }
+/* ONE ★ INK ON ONE PAGE. The cottage page painted the star three ways — amber
+   here, bare accent on the review cards, body ink in the score — so the same mark
+   meant three things. All three are the accent as TEXT now; the letter-spacing
+   goes with the amber (it was compensating for a tint that no longer applies). */
 .prop-stat-stars {
-  color: var(--warn-text);
+  color: var(--accent-text);
   font-size: var(--fs-caption);
-  letter-spacing: 1px;
+  letter-spacing: 0;
   margin-top: 3px;
 }
 .prop-stat-sub {
@@ -2400,7 +2637,7 @@ a.card {
 .prop-divider {
   height: 1px;
   background: var(--glass-border);
-  margin: 22px 0;
+  margin: 24px 0;
 }
 .prop-section-h {
   text-align: left;
@@ -2409,7 +2646,7 @@ a.card {
 }
 /* Meet your host */
 .host-card {
-  padding: 22px;
+  padding: 24px;
   border-radius: var(--r-panel);
 }
 .host-top {
@@ -2437,7 +2674,7 @@ a.card {
 }
 .host-stats {
   display: flex;
-  margin: 18px 0;
+  margin: 16px 0;
 }
 .host-stats > div {
   flex: 1;
@@ -2707,7 +2944,7 @@ a.card {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: #1a191b;
+  background: var(--accent-ink);
   border: 3px solid #fff;
   /* Warm and lighter: 0.5 black cast a grey halo on a pale basemap. */
   box-shadow: 0 4px 14px rgba(58, 46, 30, 0.3);
@@ -2746,7 +2983,7 @@ a.card {
   right: 14px;
   bottom: 14px;
   background: rgba(255, 255, 255, 0.92);
-  color: #1a191b;
+  color: var(--accent-ink);
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: var(--r-sm);
   padding: 9px 14px;
@@ -2921,14 +3158,27 @@ a.card {
   position: relative;
   max-width: 520px;
 }
+/* ONE ROW OF CHROME, NOT TWO. The ✕ used to sit in flow on a line of its own
+   ABOVE the progress: measured at 390, ✕ row + progress row + the first content
+   line spent 145px of an 844px phone (17%) before the cottage's name. It joins
+   the progress row's right end, where every sibling sheet already puts it. */
+.enq-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0;
+}
 /* Two-step progress indicator at the top of the enquiry modal. */
 .enq-progress {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* No right inset: the close X is in-flow on its own line above, so this row
-     gets the full width — which is what keeps the three labels from clipping. */
-  margin: 24px 0;
+  /* The connectors are flex:1, so the row takes whatever the ✕ beside it leaves
+     and the three nowrap labels are the floor — min-width:0 lets it shrink to
+     them rather than pushing the button off the box. */
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 .enq-prog-step {
   font-size: var(--fs-caption);
@@ -3130,10 +3380,14 @@ a.card {
   font-size: var(--fs-micro);
   font-weight: 700;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: all 200ms var(--out);
 }
+/* KEEP THE RED — the vocabulary above is a deliberate borrow from the hub, and
+   "outstanding" is not "error". Fix the contrast INSIDE it: --danger is a FILL
+   token and never retunes, so at 65% it composited to ≈(236,166,163) on the light
+   sheet — 1.81:1 as a ring, under the 3:1 non-text bar. --danger-text does. */
 .enq-dot.todo {
-  border: 1.5px solid color-mix(in srgb, var(--danger) 65%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--danger-text) 70%, transparent);
 }
 .enq-dot.done {
   border: 1.5px solid color-mix(in srgb, var(--ok) 50%, transparent);
@@ -3145,6 +3399,9 @@ a.card {
 .enq-dot.done::after {
   content: '✓';
 }
+/* A MISSED SITE IN THE WELLS PASS: rgba(0,0,0,0.18) is a grey slab on the light
+   sheet (~203,200,195 on #f7f4ee) where every other well in this flow — .enq-host,
+   .date-range-trigger, .guest-price-box — took --well-bg. */
 .enq-sent-sum {
   display: flex;
   justify-content: space-between;
@@ -3152,11 +3409,60 @@ a.card {
   align-items: baseline;
   font-size: var(--fs-sub);
   color: var(--text-light);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--well-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-sm);
   padding: 10px 14px;
   margin-top: 12px;
+}
+/* SAID ONCE: the sent screen's "George replies personally" is a fact about WHEN
+   you will hear back, not a second "sent" — so it keeps its words and gives up
+   the ✓ icon and the green panel it wore, leaving the drawn tick above as the
+   one mark on the screen. */
+.enq-sent-how {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 0 4px;
+}
+/* DESKTOP IS A MAC SHEET, NOT A TALLER PHONE. At 1280×900 the enquiry box is
+   480×810 holding 1124px of form: 314px hidden on open, with Continue below the
+   fold — the one control that moves the guest on was not on screen when the
+   screen opened. A macOS sheet pins its action instead: the body scrolls, the
+   footer does not. Below 900 the wrapper generates NO BOX, so the phone's layout
+   is byte-for-byte what it was — and the refusal inside it can still stick to the
+   STEP rather than to a 190px wrapper, which is why this is `contents` and not a
+   `static` block. */
+.enq-foot {
+  display: contents;
+}
+/* 20, not the 18 this carried as an inline style: moving a declaration OUT of the
+   markup and into the sheet brings it under the 4pt ratchet for the first time, and
+   the ratchet only ever falls. A 2px snap nobody can see is the cheaper half of that
+   trade than a raised baseline. */
+#enquire-step-review .enq-foot > .btn-accent {
+  margin-top: 20px;
+}
+@media (min-width: 900px) {
+  #enquire-step-review .enq-foot,
+  #enquire-step-details .enq-foot {
+    display: block;
+    position: sticky;
+    /* NEGATIVE, and measured: Chromium's sticky rectangle here is the scroller's
+       CONTENT box, so `bottom: 0` left the box's own 36px bottom padding exposed
+       BELOW the bar — a 37px strip the form scrolled through. -36px puts the bar's
+       bottom edge on the box's inner bottom, where a footer bar belongs. */
+    bottom: -36px;
+    z-index: 3;
+    margin: 0 -36px -36px;
+    padding: 16px 36px calc(16px + var(--safe-b));
+    background: var(--sheet-surface);
+    border-top: 1px solid var(--glass-border);
+  }
+  #enquire-step-review .enq-foot > .btn-accent {
+    margin-top: 0;
+  }
 }
 /* Dates verdict capsule on the enquiry trigger + the in-place waitlist offer +
    the spoken payment schedule (the approved booking-flow demo). */
@@ -3260,20 +3566,75 @@ a.card {
   flex-shrink: 0;
   margin-top: 1px;
 }
-/* Inline validation message inside the two-step enquiry popup (replaces blocking pop-ups) */
+/* The ONE sentence that says why a send did not go, on FIVE slots (enq-msg-review,
+   enq-msg-details, enq-acct-msg, wl-msg, enq-email-msg). It hardcoded #ffce7a on a
+   raw amber tint with no light retune: 1.22:1, pixel-sampled on the light sheet.
+   On the tokens it is also the shape a11y-test §1b DISCOVERS, so it is measured
+   every run rather than by luck. */
 .enq-modal-msg {
   display: none;
   margin: 14px 0 0;
   padding: 11px 14px;
   border-radius: var(--r-sm);
-  background: rgba(255, 176, 32, 0.12);
-  border: 1px solid rgba(255, 176, 32, 0.35);
-  color: #ffce7a;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn-text);
   font-size: var(--fs-sub);
   line-height: 1.4;
 }
 .enq-modal-msg.show {
   display: block;
+  /* It sat flush against the Send button — 0px between the two, so the answer and
+     the control read as one block of colour. */
+  margin-bottom: 12px;
+}
+/* THE ANSWER TO THE TAP STAYS WITH THE GUEST. The refusal names a field and
+   FOCUSES it, which scrolls the sheet to that field — and the alert lives at the
+   foot of a 1250px form, so on a phone it left the screen in the same frame it
+   appeared: measured at 390, the alert at y=1207 in an 844px viewport with the
+   named field at 330. Pinned to the bottom of the sheet's own scroller it stays
+   with the field it names, and it unsticks into place the moment the guest
+   scrolls back to the button. The TINT is untouched — a11y §1b discovers and
+   measures this pair off the base rule — and the sheet's own ground goes UNDER
+   it so the form cannot read through. Above 900 the pinned foot carries it. */
+@media (max-width: 899px) {
+  #enq-msg-review.show,
+  #enq-msg-details.show {
+    position: sticky;
+    bottom: var(--safe-b);
+    z-index: 2;
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--warn) 12%, transparent),
+      color-mix(in srgb, var(--warn) 12%, transparent)
+    );
+    background-color: var(--sheet-surface);
+  }
+}
+/* The narration opened flush against the button it narrates. */
+#enq-steps.is-open {
+  margin-bottom: 12px;
+}
+/* THE ACCOUNT SCREENS' STATUS LINE — same block, same tokens. #login-error,
+   #reg-error, #magic-link-msg, #pw-msg and #profile-msg each set a raw --danger /
+   --ok as INK, and those are FILL tokens: pixel-sampled on the light ground the
+   login refusal read 2.46:1 and the magic-link confirmation 2.33:1 (dark passed,
+   which is how they survived). Deliberately the TINT shape, because that is what
+   a11y-test §1b discovers — no list for anyone to maintain. */
+.auth-msg {
+  font-size: var(--fs-sub);
+  line-height: 1.4;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+}
+.auth-msg.is-ok {
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
+}
+.auth-msg.is-bad {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 /* Guest online-payment view (Square) */
 .pay-wrap {
@@ -3283,6 +3644,10 @@ a.card {
 .pay-card {
   padding: 28px;
   border-radius: var(--r-panel);
+  /* The cottage's accent rule is the card's TOP EDGE, so it is pulled out of
+     the padding box and clipped to the card's own corner (see .pay-stay-band).
+     Nothing else reaches the edge — the Pay button's glow stops well inside. */
+  overflow: clip;
 }
 .pay-head {
   margin-bottom: 18px;
@@ -3343,10 +3708,13 @@ a.card {
 }
 /* The deposit's one explanation, on its own line so a long label can never
    push the figure off the edge. */
+/* NO SECOND DIMMING: --text-muted at 0.75 measured 2.95:1 in light on the white
+   card, for the 12px "returned after your stay" — the sentence that says the £75
+   comes back. The 12px size is the hierarchy. */
 .pay-line-lbl small {
   display: block;
   font-size: var(--fs-caption);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 /* Never shrinks, never wraps: a clipped amount is a different number. */
 .pay-line-amt {
@@ -3375,7 +3743,7 @@ a.card {
   text-decoration: none;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: background 0.16s var(--fluid-bezier), border-color 0.16s var(--fluid-bezier);
 }
@@ -3386,10 +3754,10 @@ a.card {
   }
 }
 .pay-part-row {
-  margin-top: 10px;
-  padding: 14px;
+  margin-top: 12px;
+  padding: 16px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 .pay-part-lbl {
@@ -3401,9 +3769,23 @@ a.card {
 /* The field is the house .input-glass — a second glass control drawn beside the
    first would say the same thing in a different accent. Only the money-specific
    bits are stated here; the 16px font-size that stops iOS zooming on focus is
-   already the shared rule's. */
+   already the shared rule's. The £ is IN the field: the unit used to be carried
+   by the label's trailing ", in pounds?" and appeared nowhere near the number. */
+.pay-money {
+  position: relative;
+}
+.pay-money-sign {
+  position: absolute;
+  /* On the field's own 16px inset, so the sign and the figure share one rail. */
+  left: 16px;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--text-muted);
+  pointer-events: none;
+}
 #pay-part-amt {
   margin-bottom: 0;
+  padding-left: 32px;
   font-variant-numeric: tabular-nums;
 }
 .pay-part-hint {
@@ -3482,7 +3864,11 @@ a.card {
   margin-right: 7px;
   border-radius: 999px;
   background: var(--text-muted);
-  color: var(--bg, #fff);
+  /* --bg IS NOT A TOKEN IN THIS SHEET (getPropertyValue('--bg') === ''), so this
+     fell to the #fff fallback and the step digits were white on the muted fill:
+     1.98:1 in dark. --dark-grey is the page ground in BOTH themes and is the
+     right ink on a --text-muted disc (≈9.5:1 dark, 5.4:1 light). */
+  color: var(--dark-grey);
   font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0;
@@ -3497,18 +3883,20 @@ a.card {
   color: var(--text-light);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   padding: 11px 13px;
   margin-bottom: 14px;
 }
+/* A SENTENCE, NOT A PANEL. The consent restates the whole arrangement directly
+   above the button that acts on it — it is read in the flow, and the box it
+   used to wear was one more frame in a card that had thirteen. */
 .pay-consent {
   font-size: var(--fs-caption);
+  /* Body ink, not muted: unboxing already flattens it, and this is the sentence
+     the guest is agreeing to — the one thing on the screen not to dim. */
   color: var(--text-light);
-  background: rgba(127, 127, 127, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 11px 13px;
-  margin: 12px 0 2px;
+  line-height: 1.5;
+  margin: 12px 4px;
 }
 .pay-sec-amt:not(:empty)::before {
   content: ' · ';
@@ -3588,12 +3976,12 @@ a.card {
   text-underline-offset: 3px;
   cursor: pointer;
 }
-/* Quiet trust lines under the Pay button — a small lock, not a loud banner. */
+/* Quiet trust lines under the Pay button — a small lock, not a loud banner.
+   A BLOCK, not a flex row: the sentence wraps to two lines at 390 and as a
+   flex sibling the glyph was pinned at the left edge, vertically between them
+   and 20px clear of the first word. It is an inline mark in its own sentence. */
 .pay-secure {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
+  display: block;
   margin-top: 14px;
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -3605,6 +3993,9 @@ a.card {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 5px;
 }
 /* THE ONE THING THIS SCREEN IS FOR. It was .btn-glass — a translucent outline —
    under Square's solid-black and heavy-bordered wallet buttons, so the action
@@ -3682,40 +4073,50 @@ a.card {
    selected radio option read as unchecked radios — and STATE dots + a slim
    progress bar for a plan in flight (green done, accent next, hollow to come;
    the words beside them always carry the state too). */
+/* STEP 1 IS A STEP, NOT A BOX. It carried a border and a tint of its own around
+   three more bordered option cards around a bordered schedule — 13 framed
+   blocks in one card, three deep, and the plan step was the worst of it. It is
+   unboxed like step 2 beside it (a numbered caption is what names a step here);
+   the OPTIONS are the one frame, joined into a single group below. */
 .pay-autopay {
   display: block;
-  margin: 14px 0 2px;
-  padding: 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+  margin: 16px 0 4px;
 }
 .pay-ap-lead {
   margin: 4px 0 12px;
   font-size: var(--fs-sub);
   color: var(--text-muted);
 }
+/* ONE GROUP, HAIRLINE-SEPARATED — the house list material (no shadow, a
+   hairline, radius only on the run's ends). Three separate cards read as three
+   things to weigh; one group reads as one choice with three answers. */
 .pay-ap-opts {
   display: grid;
-  gap: 8px;
+  gap: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  overflow: clip;
 }
 .pay-ap-opt {
   display: block;
-  padding: 11px 13px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--glass-border);
+  padding: 12px;
   cursor: pointer;
   /* The pill-control press from the #1000 makeover — these are the same
      species of control as the part toggle. */
-  transition: transform 320ms var(--settle), filter 320ms var(--settle), border-color 0.18s var(--fluid-bezier);
+  transition: transform 320ms var(--settle), filter 320ms var(--settle), background 0.18s var(--fluid-bezier);
+}
+.pay-ap-opt + .pay-ap-opt {
+  border-top: 1px solid var(--glass-border);
 }
 .pay-ap-opt:active {
   transform: scale(var(--sc, 0.97));
   filter: brightness(0.94);
   transition: transform 80ms var(--in), filter 80ms var(--in);
 }
+/* The chosen row wears the tint; the checked radio beside it is the other half
+   of the state. The 62% accent RING is gone with the per-option border — a ring
+   inside a joined group is the second edge the group exists to remove. */
 .pay-ap-opt.is-sel {
-  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .pay-ap-optrow {
@@ -3723,9 +4124,13 @@ a.card {
   align-items: center;
   gap: 10px;
 }
+/* 24px, not the UA's ~20: WCAG 2.2's 2.5.8 floor, on the control that chooses how
+   a guest's money is taken. Found the day a11y-test gained a pay scene. */
 .pay-ap-optrow input {
   accent-color: var(--accent);
   flex: none;
+  width: 24px;
+  height: 24px;
 }
 .pay-ap-opttxt {
   min-width: 0;
@@ -3922,6 +4327,15 @@ a.card {
   text-align: center;
   padding: 16px 0;
 }
+/* ONE GEOMETRY FOR THE PAIR. Retry is the accent fill now, and .btn-glass
+   .btn-accent's guest-CTA 17px padding would make it taller than the plain
+   "Back to the site" beside it — the same mismatch the other way round. Stated
+   at (1,1,0) so it outranks .btn-glass.btn-accent (0,2,0) whatever the order. */
+#pay-error .btn-glass {
+  min-height: 44px;
+  font-size: var(--fs-body);
+  padding: 12px 26px;
+}
 .pay-done-tick .ic {
   width: 64px;
   height: 64px;
@@ -3933,7 +4347,7 @@ a.card {
 .pay-journey {
   margin-top: 16px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   overflow: hidden;
   text-align: left;
 }
@@ -3981,10 +4395,16 @@ a.card {
 .pj-row.is-dim .pj-fig { font-weight: 500; color: var(--text-muted); }
 /* The cottage's own colour opens the card — the money follows the thing it
    buys. Painted by openPayView from propertyMeta's accent; hidden without one. */
+/* It IS the top edge, not a rule floating in the padding: a 4px bar with its
+   own 4px radius, inset 8px inside a card whose own corner is 28px, read as a
+   stray bar above the title. Pulled the full 28px out of the padding box and
+   squared off — the card's `overflow: clip` gives it the card's corner. The
+   24px beneath restores the card's own top rhythm (4 + 24 = 28), so a cottage
+   with no accent (band display:none) is unmoved. */
 .pay-stay-band {
   height: 4px;
-  border-radius: 4px 4px 0 0;
-  margin: -8px -8px 14px;
+  border-radius: 0;
+  margin: -28px -28px 24px;
 }
 .pay-stay-cap {
   display: inline-flex;
@@ -4017,14 +4437,28 @@ a.card {
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   border-top-color: var(--accent);
 }
-/* The demoted ask on an armed plan: paying now is offered, never shouted. */
-.pay-cta.is-quiet {
+/* The demoted ask on an armed plan: paying now is offered, never shouted.
+   AT THE WINNING SPECIFICITY. This shipped as `.pay-cta.is-quiet` (0,2,0)
+   against `#pay-btn.pay-cta` (1,1,0) directly above, so the rule existed and
+   LOST: an already-arranged balance painted the accent fill, the accent-ink
+   text and the 18px rose glow — byte-identical to an unpaid ask, on the one
+   screen where "nothing to do" and "pay me now" must not look the same. The
+   hover twin is load-bearing too, or the pointer re-glows what this demotes. */
+#pay-btn.pay-cta.is-quiet {
   background: transparent;
   border: 1px solid var(--glass-border);
   color: var(--text-light);
+  box-shadow: none;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 600;
+}
+@media (hover: hover) {
+  #pay-btn.pay-cta.is-quiet:hover {
+    filter: none;
+    box-shadow: none;
+    background: var(--well-bg);
+  }
 }
 .pay-armed-note {
   font-size: var(--fs-caption);
@@ -4047,7 +4481,7 @@ a.card {
 .pay-steps.is-open { grid-template-rows: 1fr; }
 .pay-steps-in {
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   margin-top: 12px;
   text-align: left;
 }
@@ -4057,14 +4491,19 @@ a.card {
   color: var(--text-muted);
   padding: 11px 15px 2px;
 }
+/* A PENDING STEP IS STILL READ. At 0.45 the sentence "one payment of £340.00 —
+   nothing else is taken" measured 1.79:1 light — the line promising no second
+   charge, where a guest is handing over a card. 0.7 was measured too and is still
+   under the bar (3.16:1), so the opacity goes: the pending state is carried by the
+   dot and by .is-run's accent label. */
 .pay-step {
   display: flex;
   align-items: flex-start;
   gap: 11px;
   padding: 9px 15px;
   position: relative;
-  opacity: 0.45;
-  transition: opacity 0.25s ease;
+  opacity: 1;
+  transition: opacity 240ms var(--out);
 }
 .pay-step + .pay-step::before {
   content: '';
@@ -4116,8 +4555,8 @@ a.card {
 /* The loading wait wears the shape of the coming screen (index.html). */
 .pay-sk-box {
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 14px;
+  border-radius: var(--r-lg);
+  padding: 16px;
   margin-bottom: 12px;
 }
 /* MONEY COMING BACK (guestDepositTrackerHtml, My Stays): issued → your bank,
@@ -4214,7 +4653,11 @@ a.card {
   overflow: hidden;
   pointer-events: none;
 }
-.pay-cta.is-busy::before {
+/* .btn-glass.is-busy::before is (0,3,0) and this was (0,2,0), so the shared
+   13px chbSpin ring painted here and the ring declared for the money screen
+   never did — the same "the rule exists and loses" shape as the quiet button
+   above. Restated at (0,3,0) and LATER in the sheet, so the pay ring wins. */
+.btn-glass.pay-cta.is-busy::before {
   content: '';
   display: inline-block;
   width: 14px;
@@ -4225,6 +4668,13 @@ a.card {
   vertical-align: -2px;
   margin-right: 8px;
   animation: paySpin 0.7s linear infinite;
+}
+/* BUSY IS THE SPINNER, NOT A DIM. The dispatcher disables the control while the
+   charge runs and `#pay-btn.pay-cta:disabled` (1,2,0) outranks the shared
+   `.btn-glass.is-busy:disabled` (0,3,0), so the button faded to 72% at the one
+   moment money is moving. (1,3,0) settles it. */
+#pay-btn.pay-cta.is-busy:disabled {
+  opacity: 1;
 }
 .pay-cta.is-busy::after {
   content: '';
@@ -4485,6 +4935,7 @@ a.card {
 }
 @media (prefers-reduced-motion: reduce) {
   .pay-cta.is-busy::before,
+  .btn-glass.pay-cta.is-busy::before,
   .pay-cta.is-busy::after {
     animation: none;
     content: none;
@@ -4592,23 +5043,12 @@ a.card {
 #pay-done button {
   animation: payRise 0.4s var(--fluid-bezier) 0.54s backwards;
 }
-#pay-btn.is-busy::after {
-  content: '';
-  display: inline-block;
-  width: 13px;
-  height: 13px;
-  margin-left: 9px;
-  vertical-align: -2px;
-  border: 2px solid var(--accent-ink);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: paySpin 0.7s linear infinite;
-}
-@keyframes paySpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* An older 13px TRAILING ring lived here (`#pay-btn.is-busy::after`, with a
+   duplicate @keyframes paySpin). At (1,1,0) it beat `.pay-cta.is-busy::after`
+   — the shimmer sweep — on display/size/border/animation while INHERITING its
+   `position:absolute; inset:0`, so the pay button painted a SECOND ring pinned
+   half-clipped at its top-left corner and the sweep never appeared at all. One
+   spinner: the ::before ring beside "Processing…", the ::after sweep behind it. */
 #view-pay .pay-full-link,
 #pay-done button {
   transition: transform 320ms var(--settle), filter 320ms var(--settle);
@@ -4633,8 +5073,7 @@ a.card {
   .pay-form > *,
   #pay-done h2,
   #pay-done p,
-  #pay-done button,
-  #pay-btn.is-busy::after {
+  #pay-done button {
     animation: none;
   }
   /* The DRAW starts invisible: with its animation gone the strokes must be
@@ -4665,13 +5104,25 @@ a.card {
            body and stay centred. */
 @media (min-width: 769px) {
   #view-pay .pay-wrap {
-    max-width: 700px;
+    /* 700 gave the FORM a 338px column — a phone layout inside a desktop card,
+       with the plan open at 1,152px beside a 607px summary and 290px of empty
+       ground each side. The plan options stay a vertical list (they are
+       mutually exclusive, with a schedule that expands under the chosen one);
+       what changes is that the column is no longer phone-width. */
+    max-width: 880px;
   }
   #view-pay #pay-body {
     display: grid;
     grid-template-columns: 0.9fr 1.1fr;
     gap: 28px;
     align-items: start;
+  }
+  /* …and the summary travels with the form instead of leaving dead ground
+     beside it. 100px is the app's own clearance under the fixed bar (the
+     scroll-margin-top pattern). */
+  #view-pay .pay-summary {
+    position: sticky;
+    top: calc(100px + var(--safe-t));
   }
   #view-pay .pay-summary .pay-amount-box {
     margin-bottom: 0;
@@ -4694,9 +5145,16 @@ body.owner-mode #reserve-enquire-btn {
   margin-bottom: 20px;
   font-family: var(--font-sans);
   font-size: var(--fs-headline);
-  transition: border 0.3s;
+  transition: border 300ms var(--out);
 }
-.input-glass:focus {
+/* A MOUSE CLICK ON A FIELD PAINTS NO RING, a keyboard focus does. This used to be
+   a bare `:focus`, which is (0,1,0) and later in the sheet than the global ring
+   above, so it DELETED the ring on every focused field and left a 1px dark border
+   in its place. `:focus:not(:focus-visible)` is the pointer case only.
+   NB a text input always matches :focus-visible, so a TAPPED field on a phone now
+   shows the ring — the same treatment the search field already gives, and the
+   intended outcome. */
+.input-glass:focus:not(:focus-visible) {
   outline: none;
   border-color: var(--text-light);
 }
@@ -4748,7 +5206,7 @@ textarea.input-glass.field-sm {
 .gallery-container {
   height: 80vh;
   border-radius: var(--r-panel);
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   position: relative;
   overflow: hidden;
   background: var(--dark-grey);
@@ -4964,17 +5422,25 @@ textarea.input-glass.field-sm {
 #lightbox-img2.is-front {
   opacity: 1;
 }
+/* ONE CONTROL FAMILY. These were a SECOND design of .gallery-nav — the same
+   control, on the same photos, one screen earlier: 54px against 50, an 8% white
+   fill with a hairline against the gallery's own rgba(18,19,22,.4) disc, a 28px
+   glyph against 17. An 8% white disc over a bright photo is invisible; measured
+   at 390 the left arrow could not be seen at all. The gallery's disc, deepened
+   to .55 because here it sits over the photo rather than beside it. */
 .lightbox-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 54px;
-  height: 54px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
-  font-size: var(--fs-display);
+  background: var(--lb-disc);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: var(--lb-ink);
+  font-size: var(--fs-headline);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -4987,7 +5453,7 @@ textarea.input-glass.field-sm {
 }
 @media (hover: hover) {
   .lightbox-nav:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--lb-disc-hover);
     transform: translateY(-50%) scale(1.06);
     box-shadow: var(--shadow-soft);
   }
@@ -5010,35 +5476,59 @@ textarea.input-glass.field-sm {
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
+  background: var(--lb-disc);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: var(--lb-ink);
   font-size: var(--fs-title);
   cursor: pointer;
   line-height: 1;
 }
 .lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--lb-disc-hover);
 }
 .lightbox-counter {
   position: absolute;
   bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
-  color: var(--text-muted);
+  color: var(--lb-sub);
   font-size: var(--fs-sub);
   letter-spacing: 1px;
 }
+/* OFF THE PHOTO ON A PHONE. At 390 the prev disc spanned x 8–54 against an
+   image starting at 15.6, so 38px of it sat ON the picture; the arrows move to
+   the scrim's own bottom band, which is 300px of empty ground, and the stage
+   gives that band its height back so a TALL photo cannot reach it either. */
 @media (max-width: 640px) {
+  .lightbox-stage,
+  .lightbox-stage img {
+    max-height: calc(86vh - 76px);
+  }
   .lightbox-nav {
     width: 46px;
     height: 46px;
+    top: auto;
+    bottom: max(18px, var(--safe-b));
+    transform: none;
+  }
+  /* The centring translateY is gone here, so the two press/hover states must
+     restate their scale without it or the disc jumps to the middle. */
+  .lightbox-nav:hover {
+    transform: scale(1.06);
+  }
+  .lightbox-nav:active {
+    transform: scale(var(--sc, 0.97));
   }
   .lightbox-nav.prev {
-    left: 8px;
+    left: 20px;
   }
   .lightbox-nav.next {
-    right: 8px;
+    right: 20px;
+  }
+  .lightbox-counter {
+    bottom: calc(max(18px, var(--safe-b)) + 15px);
   }
 }
 
@@ -5090,7 +5580,6 @@ textarea.input-glass.field-sm {
 }
 .cal-add-btn {
   padding: 12px 22px;
-  font-size: var(--fs-caption);
 }
 .cal-month-nav {
   display: flex;
@@ -5359,20 +5848,25 @@ body.light-mode .ov-card {
 }
 /* Light mode: white-on-pale-tint is unreadable — use the cottage accent
    darkened towards ink (plain-ink fallback where color-mix is missing).
-   Owner-added cottages get the same rule from injectPropColors(). */
+   45%, NOT 55: the pill's fill is a 30% cottage tint over a translucent glass
+   ground, which is why a stylesheet read cannot see this — sampled by pixel at
+   55% the blue read 3.75:1 and the green 4.15:1 (only the purple cleared AA at
+   5.49). 12px/600, so the bar is 4.5.
+   THE SAME NUMBER LIVES IN injectPropColors() (app.js) for owner-ADDED cottages,
+   and the two must move together or a new cottage ships under AA. */
 body.light-mode .tag-21a,
 body.light-mode .tag-jollyboat,
 body.light-mode .tag-pimpernel {
-  color: #1b2a34;
+  color: var(--text-light);
 }
 body.light-mode .tag-21a {
-  color: color-mix(in srgb, var(--prop-21a) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-21a) 45%, var(--text-light));
 }
 body.light-mode .tag-jollyboat {
-  color: color-mix(in srgb, var(--prop-jollyboat) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-jollyboat) 45%, var(--text-light));
 }
 body.light-mode .tag-pimpernel {
-  color: color-mix(in srgb, var(--prop-pimpernel) 55%, #1b2a34);
+  color: color-mix(in srgb, var(--prop-pimpernel) 45%, var(--text-light));
 }
 
 /* Back-office layout: calendar (left) + enquiries sidebar (right) */
@@ -5382,9 +5876,27 @@ body.light-mode .tag-pimpernel {
   gap: 30px;
   align-items: start;
 }
+/* ONE COUNT BADGE: the class for a bare count, and the three that already
+   existed adopt its pair. Geometry stays each one's own — a dock disc, a
+   heading badge and a segment chip are three sizes of one thing. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  vertical-align: middle;
+}
+.count-badge, .admin-dock-badge, .inbox-badge, .ifold-count {
+  background: var(--danger);
+  color: var(--accent-ink);
+}
 .inbox-badge {
-  background: var(--warn);
-  color: #1a1a1a;
   font-family: var(--font-sans);
   font-size: var(--fs-sub);
   font-weight: 600;
@@ -5456,7 +5968,7 @@ body.light-mode .tag-pimpernel {
 .chat-msg.me {
   align-self: flex-end;
   background: rgba(214, 167, 133, 0.92);
-  color: #1a191b;
+  color: var(--accent-ink);
   border-bottom-right-radius: 5px;
 }
 /* ---- A MESSAGE ARRIVES LIKE A MESSAGE ----
@@ -5552,8 +6064,11 @@ body.light-mode .tag-pimpernel {
   opacity: 0.7;
   margin-top: 4px;
 }
-/* Read receipt on the owner's latest reply: muted "Sent" until the guest opens
-   the thread, then green "Read". */
+/* Read receipt on the owner's latest reply: "Sent" until the guest opens it, then
+   "Read". THE GLYPH CARRIES THE STATE, NOT A COLOUR — iOS Messages' own grammar.
+   --ok-text on the rose-gold bubble is invisible: pixel-sampled 1.13:1 dark (no
+   pixel in the receipt's box came closer to the declared green than the tan
+   itself), 2.07:1 light. It inherits the bubble's ink now. */
 .chat-receipt {
   font-weight: 600;
   white-space: nowrap;
@@ -5561,6 +6076,19 @@ body.light-mode .tag-pimpernel {
 .chat-receipt.seen {
   color: var(--ok-text);
   opacity: 0.95;
+}
+.chat-msg.me .chat-receipt.seen {
+  color: inherit;
+  opacity: 1;
+}
+/* The bubble's meta line is 11px on the same fill and was dimmed AGAIN by
+   .chat-meta's opacity: 0.7 — the container-opacity trap, measured 2.94:1 dark /
+   3.18:1 light, on the one line that says whether the guest has read your reply.
+   --accent-ink is the design system's ink-on-an-accent-fill token. (.chat-msg.them
+   is deliberately untouched: measured 8.18:1 on its own glass.) */
+.chat-msg.me .chat-meta {
+  color: var(--accent-ink);
+  opacity: 1;
 }
 /* Live "typing…" bubble (three bouncing dots), styled like a received message. */
 .chat-typing {
@@ -5760,7 +6288,7 @@ body.light-mode .tag-pimpernel {
   cursor: pointer;
   border: 1px solid var(--glass-highlight);
   background: rgba(214, 167, 133, 0.95);
-  color: #1a191b;
+  color: var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5917,8 +6445,8 @@ body.light-mode .tag-pimpernel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   transition:
-    background 0.2s,
-    border-color 0.2s;
+    background 200ms var(--out),
+    border-color 200ms var(--out);
 }
 .chat-chip:hover,
 .chat-chip:focus-visible {
@@ -5981,9 +6509,9 @@ body.light-mode .tag-pimpernel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   transition:
-    background 0.2s,
-    border-color 0.2s,
-    color 0.2s;
+    background 200ms var(--out),
+    border-color 200ms var(--out),
+    color 200ms var(--out);
 }
 .trip-chip:hover {
   background: var(--glass-hover);
@@ -5991,7 +6519,7 @@ body.light-mode .tag-pimpernel {
 .trip-chip.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 .msg-thread-row {
@@ -6143,13 +6671,13 @@ body.light-mode .tag-pimpernel {
   padding-top: 10px;
   border-top: 1px solid var(--glass-border);
 }
-/* Automation settings (Instant answers + Away auto-reply) read as tidy cards. */
+/* NO BOX IN A BOX. These two pages are ONE .acr-well each, and this wrapper put
+   a third bordered surface round every field: textarea (1px, r12) inside
+   .acr-well (1px, r20) inside this (1px, r28 at 390 / r40 at 1280). The well
+   sits on the page ground now, as it does on every other Manage section. */
 #chat-answers-editor,
 #chat-away-editor {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel);
-  padding: 20px 22px;
+  padding: 0;
 }
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
@@ -6205,7 +6733,7 @@ body.light-mode .tag-pimpernel {
 .msg-filter-chip.on {
   background: var(--warn);
   border-color: var(--warn);
-  color: #1a1a1a;
+  color: var(--accent-ink);
 }
 /* "Needs reply" pill on a thread row (last message is the guest's, unanswered) */
 .needs-reply-pill {
@@ -6272,14 +6800,16 @@ body.light-mode .tag-pimpernel {
   border-radius: 50%;
   border: 1px solid var(--glass-highlight);
   background: rgba(214, 167, 133, 0.95);
-  color: #1a191b;
+  color: var(--accent-ink);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-float);
+  /* --settle, not --spring: the release of a press must not swing past its own
+     resting size (the 0.5% rule). The hover lift rides the same clock. */
   transition:
-    transform 0.2s var(--spring),
+    transform 320ms var(--settle),
     opacity 0.25s var(--fluid-bezier);
 }
 .chat-fab svg {
@@ -6583,8 +7113,6 @@ body.owner-mode .chat-widget {
   padding: 0 5px;
   margin-left: 4px;
   border-radius: var(--r-pill);
-  background: var(--warn);
-  color: #1a1a1a;
   font-size: var(--fs-micro);
   font-weight: 600;
   vertical-align: middle;
@@ -6661,9 +7189,9 @@ body.owner-mode .chat-widget {
   transition: filter var(--fluid-bezier, ease) 0.2s;
 }
 .inbox-sort-btn.is-on {
-  background: rgba(199, 154, 100, 0.16);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent-text);
-  border-color: rgba(199, 154, 100, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 /* "Returning guest" pill on an enquiry whose email matches past stays. */
 .repeat-badge {
@@ -6736,7 +7264,7 @@ body.owner-mode .chat-widget {
 /* Read-only availability calendar on cottage pages */
 .avail-cal {
   margin-top: 28px;
-  padding: 20px 22px;
+  padding: 20px;
   border-radius: var(--r-lg);
 }
 /* On desktop the calendar is moved inside the reserve card (just above
@@ -6826,20 +7354,72 @@ body.owner-mode .chat-widget {
 .avail-cell.past {
   opacity: 0.3;
 }
-.avail-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+/* THE LEGEND SHOWS THE CELLS THE GRID ACTUALLY PAINTS. It used to show a green
+   dot for Available and a grey one for Booked — and there is no green anywhere
+   in this calendar: a free night is an unfilled hairline cell and a taken one a
+   4% fill with a line through it. The swatches are miniature cells now, reading
+   the SAME declarations .avail-cell.free / .taken read, so the key and the grid
+   cannot say different things. Prices sit on the free cells, so the free key
+   also explains the £ once. */
+.avail-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
   vertical-align: middle;
-  margin-right: 5px;
+  margin-right: 8px;
+  font-size: var(--fs-micro);
+  line-height: 1;
+  color: var(--text-light);
 }
-.avail-dot.avail-free {
-  background: rgba(76, 175, 80, 0.6);
+.avail-key-free {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--glass-border);
 }
-.avail-dot.avail-taken {
-  background: rgba(255, 255, 255, 0.18);
+.avail-key-taken {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
+/* THE FILE FIELD IS A HOUSE CONTROL. Both photo sheets rendered the browser's
+   own file input — an #efefef 2px-outset square button in Arial, inside a glass
+   field, on a sheet where everything else is a pill. A <label for> opens the
+   picker natively, so the real input can go sr-only with no handler, no
+   dispatcher entry and no CSP question; a change listener names the file. */
+.file-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  /* the rhythm .input-glass sets, since this row replaces one */
+  margin-bottom: 20px;
+}
+.file-pick .btn-glass {
+  width: auto;
+  padding: 12px 20px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.file-pick-name {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The cottage's Q&A door, under Things to know. Empty (no answers written up
+   for this cottage) paints nothing at all. */
+.things-door {
+  margin-top: 16px;
+}
+.things-door:empty {
+  display: none;
+}
+
 /* SEO content: present in the HTML for search engines, off-screen for users.
            (Off-screen rather than display:none so crawlers still weight it.) */
 .seo-text {
@@ -7162,13 +7742,14 @@ body.owner-mode .chat-widget {
 .act-log-row .act-when {
   margin-left: 0;
 }
-/* Severity: warnings and action-needed rows in the activity log */
-.act-row--warn {
-  box-shadow: inset 3px 0 0 var(--warn);
-  padding-left: 8px;
-}
+/* Severity: warnings and action-needed rows in the activity log. STATE SAID
+   ONCE — the row carries an `.act-sev` pill reading "Check" / "Action", so the
+   3px coloured rail beside it said the same thing twice; it is the rail the HIG
+   pass took off Needs-you. Transparent rather than deleted, so the 8px padding
+   geometry the rows were laid out on is unchanged (the .bk-row precedent). */
+.act-row--warn,
 .act-row--action {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 transparent;
   padding-left: 8px;
 }
 .act-sev {
@@ -7228,9 +7809,9 @@ body.owner-mode .chat-widget {
 .settings-group {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   overflow: hidden;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 .settings-row {
   display: flex;
@@ -7251,7 +7832,7 @@ body.owner-mode .chat-widget {
 }
 .settings-row .settings-row-chev {
   transition:
-    transform 0.3s var(--spring),
+    transform 320ms var(--settle),
     color 0.2s var(--fluid-bezier);
 }
 .settings-row:hover .settings-row-chev {
@@ -7387,7 +7968,7 @@ body.owner-mode .chat-widget {
 .cancel-card.selected .cancel-card-check {
   background: var(--glass-highlight);
   border-color: var(--glass-highlight);
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 
 /* Reserve two lines for the label so a wrapping title (e.g. "Arrivals (next 30
@@ -7943,9 +8524,9 @@ body.light-mode .feed-dot-bad {
 }
 @media (max-width: 640px) {
   .feed-row {
-    /* date · who (flex) · amount · status DOT — keep the traffic-light dot on
-       phones (it's the only payment-status signal; hiding it lost Completed vs
-       Pending/Failed on the device the owner uses most). */
+    /* date · who (flex) · amount · status — the state travels on every width;
+       it is the only payment-status signal and hiding it lost Completed vs
+       Pending/Failed on the device the owner uses most. */
     grid-template-columns: auto 1fr auto auto;
     row-gap: 3px;
   }
@@ -7953,6 +8534,8 @@ body.light-mode .feed-dot-bad {
   .feed-row .feed-kind {
     display: none;
   }
+  /* (The recent-payments feed keeps its kind as a second LINE — admin.css, so
+     app.css stays flat for the guests who never see that screen.) */
 }
 .os-sub {
   font-size: var(--fs-caption);
@@ -8186,7 +8769,7 @@ body.light-mode .feed-dot-bad {
 }
 .ana-seg-btn.on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 /* CSV export: a calm full-width action at the foot of the report. */
@@ -8325,7 +8908,8 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
   letter-spacing: 0.2px;
   cursor: pointer;
-  box-shadow: 0 8px 24px var(--accent-soft);
+  /* The 24px accent glow is gone (the .btn-accent rule): measured on "We've left
+     the cottage", rgba(214,167,133,0.55) 0 8px 24px. */
   transition: transform 320ms var(--settle), filter 320ms var(--settle), box-shadow 0.3s var(--fluid-bezier);
 }
 .btn-primary:hover {
@@ -8415,8 +8999,11 @@ body.light-mode .feed-dot-bad {
 .guestwords-meta.fading {
   opacity: 0;
 }
+/* The brief asked for this one to be CHECKED separately rather than assumed —
+   checked, and it is the same defect: measured 2.63:1 on the light linen ground
+   (dark reads 8.60, the two tokens being equal there). Same rule, same fix. */
 .guestwords-meta .gw-stars {
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 2px;
 }
 
@@ -8473,14 +9060,17 @@ body.light-mode .feed-dot-bad {
   max-width: 760px;
   margin: 16px auto 2px;
 }
+/* ON THE SYSTEM: it had its own 16px radius and its own padding, and its two
+   buttons measured 60px against 45px in one row — the accent one wearing the
+   hero CTA's padding. The card radius, and one button geometry. */
 .wb-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 16px 20px;
-  border-radius: var(--r-md);
+  padding: 20px 24px;
+  border-radius: var(--r-lg);
 }
 .wb-title {
   font-family: var(--font-serif);
@@ -8496,24 +9086,47 @@ body.light-mode .feed-dot-bad {
   gap: 10px;
   flex-wrap: wrap;
 }
-.wb-actions .btn-glass {
+/* One geometry for the pair: .btn-glass.btn-accent's 17px guest-CTA padding
+   made the accent 60px beside a 45px sibling in the same row (the .cal-add-btn
+   precedent — in a row of peers the accent is a COLOUR, not a size). */
+.wb-actions .btn-glass,
+.wb-actions .btn-glass.btn-accent {
   white-space: nowrap;
+  padding: 12px 28px;
+  min-height: 44px;
 }
 @media (max-width: 640px) {
   .wb-panel {
     flex-direction: column;
     align-items: flex-start;
   }
+  /* Primary over secondary: on a phone the accent takes the row and "Your
+     stays" sits under it, rather than two equal pills side by side. */
+  .wb-actions {
+    width: 100%;
+  }
+  .wb-actions .btn-accent {
+    flex: 1 1 100%;
+  }
 }
+/* A SENTENCE IS NOT A CHIP: a 999px stadium round a paragraph that wraps to two
+   lines at 390px, with --accent-text on a raw 10% accent tint — sampled 3.95:1 at
+   390 light, 4.03:1 at 1280. The words take body ink (14+:1 either theme) and the
+   accent stays where it is a MARK, the leading ✓ renderStayedBefore emits. */
 .stayed-before-chip {
-  display: inline-block;
+  display: block;
   margin: 10px 0 2px;
-  padding: 7px 13px;
-  border-radius: 999px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
   font-size: var(--fs-sub);
+  color: var(--text-light);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 0;
+}
+.stayed-before-chip .sb-tick {
   color: var(--accent-text);
-  background: rgba(214, 167, 133, 0.1);
-  border: 1px solid rgba(214, 167, 133, 0.25);
+  font-weight: 700;
+  margin-right: 6px;
 }
 /* Homepage live availability: per-card chip + late-availability spotlight.
    THE ONLY .avail-chip RULE — a second, orphaned from the enquiry card, left the
@@ -8542,6 +9155,39 @@ body.light-mode .feed-dot-bad {
 #late-avail {
   max-width: 760px;
   margin: 16px auto 2px;
+}
+.avail-lead {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  /* 8, not the inline 6 it replaces — on the 4pt grid now it is a rule the
+     ratchet can see (a 2px move under a caption). */
+  margin: 0 auto 8px;
+  max-width: 460px;
+  text-wrap: balance;
+}
+/* HOME IS THE ONE VIEW WHERE THE PILL STAYS AND THE CONTENT MOVES — it is the
+   one page with no other route to a person, so guest-app.css's stand-downs stop
+   short of it. The pill (x314–378 at 390) crossed every CENTRED block in turn:
+   15.3×19 of "…is available 7 Sept", 36.3×30 of the guest quote, 20×16 of the
+   trust strip and 28×19 of the availability caption (the last two found by the
+   gate, not the audit — same defect, same fix, stated once).
+   SYMMETRIC on purpose: `padding-right` alone decentres a centred serif quote,
+   a worse defect than the one being fixed. Blocks that span the container take
+   padding; a block already narrower takes a max-width, since padding inside a
+   centred box moves nothing. */
+@media (max-width: 640px) {
+  #late-avail {
+    max-width: calc(100% - 144px);
+  }
+  .avail-lead {
+    max-width: calc(100% - 80px);
+  }
+  .home-guestwords,
+  .home-trust {
+    /* 80, not 72: these two are full-bleed sections (0–390 on a phone), so the
+       inset is off the VIEWPORT edge and 72 left the quote 3px under the pill. */
+    padding-inline: 80px;
+  }
 }
 .late-avail {
   display: flex;
@@ -8642,12 +9288,13 @@ body.light-mode .feed-dot-bad {
 .hub-cta {
   margin: 4px 0 2px;
 }
+/* The FILL is stated once, with the card's own CTA, further down — the two
+   painted the same "Pay balance £350.00" in two colours a screen apart, this
+   one in the green that means DONE everywhere else on the page. */
 .hub-cta-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: rgba(76, 175, 80, 0.22);
-  border-color: var(--booked-border);
   text-decoration: none;
 }
 /* Desktop: drop the tides line from the My Stay hub (kept on mobile, where
@@ -8775,14 +9422,20 @@ body.light-mode .feed-dot-bad {
   font-weight: 700;
   color: var(--text-light);
 }
+/* TWO LINES, NOT AN ELLIPSIS. A 62px cell against a 71px "partly cloudy" cut
+   three of four summaries to "partly clo…". The vocabulary is NOT the thing to
+   shorten — weather_code_text feeds the owner's day brief and the search
+   answers too, and test-weather.php gates it — so the cell wraps instead. */
 .gwx-s {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: var(--fs-micro);
   color: var(--text-muted);
   margin-top: 1px;
+  line-height: 1.15;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 .gwx-note {
   font-size: var(--fs-micro);
@@ -9015,13 +9668,32 @@ body.light-mode .feed-dot-bad {
 /* THE PRIMARY ASK IS NOT THE SMALLEST TYPE IN THE CARD. On base .btn-sm, "PAY
    BALANCE £250.00" was 10.88px uppercase 400 while "Invoice" beneath it was
    12.8px 600. This is .gb2-again's tier: 14.4 primary / 12.8 quiet. The hub's
-   CTA moves with it or the two hubs disagree. */
+   CTA moves with it or the two hubs disagree.
+   ONE RULE, ONE COLOUR. The hub's ask painted a 22% green fill with the
+   booked-border while the card's — the SAME "Pay balance £350.00", 1.2 screens
+   below — carried an inline accent fill; green is the done state everywhere
+   else on this page. Both are this rule now: the card's inline style is gone
+   and the hub's green with it, so they cannot drift again. */
 .gb2-cta .btn-sm,
 .hub-cta-btn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
   font-size: var(--fs-body);
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
+}
+/* DESKTOP IS NOT A STRETCHED PHONE. At 1280 the hub and every card ran the
+   container's full 1160px: a timeline label at x87 with its figure at x913 —
+   826px of nothing between "Paid so far" and "£100.00" — a 1110px-wide button,
+   and six tiles in one strip. The owner's own booking hub caps at a 760px
+   column for the same anatomy; this is that column, LEFT-aligned so it starts
+   on the title's rail rather than floating in the middle of the page. */
+@media (min-width: 900px) {
+  #guest-bookings-list {
+    max-width: 760px;
+  }
 }
 .gb2-again {
   display: block;
@@ -9130,7 +9802,7 @@ body.light-mode .feed-dot-bad {
   opacity: 0;
   transition:
     height 0.26s var(--fluid-bezier),
-    opacity 0.18s ease;
+    opacity 160ms var(--out);
 }
 @media (prefers-reduced-motion: reduce) {
   .gb2-stars.is-settling .gb2-star.is-on,
@@ -9267,7 +9939,7 @@ body.light-mode .feed-dot-bad {
   transition:
     background 0.2s var(--fluid-bezier),
     transform 320ms var(--settle), filter 320ms var(--settle),
-    border-color 0.2s ease;
+    border-color 200ms var(--out);
 }
 .hub-tile .ic {
   width: 22px;
@@ -9294,7 +9966,8 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border);
   color: var(--text-muted);
   border-radius: var(--r-pill);
-  padding: 7px 14px;
+  /* 8, not 7: the chip is 33px and its hit region (below) reaches 47. */
+  padding: 8px 14px;
   font-family: var(--font-sans);
   font-size: var(--fs-caption);
   font-weight: 600;
@@ -9316,12 +9989,19 @@ body.light-mode .feed-dot-bad {
   color: var(--dark-grey);
   border-color: var(--text-light);
 }
+/* An experience card has NO click handler — only the pills inside act — and it
+   inherited .card's `cursor: pointer` plus .glass-panel's hover lift, so the
+   pointer promised a tap that does nothing. The cursor is the unambiguous half;
+   the lift is a JUDGEMENT (CLAUDE.md's opt-out list names surfaces you never
+   click, and keeps the lift for decorative bands — this is a content card, not
+   a band). */
 .exp-card {
   position: relative;
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  cursor: default;
 }
 .exp-card .card-img {
   height: clamp(150px, 26vw, 200px);
@@ -9361,6 +10041,16 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   line-height: 1.5;
   white-space: pre-line;
+  /* THE CARD IS A FLEX COLUMN AND THE GRID STRETCHES IT, so without this the
+     body sizes to its text and the actions float wherever it ends: measured at
+     1280, three 496px cards in one row put their pills 19, 86 and 111px from
+     the card foot. The body takes the slack; the actions go to the bottom. */
+  flex: 1 1 auto;
+}
+/* A card with NO actions has nothing to pin, so the void under its body becomes
+   even padding instead. */
+.exp-body:last-child {
+  margin-bottom: 20px;
 }
 .exp-dist {
   display: flex;
@@ -9394,7 +10084,9 @@ body.light-mode .feed-dot-bad {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 14px 18px 18px;
+  margin: 0 18px 20px;
+  padding-top: 14px;
+  margin-top: auto;
 }
 /* Even pills, icon + label centred (no link underline — handled on .btn-sm). */
 .exp-actions .btn-sm {
@@ -9439,23 +10131,22 @@ body.light-mode .feed-dot-bad {
     height: 44px;
   }
 }
-/* Lighter backdrop-blur on phones: blur cost scales with radius, so a
-           modest trim noticeably eases scroll/compositing on low-end devices
-           while keeping the frosted-glass look (these elements composite over
-           scrolling content). */
+/* THE PHONE GETS THE MATERIAL. Blur cost scales with radius, so a phone gets a
+   cheaper one — but this block REPLACED --glass-filter outright with a bare
+   blur(14px), so the saturate + brightness lift DESIGN.md defines as the glass
+   never painted on the device the owner and most guests actually use: measured
+   at 390, .card / .hero-content / .modal-box / .my-stay-hub all computed
+   `blur(14px)` against `blur(24px) saturate(1.8) brightness(1.04)` at 1280. The
+   token --glass-filter is built from says the intended thing in one line, so the
+   radius drops and the material stays. The .btn-glass restatement went with it,
+   and that is a correction too: the base rule declares NO backdrop-filter on
+   buttons on purpose ("a blur layer per button would cost more than it's
+   worth") and the phone override was adding exactly that cost on the device
+   least able to pay it. .prop-book-bar had TWO definitions (blur(20px) at ~2867,
+   blur(14px) here); it keeps the first. */
 @media (max-width: 768px) {
-  .glass-panel {
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  .btn-glass {
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-  }
-  .prop-book-bar,
-  .chat-widget {
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+  :root {
+    --glass-blur: 14px;
   }
 }
 .guest-booking {
@@ -9714,6 +10405,9 @@ body.light-mode .feed-dot-bad {
   max-width: 480px;
   padding: 36px;
   border-radius: var(--r-panel);
+  /* A sheet over a scrim lifts more than a page panel: the FLOAT token, stated
+     once for both themes, in place of the raw light-mode restatement. */
+  box-shadow: var(--shadow-float), var(--glass-rim);
   /* The overlay's safe-area padding is not enough on its own: a flex-CENTRED
      child that is taller than the content box overflows BOTH edges equally, so a
      90vh panel still crept back under the Dynamic Island by a few pixels. Cap the
@@ -9743,7 +10437,7 @@ body.light-mode .feed-dot-bad {
 :where(#waitlist-modal, #photo-upload-modal) .modal-box {
   max-width: 460px;
 }
-:where(#welcome-modal) .modal-box {
+:where(#welcome-modal, #messages-modal) .modal-box {
   max-width: 520px;
 }
 @media (max-width: 640px) {
@@ -9773,6 +10467,9 @@ body.light-mode .feed-dot-bad {
   .modal-overlay.chb-sheet .modal-box::before {
     content: '';
     display: block;
+    /* A box that is a flex COLUMN (the messages sheet) would otherwise let the
+       grabber shrink away under a full thread — it is a mark, not content. */
+    flex: none;
     width: 36px;
     height: 5px;
     border-radius: 3px;
@@ -9883,7 +10580,9 @@ body.light-mode .feed-dot-bad {
   /* Clear the home indicator / rounded corner on iOS. */
   bottom: max(24px, var(--safe-b));
   right: max(24px, var(--safe-r));
-  z-index: 2000;
+  /* THE TOAST LAYER — the last word about what just happened, so it sits above
+     the dialog layer. It was 2000, .modal-overlay's own value. */
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -9891,14 +10590,15 @@ body.light-mode .feed-dot-bad {
   width: calc(100% - 48px);
   pointer-events: none;
 }
+/* STATE IS SAID ONCE: the 4px coloured left rail is gone — the tinted icon is
+   the one mark — and the radius is the CARD step, not the off-scale 16. */
 .toast {
   pointer-events: auto;
   background: rgba(30, 24, 38, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-highlight);
-  border-left: 4px solid var(--warn);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   box-shadow: var(--shadow-float);
   animation: toastIn 0.45s var(--fluid-bezier);
@@ -9909,7 +10609,6 @@ body.light-mode .feed-dot-bad {
 /* The counted remainder of a capped stack — a LINE, not another card: it carries
    no action, so it must not spend a card's worth of a phone screen saying so. */
 .toast.toast-more {
-  border-left-color: var(--glass-border);
   padding: 10px 14px;
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -9986,13 +10685,32 @@ body.light-mode .feed-dot-bad {
     bottom: 12px;
     right: 12px;
   }
+  /* AND IT CLEARS THE MESSAGES PILL: the receipt toast landed on it, a 64×40px
+     collision of two fixed elements. Keyed on the SHELL, not on
+     `#guest-msg-fab:not([hidden])` — the pill is stood down with `display`,
+     never the attribute, so that selector always matches and would lift every
+     toast on every screen. Where the pill IS down the toast just sits higher. */
+  body.guest-app:not(.owner-mode) .toast-stack {
+    bottom: calc(12px + 72px);
+  }
 }
 /* General-purpose auto-dismiss toast (success/info confirmations) */
 #app-toasts {
-  z-index: 2600;
+  z-index: var(--z-toast);
+}
+/* THE CHANGEOVER CARD IS NOT A TOAST — it is a standing card on Today, and at
+   2000 it painted OVER the assistant (1440), covering 183px of the pop-out
+   including its foot. It drops to the bar layer and stands down while the
+   pop-out is up. `.toast-stack` itself must NOT be lowered: #app-toasts shares
+   the class, and an action toast ("Sent 2 of 3", Undo) has to stay above the
+   pop-out that raised it. */
+#changeover-toasts {
+  z-index: var(--z-bar);
+}
+body.cmdk-open #changeover-toasts {
+  visibility: hidden;
 }
 .toast.toast-mini {
-  border-left-color: var(--ok);
   padding: 13px 16px;
   cursor: pointer;
   display: flex;
@@ -10003,7 +10721,6 @@ body.light-mode .feed-dot-bad {
    the rose-gold accent reads in both themes. */
 .toast-action {
   flex-shrink: 0;
-  margin-left: auto;
   background: none;
   border: none;
   color: var(--accent-text);
@@ -10011,15 +10728,19 @@ body.light-mode .feed-dot-bad {
   font-weight: 700;
   font-size: var(--fs-sub);
   letter-spacing: 0.02em;
-  padding: 4px 2px;
+  /* The toast is the tap target, but the ACTION is what a keyboard reaches —
+     it measured 42x29. The region grows to 44 with a negative margin, so the
+     toast itself does not. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 4px;
+  margin: -8px -4px -8px auto;
   cursor: pointer;
 }
 .toast-action:hover,
 .toast-action:focus-visible {
   text-decoration: underline;
-}
-.toast.toast-mini.toast-err {
-  border-left-color: var(--danger);
 }
 .toast.toast-mini .toast-body {
   color: var(--text-light);
@@ -10157,18 +10878,19 @@ body.light-mode .theme-switch .ts-i-sun {
     display: inline-block;
   }
 }
+/* NO FILLED-BUTTON GLOWS — the pass that retired .btn-accent's 24px rose halo
+   to a 2px lift stopped at these two: the segment measured a 15px accent glow
+   on "Log in", the owner/green variant the same defect in raw rgba. */
 .toggle-btn.active-mode {
   background: var(--ok);
   color: white;
   border-color: var(--ok);
-  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
 }
 /* Guest Log In / Create Account tabs use the site's rose-gold accent, not green. */
 .toggle-btn.guest-tab.active-mode {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: var(--accent);
-  box-shadow: 0 4px 15px var(--accent-soft);
 }
 
 /* data-edit-* elements are the content render targets; keep their text in the
@@ -10209,7 +10931,7 @@ body.light-mode .theme-switch .ts-i-sun {
   display: none;
   text-align: center;
   max-width: 280px;
-  animation: fluidFadeIn 0.4s var(--fluid-bezier);
+  animation: chbPageIn 400ms var(--out);
 }
 #loading-overlay.show-slow #loading-slow-msg {
   display: block;
@@ -10246,6 +10968,15 @@ body.light-mode .theme-switch .ts-i-sun {
   -webkit-appearance: none;
   cursor: pointer;
 }
+/* REACH 44 — a region, not a bigger mark (it is 34px and opens the tray). NB no
+   `position: relative`: the pill is already `fixed`, which is itself a
+   containing block (.oq-count relies on that), and `relative` would un-fix it. */
+.offline-pill::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+}
 /* THE SYNC STRIP — the reconnect replay, visible: one status element updated
    in place ("Sending 2 of 3 — Payment — Marcus…"), final state lingering a
    beat. Fixed above the fold's foot, out of the way of toasts (bottom-left). */
@@ -10266,7 +10997,7 @@ body.light-mode .theme-switch .ts-i-sun {
   opacity: 0;
   pointer-events: none;
   transform: translateY(6px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 240ms var(--out), transform 240ms var(--out);
 }
 .oq-sync.show {
   opacity: 1;
@@ -10295,7 +11026,7 @@ body.has-queued .offline-pill {
   padding: 0 3px;
   border-radius: 8px;
   background: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   font-size: var(--fs-micro);
   font-weight: 700;
   display: flex;
@@ -10536,7 +11267,7 @@ p.lead[data-edit-text] {
     flex-wrap: wrap;
   }
   .section-title {
-    margin-bottom: 22px;
+    margin-bottom: 24px;
   }
 }
 
@@ -10673,6 +11404,29 @@ body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
   display: none !important;
 }
+/* THE FOOTER'S FINE PRINT, WITH NO SECOND DIMMING. Both were inline styles with an
+   opacity on already-muted ink — the container-opacity trap — so pixel-sampled the
+   NAP line read 2.06:1 light / 3.09:1 dark and the build stamp 2.18:1 / 3.44:1.
+   (.footer-meta is untouched: no opacity, and 5.47:1 measured.) AND THE BUILD ID IS
+   DEVELOPER CHROME — the owner's, not the customer's; nothing but app.js reads
+   #build-stamp, so the element stays and the gate is a display rule. */
+.footer-nap,
+.footer-build {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+.footer-nap {
+  margin: 14px 0 4px;
+}
+.footer-build {
+  margin: 4px 0 0;
+  letter-spacing: normal;
+  display: none;
+}
+body.owner-mode .footer-build {
+  display: block;
+}
 /* The admin nav lives in the HEADER now, so the back office clears it at the TOP
            and needs nothing reserved at the bottom (the 110px that cleared the old
            floating dock was just a void once it moved). */
@@ -10757,7 +11511,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
            button just flips its icon dark and nudges it up a touch as the pill arrives. */
 .admin-dock-btn.current {
   background: transparent;
-  color: #1a191b;
+  color: var(--accent-ink);
 }
 .admin-dock-btn.current:hover {
   background: transparent;
@@ -10809,7 +11563,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   pointer-events: none;
   z-index: 0;
   transition:
-    translate 0.52s var(--spring),
+    translate 400ms var(--sheet),
     opacity 0.28s var(--fluid-bezier);
 }
 .admin-dock-indicator.ad-travel {
@@ -10831,7 +11585,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
 }
 @media (prefers-reduced-motion: reduce) {
   .admin-dock-indicator {
-    transition: opacity 0.2s ease;
+    transition: opacity 200ms var(--out);
     scale: none;
   }
   .admin-dock-indicator.ad-travel {
@@ -10902,8 +11656,6 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   min-width: 19px;
   height: 19px;
   padding: 0 5px;
-  background: #e5533c;
-  color: #fff;
   font-size: var(--fs-micro);
   font-weight: 700;
   border-radius: var(--r-pill);
@@ -10989,10 +11741,14 @@ body.light-mode .hs-field:hover {
   font-size: var(--fs-sub);
   min-width: 54px;
 }
-/* Age band beside Adults / Children: quieter than the label it qualifies. */
+/* Age band beside Adults / Children: quieter than the label it qualifies.
+   THE 12px SIZE IS THE HIERARCHY — the opacity was a second dimming on ink that
+   is already muted (the container-opacity trap), and these two words carry the
+   one rule the party count depends on (a child is under 16 — the register and
+   the child rate both hinge on it). Measured by pixel at 0.72: 2.71:1 light,
+   3.80:1 dark. */
 .hs-gband {
   font-size: var(--fs-caption);
-  opacity: 0.72;
   white-space: nowrap;
 }
 .hs-step {
@@ -11108,7 +11864,7 @@ body.light-mode .hs-field:hover {
 }
 .hs-chip.is-on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -11144,14 +11900,14 @@ body.light-mode .hs-field:hover {
 }
 .hs-mode-btn.is-on {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 /* Premium primary CTA: accent-filled, not a pale outline. */
 #hs-search-btn,
 .btn-glass.btn-accent {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   border-color: transparent;
   font-weight: 600;
   padding: 17px;
@@ -11168,7 +11924,7 @@ body.light-mode .hs-field:hover {
 }
 .btn-glass.btn-accent:hover {
   background: var(--accent);
-  color: #1b1208;
+  color: var(--accent-ink);
   filter: brightness(1.05);
 }
 .flex-opts {
@@ -11226,6 +11982,28 @@ body.light-mode .hs-field:hover {
 .cottages-map.is-empty {
   display: none;
 }
+/* A GROUND UNDER THE TILES, so the pane is a surface before Leaflet lands
+   rather than a transparent hairline box. The token follows the theme with the
+   basemap, so the placeholder is the colour the tiles will be.
+   NB Leaflet's own stylesheet paints .leaflet-container #ddd at (0,1,0) and is
+   injected into <head> AFTER app.css, so it wins the tie on order — measured,
+   both maps read rgb(221,221,221) under the tiles. The two-class form outranks
+   it, which is what keeps a light-grey square from flashing behind a dark map
+   while the tiles arrive. */
+.cottages-map,
+.prop-map.leaflet-container,
+.cottages-map.leaflet-container {
+  background: var(--map-ground);
+}
+.map-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin: 0;
+  font-size: var(--fs-sub);
+  color: var(--map-sub);
+}
 .card.map-highlight {
   outline: 2px solid var(--glass-highlight);
   outline-offset: 3px;
@@ -11242,7 +12020,7 @@ body.light-mode .hs-field:hover {
   align-items: center;
   gap: 5px;
   background: rgba(255, 255, 255, 0.96);
-  color: #1f1f1f;
+  color: var(--accent-ink);
   font-size: var(--fs-caption);
   font-weight: 700;
   padding: 5px 10px;
@@ -11295,7 +12073,7 @@ body.light-mode .hs-field:hover {
   white-space: nowrap;
   transform: translate(-50%, -50%);
   background: #fff;
-  color: #1f1f1f;
+  color: var(--accent-ink);
   font-family: var(--font-sans);
   font-weight: 700;
   font-size: var(--fs-sub);
@@ -11306,12 +12084,12 @@ body.light-mode .hs-field:hover {
   cursor: pointer;
   transition:
     transform 0.15s var(--fluid-bezier),
-    background 0.15s,
-    color 0.15s;
+    background 160ms var(--out),
+    color 160ms var(--out);
 }
 .map-price-pill .mp-pill:hover,
 .map-price-pill.is-active .mp-pill {
-  background: #1f1f1f;
+  background: var(--accent-ink);
   color: #fff;
   transform: translate(-50%, -50%) scale(1.07);
   z-index: 5;
@@ -11367,7 +12145,9 @@ body.light-mode .hs-field:hover {
     position: sticky;
     top: 90px;
     height: calc(100vh - 120px);
-    min-height: 460px;
+    /* WAS 460 — one card is 400 tall at this width, so the pane could outgrow
+       the list it sits beside on a short viewport. */
+    min-height: 400px;
   }
   .cottages-map {
     width: 100%;
@@ -11385,7 +12165,7 @@ body.light-mode .hs-field:hover {
   scroll-margin-top: calc(100px + var(--safe-t));
 }
 .fluid-swap {
-  animation: fluidFadeIn 0.5s var(--fluid-bezier);
+  animation: chbPageIn 400ms var(--out);
 }
 /* Per-cottage reviews block on the property page */
 .prop-reviews-head {
@@ -11482,19 +12262,59 @@ body.light-mode .hs-field:hover {
 .hs-unavail {
   opacity: 0.7;
 }
-/* Light mode: the shadows above are tuned for dark glass and read muddy on
-           light surfaces — swap to a cooler, tighter ink at lower opacity. */
-body.light-mode .glass-panel {
-  box-shadow: 0 6px 22px rgba(20, 22, 34, 0.08);
-}
+/* ONE SHADOW DEFINITION. The --shadow-* tokens ARE retuned for light (a cooler,
+   tighter ink), and these rules then restated them RAW on top — three different
+   shadows for one material on one screen, none of them a token, and every one
+   of them dropping the --glass-rim specular edge the dark theme gets. Measured
+   light before: .card 0 10px 30px rgba(30,54,72,.08), .hero-content/.host-card/
+   .my-stay-hub/.bk-row 0 6px 22px rgba(20,22,34,.08), .modal-box 0 18px 48px
+   rgba(20,22,34,.18), and no inset rim anywhere. The comment they carried
+   ("tuned for dark glass and read muddy on light — swap to a cooler ink")
+   predates the token retune that now does exactly that. The panel token is
+   slightly heavier than the value it replaces (0 10px 34px at .10 against
+   0 6px 22px at .08) and was re-judged on the rendered screens rather than
+   assumed; .modal-box takes --shadow-float, which is what a sheet over a scrim
+   asks for and what the raw value it replaces was. NB the light .datepicker-pop
+   shadow went with them: it is the full-viewport scrim, so it painted nothing.
+   The hover restatements stay for now — the hover VALUES they override are raw
+   in the base rules too, so consolidating them is its own pass. */
 @media (hover: hover) {
   body.light-mode .glass-panel:hover {
     box-shadow: 0 12px 30px rgba(20, 22, 34, 0.13);
   }
 }
-body.light-mode .modal-box,
-body.light-mode .datepicker-pop {
-  box-shadow: 0 18px 48px rgba(20, 22, 34, 0.18);
+/* THE LIGHT DESKTOP MODAL WAS A GREY CARD, NOT GLASS — and SYSTEMIC, not the
+   suggest sheet's: every desktop .modal-box (auth, enquiry, welcome book, security,
+   suggest) shares the 78% --glass-bg, which over the dark scrim composites flat.
+   Sampled at 1280 light the ground was rgb(216,216,216), the muted labels 4.32:1 and
+   the body copy 3.76:1 — the SAME labels on the 390 opaque sheet read 5.62:1. Raised
+   once for all of them; the blur stays (ui-test-hig asserts the glass at 1280), and
+   below 640 the .chb-sheet rule is (0,3,0) and still wins with --sheet-surface. */
+body.light-mode .modal-box {
+  background: rgba(255, 255, 255, 0.9);
+}
+/* NO DESKTOP GRIP ON A ROUNDED GLASS FIELD. The diagonal resize handle is the
+   UA's own chrome painting inside our corner radius, and the field's rows are
+   already sized for what is asked of it. The three guest textareas carried
+   `resize: vertical` as an INLINE style, which no stylesheet rule can beat — so
+   the declarations went from the markup and the rule lives here, where the whole
+   family follows it. (.field-sm keeps its own vertical grip: those are owner-side
+   composer boxes where a long draft really is written.) */
+textarea.input-glass:not(.field-sm) {
+  resize: none;
+}
+/* THE PREDICTION STANDS DOWN WHILE THE ANSWER IS ON SCREEN. The living line and
+   the refusal share ONE ladder, so whenever the alert is up the two print the
+   SAME sentence — twice, 110px apart on the pinned foot. The alert answers the
+   tap; the line resumes the moment typing clears it. */
+#enquire-step-details:has(#enq-msg-details.show) #enq-live-sub {
+  display: none;
+}
+/* A PLACEHOLDER IS OUR INK, NOT THE UA'S. It was the browser's rgb(117,117,117),
+   which follows neither theme and is a raw literal nothing can retune. */
+.input-glass::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 .hs-banner {
   background: rgba(255, 167, 38, 0.16);
@@ -11519,41 +12339,55 @@ body.light-mode .datepicker-pop {
 }
 
 /* ----- Zoom buttons on the cottage maps -----
-   Not theme-aware on purpose (see --map-ink): the basemap is light in either
-   theme. These were dark liquid glass with white glyphs — right for the dark
-   UI they were drawn in, a heavy slab on a pale map in both. */
+   THEME-AWARE, because the basemap is (MAP_TILES.light / .dark — see the
+   --map-* tokens). This block used to carry the opposite note: the tiles were
+   light in either theme, so the control was pinned pale. The moment the map
+   learned the theme, a pinned-pale control would have become the light island
+   the map itself had been — the two must move together, which is why the fill,
+   the edge, the ink and the attribution strip are all tokens now. */
 .leaflet-bar,
 .leaflet-control-zoom {
   border: none !important;
   border-radius: var(--r-sm) !important;
   overflow: hidden;
+  /* The outer ring is the control's BOUNDARY against the map (1.4.11 asks 3:1
+     of it, which a dark fill on a dark map cannot carry on its own). */
   box-shadow:
-    0 1px 2px rgba(58, 46, 30, 0.08),
-    0 4px 14px rgba(58, 46, 30, 0.16) !important;
+    0 0 0 1px var(--map-ctl-edge),
+    0 4px 14px var(--map-ctl-shadow) !important;
 }
 .leaflet-control-zoom a {
-  background: rgba(255, 255, 255, 0.94) !important;
+  background: var(--map-ctl-bg) !important;
   backdrop-filter: blur(14px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
   color: var(--map-ink) !important;
   border: none !important;
-  width: 34px !important;
-  height: 34px !important;
-  line-height: 34px !important;
+  /* THE FLOOR. These were the only sub-44 controls on the cottage page besides
+     the 42px pin, and they are STACKED — a region would overlap its neighbour,
+     so the button grows. NOT removed below 640: taking the only zoom affordance
+     leaves keyboard and non-pinch users with none. */
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  /* stated here rather than left to Leaflet's own stylesheet: `width` does
+     nothing to an inline anchor, so the floor would depend on a third party. */
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
   font-size: var(--fs-headline) !important;
   transition:
     background 0.25s var(--fluid-bezier),
     color 0.25s var(--fluid-bezier);
 }
 .leaflet-control-zoom a + a {
-  border-top: 1px solid rgba(58, 46, 30, 0.1) !important;
+  border-top: 1px solid var(--map-ctl-line) !important;
 }
 .leaflet-control-zoom a:hover {
-  background: #fff !important;
+  background: var(--map-ctl-hover) !important;
   color: var(--map-ink) !important;
 }
 .leaflet-control-zoom a:active {
-  background: rgba(58, 46, 30, 0.08) !important;
+  background: var(--map-ctl-press) !important;
 }
 .leaflet-control-zoom-in {
   border-radius: var(--r-sm) var(--r-sm) 0 0 !important;
@@ -11562,8 +12396,9 @@ body.light-mode .datepicker-pop {
   border-radius: 0 0 var(--r-sm) var(--r-sm) !important;
 }
 .leaflet-control-zoom a.leaflet-disabled {
-  color: rgba(58, 46, 30, 0.3) !important;
-  background: rgba(255, 255, 255, 0.7) !important;
+  color: var(--map-ctl-dim) !important;
+  background: var(--map-ctl-bg) !important;
+  opacity: 0.72;
 }
 /* Shrink the map attribution so it isn't oversized */
 .leaflet-control-attribution,
@@ -11573,8 +12408,13 @@ body.light-mode .datepicker-pop {
 }
 .leaflet-control-attribution {
   padding: 1px 6px !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: var(--map-attr-bg) !important;
   border-radius: var(--r-sm) 0 0 0 !important;
+  color: var(--map-sub) !important;
+}
+/* Leaflet paints the credit link in its own blue; on a dark strip it is the one
+   word left at the old ink. */
+.leaflet-control-attribution a {
   color: var(--map-sub) !important;
 }
 @media (max-width: 640px) {
@@ -11651,49 +12491,13 @@ body.light-mode .datepicker-pop {
     max-width: none;
   }
 }
-/* "How it works" disclosure — keeps background explanations one tap away so
-           admin panels lead with the controls instead of a wall of text. */
-.help-disclosure {
-  max-width: 640px;
-  margin: 14px 0 0;
-}
-.help-disclosure > summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: var(--fs-sub);
-  color: var(--accent-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  -webkit-tap-highlight-color: transparent;
-}
-/* The mid-light accent fails contrast on the light theme (~2.9:1) — these
-   summaries are interactive text, so use the dark ink there. */
-body.light-mode .help-disclosure > summary {
-  color: var(--accent-ink);
-}
+/* ("How it works" disclosures are owner-only markup — their whole spec moved to
+   admin.css with the unified summary vocabulary, so guests stop paying for it.) */
 /* The Terms modal reuses .toast-close for its header ✕ — as a bare icon that
    was a ~19px tap target. Pad it into a real one (icon stays the same size). */
 .terms-modal-head .toast-close {
   padding: 10px;
   margin: -6px -6px 0 0;
-}
-.help-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-.help-disclosure > summary::after {
-  content: "▾";
-  font-size: var(--fs-micro);
-  transition: transform 0.2s var(--fluid-bezier);
-}
-.help-disclosure[open] > summary::after {
-  transform: rotate(180deg);
-}
-.help-disclosure > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
 }
 
 .content-edit-row {
@@ -11749,7 +12553,7 @@ body.light-mode .help-disclosure > summary {
 }
 #preview-banner button {
   background: var(--accent);
-  color: #1a191b;
+  color: var(--accent-ink);
   border: 0;
   border-radius: 8px;
   padding: 5px 14px;
@@ -11892,13 +12696,8 @@ body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
     var(--shadow-panel),
     0 0 70px -22px var(--accent-soft);
 }
-@media (hover: hover) {
-  .card:hover {
-    box-shadow:
-      0 15px 45px rgba(0, 0, 0, 0.4),
-      0 0 44px -18px var(--accent-soft);
-  }
-}
+/* The accent glow layer is gone; the card keeps .glass-panel:hover's own lift
+   shadow, rim included (light keeps its own cooler restatement below). */
 
 /* The gradient flourish under centred titles is GONE (the sentence-case pass):
    the serif title carries the hierarchy; a rule beneath it was decoration. */
@@ -12098,8 +12897,17 @@ body.light-mode #hero-headline-panel {
   background: rgba(255, 255, 255, 0.66);
   border-color: rgba(255, 255, 255, 0.6);
 }
-body.light-mode .hero-kicker {
-  color: var(--sea);
+/* THE HERO PANEL'S GROUND IS A PHOTOGRAPH, so muted ink is the wrong choice: the
+   panel is white at 66% and what is behind it sets the composite. Pixel-sampled
+   over a mid photo the kicker read 4.08:1 and the subtitle 3.96:1; over a dark
+   one, 2.85:1 both. Body ink holds on any photo, where lifting the glass to 80%
+   would still leave --text-muted at 3.9:1.
+   THE SELECTOR IS THE POINT: `body.light-mode .hero-kicker` is (0,2,0) and LOSES
+   to `body.light-mode .hero p` (0,2,1) below — which is why .hero-kicker's own
+   two colour declarations have never painted in either theme. The id wins. */
+body.light-mode #hero-headline-panel > p,
+body.light-mode #hero-headline-panel .hero-kicker {
+  color: var(--text-light);
 }
 
 /* --- Airier typography (guest-facing headings/leads only) --- */
@@ -12128,11 +12936,20 @@ body.light-mode .heritage-num {
 body.light-mode .card {
   background: #fff;
   border: 1px solid rgba(28, 46, 58, 0.06);
-  box-shadow: 0 10px 30px rgba(30, 54, 72, 0.08);
 }
 @media (hover: hover) {
   body.light-mode .card:hover {
     box-shadow: 0 20px 46px rgba(30, 54, 72, 0.16);
+  }
+}
+/* …and the experience card opts out of both halves of that hover. It has to be
+   stated HERE: `body.light-mode .card:hover` is (0,3,0) and sits at the foot of
+   the file, so an opt-out written beside .exp-card loses on order. */
+@media (hover: hover) {
+  .exp-card:hover,
+  body.light-mode .exp-card:hover {
+    transform: none;
+    box-shadow: var(--shadow-panel), var(--glass-rim);
   }
 }
 /* The photo fills the card top edge-to-edge; the frame gets out of the way. */
@@ -12426,6 +13243,12 @@ header nav a:active {
 /* The cottage title in the serif: [data-edit-text]{font-family:inherit} tied with
    .section-title and sat later, so the cottage h1 alone painted Montserrat. */
 .section-title[data-edit-text] { font-family: var(--font-serif); }
+/* THE SAME TIE, ON THE CARDS — round eight fixed the cottage h1 and left the
+   grid. Every card carries data-edit-text="card1-title", so `inherit` won at
+   equal specificity and all three cottage names painted Montserrat above a
+   serif price. Measured gate-safe: Playfair at 22px keeps each name on one
+   line and all three card heights identical across 360–430. */
+.card-title[data-edit-text] { font-family: var(--font-serif); }
 /* Reach 44: the picker's month arrows and the theme switch take hit regions. */
 .dp-nav-btn { position: relative; }
 .dp-nav-btn::after { content: ''; position: absolute; inset: -3px; }
@@ -12433,6 +13256,90 @@ header nav a:active {
 /* The rag: pretty is the default for prose; a booking ref and "£X to pay" hold as units. */
 p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
 .gb2-ref, .gb2-pl-unit { white-space: nowrap; }
+
+/* ===== PR2 — EVERYTHING MEETS THE THUMB (the guest half) =====
+   HIT REGIONS, NOT BIGGER CONTROLS, wherever the paint is deliberate: an
+   absolutely-positioned ::before grown past the box, VERTICAL ONLY (inset:
+   -Npx 0) wherever neighbours sit side by side, so a region never steals the
+   tap next door. Nothing on any of these screens moves. */
+
+/* The crown is the ONLY Home control on a phone (the dock's Home button is
+   hidden and the mark carries the current state) and it measured 61.9×34.
+   .nav-indicator is a separate node sized from the anchor's box, so the region
+   changes no geometry. NB it is ::after, not ::before — guest-app.css already
+   owns .logo::before (the Home halo, and that one is pointer-events: none). */
+.logo { position: relative; }
+.logo::after { content: ''; position: absolute; inset: -5px 0; }
+/* The four availability steppers: 40×40 (the ± chips beside them were raised to
+   44 in round seven, these were not). */
+.hs-step { position: relative; }
+.hs-step::before { content: ''; position: absolute; inset: -2px; border-radius: 50%; }
+/* The chat's quick-reply chips: 130×31 in a 41px row. The row is an
+   overflow-x:auto scroller, which CLIPS a child's ::before — the padding
+   cancelled by an equal negative margin is what keeps the reach inside the
+   scroll box (the .spine-duties lesson); the row's own top padding is already
+   10px, so only the bottom needs it. */
+.chat-chip { position: relative; }
+.chat-chip::before { content: ''; position: absolute; inset: -7px 0; }
+.chat-quick { padding-bottom: 8px; margin-bottom: -8px; }
+/* The chat intro fields were 40px. An <input> paints no ::before, so this one is
+   a size, not a region. */
+.chat-intro-fields .input-glass { min-height: 44px; }
+/* Desktop: the three primary nav links (80.6×38.8) and the account button
+   (42×42). The account button takes a REGION and not a 44px BOX — the resting
+   bar measures 63px and ui-test-hig §10 asserts 50–64px, so two more pixels of
+   button would push it over. */
+nav ul li a:not(.btn-glass)::before { content: ''; position: absolute; inset: -3px 0; }
+.account-btn { position: relative; }
+.account-btn::before { content: ''; position: absolute; inset: -1px; border-radius: 50%; }
+/* The late-availability card's "Check dates" (112.6×33.6). */
+.late-avail .btn-sm { position: relative; }
+.late-avail .btn-sm::before { content: ''; position: absolute; inset: -6px 0; }
+/* The 38px round close shared by the chat head and the reviews/terms sheets. */
+.reviews-modal-close { position: relative; }
+.reviews-modal-close::before { content: ''; position: absolute; inset: -3px; border-radius: 50%; }
+/* THE FOOTER NEWSLETTER WAS FOUR INLINE STYLES — a 36px field and a 36px button
+   at 13px with a 10px radius, none of which the rawRadii / rawType ratchets can
+   see. Stated here instead, on the tokens, at the floor. */
+.footer-newsletter form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-width: 420px; margin: 0 auto; }
+.footer-newsletter .input-glass { flex: 1; min-width: 180px; width: auto; min-height: 44px; margin: 0; padding: 12px 16px; font-size: var(--fs-sub); border-radius: var(--r-sm); }
+.footer-newsletter .btn-glass { width: auto; padding: 12px 24px; font-size: var(--fs-sub); }
+/* Sign-in: the password-less route was a 200×16 inline <a> — the ONLY way in for
+   a guest who has no password — and the Log in / Create account segments were
+   170×40 at 11px, the screen's primary control. */
+#magic-link-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 12px; }
+.guest-tab { min-height: 44px; }
+@media (max-width: 480px) {
+  /* the ≤480 --fs-micro override is right for the admin toggles it was written
+     for and wrong for these two: 11px on the screen's own primary control. */
+  .toggle-btn.guest-tab { font-size: var(--fs-sub); }
+}
+.hub-code-copy { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+/* Experiences: six 31px chips wrapping to THREE rows at 390 (109px between the
+   lead and the first card). One nowrap scrolling row, with the padding /
+   negative-margin trick so the scroll box does not clip the regions it is
+   there to hold. .exp-filters keeps `position: relative` — chbSeatPill's
+   travelling pill is a child of it. */
+.exp-chip { position: relative; }
+.exp-chip::before { content: ''; position: absolute; inset: -7px 0; }
+@media (max-width: 640px) {
+  .exp-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* padding cancelled by margin: the row keeps the 4px it had above it and
+       costs nothing below, while the regions live inside the scroll box. */
+    padding: 8px 0;
+    margin: -4px 0 -8px;
+  }
+  .exp-filters::-webkit-scrollbar { display: none; }
+  /* LOAD-BEARING: a flex item's default is `flex-shrink: 1`, so under nowrap the
+     chips SQUEEZE instead of the row scrolling — measured, every label wrapped
+     to two lines and the chip grew to 48px, which hid the missing hit region
+     from the gate's own break-test. They hold their width; the ROW scrolls. */
+  .exp-filters .exp-chip { flex: 0 0 auto; white-space: nowrap; }
+}
 
 /* THE BAR HAS A TOP AND NO BOTTOM (owner-approved live demo). The seam with iOS's
    status strip is at ONE edge, the top, so the fill is graded: the page GROUND
@@ -12472,4 +13379,60 @@ p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
 }
 header.glass-panel {
   transition: transform 0.45s var(--fluid-bezier), opacity 0.45s var(--fluid-bezier), background-color 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier);
+}
+
+/* ============================================================
+   PRESS — the controls the system missed (PR: motion joins the owner's side)
+   ------------------------------------------------------------
+   TWO FAMILIES, deliberately different.
+
+   The SCALE family is the system's own press: a constant 4px of depth read from
+   --sc (chbPressDepth writes it on pointerdown), 80ms down on --in and 320ms
+   back up on --settle. It is for things that read as OBJECTS — a chip, a pill,
+   a tile, a bar, a photo.
+
+   The LIST family — rows in a joined run — presses with its GROUND instead. A
+   scale on one row of a 561-cell timeline lane, or on one of fourteen search
+   results, moves the row away from its neighbours' hairlines and reads as a
+   fault rather than a response. The ground is the row's whole surface, so it is
+   the honest thing to move.
+
+   ORDER IS LOAD-BEARING TWICE OVER: `.cmdk-row:active` and `.cmdk-row.is-sel`
+   are both (0,2,0), so the press is declared AFTER the selection or it will not
+   win during the touch; and several of these carry a hover rule of equal
+   specificity later in the file, which is why the hovers say `:not(:active)`.
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-fab:active,
+  .toast-close:active {
+    transform: scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+  /* The two photo cells take the scale WITHOUT the brightness: .gg-cell's hover
+     already darkens to 0.88, so adding the system's 0.94 would make a pressed
+     photo LIGHTER than a hovered one — the press saying the opposite of itself. */
+  .gallery-slide:active,
+  .gg-cell:active {
+    transform: scale(var(--sc, 0.97));
+    transition: transform 80ms var(--in);
+  }
+  /* The cue is centred with transform: translateX(-50%), so the press must
+     COMPOSE with it or the chevron jumps half its width to the right. Its bob
+     moved onto the independent `translate` property for the same reason —
+     an animation on `transform` wins outright over a transitioned one, so
+     while cueBob ran the press could not paint at all. */
+  .hero-scroll-cue:active {
+    transform: translateX(-50%) scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+}
+/* The release is the base rule's transition, so each of these needs one — a
+   press with no way back snaps out of the compress. */
+.gallery-slide,
+.gg-cell,
+.toast-close,
+.hero-scroll-cue {
+  transition: transform 320ms var(--settle), filter 320ms var(--settle);
 }

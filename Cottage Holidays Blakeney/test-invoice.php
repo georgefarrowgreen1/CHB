@@ -142,9 +142,9 @@ inv_ok(!str_contains($html['kept'], 'returned in full after checkout'),
 // would leave that table summing to £770.25 under a stated total of £695.25.
 inv_ok(str_contains($html['ret'], 'Refundable deposit returned') && str_contains($html['ret'], '£75.00'),
     'refunded: the £75 is recorded in Payments, dated');
-inv_ok(str_contains($html['ret'], 'Refundable damages deposit of £75.00 — Refunded in full on 14/09/2026.'),
+inv_ok(str_contains($html['ret'], 'Refundable deposit of £75.00 — Refunded in full on 14/09/2026.'),
     'refunded: and stated in words beneath the movement');
-inv_ok(!preg_match('/Refundable damages deposit<small>/', $html['ret']),
+inv_ok(!preg_match('/Refundable deposit<small>/', $html['ret']),
     'refunded: and is NOT a charge line, so the charges still add up');
 inv_ok(str_contains($html['ret'], 'Deposit returned'),
     'refunded: and the state is chipped at the top');
@@ -158,7 +158,7 @@ inv_ok(str_contains($html['paid'], 'Paid in full') && !str_contains($html['paid'
     'paid: the caption changes with the figure');
 // a booking with no deposit must not print a £0.00 deposit line
 $noDep = $render('part', ['damages' => 0.0, 'deposit_amount' => 0.0, 'deposit_status' => '']);
-inv_ok(!str_contains($noDep, 'Refundable damages deposit'), 'no deposit: no deposit line at all');
+inv_ok(!str_contains($noDep, 'Refundable deposit'), 'no deposit: no deposit line at all');
 // a custom (agreed) price renders as one coherent line
 $custom = $render('part', ['total' => 600.0]);
 inv_ok(str_contains($custom, 'Agreed price for your stay') && !str_contains($custom, '&times; 5 nights'),
