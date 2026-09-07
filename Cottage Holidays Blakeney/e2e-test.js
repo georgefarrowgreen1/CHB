@@ -168,7 +168,10 @@ async function waitForServer(url, tries = 40) {
     ((await page.locator('#enq-msg-review').textContent()) || '').trim() ? pass('missing-dates validation shows') : fail('no validation message');
     // The "about your party" field is required — submitting without it is blocked.
     (await page.locator('#enq-message').getAttribute('required')) !== null ? pass('party field is required') : fail('party field not marked required');
-    ((await page.locator('#enq-message').getAttribute('placeholder')) || '').includes('little bit about our guests') ? pass('party field placeholder set') : fail('party placeholder wrong');
+    // The placeholder is a HINT now (the 154-character essay moved to a caption
+    // under the label), so the claim is that the field shows an EXAMPLE of the
+    // answer — not that it restates the ask a second time.
+    ((await page.locator('#enq-message').getAttribute('placeholder')) || '').startsWith('e.g.') ? pass('party field placeholder is an example') : fail('party placeholder wrong');
     await page.evaluate(() => {
       document.getElementById('enq-name').value = 'Test Guest';
       document.getElementById('enq-checkin').value = '2026-08-10';

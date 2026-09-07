@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 599;
+const ADMIN_BUNDLE_V = 600;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 258;
+const ADMIN_CSS_V = 259;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1454,7 +1454,7 @@ async function apiPost(endpoint, payload) {
         if (res.status === 401) maybeHandleStaleAdmin();
         // `code` where the endpoint gives one, so a caller can tell apart outcomes that
         // both arrive as "not done": `already_sent` means the guest HAS the email.
-        throw apiErr(data.error || 'Request failed (' + res.status + ')', res.status, data.code);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
     }
     chbClockSync(data.srv);
     // A request that just SUCCEEDED is the only honest connectivity probe there
@@ -1493,7 +1493,7 @@ async function apiGet(endpoint) {
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin();
-        throw new Error(data.error || 'Request failed (' + res.status + ')');
+        throw new Error(data.error || 'That didn’t go through — check your signal and try again.');
     }
     chbClockSync(data.srv);
     return data;
@@ -3425,7 +3425,7 @@ function renderWelcomeBack() {
             </div>
             <div class="wb-actions">
                 <a class="btn-glass btn-accent" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${fav.pk}">Check ${escapeHtml(cname)} dates</a>
-                <button type="button" class="btn-glass" data-act="wbOpenStays">Your stays</button>
+                <button type="button" class="btn-glass" data-act="wbOpenStays">My stays</button>
             </div>
         </div>`;
 }
@@ -3909,7 +3909,7 @@ async function maybeConsumeMagicLink() {
         nav('view-guest-bookings');
         await renderGuestBookings();
         try {
-            toast('Signed in — welcome back!');
+            toast('Signed in — welcome back.');
         } catch (e) {}
     } catch (e) {
         clean();
@@ -4125,7 +4125,7 @@ function guestPriceBoxHtml(p, o) {
     if (!custom && fin(p.txFee) && fin(p.transactionPct))
         rows.push(`<div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>`);
     if (o.dep > 0)
-        rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
+        rows.push(`<div class="price-row"><span>Refundable deposit</span><span>${gbp(o.dep)}</span></div>`);
     rows.push(`<div class="price-row total"><span>Total${o.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(o.total)}</span></div>`);
     if (o.extraRows) rows.push(o.extraRows);
     // THE DEPOSIT'S STATE, not just its amount. One static sentence served every
@@ -4141,7 +4141,7 @@ function guestPriceBoxHtml(p, o) {
     const depShow = o.dep > 0 ? o.dep : Math.round((Number(o.depWas) || 0) * 100) / 100;
     if (depShow > 0) {
         const say = depositInvoiceStatus(depShow, o.holdStatus, o.damagesReturned, o.settledDate);
-        rows.push(`<p style="color:var(--text-muted);font-size:var(--fs-caption);margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
+        rows.push(`<p style="color:var(--text-muted);font-size:var(--fs-caption);margin:6px 0 0;">Refundable deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
     }
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
@@ -4296,9 +4296,9 @@ async function renderGuestBookings() {
         // fact available here.
         const returning = completedStays > 0;
         list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
+                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No bookings yet'}</p>
                     <p style="font-size:var(--fs-body);">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
-                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse Cottages'}</button>
+                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse the cottages'}</button>
                 </div>`;
         return;
     }
@@ -5159,7 +5159,7 @@ function showPayError(text, retry) {
     // #pay-error is role=alert — reveal it before the message lands so the alert
     // fires on visible content rather than into a hidden node.
     if (err) err.style.display = '';
-    if (msg) msg.textContent = text || 'Something went wrong.';
+    if (msg) msg.textContent = text || 'The payment didn’t go through — nothing has been charged. Try again, or use another card.';
 }
 // A REFUSAL, not a hiccup: retrying any of these returns the same answer. 500 is
 // deliberately NOT here (a server error can pass), and a transport failure carries no
@@ -5652,7 +5652,7 @@ async function openPayView(token, bookingId, kind) {
                 }
                 if (anote) {
                     anote.textContent =
-                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My Stays.';
+                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My stays.';
                     anote.style.display = '';
                 }
             } else {
@@ -5770,7 +5770,7 @@ async function payWithToken(sourceId, partOverride) {
             "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
         try { payDoneBackRetarget(); } catch (e) {}
         try {
-            toast('Card hold placed — thank you!');
+            toast('Card hold placed — thank you.');
         } catch (e) {}
         return;
     }
@@ -5838,7 +5838,7 @@ async function payWithToken(sourceId, partOverride) {
                 : apo && apo.ok
                   ? `Thank you — ${took} received. That's everything arranged — we'll collect the remaining ${gbp(apo.per)} automatically on ${fmtDate(apo.due)}, with an email before.`
                   : apo && !apo.ok
-                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My Stays.`
+                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My stays.`
                     : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
     // What happens next, as the journey's own rows — additive beside the sub.
     try { payDoneNextRender(res, rem); } catch (e) {}
@@ -5849,7 +5849,7 @@ async function payWithToken(sourceId, partOverride) {
         restBtn.textContent = rem > 0.005 ? `Pay the remaining ${gbp(rem)}` : '';
     }
     try {
-        toast('Payment received — thank you!');
+        toast('Payment received — thank you.');
     } catch (e) {}
 }
 // THE RECEIPT LANDS WHERE ITS PROMISES LIVE: everything the done panel names
@@ -6109,10 +6109,10 @@ function payAutopayRender() {
         </div>
         <p class="pay-ap-fine">${
             sel === 'monthly'
-                ? "We'll email you 3 days before each payment, and you can turn this off any time from My Stays."
+                ? "We'll email you 3 days before each payment, and you can turn this off any time from My stays."
                 : sel === 'one'
-                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My Stays."
-                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My Stays."}</p>`;
+                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My stays."
+                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My stays."}</p>`;
     payMethodsSync();
 }
 function payAutopayChoice() {
@@ -6774,7 +6774,7 @@ function renderNotifyEmails(primary, extras) {
     if (!box) return;
     const primaryRow = primary
         ? `<div class="notify-row"><span class="notify-addr">${escapeHtml(primary)}</span><span class="notify-primary-tag">Primary</span></div>`
-        : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No primary owner email set in config.php</span></div>`;
+        : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No owner email set on the server</span></div>`;
     const extraRows = (extras || [])
         .map(
             (e) =>
@@ -6850,7 +6850,7 @@ async function openWelcomeBook(propKey) {
     }
     if (!bodyEl) return;
     if (!sections.length) {
-        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">Your host hasn't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
+        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">We haven't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
         return;
     }
     bodyEl.innerHTML = sections
@@ -6928,7 +6928,7 @@ async function submitGuestPhoto() {
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'Upload failed.');
-        show('Thank you! Your photo will appear once we approve it.', true);
+        show('Thank you — your photo will appear once we approve it.', true);
         setTimeout(closePhotoUpload, 1600);
     } catch (e) {
         show(e.message || 'Could not upload your photo.', false);
@@ -6949,7 +6949,7 @@ function guestReviewForm(propKey) {
     // asserts the absence). A JS comment, not an HTML one: a comment inside this
     // template would ship, quoting the wrong sentence back at the guest.
     const note = existing && existing.status === 'approved'
-        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
+        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you.</div>`
         : '';
     // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
     // tappable star row — two controls for one question, able to disagree until a
@@ -7154,7 +7154,7 @@ function definitionParagraphs(propKey) {
     const defs = (termsSections.find((s) => s.h.startsWith('1.')) || { p: [] }).p;
     return defs.map((par) => {
         const label = (par.match(/^([^:]{1,26}):\s/) || [])[1];
-        if (label === 'Security deposit') return label + ': ' + termsSecurityDeposit(propKey);
+        if (label === 'Refundable deposit') return label + ': ' + termsSecurityDeposit(propKey);
         if (label === 'House Rules') return label + ': ' + termsHouseRules(propKey);
         if (label && TERMS_MONEY_DEFS[label]) return label + ': ' + TERMS_MONEY_DEFS[label]();
         return par;
@@ -7614,7 +7614,7 @@ async function downloadInvoice(bookingId) {
             ? { label: 'Agreed price for your stay', sub: `${p.nights} night${p.nights === 1 ? '' : 's'}`, value: gbp(p.total) }
             : { label: `${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, sub: `${meta.name}  ·  ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`, value: gbp(p.nightly) },
         priceIsCustom(p) ? null : { label: `Transaction fee (${p.transactionPct}%)`, value: gbp(p.txFee) },
-        gt.dep > 0 ? { label: 'Refundable damages deposit', sub: depStatus, value: gbp(gt.dep) } : null,
+        gt.dep > 0 ? { label: 'Refundable deposit', sub: depStatus, value: gbp(gt.dep) } : null,
         { label: 'Total', value: gbp(gt.total), foot: true },
     ]);
 
@@ -7634,7 +7634,7 @@ async function downloadInvoice(bookingId) {
     ]);
     // …and once the deposit has gone back it is no longer a charge, but it was taken.
     if (depAmt > 0 && gt.dep <= 0.005 && depStatus) {
-        fine(`Refundable damages deposit of ${gbp(depAmt)} — ${depStatus}`, 16);
+        fine(`Refundable deposit of ${gbp(depAmt)} — ${depStatus}`, 16);
     }
 
     // ── Your stay ─────────────────────────────────────────────────────────
@@ -8449,7 +8449,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-08b';
+const TERMS_VERSION = '2026-09a';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -8468,7 +8468,7 @@ const termsSections = [
             // cottage's own deposit. See definitionParagraphs().
             'Deposit: (generated)',
             'Balance due date: (generated)',
-            'Security deposit: (generated)',
+            'Refundable deposit: (generated)',
             // LABEL ONLY — generated per cottage by termsHouseRules(). The text
             // after the colon is discarded, so the old claim about a separate
             // document cannot drift back in.
@@ -8494,7 +8494,7 @@ const termsSections = [
         h: '3. Looking after the property',
         p: [
             'Please treat the property and everything in it with care, and leave it as you found it. If something is damaged or not working, tell us as soon as you notice.',
-            'You may lose your security deposit, or be charged, for any damage or loss.',
+            'You may lose your refundable deposit, or be charged, for any damage or loss.',
             'Use of the property and grounds is at your own risk; please follow the House Rules and any safety instructions.',
             'We, or our representatives, may need to enter the property to inspect it or carry out repairs.',
             'We can ask you to leave without a refund if you or your Group behave unreasonably or illegally, or in a way that endangers or seriously disturbs others or the property.',
@@ -8559,7 +8559,7 @@ const termsSections = [
     },
     {
         h: '10. Your personal information',
-        p: ['We use the information you give us in line with our Privacy Policy.'],
+        p: ['We use the information you give us in line with our privacy policy.'],
     },
     {
         h: '11. Changes to your booking or these terms',
@@ -8596,10 +8596,10 @@ const propertyContent = {
         title: 'Jollyboat',
         desc: 'An intimate coastal bolthole for two. Cosy, characterful and perfectly placed for romantic getaways, with the saltmarshes and quay just steps from the door.',
         amenities: [
-            'Snug Double Bedroom',
-            'Wood-Burning Stove',
-            'Quayside Location',
-            'Welcome Hamper',
+            'Snug double bedroom',
+            'Wood-burning stove',
+            'Quayside location',
+            'Welcome hamper',
         ],
         images: ['jollyboat-1.jpg', 'jollyboat-2.jpg', 'jollyboat-3.jpg'],
     },
@@ -9069,8 +9069,8 @@ async function renderCottagesMap() {
 
 // Payment status config: label + colour. Keys are stored on each booking.
 const paymentMeta = {
-    paid: { label: 'Paid in Full', color: 'var(--ok)', dot: 'var(--ok)' },
-    deposit: { label: 'Deposit Paid', color: 'var(--warn)', dot: 'var(--warn)' },
+    paid: { label: 'Paid in full', color: 'var(--ok)', dot: 'var(--ok)' },
+    deposit: { label: 'Deposit paid', color: 'var(--warn)', dot: 'var(--warn)' },
     unpaid: { label: 'Unpaid', color: 'var(--danger)', dot: 'var(--danger)' },
 };
 
@@ -11455,7 +11455,7 @@ async function submitNewsletter(ev) {
             source: 'footer',
         });
         if (el) el.value = '';
-        show("You're in — thank you! We'll only email occasionally.", true);
+        show("You're in — thank you. We'll only email occasionally.", true);
     } catch (e) {
         show(e.message || 'Could not sign you up just now.', false);
     }
@@ -12063,7 +12063,7 @@ function faqBlockHtml(propKey) {
         : [];
     const valid = faqs.filter((f) => (f.q || '').trim() && (f.a || '').trim());
     if (!valid.length) return '';
-    return `<button class="btn-sm btn-edit" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to Know</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to know</button>`;
 }
 // Build the accordion items for a cottage and show them in the floating modal
 function openFaqModal(propKey) {
@@ -12075,7 +12075,7 @@ function openFaqModal(propKey) {
         Array.isArray(siteContent['faqs-' + propKey]) ? siteContent['faqs-' + propKey] : []
     ).filter((f) => (f.q || '').trim() && (f.a || '').trim());
     const meta = propertyMeta[propKey] || { name: propKey };
-    if (title) title.innerText = 'Good to Know — ' + meta.name;
+    if (title) title.innerText = 'Good to know — ' + meta.name;
     // A cottage with no FAQs opened a sheet with a heading and NOTHING under it —
     // which reads as broken rather than as empty, on a guest surface whose whole
     // job is answering questions. Name the alternative instead: a person.
@@ -12708,7 +12708,7 @@ async function loadGuestPhotosAdmin() {
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My Bookings.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My stays.</p>`;
         return;
     }
     wrap.innerHTML = `<div class="guest-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">${rows
@@ -12803,7 +12803,7 @@ function renderCardRatings() {
         const rs = all.filter((r) => r.prop === k);
         let html;
         if (!rs.length) {
-            html = `<span class="cr-new">New — be the first to review</span>`;
+            html = `<span class="cr-new">New · no reviews yet</span>`;
             if (fav) fav.hidden = true;
         } else {
             const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
@@ -15689,7 +15689,7 @@ function refreshDateTrigger() {
     const display = document.getElementById('enq-date-display');
     if (!trigger || !display) return;
     if (ci && co) {
-        display.innerText = `${dpPretty(ci)}  →  ${dpPretty(co)}`;
+        display.innerText = `${dpSpoken(ci)} → ${dpSpokenEnd(co)}`;
         trigger.classList.add('has-dates');
     } else {
         display.innerText = 'Select your stay dates';
@@ -15750,8 +15750,8 @@ function guestSummary(adults, children) {
     adults = Number(adults) || 0;
     children = Number(children) || 0;
     const parts = [];
-    parts.push(`${adults} Adult${adults === 1 ? '' : 's'}`);
-    if (children > 0) parts.push(`${children} Child${children === 1 ? '' : 'ren'}`);
+    parts.push(`${adults} adult${adults === 1 ? '' : 's'}`);
+    if (children > 0) parts.push(`${children} child${children === 1 ? '' : 'ren'}`);
     return parts.join(', ');
 }
 
@@ -16458,7 +16458,7 @@ function enqAvailSync(state) {
         if (state === 'free' || state === 'taken') {
             cap.style.display = '';
             cap.className = 'enq-cap ' + (state === 'taken' ? 'warn' : 'ok');
-            cap.textContent = state === 'taken' ? '⚠ dates taken' : '✓ available';
+            cap.textContent = state === 'taken' ? '⚠ Dates taken' : '✓ Looks free';
         } else cap.style.display = 'none';
     }
     const wait = document.getElementById('enq-wait-row');
@@ -16547,7 +16547,7 @@ function enqFirstProblem(propKey) {
         return { msg: 'Please confirm you will not be bringing a dog before sending your enquiry.' };
     const termsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-terms'));
     if (!termsBox || !termsBox.checked)
-        return { msg: 'Please read and accept the Booking Terms & Conditions before sending your enquiry.' };
+        return { msg: 'Please read and accept the booking terms & conditions before sending your enquiry.' };
     // Last look at the availability data we hold before posting — a tab that
     // sat open while someone else booked gets a clear message here instead of
     // a server rejection (the server re-checks authoritatively either way).
@@ -16670,7 +16670,7 @@ function updateEnquiryPrice() {
 
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
-        box.innerHTML = `<p style="color: var(--text-light); font-size:var(--fs-body); text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size:var(--fs-sub);">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+        box.innerHTML = `<p style="color: var(--text-light); font-size:var(--fs-body); text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size:var(--fs-sub);">Refundable deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
         enqAvailSync(null);
         try {
             enqReactSync(false, adults, children);
@@ -16702,7 +16702,7 @@ function updateEnquiryPrice() {
     const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
                 <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
-                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
+                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
                 ${sched}
                 <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
@@ -16988,7 +16988,7 @@ async function submitEnquiry(propKey) {
                 const pName = (propertyMeta[pk] || {}).name || pk || '';
                 const pb = priceBreakdown(pk, adults, children, checkIn, checkOut);
                 const ppl = adults + children;
-                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpPretty(checkIn))} → ${escapeHtml(dpPretty(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
+                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpSpoken(checkIn))} → ${escapeHtml(dpSpokenEnd(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
                 sum.style.display = '';
             } catch (e) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
@@ -17613,7 +17613,7 @@ function populateBookingPropertySelect(selectedKey) {
         typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     if (selectedKey && selectedKey !== '__new__' && !keys.includes(selectedKey))
         keys.unshift(selectedKey);
-    const newOpt = '<option value="__new__">➕ New property…</option>';
+    const newOpt = '<option value="__new__">New cottage…</option>';
     if (!keys.length) {
         // rates not loaded — keep the static fallback cottages, just ensure the
         // "New property…" option is present.
@@ -18100,7 +18100,7 @@ function openEditBookingNow(bookingId) {
     // edits — money is managed on the Payments card from then on. Hide them.
     const ps = typeof paymentSummary === 'function' ? paymentSummary(loc.propKey, b) : null;
     const fullyPaid = !!(ps && ps.fullyPaid);
-    document.getElementById('modal-title').innerText = arrived ? 'Edit Booking' : 'Edit / Move Booking';
+    document.getElementById('modal-title').innerText = arrived ? 'Edit booking' : 'Edit or move booking';
     document.getElementById('modal-mode').value = 'booking';
     document.getElementById('modal-record-id').value = b.id;
     setModalFields({
@@ -18186,7 +18186,7 @@ function togglePaymentField(show) {
     if (show) togglePaymentDetails();
     // Relabel the notes field
     const notesLabel = document.getElementById('modal-notes').previousElementSibling;
-    if (notesLabel) notesLabel.innerText = show ? 'Staff Notes' : 'Guest Message';
+    if (notesLabel) notesLabel.innerText = show ? 'Staff notes' : 'Guest message';
 }
 
 // Show the inline amount/date/method fields when a payment status is chosen
@@ -18326,7 +18326,7 @@ async function saveModal() {
     if (!propKey) {
         const nm = cur.newName;
         if (!nm) {
-            showErr('Choose a property, or pick “New property…” and type a name.');
+            showErr('Choose a cottage, or pick “New cottage…” and type a name.');
             return;
         }
         __customBooking = { name: nm, setup: null };
@@ -18969,7 +18969,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higmotion2';
+    const BUILD = 'higwords1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

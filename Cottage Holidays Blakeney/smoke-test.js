@@ -411,7 +411,7 @@ else {
     check('…and the standard-rate maths is GONE, not printed beside it',
         !/× 7 nights/.test(ovrBox) && !/Transaction fee/.test(ovrBox) && !/£910\.00/.test(ovrBox));
     check('…deposit and total still render, so the box still adds up',
-        /Refundable damages deposit/.test(ovrBox) && /£750\.00/.test(ovrBox));
+        /Refundable deposit/.test(ovrBox) && /£750\.00/.test(ovrBox));
     check('…and nothing reads £NaN', !/NaN/.test(ovrBox));
 }
 
@@ -754,6 +754,140 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
     check('server-render injection anchors all present in index.html' + (lost.length ? ' (' + lost.length + ' missing)' : ''), lost.length === 0);
 }
 
+// 6i. THE COPY RATCHET — one voice across the markup and the templates.
+//  The sentence-case pass converted the CSS `text-transform` sites; a literal
+//  string is invisible to a stylesheet scan, which is how 'Add Booking',
+//  'Stay Dates' and 'Paid in Full' survived it. Four claims, all read off the
+//  real template strings rather than a list somebody maintains:
+//   (a) no user-visible heading, label, button or option in Title Case;
+//   (b) no inline style="text-transform: uppercase" (the same blind spot from
+//       the other side — check-css-conventions ratchets it too, at 0);
+//   (c) no user-visible string ending in '!';
+//   (d) no config.php / utm_source / 'Request failed (' spoken to a person.
+//  VACUITY-GUARDED PER SOURCE, not in total: the four extractions overlap
+//  enough that breaking ONE of them still leaves 200 candidates, so a single
+//  dead regex would pass over nothing. Each source carries its own floor.
+{
+    const { stripSource } = require('./strip-comments.js');
+    // Proper nouns keep their capitals: the business, the places, the cottages,
+    // the third parties, and the SCREEN names a control routes to ("Open
+    // Notifications" names a destination, it is not a shout).
+    const COPY_ALLOW = new Set([
+        'Cottage', 'Cottages', 'Holidays', 'Blakeney', 'Norfolk', 'Westgate', 'Jollyboat', 'Pimpernel',
+        'Quay', 'Coast', 'Britain', 'England', 'Wales', 'London',
+        'Square', 'Airbnb', 'Vrbo', 'Google', 'Apple', 'Safari', 'Chrome', 'Mac', 'Windows', 'Android',
+        'Face', 'Touch', 'Home', 'Screen', 'Wifi', 'Stripe', 'Twilio', 'Outlook', 'Gmail',
+        'Today', 'Inbox', 'Manage', 'Payments', 'Bookings', 'Enquiries', 'Messages', 'Email',
+        'Rates', 'Status', 'Pricing', 'Waitlist', 'Newsletter', 'Reviews', 'Analytics', 'Profile',
+        'Preferences', 'Settings', 'Expenses', 'Experiences', 'Things', 'Security',
+        'Notifications', 'Guests', 'Integrations', 'Follow-ups', 'Cancellation', 'Backups',
+        'Guest', 'Book', 'Direct', 'Est',
+        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+        'October', 'November', 'December', 'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sep',
+        'Sept', 'Oct', 'Nov', 'Dec', 'North', 'South', 'East', 'West', 'Street', 'Owner',
+        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+        'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+    ]);
+    // The BRAND VOICE keeps its capitals: the hero title is the site's masthead,
+    // not a control. Pinned by EXACT STRING so a new Title Case heading cannot
+    // hide behind the exemption.
+    const COPY_BRAND = new Set(['Liquid Coastal Luxury']);
+    const COPY_FORBIDDEN = /config\.php|utm_source|Request failed \(/;
+    const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'by', 'for', 'and', 'or', 'with', 'from', 'as', 'per', 'via', 'into', 'up', 'out', 'off']);
+    const decodeCopy = (t) => t
+        .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&rsquo;/g, '’')
+        .replace(/&lsquo;/g, '‘').replace(/&mdash;/g, '—').replace(/&ndash;/g, '–')
+        .replace(/&times;/g, '×').replace(/&pound;/g, '£').replace(/&hellip;/g, '…')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ').trim();
+    // TITLE CASE IS A SHAPE, not a stray capital: every word that is not a short
+    // function word is capitalised. Testing the SHAPE is what keeps this quiet on
+    // "Open Move money out" and "Put back in Waiting" — a verb plus a destination —
+    // while still failing on "Add Booking" and "Paid in Full".
+    const titleCaseOffenders = (t) => {
+        const words = t.split(/[\s/·—–]+/).filter(Boolean)
+            .map((w) => w.replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z]+$/, ''))
+            .filter(Boolean);
+        if (words.length < 2) return null;
+        const bad = [];
+        for (let i = 0; i < words.length; i++) {
+            const w = words[i];
+            if (FUNCTION_WORDS.has(w.toLowerCase())) continue;            // may be either case
+            if (/^[A-Z]+$/.test(w) || /[A-Z]/.test(w.slice(1))) continue; // acronyms / mixed case
+            if (!/^[A-Z]/.test(w)) return null;   // one lower-case content word ⇒ sentence case
+            if (i > 0 && !COPY_ALLOW.has(w)) bad.push(w);
+        }
+        return bad.length ? bad : null;
+    };
+    const TAGS = /<(h[1-6]|label|button|option)\b[^>]*>([^<>$]*?)<\/\1>/g;
+    const ROWLBL = /<span class="[^"]*(?:settings-row-label|bhub-fold-lbl|acr-cap|bhub-grpcap|bo-sec-title)[^"]*"[^>]*>([^<>$]*?)<\/span>/g;
+    const KEYS = /\b(?:label|title|btn|btnShort|actionLabel|okLabel)\s*:\s*'((?:[^'\\\n]|\\.)*)'/g;
+    const STRS = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"/g;
+    const src4 = [];
+    const seen = { tags: 0, rowlbl: 0, keys: 0, assign: 0, prose: 0 };
+    const candidates = [];   // the NAMES: headings, labels, buttons, options
+    const prose = [];        // every quoted string + markup text run
+    const inlineUpper = [];
+    for (const [name, raw] of [['index.html', html], ['admin-views.html', adminViews], ['app.js', appScript], ['admin.js', adminScript]]) {
+        if (!raw) continue;
+        src4.push(name);
+        const isJs = /\.js$/.test(name);
+        const src = isJs ? stripSource(raw, 'js') : raw.replace(/<!--[\s\S]*?-->/g, '');
+        const add = (k, t) => { if (t && /[A-Za-z]{2}/.test(t)) { seen[k]++; candidates.push({ file: name, text: t }); } };
+        for (const m of src.matchAll(TAGS)) add('tags', decodeCopy(m[2]));
+        for (const m of src.matchAll(ROWLBL)) add('rowlbl', decodeCopy(m[1]));
+        if (isJs) for (const m of src.matchAll(KEYS)) add('keys', decodeCopy(m[1].replace(/\\'/g, "'")));
+        // …and the titles set by ASSIGNMENT rather than composed into a template
+        // ('Add Booking' lived at `modal-title`.innerText, which no markup or
+        // object-key pattern can see — the gate's own first run found 'Owner
+        // Login' there). Every quoted string on the line, because the two
+        // booking titles are the arms of a ternary.
+        if (isJs) {
+            for (const line of src.split('\n')) {
+                if (!/\.(?:innerText|textContent)\s*=/.test(line)) continue;
+                for (const m of line.matchAll(STRS)) add('assign', decodeCopy((m[1] !== undefined ? m[1] : m[2]).replace(/\\'/g, "'").replace(/\\"/g, '"')));
+            }
+        }
+        for (const m of src.matchAll(STRS)) {
+            const t = decodeCopy((m[1] !== undefined ? m[1] : m[2]).replace(/\\'/g, "'").replace(/\\"/g, '"'));
+            if (t) { seen.prose++; prose.push({ file: name, text: t }); }
+        }
+        for (const m of src.matchAll(/>([^<>${]{4,})</g)) {
+            const t = decodeCopy(m[1]);
+            if (t && /[A-Za-z]{3}/.test(t)) prose.push({ file: name, text: t });
+        }
+        src.split('\n').forEach((line, i) => {
+            for (const st of line.matchAll(/style\s*=\s*(["'])([^"']*)\1/g)) {
+                if (/text-transform\s*:\s*uppercase/.test(st[2])) inlineUpper.push(`${name}:${i + 1}`);
+            }
+        });
+    }
+    const FLOORS = { tags: 300, rowlbl: 20, keys: 200, assign: 8, prose: 4000 };
+    const starved = Object.keys(FLOORS).filter((k) => seen[k] < FLOORS[k]);
+    check('the copy scan is reading all four files and all five sources (vacuity guard)',
+        src4.length === 4 && candidates.length >= 200 && starved.length === 0,
+        `${src4.length} files, ${candidates.length} names, starved: ${starved.map((k) => k + '=' + seen[k]).join(', ') || 'none'}`);
+    const titled = [];
+    for (const c of candidates) {
+        if (COPY_BRAND.has(c.text)) continue;
+        const bad = titleCaseOffenders(c.text);
+        if (bad) titled.push(`${c.file} "${c.text}"`);
+    }
+    check('no heading, label, button or option is in Title Case', titled.length === 0, titled.slice(0, 4).join(' | '));
+    check('no inline style="text-transform: uppercase"', inlineUpper.length === 0, inlineUpper.slice(0, 4).join(', '));
+    // A shout is a defect wherever it is said, not only in a heading — so this
+    // half reads every quoted string. Multi-line sample text (the reviews
+    // importer's example block) is exempt: those are a GUEST'S words, quoted.
+    const shouts = prose.filter((s) => /[a-z]{2}!$/.test(s.text) && / /.test(s.text) && !/&#10;|\\n/.test(s.text));
+    check('nothing the app says to a person ends in an exclamation mark', shouts.length === 0,
+        shouts.slice(0, 4).map((s) => `${s.file} "${s.text}"`).join(' | '));
+    // …and only over PROSE (a space in it): 'square-config.php' is an endpoint
+    // name in code, not a sentence spoken to the owner.
+    const jargon = prose.filter((s) => / /.test(s.text) && COPY_FORBIDDEN.test(s.text));
+    check('no file name, query parameter or HTTP status is spoken to a person', jargon.length === 0,
+        jargon.slice(0, 4).map((s) => `${s.file} "${s.text}"`).join(' | '));
+}
+
 console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
 {
     const dh = get('damageHeld');
@@ -1085,8 +1219,8 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             check('PDF: …and takes the ok ink, not the 2.78:1 green', !!hCap && hCap.ink === '31,107,58',
                 hCap ? hCap.ink : 'not drawn');
             // -- the deposit is stated ONCE ----------------------------------
-            check('PDF: the deposit line appears once', said(paid, /^Refundable damages deposit$/).length === 1,
-                said(paid, /Refundable damages deposit/).map((t) => t.s).join(' | '));
+            check('PDF: the deposit line appears once', said(paid, /^Refundable deposit$/).length === 1,
+                said(paid, /Refundable deposit/).map((t) => t.s).join(' | '));
             check('PDF: …with its status underneath, not in a section of its own',
                 said(paid, /refunded in full after your stay/i).length === 1);
             // -- inks ---------------------------------------------------------
@@ -1127,9 +1261,9 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             // -- a REFUNDED deposit leaves the charges but stays on the page ---
             const ret = await run({ payment: 'paid', depositPaid: 695.25, holdStatus: 'returned', damagesReturned: 75, holdSettledAt: '2026-09-14 10:00:00' });
             check('PDF: refunded — the deposit is not a charge line',
-                said(ret, /^Refundable damages deposit$/).length === 0);
+                said(ret, /^Refundable deposit$/).length === 0);
             check('PDF: refunded — but it is still recorded, with its date',
-                said(ret, /Refundable damages deposit of £75\.00/).length > 0 || said(ret, /Refunded in full on 14\/09\/2026/).length > 0);
+                said(ret, /Refundable deposit of £75\.00/).length > 0 || said(ret, /Refunded in full on 14\/09\/2026/).length > 0);
             // -- the file's own identity ---------------------------------------
             check('PDF: carries a Title, so a viewer names the document',
                 !!paid.props && /^Invoice CHB-000042 — Cottage Holidays Blakeney$/.test(paid.props.title || ''),

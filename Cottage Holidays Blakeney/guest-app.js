@@ -55,7 +55,7 @@
         {
             key: 'stays',
             cls: 'gt-stays',
-            label: 'My Stays',
+            label: 'My stays',
             views: ['view-guest-bookings'],
             icon: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
             go: function () {
@@ -257,7 +257,7 @@
     var HEAD_TITLES = {
         'view-cottages': 'Cottages',
         'view-experiences': 'Things to do',
-        'view-guest-bookings': 'Your stays',
+        'view-guest-bookings': 'My stays',
         'view-privacy': 'Privacy',
     };
     function headTitleFor(viewId) {

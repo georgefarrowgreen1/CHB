@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=53">
+    <link rel="stylesheet" href="guest-app.css?v=54">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=331">
+    <link rel="stylesheet" href="app.css?v=332">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -219,7 +219,7 @@
                 <span class="nav-indicator" aria-hidden="true"></span>
                 <li><a href="/" data-act="navLink" data-view="view-main" data-edit-text="nav-home">Home</a></li>
                 <li><a href="/#cottages" data-act="navLink" data-view="view-cottages" data-edit-text="nav-cottages">Cottages</a></li>
-                <li><a href="/experiences" data-act="navLink" data-view="view-experiences" data-edit-text="nav-experiences">Experiences</a></li>
+                <li><a href="/experiences" data-act="navLink" data-view="view-experiences" data-edit-text="nav-experiences">Things to do</a></li>
             </ul>
         </nav>
         <button class="account-btn" id="account-btn" data-act="openGuestArea" title="Sign in" aria-label="Sign in / my account">
@@ -276,7 +276,7 @@
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a href="/" data-act="mobileNavLink" data-view="view-main" data-edit-text="mnav-home">Home</a>
         <a href="/#cottages" data-act="mobileNavLink" data-view="view-cottages" data-edit-text="mnav-cottages">Cottages</a>
-        <a href="/experiences" data-act="mobileNavLink" data-view="view-experiences" data-edit-text="mnav-experiences">Experiences</a>
+        <a href="/experiences" data-act="mobileNavLink" data-view="view-experiences" data-edit-text="mnav-experiences">Things to do</a>
     </div>
 
     <!-- ================= MAIN VIEW ================= -->
@@ -515,12 +515,12 @@
     <!-- ================= EXPERIENCES (local things to do; owner-curated + guest suggestions) ================= -->
     <main id="view-experiences" class="page-view container">
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
-        <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Experiences</h1>
+        <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Things to do</h1>
         <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
         <div id="exp-filters" class="exp-filters"></div>
         <div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>
         <div id="exp-empty" class="glass-panel" style="display:none;padding:32px;text-align:center;">
-            <p style="font-size:var(--fs-headline);font-weight:600;margin:0 0 6px;">Experiences coming soon</p>
+            <p style="font-size:var(--fs-headline);font-weight:600;margin:0 0 6px;">Things to do, coming soon</p>
             <p style="font-size:var(--fs-body);color:var(--text-muted);margin:0;">We're putting together our favourite local spots. Know a great one? Suggest it below.</p>
         </div>
         <!-- COULDN'T LOAD is not the same as THERE ARE NONE. Its own panel, because
@@ -551,19 +551,19 @@
         <div class="exp-suggest glass-panel">
             <div>
                 <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 4px;">Know a great local spot?</h3>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">Suggest an experience and we'll review it.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">Tell us about it and we'll take a look.</p>
             </div>
-            <button class="btn-glass" style="width:auto;" data-act="openExperienceSuggest">Suggest an experience</button>
+            <button class="btn-glass" style="width:auto;" data-act="openExperienceSuggest">Suggest something to do</button>
         </div>
     </main>
 
     <!-- Suggest-an-experience form (guest) -->
-    <div id="exp-suggest-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Suggest an experience" data-act="backdropClose" data-close="closeExperienceSuggest">
+    <div id="exp-suggest-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Suggest something to do" data-act="backdropClose" data-close="closeExperienceSuggest">
         <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" data-act="closeExperienceSuggest" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 6px;">Suggest an experience</h2>
+            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 6px;">Suggest something to do</h2>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:16px;">Tell us about a local spot you loved — we'll review it before it appears.</p>
             <label class="modal-label" for="exp-s-title">Name</label>
             <input type="text" class="input-glass" id="exp-s-title" placeholder="e.g. Beans Boat Trips — seal watching">
@@ -584,7 +584,7 @@
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
-        <span class="back-link"  role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-cottages">← Back to Cottages</span>
+        <span class="back-link"  role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-cottages">← Back to cottages</span>
         
         <div class="gallery-container">
             <div class="gallery-track" id="gallery-21a">
@@ -842,11 +842,12 @@
                     <div class="enq-fg" style="--efd:0.115s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK address</label>
                         <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
-                        <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                        <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
                     </div>
                     <div class="enq-fg" style="--efd:0.155s;">
-                        <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party</label>
-                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
+                        <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 2px;" for="enq-message">About your party</label>
+                        <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 5px;">A little about who&rsquo;s coming helps us look after you better.</p>
+                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="e.g. two of us and our teenage daughter" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
                     </div>
                     <!-- Two declarations, both required before sending. -->
                     <div class="enq-fg" style="--efd:0.195s;">
@@ -858,7 +859,7 @@
                         <label class="terms-accept">
                             <input type="checkbox" id="enq-terms" data-act-change="enqLiveSync">
                             <span class="terms-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>
-                            <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
+                            <span>I have read and accept the <a href="#" data-act="openTerms">Booking terms &amp; conditions</a>.</span>
                         </label>
                     </div>
                     <!-- THE SEND IS NARRATED (enqStepsShow, app.js — the pay screen's
@@ -1125,7 +1126,7 @@
             </div>
             <div>
                 <div style="display: flex; gap: 10px; margin-bottom: 28px;">
-                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" data-act="switchGuestTab" data-arg="login">Log in</button>
+                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" data-act="switchGuestTab" data-arg="login">Sign in</button>
                     <button class="toggle-btn guest-tab" id="tab-register" style="flex:1;" data-act="switchGuestTab" data-arg="register">Create account</button>
                 </div>
 
@@ -1143,12 +1144,12 @@
                             <span style="flex:1;height:1px;background:var(--glass-border);"></span>
                         </div>
                     </div>
-                    <label class="modal-label" for="login-email">Email or username</label>
+                    <label class="modal-label" for="login-email">Email</label>
                     <input type="text" class="input-glass" id="login-email" name="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" placeholder="you@email.com">
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
                     <div id="login-error" class="auth-msg is-bad" role="alert" style="margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log in</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Sign in</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);">Email me a sign-in link instead</a>
                         <!-- role=alert like every other message element in this file:
@@ -1157,14 +1158,14 @@
                              to a silent div with focus left where it was. -->
                         <div id="magic-link-msg" class="auth-msg" role="alert" style="display:none;margin-top:10px;"></div>
                     </div>
-                    <p id="passkey-hint" style="display:none;font-size:var(--fs-caption);color:var(--text-muted);text-align:center;margin-top:16px;">Tip: after logging in, add a passkey in your account for one-tap sign-in next time.</p>
+                    <p id="passkey-hint" style="display:none;font-size:var(--fs-caption);color:var(--text-muted);text-align:center;margin-top:16px;">Tip: once you&rsquo;re in, add a passkey in your account for one-tap sign-in next time.</p>
                 </div>
 
                 <!-- REGISTER -->
                 <div id="guest-register-form" style="display:none;">
                     <h2 class="section-title" style="font-size:var(--fs-display); margin-bottom: 8px;">Create your account</h2>
                     <p class="lead" style="font-size:var(--fs-sub); margin-bottom: 20px;">We'll link any bookings made with your email — past or future.</p>
-                    <label class="modal-label" for="reg-name">Full Name</label>
+                    <label class="modal-label" for="reg-name">Full name</label>
                     <input type="text" class="input-glass" id="reg-name" name="name" autocomplete="name" placeholder="Full name">
                     <label class="modal-label" for="reg-email">Email</label>
                     <input type="email" class="input-glass" id="reg-email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" placeholder="you@email.com">
@@ -1180,7 +1181,7 @@
                     </div>
                     <label class="modal-label" for="reg-address">UK address</label>
                     <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
-                    <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="authPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="authPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
                     <div id="reg-error" class="auth-msg is-bad" role="alert" style="margin-bottom:12px;display:none;"></div>
@@ -1191,11 +1192,11 @@
         </div>
     </div>
 
-    <!-- ================= GUEST BOOKINGS ("My Bookings") ================= -->
+    <!-- ================= GUEST BOOKINGS ("My stays") ================= -->
     <main id="view-guest-bookings" class="page-view container guest-bookings-view">
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">My Stays</h1>
+                <h1 class="section-title" style="margin-bottom: 5px;">My stays</h1>
                 <p class="lead" style="text-align: left; margin: 0;" id="guest-welcome">Your stays with Cottage Holidays Blakeney.</p>
             </div>
             <!-- On the mobile shell the dock's Account button opens the account section;
@@ -1329,10 +1330,10 @@
     <div id="waitlist-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Join the waitlist" data-act="backdropClose" data-close="closeWaitlistModal">
         <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
-                <h3 style="font-family:var(--font-serif);font-size:var(--fs-title);">Notify me</h3>
+                <h3 style="font-family:var(--font-serif);font-size:var(--fs-title);">Join the waitlist</h3>
                 <button class="reviews-modal-close" data-act="closeWaitlistModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:14px;">Leave your details and we'll email you if these dates become available. Dates are optional.</p>
+            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:14px;">Leave your details and we'll email you if these dates become available.</p>
             <label class="modal-label">Cottage</label>
             <select class="input-glass" id="wl-prop" style="margin-bottom:12px;"></select>
             <!-- Built-in calendar (openWaitlistDatePicker), not native date fields — see app.js -->
@@ -1376,12 +1377,12 @@
             <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
             <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
-            <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="detailsPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+            <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="detailsPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
             <div id="profile-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log out</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; security</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Sign out</button>
             </div>
             </div><!-- /.auth-form-col -->
         </div>
@@ -1402,7 +1403,7 @@
             <div class="auth-close-row">
                 <button class="reviews-modal-close" data-act="closeGuestSecurityModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 18px;">Account &amp; Security</h2>
+            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 18px;">Account &amp; security</h2>
 
             <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 6px;">Change password</h3>
             <label class="modal-label">Current password</label>
@@ -1416,7 +1417,7 @@
 
             <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;">Passkeys</h3>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Sign in with Face ID, Touch ID or your device PIN — no password to remember. Your password still works as a backup.</p>
-            <button class="btn-sm btn-edit" data-act="addPasskey">＋ Add a passkey</button>
+            <button class="btn-sm btn-edit" data-act="addPasskey">Add a passkey</button>
             <div id="passkey-list" style="margin-top:14px;"></div>
 
             <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;">Your data</h3>
@@ -1434,7 +1435,7 @@
     <main id="view-privacy" class="page-view container">
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <div style="max-width: 760px; margin: 0 auto;">
-            <h1 class="section-title" style="margin-bottom: 8px;">Privacy Policy</h1>
+            <h1 class="section-title" style="margin-bottom: 8px;">Privacy policy</h1>
             <p class="lead" style="text-align:left;margin:0 0 24px;">How Cottage Holidays Blakeney looks after your personal information.</p>
 
             <div class="glass-panel" style="padding:28px;line-height:1.7;">
@@ -1445,7 +1446,7 @@
                 <p style="color:var(--text-muted);margin:0 0 18px;">We use your details to respond to your enquiry, manage your booking, contact you about your stay, and keep records required for our business and tax purposes. Our lawful bases are performance of a contract (your booking) and our legitimate interests in running the business and preventing fraud. Your home address is collected as a standard requirement for holiday-let bookings (guest identification and our terms).</p>
 
                 <h3 style="font-family:var(--font-serif);margin:0 0 8px;">Who we share it with</h3>
-                <p style="color:var(--text-muted);margin:0 0 18px;">We do not sell your data. It is handled by our website host, our email provider, and our payment processor (Square — for card payments, including the refundable damages deposit) so we can store your booking, send confirmations and take payment. If you booked through a platform such as Airbnb or Vrbo, that booking is governed by their own privacy policies. We only disclose information where legally required.</p>
+                <p style="color:var(--text-muted);margin:0 0 18px;">We do not sell your data. It is handled by our website host, our email provider, and our payment processor (Square — for card payments, including the refundable deposit) so we can store your booking, send confirmations and take payment. If you booked through a platform such as Airbnb or Vrbo, that booking is governed by their own privacy policies. We only disclose information where legally required.</p>
 
                 <h3 style="font-family:var(--font-serif);margin:0 0 8px;">How long we keep it</h3>
                 <p style="color:var(--text-muted);margin:0 0 18px;">We keep booking records for as long as needed to run the business and meet UK tax and legal obligations (generally up to 6 years). You can delete your account at any time from your account page. When you do, we erase your login, contact details, messages, reviews and mailing-list entry; the booking and payment records we’re legally required to keep are anonymised — your dates and amounts remain, but your name and contact details are removed. The guest-register details required by the Immigration (Hotel Records) Order 1972 are kept for 12 months after your stay and then automatically deleted.</p>
@@ -1518,7 +1519,7 @@
                     <!-- Optional file attachments (images / PDFs / docs). -->
                     <div style="margin:0 0 12px;">
                         <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" data-act-change="addComposeAttachments" data-pass="files">
-                        <button type="button" class="btn-sm btn-edit" data-act="clickTarget" data-target="enq-email-file-input">＋ Attach a file</button>
+                        <button type="button" class="btn-sm btn-edit" data-act="clickTarget" data-target="enq-email-file-input">Attach a file</button>
                         <div id="enq-email-attach-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                     </div>
                     <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
@@ -1546,7 +1547,7 @@
     <div id="reviews-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-label="Guest reviews">
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
-                <h2 class="section-title" style="margin:0;font-size:var(--fs-display);">Guest Words</h2>
+                <h2 class="section-title" style="margin:0;font-size:var(--fs-display);">Guest reviews</h2>
                 <button class="reviews-modal-close" data-act="closeAllReviews" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="reviews-modal-body" id="reviews-modal-list"></div>
@@ -1556,7 +1557,7 @@
     <div id="faq-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="faq-modal-title">
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
-                <h2 class="section-title" id="faq-modal-title" style="margin:0;font-size:var(--fs-title);">Good to Know</h2>
+                <h2 class="section-title" id="faq-modal-title" style="margin:0;font-size:var(--fs-title);">Good to know</h2>
                 <button class="reviews-modal-close" data-act="closeFaqModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="reviews-modal-body" id="faq-modal-list" style="display:block;"></div>
@@ -1611,7 +1612,7 @@
     <!-- ADMIN LOGIN MODAL -->
     <div id="admin-login-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Owner sign in" data-act="backdropClose" data-close="closeAdminLogin">
         <div class="modal-box glass-panel">
-            <h2 class="section-title" style="font-size:var(--fs-display);margin-bottom:6px;" id="admin-login-title">Owner Login</h2>
+            <h2 class="section-title" style="font-size:var(--fs-display);margin-bottom:6px;" id="admin-login-title">Owner sign-in</h2>
             <p class="lead" style="font-size:var(--fs-sub);margin-bottom:22px;" id="admin-login-sub">Sign in to manage your bookings.</p>
 
             <!-- We go straight to a passkey attempt (Face ID / Touch ID / device PIN). -->
@@ -1627,7 +1628,7 @@
                 <label class="modal-label">Password</label>
                 <input type="password" class="input-glass" id="admin-login-pass" placeholder="Password" autocomplete="current-password"
                        data-act-keydown="enterCall" data-fn="submitAdminLogin">
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Log in</button>
+                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Sign in</button>
                 <div id="admin-login-passkey-retry" style="display:none;margin-top:18px;">
                     <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;">
                         <span style="flex:1;height:1px;background:var(--glass-border);"></span>
@@ -1656,7 +1657,7 @@
         <div class="glass-panel terms-modal-box">
             <div class="terms-modal-head">
                 <div>
-                    <h2 data-edit-text="terms-title">Booking Terms &amp; Conditions</h2>
+                    <h2 data-edit-text="terms-title">Booking terms &amp; conditions</h2>
                     <p class="terms-modal-sub">Please read these before you book — they're the terms you accept with your booking.</p>
                 </div>
                 <button class="toast-close" data-act="closeTermsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1674,7 +1675,7 @@
                  and the footer sits OUTSIDE it, so iOS overscroll can never
                  drag the bar off the box bottom (owner's screenshot). -->
             <div class="modal-scroll">
-            <h3 id="modal-title" style="font-family: var(--font-serif); font-size:var(--fs-display); margin-bottom: 10px;">Edit Booking</h3>
+            <h3 id="modal-title" style="font-family: var(--font-serif); font-size:var(--fs-display); margin-bottom: 10px;">Edit booking</h3>
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
@@ -1687,21 +1688,21 @@
             <div class="modal-cols">
             <div class="modal-col">
             <div class="modal-sec">The stay</div>
-            <label class="modal-label" for="modal-property">Property</label>
+            <label class="modal-label" for="modal-property">Cottage</label>
             <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
                 <option value="21a">21A Westgate</option>
                 <option value="jollyboat">Jollyboat</option>
                 <option value="pimpernel">Pimpernel</option>
-                <option value="__new__">➕ New property…</option>
+                <option value="__new__">New cottage…</option>
             </select>
-            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
+            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New cottage name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
 
             <!-- Same clickable glass calendar the customer site uses (admin mode:
                  taken nights shaded from loaded data, everything still pickable —
                  the availability strip + server clash confirm guard the save).
                  The VERDICT capsule on the row answers free/overlaps at a glance;
                  the strip below still names the blocker and holds the grid. -->
-            <label class="modal-label">Stay Dates</label>
+            <label class="modal-label">Stay dates</label>
             <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker" aria-label="Select the stay dates">
                 <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
                 <span class="modal-date-verdict" id="modal-date-verdict" style="display:none;"></span>
@@ -1788,8 +1789,8 @@
                 </div>
                 <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails" style="display:none;" aria-hidden="true" tabindex="-1">
                     <option value="unpaid">Unpaid</option>
-                    <option value="deposit">Deposit Paid</option>
-                    <option value="paid">Paid in Full</option>
+                    <option value="deposit">Deposit paid</option>
+                    <option value="paid">Paid in full</option>
                 </select>
                 <!-- Inline payment details (were 3 sequential pop-up prompts after Save). -->
                 <div id="modal-payment-details" style="display:none;">
@@ -1855,7 +1856,7 @@
             <div class="modal-sec">Notes</div>
             <!-- The section cap carries the visible name; the label stays for
                  the accessible one (and togglePaymentField's enquiry relabel). -->
-            <label class="modal-label sr-only" for="modal-notes">Staff Notes</label>
+            <label class="modal-label sr-only" for="modal-notes">Staff notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
             <div id="modal-error" style="color: var(--danger); font-size:var(--fs-sub); margin-bottom: 15px; display: none;"></div>
@@ -1935,11 +1936,11 @@
             <div id="overview-body"><!-- built by openCustomOverview() --></div>
 
             <div id="overview-payment-group" style="margin-top: 4px;">
-                <label class="modal-label">Payment Status</label>
+                <label class="modal-label">Payment status</label>
                 <select class="input-glass" id="overview-payment">
                     <option value="unpaid">Unpaid</option>
-                    <option value="deposit">Deposit Paid</option>
-                    <option value="paid">Paid in Full</option>
+                    <option value="deposit">Deposit paid</option>
+                    <option value="paid">Paid in full</option>
                 </select>
             </div>
 
@@ -1997,7 +1998,7 @@
             <p id="nl-msg" style="font-size:var(--fs-caption);margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
         </div>
         <p class="footer-nap">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
-        <p class="footer-meta" style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a data-act="nav" data-view="view-privacy" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
+        <p class="footer-meta" style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
         <p class="footer-build">Build <span id="build-stamp">—</span></p>
     </footer>
 
@@ -2005,11 +2006,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=966"></script>
+    <script defer src="app.js?v=967"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=22"></script>
+    <script defer src="guest-app.js?v=23"></script>
 
 </body>
 </html>

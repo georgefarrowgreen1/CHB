@@ -308,7 +308,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const box = document.querySelector('.guest-price-box');
     return box ? box.innerText.replace(/\s+/g, ' ') : '';
   });
-  ok(/Refundable damages deposit £50\.00/.test(money), `the card quotes the deposit actually taken (${money.slice(0, 120)})`);
+  ok(/Refundable deposit £50\.00/.test(money), `the card quotes the deposit actually taken (${money.slice(0, 120)})`);
   ok(!/£90\.00/.test(money), 'the agreed figure the owner later typed is nowhere on it');
   ok(/Total \(incl\. deposit\) £440\.00/.test(money), 'the total folds in that same £50, not the £90');
   ok(/Paid in full £440\.00/.test(money), '…and the paid line agrees with it, so no phantom balance appears');

@@ -292,7 +292,7 @@ function cmdkRegistry() {
         { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
         { id: 'content', label: 'Home page & menu', sub: 'Hero, menu & site name', kw: 'website hero photo text logo homepage', sec: 'content' },
-        { id: 'experiences', label: 'Experiences', sub: 'Local things to do', kw: 'things to do activities', sec: 'experiences' },
+        { id: 'experiences', label: 'Things to do', sub: 'Local places and activities', kw: 'things to do activities experiences', sec: 'experiences' },
         { id: 'reviews', label: 'Reviews', sub: 'Approve & import', kw: 'google review testimonial star', sec: 'reviews' },
         { id: 'photos', label: 'Guest photos', sub: 'Approve shared photos', kw: 'photo wall gallery', sec: 'photos' },
         { id: 'chat-answers', label: 'Instant chat answers', sub: 'Auto-answers to chat chips', kw: 'automation faq quick reply bot', sec: 'chat-answers' },
@@ -386,7 +386,7 @@ function cmdkActions(q) {
         A('security', 'Change your sign-in', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint sign in login security change reset', /(change|reset|update|set).{0,14}(password|sign.?in|log ?in|passkey|security)/, toManage('security')),
         A('notify', 'Notifications', 'Phone alerts', 'notification push alert phone owner', /(edit|change|manage|set|turn).{0,12}notification|push alert/, toManage('notify')),
         A('newsletter', 'Newsletter & broadcasts', 'Mailing list', 'newsletter broadcast mailing subscribers marketing bulk', /(send|manage|edit|write).{0,12}(newsletter|broadcast|mailing)/, toManage('newsletter')),
-        A('experiences', 'Experiences', 'Local things to do', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
+        A('experiences', 'Things to do', 'Local places and activities', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
         A('reviews', 'Approve reviews', 'Moderate guest reviews', 'review testimonial star approve moderate import google', /(approve|moderate|manage|import).{0,10}review/, toManage('reviews')),
         A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
         A('guests', 'Guest accounts', 'Look up or reset a guest', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
@@ -1605,7 +1605,7 @@ function cmdkBookingActions(b, pk) {
                 return sent ? { say: `${bKind === 'balance' ? 'Balance' : 'Deposit'} request sent to ${chbSayFirst(b.name || 'the guest')}` } : null;
             },
         });
-        acts.push({ key: 'record', label: 'Record payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
+        acts.push({ key: 'record', label: 'Record a payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
         // …and the standing version of the same question, for when you would rather
         // be told than remember to look.
         const watchBal = chbWatchBalanceAction(b, pk, ps);
@@ -3459,17 +3459,17 @@ function chbNlgSocial(q) {
         const tod = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
         const brief = chbNlgBrief();
         const briefCap = brief ? ' ' + brief.charAt(0).toUpperCase() + brief.slice(1) + '.' : '';
-        return { kind: 'greet', text: `${tod}!${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
+        return { kind: 'greet', text: `${tod}.${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
     }
     // Bare single adjectives (good/nice/cool/great/magic/right/sure/fine) are
     // dropped: they're common PREFIXES of guest names/places ("good"→Goodwin,
     // "magic"→a listing), so while typing them the social reply hijacked the Top
     // Hit above the real fuzzy match. Keep the unambiguous gratitude phrases.
     if (/^(thanks?|thank you|thankyou|cheers|ta|nice one|perfect|lovely|brilliant|thx|excellent|amazing|spot on|thats great|thats brilliant)$/.test(s)) {
-        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
+        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome.", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
     }
     if (/^(bye|goodbye|see you|see ya|thats all|that is all|nothing else|nothing more|done|thats it|im done|no thanks|no thank you)$/.test(s)) {
-        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me.", 'Any time you need me.']) };
+        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio.', "I'm here whenever you need me.", 'Any time you need me.']) };
     }
     if (/^(ok|okay|kk|righto|got it|understood|alright|no worries|no problem)$/.test(s)) {
         return { kind: 'ack', text: nlgPick(s, ['👍', 'Right.', 'Whenever you\'re ready.', 'Just say the word.']) };
@@ -4142,7 +4142,7 @@ function chbAlmanac(q0) {
             if (next) {
                 const dt = new Date(next[0] + 'T00:00:00');
                 const days = Math.round((dt - new Date(today + 'T00:00:00')) / 864e5);
-                return row(`The next bank holiday is ${next[1]} — ${dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${days > 0 ? `, ${days} days away` : ' — today!'}.`, 'England & Wales');
+                return row(`The next bank holiday is ${next[1]} — ${dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${days > 0 ? `, ${days} days away` : ' — today'}.`, 'England & Wales');
             }
         }
         const yr = (q.match(/\b(20\d\d)\b/) || [null, today.slice(0, 4)])[1];
@@ -5262,7 +5262,7 @@ function cmdkIntent(q) {
         const autoOk = typeof __nyCronQuiet === 'undefined' ? true : !__nyCronQuiet;
         const head = {
             type: autoOk ? 'answer' : 'figure', id: 'sdsr',
-            label: autoOk && !ny ? 'All systems operational' : 'System status',
+            label: autoOk && !ny ? 'Everything’s running' : 'System status',
             sub: `${autoOk ? 'Automation running' : 'Automation looks stopped'} · ${ny ? ny + ' thing' + (ny === 1 ? '' : 's') + ' need you' : 'nothing needs you'}`,
             run: toMng('diagnostics'),
         };
@@ -5569,7 +5569,7 @@ function cmdkIntent(q) {
         const out = [head];
         if (m.rev) out.push({ type: 'review', id: 'mod-rev', label: `${m.rev} review${m.rev === 1 ? '' : 's'} to approve`, sub: 'Manage · Reviews', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('reviews')); } });
         if (m.ph) out.push({ type: 'review', id: 'mod-ph', label: `${m.ph} photo${m.ph === 1 ? '' : 's'} to approve`, sub: 'Manage · Guest photos', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('photos')); } });
-        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Experiences', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); } });
+        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Things to do', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); } });
         return out;
     }
     return null;
@@ -5600,7 +5600,7 @@ function helpTopics() {
             related: ['take-payment', 'block-dates'] },
         { id: 'take-payment', title: 'Take a payment or request one', cat: 'Money',
             kw: 'take payment charge card request deposit balance money collect pay invoice link',
-            steps: ['Open the booking from Today or Bookings.', 'On the banner at the top of the booking, tap “Request the balance by card” to email a secure link — or “Record payment” for one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
+            steps: ['Open the booking from Today or Bookings.', 'On the banner at the top of the booking, tap “Request the balance by card” to email a secure link — or “Record a payment” for one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
             doIt: { label: 'Bookings to chase', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
             showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
             related: ['chase-balance', 'deposit-explained'] },
@@ -5670,7 +5670,7 @@ function helpTopics() {
             related: ['edit-photos', 'edit-welcome'] },
         { id: 'add-cottage', title: 'Add a new cottage', cat: 'Cottages',
             kw: 'add new cottage accommodation property create another listing place',
-            steps: ['Open Cottages and use “Add accommodation”.', 'Give it a name and a couple rate — it generates the page; then fill in photos, text and rules.'],
+            steps: ['Open Cottages and use “Add a cottage”.', 'Give it a name and a couple rate — it generates the page; then fill in photos, text and rules.'],
             doIt: { label: 'Open Cottages', run: sec('accom') },
             related: ['hide-cottage'] },
         { id: 'hide-cottage', title: 'Hide a cottage from the website', cat: 'Cottages',
@@ -5738,7 +5738,7 @@ function helpTopics() {
             doIt: { label: 'Open Notifications', run: sec('notify') } },
         { id: 'record-payment', title: 'Record a payment I took another way', cat: 'Money',
             kw: 'record manual payment cash bank transfer cheque took offline mark paid add money received',
-            steps: ['Open the booking.', 'In the Payments section tap “Record payment” and enter the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
+            steps: ['Open the booking.', 'In the Payments section tap “Record a payment” and enter the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
             doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
             related: ['take-payment'] },
         { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
@@ -5790,10 +5790,10 @@ function helpTopics() {
             kw: 'host profile bio about me photo owner introduction contact number your details',
             steps: ['Search “host bio” to edit it inline, or open Manage → Profile.', 'Update your introduction, photo and contact number.'],
             doIt: { label: 'Open Profile', run: sec('host') } },
-        { id: 'experiences', title: 'Edit things-to-do / experiences', cat: 'Marketing',
+        { id: 'experiences', title: 'Edit things to do', cat: 'Marketing',
             kw: 'experiences things to do activities local attractions seal trips walks add edit guide',
-            steps: ['Open Manage → Experiences.', 'Add or edit the local things-to-do shown on the Experiences page.'],
-            doIt: { label: 'Open Experiences', run: sec('experiences') } },
+            steps: ['Open Manage → Things to do.', 'Add or edit the local places and activities shown on your Things to do page.'],
+            doIt: { label: 'Open things to do', run: sec('experiences') } },
         { id: 'reset-guest', title: 'Reset a guest’s login', cat: 'Guests',
             kw: 'guest account reset password login look up find user cant sign in help customer',
             steps: ['Open Manage → Guests.', 'Find the guest and reset their access — they can also use the “email me a link” option themselves.'],
@@ -7891,8 +7891,8 @@ function cmdkContentMatches(ql) {
         out.push({
             type: 'content',
             id: 'exp-' + (x.id != null ? x.id : normNo(x.title)),
-            label: x.title || 'Experience',
-            sub: 'Experiences · ' + (desc.length > 64 ? desc.slice(0, 63) + '…' : desc || 'things to do'),
+            label: x.title || 'Something to do',
+            sub: 'Things to do · ' + (desc.length > 64 ? desc.slice(0, 63) + '…' : desc || 'things to do'),
             run: () => { closeCmdK(); if (typeof nav === 'function') nav('view-experiences'); },
         });
     });
@@ -8851,7 +8851,7 @@ function cmdkDeepCta() {
 const CMDK_DEEP_ORDER = ['booking', 'enquiry', 'guest', 'message', 'email', 'payment', 'review', 'activity', 'expense', 'waitlist', 'subscriber', 'experience'];
 // Deep search names each SOURCE precisely (the quick palette's cmdkSection groups
 // several types under one heading, which is too coarse for "search everything").
-const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Experiences' };
+const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Things to do' };
 const cmdkDeepLabel = (t) => CMDK_DEEP_LABELS[t] || t;
 // The recency window for deep results ('' = all time; else an ISO floor).
 let __cmdkDeepPeriod = 'all';
@@ -10162,7 +10162,7 @@ function inboxVerdicts() {
         const latest = (Array.isArray(__mbxMessages) ? __mbxMessages : []).find((m) => !m.seen);
         sub('iv-sub-email', latest
             ? `${(mbxSender(latest.fromRaw, latest.from).name || latest.from || '')} · ${latest.subject || ''}`.slice(0, 70)
-            : 'no unread customer mail');
+            : 'no unread guest mail');
     }
     // Exceptions — an enquiry that has waited past the amber flag doesn't hide
     // behind a fold; it is a red row with the reply actions under it. A clean
@@ -11493,7 +11493,7 @@ function renderBookingHub() {
 
     // ---- Payments block (built first — the header template embeds it) ----
     const agreedNote = b.agreedPrice
-        ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
+        ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · agreed ' + fmtDate(b.agreedPrice.agreedOn) : ''} — locked at the rates in effect when booked.</div>`
         : '';
     // A custom price is ONE line (priceIsCustom, app.js — the shared decision):
     // with a price_override the snapshot's per-night lines cannot reach the agreed
@@ -11620,7 +11620,7 @@ function renderBookingHub() {
                 ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
                     ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
-                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
+                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
                       story. Shown only once money has actually been taken and
@@ -11647,9 +11647,9 @@ function renderBookingHub() {
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
                          destructive action stays a deliberate two-tap instead
                          of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="${arrived ? 'Edit this booking' : 'Edit, move or cancel this booking'}" title="${arrived ? 'Edit' : 'Edit / Move / Cancel'}">⋯</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="${arrived ? 'Edit this booking' : 'Edit, move or cancel this booking'}" title="${arrived ? 'Edit' : 'Edit, move or cancel'}">⋯</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit or move'}</button>
                         <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
                         <button role="menuitem" ${chbAttrs('shareStayDetails', String(b.id))}>Share stay details</button>
                         ${
@@ -11734,7 +11734,7 @@ function renderBookingHub() {
                         }
                         <button class="bhub-actlink" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
                     </div>`
-        : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>';
+        : '<div class="bhub-mut">No guest email on file — add one via Edit or move to send anything.</div>';
     const emailsCard = bhubFoldGrp('emails', 'Emails', '', emailsSum, emailsFold);
 
     // ---- Guest card (contact + notes + their other stays) ----
@@ -11774,7 +11774,7 @@ function renderBookingHub() {
             : '';
     const noContact =
         !b.email && !b.phone
-            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the Edit/Move/Cancel menu → Edit / Move.</div>`
+            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the ⋯ menu → Edit or move.</div>`
             : '';
     // ---- Guest details — the summary states the CONCLUSION: all in → "All
     // recorded ✓"; else "N not recorded", counting exactly what the rows
@@ -12057,7 +12057,7 @@ const SETTINGS_TITLES = {
     analytics: 'Analytics',
     waitlist: 'Waitlist',
     newsletter: 'Newsletter',
-    experiences: 'Experiences',
+    experiences: 'Things to do',
     content: 'Home page & menu',
     photos: 'Guest photos',
     sms: 'Text messages',
@@ -13897,7 +13897,7 @@ function smsPaintState(st) {
     if (st === null) return say('Checking…', 'var(--text-muted)');
     if (st === 'error') return say("Couldn't check whether texts are set up.", 'var(--warn-text)');
     if (st.from_config) {
-        return say('Texts are set up in config.php on the server. Those settings win, so this page is read-only.', 'var(--ok-text)');
+        return say('Texts are already set up on the server, and those settings win — so this page is read-only.', 'var(--ok-text)');
     }
     if (st.ready) {
         return say('Texts are on. Guests who tick the box get balance reminders and arrival info.', 'var(--ok-text)');
@@ -14027,7 +14027,7 @@ async function renderAccomList() {
     list.style.display = '';
     const emptyHint = Object.keys(propertyMeta).length
         ? ''
-        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add accommodation” below to create your first one.</p>';
+        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add a cottage” below to create your first one.</p>';
     list.innerHTML =
         emptyHint +
         `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
@@ -14069,7 +14069,7 @@ function accomAddRowHtml() {
     return `<div class="settings-group" style="margin-top:14px;">
                 <button class="settings-row" data-act="addAccommodationPrompt">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Add accommodation</span><span class="settings-row-sub">Create a new cottage, then fill in its details</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Add a cottage</span><span class="settings-row-sub">Create it, then fill in its details</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>`;
 }
@@ -14085,7 +14085,7 @@ function accomAddRowHtml() {
 // enquirable at once. glassForm resolves null on both.
 async function addAccommodationPrompt() {
     const vals = await glassForm(
-        'A new accommodation needs a name and a nightly price for a couple. You can change everything else afterwards.',
+        'A new cottage needs a name and a nightly price for a couple. You can change everything else afterwards.',
         [
             { id: 'name', label: 'Name', type: 'text', placeholder: 'e.g. Harbour Cottage' },
             { id: 'rate', label: 'Nightly price for a couple (£)', type: 'number', placeholder: '130' },
@@ -14257,7 +14257,7 @@ const ACCOM_SECTIONS = [
     {
         id: 'local',
         label: 'Area & access',
-        sub: 'Dark-skies note (shown on Experiences) and this cottage’s accessibility',
+        sub: 'Dark-skies note (shown on Things to do) and this cottage’s accessibility',
         ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>',
     },
     {
@@ -14906,7 +14906,7 @@ async function resetGuestPassword(email) {
     try {
         await apiPost('auth.php', { action: 'guest_reset_password', email, next });
         glassAlert(
-            `Password reset for ${email}.\n\nGive them the new password and ask them to log in and change it.`,
+            `Password reset for ${email}.\n\nGive them the new password and ask them to sign in and change it.`,
         );
     } catch (e) {
         glassAlert("Couldn't reset password: " + e.message);
@@ -15724,8 +15724,8 @@ async function renderSweep(refetch) {
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
             </div>
             <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">${est
-                ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
-                : `There's no bank feed, so the balance is the one figure I can't work out for you.`}</p>
+                ? `Starting from the ${gbp(est.from)} you recorded on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
+                : `There's no bank feed, so the balance is the one figure this page cannot work out.`}</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
                 ${hasBal && short <= 0
                     ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
@@ -16107,7 +16107,7 @@ function renderExpenses() {
     wrap.innerHTML = `
                 ${chart}
                 <details class="exp-add-details" id="exp-add-details">
-                  <summary class="exp-add-summary">＋ Add an expense</summary>
+                  <summary class="exp-add-summary">Add an expense</summary>
                   <div class="accounts-stat" style="max-width:680px;margin-top:10px;">
                     <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;align-items:flex-end;">
                         <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
@@ -16116,7 +16116,7 @@ function renderExpenses() {
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
                         <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sub);color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
-                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">Scan a photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <button class="btn-sm btn-edit exp-add-btn" data-act="addExpense">Add</button>
                         <button class="btn-sm exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button>
                     </div>
@@ -17186,7 +17186,7 @@ function renderMoneyPanel() {
             const days = ci && t0 ? Math.round((ci - t0) / 86400000) : 99;
             const dueSoon = !ps.fullyPaid && days <= 7; // within a week, today, or already started
             const dueChip = dueSoon
-                ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + 'd'}</span>`
+                ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + (days === 1 ? ' day' : ' days')}</span>`
                 : '';
             const dh = damageHeld(propKey, b);
             const depBit = dh.held > 0 ? ` · ${gbp(dh.held)} deposit held` : '';
@@ -17828,7 +17828,7 @@ async function enableOwnerPush() {
         }
         const key = await getVapidKey();
         if (!key) {
-            glassAlert('Push isn’t configured on the server yet (VAPID keys in config.php).');
+            glassAlert('Push notifications aren’t set up on the server yet.');
             return;
         }
         const reg = await registerServiceWorker();
@@ -18000,7 +18000,7 @@ async function addNotifyEmail(ev) {
 async function tryAccessBackOffice() {
     if (!isAuthenticated) {
         // First sign-in lands on the friendly owner home, not straight into the calendar.
-        openAdminLogin('Owner Login', 'Sign in to manage your cottages.', async () => {
+        openAdminLogin('Owner sign-in', 'Sign in to manage your cottages.', async () => {
             nav('view-backoffice');
             adminHistPush('view-backoffice');
             refreshOwnerHomeBadges();
@@ -18014,7 +18014,7 @@ async function tryAccessBackOffice() {
 async function openAdminLogin(title, sub, onSuccess) {
     adminLoginOnSuccess = onSuccess || null;
     const m = document.getElementById('admin-login-modal');
-    document.getElementById('admin-login-title').innerText = title || 'Owner Login';
+    document.getElementById('admin-login-title').innerText = title || 'Owner sign-in';
     document.getElementById('admin-login-sub').innerText = sub || '';
     document.getElementById('admin-login-user').value = '';
     document.getElementById('admin-login-pass').value = '';
@@ -18392,7 +18392,7 @@ function renderSquareSettings() {
     if (st)
         st.innerHTML = squareAdminEnabled
             ? '<span style="color:var(--ok-text);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
-            : '<span style="color:var(--warn-text);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
+            : '<span style="color:var(--warn-text);">●</span> Not set up — Square hasn’t been connected on the server yet, so card payments are off.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
@@ -21479,7 +21479,7 @@ function renderOfflineDaySheet() {
         + odsOpsLineHtml(s.rows || [], s.__live)
         // the action row sits where online's does — right under the ops line
         + '<div class="ods-btns" style="margin:4px 0 14px;">'
-        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>+ Save an enquiry</button>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Save an enquiry</button>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
         + '</div>'
         + odsDutiesHtml(s.rows || [])
@@ -22420,9 +22420,9 @@ function relTime(at) {
     const now = chbNow();
     const secs = (now - d) / 1000;
     if (secs < 60) return 'now';
-    if (secs < 3600) return Math.floor(secs / 60) + 'm';
+    if (secs < 3600) return Math.floor(secs / 60) + ' min';
     const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) return Math.floor(secs / 3600) + 'h';
+    if (sameDay) { const h = Math.floor(secs / 3600); return h + (h === 1 ? ' hour' : ' hours'); }
     const y = new Date(now);
     y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
@@ -22660,7 +22660,7 @@ function renderChatAwayEditor() {
         '<div class="acr-capsub">Sent at most once every few hours \u2014 never right after you\u2019ve replied.</div>' +
         `<div class="acr-well">
             <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
-            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We\u2019re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
+            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
             <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
                 <span style="display:flex;gap:6px;align-items:center;">
                 <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
@@ -22885,7 +22885,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-capsub">The first photo is the main image.</div>
                     <div class="acr-well">
                         <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
-                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>Add a photo</button></div>
                     </div>`;
         }
         case 'amenities': {
@@ -22898,7 +22898,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-well">
                         <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add amenity</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>Add an amenity</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save amenities</button>
                             <span id="accom-am-msg-${k}" style="font-size:var(--fs-sub);"></span>
                         </div>
@@ -23030,7 +23030,7 @@ function accomSectionHtml(k, sec) {
                             .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
                             .join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>Add a rule</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save house rules</button>
                         </div>
                     </div>
@@ -23045,7 +23045,7 @@ function accomSectionHtml(k, sec) {
                             .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
                             .join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>＋ Add item</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>Add an item</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
                         </div>
                     </div>`;
@@ -23119,7 +23119,7 @@ function accomSectionHtml(k, sec) {
         case 'local':
             return `
                     <div class="acr-cap">Dark skies</div>
-                    <div class="acr-capsub">Shown on Experiences, site-wide.</div>
+                    <div class="acr-capsub">Shown on Things to do, site-wide.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="3" class="input-glass" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)} aria-label="Dark skies note">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
                     </div>
@@ -23136,7 +23136,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-well">
                         <div id="faq-editor-${k}" class="acw-list">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>＋ Add question</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>Add a question</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
                         </div>
                     </div>`;
@@ -23150,7 +23150,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-well">
                         <div id="welcome-editor-${k}" class="acw-list">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>＋ Add section</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>Add a section</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
                         </div>
                     </div>`;
@@ -23435,7 +23435,7 @@ async function loadAnalytics(days = 30) {
     const PAGE_LABELS = {
         'view-main': 'Home',
         'view-cottages': 'All cottages',
-        'view-experiences': 'Experiences',
+        'view-experiences': 'Things to do',
         'view-21a': 'A cottage page',
         'view-guest-bookings': 'My stays',
         'view-pay': 'Payment',
@@ -23728,7 +23728,7 @@ async function loadAnalytics(days = 30) {
 
                 <div class="ana-group-title">Where visitors come from</div>
                 ${grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml))}
-                ${grid2(moCard('Campaign sources <span style="opacity:0.6;">(utm_source)</span>', sourcesHtml), moCard('Top referrers', refsHtml))}
+                ${grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))}
 
                 <div class="ana-group-title">On-site behaviour</div>
                 ${grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml))}
@@ -23928,20 +23928,23 @@ async function loadDiagnostics() {
     const oks = checks.filter((c) => c.status === 'ok');
     const attention = fails.concat(warns); // hard failures lead, then warnings
     // ---- Overall verdict (the one-glance answer) ----
+    // ONE SENTENCE for the healthy state, in the house voice, and the sub says
+    // WHAT was checked and WHEN rather than restating it. ('All systems
+    // operational' is a hosting status page, not a person.)
     const tone = fails.length ? 'danger' : warns.length ? 'warn' : 'ok';
+    const now = chbNow();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const title = fails.length
         ? `${fails.length} issue${fails.length === 1 ? '' : 's'} need${fails.length === 1 ? 's' : ''} your attention`
         : warns.length
           ? `${warns.length} thing${warns.length === 1 ? '' : 's'} worth a look`
-          : 'All systems operational';
+          : 'Everything’s running.';
     const sub = fails.length
         ? 'Something core needs fixing — the details are below.'
         : warns.length
           ? "Nothing's broken, but these could use a moment."
-          : "Everything's running as it should.";
+          : 'Daily jobs, calendar feeds, backups and mail — all checked.';
     const mark = tone === 'ok' ? '✓' : tone === 'warn' ? '!' : '✕';
-    const now = chbNow();
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const chip = (n, cls, label) => (n > 0 ? `<span class="status-count ${cls}">${n} ${label}</span>` : '');
     let html = `
         <div class="status-hero is-${tone} glass-panel">
@@ -24711,7 +24714,7 @@ function renderTestCentreList() {
     if (title) title.textContent = SETTINGS_TITLES.testcentre;
     if (!list) return;
     list.style.display = '';
-    list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
+    list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every guest-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
                 <div class="settings-group">${TC_PAGES.map(
                     (p) => `
                     <button class="settings-row" ${chbAttrs('tcOpen', String(p.id))}>
@@ -24893,7 +24896,7 @@ function tcPagePreview() {
         )
         .join('');
     return `<div class="rate-prop">
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, things to do, the enquiry form — nothing is saved.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" data-act="tcPreview" data-arg="index.html">Open homepage as a guest ↗</button>
                 <div class="rule-divider">Jump straight to a cottage page</div>
                 ${cottages || '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No live cottages.</p>'}</div>`;
@@ -24987,7 +24990,7 @@ async function tcRenderBooking() {
     const bk = data.bookings || [];
     const intro = `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
     const sqNote = tcSquare.production
-        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
+        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch it to test mode on the server to try things safely.</div>`
         : tcSquare.enabled
           ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
           : `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
@@ -25150,7 +25153,7 @@ async function tcGuestLogin(btn) {
         if (r && r.url) window.open(r.url, '_blank', 'noopener');
         else glassAlert((r && r.error) || "Couldn't set up the test guest.");
     } catch (e) {
-        glassAlert(e.message || 'Failed.');
+        glassAlert(e.message || 'Couldn’t set up the test guest — try again in a moment.');
     }
     if (btn) btn.disabled = false;
 }
@@ -25908,7 +25911,7 @@ function renderSeasonGrid() {
                         ? bands.map(seasonCardHtml).join('')
                         : seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true })
                 }</div>
-                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">＋ Add a season</button></div>
+                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">Add a season</button></div>
                 <div id="sg-savebar">
                     <span id="season-grid-msg" role="status"></span>
                     <button type="button" class="sg-save" data-act="saveSeasonGrid">Save all cottages</button>
@@ -26215,7 +26218,7 @@ async function checkSystemHealth() {
         // No failures and no actionable warnings (optional/off features don't
         // count) → the calm green "all clear" state.
         pill.className = 'cron-pill ok';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>All systems operational`;
+        pill.innerHTML = `<span class="cron-pill-dot"></span>Everything’s running`;
     }
     pill.style.display = '';
 }
@@ -27013,7 +27016,7 @@ function renderCalendar() {
                 // "Bob · 3n" answers the next question without opening the hub.
                 const nights = Math.max(1, Math.round((dpParse(b.checkOut) - dpParse(b.checkIn)) / 864e5));
                 const visDays = Math.min(N, idxOf(b.checkOut)) - Math.max(0, idxOf(b.checkIn));
-                const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights}n</i>` : '';
+                const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights} night${nights === 1 ? '' : 's'}</i>` : '';
                 const dm = drawMark();
                 bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}${dm.c}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ${nights} night${nights === 1 ? '' : 's'}">${escapeHtml((b.name || 'Guest').split(' ')[0])}${nTag}</button>`;
             });
@@ -27398,8 +27401,8 @@ function renderInbox() {
                               : '';
                 } catch (err) {}
                 const chip = av
-                    ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · ${days}d waiting` : ''}</span>`
-                    : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `${days}d waiting` : 'New enquiry'}</span>`;
+                    ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · waiting ${days} day${days === 1 ? '' : 's'}` : ''}</span>`
+                    : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `waiting ${days} day${days === 1 ? '' : 's'}` : 'New enquiry'}</span>`;
                 return `
                 <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" ${chbAttrs('openEnquiryHub', String(e.id))}>
                     <span class="bk-row-body">
@@ -28016,9 +28019,9 @@ function renderEnquiryHub() {
     // page leads with the yes. ----
     const menu = `
         <div class="bhub-actions">
-            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Edit, email or decline this enquiry" title="Edit / Email / Decline">⋯</button>
+            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Edit, email or decline this enquiry" title="Edit, email or decline">⋯</button>
             <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                <button role="menuitem" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
+                <button role="menuitem" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit or move</button>
                 ${e.email ? `<button role="menuitem" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email the guest</button>` : ''}
                 <button role="menuitem" class="bhub-menu-danger" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
             </div>
@@ -28037,7 +28040,7 @@ function renderEnquiryHub() {
             <div class="bhub-head-top">
                 <div class="bhub-iden">
                     <span class="prop-tag tag-${e.propKey}">${escapeHtml(meta.name)}</span>
-                    <div class="bhub-eyebrow">Enquiry${ageRaw && !/invalid/i.test(String(ageRaw)) ? ' · asked ' + escapeHtml(String(ageRaw)) : ''}${stale ? ` <span class="bhub-eyebrow-warn">· ${days}d waiting</span>` : ''}</div>
+                    <div class="bhub-eyebrow">Enquiry${ageRaw && !/invalid/i.test(String(ageRaw)) ? ' · asked ' + escapeHtml(String(ageRaw)) : ''}${stale ? ` <span class="bhub-eyebrow-warn">· waiting ${days} day${days === 1 ? '' : 's'}</span>` : ''}</div>
                     <h1 class="bhub-name">${escapeHtml(e.name || 'Guest')}</h1>
                     <div class="bhub-sub">${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(e.guests || '')}</div>
                 </div>
@@ -28478,7 +28481,7 @@ function etplRender() {
             ? `<div class="etpl-actbar">
                 <span class="etpl-actlab">Buttons in this email</span>
                 ${undoBit}
-                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : '+ Add a button'}</button>
+                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : 'Add a button'}</button>
             </div>
             ${__etplChosen.length ? `<div class="etpl-chips">${chips}</div>` : ''}
             ${pick}`
@@ -29464,7 +29467,7 @@ async function approveEnquiry(enqId) {
 }
 
 function openAddBooking() {
-    document.getElementById('modal-title').innerText = 'Add Booking';
+    document.getElementById('modal-title').innerText = 'Add a booking';
     document.getElementById('modal-mode').value = 'add';
     document.getElementById('modal-record-id').value = '';
     setModalFields({}); // blank form, default times
@@ -29520,7 +29523,7 @@ function modalNameSuggestClose() {
 function openEditEnquiry(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
-    document.getElementById('modal-title').innerText = 'Edit / Move Enquiry';
+    document.getElementById('modal-title').innerText = 'Edit or move enquiry';
     document.getElementById('modal-mode').value = 'enquiry';
     document.getElementById('modal-record-id').value = enq.id;
     setModalFields({
@@ -29622,16 +29625,16 @@ async function loadExperiencesAdmin() {
         html += pending.map(expPendingHtml).join('');
         html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
     }
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">＋ Add experience</button></div>`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">Add something to do</button></div>`;
     html +=
         `<div id="exp-admin-list">` +
         (published.length
             ? published.map(expEditHtml).join('')
             : emptyState({
                   icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>',
-                  title: 'No experiences yet',
+                  title: 'Nothing listed yet',
                   sub: 'Add local things to do — seal trips, coast walks, the best pubs — to show guests on your site.',
-                  actionLabel: '＋ Add experience',
+                  actionLabel: 'Add something to do',
                   onClick: 'data-act="expAddNew"',
               })) +
         `</div>`;
@@ -29749,7 +29752,7 @@ async function expDelete(id) {
         if (row) row.remove();
         return;
     }
-    if (!(await glassConfirm('Delete this experience?'))) return;
+    if (!(await glassConfirm('Delete this listing?'))) return;
     try {
         await apiPost('experiences.php', { action: 'delete', id });
         await loadExperiencesAdmin();
@@ -30097,7 +30100,7 @@ function renderMailboxList(keepSearchFocus) {
                 <span class="bk-row-top">
                     ${t.unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
                     ${n > 1 ? `<span class="bk-chip"><span class="bk-dot"></span>${n} emails</span>` : ''}
-                    <span class="mbx-when">${mbxEsc(mbxWhen(t.date))}</span>
+                    <span class="mbx-when">${mbxEsc(relTime(t.date))}</span>
                 </span>
                 <strong class="bk-row-name" title="${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}">${mbxEsc(mbxSender(t.fromRaw, t.from).name || mbxSender(t.fromRaw, t.from).addr || 'Unknown sender')}</strong>
                 <span class="bk-row-dates">${mbxEsc(t.subject)}</span>
@@ -30127,7 +30130,7 @@ function renderMailboxList(keepSearchFocus) {
         <div class="mbx-item" data-sent-id="${m.id}">
         <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" ${chbAttrs('mailboxOpenSent', m.id)} aria-expanded="false">
             <span class="bk-row-body">
-                <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
+                <span class="bk-row-top"><span class="mbx-when">${mbxEsc(relTime(m.sent_at))}</span></span>
                 <strong class="bk-row-name" title="To: ${mbxEsc(m.to_email)}">To: ${mbxEsc(m.to_email)}</strong>
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
@@ -30152,7 +30155,7 @@ function renderMailboxList(keepSearchFocus) {
                 <button type="button" class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" aria-selected="${__mbxTab === 'sent'}" ${chbAttrs('mailboxTab', 'sent')}>Sent</button>
             </div>
             <div class="cal-actions">
-                <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">+ New email</button>
+                <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">New email</button>
                 <button class="cal-refresh-btn" data-act="loadMailbox" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
             </div>
         </div>

@@ -2101,7 +2101,7 @@ let approveWill409 = false;
   await page.waitForTimeout(800);
   const l2 = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
-    recordBtn: /Record payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
+    recordBtn: /Record a payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
   }));
   ok((l2.active === 'view-booking-hub' || l2.active === 'view-backoffice') && l2.recordBtn, `money row opens the booking hub (${l2.active})`);
   await page.evaluate(() => bookingHubBack());

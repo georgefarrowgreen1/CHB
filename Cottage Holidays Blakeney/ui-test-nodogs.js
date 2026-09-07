@@ -154,8 +154,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   }, { ci, co, ranges });
   const free = await verdict(d(40), d(43), [{ start: d(50), end: d(55) }]);
-  ok(free.capShown && /available/.test(free.capText) && /\bok\b/.test(free.capClass),
-    `free dates → ✓ available (${free.capText})`);
+  ok(free.capShown && /Looks free/.test(free.capText) && /\bok\b/.test(free.capClass),
+    `free dates → ✓ Looks free (${free.capText})`);
   ok(!free.wait, '…and no waitlist row');
   const taken = await verdict(d(49), d(52), [{ start: d(50), end: d(55) }]);
   ok(taken.capShown && /taken/.test(taken.capText) && /warn/.test(taken.capClass),

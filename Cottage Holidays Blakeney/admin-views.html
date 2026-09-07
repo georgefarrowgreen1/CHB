@@ -411,7 +411,7 @@
                  by how central each is to running the business:
                    1. Cottages & pricing   (cottages, seasonal rates, pricing, calendar)
                    2. Bookings & policies   (payments, cancellation, terms)
-                   3. Your website          (home page, experiences, reviews, photos)
+                   3. Your website          (home page, things to do, reviews, photos)
                    4. Guests & marketing    (accounts, newsletter, waitlist, analytics,
                                              follow-ups + chat automation — all guest comms)
                    5. Account & system      (profile, notifications, security, appearance,
@@ -458,7 +458,7 @@
                 </button>
                 <button class="settings-row" data-kw="legal t&c conditions contract booking terms" data-act="openTerms">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Booking Terms &amp; Conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Booking terms &amp; conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -470,7 +470,7 @@
                 </button>
                 <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Things to do <span id="exp-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Local places and activities &amp; guest suggestions</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
@@ -594,7 +594,7 @@
 
             <!-- Experiences (local things to do + guest suggestions) -->
             <div class="settings-sec" id="sec-experiences" style="display:none;">
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local things to do, shown to signed-in guests on the Experiences tab. Add your own, reorder them, and review guest suggestions.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local places and activities, shown to signed-in guests on the Things to do page. Add your own, reorder them, and review guest suggestions.</p>
                 <div id="exp-admin"><!-- JS injects pending suggestions + the editable list here --></div>
             </div>
 
@@ -806,7 +806,7 @@
 
                         <div id="reviews-editor" style="margin-top:18px;"></div>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;">
-                            <button class="btn-sm btn-edit" data-act="addReviewRow">+ Add one by hand</button>
+                            <button class="btn-sm btn-edit" data-act="addReviewRow">Add one by hand</button>
                             <button class="btn-glass" style="width:auto;padding:12px 22px;" data-act="saveReviews">Save imported reviews</button>
                         </div>
                     </div>
@@ -870,8 +870,8 @@
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Passkeys (Face ID / Touch ID)</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
-                    <button class="btn-sm btn-edit" data-act="addAdminPasskey">＋ Add a passkey</button>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">Sign in to the back office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
+                    <button class="btn-sm btn-edit" data-act="addAdminPasskey">Add a passkey</button>
                     <div id="admin-passkey-list" style="margin-top:14px;"></div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">

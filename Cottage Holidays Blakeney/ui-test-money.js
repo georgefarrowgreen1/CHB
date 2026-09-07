@@ -488,7 +488,7 @@ let mailWillFail = false;
     if (!row || !tag) return null;
     const chip = document.createElement('span');
     chip.className = 'bk-chip danger';
-    chip.innerHTML = '<span class="bk-dot"></span>Arrives in 4d';
+    chip.innerHTML = '<span class="bk-dot"></span>Arrives in 4 days';
     row.appendChild(chip);
     const out = { txt: tag.textContent, clipped: tag.scrollWidth > tag.clientWidth + 1 };
     chip.remove();
@@ -505,7 +505,7 @@ let mailWillFail = false;
     const root = document.querySelector('#booking-hub-content') || document.getElementById('view-booking-hub');
     return {
       name: (root.querySelector('.bhub-name') || {}).textContent || '',
-      hasRecord: /Record payment/.test(root.textContent),
+      hasRecord: /Record a payment/.test(root.textContent),
       hasInvoice: /Invoice \(PDF\)/.test(root.textContent),
       // The money folds to one line now — the balance leads from the next-action
       // banner ("… £490.00 due."), not an in-page "Balance due" breakdown row.
@@ -515,7 +515,7 @@ let mailWillFail = false;
   });
   ok(hub.name === 'Owes Money' && hub.balance, `row opened the right hub with the balance on the banner (${hub.name})`);
   console.log('    money card: ' + hub.moneyText);
-  ok(hub.hasRecord && hub.hasInvoice, 'hub Money card has Record payment + Invoice');
+  ok(hub.hasRecord && hub.hasInvoice, 'hub Money card has Record a payment + Invoice');
   const rec = page.evaluate(() => recordPayment('b1'));
   await page.waitForSelector('#gdf-amount', { timeout: 8000 });
   await page.waitForTimeout(250);
@@ -1134,7 +1134,7 @@ let mailWillFail = false;
   // IT SAYS WHEN YOU SAID SO. `moved_at` was computed on the server, carried to
   // the client and rendered NOWHERE — built with no way in, the shape this
   // codebase keeps finding. It is the fact that makes the group checkable against
-  // a bank statement, and without it the group's own "you told me" cannot be dated.
+  // a bank statement, and without it the group's own "you recorded" cannot be dated.
   const movedGroupTx = await page.evaluate(() => {
     const g = [...document.querySelectorAll('#sweep-body .accounts-stat')]
       .find((el) => /Already transferred out/i.test(el.textContent));
@@ -1405,7 +1405,7 @@ let mailWillFail = false;
   // for the estimate sentence, and if the stale repaint won the race,
   // re-render once from the current stub and poll again.
   const estUp = () => page.waitForFunction(
-    () => /you told me/.test((document.getElementById('asec-sweep') || {}).textContent || ''),
+    () => /you recorded on/.test((document.getElementById('asec-sweep') || {}).textContent || ''),
     { timeout: 4000 },
   ).then(() => true).catch(() => false);
   if (!(await estUp())) {
@@ -1418,7 +1418,7 @@ let mailWillFail = false;
   // £2,000.00 — the HOUSE gbp with its thousands separator: two local
   // comma-less shadows of the formatter painted £1852.62 on the sweep's own
   // headline (the UI pass) and this check had pinned the shadow's format.
-  ok(/estimate/.test(sB) && /£2,000\.00 you told me/.test(sB), 'labelled an estimate, from the figure they stated');
+  ok(/estimate/.test(sB) && /£2,000\.00 you recorded/.test(sB), 'labelled an estimate, from the figure they stated');
   ok(/plus £604\.05 Square has paid in since/.test(sB) && /less £73\.92 it has taken back/.test(sB), 'and it shows its working both ways');
   ok(/Remember this balance/.test(sB), 'with a way to store the corrected figure');
   // Typing must never be overwritten by a re-render.
