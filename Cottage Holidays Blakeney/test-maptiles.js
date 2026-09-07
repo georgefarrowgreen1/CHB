@@ -48,16 +48,44 @@ console.log('\n== The basemap is ONE definition ==');
 const tileLayerCalls = app.match(/L\.tileLayer\(/g) || [];
 ok('both maps still build a tile layer', tileLayerCalls.length === 2);
 
-// A tile URL literal is a {z}/{x}/{y} template. Exactly one may exist in the
-// shipped JS: a second is the copy that drifts.
+// ONE DECLARATION, TWO THEME URLS. This used to assert exactly ONE tile URL
+// literal, because the two maps each carried their own copy and drifted. The
+// basemap now follows the theme (light_all / dark_all — the dark theme had been
+// showing a white sheet on a near-black page), so there are legitimately two
+// literals; what must still hold is that BOTH live in the one MAP_TILES
+// declaration, differ only in the style slug, and reach the maps through the
+// single mapTileUrl() picker rather than being restated at a call site.
+const decl = (app.match(/const MAP_TILES = \{[\s\S]*?\n\};/) || [''])[0];
+ok('found the MAP_TILES declaration', decl.length > 40);
 const urlLiterals = app.match(/'https:\/\/[^']*\{z\}[^']*'/g) || [];
-ok('exactly one tile URL literal in app.js (no second copy to drift)', urlLiterals.length === 1);
-ok('and it is the one MAP_TILES declares', /const MAP_TILES = \{[\s\S]{0,120}url: 'https:\/\/[^']*\{z\}/.test(app));
+const declLiterals = decl.match(/'https:\/\/[^']*\{z\}[^']*'/g) || [];
+ok('exactly two tile URL literals in app.js (one per theme, no third copy)', urlLiterals.length === 2);
+ok('and BOTH are inside the MAP_TILES declaration (no literal loose in the file)', declLiterals.length === 2);
+ok('MAP_TILES declares a light and a dark URL', /light:\s*'https:\/\/[^']*\{z\}/.test(decl) && /dark:\s*'https:\/\/[^']*\{z\}/.test(decl));
 
-// Both call sites read the const rather than restating any of its parts.
-const readsConst = (app.match(/L\.tileLayer\(MAP_TILES\.url,/g) || []).length;
-ok('both call sites read MAP_TILES.url', readsConst === 2);
-ok('neither call site hardcodes a maxZoom', !/L\.tileLayer\(MAP_TILES\.url,\s*\{\s*maxZoom:\s*\d/.test(app));
+// The two differ ONLY in the style slug. A second URL is a second chance to
+// drift — a different host would break the CSP silently, a different key would
+// deface one theme's tiles, a different {r} would drop retina on one theme.
+{
+    const [a, b] = declLiterals.map((l) => l.slice(1, -1));
+    const strip = (u) => u.replace(/cartocdn\.com\/[a-z_]+\//, 'cartocdn.com/<style>/');
+    ok('the light and dark URLs differ ONLY in the style slug (same host, key, {r}, template)', a !== b && strip(a) === strip(b));
+}
+
+// ONE PICKER. Both call sites read mapTileUrl(), which is the only place the
+// theme chooses a basemap — so a map mounted now and one swapped live by
+// toggleTheme cannot disagree.
+ok('mapTileUrl() is the one place the theme picks a basemap', /function mapTileUrl\(\)[\s\S]{0,220}MAP_TILES\.light[\s\S]{0,60}MAP_TILES\.dark/.test(app));
+const readsConst = (app.match(/L\.tileLayer\(mapTileUrl\(\),/g) || []).length;
+ok('both call sites read mapTileUrl()', readsConst === 2);
+ok('neither call site hardcodes a maxZoom', !/L\.tileLayer\(mapTileUrl\(\),\s*\{\s*maxZoom:\s*\d/.test(app));
+
+// A MOUNTED MAP MUST FOLLOW THE SWITCH. Both maps outlive a theme toggle (the
+// cottages pane is sticky, the cottage page's survives a nav), so without a live
+// setUrl the tiles stay in the theme they were built in while the CSS controls
+// flip underneath them — worse than not theming the map at all.
+ok('toggleTheme swaps the live layer', /function toggleTheme\(\)[\s\S]{0,400}chbMapTheme\(\)/.test(app));
+ok('and chbMapTheme setUrl()s the mounted layers', /function chbMapTheme\(\)[\s\S]{0,400}setUrl\(u\)/.test(app));
 
 console.log('\n== The tile host is one the CSP actually permits ==');
 
@@ -73,11 +101,11 @@ ok('found the Content-Security-Policy header to check against', cspLine.length >
 const imgSrc = (cspLine.match(/img-src ([^;]*);/) || [, ''])[1].trim().split(/\s+/);
 ok('img-src has sources to check (guard: a parse that finds nothing proves nothing)', imgSrc.length >= 3);
 
-const tileUrl = (app.match(/const MAP_TILES = \{[\s\S]*?url: '([^']+)'/) || [, ''])[1];
+const tileUrl = declLiterals.length ? declLiterals[0].slice(1, -1) : '';
 ok('read the shipped tile URL', /^https:\/\/\S+\{z\}/.test(tileUrl));
 
 // Resolve {s} to a real subdomain exactly as Leaflet does before requesting.
-const subs = (app.match(/const MAP_TILES = \{[\s\S]*?subdomains: '([^']+)'/) || [, ''])[1];
+const subs = (decl.match(/subdomains: '([^']+)'/) || [, ''])[1];
 ok('a subdomain set is declared', subs.length >= 1);
 const host = tileUrl.replace('{s}', subs[0]).split('/')[2];
 
@@ -112,7 +140,7 @@ const MAX_BY_HOST = {
     'tile.openstreetmap.org': 19,
     'basemaps.cartocdn.com': 20,
 };
-const maxZoom = parseInt((app.match(/const MAP_TILES = \{[\s\S]*?maxZoom: (\d+)/) || [, '0'])[1], 10);
+const maxZoom = parseInt((decl.match(/maxZoom: (\d+)/) || [, '0'])[1], 10);
 ok('a maxZoom is declared', maxZoom > 0);
 const baseHost = host.replace(/^[a-z]\./, '');
 const known = MAX_BY_HOST[baseHost];
@@ -129,16 +157,19 @@ ok('maxZoom is within what the provider serves', typeof known === 'number' && ma
 // "API KEY REQUIRED" painted across every guest's map again.
 if (/cartocdn\.com/.test(tileUrl)) {
     console.log('\n== The keyed provider carries a key ==');
-    const keyed = /[?&]key=[^&'"\s]{8,}/.test(tileUrl);
-    ok('the CARTO URL carries a non-empty ?key=', keyed);
-    ok('and NOT api_key=, which CARTO silently ignores', !/[?&]api_key=/.test(tileUrl));
+    // BOTH themes: dark_all is keyed exactly as light_all is — verified by hand,
+    // a bogus key or none returns a byte-identical WATERMARKED dark tile — so an
+    // unkeyed dark URL would deface the map for every default-theme visitor.
+    const urls = declLiterals.map((l) => l.slice(1, -1));
+    ok('every CARTO URL carries a non-empty ?key=', urls.every((u) => /[?&]key=[^&'"\s]{8,}/.test(u)));
+    ok('and none uses api_key=, which CARTO silently ignores', urls.every((u) => !/[?&]api_key=/.test(u)));
 }
 
 console.log('\n== Attribution ==');
 
 // OSM's licence requires the credit, and it must not still name a provider we
 // no longer use — the attribution is the one map string a guest reads.
-const attr = (app.match(/const MAP_TILES = \{[\s\S]*?attribution: '([^']*)'/) || [, ''])[1];
+const attr = (decl.match(/attribution: '([^']*)'/) || [, ''])[1];
 ok('attributes OpenStreetMap', /OpenStreetMap/.test(attr));
 ok('does not credit a provider the tiles no longer come from', !/CARTO/i.test(attr) || /cartocdn/.test(tileUrl));
 

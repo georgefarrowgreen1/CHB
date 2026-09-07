@@ -169,13 +169,38 @@ textarea:focus-visible,
      fails WCAG contrast; every accent-filled control uses this dark ink. */
   --accent-ink: #1b1208;
   --accent-soft: rgba(214, 167, 133, 0.55);
-  /* ON THE BASEMAP — deliberately NOT retuned for light mode, which is why
-     they exist: tiles are a light ground in EITHER theme, so a control on
-     them has a constant background and a theme-aware ink would vanish.
-     10.4:1 on the 94% white control, 4.9:1 on the attribution strip. */
-  --map-ink: #3a2e1e;
-  --map-sub: #6b6257;
-  --map-ground: #ecebe7;
+  /* ON THE BASEMAP — theme-aware NOW, because the basemap is. It used to be a
+     CARTO light_all sheet in either theme, which in the default dark theme made
+     the map the brightest thing on the page by a factor of twelve (measured:
+     mean luminance 240 against a body ground of 19). The tiles follow the theme
+     (MAP_TILES.dark = CARTO Dark Matter, mean luminance 9.6, modal ground
+     #060606) so the controls have to follow with them, or they become the light
+     island the map was. THESE ARE THE DARK VALUES; body.light-mode restates the
+     pale-map set that was here before, unchanged.
+     Measured on the composited paint over the dark tile ground:
+       ink #F4F5F7 on the control    15.3:1
+       sub #C9CBD2 on the attribution 11.7:1
+       the control's own stroke        3.5:1 against the map (1.4.11's bar). */
+  --map-ink: #f4f5f7;
+  --map-sub: #c9cbd2;
+  --map-ground: #0b0b0c;
+  --map-ctl-bg: rgba(30, 32, 36, 0.92);
+  --map-ctl-hover: rgba(44, 47, 53, 0.96);
+  --map-ctl-press: rgba(255, 255, 255, 0.12);
+  --map-ctl-edge: rgba(255, 255, 255, 0.38);
+  --map-ctl-line: rgba(255, 255, 255, 0.14);
+  --map-ctl-dim: rgba(244, 245, 247, 0.34);
+  --map-ctl-shadow: rgba(0, 0, 0, 0.5);
+  --map-attr-bg: rgba(18, 19, 22, 0.86);
+  /* ON THE LIGHTBOX SCRIM — FIXED, never --text-light. The scrim is
+     rgba(8,9,11,0.92) in BOTH themes, so a theme-aware ink turns near-black on
+     near-black the moment the guest is in light mode: measured, every one of
+     the three controls painted rgb(27,42,52) on that scrim. These are the one
+     place in the app where the ground does not move, so neither may the ink. */
+  --lb-ink: #fff;
+  --lb-sub: rgba(255, 255, 255, 0.75);
+  --lb-disc: rgba(18, 19, 22, 0.55);
+  --lb-disc-hover: rgba(18, 19, 22, 0.82);
   /* Radius scale — use these for new components: sm = small controls,
                md = cards/fields, lg = nested/mid cards, panel = top-level surfaces
                (the header's curvature — panels, cards, modals, galleries),
@@ -352,6 +377,20 @@ body.light-mode {
   --danger-text: #bc2626; /* 4.66:1 on its own 15% tint (was #c62828 → 4.30) */
   --info-text: #316784; /* 4.64:1 on its own 14% --info tint (was #35708f -> 4.08) */
   --info-bg: rgba(56, 132, 197, 0.12); /* lighter sea-blue fill for light glass */
+  /* ON THE BASEMAP — the pale-map set, byte for byte what shipped before the
+     tiles learned the theme. light_all's ground is #f6f6f5 (measured, 49% of
+     the tile); ink 10.4:1 on the 94% white control, sub 4.9:1 on the strip. */
+  --map-ink: #3a2e1e;
+  --map-sub: #6b6257;
+  --map-ground: #ecebe7;
+  --map-ctl-bg: rgba(255, 255, 255, 0.94);
+  --map-ctl-hover: #fff;
+  --map-ctl-press: rgba(58, 46, 30, 0.08);
+  --map-ctl-edge: rgba(58, 46, 30, 0.1);
+  --map-ctl-line: rgba(58, 46, 30, 0.1);
+  --map-ctl-dim: rgba(58, 46, 30, 0.3);
+  --map-ctl-shadow: rgba(58, 46, 30, 0.16);
+  --map-attr-bg: rgba(255, 255, 255, 0.78);
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
   --sky: #5aa9de;
@@ -5180,17 +5219,25 @@ textarea.input-glass.field-sm {
 #lightbox-img2.is-front {
   opacity: 1;
 }
+/* ONE CONTROL FAMILY. These were a SECOND design of .gallery-nav — the same
+   control, on the same photos, one screen earlier: 54px against 50, an 8% white
+   fill with a hairline against the gallery's own rgba(18,19,22,.4) disc, a 28px
+   glyph against 17. An 8% white disc over a bright photo is invisible; measured
+   at 390 the left arrow could not be seen at all. The gallery's disc, deepened
+   to .55 because here it sits over the photo rather than beside it. */
 .lightbox-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 54px;
-  height: 54px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
-  font-size: var(--fs-display);
+  background: var(--lb-disc);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: var(--lb-ink);
+  font-size: var(--fs-headline);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -5203,7 +5250,7 @@ textarea.input-glass.field-sm {
 }
 @media (hover: hover) {
   .lightbox-nav:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--lb-disc-hover);
     transform: translateY(-50%) scale(1.06);
     box-shadow: var(--shadow-soft);
   }
@@ -5226,35 +5273,59 @@ textarea.input-glass.field-sm {
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
+  background: var(--lb-disc);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: var(--lb-ink);
   font-size: var(--fs-title);
   cursor: pointer;
   line-height: 1;
 }
 .lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--lb-disc-hover);
 }
 .lightbox-counter {
   position: absolute;
   bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
-  color: var(--text-muted);
+  color: var(--lb-sub);
   font-size: var(--fs-sub);
   letter-spacing: 1px;
 }
+/* OFF THE PHOTO ON A PHONE. At 390 the prev disc spanned x 8–54 against an
+   image starting at 15.6, so 38px of it sat ON the picture; the arrows move to
+   the scrim's own bottom band, which is 300px of empty ground, and the stage
+   gives that band its height back so a TALL photo cannot reach it either. */
 @media (max-width: 640px) {
+  .lightbox-stage,
+  .lightbox-stage img {
+    max-height: calc(86vh - 76px);
+  }
   .lightbox-nav {
     width: 46px;
     height: 46px;
+    top: auto;
+    bottom: max(18px, var(--safe-b));
+    transform: none;
+  }
+  /* The centring translateY is gone here, so the two press/hover states must
+     restate their scale without it or the disc jumps to the middle. */
+  .lightbox-nav:hover {
+    transform: scale(1.06);
+  }
+  .lightbox-nav:active {
+    transform: scale(var(--sc, 0.97));
   }
   .lightbox-nav.prev {
-    left: 8px;
+    left: 20px;
   }
   .lightbox-nav.next {
-    right: 8px;
+    right: 20px;
+  }
+  .lightbox-counter {
+    bottom: calc(max(18px, var(--safe-b)) + 15px);
   }
 }
 
@@ -7081,20 +7152,72 @@ body.owner-mode .chat-widget {
 .avail-cell.past {
   opacity: 0.3;
 }
-.avail-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+/* THE LEGEND SHOWS THE CELLS THE GRID ACTUALLY PAINTS. It used to show a green
+   dot for Available and a grey one for Booked — and there is no green anywhere
+   in this calendar: a free night is an unfilled hairline cell and a taken one a
+   4% fill with a line through it. The swatches are miniature cells now, reading
+   the SAME declarations .avail-cell.free / .taken read, so the key and the grid
+   cannot say different things. Prices sit on the free cells, so the free key
+   also explains the £ once. */
+.avail-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
   vertical-align: middle;
-  margin-right: 5px;
+  margin-right: 8px;
+  font-size: var(--fs-micro);
+  line-height: 1;
+  color: var(--text-light);
 }
-.avail-dot.avail-free {
-  background: rgba(76, 175, 80, 0.6);
+.avail-key-free {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--glass-border);
 }
-.avail-dot.avail-taken {
-  background: rgba(255, 255, 255, 0.18);
+.avail-key-taken {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
+/* THE FILE FIELD IS A HOUSE CONTROL. Both photo sheets rendered the browser's
+   own file input — an #efefef 2px-outset square button in Arial, inside a glass
+   field, on a sheet where everything else is a pill. A <label for> opens the
+   picker natively, so the real input can go sr-only with no handler, no
+   dispatcher entry and no CSP question; a change listener names the file. */
+.file-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  /* the rhythm .input-glass sets, since this row replaces one */
+  margin-bottom: 20px;
+}
+.file-pick .btn-glass {
+  width: auto;
+  padding: 12px 20px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.file-pick-name {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The cottage's Q&A door, under Things to know. Empty (no answers written up
+   for this cottage) paints nothing at all. */
+.things-door {
+  margin-top: 16px;
+}
+.things-door:empty {
+  display: none;
+}
+
 /* SEO content: present in the HTML for search engines, off-screen for users.
            (Off-screen rather than display:none so crawlers still weight it.) */
 .seo-text {
@@ -9687,6 +9810,16 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   line-height: 1.5;
   white-space: pre-line;
+  /* THE CARD IS A FLEX COLUMN AND THE GRID STRETCHES IT, so without this the
+     body sizes to its text and the actions float wherever it ends: measured at
+     1280, three 496px cards in one row put their pills 19, 86 and 111px from
+     the card foot. The body takes the slack; the actions go to the bottom. */
+  flex: 1 1 auto;
+}
+/* A card with NO actions has nothing to pin, so the void under its body becomes
+   even padding instead. */
+.exp-body:last-child {
+  margin-bottom: 20px;
 }
 .exp-dist {
   display: flex;
@@ -9720,7 +9853,9 @@ body.light-mode .feed-dot-bad {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 14px 18px 18px;
+  margin: 0 18px 20px;
+  padding-top: 14px;
+  margin-top: auto;
 }
 /* Even pills, icon + label centred (no link underline — handled on .btn-sm). */
 .exp-actions .btn-sm {
@@ -11613,6 +11748,28 @@ body.light-mode .hs-field:hover {
 .cottages-map.is-empty {
   display: none;
 }
+/* A GROUND UNDER THE TILES, so the pane is a surface before Leaflet lands
+   rather than a transparent hairline box. The token follows the theme with the
+   basemap, so the placeholder is the colour the tiles will be.
+   NB Leaflet's own stylesheet paints .leaflet-container #ddd at (0,1,0) and is
+   injected into <head> AFTER app.css, so it wins the tie on order — measured,
+   both maps read rgb(221,221,221) under the tiles. The two-class form outranks
+   it, which is what keeps a light-grey square from flashing behind a dark map
+   while the tiles arrive. */
+.cottages-map,
+.prop-map.leaflet-container,
+.cottages-map.leaflet-container {
+  background: var(--map-ground);
+}
+.map-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin: 0;
+  font-size: var(--fs-sub);
+  color: var(--map-sub);
+}
 .card.map-highlight {
   outline: 2px solid var(--glass-highlight);
   outline-offset: 3px;
@@ -11754,7 +11911,9 @@ body.light-mode .hs-field:hover {
     position: sticky;
     top: 90px;
     height: calc(100vh - 120px);
-    min-height: 460px;
+    /* WAS 460 — one card is 400 tall at this width, so the pane could outgrow
+       the list it sits beside on a short viewport. */
+    min-height: 400px;
   }
   .cottages-map {
     width: 100%;
@@ -11929,20 +12088,25 @@ body.light-mode .modal-box {
 }
 
 /* ----- Zoom buttons on the cottage maps -----
-   Not theme-aware on purpose (see --map-ink): the basemap is light in either
-   theme. These were dark liquid glass with white glyphs — right for the dark
-   UI they were drawn in, a heavy slab on a pale map in both. */
+   THEME-AWARE, because the basemap is (MAP_TILES.light / .dark — see the
+   --map-* tokens). This block used to carry the opposite note: the tiles were
+   light in either theme, so the control was pinned pale. The moment the map
+   learned the theme, a pinned-pale control would have become the light island
+   the map itself had been — the two must move together, which is why the fill,
+   the edge, the ink and the attribution strip are all tokens now. */
 .leaflet-bar,
 .leaflet-control-zoom {
   border: none !important;
   border-radius: var(--r-sm) !important;
   overflow: hidden;
+  /* The outer ring is the control's BOUNDARY against the map (1.4.11 asks 3:1
+     of it, which a dark fill on a dark map cannot carry on its own). */
   box-shadow:
-    0 1px 2px rgba(58, 46, 30, 0.08),
-    0 4px 14px rgba(58, 46, 30, 0.16) !important;
+    0 0 0 1px var(--map-ctl-edge),
+    0 4px 14px var(--map-ctl-shadow) !important;
 }
 .leaflet-control-zoom a {
-  background: rgba(255, 255, 255, 0.94) !important;
+  background: var(--map-ctl-bg) !important;
   backdrop-filter: blur(14px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
   color: var(--map-ink) !important;
@@ -11965,14 +12129,14 @@ body.light-mode .modal-box {
     color 0.25s var(--fluid-bezier);
 }
 .leaflet-control-zoom a + a {
-  border-top: 1px solid rgba(58, 46, 30, 0.1) !important;
+  border-top: 1px solid var(--map-ctl-line) !important;
 }
 .leaflet-control-zoom a:hover {
-  background: #fff !important;
+  background: var(--map-ctl-hover) !important;
   color: var(--map-ink) !important;
 }
 .leaflet-control-zoom a:active {
-  background: rgba(58, 46, 30, 0.08) !important;
+  background: var(--map-ctl-press) !important;
 }
 .leaflet-control-zoom-in {
   border-radius: var(--r-sm) var(--r-sm) 0 0 !important;
@@ -11981,8 +12145,9 @@ body.light-mode .modal-box {
   border-radius: 0 0 var(--r-sm) var(--r-sm) !important;
 }
 .leaflet-control-zoom a.leaflet-disabled {
-  color: rgba(58, 46, 30, 0.3) !important;
-  background: rgba(255, 255, 255, 0.7) !important;
+  color: var(--map-ctl-dim) !important;
+  background: var(--map-ctl-bg) !important;
+  opacity: 0.72;
 }
 /* Shrink the map attribution so it isn't oversized */
 .leaflet-control-attribution,
@@ -11992,8 +12157,13 @@ body.light-mode .modal-box {
 }
 .leaflet-control-attribution {
   padding: 1px 6px !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: var(--map-attr-bg) !important;
   border-radius: var(--r-sm) 0 0 0 !important;
+  color: var(--map-sub) !important;
+}
+/* Leaflet paints the credit link in its own blue; on a dark strip it is the one
+   word left at the old ink. */
+.leaflet-control-attribution a {
   color: var(--map-sub) !important;
 }
 @media (max-width: 640px) {
@@ -12858,6 +13028,12 @@ header nav a:active {
 /* The cottage title in the serif: [data-edit-text]{font-family:inherit} tied with
    .section-title and sat later, so the cottage h1 alone painted Montserrat. */
 .section-title[data-edit-text] { font-family: var(--font-serif); }
+/* THE SAME TIE, ON THE CARDS — round eight fixed the cottage h1 and left the
+   grid. Every card carries data-edit-text="card1-title", so `inherit` won at
+   equal specificity and all three cottage names painted Montserrat above a
+   serif price. Measured gate-safe: Playfair at 22px keeps each name on one
+   line and all three card heights identical across 360–430. */
+.card-title[data-edit-text] { font-family: var(--font-serif); }
 /* Reach 44: the picker's month arrows and the theme switch take hit regions. */
 .dp-nav-btn { position: relative; }
 .dp-nav-btn::after { content: ''; position: absolute; inset: -3px; }

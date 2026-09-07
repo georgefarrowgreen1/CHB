@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 602;
+const ADMIN_BUNDLE_V = 603;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 261;
+const ADMIN_CSS_V = 262;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2532,6 +2532,7 @@ function toggleTheme() {
         localStorage.setItem('chb-theme', isLight ? 'light' : 'dark');
     } catch (e) {}
     setThemeLabel();
+    chbMapTheme(); // the basemap follows the switch, not only the next mount
 }
 
 function toggleMobileMenu() {
@@ -6885,8 +6886,11 @@ function openPhotoUpload(propKey) {
     const meta = propertyMeta[propKey] || { name: propKey };
     const nameEl = document.getElementById('pu-prop-name');
     if (nameEl) nameEl.textContent = meta.name;
-    const fileEl = document.getElementById('pu-file');
-    if (fileEl) fileEl.value = '';
+    const fileEl = /** @type {HTMLInputElement|null} */ (document.getElementById('pu-file'));
+    if (fileEl) {
+        fileEl.value = '';
+        filePickSync(fileEl);
+    }
     const capEl = document.getElementById('pu-caption');
     if (capEl) capEl.value = '';
     const msg = document.getElementById('pu-msg');
@@ -7971,10 +7975,26 @@ async function loadContent(pre) {
 }
 
 // Apply stored text/image content to elements within a root node.
+// A SEPARATOR TRAVELS WITH THE FACT AFTER IT, never hangs at a line end. The
+// cottage's facts line broke as "Townhouse in Blakeney · Sleeps 6 · 3 bedrooms ·"
+// / "2 bathrooms" at 390 — a dot alone at the end of one line and an orphan on
+// the next. NB the reverse (binding the dot to the fact BEFORE it, "\u00a0· ")
+// is what produces exactly that hanging separator; it has to be " ·\u00a0".
+// A nowrap span would be the tidier answer and cannot be used here:
+// applyContentOverrides writes textContent, so any markup is destroyed the
+// moment the owner's own <prop>-subtitle override lands.
+const CHB_SEP_BIND = '.prop-subtitle';
+function chbBindSeps(t) {
+    return String(t == null ? '' : t).replace(/ ([·•]) /g, ' $1\u00a0');
+}
 function applyContentOverrides(root) {
     root.querySelectorAll('[data-edit-text]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-text')];
-        if (typeof v === 'string') el.textContent = decodeEntities(v);
+        if (typeof v !== 'string') return;
+        const txt = decodeEntities(v);
+        // The owner-typed override goes through the same binding as the default,
+        // or the fix reaches only the string nobody has edited.
+        el.textContent = el.matches(CHB_SEP_BIND) ? chbBindSeps(txt) : txt;
     });
     root.querySelectorAll('[data-edit-img]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-img')];
@@ -8890,24 +8910,51 @@ function renderHouseRules(propKey) {
         .join('');
 }
 
-// The basemap, stated ONCE (the two maps had copies and drifted: maxZoom 20 vs
-// 19). CARTO Positron, KEYED — unkeyed, the CDN defaces every tile with "API
-// KEY REQUIRED" while still answering 200, so the key is what makes the map
-// exist. The parameter is `key`: `api_key` is the obvious guess and is silently
-// IGNORED (measured — a bogus key and no key return byte-identical watermarked
-// tiles, so a wrong param name looks exactly like a wrong key and neither
-// errors). {r} is back for retina; maxZoom 20 is CARTO's raster ceiling.
-// The key is PUBLIC by design — it rides every tile URL a browser requests, so
-// it cannot be secret; domain-restrict it in the CARTO console instead.
+// The basemap: ONE DECLARATION, TWO THEME URLS (the two maps once had copies and
+// drifted, maxZoom 20 vs 19). CARTO Positron / Dark Matter, KEYED — unkeyed, the
+// CDN defaces every tile with "API KEY REQUIRED" while still answering 200, so
+// the key is what makes the map exist. The parameter is `key`: `api_key` is the
+// obvious guess and is silently IGNORED (measured — a bogus key and no key
+// return byte-identical watermarked tiles, so a wrong param name looks exactly
+// like a wrong key and neither errors; verified on BOTH styles). {r} is retina;
+// maxZoom 20 is CARTO's raster ceiling. The key is PUBLIC by design — it rides
+// every tile URL a browser requests, so it cannot be secret; domain-restrict it
+// in the CARTO console instead.
+// WHY TWO. It was light_all whatever the theme, so in the default dark theme the
+// map was the brightest thing on the page by a factor of twelve (measured: the
+// map box mean luminance 240 against a body ground of 19 — the only surface that
+// ignored the theme). A CSS invert reads synthetic; the real Dark Matter style
+// comes from the SAME host under the SAME key, so the CSP entry, {s}, {r} and
+// the ceiling are unchanged and only the style slug differs.
 const MAP_TILES = {
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
     subdomains: 'abcd',
     maxZoom: 20,
     attribution: '© OpenStreetMap, © CARTO',
 };
+// The one place the theme picks a basemap — read by both mounts AND by the live
+// swap, so a map already on screen cannot disagree with one mounted after.
+function mapTileUrl() {
+    return document.body.classList.contains('light-mode') ? MAP_TILES.light : MAP_TILES.dark;
+}
+// A MOUNTED MAP MUST FOLLOW THE SWITCH. Both maps are long-lived (the cottages
+// pane is sticky, the cottage page's survives a nav), so without this the tiles
+// stay whatever theme they were built in — and the controls, which are CSS, flip
+// underneath them. setUrl repaints in place; a map that isn't up is simply null.
+function chbMapTheme() {
+    const u = mapTileUrl();
+    [__propTiles, __cottagesTiles].forEach((t) => {
+        if (!t) return;
+        try {
+            t.setUrl(u);
+        } catch (e) {}
+    });
+}
 
 // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
 let __propMap = null;
+let __propTiles = null;
 async function renderLocationMap(propKey) {
     const el = document.getElementById('prop-map');
     if (!el) return;
@@ -8928,11 +8975,12 @@ async function renderLocationMap(propKey) {
             __propMap.remove();
         } catch (e) {}
         __propMap = null;
+        __propTiles = null;
     }
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer(MAP_TILES.url, {
+    __propTiles = L.tileLayer(mapTileUrl(), {
         maxZoom: MAP_TILES.maxZoom,
         subdomains: MAP_TILES.subdomains,
         attribution: MAP_TILES.attribution,
@@ -8957,6 +9005,7 @@ async function renderLocationMap(propKey) {
 // A sticky interactive map alongside the cards, one clickable "From £x" price pin
 // per cottage. Reuses Leaflet + the cottages' saved coordinates (geo-<key>).
 let __cottagesMap = null;
+let __cottagesTiles = null;
 let __cottagesMarkers = {};
 function highlightCottageCard(k, on) {
     const card = document.querySelector('#cottages a[data-prop="' + k + '"]');
@@ -8992,11 +9041,19 @@ async function renderCottagesMap() {
     }
     el.classList.remove('is-empty');
     if (split) split.classList.remove('no-map');
+    // A WAIT IS A STATE AND MUST SAY SO. loadLeaflet() is a CDN fetch, so on a
+    // slow connection the pane sat as an empty 509×780 hairline box beside a
+    // screen of cards with no word in it — which reads as broken rather than as
+    // loading. A FAILED load already collapses the pane (is-empty + no-map);
+    // only the interim had nothing. L.map's own mount clears the node, so this
+    // needs no undoing on the success path.
+    el.innerHTML = '<p class="map-wait">Loading the map…</p>';
     try {
         await loadLeaflet();
     } catch (e) {
         el.classList.add('is-empty');
         if (split) split.classList.add('no-map');
+        el.innerHTML = '';
         return;
     }
     if (__cottagesMap) {
@@ -9004,12 +9061,13 @@ async function renderCottagesMap() {
             __cottagesMap.remove();
         } catch (e) {}
         __cottagesMap = null;
+        __cottagesTiles = null;
     }
     __cottagesMarkers = {};
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer(MAP_TILES.url, {
+    __cottagesTiles = L.tileLayer(mapTileUrl(), {
         maxZoom: MAP_TILES.maxZoom,
         subdomains: MAP_TILES.subdomains,
         attribution: MAP_TILES.attribution,
@@ -12198,9 +12256,18 @@ function toggleFaq(id) {
     }
 }
 
-function reviewCardHtml(r) {
+// `scoped` = this list has already been FILTERED to one cottage, so naming it on
+// every card says nothing and costs a line (measured: "Tom & Priya — 21A Westgate
+// Street" wrapped to two lines in a 240px card and pushed the one fact that DOES
+// vary between cards — the source tag — onto a third). Gated on the FILTER, not
+// on a propKey being passed: openAllReviews is also called with no key from the
+// footer's "Guest reviews" link, where the cottage name is the informative half.
+// NB `list.map(reviewCardHtml)` would pass the ARRAY INDEX as this argument, so
+// every call site has to spell the lambda out.
+function reviewCardHtml(r, opts) {
     const stars = Math.max(0, Math.min(5, parseInt(r.stars) || 5));
-    const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+    const scoped = !!(opts && opts.scoped);
+    const propName = !scoped && r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
     const src = r.source ? ` <span class="review-source">via ${escapeHtml(r.source)}</span>` : '';
     return `<div class="review-card glass-panel">
                 <div class="review-stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</div>
@@ -12237,8 +12304,9 @@ function openAllReviews(propKey) {
     const body = document.getElementById('reviews-modal-list');
     if (!m || !body) return;
     let list = allReviews();
-    if (propKey) list = list.filter((r) => r.prop === propKey);
-    body.innerHTML = list.map(reviewCardHtml).join('');
+    const scoped = !!propKey;
+    if (scoped) list = list.filter((r) => r.prop === propKey);
+    body.innerHTML = list.map((r) => reviewCardHtml(r, { scoped })).join('');
     overlayHistPush(); // Back closes this overlay
     m.classList.add('open');
 }
@@ -12274,7 +12342,7 @@ function renderPropReviews(propKey) {
                     <span class="prop-reviews-score">★ ${avg.toFixed(1)}</span>
                     <span class="prop-reviews-count">${count} review${count === 1 ? '' : 's'}</span>
                 </div>
-                <div class="reviews-grid">${show.map(reviewCardHtml).join('')}</div>
+                <div class="reviews-grid">${show.map((r) => reviewCardHtml(r, { scoped: true })).join('')}</div>
                 ${more}`;
 }
 function closeAllReviews() {
@@ -12534,6 +12602,25 @@ function enquireDraftClear() {
     clearTimeout(__enqSyncTimer);
     __enqSyncedSig = '';
 }
+// THE HOUSE FILE FIELD NAMES ITS FILE. The real <input type=file> is sr-only
+// under a <label for> styled as a pill, so the picker opens natively with no
+// handler on the button — but then nothing on screen says what was chosen,
+// which the UA control did do. ONE delegated change listener covers both photo
+// sheets and any future one; the span keeps its own "No file chosen" when the
+// picker is dismissed.
+const FILE_PICK_EMPTY = 'No file chosen';
+function filePickSync(input) {
+    if (!input) return;
+    const span = document.getElementById(input.id + '-name');
+    if (!span) return;
+    const f = input.files && input.files[0];
+    span.textContent = f ? f.name : FILE_PICK_EMPTY;
+}
+document.addEventListener('change', (e) => {
+    const t = /** @type {HTMLInputElement} */ (e.target);
+    if (t && t.type === 'file' && t.closest && t.closest('.file-pick')) filePickSync(t);
+});
+
 // Autosave while the visitor types anywhere in the enquiry form. Debounced so the
 // synchronous localStorage write doesn't run on every keystroke (that can add
 // input latency while typing, especially on mobile).
@@ -16304,7 +16391,7 @@ function openProperty(propKey) {
     document.getElementById('prop-title').innerText = c.title;
     document.getElementById('prop-desc').innerText = c.desc;
     const subEl = document.getElementById('prop-subtitle');
-    if (subEl) subEl.innerText = propSubtitleDefault[propKey] || '';
+    if (subEl) subEl.innerText = chbBindSeps(propSubtitleDefault[propKey] || '');
 
     // Dynamic price heading (couple rate from Settings & Fees)
     updatePropPriceHeading();
@@ -16320,6 +16407,15 @@ function openProperty(propKey) {
     // Safety & property list (editable per cottage)
     activePropSafety = Array.isArray(c.safety) ? c.safety.slice() : DEFAULT_SAFETY.slice();
     renderSafety(propKey);
+
+    // THE COTTAGE'S OWN Q&A GETS A DOOR. openFaqModal's only openers were the My
+    // Stays booking cards, so a guest CHOOSING a cottage could not reach its
+    // parking/wifi/dogs answers from the page they were choosing on — CLAUDE.md
+    // said this button was on the cottage page and it was not. Same composer as
+    // My Stays, so there is one button and one modal; it returns '' when the
+    // cottage has no answers, and .things-door:empty then paints nothing.
+    const faqDoor = document.getElementById('prop-faq-door');
+    if (faqDoor) faqDoor.innerHTML = faqBlockHtml(propKey);
 
     // Point this cottage's elements at its namespaced content keys
     // (data-edit-* is the rendering path applyContentOverrides reads).
@@ -18843,6 +18939,11 @@ function openExperienceSuggest() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const photo = /** @type {HTMLInputElement|null} */ (document.getElementById('exp-s-photo'));
+    if (photo) {
+        photo.value = '';
+        filePickSync(photo);
+    }
     const msg = document.getElementById('exp-s-msg');
     if (msg) msg.style.display = 'none';
     const m = document.getElementById('exp-suggest-modal');
@@ -19048,7 +19149,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higdialog2';
+    const BUILD = 'higpublic1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

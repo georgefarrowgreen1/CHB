@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=56">
+    <link rel="stylesheet" href="guest-app.css?v=57">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=334">
+    <link rel="stylesheet" href="app.css?v=335">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -464,7 +464,6 @@
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
@@ -514,7 +513,6 @@
 
     <!-- ================= EXPERIENCES (local things to do; owner-curated + guest suggestions) ================= -->
     <main id="view-experiences" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Things to do</h1>
         <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
         <div id="exp-filters" class="exp-filters"></div>
@@ -560,10 +558,10 @@
     <!-- Suggest-an-experience form (guest) -->
     <div id="exp-suggest-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Suggest something to do" data-act="backdropClose" data-close="closeExperienceSuggest">
         <div class="modal-box glass-panel">
-            <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 6px;">
+                <h2 class="section-title" style="font-size:var(--fs-title);margin:0;text-align:left;">Suggest something to do</h2>
                 <button class="reviews-modal-close" data-act="closeExperienceSuggest" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 6px;">Suggest something to do</h2>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:16px;">Tell us about a local spot you loved — we'll review it before it appears.</p>
             <label class="modal-label" for="exp-s-title">Name</label>
             <input type="text" class="input-glass" id="exp-s-title" placeholder="e.g. Beans Boat Trips — seal watching">
@@ -576,9 +574,13 @@
             <label class="modal-label" for="exp-s-phone">Phone (optional)</label>
             <input type="tel" class="input-glass" id="exp-s-phone" inputmode="tel" placeholder="Contact number">
             <label class="modal-label" for="exp-s-photo">Photo (optional)</label>
-            <input type="file" class="input-glass" id="exp-s-photo" accept="image/*,.heic,.heif">
+            <div class="file-pick">
+                <input type="file" class="sr-only" id="exp-s-photo" accept="image/*,.heic,.heif">
+                <label class="btn-glass" for="exp-s-photo">Add a photo</label>
+                <span class="file-pick-name" id="exp-s-photo-name">No file chosen</span>
+            </div>
             <div id="exp-s-msg" style="font-size:var(--fs-sub);margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:14px;" data-act="submitExperienceSuggestion">Send suggestion</button>
+            <button class="btn-glass btn-accent" style="width:100%;padding:14px;" data-act="submitExperienceSuggestion">Send suggestion</button>
         </div>
     </div>
 
@@ -629,13 +631,13 @@
                     </div>
                     <div class="avail-cal-grid" id="avail-cal-grid"></div>
                     <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;font-size:var(--fs-caption);color:var(--text-muted);">
-                        <span><span class="avail-dot avail-free"></span> Available</span>
-                        <span><span class="avail-dot avail-taken"></span> Booked</span>
+                        <span><span class="avail-key avail-key-free" aria-hidden="true">12</span> Available &middot; price per night</span>
+                        <span><span class="avail-key avail-key-taken" aria-hidden="true">12</span> Booked</span>
                     </div>
                     <!-- Waitlist as a first-class action — not only buried in sold-out
                          search results. Prefilled with this cottage. -->
                     <div style="text-align:center;margin-top:10px;">
-                        <a style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become available</a>
+                        <a style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become&nbsp;available</a>
                     </div>
                 </div>
                 <div class="prop-divider"></div>
@@ -655,6 +657,8 @@
                         <p class="things-note" id="prop-cancellation">Enquiries are free — we'll confirm your dates and any deposit by email before anything is due.</p>
                     </div>
                 </div>
+                <!-- Filled by faqBlockHtml() — '' when this cottage has no Q&A. -->
+                <div class="things-door" id="prop-faq-door"></div>
 
                 <!-- Accessibility (per cottage) — owner-editable; helps guests book with
                      confidence and adds useful, indexable detail for search. -->
@@ -1266,7 +1270,11 @@
             </div>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:14px;">Add a photo from your stay at <strong id="pu-prop-name">your cottage</strong>. We'll review it before it appears on the cottage page.</p>
             <label class="modal-label" for="pu-file">Photo</label>
-            <input type="file" id="pu-file" accept="image/*" class="input-glass" style="margin-bottom:12px;">
+            <div class="file-pick">
+                <input type="file" id="pu-file" accept="image/*" class="sr-only">
+                <label class="btn-glass" for="pu-file">Add a photo</label>
+                <span class="file-pick-name" id="pu-file-name">No file chosen</span>
+            </div>
             <label class="modal-label" for="pu-caption">Caption (optional)</label>
             <input type="text" id="pu-caption" class="input-glass" maxlength="280" placeholder="e.g. Sunset over the marshes">
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
@@ -2012,11 +2020,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=969"></script>
+    <script defer src="app.js?v=970"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=25"></script>
+    <script defer src="guest-app.js?v=26"></script>
 
 </body>
 </html>

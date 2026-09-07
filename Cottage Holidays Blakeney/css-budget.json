@@ -1,10 +1,10 @@
 {
-  "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid, and text-transform: uppercase rule blocks (the brand voice keeps five in app.css). The `markup` block is the same three rules read out of a `style` attribute in index.html / admin-views.html / app.js / admin.js, where a 14px card recipe and fourteen tracked-caps captions were invisible to the stylesheet scan. These numbers only ever go DOWN \u2014 when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint / a multiple of 4 instead. `offTokenEasings` counts `transition:` parts running on a raw ease/linear or on no easing at all (the CSS default is `ease`) \u2014 the four curves are the system; the eight that remain are the fold family's deliberate `opacity \u2026 linear` beside a curved height. `animation:` is NOT counted: a spinner must be linear. Re-baseline after a cleanup with: node check-css-conventions.js --update",
+  "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid, and text-transform: uppercase rule blocks (the brand voice keeps five in app.css). The `markup` block is the same three rules read out of a `style` attribute in index.html / admin-views.html / app.js / admin.js, where a 14px card recipe and fourteen tracked-caps captions were invisible to the stylesheet scan. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint / a multiple of 4 instead. `offTokenEasings` counts `transition:` parts running on a raw ease/linear or on no easing at all (the CSS default is `ease`) — the four curves are the system; the eight that remain are the fold family's deliberate `opacity … linear` beside a curved height. `animation:` is NOT counted: a spinner must be linear. Re-baseline after a cleanup with: node check-css-conventions.js --update",
   "app.css": {
     "breakpoints": 12,
-    "rawHex": 40,
+    "rawHex": 39,
     "rawEnv": 0,
-    "offGrid": 555,
+    "offGrid": 553,
     "uppercase": 5,
     "rawRadii": 0,
     "rawType": 0,
