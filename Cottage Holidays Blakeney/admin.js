@@ -8599,13 +8599,42 @@ function cmdkDetailHtml() {
     // NB propName is a LOCAL in other functions, not a global — same trap the
     // business-pulse composer documents. Read the meta map directly.
     if (pk) bits.push(escapeHtml((propertyMeta[pk] || {}).name || pk));
-    if (b.checkIn) bits.push(escapeHtml(fmtDate(b.checkIn) + (b.checkOut ? ' → ' + fmtDate(b.checkOut) : '')));
+    // THE DATES ARE ONE UNIT. "16/09/2026 → 19/09/2026" broke across two lines in
+    // a 228px pane, the arrow ending line one — so the house's own compact form
+    // (fmtStayRange) inside a nowrap span, with the nights beside it, which is
+    // the fact the two dates were being read FOR.
+    if (b.checkIn && b.checkOut) {
+        const n = nightsBetween(b.checkIn, b.checkOut) || 0;
+        bits.push(`<span class="bhub-nowrap">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))}</span>`);
+        if (n) bits.push(escapeHtml(n + (n === 1 ? ' night' : ' nights')));
+    } else if (b.checkIn) {
+        bits.push(`<span class="bhub-nowrap">${escapeHtml(fmtDate(b.checkIn))}</span>`);
+    }
     let money = '';
+    // THE PANE STATES THE NEXT ACTION. Its body was "Actions for this booking are
+    // under the row." — a sentence about the interface, in the one place a
+    // selected record has to say what it needs. The hub already derives this
+    // (hubAskKind / hubAskAmount / bookingPlanDueDate), so the pane quotes THAT
+    // rather than deriving a second answer.
+    let next = '';
     try {
         const ps = bookingDue(pk, b);
         money = ps.fullyPaid
             ? `<span class="cmdk-dt-pill is-ok">Paid in full</span>`
             : `<span class="cmdk-dt-pill is-due">${escapeHtml(gbp(ps.balance))} still due</span>`;
+        if (ps.fullyPaid) {
+            next = 'Paid in full ✓';
+        } else {
+            const rental = paymentSummary(pk, b);
+            const past = (b.checkOut || '') <= todayDashed();
+            const kind = hubAskKind(ps, past, b, rental);
+            const amt = hubAskAmount(b, rental, ps, kind);
+            const due = kind === 'balance' ? bookingPlanDueDate(b) : '';
+            next = (kind === 'balance' ? 'Balance ' : 'Deposit ') + gbp(amt > 0.005 ? amt : ps.balance)
+                + (due ? ' due by ' + fmtDate(due) : ' due');
+        }
+        const party = (b.adults || 0) + (b.children || 0);
+        if (party > 0) next += ' · ' + party + (party === 1 ? ' guest' : ' guests');
     } catch (e) {}
     // chbGuestIntel returns {stays, ordinal, nights, revenue, favName, lastStay,
     // mentions} — composed here rather than assumed, and null for a first-timer
@@ -8627,7 +8656,7 @@ function cmdkDetailHtml() {
         ${bits.length ? `<p class="cmdk-dt-meta">${bits.join(' · ')}</p>` : ''}
         ${money ? `<p class="cmdk-dt-pills">${money}</p>` : ''}
         ${intel ? `<p class="cmdk-dt-intel">${intel}</p>` : ''}
-        <p class="cmdk-dt-hint">Actions for this booking are under the row.</p>
+        ${next ? `<p class="cmdk-dt-hint">${escapeHtml(next)}</p>` : ''}
     </aside>`;
 }
 const CMDK_THREAD_MAX = 3;
@@ -8657,7 +8686,13 @@ function cmdkThreadHtml() {
         </div>`).join('')}</div>`;
 }
 function cmdkHeroFigure(label) {
-    const esc = escapeHtml(String(label || ''));
+    // NO BREAK AT A HARD HYPHEN. "Priya's your only check-in today." at the hero's
+    // 22px wraps AT the hyphen on a phone: "check-" ends line one and "in" opens
+    // line two. U+2011 (non-breaking hyphen) is applied to the ESCAPED OUTPUT only,
+    // so `__cmdkResults` data is untouched and every golden/search-test regex that
+    // matches on `check-in` still matches. Same shape waits in every chbSay
+    // sentence carrying check-in / check-out / changeover-day.
+    const esc = escapeHtml(String(label || '')).replace(/(check|changeover)-(in|out|day)\b/gi, '$1‑$2');
     // First money amount, else a leading count ("3 guests arrive today"). Not global:
     // exactly one figure carries the answer, and marking every number is confetti.
     // MONEY takes the house serif (serif = money, the payline's mark); a COUNT
@@ -8673,6 +8708,14 @@ function cmdkHeroHtml(it, i) {
                 <span class="cmdk-hero-main">
                     <span class="cmdk-hero-label">${cmdkHeroFigure(it.label)}</span>
                     ${it.sub ? `<span class="cmdk-hero-sub" title="${escapeHtml(String(it.sub))}">${escapeHtml(String(it.sub))}</span>` : ''}
+                    ${/* THE ANSWER, not just its title. A generated how-to carries its
+                          flowing paragraph on `nlgBody` — the one thing the query asked
+                          for — and cmdkRowHtml has always rendered it. A how-to is
+                          ALWAYS the hero, so the moment the hero existed the steps
+                          stopped appearing on screen entirely: "How to take a payment
+                          or request one / Money · 3 steps" and nothing else. Same line
+                          the row uses; the sub stays the caption. */ ''}
+                    ${it.nlgBody ? `<span class="cmdk-nlg-body">${escapeHtml(String(it.nlgBody))}</span>` : ''}
                 </span>
             </button>` + cmdkRowExtrasHtml(it, i);
 }
@@ -15256,14 +15299,18 @@ async function renderAccounts() {
                     ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
                 </div>`;
     content.innerHTML = `
-                <div class="accounts-stat headline" style="max-width:460px;">
+                <div class="accounts-stat headline" style="max-width:640px;">
                     <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
                     <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
                 </div>
                 <div style="margin-top:12px;">
                 ${bhubFoldGrp('incmath', 'The arithmetic', escapeHtml(`${gbp(total + keptIncome)} in · ${gbp(cardFees + expTotal)} costs`), '', mathFold)}
                 ${bhubFoldGrp('incq', 'Quarterly (Making Tax Digital)', 'the same year in UK tax quarters', '', quarterly)}
-                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · platform stays sit outside it`), '', scopeFold)}
+                ${/* "platform stays sit outside it" left "it" alone on line two of
+                      the two-line clamp — the hero-kicker orphan at caption size.
+                      Shortened rather than re-wrapped: a sub names WHAT, and the
+                      fold below it carries the sentence. */ ''}
+                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · no platform stays`), '', scopeFold)}
                 </div>
                 <div class="accounts-actions" style="margin-top:14px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
@@ -15706,7 +15753,7 @@ async function renderSweep(refetch) {
                 <div>${rows.map((r) => txRow(r, canMark)).join('')}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(total)}</span>
+                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(total)}</span>
                 </div>
                </div>`;
     // Fallback for an install with no payout data at all (Square off, or the cron
@@ -15759,7 +15806,7 @@ async function renderSweep(refetch) {
                   ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">${movedItems.length
                         ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
                         : `Type what the account holds below and I'll work it out.`}</p>`
-                  : `<div style="font-family:var(--font-display);font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
+                  : `<div class="sweep-fig" style="font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
                      <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">${hasBal
                         ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
                         : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}${movedItems.length ? `, and not counting ${gbp(P.moved)} you have already transferred` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
@@ -15852,7 +15899,7 @@ async function renderSweep(refetch) {
         ? ''
         : `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
-            <div style="font-family:var(--font-display);font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
+            <div class="sweep-fig" style="font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
             <div>${rows}</div>
            </div>`;
@@ -15909,7 +15956,7 @@ async function renderSweep(refetch) {
                 <div>${txFlat}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(T.movable)}</span>
+                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(T.movable)}</span>
                 </div>
                 <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
                </div>`
@@ -15920,7 +15967,7 @@ async function renderSweep(refetch) {
         alertHtml +
         confirmHtml +
         `<details class="sweep-detail"${__sweepWorkingsOpen ? ' open' : ''} style="max-width:620px;margin-top:14px;">
-            <summary style="cursor:pointer;padding:12px 2px;font-size:var(--fs-sub);color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
+            <summary>Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
          </details>` +
         `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:14px 0 0;max-width:620px;">
@@ -16776,7 +16823,10 @@ function renderMoneyOverview() {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         months.push({
             key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
-            short: d.toLocaleDateString('en-GB', { month: 'short' }),
+            // slice(0,3): en-GB's "short" month is FOUR letters for September
+            // ("Sept"), and the axis columns are equal-width flex tracks, so the
+            // one long label overflowed into its neighbour and painted "AugSept".
+            short: d.toLocaleDateString('en-GB', { month: 'short' }).slice(0, 3),
             received: 0,
         });
     }
@@ -16943,8 +16993,13 @@ function renderMoneyOverview() {
     const collectTotal = dueNowSum + laterSum;
     const kvDot = (cls) => `<span class="bhub-chip-dot ${cls}" aria-hidden="true"></span>`;
     const stage = (r) => (!(r.dg.paid > 0.005) ? 'first payment' : 'balance');
-    const bkRow = (r, valHtml) =>
-        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
+    // A ROW'S VALUE IS MONEY, AND ONLY MONEY. The date used to ride the value
+    // ("£660.00 · due 05/10/2026"), which took 204px of a 390px rail and left
+    // the guest's NAME — the thing you scan for — cut to "Richard Be…" in 95px.
+    // Name (two-line clamp) above its own quiet sub line; the figure on the
+    // right, nowrap, in a column that shrink-wraps to it.
+    const bkRow = (r, valHtml, subHtml) =>
+        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span>${subHtml ? `<span class="bhub-kv-sub">${subHtml}</span>` : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
 
     // The pulse line — money in this month, paced against last year to the
     // same point (the yoy derivation above).
@@ -16972,15 +17027,23 @@ function renderMoneyOverview() {
 
     // The five verdicts.
     const collectFold =
-        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate && r.dg.paid > 0.005 ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
-        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
+        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate && r.dg.paid > 0.005 ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
+        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
         `<div class="bhub-btn-row bhub-act-links">
             ${dueNowRows.filter((r) => !r.arranged && r.b.email && squareAdminEnabled).length >= 2 ? `<button class="bhub-actlink" data-act="moChaseDue">Chase everyone due (${dueNowRows.filter((r) => !r.arranged && r.b.email).length})</button>` : ''}
             <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button>
         </div>`;
+    // THE TWO "TO COLLECT" FIGURES RECONCILE IN WORDS. The day spine's sentence
+    // says what the WHOLE fleet owes (chbOpsParts) while this fold's figure is
+    // the QUEUE — the overdue sits above as an exception and is deliberately not
+    // folded in (a pinned, break-tested decision: "an EXCEPTION row in Needs
+    // attention, NOT a queue row"). So the two disagreed by exactly the overdue,
+    // 70px apart on one screen, with nothing saying why. The sub names the
+    // difference and points at the row that holds it.
+    const overdueSum = overdueRows.reduce((s, r) => s + r.dg.balance, 0);
     const collectGrp = collectTotal > 0.005
-        ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
-            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}`),
+        ? bhubFoldGrp('mocollect', 'To collect',
+            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}${overdueRows.length ? ` · ${gbp(overdueSum)} overdue above` : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
         : bhubFoldGrp('mocollect', 'To collect',
             // "Paid up" is a claim — with an overdue row above, the sub AND
@@ -17097,7 +17160,7 @@ function moAsyncFill() {
             if (P && P.known > 0 && Number(P.inBank) > 0) {
                 moveFig.innerHTML = `<span class="bhub-payline-fig">${gbp(Number(P.inBank))}</span>`;
                 const items = (P.items && P.items.inBank) || [];
-                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
+                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
             } else {
                 moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
                 if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
@@ -17118,7 +17181,7 @@ function moAsyncFill() {
                 // return" under a headline correctly reading £147.38, on the screen
                 // that tells the owner what to hand back. The sibling renderer on Move
                 // money out already prints it.net.
-                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
+                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
             } else if (backFig) {
                 backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';
@@ -17147,10 +17210,15 @@ function moAsyncFill() {
                 const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
                 const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
                 if (oldDays > 7) {
+                    // The sub is a nowrap right-rail caption beside a capsule —
+                    // measured at 390 it had 197px for 66 characters and painted
+                    // "…it should be by…". It names the FACT; the sentence that
+                    // explains it lives inside the fold, where it has the width.
                     holder.innerHTML = bhubFoldGrp('mounk', `Square hasn’t said`,
-                        `a ${oldDays}-day-old charge isn’t in the payout data — it should be by now`,
+                        `${oldDays}-day-old charge · not in the payout data`,
                         stCap('warn', gbp(total)),
-                        `${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}${it.paid_on ? ' · taken ' + fmtDate(String(it.paid_on).slice(0, 10)) : ''}</span></div>`).join('')}
+                        `<div class="bhub-mut" style="margin-bottom:6px;">Square has reported other payouts, so ${unk.length === 1 ? 'this charge' : 'these charges'} should have appeared by now.</div>
+                         ${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}${it.paid_on ? ' · taken ' + escapeHtml(fmtDate(String(it.paid_on).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('')}
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
                     const cap = document.getElementById('mo-attn-cap');
                     if (cap) cap.hidden = false;
@@ -17176,7 +17244,11 @@ function moAsyncFill() {
             }
             const latest = list[0];
             if (sum) sum.textContent = `${(latest.name || 'a guest').split(' ')[0]} · ${gbp(Math.abs(parseFloat(latest.amount)) || 0)}`;
-            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')} · ${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}</span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}${p.created_at ? ' · ' + fmtDate(String(p.created_at).slice(0, 10)) : ''}</span></div>`).join('');
+            // The NAME is the label and everything else is the sub: "Alexandrina
+            // Featherstonehaugh-Smythe · damages return" still ran past a two-line
+            // clamp at 360 (measured by the gate on its first run), and the name
+            // is the half you scan for.
+            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}${p.created_at ? ' · ' + escapeHtml(fmtDate(String(p.created_at).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}</span></div>`).join('');
             moLand(sum, 3);
             moLand(rowsEl, 3);
         })
@@ -17241,6 +17313,17 @@ function renderMoneyPanel() {
     // Find-rows, not action cards: the booking hub's Money card is the ONE
     // place a booking's money is handled (request/record/refund/invoice/
     // history all live there) — each row here just locates and opens it.
+    // THE MONEY FACTS SURVIVE THE RAIL. The row's sub is a two-line clamp (round
+    // eight) and the composed line still overran it: "5–12 Nov 2026 · £300.00 of
+    // £960.00 received · £50.00 deposit held" wanted 420px of 309, so the deposit
+    // — the LAST fact and the one nothing else on this screen states — was what
+    // fell off. Nothing here is derived twice: the year is dropped only when it is
+    // THIS year (the DD/MM rule governs comparable dates; this is a stay range in
+    // the house's own compact form), the pennies only when they are .00, and
+    // "received" goes because the chip directly above already says Part-paid.
+    const mpYear = ' ' + chbNow().getFullYear();
+    const mpRange = (ci, co) => { const s = fmtStayRange(ci, co); return s.endsWith(mpYear) ? s.slice(0, -mpYear.length) : s; };
+    const mpShort = (v) => gbp(v).replace(/\.00$/, '');
     const cards = rows
         .map(({ propKey, b, ps, gt }) => {
             const meta = propertyMeta[propKey] || { name: propKey };
@@ -17254,7 +17337,7 @@ function renderMoneyPanel() {
                 ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + (days === 1 ? ' day' : ' days')}</span>`
                 : '';
             const dh = damageHeld(propKey, b);
-            const depBit = dh.held > 0 ? ` · ${gbp(dh.held)} deposit held` : '';
+            const depBit = dh.held > 0 ? ` · ${mpShort(dh.held)} deposit held` : '';
             return `
                 <button type="button" class="bk-row glass-panel pay-${payClass}" data-bkid="${b.id}" ${chbAttrs('openBookingHub', String(b.id))}>
                     <span class="bk-row-body">
@@ -17264,7 +17347,7 @@ function renderMoneyPanel() {
                             ${dueChip}
                         </span>
                         <strong class="bk-row-name" title="${escapeHtml(b.name || 'Guest')}">${escapeHtml(b.name || 'Guest')}</strong>
-                        <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${gbp(gt.paid)} of ${gbp(gt.total)} received${depBit}</span>
+                        <span class="bk-row-dates">${mpRange(b.checkIn, b.checkOut)} · ${mpShort(gt.paid)} of ${mpShort(gt.total)}${depBit}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
                 </button>`;
@@ -17333,17 +17416,26 @@ async function renderMoneyFeed() {
                 (p.name || 'Guest') +
                 (deleted ? ' · deleted booking' : '') +
                 (note ? ' · ' + note : '');
-            // Status shows as a traffic-light DOT (green done / amber in-progress /
-            // red problem) — the word rides along as its hover + screen-reader label
-            // so the meaning is never colour-only.
+            // THE STATE IS SAID IN WORDS, AND THE FIGURE AGREES WITH IT. The status
+            // was a bare traffic-light DOT with the word only in a title/aria-label —
+            // unreachable on touch — while the AMOUNT was inked green for every
+            // charge whatever its status, so a FAILED £110.00 painted success-green
+            // beside a red dot. The house capsule carries the word; a failure takes
+            // danger ink and a pending charge goes muted, because green is a claim
+            // that the money arrived.
             const sMeta = paymentStatusMeta(p.kind, p.status);
+            const capTone = sMeta.level === 'ok' ? 'ok' : sMeta.level === 'bad' ? 'bad' : 'warn';
+            const amtInk =
+                sMeta.level === 'bad' ? 'var(--danger-text)'
+                    : sMeta.level === 'wait' ? 'var(--text-muted)'
+                        : isReturn ? 'var(--danger-text)' : 'var(--ok-text)';
             return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
                     <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
-                    <span class="feed-amt" style="${isReturn ? 'color:var(--danger-text);' : 'color:var(--ok-text);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
-                    <span class="feed-status" role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>
+                    <span class="feed-amt" style="color:${amtInk};"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
+                    <span class="feed-status">${stCap(capTone, escapeHtml(sMeta.label))}</span>
                 </div>`;
         })
         .join('');
@@ -17417,12 +17509,14 @@ function renderMoneyForecast() {
         .map((m) => {
             const daysInMonth = m.end.getDate();
             const occ = Math.round((m.nights.size / (daysInMonth * propCount)) * 100);
-            return `<tr>
-                    <td>${escapeHtml(m.label)}</td>
-                    <td class="num">${gbp(m.revenue)}</td>
-                    <td class="num">${m.bookings}</td>
-                    <td class="num">${occ}%</td>
-                </tr>`;
+            // A ROW, NOT A TABLE COLUMN. The four-column <table> ran to 548px in a
+            // 362px box with `overflow-x: visible`, so at 390 the page simply CLIPPED
+            // Bookings and Occupancy — two of its four facts unreachable, with no
+            // scrollbar and nothing saying they were there. The same six figures also
+            // sat in the bar chart directly above it, which is the duplication that
+            // made the table look optional. The chart stays as the VISUAL; the rows
+            // are the FIGURES, and every one of the four facts is on screen at 360.
+            return `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(m.label)}</span><span class="bhub-kv-sub">${m.bookings} booking${m.bookings === 1 ? '' : 's'} · ${occ}% occupancy</span></span><span class="bhub-kv-val">${gbp(m.revenue)}</span></div>`;
         })
         .join('');
     const projTotal = months.reduce((s, m) => s + m.revenue, 0);
@@ -17434,16 +17528,15 @@ function renderMoneyForecast() {
         })),
         moneyShort,
     );
-    el.innerHTML = `<h3 class="accounts-section-title">Income forecast (next 6 months)</h3>
-                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
-                    <div class="label">Projected revenue by month</div>
-                    ${chart}
+    // The block wears the page's own anatomy — a fold group whose summary is the
+    // projected total — instead of a serif h3 above two competing cards.
+    el.innerHTML = bhubFoldGrp('incforecast', 'Income forecast', 'next 6 months',
+        `<span class="bhub-payline-fig">${gbp(projTotal)}</span>`,
+        `<div class="mo-card"><div class="mo-card-title">Projected revenue by month</div>${chart}</div>
+                <div class="bhub-kvs">${body}
+                    <div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label"><strong>Total projected</strong></span></span><span class="bhub-kv-val"><strong>${gbp(projTotal)}</strong></span></div>
                 </div>
-                <table class="accounts-table">
-                    <thead><tr><th>Month</th><th class="num">Projected revenue</th><th class="num">Bookings</th><th class="num">Occupancy</th></tr></thead>
-                    <tbody>${body}<tr style="font-weight:600;"><td>Total projected</td><td class="num">${gbp(projTotal)}</td><td class="num"></td><td class="num"></td></tr></tbody>
-                </table>
-                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`;
+                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`);
 }
 // Refresh after any payment change: re-render the money panel if we're on the
 // Money & income view, otherwise re-open the booking detail pop-up (calendar).
@@ -21197,19 +21290,22 @@ function renderKeysafe() {
         const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
         // The verdict — and the sub tells the story: who's coming, and whose
         // code is on the dial.
+        // ONE CASE. Four of the seven capsules were lowercase ("rotate now",
+        // "rotate at changeover", "not recorded yet") against "✓ Code on the
+        // safe" — the same tier, on the same page, disagreeing about case.
         const cap = !rec.code
-            ? stCap('unk', 'not recorded yet')
+            ? stCap('unk', 'Not recorded yet')
             : !next
-              ? stCap('unk', 'no upcoming booking')
+              ? stCap('unk', 'No upcoming booking')
               : nextMine
                 ? stCap('ok', 'Code on the safe')
                 : due
                   ? d0.dep
-                    ? stCap('warn', 'rotate after ' + d0.dep.out)
-                    : stCap('bad', 'rotate now')
+                    ? stCap('warn', 'Rotate after ' + d0.dep.out)
+                    : stCap('bad', 'Rotate now')
                   : d0.state === 'inres'
-                    ? stCap('warn', 'rotate at changeover')
-                    : stCap('warn', 'new code needed');
+                    ? stCap('warn', 'Rotate at changeover')
+                    : stCap('warn', 'New code needed');
         // The sub tells the TIMED story: an in-residence guest names the day
         // the rotation becomes possible; an arrival names the day it's needed.
         const whenTxt = next
@@ -21228,8 +21324,13 @@ function renderKeysafe() {
             : rec.setAt
               ? e('last set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : ''))
               : 'rotate it once and the keeper takes over';
+        // ks-prose when there is NO CODE: the value is then a SENTENCE ("not
+        // recorded yet — rotate it once and the keeper takes over"), and a
+        // sentence right-aligned beside a two-line label is the exact shape the
+        // row below was already fixed for. With a code the value is a FIGURE and
+        // keeps the two-column row.
         const fold =
-            '<div class="ks-kv"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
+            '<div class="ks-kv' + (rec.code ? '' : ' ks-prose') + '"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
             + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span>'
                 : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
             + (next
@@ -25536,11 +25637,13 @@ function renderReviewLinks() {
                     </div>`;
         })
         .join('');
-    wrap.innerHTML = `<div class="adm-card">
-                <div class="acw-cap">Review links</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
-                ${rows}
-            </div>`;
+    // THE QUEUE COMES FIRST. This block is a set-up task done once per cottage
+    // and it led the page every visit — three URL fields and their Copy buttons,
+    // ~550px, pushing the reviews actually WAITING for a verdict to y=920 on a
+    // phone. It sits after them now (the markup order moved with this), folded.
+    wrap.innerHTML = bhubFoldGrp('revlinks', 'Share a review link', 'per cottage', '',
+        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
+                ${rows}`);
 }
 // Copy a cottage's review link (mirrors copyIcalExport).
 async function copyReviewLink(key) {
@@ -26787,7 +26890,7 @@ function osDonut(pct, color) {
     return `<svg class="os-donut" viewBox="0 0 64 64" role="img" aria-label="${pct}%">
                 <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--glass-border)" stroke-width="7"/>
                 <circle cx="32" cy="32" r="${R}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>
-                <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" font-size="16" fill="var(--text-light)">${pct}%</text>
+                <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" style="font-size:var(--fs-body);" fill="var(--text-light)">${pct}%</text>
             </svg>`;
 }
 // ---- Reusable mini-chart helpers (inline SVG/CSS, no library) ----
@@ -26800,7 +26903,9 @@ function moneyShort(v) {
 // percentage — the bar sits in an auto-height flex column, and a % height against
 // an indefinite parent resolves to nothing: measured, every chart this composer
 // ever drew painted its bars at 0px on every browser (three surfaces — only the
-// labels showed, which read as "no graph"). And a DENSE window (the 30-day daily
+// labels showed, which read as "no graph"). A ZERO bar carries NO value label — ten
+// "£0"s over ten empty months on the trailing-12 chart is ink saying nothing, and the
+// missing bar is already the fact. And a DENSE window (the 30-day daily
 // trend gives each column ~4px at phone width) drops the per-bar value labels
 // (the title tooltip keeps the figure) and thins the axis to ~8 ticks + the last,
 // or 31 nowrap labels overprint into an unreadable digit soup.
@@ -26817,7 +26922,7 @@ function osVBars(items, fmt) {
                 const h = Math.max(3, Math.round(((i.value || 0) / peak) * AREA));
                 const tick = !dense || ix % every === 0 || ix === items.length - 1;
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
-                    ${dense ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
+                    ${dense || !(i.value > 0) ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
                     <div class="osv-bar" style="width:100%;max-width:36px;min-width:2px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}px;"></div>
                     <span class="osv-tick" style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${tick ? escapeHtml(i.short || i.label) : ''}</span>
                 </div>`;

@@ -202,7 +202,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(t1.state === 'inres' && t1.duty === 0, `a guest in residence mints NO rotation duty — never rotate under a mid-stay guest (${t1.state}, ${t1.duty})`);
-  ok(t1.capWarn && /rotate at changeover/.test(t1.capTxt), `the page schedules it instead — "${t1.capTxt}" in amber, not the red alarm`);
+  ok(t1.capWarn && /rotate at changeover/i.test(t1.capTxt), `the page schedules it instead — "${t1.capTxt}" in amber, not the red alarm`);
   ok(t1.sub.includes('in residence until ' + t1.until) && /rotate once they’ve gone/.test(t1.sub), `and the sub names the day the rotation becomes possible (${t1.sub.slice(0, 70)})`);
   // CHANGEOVER MORNING: the leaver drops out at checkout, so the ask fires
   // exactly when it can be done — named for the INCOMING guest, red because
@@ -277,7 +277,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(t5.at737.sev === 'warn' && /Morning Leaver leaves at 10:00 — rotate once they’ve gone/.test(t5.at737.sub),
     `07:37 on changeover day: amber, and the sub says when it becomes possible (${(t5.at737.sub || '').slice(0, 62)})`);
-  ok(t5.capWarn && /rotate after 10:00/.test(t5.cap737), `the page capsule names the hour too (${t5.cap737})`);
+  ok(t5.capWarn && /rotate after 10:00/i.test(t5.cap737), `the page capsule names the hour too (${t5.cap737})`);
   ok(/rotate after Morning Leaver leaves at 10:00/.test(t5.sub737), `…and its sub names who's still in (${t5.sub737.slice(0, 68)})`);
   ok(t5.at1001.sev === 'danger' && /arrives today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
   ok(t5.ota.sev === 'warn' && /leaves at 10:00/.test(t5.ota.sub), `an OTA departure defaults to the house 10:00 (${t5.ota.sev})`);

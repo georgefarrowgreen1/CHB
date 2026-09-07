@@ -2102,7 +2102,14 @@ let approveWill409 = false;
   });
   ok(l1.count >= 1 && l1.actionCards === 0, `payments section is find-rows, not action cards (${l1.count} rows)`);
   ok(l1.edge === 'pay-danger' && /Unpaid/.test(l1.chip), `unpaid row: red edge + chip with balance (${l1.chip.trim()})`);
-  ok(/received/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
+  // RE-AIMED to the PROPERTY, not the word. The row's sub is a two-line clamp
+  // and the composed line overran it ("5–12 Nov 2026 · £300.00 of £960.00
+  // received · £50.00 deposit held" wanted 420px of 309), so the DEPOSIT — the
+  // last fact, and the one nothing else on this screen states — was what fell
+  // off. The copy dropped "received" (the chip directly above already says
+  // Part-paid) and the pennies; what must hold is that the row still states
+  // what has come in AGAINST the total.
+  ok(/£[\d,.]+ of £[\d,.]+/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
   ok(l1.owed, 'owed banner still leads the section');
   await page.click('#money-panel .bk-row');
   await page.waitForTimeout(800);

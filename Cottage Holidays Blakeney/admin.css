@@ -305,7 +305,17 @@ body.light-mode {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
   margin-bottom: var(--space-3);
-}.area-ov-card {
+}
+/* AN ODD LAST CARD SPANS THE ROW (DESIGN.md's grid rule). With three cottages
+   in two tracks, 21A and Jollyboat shared a row and Pimpernel sat alone at
+   247px with 258px of empty grid beside it — which reads as a card that failed
+   to load. The max-width is what makes `:nth-child(odd)` HONEST: auto-fit would
+   otherwise open a third track past 594px and the rule would span a card that
+   already had two neighbours. Two tracks at every width the grid ever gets, so
+   "odd" and "alone on its row" are the same statement. */
+.area-ov-grid { max-width: 592px; }
+.area-ov-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.area-ov-card {
   display: block;
   width: 100%;
   /* A CARD, not a sheet: --r-panel is 28/40 on a 190px tile. */
@@ -1735,34 +1745,7 @@ body.light-mode .ny-act {
   color: var(--ok-text);
 }.accounts-stat.headline .value.os-warn {
   color: var(--danger-text);
-}.accounts-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  font-size: var(--fs-body);
-}.accounts-table th,
-.accounts-table td {
-  text-align: left;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--glass-border);
-}.accounts-table th {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  font-weight: 600;
-}.accounts-table td.num,
-.accounts-table th.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}.accounts-table tr:last-child td {
-  border-bottom: none;
-}@media (max-width: 640px) {.accounts-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-  }.money-row-head {
+}@media (max-width: 640px) {.money-row-head {
     gap: 6px;
   }}.mo-kpis {
   display: grid;
@@ -1798,7 +1781,7 @@ body.light-mode .ny-act {
   padding: 16px 18px;
   margin-top: 12px;
 }.mo-card-title {
-  font-size: var(--fs-sub);
+  font-size: var(--fs-caption);
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
@@ -1839,6 +1822,50 @@ body.light-mode .ny-act {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+/* A guest's name is not an ellipsis: "Left Deposit · Deposit return" needed
+   184px of 153 and painted "Left Deposit · Depos…". Two lines, the clamp the
+   round-eight subs use. And the state is a CAPSULE now, not a 14px dot slot. */
+/* A GUEST'S NAME IS NOT AN ELLIPSIS, and here it is not a clamp either: this is
+   a grid ROW, so it can simply grow. "Left Deposit · Deposit return" needed
+   184px of 153 and painted "Left Deposit · Depos…"; a long real name needed
+   four lines of a three-line clamp. Nothing is worth cutting a name for. */
+#money-feed .feed-who {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+/* The state is a capsule now, not a 14px dot slot. */
+#money-feed .feed-status { text-transform: none; min-width: 0; }
+/* TWO LINES AT EVERY WIDTH. app.css's six-column row wants ~1100px, and the
+   Money sections are one 640px rail now — measured at 1280 inside it, the six
+   tracks squeezed `.feed-who` to 74px while the cottage pill took 146. So this
+   feed wears the phone's own anatomy everywhere: date · guest · amount, then
+   cottage · kind · state beneath. The placement is EXPLICIT because
+   auto-placement would push the amount off row one, and it is scoped to
+   #money-feed because the income arithmetic fold reuses `.feed-row` with its
+   own two-column grid, where a column-4 rule would invent a track.
+   NB `display: block` on the kind out-specifies app.css's ≤640 `display: none`
+   (1,2,0 against 0,2,0); the prop-tag deliberately does NOT, so the phone keeps
+   app.css's long-standing decision to hide the cottage pill there. */
+#money-feed .feed-row { grid-template-columns: auto 1fr auto auto; }
+#money-feed .feed-row .feed-date { grid-column: 1; grid-row: 1; }
+#money-feed .feed-row .feed-who { grid-column: 2 / 4; grid-row: 1; }
+#money-feed .feed-row .feed-amt { grid-column: 4; grid-row: 1; }
+#money-feed .feed-row .prop-tag { grid-column: 1; grid-row: 2; }
+#money-feed .feed-row .feed-kind { display: block; grid-column: 2 / 4; grid-row: 2; }
+#money-feed .feed-row .feed-status { grid-column: 4; grid-row: 2; }
+/* On a phone the cottage pill is hidden, so column one is empty on row two —
+   the kind takes it back rather than wrapping in 148px beside 73px of nothing. */
+@media (max-width: 640px) {
+  #money-feed .feed-row .feed-kind { grid-column: 1 / 4; }
+}
+/* Three exports in a wrapping row at 390 lay out 2 + 1, with the third
+   ORPHANED on a line of its own beside 240px of nothing. A column: three equal
+   rows, each at the 44px floor. They stay OUTSIDE any fold (ui-test-money §3). */
+@media (max-width: 640px) {
+  .accounts-actions { flex-direction: column; align-items: stretch; }
 }.accounts-note {
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -3179,6 +3206,16 @@ body.light-mode .cmdk-editor-input {
   color: var(--text-muted);
   white-space: normal;
 }
+/* Inside the HERO it is a child of .cmdk-hero-main, which already carries the
+   card's own rail — so it takes no padding of its own, and it is the ANSWER
+   here rather than a footnote under a row, hence body ink. */
+.cmdk-hero .cmdk-nlg-body {
+  display: block;
+  margin: 0;
+  padding: 0;
+  color: var(--text-light);
+  text-wrap: pretty;
+}
 .cmdk-refine-chip {
   font-size: var(--cmdk-fs-sub);
   font-weight: 600;
@@ -4227,6 +4264,16 @@ body.light-mode .cmdk-search input {
 #cmdk.cmdk-overlay .cmdk-foot {
   flex: 0 0 auto;
 }
+/* THE FOOT NEEDS A GROUND OF ITS OWN. At ≥641 the box is GLASS, and the foot
+   declared no background — so the ink of the one line that says something is
+   wrong sat on whatever workspace happened to be behind the dimmed scrim, and
+   no token could be measured against it (pixel-sampled at 1280 light: 4.15:1
+   for 11px text, against 5.24 on the opaque phone surface). The BOX keeps its
+   glass; only this strip is opaque, which is also the ground a11y-test now
+   carries in SURFACES. */
+#cmdk.cmdk-overlay .cmdk-foot {
+  background: var(--cmdk-surface);
+}
 /* The workspace behind must not scroll while the pop-out is up. */
 body.cmdk-open {
   overflow: hidden;
@@ -4471,6 +4518,20 @@ body.cmdk-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A PAST TURN KEEPS ITS FIGURE. nowrap + ellipsis: "You're owed £1,650.00
+   across 3 guests, Tom leading at £910.00." needs 370px in a 316px column, so
+   the phone showed "…Tom leading …" and dropped "at £910.00" — the number the
+   turn exists to keep. Two lines below 640 (the round-eight clamp); at 1280 it
+   fits on one and keeps the nowrap. */
+@media (max-width: 639px) {
+  .cmdk-turn-a {
+    white-space: normal;
+    text-overflow: clip;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
 }
 /* A past turn's figure keeps its emphasis at the thread's own scale. The size
    override here is gone because it is no longer needed: it existed to undo the live
@@ -4754,7 +4815,29 @@ body.cmdk-open {
    display:none". Sharing the 390px foot left it 37px of the 287 it needed: the
    line read "Dai…", 13% of "Daily automation looks stopped — last ran 7 days ago",
    which is the same as not reporting it. So the warning takes the whole first line
-   and WRAPS, and the hint drops beneath. Only a warning pays the extra line. */
+   and WRAPS, and the hint drops beneath. Only a warning pays the extra line.
+   AND THE RULE IS WIDTH-INDEPENDENT NOW: it lived in the ≤639 block alone, so at
+   1280 the same sentence kept its nowrap beside a 100px keycap hint and lost
+   "last ran 3 days ago" — 36% of the one line that says something is wrong. A
+   warning earns the whole line at EVERY width; the keycaps are what yield. */
+.cmdk-foot:has(.cmdk-sys.is-warn) {
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.cmdk-foot:has(.cmdk-sys.is-warn) .cmdk-foot-keys {
+  display: none;
+}
+.cmdk-sys.is-warn {
+  order: -1;
+  flex: 1 0 100%;
+  margin-left: 0;
+  text-align: left;
+}
+.cmdk-sys.is-warn .cmdk-sys-say {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
 /* A SHORT viewport spends its height on RESULTS. Measured at 740x400 (landscape
    phone): a 296px panel whose chrome took 119 — 74px field + 45px hint — leaving
    175px of results showing ONE row of seven. Advice about a keyboard goes first on a
@@ -4780,16 +4863,19 @@ body.cmdk-open {
     flex-wrap: wrap;
     gap: 6px 16px;
   }
-  .cmdk-sys.is-warn {
-    order: -1;
-    flex: 1 0 100%;
-    margin-left: 0;
-    text-align: left;
+  /* (the warning's own full-line rule is width-independent now — see above) */
+  /* THE SCOPE ROW ALL BUT FITS, AND THE FADE EATS THE DIFFERENCE. Five chips
+     wanted 379px of 368 at 390, so "Guests" ended inside the 22px right-edge
+     mask and painted its last word fading out — a row that fits reading as one
+     that is cut. 12 → 8px inline (8 × 5 chips = 40px recovered, comfortably
+     past the 11px shortfall) and ON GRID: 9px would have ADDED a count to the
+     offGrid ratchet, which may only fall. The mask stays for an owner with
+     more scopes than this. */
+  .cmdk-scope {
+    padding-inline: 8px;
   }
-  .cmdk-sys.is-warn .cmdk-sys-say {
-    white-space: normal;
-    overflow: visible;
-  }
+  /* (the hit region widens to match — with the round-eight rules, which come
+     later in this sheet and would out-order an override here) */
   /* THE CHROME YIELDS, NEVER THE FIELD. Every button in the search row is
      flex-shrink: 0 while the input is `flex: 1; min-width: 0`, so each one that
      appears takes its width straight out of the query: measured 215px empty →
@@ -5042,6 +5128,15 @@ body.cmdk-open {
     flex: 0 0 84px; color: var(--text-muted);
 }
 .bhub-kv-val { min-width: 0; overflow-wrap: anywhere; color: var(--text-light); }
+/* A row whose label needs a second, quieter line — a due date, a deposit state,
+   a booking count. The label column becomes a small stack so the VALUE column
+   can stay money and nothing else (a date riding the value took 204px of a
+   390px rail and left the guest's name an ellipsis). NB the basis reset is
+   load-bearing: .bhub-kv-label carries `flex-basis: 96px`, which inside a
+   COLUMN flex parent is a 96px HEIGHT. */
+.bhub-kv-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.bhub-kv-main > .bhub-kv-label { flex: 0 1 auto; }
+.bhub-kv-sub { font-size: var(--fs-caption); color: var(--text-muted); }
 
 /* A kv value that ACTS (the guest's email opens the site's composer): text
    styled as the link it is, wrapping like any value, still a real button. */
@@ -5463,7 +5558,11 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    leads, the verdict pills sit in one quiet action line. */
 .acw-qrow { border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 12px 16px; margin-bottom: 12px; }
 .acw-modacts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; padding: 7px 14px; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
+/* THE ROW THAT DECIDES SOMETHING MEETS THE THUMB. Approve / Decline / Delete
+   measured 82×31, 77×31, 71×31 at 390 — 13px under the app's own floor on the
+   one control that publishes or bins a guest's words. The data-acts are
+   untouched; only the box grew. */
+.acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; min-height: 44px; padding: 8px 16px; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; }
 .acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .acw-modacts .mod-no { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .acw-modacts .mod-mut { color: var(--text-muted); }
@@ -5677,16 +5776,42 @@ body.rail-on.admin-screen #accounts-index > .bhub-grpcap,
 body.rail-on.admin-screen #accounts-index > .settings-group {
   margin-left: 0;
 }
-.mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; }
+.mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; min-height: 44px; align-items: center; }
 @media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
 /* Every row in these folds names a GUEST (or a Due-now marker) — sentence
-   case at reading size, not the reference cards' 84px uppercase column. */
+   case at reading size, not the reference cards' 84px uppercase column.
+   A NAME IS NOT AN ELLIPSIS: nowrap in whatever the money column left over —
+   at 390, "Richard Berry · payment" had 95px of 182 and painted "Richard Be…"
+   while the VALUE kept a full "£660.00 · due 05/10/2026". Two lines for the
+   name, the date on its own quiet line, the figure alone on the right. */
 #money-overview .bhub-kv-label {
   flex: 1 1 auto; font-size: var(--fs-body); letter-spacing: 0; text-transform: none;
   color: var(--text-light); min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; white-space: normal;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
-#money-overview .bhub-kv-val { flex: 0 0 auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+#money-overview .bhub-kv-val { flex: 0 0 auto; white-space: nowrap; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* THE TRENDS FOLD IS PART OF THE PAGE, not the old dashboard inside it. A
+   .mo-card is a 20px-radius bordered card, and four of them sat inside a fold
+   group whose own bottom corners are 12px — a child rounder than its container.
+   Inside a fold they are SECTIONS: one hairline between them, no second edge. */
+.bhub-fold .mo-card {
+  border-radius: var(--r-sm);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  padding: 16px 0 0;
+}
+.bhub-fold .bhub-foldin > .mo-card:first-child { border-top: 0; padding-top: 0; }
+/* ONE RAIL ON THE MONEY SUB-SCREENS. The landing they return to is a 640px
+   column and every screen behind it ran full-bleed at desktop: at 1280 the
+   tax-year select spanned 1120px, the headline 460, the folds 640, the
+   forecast 718 — four widths on one page. One cap on the SECTION, so
+   everything inside inherits it and nothing is capped twice. */
+@media (min-width: 900px) {
+  #accounts-panel .accounts-sec { max-width: 640px; }
+  #asec-income select { max-width: 100%; }
+}
 
 /* ---- Add/Edit Booking: the sectioned form (owner-only, so these live in
    admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money
@@ -6190,6 +6315,17 @@ body.offline-snap .ods-mark {
 #keysafe-body .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
 #keysafe-body .mo-pulse { margin: 2px 0 0; }
 .ks-card .prop-tag { margin-bottom: 0; }
+/* THE SUB GETS THE RAIL. The capsule is 113–129px and the chevron 24, so the
+   sentence beside them had 159–175px at 390 and its two-line clamp ran out:
+   "… · in residence until 12/09/2026 · rotate once they've gone" needed three
+   lines and lost the tail. Shortening it is NOT on the table — both phrases are
+   gate-pinned as a deliberate decision — so below 480 the row WRAPS and the
+   capsule takes its own line. */
+@media (max-width: 480px) {
+  .ks-card .bhub-fold-row { flex-wrap: wrap; align-items: flex-start; }
+  .ks-card .bhub-fold-lbl { flex: 1 1 100%; }
+  .ks-card .bhub-fold-right { width: 100%; justify-content: space-between; }
+}
 .ks-kv {
   display: flex;
   justify-content: space-between;
@@ -6392,14 +6528,8 @@ body.offline-snap .ods-mark {
    Mac is done once per machine, so it sits behind this rather than in front of
    them. Quiet on purpose: a summary that shouts is the clutter it replaced. */
 .night-setup { margin-top: 14px; }
-.night-setup > summary {
-    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
-    font-size: var(--fs-sub); letter-spacing: 0; text-transform: none; font-weight: 600;
-    color: var(--text-muted); padding: 6px 0; min-height: 44px;
-}
-.night-setup > summary::-webkit-details-marker { display: none; }
-.night-setup > summary::after { content: '›'; font-size: var(--fs-body); transition: transform 0.18s var(--fluid-bezier); }
-.night-setup[open] > summary::after { transform: rotate(90deg); }
+/* (its ink stays quiet — the colour override lives WITH the unified summary
+   spec below, which comes later in this sheet and would otherwise win) */
 .night-setup > summary:hover { color: var(--accent-text); }
 
 /* ── AI CHAT — its own page (view-aichat), the approved iOS-26 anatomy. ──
@@ -6439,10 +6569,18 @@ body.offline-snap .ods-mark {
   cursor:pointer;min-height:34px}
 .mc-rail-chip:hover{background:var(--btn-hover)}
 .mc-rail-chip.is-cur{background:var(--text-light);color:var(--dark-grey);border-color:transparent}
-.mc-log{display:flex;flex-direction:column;gap:10px;min-height:46vh;padding:2px}
+/* THE LAST STARTER CLEARS THE COMPOSER. The composer FLOATS (fixed) above the
+   safe area, and the log's 2px of bottom padding put the third starter question
+   at y 767–811 under a bar starting at 768 — 43px of it covered on first paint.
+   Reachable by scrolling, but a chip cut in half is what the owner sees first. */
+.mc-log{display:flex;flex-direction:column;gap:10px;min-height:46vh;padding:2px;padding-bottom:calc(76px + var(--safe-b))}
 /* the welcome — a CARD with starters, never a stranded paragraph */
 .mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:var(--r-panel);
   padding:24px 20px;background:var(--glass-bg);text-align:center}
+/* …and the 8vh above it exists to CENTRE the card when it is alone. With a day
+   card in front of it, that same 8vh is a 67px void between the two — so the
+   welcome sits its own 16px below whatever precedes it. */
+.mc-day + .mc-hello{margin-top:16px}
 .mc-hello-spark{font-size: var(--fs-title);color:var(--accent-text)}
 .mc-hello h2{font:600 var(--fs-title) var(--font-serif);margin:8px 0 6px}
 .mc-hello p{color:var(--text-muted);font-size: var(--fs-caption);margin:0 0 14px;line-height:1.55}
@@ -6458,7 +6596,11 @@ body.offline-snap .ods-mark {
   min-height:44px;transition:border-color 0.2s var(--fluid-bezier),background 0.2s var(--fluid-bezier)}
 .mc-schip:hover{border-color:var(--accent);background:var(--btn-hover)}
 .mc-go{color:var(--accent-text);font-weight:700}
-.mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size: var(--fs-sub);line-height:1.55;overflow-wrap:break-word}
+/* THE CONVERSATION READS AT BODY SIZE. Both halves of the thread were 13px
+   while the composer beside them is 15, the act cards are 15 and the guest
+   chat's own bubbles are 15 — so the words on this page were the smallest text
+   on it. .mc-chip and .mc-think summary stay at micro/sub: they are chrome. */
+.mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size: var(--fs-body);line-height:1.5;overflow-wrap:break-word}
 .mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 17%,transparent);
   border-bottom-right-radius:7px;white-space:pre-wrap}
 .mc-mac{align-self:flex-start;background:color-mix(in srgb,var(--text-light) 6%,transparent);
@@ -7063,7 +7205,13 @@ body.rail-on.admin-screen #today-date .ops-owed {
    the sentence, not the hidden h1. display:contents lifts the verdict out of
    .bo-today-head so it can sit on the sentence's own row; without it the
    capsule floated alone above the sentence (ui-test-needs-you caught it). */
-body.rail-on.admin-screen .dashboard-header > div {
+/* SCOPED TO THE TODAY HEAD. The selector was `.dashboard-header > div` with
+   nothing narrowing it, so at rail widths it laid EVERY admin page's title
+   beside its intro — the Activity log's h1 at (116,175) with its lead at
+   (361,213), the Inbox and the key safes the same, while every other Manage
+   page stacks them. The precise scope, not a per-view override, which would
+   leave the global rule waiting for the next page. */
+body.rail-on.admin-screen .dashboard-header > div:has(> .bo-today-head) {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -7394,6 +7542,63 @@ div.mo-landed { display: block; } /* the row lists under each figure */
    17px — the one screen with a figure to enter, and 17px is also what stops iOS
    zooming the page on focus. */
 #sweep-balance, #sweep-buffer { min-height: 44px; font-size: var(--fs-headline); padding: 8px 14px; }
+/* MONEY IS IN THE SERIF, and it was not: the sweep's four money figures were
+   painted with an inline `font-family: var(--font-display)` — a token declared
+   in none of the three sheets — so all four fell back to Montserrat while the
+   Income & tax headline beside them is Playfair. Stated ONCE as a class (the
+   `.bhub-payline-fig` discipline); ui-test-ownerref §2 reads the COMPUTED
+   family, which is what a non-existent token cannot fake. */
+.sweep-fig { font-family: var(--font-serif); }
+
+/* ── ONE DISCLOSURE VOCABULARY ────────────────────────────────────────────
+   Six <details> on the owner's screens wore three chevrons ('▾', '›', the UA
+   ▶) and two heights, two of them 29px — under the app's own 44px floor. ONE
+   spec, and the chevron IS `BHUB_CHEV`: the same 24-unit path drawn as a mask
+   so a stylesheet can carry it, in currentColor, rotating 90° on [open]. The
+   whole `.help-disclosure` block moved here from app.css with it — the markup
+   is owner-only, so every guest was paying for it. */
+.help-disclosure { max-width: 640px; margin: 14px 0 0; }
+.help-disclosure > summary,
+.night-setup > summary,
+.sweep-detail > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 4px 0;
+  font-size: var(--fs-sub); font-weight: 600;
+  text-transform: none; letter-spacing: normal;
+  color: var(--accent-text);
+  -webkit-tap-highlight-color: transparent;
+}
+/* ONE SPEC, not one INK: the set-up fold is deliberately quiet ("a summary that
+   shouts is the clutter it replaced"), so it keeps its muted ink here rather
+   than three lines up, where the shared rule below would out-order it. */
+.night-setup > summary { color: var(--text-muted); }
+/* The mid-light accent fails contrast on the light theme (~2.9:1) — these
+   summaries are interactive text, so use the dark ink there. */
+body.light-mode .help-disclosure > summary,
+body.light-mode .sweep-detail > summary { color: var(--accent-ink); }
+.help-disclosure > summary::-webkit-details-marker,
+.night-setup > summary::-webkit-details-marker,
+.sweep-detail > summary::-webkit-details-marker { display: none; }
+.help-disclosure > summary::after,
+.night-setup > summary::after,
+.sweep-detail > summary::after {
+  content: ''; width: 14px; height: 14px; flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform 0.2s var(--fluid-bezier);
+}
+.help-disclosure[open] > summary::after,
+.night-setup[open] > summary::after,
+.sweep-detail[open] > summary::after { transform: rotate(90deg); }
+.help-disclosure > summary:focus-visible,
+.night-setup > summary:focus-visible,
+.sweep-detail > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* ===== ROUND EIGHT (measured sweep after the header / radii / type-scale PRs) ===== */
 /* Reach 44 (round eight): hit regions on the search chrome, the hub's contact links,
@@ -7405,6 +7610,17 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 #cmdk-close::after { content: ''; position: absolute; inset: -5px; }
 .cmdk-chip::after { content: ''; position: absolute; inset: -8px 0; }
 .cmdk-scope::after { content: ''; position: absolute; inset: -8px -2px; }
+/* …and WIDER on a phone, where the chip gives up 4px of inline padding so five
+   scopes stop overflowing their row by 11px and fading "Guests" out. -2px only
+   grew the chip by 4, which was enough at 12px of padding and not at 8: the
+   shortest chip ("All") measured 38 and ui-test-round8 caught it on this
+   build's own run. Neighbours meet inside the 6px gap — the same contiguity
+   the docks' regions deliberately have; the row is one strip of chips. It sits
+   HERE, beside the rule it overrides, because the ≤639 block that changes the
+   padding is 2,700 lines earlier and would be out-ordered at equal weight. */
+@media (max-width: 639px) {
+  .cmdk-scope::after { inset: -8px -6px; }
+}
 .bhub-kv-act::after { content: ''; position: absolute; inset: -10px 0; }
 .bhub-kv a::after { content: ''; position: absolute; inset: -13px 0; }
 .ops-owed::after { content: ''; position: absolute; inset: -9px 0; }

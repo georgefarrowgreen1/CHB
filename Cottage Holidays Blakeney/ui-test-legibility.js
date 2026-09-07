@@ -93,7 +93,14 @@ const ORPHANS = (sel) => {
     if (u.includes('rates.php')) return j({ properties: PROPS, seasons: {}, occupancy: {} });
     if (u.includes('accounts.php')) return j({ ok: true, total: 18204.11, card_fees: 210.4, kept_deposits: 0, payments: [],
       deposit_liability: { net: 150, items: [{ name: 'Sarah Pemberton', net: 75, check_in: d(3), check_out: d(7) }],
-        payouts: { known: 4, inBank: 1852.62, lookback: 90, items: { inBank: [{ name: 'Tom Ashby', kind: 'balance', movable: 900 }], unknown: [] } } } });
+        // `unknown` carries a 40-DAY-OLD charge on purpose: it is what makes the
+        // Money landing render its "Square hasn't said" exception, whose sub the
+        // fixture had never once produced — so the gate had not seen the one sub
+        // on that page that was actually being cut ("…it should be by…" at 390).
+        payouts: { known: 4, inBank: 1852.62, lookback: 90, items: {
+          inBank: [{ name: 'Tom Ashby', kind: 'balance', movable: 900 }],
+          unknown: [{ name: 'Ines Duarte', kind: 'deposit', movable: 491.25, paid_on: d(-40) }],
+        } } } });
     if (u.includes('bookings.php') && b.action === 'recent_payments') return j({ ok: true, payments: [{ name: 'Tom Ashby', kind: 'balance', amount: '900.00', created_at: d(-1) + ' 10:00:00' }] });
     return j({ ok: true, bookings: BK, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: PROPS });
   });

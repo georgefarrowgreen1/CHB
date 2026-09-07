@@ -7742,13 +7742,14 @@ body.owner-mode .chat-widget {
 .act-log-row .act-when {
   margin-left: 0;
 }
-/* Severity: warnings and action-needed rows in the activity log */
-.act-row--warn {
-  box-shadow: inset 3px 0 0 var(--warn);
-  padding-left: 8px;
-}
+/* Severity: warnings and action-needed rows in the activity log. STATE SAID
+   ONCE — the row carries an `.act-sev` pill reading "Check" / "Action", so the
+   3px coloured rail beside it said the same thing twice; it is the rail the HIG
+   pass took off Needs-you. Transparent rather than deleted, so the 8px padding
+   geometry the rows were laid out on is unchanged (the .bk-row precedent). */
+.act-row--warn,
 .act-row--action {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 transparent;
   padding-left: 8px;
 }
 .act-sev {
@@ -8523,9 +8524,9 @@ body.light-mode .feed-dot-bad {
 }
 @media (max-width: 640px) {
   .feed-row {
-    /* date · who (flex) · amount · status DOT — keep the traffic-light dot on
-       phones (it's the only payment-status signal; hiding it lost Completed vs
-       Pending/Failed on the device the owner uses most). */
+    /* date · who (flex) · amount · status — the state travels on every width;
+       it is the only payment-status signal and hiding it lost Completed vs
+       Pending/Failed on the device the owner uses most. */
     grid-template-columns: auto 1fr auto auto;
     row-gap: 3px;
   }
@@ -8533,6 +8534,8 @@ body.light-mode .feed-dot-bad {
   .feed-row .feed-kind {
     display: none;
   }
+  /* (The recent-payments feed keeps its kind as a second LINE — admin.css, so
+     app.css stays flat for the guests who never see that screen.) */
 }
 .os-sub {
   font-size: var(--fs-caption);
@@ -12488,49 +12491,13 @@ textarea.input-glass:not(.field-sm) {
     max-width: none;
   }
 }
-/* "How it works" disclosure — keeps background explanations one tap away so
-           admin panels lead with the controls instead of a wall of text. */
-.help-disclosure {
-  max-width: 640px;
-  margin: 14px 0 0;
-}
-.help-disclosure > summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: var(--fs-sub);
-  color: var(--accent-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  -webkit-tap-highlight-color: transparent;
-}
-/* The mid-light accent fails contrast on the light theme (~2.9:1) — these
-   summaries are interactive text, so use the dark ink there. */
-body.light-mode .help-disclosure > summary {
-  color: var(--accent-ink);
-}
+/* ("How it works" disclosures are owner-only markup — their whole spec moved to
+   admin.css with the unified summary vocabulary, so guests stop paying for it.) */
 /* The Terms modal reuses .toast-close for its header ✕ — as a bare icon that
    was a ~19px tap target. Pad it into a real one (icon stays the same size). */
 .terms-modal-head .toast-close {
   padding: 10px;
   margin: -6px -6px 0 0;
-}
-.help-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-.help-disclosure > summary::after {
-  content: "▾";
-  font-size: var(--fs-micro);
-  transition: transform 0.2s var(--fluid-bezier);
-}
-.help-disclosure[open] > summary::after {
-  transform: rotate(180deg);
-}
-.help-disclosure > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
 }
 
 .content-edit-row {

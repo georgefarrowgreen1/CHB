@@ -1125,7 +1125,11 @@ let mailWillFail = false;
   // it reported £147.38 ("Keep in the account") as the transfer figure.
   const headline = await page.evaluate(() => {
     const c = document.querySelector('#sweep-body .accounts-stat');
-    const el = c && c.querySelector('div[style*="--font-display"]');
+    // The CLASS, not an attribute-substring on a token that never existed:
+    // `var(--font-display)` was undefined in all three sheets (four money
+    // figures rendered in Montserrat), so this selector was load-bearing for a
+    // defect. `.sweep-fig` is the serif class those four carry now.
+    const el = c && c.querySelector('.sweep-fig');
     return el ? el.textContent.trim() : '';
   });
   ok(headline === '', `no transfer figure is offered once everything is marked (${headline || 'none'})`);
