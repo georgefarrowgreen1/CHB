@@ -793,6 +793,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const wide = await page.evaluate(async () => {
     const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
     const box = () => Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width);
+    // THE FRAME MOVES NOW, so the shape has to be read once it has STOPPED. The box
+    // takes 320ms var(--sheet) between 520 and 860 (it is margin-centred, and that
+    // 170px re-centre used to happen in one frame); a fixed 250ms wait read it
+    // mid-flight and reported the wide box as 520 — sample by state, never a clock.
+    const settled = async () => { const b = document.querySelector('#cmdk .cmdk-box'); const t0 = Date.now(); while (b.getAnimations().length && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 40)); await new Promise((r) => setTimeout(r, 60)); };
     const isWide = () => document.getElementById('cmdk').classList.contains('cmdk-wide');
     const out = {};
     try { closeCmdK(); } catch (e) {}
@@ -804,13 +809,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await until(() => __cmdkResults.some((r) => r && r.type === 'booking'));
     __cmdkSel = __cmdkResults.findIndex((r) => r && r.type === 'booking'); cmdkRender();
     await new Promise((r) => setTimeout(r, 250));
+    await settled();
     out.withPane = { w: box(), wide: isWide(), pane: !!document.querySelector('#cmdk .cmdk-detail') };
     // …then each branch that returns early.
     i.value = ''; cmdkSearchCore('', false);
     await new Promise((r) => setTimeout(r, 300));
+    await settled();
     out.landing = { w: box(), wide: isWide(), cols: new Set([...document.querySelectorAll('#cmdk .cmdk-board')].map((b) => Math.round(b.getBoundingClientRect().top))).size };
     i.value = 'zzzqqqxxx'; cmdkSearchCore('zzzqqqxxx', false);
     await new Promise((r) => setTimeout(r, 300));
+    await settled();
     out.none = { w: box(), wide: isWide() };
     return out;
   });

@@ -312,8 +312,9 @@ body.light-mode {
   border-radius: var(--r-lg);
   color: var(--text-light);
   transition:
-    background 0.4s var(--fluid-bezier),
-    transform 0.4s var(--spring);
+    background 200ms var(--out),
+    transform 320ms var(--settle),
+    filter 320ms var(--settle);
 }@media (hover: hover) {.area-ov-card:hover {
     background: var(--glass-hover);
     transform: translateY(-2px);
@@ -485,8 +486,8 @@ body.light-mode {
   text-overflow: ellipsis;
 }.bk-row {
   transition:
-    transform 0.3s var(--spring),
-    background 0.2s var(--fluid-bezier);
+    transform 320ms var(--settle),
+    background 200ms var(--out);
 }
 /* A list cell answers the pointer with a TINT, never a lift: the
    translateY(-1px) + shadow-soft this replaces was a card saying "I respond to
@@ -504,8 +505,8 @@ body.light-mode {
   transform: translateX(2px);
 }.bk-row-arrow {
   transition:
-    transform 0.3s var(--spring),
-    color 0.2s var(--fluid-bezier);
+    transform 320ms var(--settle),
+    color 200ms var(--out);
   color: var(--text-muted);
   font-size: var(--fs-headline);
   flex-shrink: 0;
@@ -610,7 +611,9 @@ body.light-mode .tl-cell.is-mstart {
 }body.light-mode .tl-day,
 body.light-mode .tl-cell {
   border-color: rgba(27, 42, 52, 0.04);
-}body.light-mode .tl-cell:hover {
+}
+/* (0,3,0), so it outranked the day cell's press ground — the same trap. */
+body.light-mode .tl-cell:hover:not(:active) {
   background: rgba(27, 42, 52, 0.06);
 }/* Stay length riding a wide-enough bar ("Bob · 3n"). */
 .tl-bar .tl-n {
@@ -656,9 +659,9 @@ body.light-mode .tl-cell {
   background: var(--accent);
   transform: translate(-50%, -50%);
 }
-.tl-cell:hover {
+.tl-cell:hover:not(:active) {
   background: rgba(255, 255, 255, 0.06);
-}.tl-bar:hover {
+}.tl-bar:hover:not(:active) {
   transform: translateY(-1px);
   filter: brightness(1.07);
 }.tl-label-dot {
@@ -730,15 +733,27 @@ body.light-mode .tl-cell {
   border: 1px solid var(--glass-border);
   box-shadow: none;
   cursor: pointer;
-  animation: bhubIn 0.35s var(--fluid-bezier) both;
+  /* No entrance: the strip arrives WITH Today, and Today already arrives
+     (chbPageIn). Four rows rising a second time on top of the page's own rise
+     was one navigation reported as two. */
   transition:
-    transform 0.25s var(--spring),
-    box-shadow 0.25s var(--fluid-bezier);
-}#needs-you-list .ny-row:nth-child(2) { animation-delay: 0.05s; }#needs-you-list .ny-row:nth-child(3) { animation-delay: 0.1s; }#needs-you-list .ny-row:nth-child(4) { animation-delay: 0.15s; }.ny-row:hover {
+    transform 320ms var(--settle),
+    background 200ms var(--out),
+    box-shadow 200ms var(--out);
+}
+/* THE HOVER MUST YIELD TO THE PRESS (see also the (1,2,0) rule further down).
+   Measured on a real held mouse press: the row computed matrix(1,…) for the
+   whole hold with :active true, because the hover's `transform: none` outranks
+   it. `:not(:active)` is the fix that keeps both true — the .card lesson,
+   same PR. */
+.ny-row:hover:not(:active) {
   background: var(--glass-hover);
-}.ny-row:active {
-  transform: scale(0.99);
-}#needs-you-list { gap: 0; }
+}
+/* A LIST ROW PRESSES WITH ITS GROUND, not with a scale — see the press block at
+   the foot of this file. The hand-written `scale(0.99)` that stood here was off
+   the system in both directions: a fixed 1% is 11px on a 1120px row and 3.6px on
+   a 358px one, where the system's whole point is a constant 4px. */
+#needs-you-list { gap: 0; }
 #needs-you-list .ny-row + .ny-row { border-top-width: 0; }
 #needs-you-list .ny-row:first-child { border-top-left-radius: var(--r-sm); border-top-right-radius: var(--r-sm); }
 #needs-you-list .ny-row:last-child { border-bottom-left-radius: var(--r-sm); border-bottom-right-radius: var(--r-sm); }
@@ -838,7 +853,43 @@ body.light-mode .ny-act {
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-float);
   animation: bhubIn 0.22s var(--fluid-bezier) both;
-}.bhub-menu button {
+  /* IT CLOSES AS IT OPENS. It arrived on a 220ms rise and vanished in a single
+     frame — and it inherited .glass-panel's 0.5s hover transitions (background,
+     border-colour, transform, box-shadow) on a popover that is never hovered as
+     a panel. The exit is 140ms on purpose: ui-test-hub asserts display:none
+     200ms after Escape, so the cleanup has to land inside that window. */
+  transition: none;
+}
+.bhub-menu.bhub-menu-out {
+  animation: bhubOut 140ms var(--in) both;
+  pointer-events: none;
+}
+@keyframes bhubOut {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bhub-menu, .bhub-menu.bhub-menu-out { animation: none; }
+}
+/* THE CONSEQUENCE SETTLES, THE FIELD DOES NOT. See acrSettle() in admin.js:
+   the stepper's <input> is left alone (repainting a field mid-edit is the
+   bank-details trap) and only the DERIVED text acrSync rewrites — the weekend
+   figure, the last-minute line, the book-direct badge, the serif rate — marks
+   that it has moved. A settle, never a pop: the figure was already on screen. */
+.acr-settle { animation: acrFigSettle 320ms var(--settle); }
+@keyframes acrFigSettle {
+  from { opacity: 0.35; transform: translateY(3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .acr-settle { animation: none; }
+}
+.bhub-menu button {
   display: block;
   width: 100%;
   text-align: left;
@@ -879,8 +930,8 @@ body.light-mode .ny-act {
   z-index: 2;
   height: 30px;
   transition:
-    transform 0.25s var(--spring),
-    filter 0.2s var(--fluid-bezier);
+    transform 320ms var(--settle),
+    filter 200ms var(--out);
   /* Noon-to-noon: the grid area includes the check-in AND checkout days; the
      half-day insets make changeover days visibly shared between two stays. */
   margin: 0 calc(var(--tl-day-w, 38px) * 0.5 + 1px);
@@ -1025,7 +1076,10 @@ body.light-mode .ny-act {
 }
 .bo-today-head .ops-cap {
   vertical-align: 1px;
-}.tl-bar:not(.tl-ext):hover {
+}
+/* `:not(:active)` — this is (0,3,0) and outranked `.tl-bar:active`, so a held
+   bar kept its 1px lift instead of pressing (measured). */
+.tl-bar:not(.tl-ext):hover:not(:active) {
   transform: translateY(-1px);
   filter: brightness(1.08);
 }.tl-bar.tl-ext {
@@ -1230,17 +1284,39 @@ body.light-mode .ny-act {
   transition: background 0.2s var(--fluid-bezier);
 }.mbx-att:hover {
   background: var(--glass-hover);
-}.bhub-head {
+}
+/* ONE ARRIVAL PER NAVIGATION. These were unscoped, so a hub that arrived with
+   its own PAGE rose twice — chbPageIn on the view (app.css) and then bhubIn on
+   the head and every card on top of it — and every Manage / Money / Inbox fold
+   group (they are .bhub-cards) replayed its entrance on the way BACK to an index
+   the owner had already seen. The entrance is for IN-PLACE docking only: the two
+   detail panes, where a record really does appear inside a page that is not
+   moving. Everywhere else the page's own arrival is the arrival.
+   NB #mbx-reader .bhub-card keeps its own rule (above) — the mail reading pane
+   docks in place below 1200px too, where it is a row accordion rather than a
+   pane. */
+#bookings-detail-pane .bhub-head,
+#inbox-detail-pane .bhub-head {
   animation: bhubIn 0.35s var(--fluid-bezier) both;
-}.bhub-card {
+}
+#bookings-detail-pane .bhub-card,
+#inbox-detail-pane .bhub-card {
   animation: bhubIn 0.4s var(--fluid-bezier) both;
-}.bhub-card:nth-of-type(2) {
+}
+#bookings-detail-pane .bhub-card:nth-of-type(2),
+#inbox-detail-pane .bhub-card:nth-of-type(2) {
   animation-delay: 0.04s;
-}.bhub-card:nth-of-type(3) {
+}
+#bookings-detail-pane .bhub-card:nth-of-type(3),
+#inbox-detail-pane .bhub-card:nth-of-type(3) {
   animation-delay: 0.08s;
-}.bhub-card:nth-of-type(4) {
+}
+#bookings-detail-pane .bhub-card:nth-of-type(4),
+#inbox-detail-pane .bhub-card:nth-of-type(4) {
   animation-delay: 0.12s;
-}.bhub-card:nth-of-type(5) {
+}
+#bookings-detail-pane .bhub-card:nth-of-type(5),
+#inbox-detail-pane .bhub-card:nth-of-type(5) {
   animation-delay: 0.16s;
 }.bhub-head {
   /* Identity on the PAGE GROUND (the only-what-needs-seeing demo): the
@@ -1823,7 +1899,7 @@ body.owner-mode #admin-head-title {
   pointer-events: none;
   transition:
     opacity 0.32s var(--fluid-bezier),
-    transform 0.42s var(--spring);
+    transform 320ms var(--settle);
 }
 body.owner-mode header.header-condensed #admin-head-title.has-title {
   opacity: 1;
@@ -1952,8 +2028,11 @@ body.owner-mode header.header-condensed .logo-mark {
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
   overflow: hidden;
-  /* Rise in, then breathe the Siri aura for as long as the palette is open. */
-  animation: cmdkRise 0.26s var(--spring, var(--fluid-bezier)), cmdkSiriAura 6s ease-in-out 0.26s infinite;
+  /* Rise in. The AURA is declared on the OPEN overlay (below), not here: this
+     rule matches from the first paint — `cmdk-overlay` is added by JS at open
+     time — so the glow breathed for ever behind a hidden box on every owner
+     screen, which is a cost with nothing on the other side of it. */
+  animation: cmdkRise 0.26s var(--spring, var(--fluid-bezier));
 }
 @media (prefers-reduced-motion: reduce) {
   .cmdk-box {
@@ -2032,7 +2111,7 @@ body.owner-mode header.header-condensed .logo-mark {
 #cmdk-ml.knot-load .knot-live path {
   animation: none; /* determinate wins if both classes are ever up */
   stroke-dasharray: var(--kdone, 0px) var(--klen);
-  transition: stroke-dasharray 0.3s ease;
+  transition: stroke-dasharray 300ms var(--out);
 }
 @media (prefers-reduced-motion: reduce) {
   /* The travel is decoration (the sweep bar's role=status rows carry the
@@ -2235,6 +2314,11 @@ body.owner-mode .logo.ml-learning .logo-mark {
   width: 40%;
   border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+/* GATED ON `.is-loading`. This ran for ever inside a 0px-tall parent on every
+   owner screen — measured, a second infinite animation ticking behind the CLOSED
+   assistant. An animation nobody can see is a cost nobody can see either. */
+.cmdk-progress.is-loading span {
   animation: cmdkSweep 1.05s var(--fluid-bezier) infinite;
 }
 @keyframes cmdkSweep {
@@ -2242,7 +2326,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   100% { transform: translateX(350%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cmdk-progress span { animation-duration: 2.4s; }
+  .cmdk-progress.is-loading span { animation-duration: 2.4s; }
 }
 /* Keyboard hint footer — the "pro tool" affordance. Hidden on touch-only devices
    where there are no hardware keys to hint at. */
@@ -3973,11 +4057,13 @@ body.light-mode .cmdk-search input {
   transition:
     opacity 0.16s var(--fluid-bezier),
     transform 0.2s var(--fluid-bezier);
-  /* The RISE is replaced by the drop above; the AURA is not. Blanking the whole
-     `animation` shorthand here silenced cmdkSiriAura too, so the assistant's
-     breathing Siri glow — a documented part of its look — had not rendered on any
-     surface since the pop-out landed. Name the one that goes. */
-  animation: cmdkSiriAura 6s ease-in-out infinite;
+  /* The RISE is replaced by the drop above; the AURA is not — but it belongs on
+     `.open`, not here. Blanking the whole `animation` shorthand once silenced
+     cmdkSiriAura too, so the glow had not rendered on any surface for the
+     pop-out's whole life; declaring it on the CLOSED state instead left it
+     breathing for ever behind a `visibility: hidden` container on every owner
+     screen. Name the one that goes, and gate the one that stays. */
+  animation: none;
 }
 /* A PHONE-WIDTH POP-OUT IS EFFECTIVELY FULL BLEED — the condition glass was
    switched off for the first time round. Measured at 390px the box is 370 of 390,
@@ -3994,9 +4080,27 @@ body.light-mode .cmdk-search input {
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
+  animation: cmdkSiriAura 6s ease-in-out infinite;
+  /* THE FRAME MOVES WITH THE ANSWER. Selecting a record widens the box 520 → 860
+     and, because it is margin-centred, re-centres it 170px — instantly. Only the
+     WIDTH half is built: the box's HEIGHT is set by its content on every render,
+     and cmdkRenderInner runs on each keystroke past the debounce and each arrow
+     key, so a read-write FLIP there is layout thrash on the hot path.
+     --sheet is the curve a panel changing size takes (peak 1.005). */
   transition:
     opacity 0.2s var(--fluid-bezier),
-    transform 0.42s var(--spring);
+    transform 0.42s var(--spring),
+    max-width 320ms var(--sheet);
+}
+/* RESTATED AT `.open`'s SPECIFICITY. The generic reduced-motion rule for the box
+   is `#cmdk.cmdk-overlay .cmdk-box` (1,2,0) and the aura now lives on `.open`
+   (1,3,0), so without this someone who asked for no motion got a permanently
+   breathing panel — caught by ui-test-searchpage the moment the aura moved. */
+@media (prefers-reduced-motion: reduce) {
+  #cmdk.cmdk-overlay.open .cmdk-box {
+    animation: none;
+    transition: opacity 0.16s var(--out);
+  }
 }
 /* Restated at the overlay's specificity: the generic reduced-motion rule for
    .cmdk-box is out-specified by `#cmdk.cmdk-overlay .cmdk-box`, so without this the
@@ -4080,7 +4184,7 @@ body.cmdk-open {
   }
   /* It still opens (it is the whole feature); it just doesn't spring. */
   #cmdk.cmdk-overlay .cmdk-box {
-    transition: opacity 0.16s ease;
+    transition: opacity 160ms var(--out);
     transform: none;
   }
 }
@@ -4932,9 +5036,13 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    glass-panel hover LIFT is opted out: a list cell does not rise to the pointer. */
 .bhub-card.bhub-fold-grp, body.light-mode .bhub-card.bhub-fold-grp,
 #needs-you-list .ny-row, body.light-mode #needs-you-list .ny-row { box-shadow: none; }
+/* `:not(:active)` is load-bearing on the row half: at (1,2,0) this beat every
+   `.ny-row:active` in app.css, so `transform: none` held for the whole press and
+   the duty row never moved under a pointer (measured). The card half keeps the
+   plain form — a fold group is a container, not a pressable control. */
 @media (hover: hover) {
-  .bhub-card.bhub-fold-grp:hover, body.light-mode .bhub-card.bhub-fold-grp:hover,
-  #needs-you-list .ny-row:hover, body.light-mode #needs-you-list .ny-row:hover { transform: none; box-shadow: none; }
+  .bhub-card.bhub-fold-grp:hover, body.light-mode .bhub-card.bhub-fold-grp:hover { transform: none; box-shadow: none; }
+  #needs-you-list .ny-row:hover:not(:active), body.light-mode #needs-you-list .ny-row:hover:not(:active) { transform: none; box-shadow: none; }
 }
 /* THE JOIN MUST NOT ASSUME THE CONTAINER'S GAP. It was a flat -12px — one
    container's gap, hardcoded. In a flex/grid parent with a 12px gap that nets
@@ -5234,8 +5342,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .chb-switch-row { display: flex; align-items: flex-start; gap: 12px; font-size: var(--fs-sub); margin-bottom: 14px; cursor: pointer; }
 .chb-switch { position: relative; flex: 0 0 auto; width: 46px; height: 28px; margin-top: 1px; }
 .chb-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-.chb-switch-track { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text-light) 16%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); transition: background 0.25s; pointer-events: none; }
-.chb-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--sw-thumb); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.3s var(--spring); }
+.chb-switch-track { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text-light) 16%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); transition: background 240ms var(--out); pointer-events: none; }
+.chb-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--sw-thumb); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 240ms var(--settle); }
 .chb-switch input:checked + .chb-switch-track { background: var(--ok); border-color: transparent; }
 .chb-switch input:checked + .chb-switch-track::after { transform: translateX(18px); }
 .chb-switch input:focus-visible + .chb-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -5310,7 +5418,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 #season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); color: var(--text-muted); }
 .sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-body); font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
 #pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: var(--fs-caption);  font-weight: 600; color: var(--text-muted);  }
-.ac-saved { font-size: var(--fs-micro); font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
+.ac-saved { font-size: var(--fs-micro); font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 300ms var(--out); }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
    group full-width (cross-axis auto margins cancel stretch — the rail rule). */
@@ -5374,7 +5482,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .mbx-ctx-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
 .mbx-ctx-lbl small { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mbx-ctx-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.mbx-ctx-d .bhub-chev { transition: transform 0.18s ease; }
+.mbx-ctx-d .bhub-chev { transition: transform 320ms var(--unfold); }
 .mbx-ctx-d[open] > .mbx-ctx-drow .bhub-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .mbx-ctx-d .bhub-chev { transition: none; } }
 .mbx-ctx-d .mbx-ctx, .mbx-ctx-d .mbx-chain { padding: 0 2px 10px; }
@@ -6378,6 +6486,11 @@ body.offline-snap .ods-mark {
 .spine-duties {
   display: contents;
 }
+/* Present everywhere, transparent everywhere except while the rail spine is
+   condensing — see the collapse rules below. */
+.spine-dutiesin {
+  display: contents;
+}
 /* The condensed count pill — hidden until the spine condenses. */
 .spine-cnt {
   display: none;
@@ -6424,9 +6537,54 @@ body.rail-on.admin-screen .spine-day {
   text-wrap: balance;
   flex: 1 1 100%;
 }
+/* IT CONDENSES OVER 320ms, not in one frame. Measured before: 103.2px then 46px
+   with nothing between (`transition: all`, i.e. 0s) — a 57px jump of the page's
+   own head mid-scroll. Padding, the sentence's size and the duties row's HEIGHT
+   carry it. The row rides .bhub-fold's discipline — a collapsing grid with
+   `visibility` on the last keyframe — and the visibility half is not optional:
+   a bare 0fr grid leaves focusable 44px chips in the tab order and the a11y tree
+   behind a condensed bar, a worse bug than the jump. */
+body.rail-on.admin-screen #day-spine {
+  transition:
+    padding-top 320ms var(--unfold),
+    padding-bottom 320ms var(--unfold),
+    row-gap 320ms var(--unfold);
+}
+body.rail-on.admin-screen .spine-day {
+  transition: font-size 320ms var(--unfold);
+}
+body.rail-on.admin-screen .spine-duties {
+  display: grid;
+  grid-template-rows: 1fr;
+  flex: 1 1 100%;
+  min-height: 0;
+  transition:
+    grid-template-rows 320ms var(--unfold),
+    opacity 220ms linear,
+    visibility 0s;
+}
+/* min-width/min-height: 0 — a grid item's automatic minimum is its MIN-CONTENT
+   size, so without the release the track will not collapse (and the column sizes
+   to the widest unbreakable chip). The .bhub-fold note has the long version. */
+body.rail-on.admin-screen .spine-dutiesin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/* `flex-wrap: nowrap` USED to be here and had to go: it is not animatable, so
+   flipping it re-laid both lines into one in a single frame and 36px of the 57
+   went instantly, before the collapse had moved. With `wrap`, the sentence and
+   the count share line one and the duties row is the `1 1 100%` line beneath it.
+   Measured: 103.2 → 46 over 20 frames, no step wider than 5.4px. */
 body.rail-on.admin-screen #day-spine.spine-cond {
   padding: 10px 0;
-  flex-wrap: nowrap;
+  /* The collapsed duties row is still a wrapped line, so the spine's own 8px
+     row-gap would leave the condensed bar 8px taller than the design. Animated
+     with the rest so it closes on one clock. */
+  row-gap: 0;
 }
 body.rail-on.admin-screen #day-spine.spine-cond .spine-day {
   font-size: var(--fs-body);
@@ -6437,7 +6595,26 @@ body.rail-on.admin-screen #day-spine.spine-cond .spine-day {
   min-width: 0;
 }
 body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
-  display: none;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  /* The row stays visible WHILE it closes and leaves the tab order the moment it
+     has (the delayed 0s step — the .cmdk-box trick). */
+  transition:
+    grid-template-rows 320ms var(--unfold),
+    opacity 220ms linear,
+    visibility 0s linear 320ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.rail-on.admin-screen #day-spine,
+  body.rail-on.admin-screen .spine-day,
+  body.rail-on.admin-screen .spine-duties,
+  body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
+    transition: none;
+  }
+  body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
+    display: none;
+  }
 }
 body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
   display: inline-flex;
@@ -6764,14 +6941,17 @@ body.rail-on.admin-screen .ac-hd {
   background: var(--glass-hover);
   opacity: 0;
   pointer-events: none;
+  /* --sheet, not --spring: measured, this travelled 46px between rows and
+     passed its target by 4.5px (y 73 → 122.3 → 119) before settling. A mark
+     that says WHERE YOU ARE must land on the row, not rebound off it. */
   transition:
-    translate 0.42s var(--spring),
-    width 0.2s ease,
-    height 0.2s ease,
-    opacity 0.2s ease;
+    translate 320ms var(--sheet),
+    width 200ms var(--out),
+    height 200ms var(--out),
+    opacity 200ms var(--out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .rail-ind { transition: opacity 0.2s ease; }
+  .rail-ind { transition: opacity 200ms var(--out); }
 }
 #admin-rail .rail-row,
 #admin-rail .rail-ask,
@@ -7010,7 +7190,7 @@ div.mo-landed { display: block; } /* the row lists under each figure */
    renderBookings runs on every data refresh as well as every filter change, so
    a cascade would replay dozens of times a session. Fires only when the filter
    or the search actually changed — a change of subject. */
-.bk-list-swap { animation: bkListSwap 0.2s linear; }
+.bk-list-swap { animation: bkListSwap 200ms var(--out); }
 @keyframes bkListSwap {
   from { opacity: 0; }
 }
@@ -7119,3 +7299,109 @@ select.acw-pill { min-height: 44px; }
 .acp-cell .acp-acts .bhub-menu-btn { background: none; border: 0; box-shadow: none; padding: 2px 8px; }
 .acp-menu { min-width: 180px; }
 .acp-menu button { min-height: 44px; }
+
+/* PRESS — the owner's side joins the system. Measured before: `.bhub-fold-row`
+   matched NO :active rule at all (35 of them across the back office), nor did
+   `.inbox-sort-btn`, `.ops-owed`, the assistant crown, `.tl-cell`, `.cmdk-row`
+   ×14 or the seven rail rows — the owner's most-tapped controls were the ones
+   the press had never reached. TWO FAMILIES (app.css's press block has the full
+   note): a LIST row presses with its GROUND, everything else with the system's
+   constant 4px read from --sc. AT THE FOOT of the sheet on purpose —
+   `.cmdk-row:active` and `.cmdk-row.is-sel` are both (0,2,0), so a press
+   declared earlier would not win while the finger is down. */
+@media (prefers-reduced-motion: no-preference) {
+  .inbox-sort-btn:active,
+  .spine-duty:active,
+  .ops-owed:active,
+  body.owner-mode .logo.logo-assist:active,
+  .area-ov-card:active,
+  .bhub-actlink:active,
+  .bhub-icbtn:active,
+  .bhub-kv-act:active,
+  .cmdk-chip:active,
+  #admin-rail .rail-ask:active,
+  #admin-rail .rail-theme:active,
+  .mc-schip:active,
+  .mc-day-go:active,
+  .ac-more:active {
+    transform: scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+  /* The bar keeps its 1px hover lift as the thing it composes with — a press
+     that dropped the lift would read as the bar jumping down, not compressing. */
+  .tl-bar:active {
+    transform: scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+}
+/* THE RELEASE is the base rule's transition, so anything without one gets one. */
+.inbox-sort-btn,
+.spine-duty,
+.ops-owed,
+body.owner-mode .logo.logo-assist,
+.bhub-actlink,
+.bhub-icbtn,
+.bhub-kv-act,
+.cmdk-chip,
+#admin-rail .rail-ask,
+#admin-rail .rail-theme,
+.mc-schip,
+.mc-day-go,
+.ac-more {
+  transition: transform 320ms var(--settle), filter 320ms var(--settle);
+}
+/* THE LIST FAMILY — the ground moves, nothing else. Declared after every
+   selection and hover rule these rows carry. */
+.bhub-fold-row:active,
+.cmdk-row:active,
+#admin-rail .rail-row:active,
+.tl-cell:active,
+/* A day cell's own weekend / today / month-start tints are `body.light-mode
+   .tl-cell.is-wknd` (0,3,1), so the press has to be restated at that weight or a
+   held Saturday keeps its weekend fill — measured, the ground moved 0.06 → 0.055
+   under a finger, which is no change at all. */
+body.light-mode .tl-cell:active {
+  background: var(--press-ground);
+  transition: background 80ms var(--in);
+}
+/* A selected search row is already tinted, so its press has to go one step
+   further than its own ground or the touch says nothing. */
+.cmdk-row.is-sel:active {
+  background: color-mix(in srgb, var(--text-light) 10%, var(--cmdk-sel));
+}
+
+/* APPEAR — the drill-in arrives. Measured before: settingsOpen / accountsOpen /
+   inboxFolder all ran ZERO animations (a display swap, one frame) while the way
+   BACK replayed bhubIn on cards the owner had already seen. The replay is gone
+   (bhubIn is scoped to the two panes now); this is the forward half.
+   OPACITY ONLY, no translate — ui-test-manage §4, ui-test-money, layout-test and
+   a11y-test all call these functions and then MEASURE. NO FILL — the base state
+   is the visible one, so a skipped animation leaves the section AT opacity 1
+   rather than stranded at 0. NO JS — display:none → block restarts a CSS
+   animation on its own. The assistant's split pane is EXCLUDED: cmdkDetailHtml's
+   host is rebuilt on every arrow key, so an entrance there is the pinned "no row
+   entrances in search" refusal in a different coat. */
+#settings-panel .settings-sec,
+#accounts-panel .accounts-sec,
+#inbox-folder-enquiries,
+#inbox-folder-messages,
+#inbox-folder-email {
+  /* NB `chbSectionIn`, not `chbAppear`: app.css already owns a keyframe by that
+     name (the toast's 0.94 pop) and a duplicate @keyframes silently REPLACES it
+     document-wide from whichever sheet loads last — admin.css does. */
+  animation: chbSectionIn 240ms var(--out);
+}
+@keyframes chbSectionIn {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #settings-panel .settings-sec,
+  #accounts-panel .accounts-sec,
+  #inbox-folder-enquiries,
+  #inbox-folder-messages,
+  #inbox-folder-email {
+    animation: none;
+  }
+}

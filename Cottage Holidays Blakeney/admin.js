@@ -6008,7 +6008,7 @@ let __coachTarget = null;
 function coachMark(sel, text, opts) {
     const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
     if (!el) { if (opts && typeof opts.fallback === 'function') opts.fallback(); return; }
-    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+    try { chbScroll(el, { block: 'center' }); } catch (e) {}
     setTimeout(() => coachPaint(el, text), 240);
 }
 function coachPaint(el, text) {
@@ -7473,7 +7473,7 @@ function cmdkServerItem(x) {
 // render asynchronously, so poll briefly for the target element before giving up.
 function cmdkFlash(el) {
     if (!el || !el.scrollIntoView) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    chbScroll(el, { block: 'center' });
     el.classList.add('cmdk-reveal');
     setTimeout(() => el.classList.remove('cmdk-reveal'), 2200);
 }
@@ -10228,7 +10228,7 @@ async function openBookings() {
     } catch (e) {}
     renderBookings();
     const ws = document.getElementById('bookings-workspace');
-    if (ws) ws.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (ws) chbScroll(ws, { block: 'start' });
 }
 // 'YYYY-MM-DD HH:MM:SS' → 'D Mon YYYY · HH:MM'.
 function fmtLogWhen(at) {
@@ -10542,9 +10542,12 @@ function bhubMenuToggle(ev) {
     const btn = ev.currentTarget;
     const menu = btn.parentElement.querySelector('.bhub-menu');
     if (!menu) return;
-    const wasOpen = menu.style.display !== 'none';
+    // A menu MID-EXIT counts as closed: the second of two fast taps must re-open
+    // it, not read the fading node as still open and swallow the tap.
+    const wasOpen = menu.style.display !== 'none' && !menu.classList.contains('bhub-menu-out');
     bhubMenuClose();
     if (!wasOpen) {
+        menu.classList.remove('bhub-menu-out');
         menu.style.display = 'flex';
         btn.setAttribute('aria-expanded', 'true');
         bhubMenuPlace(btn, menu);
@@ -10597,6 +10600,28 @@ function bhubMenuPlace(btn, menu) {
 function __bhubMenuEsc(e) {
     if (e.key === 'Escape') bhubMenuClose();
 }
+// THE MENU LEAVES THE WAY IT ARRIVED. `display: none` stays the switch every gate
+// and every caller reads, so it is set at the END of a 140ms exit rather than
+// replaced by a class. A RE-OPEN MID-EXIT WINS: bhubMenuToggle clears the class,
+// and the stale timer then finds it gone and does nothing — the same rule
+// chbCloseOverlay follows for the twenty-two overlays.
+function bhubMenuHide(m) {
+    if (!m || m.style.display === 'none') return;
+    const done = () => {
+        if (!m.classList.contains('bhub-menu-out')) return; // re-opened; not ours to hide
+        m.classList.remove('bhub-menu-out');
+        m.style.display = 'none';
+        // Drop the placement with it: an inline top/bottom/max-height left behind is a
+        // measurement of the window as it WAS, and the next open would inherit it.
+        m.style.top = '';
+        m.style.bottom = '';
+        m.style.maxHeight = '';
+    };
+    if (chbReducedMotion()) { m.classList.add('bhub-menu-out'); done(); return; }
+    m.classList.add('bhub-menu-out');
+    m.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 160); // belt: an animation that never starts must still close it
+}
 let __bhubMenuResize = null;
 function bhubMenuClose() {
     if (__bhubMenuResize) {
@@ -10613,12 +10638,7 @@ function bhubMenuClose() {
     document.removeEventListener('click', bhubMenuClose);
     document.querySelectorAll('.bhub-menu').forEach((el) => {
         const m = /** @type {HTMLElement} */ (el);
-        m.style.display = 'none';
-        // Drop the placement with it: an inline top/bottom/max-height left behind is a
-        // measurement of the window as it WAS, and the next open would inherit it.
-        m.style.top = '';
-        m.style.bottom = '';
-        m.style.maxHeight = '';
+        bhubMenuHide(m);
     });
     document
         .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
@@ -10739,7 +10759,7 @@ async function openBookingHub(bookingId, quiet) {
         // Money/Inbox) — bring the docked hub into view so the action visibly
         // lands somewhere. `quiet` = the dashboard's own auto-select, which
         // must never yank the owner down the page.
-        if (pane && !quiet) pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (pane && !quiet) chbScroll(pane, { block: 'nearest' });
     } else {
         const home = document.getElementById('view-booking-hub');
         if (content && home && content.parentElement !== home) home.appendChild(content);
@@ -12127,7 +12147,7 @@ function settingsShowIndex() {
     if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
     try { chbFrameSync(); } catch (e) {} // Cottages row stands down with its section
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function settingsOpen(section) {
     // The email client moved from Manage into the Inbox (comms dashboard) —
@@ -12175,7 +12195,7 @@ function settingsOpen(section) {
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
     // nav() hook alone would miss this drill-in.
     try { chbFrameSync(); } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Populate one Manage section's live content. Extracted from settingsOpen so the
 // ⌘K Tier-2 sheet can render the SAME section into the palette (search-first
@@ -14357,7 +14377,7 @@ function settingsOpenAccom(k) {
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
     settingsBackTarget = () => settingsOpen('accom');
     __settingsPath = { section: 'accom', prop: k };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Jump STRAIGHT to a cottage's section from anywhere (e.g. search) — reveals the
 // Cottages panel and hides the cottage list first, since settingsOpenAccomSec on
@@ -14395,18 +14415,35 @@ function acrOta(k, value) {
     saveLocalContent('ota-price-' + k, value);
     acrSync(k);
 }
+// A DERIVED FIGURE THAT CHANGED SAYS SO — and one that did not says nothing.
+// The stepper's own <input> is deliberately NOT animated: repainting a field
+// mid-edit is the bank-details trap, and there is no roll to give a value the
+// owner is typing over. What settles is the CONSEQUENCE acrSync rewrites — the
+// weekend figure, the last-minute line, the book-direct badge, the serif rate —
+// and only when the WORDS really moved (the capsule rule: a re-render that
+// produced the same sentence must not flash it).
+function acrSettle(el, write) {
+    if (!el) return;
+    const before = (el.textContent || '').trim();
+    write();
+    const after = (el.textContent || '').trim();
+    if (!before || before === after) return; // a first fill is an arrival, not a change
+    el.classList.remove('acr-settle');
+    void el.offsetWidth; // re-adding a class already present restarts nothing
+    el.classList.add('acr-settle');
+}
 function acrSync(k, quiet) {
     const r = propertyRates[k] || defaultRates[k] || {};
     const couple = parseFloat(r.coupleRate) || 0;
     const wk = document.getElementById('acr-wk-sub-' + k);
-    if (wk) {
+    acrSettle(wk, () => {
         const pct = parseFloat(r.weekendPct) || 0;
         wk.innerHTML = pct > 0
             ? `Fri &amp; Sat nights become <em>${gbp(couple * (1 + pct / 100)).replace('.00', '')}</em>`
             : 'Off — weekends price like any other night';
-    }
+    });
     const lm = document.getElementById('acr-lm-sub-' + k);
-    if (lm) {
+    acrSettle(lm, () => {
         const pct = parseFloat(r.lastminPct) || 0;
         const days = parseFloat(r.lastminDays) || 0;
         const on = pct > 0 && days > 0;
@@ -14414,9 +14451,9 @@ function acrSync(k, quiet) {
         lm.textContent = on
             ? `On — a stay arriving inside ${days} day${days === 1 ? '' : 's'} is ${gbp(couple * (1 - pct / 100)).replace('.00', '')}/night.`
             : 'Off — a hands-off way to fill near-term gaps. Both above 0 turns it on.';
-    }
+    });
     const badge = document.getElementById('acr-badge-' + k);
-    if (badge) {
+    acrSettle(badge, () => {
         // renderLocalGuide's own gate AND its own words, verbatim.
         const ota = parseFloat(siteContent['ota-price-' + k]);
         if (ota > 0 && couple > 0 && ota > couple) {
@@ -14426,9 +14463,9 @@ function acrSync(k, quiet) {
             badge.className = 'acr-badge is-none';
             badge.textContent = ota > 0 ? 'No badge — the Airbnb price isn\u2019t higher than yours' : 'No badge until a price is set';
         }
-    }
+    });
     const fig = document.getElementById('ac-fig-' + k);
-    if (fig && couple > 0) fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span>`;
+    if (fig && couple > 0) acrSettle(fig, () => { fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span>`; });
     if (!quiet) {
         const sv = document.getElementById('ac-saved-' + k);
         if (sv) {
@@ -14475,7 +14512,7 @@ function settingsOpenAccomSec(k, sec) {
     if (fold && fold.hidden) bhubFoldToggle(key);
     __settingsPath = { section: 'accom', prop: k, accomSec: sec };
     const grp = document.querySelector(`#accom-detail [data-grp="${key}"]`);
-    if (grp) setTimeout(() => { try { grp.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 60);
+    if (grp) setTimeout(() => { try { chbScroll(grp, { block: 'start' }); } catch (e) {} }, 60);
 }
 function renderCalendarList() {
     const list = document.getElementById('calendar-list');
@@ -14536,7 +14573,7 @@ async function settingsOpenCalendar(k) {
     settingsBackTarget = () => settingsOpen('calendar');
     __settingsPath = { section: 'calendar', prop: k };
     await loadCalendarSyncProp(k);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Settings: list of cottages → each drills into its policy picker.
 function cancelRowsHtml() {
@@ -14594,7 +14631,7 @@ function settingsOpenCancel(propKey) {
     if (title) title.textContent = propertyMeta[propKey] ? propertyMeta[propKey].name : propKey;
     settingsBackTarget = () => settingsOpen('cancel');
     __settingsPath = { section: 'cancel', prop: propKey };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
 // AWAIT IT, and only then claim it. The save was fire-and-forget while the mirror,
@@ -14998,7 +15035,7 @@ function accountsShowIndex() {
     try {
         renderMoneyOverview();
     } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function accountsOpen(section) {
     adminHistPush('view-accounts', section);
@@ -15037,7 +15074,7 @@ function accountsOpen(section) {
             renderPricingCoach();
         }
     } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 function accountsBack() {
     accountsShowIndex();
@@ -16118,7 +16155,7 @@ function editExpense(id) {
     const dt = document.getElementById('exp-add-details');
     if (dt) dt.open = true; // reveal the (collapsed) form so the edit is visible
     const form = document.querySelector('.exp-add-form');
-    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (form) chbScroll(form, { block: 'center' });
     const amt = document.getElementById('exp-amount');
     if (amt) amt.focus();
 }
@@ -20576,7 +20613,12 @@ function chbFrameSync() {
     // exists there, names it exactly as it always did. There is no width at
     // which the place is missing, so a place here would be a second name for
     // a fact already on screen.
-    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties">${chips}${more}</span>`;
+    // THE INNER SPAN IS THE FOLD'S ONE CHILD. A 0fr grid collapses only the FIRST
+    // track (the .bhub-fold rule), so the chips cannot be direct children of the
+    // row that has to collapse. It is `display: contents` everywhere the row is
+    // not collapsing, which is why the phone's scrolling chip row and the default
+    // wrap are byte-for-byte what they were.
+    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties"><span class="spine-dutiesin">${chips}${more}</span></span>`;
     // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
     // and an unconditional innerHTML would destroy keyboard focus (and any
     // mid-press tap) on a chip every time data lands with nothing new to say.
@@ -24697,7 +24739,7 @@ function tcOpen(page) {
     else if (page === 'emails') detail.innerHTML = tcPageEmails();
     else if (page === 'booking') tcRenderBooking();
     else if (page === 'data') tcRenderData();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    chbScroll(window, { top: 0 });
 }
 // ---- Set the stage: a full pretend business, one tap ----
 function tcPageStage() {
@@ -25734,7 +25776,7 @@ function bulkImportReviews() {
             (added === 1 ? '' : 's') +
             ' added below — check them over, then “Save imported reviews”.',
     );
-    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    chbScroll(wrap, { block: 'nearest' });
 }
 async function saveReviews() {
     const wrap = document.getElementById('reviews-editor');
@@ -26489,12 +26531,12 @@ function changeMonth(dir) {
         grew = true;
     }
     if (grew) renderCalendar();
-    host.scrollTo({ left: targetIdx * tlDayW(), behavior: 'smooth' });
+    chbScroll(host, { left: targetIdx * tlDayW() });
 }
 function timelineToday() {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollTo({ left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()), behavior: 'smooth' });
+    chbScroll(host, { left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()) });
 }
 // Free timeline day tapped → start an Add Booking on that cottage + date.
 // The header's "£X to collect" is a LINK: straight to Bookings, pre-filtered
@@ -30361,7 +30403,7 @@ function mailboxCompose(presetTo) {
     pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
         <h2 class="bhub-card-title">New email</h2><div id="mbx-compose"></div></section>`;
     mailboxComposeForm(document.getElementById('mbx-compose'), presetTo || '');
-    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    chbScroll(pane, { block: 'nearest' });
 }
 function mailboxReply(uid) {
     const box = document.getElementById('mbx-compose');

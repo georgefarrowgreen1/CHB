@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 597;
+const ADMIN_BUNDLE_V = 599;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 256;
+const ADMIN_CSS_V = 258;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2068,7 +2068,7 @@ function trackEvent(name, prop) {
 // Hero CTA → smooth-scroll to the "Check availability" panel (dates-first homepage).
 function scrollToAvailability() {
     const el = document.getElementById('home-availability');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) chbScroll(el, { block: 'start' });
 }
 // Progressive scroll-reveal: fade + rise sections as they enter view. Does nothing
 // under reduced-motion (so .reveal elements stay fully visible), and only arms the
@@ -2346,10 +2346,10 @@ function nav(viewId, anchorId = null) {
             if (!el) return;
             const offsetPosition =
                 el.getBoundingClientRect().top - document.body.getBoundingClientRect().top - 90;
-            window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+            chbScroll(window, { top: offsetPosition });
         }, 150);
     } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        chbScroll(window, { top: 0 });
     }
     // Every view change re-arms the layout sentinel (see its definition above).
     try {
@@ -15617,7 +15617,7 @@ function showHeroResults() {
     }
     if (sec) {
         sec.classList.add('results-mode');
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        chbScroll(sec, { block: 'start' });
     }
 }
 // Anti-stuck escape: clear the results and glide back to the search so the guest
@@ -15633,7 +15633,7 @@ function backToSearch() {
     }
     if (sec) {
         sec.classList.remove('results-mode');
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        chbScroll(sec, { block: 'start' });
     }
 }
 // Open the cottage with the chosen dates + party pre-filled, ready to send.
@@ -15666,7 +15666,7 @@ function startBooking(key, ci, co) {
     const target =
         document.getElementById('enq-date-trigger') || document.getElementById('enq-name');
     if (target)
-        setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 160);
+        setTimeout(() => chbScroll(target, { block: 'center' }), 160);
 }
 // One-tap "Book again" from a past stay: open that cottage and start a fresh
 // enquiry (the guest picks new dates; their saved details prefill as usual).
@@ -18841,12 +18841,37 @@ async function submitExperienceSuggestion() {
 function chbReducedMotion() {
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
 }
+// SCROLL — reduced motion reaches the JS scrolls too. The CSS killswitch sets
+// `scroll-behavior: auto`, and that property cannot touch a `behavior: 'smooth'`
+// passed as an ARGUMENT: measured with the preference on, `nav('view-backoffice')`
+// from a scrolled hub read scrollY 359 at 60ms and 0 at 660ms — a full glide —
+// while every CSS animation on the same page was at 0.01ms. Twenty-four call
+// sites went through this one helper so the preference is read in ONE place.
+//   chbScroll(el, {block:'center'})            → el.scrollIntoView
+//   chbScroll(window, {top: 0})                → window.scrollTo
+//   chbScroll(host, {left: x})                 → host.scrollTo
+function chbScroll(target, opts) {
+    if (!target) return;
+    const o = Object.assign({}, opts || {}, { behavior: chbReducedMotion() ? 'auto' : 'smooth' });
+    try {
+        // scrollTo takes an absolute position (top/left); scrollIntoView takes an
+        // alignment (block/inline). Which one is meant is decided by the KEYS, so a
+        // caller never has to say, and window is always the former.
+        if (target === window || o.top !== undefined || o.left !== undefined) target.scrollTo(o);
+        else target.scrollIntoView(o);
+    } catch (e) {}
+}
 // PRESS — a constant 4px of depth. A fixed scale moves a 324px button ten times
 // further than a 38px arrow (measured 16.2px against 1.5px), so the scale is
 // computed from the control's width on the way DOWN and read by the :active rule
 // as --sc. One delegated listener, one style write per tap.
 function chbPressDepth(e) {
-    const t = e.target && e.target.closest && e.target.closest('button, [data-act], a.btn-sm, .card, .hs-field, .flex-opt, .dp-day, .back-link, .gb2-payline, header nav a');
+    // `[role="button"]` names the AFFORDANCE rather than four more classes: it is
+    // the gallery slide, the photo-grid cell and the guest photo — divs that open
+    // the lightbox and had no depth written for them. Small, checked blast radius
+    // (the only other holder is .back-link, which already presses). `a.bhub-icbtn`
+    // is the hub sticky's tel:/mailto: pair, which are anchors rather than buttons.
+    const t = e.target && e.target.closest && e.target.closest('button, [data-act], [role="button"], a.btn-sm, a.bhub-icbtn, .card, .hs-field, .flex-opt, .dp-day, .back-link, .gb2-payline, header nav a');
     if (!t) return;
     const w = t.offsetWidth || 0;
     if (w > 0) t.style.setProperty('--sc', String(Math.max(0.88, 1 - 4 / w).toFixed(3)));
@@ -18944,7 +18969,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higtoken1';
+    const BUILD = 'higmotion2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

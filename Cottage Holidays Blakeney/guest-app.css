@@ -68,7 +68,7 @@ body.guest-app:not(.owner-mode) #guest-head-title {
   pointer-events: none;
   transition:
     opacity 0.32s var(--fluid-bezier),
-    transform 0.42s var(--spring);
+    transform 320ms var(--settle);
 }
 body.guest-app:not(.owner-mode) header.header-condensed #guest-head-title.has-title {
   opacity: 1;
@@ -166,9 +166,11 @@ body.guest-app:not(.owner-mode) header .logo {
   flex: 0 0 auto;
   border-radius: var(--r-pill);
   padding: 2px 6px;
+  /* --settle on the transform: the release of a press must not swing past the
+     mark's own size (the 0.5% rule). */
   transition:
     background 0.42s var(--fluid-bezier),
-    transform 0.5s var(--spring);
+    transform 320ms var(--settle);
 }
 /* THE HALO FOLLOWS THE MARK (owner screenshot: the glow sat right of and below the
    crown once the bar had condensed). It was a background on .logo, whose box does
@@ -201,9 +203,14 @@ body.guest-app:not(.owner-mode) header .logo.logo-current::before {
 body.guest-app:not(.owner-mode) header.header-condensed .logo::before {
   transform: scale(0.833);
 }
+/* ON THE SYSTEM. A fixed 0.94 on a 30px mark is 1.8px of depth where every other
+   control in the app gives a constant 4 — and chbPressDepth already writes --sc
+   for this node (the crown carries a data-act). 80ms down on --in, and the base
+   rule's 320ms --settle brings it back. */
 body.guest-app:not(.owner-mode) header .logo:active {
-  transform: scale(0.94);
-  transition: transform 0.07s var(--fluid-bezier);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 
 /* ---- Press feel ----------------------------------------------------------
@@ -430,7 +437,7 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   pointer-events: none;
   z-index: 0;
   transition:
-    translate 0.52s var(--spring),
+    translate 400ms var(--sheet),
     opacity 0.28s var(--fluid-bezier);
 }
 /* Squash into the direction of travel, then spring back to round — the small
@@ -509,7 +516,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
 
 @media (prefers-reduced-motion: reduce) {
   .guest-dock-indicator {
-    transition: opacity 0.2s ease;
+    transition: opacity 200ms var(--out);
     scale: none;
   }
   /* The pill still MOVES (it has to — it marks where you are), it just jumps
@@ -757,25 +764,14 @@ body.guest-app:not(.owner-mode):has(#guest-auth-modal.open, #guest-details-modal
   inset: -5px;
   border-radius: inherit;
 }
-/* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
-   .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
-   just belt-and-braces — visibility never depends on the animation running. */
-body.guest-app:not(.owner-mode) .page-view.active {
-  animation: gtFade 0.38s var(--fluid-bezier) forwards;
-}
-/* iOS pushes a screen in with a touch of SCALE as well as travel, so it reads as
-   a card coming forward rather than text sliding up. Kept subtle (0.985) — enough
-   to feel alive, not enough to notice as an effect. */
-@keyframes gtFade {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
+/* THE PAGE TRANSITION LIVES IN app.css NOW, and it is this one. The comment that
+   stood here said "guest shell only; desktop/admin stay instant" — measured, they
+   were the SLOWEST surface in the app (700ms/22px against this shell's 380/10),
+   so the sentence had been false for as long as both existed. `chbPageIn` is the
+   guest figure applied everywhere: iOS pushes a screen in with a touch of SCALE
+   as well as travel, so it reads as a card coming forward rather than text
+   sliding up, kept subtle (0.985) — enough to feel alive, not enough to notice as
+   an effect. One arrival, one definition, one duration. */
 
 /* ============================================================
    COASTAL FRESH — light dock. When a guest is in light mode (the default),

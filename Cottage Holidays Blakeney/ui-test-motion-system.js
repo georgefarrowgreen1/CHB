@@ -23,6 +23,17 @@
 //   §10 CROSS — the cottage calendar turns the page; two fast taps land on the
 //       newest month; the lightbox carries a decoded back layer;
 //   §11 reduced motion — the fold is open at once, the spinner stands down.
+//   §12 PRESS UNDER A REAL POINTER — a held mouse.down on the owner's most-tapped
+//       controls, sampled FOR THE WHOLE HOLD. This is the section that catches a
+//       hover rule outranking :active, which no source scan can see: `.card:hover`
+//       and `.card:active` are both (0,2,0) and the hover sat 1450 lines later, so
+//       the card computed matrix(1.0121, …, -7) — the LIFT — with :active true.
+//   §13 ONE ARRIVAL PER NAVIGATION — Today → hub → Today plays exactly one
+//       arrival animation per swap, at ≤400ms, and the offline day sheet plays
+//       none at all (the stated reason a nav transition was refused as a feature).
+//   §14 REDUCED MOTION REACHES THE JS SCROLLS — the CSS killswitch sets
+//       `scroll-behavior: auto` and cannot touch a `behavior: 'smooth'` passed as
+//       an argument; chbScroll reads the preference in one place instead.
 //
 //  Disciplines (see CLAUDE.md): sample by STATE, never a clock, where a state
 //  exists; getAnimations({subtree:true}) — element.getAnimations() cannot see a
@@ -33,6 +44,13 @@ const path = require('path');
 const { boot } = require('./ui-test-lib');
 
 const APP_CSS = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
+const ADMIN_CSS = fs.readFileSync(path.join(__dirname, 'admin.css'), 'utf8');
+const GUEST_CSS = fs.readFileSync(path.join(__dirname, 'guest-app.css'), 'utf8');
+const SHEETS = [['app.css', APP_CSS], ['admin.css', ADMIN_CSS], ['guest-app.css', GUEST_CSS]];
+const noComments = (c) => c.replace(/\/\*[\s\S]*?\*\//g, '');
+// Every rule as {sel, body} — a block regex, so a selector LIST is one entry and
+// can be split honestly rather than counted as one.
+const rules = (css) => [...noComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
 const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
 const PROPS = [
     { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, extra_adult_rate: 42, child_rate: 25, booking_fee: 75, transaction_pct: 3, max_adults: 4, max_children: 2, max_total: 6, sort_order: 1 },
@@ -72,10 +90,38 @@ const EXPS = [
     const linears = [...APP_CSS.matchAll(/(--[\w-]+):\s*linear\(([^)]+)\)/g)].map((m) => ({ name: m[1], peak: Math.max(...m[2].split(',').map(Number)) }));
     const over = linears.filter((l) => l.peak > 1.005 && l.name !== '--ios-bubble');
     check(linears.length >= 3 && over.length === 0, 'no curve swings past 0.5% (the chat bubble is the one exception)', linears.map((l) => `${l.name}:${l.peak}`).join(' '));
-    const pressSpring = [...APP_CSS.matchAll(/:active[^{]*\{[^}]*var\(--spring\)/g)].length;
-    check(pressSpring === 0, 'no press rides the overshooting spring', pressSpring + ' rule(s)');
-    const pressSc = [...APP_CSS.matchAll(/:active[^{]*\{[^}]*scale\(var\(--sc/g)].length;
-    check(pressSc >= 18, 'every press reads its depth from --sc', pressSc + ' rules');
+    // ALL THREE SHEETS. This used to read app.css alone, which is why nothing
+    // noticed that admin.css carried 42 --fluid-bezier and 12 --spring against
+    // five uses of the four curves — the owner's side was outside the gate.
+    const pressSpring = SHEETS.flatMap(([f, css]) =>
+        rules(css).filter((r) => /:active/.test(r.sel) && /var\(--spring\)/.test(r.body)).map((r) => f + ' ' + r.sel.slice(0, 40)));
+    check(pressSpring.length === 0, 'no press rides the overshooting spring, in any sheet', pressSpring.join(' | '));
+    // Counted as SELECTORS, not blocks: the press is declared as grouped lists, so
+    // a block count says 25 where 60 controls carry it. 55 before this PR (all of
+    // them guest-side, app.css only); the owner's fifteen most-tapped controls —
+    // the fold row, the filters, the spine chips, the rail's own controls, the
+    // timeline bar, the Manage tiles — are what took it to 75.
+    const pressSc = SHEETS.reduce((n, [, css]) =>
+        n + rules(css).filter((r) => /scale\(var\(--sc/.test(r.body))
+            .reduce((m, r) => m + r.sel.split(',').filter((s) => /:active/.test(s)).length, 0), 0);
+    check(pressSc >= 70, 'every press reads its depth from --sc (all three sheets)', pressSc + ' selectors');
+    // THE THINGS THAT TRAVEL LAND, they do not rebound. Named rather than counted,
+    // because --spring legitimately survives on the ONE thing built for it (the
+    // chat bubble, via --ios-bubble) plus the pop-out's own documented drop and
+    // the pay choreography's appearing figures — an "allow only the bubble" sweep
+    // would fail on correct code. What must never ride it again is anything that
+    // moves BETWEEN two resting places: measured, the rail indicator passed its
+    // row by 4.5px and the switch thumb by 1.57px.
+    const travellers = [
+        ['admin.css', ADMIN_CSS, '.rail-ind', /\.rail-ind\s*\{[^}]*translate\s+([^,;]+)/],
+        ['admin.css', ADMIN_CSS, '.chb-switch-track::after', /\.chb-switch-track::after\s*\{[^}]*transition:\s*transform\s+([^;}]+)/],
+        ['app.css', APP_CSS, '.admin-dock-indicator', /\.admin-dock-indicator\s*\{[^}]*translate\s+([^,;]+)/],
+        ['app.css', APP_CSS, '.settings-row-chev', /\.settings-row \.settings-row-chev\s*\{[^}]*transform\s+([^,;]+)/],
+        ['guest-app.css', GUEST_CSS, '.guest-dock-indicator', /\.guest-dock-indicator\s*\{[^}]*translate\s+([^,;]+)/],
+    ];
+    const sprung = travellers.filter(([, css, , re]) => { const m = noComments(css).match(re); return !m || /--spring/.test(m[1]); })
+        .map(([f, , name]) => f + ' ' + name);
+    check(sprung.length === 0, 'nothing that travels between two rows still rides --spring', sprung.join(' | '));
     check(/prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\*::before,\n\s*\*::after \{/.test(APP_CSS), 'the killswitch names ::before and ::after');
     const payPop = (APP_CSS.match(/@keyframes payPop \{[\s\S]*?\n\s*\}/) || [''])[0];
     check(/scale\(0\.94\)/.test(payPop) && !/1\.2/.test(payPop), 'payPop appears from 0.94 with no 1.2 hump', payPop.replace(/\s+/g, ' ').slice(0, 80));
@@ -387,6 +433,257 @@ const EXPS = [
     });
     check(rmKill, 'the killswitch rule names pseudo-elements (CSSOM)');
     await rm.close();
+
+    // ============================================================
+    //  THE OWNER'S SIDE. §12–§14 need the back office, so they run on their own
+    //  page with an admin fixture rather than reusing the guest one above.
+    // ============================================================
+    const OBK = [
+        { id: 1, prop_key: '21a', name: 'Sarah Pemberton', email: 'sarah@example.com', check_in: d(3), check_out: d(7), adults: 2, children: 0, deposit_paid: 0, payment: 'unpaid', payment_method: 'Card', hold_status: 'none', notes: '' },
+        { id: 2, prop_key: 'jollyboat', name: 'Tom Ashby', email: 'tom@example.com', check_in: d(9), check_out: d(12), adults: 2, children: 0, deposit_paid: 900, payment: 'paid', payment_method: 'Card', hold_status: 'none', notes: '' },
+    ];
+    const ownerRoutes = (route) => {
+        const u = route.request().url();
+        const j = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+        if (u.includes('admin-bootstrap.php')) return j({ ok: true, cron: { stale: false, everRan: true, ageHours: 2 }, feeds: [] });
+        if (u.includes('accounts.php')) return j({ ok: true, total: 100, card_fees: 1, kept_deposits: 0, payments: [], deposit_liability: { net: 0, items: [], payouts: { known: 0, inBank: 0, lookback: 90, items: { inBank: [], unknown: [] } } } });
+        if (u.includes('rates.php')) return j({ properties: PROPS, seasons: {}, occupancy: OCC, payment: { deposit_pct: 25, balance_days: 30 } });
+        return j({ ok: true, bookings: OBK, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [{ id: 90, prop_key: 'jollyboat', check_in: d(2), check_out: d(5), source: 'airbnb' }], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] });
+    };
+    const ownerBoot = async (vp) => {
+        const p = await t.browser.newPage({ viewport: vp });
+        p.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+        await p.route(/\.php/, ownerRoutes);
+        await p.goto(t.base + '/index.html');
+        await p.waitForTimeout(900);
+        await p.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+        await p.evaluate(() => window.loadAdminBundle());
+        await p.waitForFunction(() => !!window.__ADMIN_LOADED, null, { timeout: 20000 });
+        await p.evaluate(async () => { await loadData(); });
+        await p.evaluate(() => window.nav('view-backoffice'));
+        await p.waitForTimeout(700);
+        return p;
+    };
+
+    // ============================================================
+    console.log('\n  §12 PRESS under a real pointer — held, and held');
+    // 1000px: below the 1200 rail boundary, so the Inbox is STACKED (its fold rows
+    // paint) and the hub is a page rather than a docked pane.
+    const op = await ownerBoot({ width: 1000, height: 900 });
+    // A HELD PRESS, sampled twice with 250ms between the samples. One sample after
+    // the mouse goes down proves nothing: the compress is 80ms, so a rule that wins
+    // for a frame and loses to a hover afterwards would pass. What this catches is
+    // the state HOLDING, which is what a finger on a control actually does.
+    const held = async (sel, label, kind) => {
+        // BRING IT ON SCREEN FIRST. A control below the fold cannot be pressed by
+        // real mouse coordinates, and skipping it would be a check that quietly
+        // stopped running. Playwright's own scroll-into-view is used rather than a
+        // scripted one because it waits for the scroll to COMMIT (a rAF does not —
+        // the documented trap) before handing back a box.
+        const marked = await op.evaluate((s) => {
+            document.querySelectorAll('[data-msprobe]').forEach((e) => e.removeAttribute('data-msprobe'));
+            const el = [...document.querySelectorAll(s)].find((x) => { const b = x.getBoundingClientRect(); return b.width > 6 && b.height > 6; });
+            if (!el) return false;
+            el.setAttribute('data-msprobe', '1');
+            return true;
+        }, sel);
+        let box = null;
+        if (marked) {
+            const h = await op.$('[data-msprobe]');
+            try { await h.scrollIntoViewIfNeeded(); } catch (e) {}
+            await op.waitForTimeout(120);
+            const bb = await h.boundingBox();
+            if (bb && bb.y > 74 && bb.y + bb.height < 896) box = { x: Math.round(bb.x + Math.min(bb.width / 2, 24)), y: Math.round(bb.y + bb.height / 2), w: Math.round(bb.width) };
+        }
+        if (!box) { check(false, `${label}: a painted one to press`, sel); return; }
+        const read = () => op.evaluate(() => {
+            const el = document.querySelector('[data-msprobe]');
+            const cs = getComputedStyle(el);
+            const m = /matrix\(([\d.\-]+)/.exec(cs.transform);
+            return { sc: m ? +m[1] : 1, bg: cs.backgroundColor, act: el.matches(':active') };
+        });
+        await op.mouse.move(box.x, box.y);
+        const rest = await read();
+        await op.mouse.down();
+        await op.waitForTimeout(140);
+        const a = await read();
+        await op.waitForTimeout(250);
+        const b = await read();
+        // A PROBE MUST NOT ACTIVATE THE CONTROL. mouse.down + mouse.up IS a click,
+        // and the first press navigated to a hub — after which every later probe
+        // reported "not painted", i.e. the harness broke its own later checks.
+        await op.evaluate(() => window.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, { capture: true, once: true }));
+        await op.mouse.up();
+        await op.waitForTimeout(120);
+        await op.evaluate(() => document.querySelectorAll('[data-msprobe]').forEach((e) => e.removeAttribute('data-msprobe')));
+        if (kind === 'scale') {
+            const px = (box.w * (1 - a.sc)).toFixed(1);
+            check(a.act && a.sc < 1 && b.sc < 1, `${label} presses for the WHOLE hold`, `w${box.w} scale ${a.sc}/${b.sc} (${px}px) active=${a.act}`);
+            check(Math.abs(px - 4) <= 0.8, `${label} presses ~4px, whatever it is`, px + 'px');
+        } else {
+            // THE GROUND MUST BE THE PRESS GROUND, not merely a different colour.
+            // `!== rest.bg` was tried and is VACUOUS: several of these carry a
+            // hover that says `:not(:active)`, so the hover DROPPING OUT is itself
+            // a change and the check passed with the press rule deleted
+            // (break-tested). Compare against the token, so it cannot rot when the
+            // wash is retuned.
+            const want = await op.evaluate(() => getComputedStyle(document.body).getPropertyValue('--press-ground').trim());
+            const norm = (c) => c.replace(/\s+/g, '');
+            check(a.act && norm(a.bg) === norm(want) && b.bg === a.bg, `${label} presses with its GROUND (--press-ground) for the whole hold`, `${rest.bg} → ${a.bg} / ${b.bg}, want ${want}`);
+        }
+    };
+    // The two the reviewer measured DEAD under a pointer, and the three that had
+    // no :active rule of any kind.
+    await held('#needs-you-list .ny-row', '.ny-row', 'scale');
+    await held('.inbox-sort-btn', '.inbox-sort-btn', 'scale');
+    // The timeline's two. BOTH were dead under a pointer for the same reason the
+    // card was, and neither was found by reading the sheet: `.tl-bar:not(.tl-ext)
+    // :hover` (0,3,0) and `body.light-mode .tl-cell:hover` (0,3,0) each outranked
+    // a press written at (0,2,0). A held press is the only thing that sees it.
+    await held('.tl-bar', '.tl-bar', 'scale');
+    await held('.tl-cell', '.tl-cell', 'list');
+    await op.evaluate(() => window.openInbox());
+    await op.waitForTimeout(800);
+    await held('.bhub-fold-row', '.bhub-fold-row', 'list');
+    // THE RAIL only exists from 1200px, so its rows are pressed on their own page.
+    const railPage = await ownerBoot({ width: 1440, height: 900 });
+    const railPress = await (async () => {
+        await railPage.evaluate(() => { const r = document.querySelector('#admin-rail .rail-row'); if (r) r.setAttribute('data-msprobe', '1'); });
+        const h = await railPage.$('[data-msprobe]');
+        if (!h) return null;
+        const bb = await h.boundingBox();
+        if (!bb || bb.width < 6) return { dead: true };
+        await railPage.mouse.move(Math.round(bb.x + bb.width / 2), Math.round(bb.y + bb.height / 2));
+        const read = () => railPage.evaluate(() => { const el = document.querySelector('[data-msprobe]'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, act: el.matches(':active') }; });
+        const rest = await read();
+        await railPage.mouse.down();
+        await railPage.waitForTimeout(140);
+        const a = await read();
+        await railPage.waitForTimeout(250);
+        const b = await read();
+        await railPage.evaluate(() => window.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, { capture: true, once: true }));
+        await railPage.mouse.up();
+        const want = await railPage.evaluate(() => getComputedStyle(document.body).getPropertyValue('--press-ground').trim());
+        return { rest, a, b, want };
+    })();
+    const railWant = (railPress && railPress.want) || '';
+    const nrm = (c) => String(c).replace(/\s+/g, '');
+    check(railPress && !railPress.dead && railPress.a.act && nrm(railPress.a.bg) === nrm(railWant) && railPress.b.bg === railPress.a.bg,
+        '.rail-row presses with its GROUND (--press-ground) for the whole hold', railPress && !railPress.dead ? `${railPress.rest.bg} → ${railPress.a.bg} / ${railPress.b.bg}, want ${railWant}` : 'no painted rail row at 1440');
+    await railPage.close();
+
+    // .card is a GUEST surface, so it is pressed on the public page — this is the
+    // one whose hover outranked its press by 1450 lines of stylesheet.
+    const cardPage = await t.browser.newPage({ viewport: { width: 1000, height: 900 } });
+    await cardPage.route(/\.php/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, properties: PROPS, seasons: {}, occupancy: OCC, bookings: [], enquiries: [], reviews: [], content: {}, blocks: [], ranges: [] }) }));
+    await cardPage.goto(t.base + '/index.html');
+    await cardPage.waitForTimeout(1200);
+    await cardPage.evaluate(() => {
+        const el = [...document.querySelectorAll('.card')].find((x) => x.getBoundingClientRect().width > 60);
+        if (el) el.setAttribute('data-cardprobe', '1');
+    });
+    let cardPress = null;
+    const ch = await cardPage.$('[data-cardprobe]');
+    if (ch) {
+        try { await ch.scrollIntoViewIfNeeded(); } catch (e) {}
+        await cardPage.waitForTimeout(160);
+        const bb = await ch.boundingBox();
+        if (bb && bb.y > 80) cardPress = { x: Math.round(bb.x + bb.width / 2), y: Math.round(bb.y + 40), w: Math.round(bb.width) };
+    }
+    if (!cardPress) check(false, '.card: a painted one to press');
+    else {
+        await cardPage.mouse.move(cardPress.x, cardPress.y);
+        await cardPage.mouse.down();
+        await cardPage.waitForTimeout(140);
+        const c1 = await cardPage.evaluate(() => { const el = document.querySelector('[data-cardprobe]'); const m = /matrix\(([\d.\-]+)/.exec(getComputedStyle(el).transform); return { sc: m ? +m[1] : 1, tr: getComputedStyle(el).transform, act: el.matches(':active') }; });
+        await cardPage.waitForTimeout(250);
+        const c2 = await cardPage.evaluate(() => { const el = document.querySelector('[data-cardprobe]'); const m = /matrix\(([\d.\-]+)/.exec(getComputedStyle(el).transform); return { sc: m ? +m[1] : 1 }; });
+        await cardPage.evaluate(() => window.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, { capture: true, once: true }));
+        await cardPage.mouse.up();
+        check(c1.act && c1.sc < 1 && c2.sc < 1, 'a hovered .card still presses (its hover no longer outranks :active)', `${c1.tr} active=${c1.act}`);
+    }
+    await cardPage.close();
+
+    // ============================================================
+    console.log('\n  §13 ONE arrival per navigation');
+    // ARRIVAL animations only, by name. tlDraw (the timeline's once-per-visit
+    // decoration) and a transition are not arrivals; chbPageIn / bhubIn / cardRise
+    // are, and they are what doubled — a 700ms page rise with every card rising
+    // again on top of it.
+    const ARRIVALS = ['chbPageIn', 'bhubIn', 'cardRise', 'gtFade', 'fluidFadeIn'];
+    const arrivals = async (fn) => {
+        await op.evaluate(fn);
+        await op.waitForTimeout(40);
+        return op.evaluate((names) => [...document.querySelectorAll('.page-view.active')]
+            .flatMap((v) => v.getAnimations({ subtree: true }))
+            .filter((a) => names.includes(a.animationName))
+            .map((a) => ({ n: a.animationName, dur: a.effect.getTiming().duration })), ARRIVALS);
+    };
+    await op.evaluate(() => window.nav('view-backoffice'));
+    await op.waitForTimeout(900);
+    const toHub = await arrivals(() => window.openBookingHub(1));
+    check(toHub.length === 1 && toHub[0].n === 'chbPageIn', 'Today → hub: exactly ONE arrival', JSON.stringify(toHub));
+    check(toHub.length === 1 && toHub[0].dur <= 400, 'and it is ≤400ms (iOS pushes a screen in ~350)', toHub[0] && toHub[0].dur + 'ms');
+    await op.waitForTimeout(900);
+    const back = await arrivals(() => window.nav('view-backoffice'));
+    check(back.length === 1 && back[0].n === 'chbPageIn' && back[0].dur <= 400, 'hub → Today: one arrival too, and the cards do not rise again', JSON.stringify(back));
+    await op.waitForTimeout(900);
+    const toArea = await arrivals(() => window.openArea());
+    check(toArea.length === 1 && toArea[0].dur <= 400, 'Today → Manage: one arrival', JSON.stringify(toArea));
+    await op.waitForTimeout(900);
+    // THE DAY SHEET APPEARS AT ONCE. This is the reason a nav transition was
+    // refused as a feature, so the surface it was refused for gets none of it.
+    await op.evaluate(() => document.body.classList.add('offline-snap'));
+    const offline = await arrivals(() => window.nav('view-booking-hub'));
+    check(offline.length === 0, 'with the day sheet up, a navigation animates NOTHING', JSON.stringify(offline));
+    await op.evaluate(() => { document.body.classList.remove('offline-snap'); window.nav('view-backoffice'); });
+    await op.waitForTimeout(700);
+
+    // ============================================================
+    console.log('\n  §14 reduced motion reaches the JS scrolls');
+    const rmOwner = await t.browser.newPage({ viewport: { width: 1000, height: 900 } });
+    rmOwner.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    await rmOwner.emulateMedia({ reducedMotion: 'reduce' });
+    await rmOwner.route(/\.php/, ownerRoutes);
+    await rmOwner.goto(t.base + '/index.html');
+    await rmOwner.waitForTimeout(900);
+    await rmOwner.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+    await rmOwner.evaluate(() => window.loadAdminBundle());
+    await rmOwner.waitForFunction(() => !!window.__ADMIN_LOADED, null, { timeout: 20000 });
+    await rmOwner.evaluate(async () => { await loadData(); });
+    await rmOwner.evaluate(() => window.nav('view-backoffice'));
+    await rmOwner.waitForTimeout(700);
+    check(await rmOwner.evaluate(() => typeof window.chbScroll === 'function'), 'chbScroll exists — the preference is read in one place');
+    // Scroll a hub down, then leave it. With the preference on, the landing must be
+    // in ONE read: an intermediate scrollY IS the glide.
+    await rmOwner.evaluate(() => window.openBookingHub(1));
+    await rmOwner.waitForTimeout(900);
+    const jump = await rmOwner.evaluate(() => new Promise((res) => {
+        document.body.style.minHeight = '3000px';
+        window.scrollTo(0, 400);
+        setTimeout(() => {
+            const seen = [];
+            let n = 0;
+            const tick = () => { seen.push(Math.round(window.scrollY)); if (++n < 24) requestAnimationFrame(tick); else { document.body.style.minHeight = ''; res(seen); } };
+            window.nav('view-backoffice');
+            requestAnimationFrame(tick);
+        }, 260);
+    }));
+    const mid = jump.filter((y) => y > 4 && y < 396);
+    check(jump[jump.length - 1] === 0, 'the scroll lands at the top', jump.join(','));
+    check(mid.length === 0, 'and it lands in ONE read — no mid-flight value', 'mid-flight: ' + (mid.join(',') || 'none'));
+    // The killswitch's own half, asserted through the CSSOM: Chromium's emulation
+    // forces every transition-duration to ~1e-05s whatever the CSS says, so a
+    // computed read cannot tell our rule from the browser's own.
+    const rmRule = await rmOwner.evaluate(() => {
+        for (const s of document.styleSheets) {
+            try { for (const r of s.cssRules) if (r.media && /reduced-motion: reduce/.test(r.media.mediaText)) for (const x of r.cssRules) if (x.selectorText && /\.bhub-menu/.test(x.selectorText) && /none/.test(x.style.animation || '')) return true; } catch (e) {}
+        }
+        return false;
+    });
+    check(rmRule, 'the hub menu stands its exit down under the preference (CSSOM)');
+    await rmOwner.close();
+    await op.close();
 
     console.log(fails ? `\n  ${fails} MOTION-SYSTEM CHECK(S) FAILED ❌` : '\n  motion system: all checks passed ✅');
     await t.done(fails);

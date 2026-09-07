@@ -168,6 +168,40 @@ function rawType(cssRaw) {
     return out;
 }
 
+// An INTERACTIVE transition on an off-token easing. The motion system is four
+// curves — --out / --in / --settle / --sheet (plus --unfold for a height) — and a
+// `transition:` is the app's response to a state change, i.e. the one place a
+// curve is felt rather than watched. Measured before the sweep: 35 of them ran on
+// a raw `ease`/`linear` or on no easing at all (the CSS default, which is `ease`),
+// and one chevron turned on two different clocks depending on which fold it was
+// in.
+//
+// DELIBERATELY TRANSITIONS ONLY, not `animation:`. A spinner MUST be `linear`
+// (chbSpin, mcSpin, paySpin, the knot travel) and the ambient keyframes are
+// watched rather than felt, so counting them would fail on correct code and the
+// allow-list needed to green it would gut the check — the same reason the
+// duration ratchet in ui-test-motion-system §1 was not widened to every rule.
+// A 0s part is skipped: `visibility 0s linear 0.32s` is a SWITCH, not a curve.
+const OFF_TOKEN_EASE = /^(ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end|steps\()/;
+function offTokenEasings(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    for (const m of css.matchAll(/(?:^|[;{])\s*transition\s*:\s*([^;}]+)/g)) {
+        const val = m[1].trim();
+        if (/^(none|inherit|initial|unset)\b/.test(val)) continue;
+        const line = css.slice(0, m.index).split('\n').length;
+        // split on top-level commas only — cubic-bezier(…) carries its own
+        for (const part of val.split(/,(?![^(]*\))/)) {
+            const toks = part.trim().split(/\s+(?![^(]*\))/).filter(Boolean);
+            const dur = toks.find((t) => /^-?\d*\.?\d+m?s$/.test(t));
+            if (!dur || parseFloat(dur) === 0) continue;
+            if (toks.some((t) => /^var\(--/.test(t) || /^cubic-bezier\(/.test(t))) continue;
+            out.push(`${line}: ${part.trim()}` + (toks.some((t) => OFF_TOKEN_EASE.test(t)) ? '' : ' (default ease)'));
+        }
+    }
+    return out;
+}
+
 // Tracked uppercase on words: text-transform: uppercase rule blocks. The
 // sentence-case pass took app.css from 49 to the brand voice's five (nav, the
 // hero kicker and subtitle, the section kicker); counted so the shout cannot
@@ -242,7 +276,7 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css), offTokenEasings: offTokenEasings(css) };
 }
 // The markup half, counted as ONE tail across the four files that carry
 // templates — the line reports name the file, so a new one still points at itself.
@@ -270,6 +304,7 @@ const DIMS = [
     { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
     { key: 'rawRadii', label: 'raw corner radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) for a cell or field, var(--r-lg) for a card, var(--r-pill) for a pill' },
     { key: 'rawType', label: 'raw font-size off the eight steps', fix: 'use var(--fs-micro/caption/sub/body/headline/title/display/hero) — 11 · 12 · 13 · 15 · 17 · 22 · 28 · 34' },
+    { key: 'offTokenEasings', label: 'transition on an off-token easing', fix: 'use one of the four curves — var(--out) arriving, var(--in) leaving, var(--settle) landing, var(--sheet) travelling (var(--unfold) for a height)' },
 ];
 const MARKUP_DIMS = [
     { key: 'inlineRadii', label: 'inline border-radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) / var(--r-lg) / var(--r-pill) in the style attribute, or give the element a class' },
@@ -293,7 +328,7 @@ if (update) {
     next.markup = Object.fromEntries(MARKUP_DIMS.map((d) => [d.key, found.markup[d.key].length]));
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type, ${next[f].offTokenEasings} off-token easing(s)`);
     console.log(`  markup (${MARKUP_FILES.join(', ')}) — ${next.markup.inlineRadii} inline radii, ${next.markup.inlineType} inline type, ${next.markup.inlineUppercase} inline uppercase`);
     process.exit(0);
 }

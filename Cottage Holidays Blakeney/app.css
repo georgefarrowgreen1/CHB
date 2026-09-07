@@ -276,6 +276,18 @@ textarea:focus-visible,
   --settle: var(--ios-settle);
   --sheet: cubic-bezier(0.32, 0.72, 0, 1);
   --unfold: cubic-bezier(0, 0, 0.58, 1);
+  /* PRESS, second family: a row in a joined run acknowledges the tap with its
+     GROUND rather than the system's 4px scale — one cell of a 561-cell timeline
+     lane or one of fourteen search rows pulling away from its neighbours'
+     hairlines reads as a fault, not a response. A wash of the theme's own INK at
+     12% — twice --glass-hover's 6%, so a press is visibly deeper than a hover —
+     and light enough that nothing printed on it moves measurably during the 80ms
+     it is up. RESTATED under body.light-mode, not written as
+     color-mix(var(--text-light)) once: a custom property substitutes at the
+     element that DECLARES it, so a :root definition reading --text-light bakes in
+     the DARK theme's near-white and inherits that resolved value into light mode.
+     Measured — the press painted a 12% white wash on a white panel. */
+  --press-ground: rgba(255, 255, 255, 0.12);
   /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
      and a test can override these to fake a notch (env() reports 0px on desktop,
      so the bug is otherwise invisible to CI). Use as
@@ -316,6 +328,7 @@ body.light-mode {
   --well-bg: rgba(255, 255, 255, 0.55);
   --sheet-surface: #f7f4ee;
   --glass-hover: rgba(255, 255, 255, 0.92);
+  --press-ground: rgba(27, 42, 52, 0.12);
   --glass-border: rgba(28, 46, 58, 0.12);
   --bar-bg: rgba(247, 244, 238, 0.72);
   --glass-highlight: rgba(28, 46, 58, 0.2);
@@ -532,6 +545,31 @@ select,
   animation-duration: 30s;
 }
 
+/* THE DRIFT IS PAUSED WHERE IT CAN ONLY COST. Measured at rest, owner 1280:
+   rAF cadence over 2.5s ran 98 frames / p50 25.0ms (40fps); with ONLY these
+   three `fluidFloat` animations paused, 146 frames / p50 16.7ms (60fps) — and
+   pausing everything else as well bought 144, i.e. the blobs were the whole
+   third. They are 50vw circles under `filter: blur(100px)` (704px wide at 1280)
+   on a translate + scale, so the blurred layer re-rasterises every frame.
+   NOT DELETED: DESIGN.md names the night-sky ground as the site's signature, and
+   swapping it for a pre-blurred gradient is a VISUAL change that belongs in its
+   own demo with the owner. So it keeps drifting exactly where it is the
+   signature — the guest's home screen — and stands still on the back office,
+   which never shows the hero, and behind any other view, where the page's own
+   content covers it anyway. `animation-play-state` freezes the layer in place;
+   nothing moves, nothing disappears.
+   NB measured on this container's SOFTWARE rasteriser; the shape of the win is
+   real (three blurred 704px layers re-rasterising per frame), the fps figures
+   are not a claim about real hardware. */
+body.owner-mode .blob {
+  animation-play-state: paused;
+}
+/* Its own rule, NOT a second selector on the one above: a selector list is
+   dropped WHOLE if any part of it fails to parse, so an engine without :has()
+   would lose the back office's pause along with this one. */
+body:not(:has(#view-main.page-view.active)) .blob {
+  animation-play-state: paused;
+}
 @keyframes fluidFloat {
   0% {
     transform: translate(0, 0) scale(1);
@@ -608,17 +646,35 @@ select,
      browsers) the page must still show. */
   opacity: 1;
   transform: none;
-  animation: fluidFadeIn 0.7s var(--fluid-bezier);
+  /* ONE ARRIVAL PER NAVIGATION, and ONE definition of it. This was 700ms and
+     22px while the guest shell's own swap (gtFade, guest-app.css) was 380ms and
+     10px — the same gesture at two speeds, and the slower one on the surface
+     that navigates most. iOS pushes a screen in ~350ms. The guest figure wins,
+     the guest override is gone, and everything that fades a swapped-in block
+     reads the same keyframe. NB the CARDS inside a page must not rise again on
+     top of this: `bhubIn` is scoped to IN-PLACE docking (admin.css).
+     400, not the guest shell's measured 380: 380 is not on the motion system's
+     sanctioned duration set and 400 is, so taking the nearest step keeps §1's
+     'every system duration is on the set' true rather than widening the set for
+     one animation. 20ms nobody can see, against a gate that stays whole. */
+  animation: chbPageIn 400ms var(--out);
 }
-@keyframes fluidFadeIn {
+@keyframes chbPageIn {
   from {
     opacity: 0;
-    transform: translateY(22px) scale(0.992);
+    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+/* THE DAY SHEET APPEARS AT ONCE. A nav() page transition was REFUSED as a
+   feature for exactly this reason (CLAUDE.md): with no signal the sheet must be
+   THERE, not arriving. One already ships, so retiming it does not reopen that
+   pin — but the surface the refusal was about gets none of it. */
+body.offline-snap .page-view.active {
+  animation: none;
 }
 /* Staggered "rise" for the cottage cards on entry. Added by initCardRise and
            cleared on animationend so the hover lift still works afterwards. */
@@ -1397,8 +1453,8 @@ body.light-mode ::-webkit-scrollbar-thumb {
   cursor: pointer;
   border: 1px solid transparent;
   transition:
-    background 0.2s,
-    border-color 0.2s,
+    background 200ms var(--out),
+    border-color 200ms var(--out),
     transform 320ms var(--settle),
     filter 320ms var(--settle),
     opacity 300ms var(--settle);
@@ -1589,7 +1645,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   width: 72%;
   height: 72%;
   opacity: 0;
-  transition: opacity 0.12s linear;
+  transition: opacity 160ms var(--out);
 }
 .terms-box svg path {
   fill: none;
@@ -1775,7 +1831,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
   padding: 10px;
-  animation: cueBob 2.6s ease-in-out infinite;
+  /* On a house curve, and on `translate` rather than `transform`: the button is
+     centred with transform: translateX(-50%), and an animation on transform wins
+     outright over a transitioned one, so a press on the cue could never paint. */
+  animation: cueBob 2.6s var(--settle) infinite;
   display: none;
 }
 .hero-scroll-cue:hover,
@@ -1785,10 +1844,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
 @keyframes cueBob {
   0%,
   100% {
-    transform: translateX(-50%) translateY(0);
+    translate: 0 0;
   }
   50% {
-    transform: translateX(-50%) translateY(7px);
+    translate: 0 7px;
   }
 }
 @media (min-width: 900px) and (min-height: 700px) {
@@ -2026,8 +2085,14 @@ a.card {
    while the photo inside scaled 1.05. The lift stays — .glass-panel's hover is
    a documented card affordance — and the photo's zoom is the ONE moving thing;
    the scale and the accent shadow layer (below) are gone. */
+/* `:not(:active)` is the whole reason a card presses on a Mac. `.card:hover` and
+   `.card:active` are BOTH (0,2,0) and this one sits ~1450 lines later, so the
+   hover won for the entire hold: measured with a real held mouse press, the card
+   computed matrix(1.0121, 0, 0, 1.0121, 0, -7) with :active true — the lift, not
+   the press. Written as an exclusion rather than by moving the press rule,
+   because the press has to keep winning over `.glass-panel:hover` too. */
 @media (hover: hover) {
-  .card:hover {
+  .card:hover:not(:active) {
     transform: translateY(-7px);
   }
 }
@@ -2275,7 +2340,7 @@ a.card {
   cursor: pointer;
   font-size: var(--fs-body);
   flex-shrink: 0;
-  transition: background 0.2s;
+  transition: background 200ms var(--out);
 }
 .reviews-modal-close:hover {
   background: var(--glass-hover);
@@ -3172,7 +3237,7 @@ a.card {
   font-size: var(--fs-micro);
   font-weight: 700;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: all 200ms var(--out);
 }
 /* KEEP THE RED — the vocabulary above is a deliberate borrow from the hub, and
    "outstanding" is not "error". Fix the contrast INSIDE it: --danger is a FILL
@@ -4152,7 +4217,7 @@ a.card {
   padding: 9px 15px;
   position: relative;
   opacity: 1;
-  transition: opacity 0.25s ease;
+  transition: opacity 240ms var(--out);
 }
 .pay-step + .pay-step::before {
   content: '';
@@ -4782,7 +4847,7 @@ body.owner-mode #reserve-enquire-btn {
   margin-bottom: 20px;
   font-family: var(--font-sans);
   font-size: var(--fs-headline);
-  transition: border 0.3s;
+  transition: border 300ms var(--out);
 }
 /* A MOUSE CLICK ON A FIELD PAINTS NO RING, a keyboard focus does. This used to be
    a bare `:focus`, which is (0,1,0) and later in the sheet than the global ring
@@ -6051,8 +6116,8 @@ body.light-mode .tag-pimpernel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   transition:
-    background 0.2s,
-    border-color 0.2s;
+    background 200ms var(--out),
+    border-color 200ms var(--out);
 }
 .chat-chip:hover,
 .chat-chip:focus-visible {
@@ -6115,9 +6180,9 @@ body.light-mode .tag-pimpernel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   transition:
-    background 0.2s,
-    border-color 0.2s,
-    color 0.2s;
+    background 200ms var(--out),
+    border-color 200ms var(--out),
+    color 200ms var(--out);
 }
 .trip-chip:hover {
   background: var(--glass-hover);
@@ -6412,8 +6477,10 @@ body.light-mode .tag-pimpernel {
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-float);
+  /* --settle, not --spring: the release of a press must not swing past its own
+     resting size (the 0.5% rule). The hover lift rides the same clock. */
   transition:
-    transform 0.2s var(--spring),
+    transform 320ms var(--settle),
     opacity 0.25s var(--fluid-bezier);
 }
 .chat-fab svg {
@@ -7383,7 +7450,7 @@ body.owner-mode .chat-widget {
 }
 .settings-row .settings-row-chev {
   transition:
-    transform 0.3s var(--spring),
+    transform 320ms var(--settle),
     color 0.2s var(--fluid-bezier);
 }
 .settings-row:hover .settings-row-chev {
@@ -9325,7 +9392,7 @@ body.light-mode .feed-dot-bad {
   opacity: 0;
   transition:
     height 0.26s var(--fluid-bezier),
-    opacity 0.18s ease;
+    opacity 160ms var(--out);
 }
 @media (prefers-reduced-motion: reduce) {
   .gb2-stars.is-settling .gb2-star.is-on,
@@ -9462,7 +9529,7 @@ body.light-mode .feed-dot-bad {
   transition:
     background 0.2s var(--fluid-bezier),
     transform 320ms var(--settle), filter 320ms var(--settle),
-    border-color 0.2s ease;
+    border-color 200ms var(--out);
 }
 .hub-tile .ic {
   width: 22px;
@@ -10439,7 +10506,7 @@ body.light-mode .theme-switch .ts-i-sun {
   display: none;
   text-align: center;
   max-width: 280px;
-  animation: fluidFadeIn 0.4s var(--fluid-bezier);
+  animation: chbPageIn 400ms var(--out);
 }
 #loading-overlay.show-slow #loading-slow-msg {
   display: block;
@@ -10505,7 +10572,7 @@ body.light-mode .theme-switch .ts-i-sun {
   opacity: 0;
   pointer-events: none;
   transform: translateY(6px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 240ms var(--out), transform 240ms var(--out);
 }
 .oq-sync.show {
   opacity: 1;
@@ -11071,7 +11138,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   pointer-events: none;
   z-index: 0;
   transition:
-    translate 0.52s var(--spring),
+    translate 400ms var(--sheet),
     opacity 0.28s var(--fluid-bezier);
 }
 .admin-dock-indicator.ad-travel {
@@ -11093,7 +11160,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
 }
 @media (prefers-reduced-motion: reduce) {
   .admin-dock-indicator {
-    transition: opacity 0.2s ease;
+    transition: opacity 200ms var(--out);
     scale: none;
   }
   .admin-dock-indicator.ad-travel {
@@ -11570,8 +11637,8 @@ body.light-mode .hs-field:hover {
   cursor: pointer;
   transition:
     transform 0.15s var(--fluid-bezier),
-    background 0.15s,
-    color 0.15s;
+    background 160ms var(--out),
+    color 160ms var(--out);
 }
 .map-price-pill .mp-pill:hover,
 .map-price-pill.is-active .mp-pill {
@@ -11649,7 +11716,7 @@ body.light-mode .hs-field:hover {
   scroll-margin-top: calc(100px + var(--safe-t));
 }
 .fluid-swap {
-  animation: fluidFadeIn 0.5s var(--fluid-bezier);
+  animation: chbPageIn 400ms var(--out);
 }
 /* Per-cottage reviews block on the property page */
 .prop-reviews-head {
@@ -12865,4 +12932,60 @@ nav ul li a:not(.btn-glass)::before { content: ''; position: absolute; inset: -3
 }
 header.glass-panel {
   transition: transform 0.45s var(--fluid-bezier), opacity 0.45s var(--fluid-bezier), background-color 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier);
+}
+
+/* ============================================================
+   PRESS — the controls the system missed (PR: motion joins the owner's side)
+   ------------------------------------------------------------
+   TWO FAMILIES, deliberately different.
+
+   The SCALE family is the system's own press: a constant 4px of depth read from
+   --sc (chbPressDepth writes it on pointerdown), 80ms down on --in and 320ms
+   back up on --settle. It is for things that read as OBJECTS — a chip, a pill,
+   a tile, a bar, a photo.
+
+   The LIST family — rows in a joined run — presses with its GROUND instead. A
+   scale on one row of a 561-cell timeline lane, or on one of fourteen search
+   results, moves the row away from its neighbours' hairlines and reads as a
+   fault rather than a response. The ground is the row's whole surface, so it is
+   the honest thing to move.
+
+   ORDER IS LOAD-BEARING TWICE OVER: `.cmdk-row:active` and `.cmdk-row.is-sel`
+   are both (0,2,0), so the press is declared AFTER the selection or it will not
+   win during the touch; and several of these carry a hover rule of equal
+   specificity later in the file, which is why the hovers say `:not(:active)`.
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-fab:active,
+  .toast-close:active {
+    transform: scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+  /* The two photo cells take the scale WITHOUT the brightness: .gg-cell's hover
+     already darkens to 0.88, so adding the system's 0.94 would make a pressed
+     photo LIGHTER than a hovered one — the press saying the opposite of itself. */
+  .gallery-slide:active,
+  .gg-cell:active {
+    transform: scale(var(--sc, 0.97));
+    transition: transform 80ms var(--in);
+  }
+  /* The cue is centred with transform: translateX(-50%), so the press must
+     COMPOSE with it or the chevron jumps half its width to the right. Its bob
+     moved onto the independent `translate` property for the same reason —
+     an animation on `transform` wins outright over a transitioned one, so
+     while cueBob ran the press could not paint at all. */
+  .hero-scroll-cue:active {
+    transform: translateX(-50%) scale(var(--sc, 0.97));
+    filter: brightness(0.94);
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
+}
+/* The release is the base rule's transition, so each of these needs one — a
+   press with no way back snaps out of the compress. */
+.gallery-slide,
+.gg-cell,
+.toast-close,
+.hero-scroll-cue {
+  transition: transform 320ms var(--settle), filter 320ms var(--settle);
 }
