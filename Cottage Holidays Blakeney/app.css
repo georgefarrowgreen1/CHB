@@ -1257,14 +1257,70 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .glass-dialog-fields .input-glass {
   margin-bottom: 0;
 }
+/* {label, sub} rows — the day sheet's own .ods-qrow shape, so the queue reads
+   the same in the tray as it does on the sheet. */
+.glass-dialog-rows {
+  margin-top: 12px;
+  text-align: left;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.glass-dialog-rows .ods-qrow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.glass-dialog-rows .ods-qlabel {
+  font-weight: 600;
+  font-size: var(--fs-body);
+}
+.glass-dialog-rows .ods-qsub {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
 .glass-dialog-btns {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
   margin-top: 24px;
+  /* TWO NAMED OUTCOMES DO NOT ALWAYS FIT ONE ROW. Once Cancel says "Keep the
+     booking" beside "Cancel the booking", the pair needs 41px more than a
+     360px dialog has — measured, and both labels ran past their own pills.
+     They stack instead of shrinking: a clipped destructive label is the one
+     thing this must not do. `wrap-reverse` is what puts the action ON TOP and
+     the way out beneath it when they do (the iOS stacked-alert order); on a
+     single line it changes nothing at all. */
+  flex-wrap: wrap-reverse;
 }
-.glass-dialog-btns .btn-glass {
+.glass-dialog-btns > button {
+  min-width: max-content;
+  /* One PAIR: one size, one reach. Above the phone media block that lifts the
+     small controls, these measured 43 and 36px — the house floor is 44 and a
+     dialog's two answers should not differ in height either. */
+  min-height: 44px;
+}
+/* THE PRIMARY LOOKS PRIMARY. The pair was two outlined pills differing by 2px
+   of type and 9% of a border, so nothing said which button acts. OK takes the
+   accent fill; Cancel comes up to the same size and stays outlined. The
+   .btn-accent arm holds the geometry — that rule's guest-CTA 17px padding sits
+   LATER in the file and would make the primary 12px taller than its neighbour. */
+.glass-dialog-btns .btn-glass,
+.glass-dialog-btns .btn-glass.btn-accent {
   padding: 11px 26px;
+}
+#glass-dialog-cancel {
+  font-size: var(--fs-body);
+}
+/* DESTRUCTIVE: red ink, no fill. A "Delete the booking" dressed as the
+   inviting accent default is the one thing this pass must not ship. */
+#glass-dialog-ok.is-danger,
+#glass-dialog-ok.is-danger:hover {
+  background: none;
+  color: var(--danger-text);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  filter: none;
 }
 
 /* ---- Custom glass date-range picker (customer booking form) ---- */

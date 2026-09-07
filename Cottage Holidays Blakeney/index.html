@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=54">
+    <link rel="stylesheet" href="guest-app.css?v=56">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=332">
+    <link rel="stylesheet" href="app.css?v=334">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1604,7 +1604,7 @@
             <input type="text" class="input-glass glass-dialog-input" id="glass-dialog-input" style="display:none;">
             <div class="glass-dialog-btns">
                 <button class="btn-sm btn-edit" id="glass-dialog-cancel" style="display:none;" data-act="glassDialogResolve" data-arg="false">Cancel</button>
-                <button class="btn-glass" id="glass-dialog-ok" data-act="glassDialogResolve" data-arg="true">OK</button>
+                <button class="btn-glass btn-accent" id="glass-dialog-ok" data-act="glassDialogResolve" data-arg="true">OK</button>
             </div>
         </div>
     </div>
@@ -1670,12 +1670,18 @@
 
     <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="glass-panel modal-box">
-            <button type="button" class="modal-x" data-act="closeModal" aria-label="Close">✕</button>
-            <!-- The native-sheet structure: the form scrolls in its own region
-                 and the footer sits OUTSIDE it, so iOS overscroll can never
-                 drag the bar off the box bottom (owner's screenshot). -->
+            <!-- HEAD / scroll / FOOT as flex siblings. The head sat inside the
+                 scroller with the ✕ floating over it, so the form's controls slid
+                 under the circle at 55 of 60 scroll positions — it landed on the
+                 Adults '+', where elementFromPoint returned the ✕, so the tap
+                 closed the form instead of adding an adult. The footer had been
+                 docked outside for the same reason; the head had not. Out here
+                 the title stays visible as the form scrolls. -->
+            <div class="modal-head">
+                <h3 id="modal-title">Edit booking</h3>
+                <button type="button" class="modal-x" data-act="closeModal" aria-label="Close">✕</button>
+            </div>
             <div class="modal-scroll">
-            <h3 id="modal-title" style="font-family: var(--font-serif); font-size:var(--fs-display); margin-bottom: 10px;">Edit booking</h3>
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
@@ -2006,11 +2012,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=967"></script>
+    <script defer src="app.js?v=969"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=23"></script>
+    <script defer src="guest-app.js?v=25"></script>
 
 </body>
 </html>

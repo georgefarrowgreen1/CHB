@@ -1372,15 +1372,22 @@ let approveWill409 = false;
   // Fire-and-forget: glassAlert RESOLVES only when dismissed, so awaiting its
   // promise inside evaluate deadlocks against the click below (measured: the
   // suite hung right here for 10 minutes).
+  // Every shared option — title, accessible name, both button labels and the
+  // destructive style — must be REASSIGNED on each open. The claim is that this
+  // dialog shows its OWN, not that any particular word is on the button: the
+  // literal 'OK' held that only while most confirms had no label to leak.
   await page.evaluate(() => { glassAlert('plain message'); });
   await page.waitForTimeout(250);
   const plainDlg = await page.evaluate(() => ({
     shown: (document.getElementById('glass-dialog-title') || { style: {} }).style.display !== 'none',
     named: document.getElementById('glass-dialog').getAttribute('aria-labelledby'),
     ok: (document.getElementById('glass-dialog-ok') || {}).textContent,
+    cancel: (document.getElementById('glass-dialog-cancel') || {}).textContent,
+    danger: (document.getElementById('glass-dialog-ok') || { classList: { contains: () => false } }).classList.contains('is-danger'),
   }));
-  ok(!plainDlg.shown && plainDlg.named === 'glass-dialog-msg' && plainDlg.ok === 'OK',
-    'a plain dialog after it carries NO leaked title, name or label');
+  ok(!plainDlg.shown && plainDlg.named === 'glass-dialog-msg' && plainDlg.ok === 'OK'
+     && plainDlg.cancel === 'Cancel' && !plainDlg.danger,
+    `a plain dialog after it carries NO leaked title, name, label or style (${plainDlg.ok} / ${plainDlg.cancel} / danger=${plainDlg.danger})`);
   await page.click('#glass-dialog-ok');
   await page.waitForTimeout(250);
   const planPost = posts.filter((p) => p.action === 'set_payment_plan').pop();

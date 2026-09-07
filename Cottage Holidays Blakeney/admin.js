@@ -2211,7 +2211,7 @@ function openAccountPreview(bookingId, name) {
                          with "Customer account · " pushed the name into an ellipsis on a
                          phone — exactly the wrong half to lose.) -->
                     <span class="acct-preview-title">${name ? escapeHtml(name) : 'Customer account'}</span>
-                    <span class="acct-preview-note">Customer account · read-only, exactly what they see</span>
+                    <span class="acct-preview-note">Read-only · exactly what they see</span>
                 </div>
                 <button type="button" class="btn-sm btn-edit" data-act="closeAccountPreview" aria-label="Close preview">Close</button>
             </div>
@@ -8046,7 +8046,7 @@ async function cmdkFieldBack() {
     const inp = document.getElementById('cmdk-editor-field');
     if (inp && inp.value !== __cmdkFieldOrig) {
         let ok = true;
-        try { ok = await glassConfirm('Discard your unsaved changes?'); } catch (e) { ok = true; }
+        try { ok = await glassConfirm('Discard your unsaved changes?', 'Discard the changes', { danger: true }); } catch (e) { ok = true; }
         if (!ok) { try { inp.focus(); } catch (e) {} return; }
     }
     __cmdkField = null;
@@ -11400,7 +11400,7 @@ async function gbSave(id) {
 async function gbRemove(id) {
     const b = findBookingById(id);
     if (!b || !b.guestRating) return;
-    if (!(await glassConfirm('Remove this rating from the guest book? Deleting really deletes it.'))) return;
+    if (!(await glassConfirm('Remove this rating from the guest book? Deleting really deletes it.', 'Remove the rating', { danger: true }))) return;
     try {
         await apiPost('bookings.php', { action: 'rate_guest', id: b.dbId, overall: 0 });
         b.guestRating = null;
@@ -12980,7 +12980,7 @@ function acNewChat() {
 // The destructive one — this conversation only, said so, behind a confirm.
 async function acClearChat() {
     acSheetClose();
-    const okGo = await glassConfirm('Clear this conversation? It goes on every device — the others in the rail stay.');
+    const okGo = await glassConfirm('Clear this conversation? It goes on every device — the others in the rail stay.', 'Clear the conversation', { danger: true });
     if (!okGo) return;
     try { await apiPost('nightshift.php', { action: 'chat_clear', convo: __mcConvo || 0 }); } catch (e) {}
     __mcConvo = 0; // the server lands on the newest surviving conversation
@@ -13022,7 +13022,7 @@ async function acMemoryEdit() {
 async function acInstrEdit() {
     acSheetClose();
     const cur = (__mcState && __mcState.instr) || '';
-    const v = await glassPrompt('A standing instruction the model reads on every turn of this conversation — “two sentences, no lists”. Empty clears it.', cur);
+    const v = await glassPrompt('A standing instruction the model reads on every turn of this conversation — “two sentences, no lists”. Empty clears it.', cur, { title: 'Standing instruction', okLabel: 'Save the instruction' });
     if (v === null || v === undefined) return;
     try {
         const r = await apiPost('nightshift.php', { action: 'chat_instr', text: String(v) });
@@ -13455,7 +13455,7 @@ async function slAddFaq(q, prop, prefill) {
     if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
     const name = (propertyMeta[pk] || {}).name || pk;
     let a = '';
-    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || '')); } catch (e) { return; }
+    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || ''), { title: 'Answer this question', okLabel: 'Save the answer' }); } catch (e) { return; }
     a = (a || '').trim();
     if (!a) return; // cancelled or empty — leave the question in the list
     try {
@@ -14138,6 +14138,7 @@ async function setAccommodationPrivate(k, makePrivate) {
     if (makePrivate) {
         const ok = await glassConfirm(
             `Make "${name}" private?\n\nIt will be removed from your public website, but its bookings, payments and history are kept and you can still take new bookings for it in the back office.`,
+            'Make it private',
         );
         if (!ok) return;
     }
@@ -14871,7 +14872,7 @@ async function loadGuestList() {
 async function reinviteGuest(btn) {
     const email = btn.getAttribute('data-email') || '';
     if (!email) return;
-    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`))) return;
+    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`, 'Send the invitation'))) return;
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = 'Sending…';
@@ -14894,9 +14895,9 @@ async function resetGuestPassword(email) {
         return;
     }
     const next = await glassPrompt(
-        `Set a NEW password for ${email}\n\n(at least 4 characters — you'll tell the guest this):`,
+        `At least 4 characters — you'll tell the guest this.`,
         '',
-        { password: true },
+        { password: true, title: `New password for ${email}`, okLabel: 'Set the password' },
     );
     if (next === null) return;
     if (next.trim().length < 4) {
@@ -14918,18 +14919,18 @@ async function changeAdminPassword() {
         tryAccessBackOffice();
         return;
     }
-    const current = await glassPrompt('Enter your CURRENT admin password:', '', { password: true });
+    const current = await glassPrompt('Enter your current admin password.', '', { password: true, title: 'Change your password', okLabel: 'Continue' });
     if (current === null) return;
-    const next = await glassPrompt('Enter a NEW password (at least 4 characters):', '', {
-        password: true,
+    const next = await glassPrompt('Enter a new password — at least 4 characters.', '', {
+        password: true, title: 'Change your password', okLabel: 'Continue',
     });
     if (next === null) return;
     if (next.trim().length < 4) {
         glassAlert('Password must be at least 4 characters.');
         return;
     }
-    const confirmNext = await glassPrompt('Re-enter the NEW password to confirm:', '', {
-        password: true,
+    const confirmNext = await glassPrompt('Re-enter the new password to confirm.', '', {
+        password: true, title: 'Change your password', okLabel: 'Change my password',
     });
     if (confirmNext === null) return;
     if (confirmNext !== next) {
@@ -16243,6 +16244,7 @@ async function repeatExpense(id) {
     if (
         !(await glassConfirm(
             `Add a copy of "${x.category}${x.description ? ' · ' + x.description : ''}" (${gbp(x.amount)}) dated ${nd}?`,
+            'Add the copy',
         ))
     )
         return;
@@ -16270,7 +16272,7 @@ async function repeatExpense(id) {
     }
 }
 async function deleteExpense(id) {
-    if (!(await glassConfirm('Remove this expense?'))) return;
+    if (!(await glassConfirm('Remove this expense?', 'Remove the expense', { danger: true }))) return;
     try {
         await apiPost('expenses.php', { action: 'delete', id });
         await loadExpenses();
@@ -16396,8 +16398,9 @@ async function returnDeposit(bookingId) {
         return;
     }
     const entered = await glassPrompt(
-        `Amount to return (£). Collected: ${gbp(dh.held)}. Enter less to retain some for damage:`,
+        `Collected ${gbp(dh.held)}. Enter less to retain some for damage.`,
         String(dh.held),
+        { title: `Return ${chbSayFirst(booking.name || 'the guest')}’s deposit`, okLabel: 'Continue' },
     );
     if (entered === null) return;
     const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
@@ -16408,13 +16411,14 @@ async function returnDeposit(bookingId) {
     let note = '';
     if (amount < dh.held - 0.001) {
         const r = await glassPrompt(
-            'Reason for retaining the rest (shown to the guest), e.g. "broken lamp":',
+            'Reason for retaining the rest (shown to the guest), e.g. "broken lamp".',
             '',
+            { title: 'Why some is being kept', okLabel: 'Continue' },
         );
         if (r === null) return;
         note = r.trim();
     }
-    if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)))
+    if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`, `Return ${gbp(amount)}`)))
         return;
     try {
         const r = await chbWithReauth('returning ' + gbp(amount), () =>
@@ -16462,24 +16466,40 @@ async function cancelBooking(bookingId) {
     const loc = findBookingLocation(bookingId);
     const propKey = loc ? loc.propKey : '21a';
     const ps = paymentSummary(propKey, booking);
-    const entered = await glassPrompt(
-        `Cancel this booking. Rental refund (£) to the guest — 0 for none. Received so far: ${gbp(ps.deposit)}. (Any refundable damage deposit is returned automatically — don't add it here.)`,
-        String(ps.deposit || 0),
+    // ONE DIALOG, not three. This was glassPrompt(refund) → glassPrompt(reason)
+    // → glassConfirm, so a 5-line paragraph was the only label a prefilled
+    // number field had, and the first pop-up's buttons read "Cancel / OK" under
+    // a message beginning "Cancel this booking" — where Cancel meant KEEP it.
+    // glassForm exists for exactly this ("so recording a payment isn't three
+    // pop-ups in a row"); both outcomes are named on their own buttons.
+    const vals = await glassForm(
+        'This frees the dates and emails the guest. The refundable damage deposit is returned automatically.',
+        [
+            {
+                id: 'refund',
+                label: 'Rental refund to the guest (£)',
+                type: 'number',
+                min: 0,
+                step: 0.01,
+                value: ps.deposit || 0,
+                hint: `Received so far ${gbp(ps.deposit)} — 0 for none. Don't add the damage deposit here.`,
+            },
+            { id: 'reason', label: 'Reason (optional, shown to the guest)', type: 'text' },
+        ],
+        {
+            title: `Cancel ${chbSayFirst(booking.name || 'the guest')}’s booking`,
+            okLabel: 'Cancel the booking',
+            cancelLabel: 'Keep the booking',
+            danger: true,
+        },
     );
-    if (entered === null) return;
-    const refund = Math.round((parseFloat(entered) || 0) * 100) / 100;
+    if (vals === null) return;
+    const refund = Math.round((parseFloat(vals.refund) || 0) * 100) / 100;
     if (refund < 0) {
         glassAlert('Refund cannot be negative.');
         return;
     }
-    const reason = await glassPrompt('Reason for cancellation (optional, shown to the guest):', '');
-    if (reason === null) return;
-    if (
-        !(await glassConfirm(
-            `Cancel ${booking.name}'s booking${refund > 0 ? ` and refund ${gbp(refund)}` : ''}? This frees the dates and emails the guest.`,
-        ))
-    )
-        return;
+    const reason = String(vals.reason || '');
     try {
         // Deterministic op id over the payload (the saveModal discipline): a hand
         // retry of the SAME cancellation is answered from the op ledger instead of
@@ -17678,7 +17698,7 @@ async function loadAdminPasskeys() {
     }
 }
 async function deleteAdminPasskey(id) {
-    if (!(await glassConfirm('Remove this passkey? You can still sign in with your password.')))
+    if (!(await glassConfirm('Remove this passkey? You can still sign in with your password.', 'Remove the passkey', { danger: true })))
         return;
     try {
         await apiPost('passkeys.php', { action: 'admin_delete', id });
@@ -18210,8 +18230,9 @@ async function recordPayment(bookingId) {
             value: booking.depositPaid > total + 0.001 ? 'yes' : 'no',
         });
     const vals = await glassForm(
-        `Record a payment from ${booking.name || 'the guest'}.\nRental total ${gbp(total)}${askDep ? ` + ${gbp(dmg)} refundable damages deposit` : ''} — enter the rental received so far.`,
+        `Rental total ${gbp(total)}${askDep ? ` + ${gbp(dmg)} refundable deposit` : ''}.`,
         fields,
+        { title: `Record a payment from ${chbSayFirst(booking.name || 'the guest')}`, okLabel: 'Record it' },
     );
     if (vals === null) return;
     let dep = Math.max(0, parseFloat(vals.amount) || 0);
@@ -19031,6 +19052,7 @@ async function keepDeposit(bookingId) {
     if (
         !(await glassConfirm(
             'Keep the damage deposit (there was damage)? The guest will NOT be refunded. This is recorded as retained income.',
+            'Keep it',
         ))
     )
         return;
@@ -19052,6 +19074,7 @@ async function captureHold(bookingId) {
     if (
         !(await glassConfirm(
             'Capture the full damage hold? Use this only if there IS damage — it takes the held amount. (If the damage was less, capture then refund the difference.)',
+            'Capture the hold',
         ))
     )
         return;
@@ -19072,6 +19095,7 @@ async function releaseHold(bookingId) {
     if (
         !(await glassConfirm(
             "Release the damage hold? This frees the held funds on the guest's card.",
+            'Release the hold',
         ))
     )
         return;
@@ -21238,7 +21262,7 @@ async function keysafeRotate(pk) {
         next
             ? `${next.name || 'The next guest'} ${next.checkIn <= todayDashed() ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — they see this code on their booking page only after you confirm.`
             : 'No upcoming booking — the new code is recorded for the cottage.',
-        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
+        [{ id: 'code', label: 'New 4-digit code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
         { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
     );
     if (!vals) return; // backed out: nothing recorded, nothing shown to anyone
@@ -21282,7 +21306,7 @@ async function odsKeysafe(pk) {
                 ? `${next.name || 'A platform guest'} — share the code in the platform’s messages once it’s set; platform guests don’t see this site.`
                 : `${next.name || 'The next guest'} — their code goes live on their booking page when the signal returns, never before the safe is set.`
             : 'Recorded for the cottage; posts itself when the signal returns.'),
-        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
+        [{ id: 'code', label: 'New 4-digit code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
         { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
     );
     if (!vals) return;
@@ -22280,7 +22304,7 @@ async function openBlockDates(prefill) {
     // and here it is load-bearing: the guided walkthrough's one step says "tap
     // Block", and against the default "OK" that instruction named a button the
     // dialog did not have. ui-test-coach holds the two in step.
-    const vals = await glassForm('Block out dates', [
+    const vals = await glassForm('', [
         {
             id: 'prop',
             label: 'Cottage',
@@ -22300,7 +22324,7 @@ async function openBlockDates(prefill) {
             bothMsg: 'Pick the free-again morning too',
             hint: 'The second date is the checkout morning — the cottage is free again from then.',
         },
-    ], { okLabel: BLOCK_DATES_OK });
+    ], { title: 'Block out dates', okLabel: BLOCK_DATES_OK });
     if (vals === null) return;
     const key = (vals.prop || '').trim();
     const from = ((vals.range && vals.range.from) || '').trim();
@@ -23812,6 +23836,11 @@ async function loadNewsletter() {
     }
     const active = r.active || 0,
         total = r.total || 0;
+    // Stashed so the send confirm's BUTTON can state the scale ("Send to 412
+    // subscribers") — the bulk chase's informed-confirm posture. This page is
+    // the only route to that button, so the figure is the one just rendered;
+    // unknown falls back to a countless label rather than inventing a number.
+    __nlActive = active;
     const recent = (r.recent || []).filter((s) => !s.unsubscribed_at).slice(0, 12);
     const list = recent.length
         ? `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
@@ -24394,6 +24423,7 @@ async function saveNightAppUrl(btn) {
     const v = await glassPrompt(
         'Paste an address of your own to download the Mac app from — your web space, a shared drive, anywhere https.\n\nLeave it empty to go back to the newest build GitHub made.',
         now,
+        { title: 'Where the Mac app downloads from', okLabel: 'Save the address' },
     );
     if (v === null) return; // cancelled: nothing said, nothing changed
     const url = String(v).trim();
@@ -24596,7 +24626,7 @@ async function saveBackupPass(btn) {
         glassAlert('That passphrase is too short — use at least 12 characters. A few unrelated words is ideal.');
         return;
     }
-    if (!v && !(await glassConfirm('Clear the passphrase? Monday\'s email will then carry the report only, with no copy of the backup attached.'))) return;
+    if (!v && !(await glassConfirm('Clear the passphrase? Monday\'s email will then carry the report only, with no copy of the backup attached.', 'Clear the passphrase', { danger: true }))) return;
     try {
         await saveContent('backup-passphrase', v);
     } catch (e) {
@@ -25144,6 +25174,7 @@ async function tcGuestLogin(btn) {
     if (
         !(await glassConfirm(
             'Open the guest app signed in as a test guest?\n\nThis signs THIS browser in as the guest, which ends your admin session here. Tip: open it in a private/incognito window to stay signed in as admin in this one.',
+            'Sign in as the test guest',
         ))
     )
         return;
@@ -25202,6 +25233,8 @@ async function tcPay(id, btn) {
         tcSquare.production &&
         !(await glassConfirm(
             'Square is in PRODUCTION (live) mode — paying will make a REAL charge. Continue?',
+            'Make a real charge',
+            { danger: true },
         ))
     )
         return;
@@ -25247,7 +25280,7 @@ async function tcBookingEmail(id, action, btn) {
     }
 }
 async function tcDeleteBooking(id) {
-    if (!(await glassConfirm('Delete this test booking?'))) return;
+    if (!(await glassConfirm('Delete this test booking?', 'Delete the test booking', { danger: true }))) return;
     try {
         await apiPost('testcentre.php', { action: 'delete_data', type: 'booking', id });
         toast('Test booking deleted.');
@@ -25324,6 +25357,8 @@ async function tcPurgeData() {
     if (
         !(await glassConfirm(
             'Remove ALL test data? This deletes every [CHB-TEST] booking and its payments.',
+            'Remove all test data',
+            { danger: true },
         ))
     )
         return;
@@ -25335,6 +25370,9 @@ async function tcPurgeData() {
         glassAlert(e.message || "Couldn't purge.");
     }
 }
+// The active-subscriber count last rendered by the newsletter page (null until
+// it has been). Read only by the send confirm's button label.
+let __nlActive = null;
 async function sendBroadcast() {
     const subEl = document.getElementById('nl-subject'),
         bodyEl = document.getElementById('nl-body');
@@ -25351,7 +25389,14 @@ async function sendBroadcast() {
         show('A subject and a message are both required.', false);
         return;
     }
-    if (!(await glassConfirm('Send this to all active subscribers now?'))) return;
+    const nSub = __nlActive;
+    if (
+        !(await glassConfirm(
+            'Send this to all active subscribers now?',
+            nSub == null ? 'Send it now' : `Send to ${nSub} subscriber${nSub === 1 ? '' : 's'}`,
+        ))
+    )
+        return;
     show('Sending…', true);
     try {
         const r = await apiPost('newsletter.php', { action: 'broadcast', subject, body: bodyText });
@@ -25368,7 +25413,7 @@ async function sendBroadcast() {
     }
 }
 async function notifyWaitlist(id) {
-    if (!(await glassConfirm('Email this guest that dates may now be available?'))) return;
+    if (!(await glassConfirm('Email this guest that dates may now be available?', 'Send the email'))) return;
     try {
         await apiPost('waitlist.php', { action: 'notify', id });
         toast('Guest emailed.');
@@ -25378,7 +25423,7 @@ async function notifyWaitlist(id) {
     }
 }
 async function deleteWaitlist(id) {
-    if (!(await glassConfirm('Remove this waitlist entry?'))) return;
+    if (!(await glassConfirm('Remove this waitlist entry?', 'Remove the entry', { danger: true }))) return;
     try {
         await apiPost('waitlist.php', { action: 'delete', id });
         loadWaitlist();
@@ -25547,7 +25592,7 @@ async function setLeadStatus(id, status) {
     }
 }
 async function deleteLead(id) {
-    if (!(await glassConfirm('Delete this review permanently?'))) return;
+    if (!(await glassConfirm('Delete this review permanently?', 'Delete the review', { danger: true }))) return;
     try {
         await apiPost('leads.php', { action: 'delete', id });
         await loadLeadModeration();
@@ -25652,7 +25697,7 @@ async function setReviewStatus(id, status) {
     }
 }
 async function deleteGuestReview(id) {
-    if (!(await glassConfirm('Delete this guest review permanently?'))) return;
+    if (!(await glassConfirm('Delete this guest review permanently?', 'Delete the review', { danger: true }))) return;
     try {
         await apiPost('reviews.php', { action: 'delete', id });
         await loadGuestReviewModeration();
@@ -25813,9 +25858,9 @@ async function saveReviews() {
                 ? 'One review has no cottage set.'
                 : `${stranded} reviews have no cottage set.`) +
                 '\n\nA review with no cottage does not appear on any cottage page, and it is left out of' +
-                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.' +
-                '\n\nOK = save anyway  ·  Cancel = go back and pick a cottage',
+                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.',
             'Save anyway',
+            { cancelLabel: 'Go back and pick one' },
         );
         if (!ok) return;
     }
@@ -26406,7 +26451,7 @@ const CHB_WEEKLY_EMAILS = {
 async function sendWeeklyEmailNow(which, btn) {
     const spec = CHB_WEEKLY_EMAILS[which];
     if (!spec) return;
-    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`))) {
+    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`, 'Send it to me'))) {
         return;
     }
     const was = btn ? btn.textContent : '';
@@ -26438,6 +26483,7 @@ async function sendSampleEmails(btn) {
     if (
         !(await glassConfirm(
             'Send a [SAMPLE]-marked copy of every guest email (confirmation, arrival info, payment request, receipt, review request…) to your owner inbox?',
+            'Send the samples',
         ))
     )
         return;
@@ -28143,7 +28189,7 @@ async function draftEnquiryReply() {
     if (!t || t.kind !== 'enquiry' || !t.enq) return;
     const body = document.getElementById('enq-email-body');
     if (!body) return;
-    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?"))) return;
+    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?", 'Replace it'))) return;
     body.value = chbDraftEnquiryReply(t.enq);
     body.focus();
     try { body.setSelectionRange(0, 0); body.scrollTop = 0; } catch (e) {}
@@ -28675,7 +28721,7 @@ async function emailTplEditSave(id) {
 async function emailTplDelete(id) {
     const t = emailTplList().find((x) => x.id === id);
     if (!t) return;
-    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`);
+    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`, 'Delete the template', { danger: true });
     if (!okGo) return;
     const prev = siteContent[EMAIL_TPL_KEY];
     const list = emailTplList().filter((x) => x.id !== id);
@@ -29016,15 +29062,22 @@ async function chbReauthPasskey() {
 async function chbReauthPrompt(what) {
     const askedFor = what || 'this';
     if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
-        const useKey = await glassConfirm(
-            'Confirm it is you before ' + askedFor + '.\n\nOK = Face ID / Touch ID / device PIN\nCancel = type your password',
-            'Use a passkey',
-        );
+        // TWO WAYS TO PROVE IT, ONE ON EACH BUTTON. This used to explain buttons
+        // it did not have ("OK = Face ID … Cancel = type your password") while
+        // the pair read "Use a passkey" / "Cancel" — so Cancel, the only word
+        // that reads as backing out, opened the password box instead. `tri`
+        // makes Escape and the backdrop mean NEITHER, which is the way out.
+        const useKey = await glassConfirm('Before ' + askedFor + '.', 'Use a passkey', {
+            title: 'Confirm it’s you',
+            cancelLabel: 'Type my password',
+            tri: true,
+        });
+        if (useKey === null) return false; // backed out — nothing is confirmed
         if (useKey && (await chbReauthPasskey())) return true;
     }
-    const got = await glassForm('Confirm it is you before ' + askedFor + '.', [
+    const got = await glassForm('Before ' + askedFor + '.', [
         { id: 'pw', label: 'Your password', type: 'password' },
-    ], { okLabel: 'Confirm' });
+    ], { title: 'Confirm it’s you', okLabel: 'Confirm it’s me' });
     if (!got || !got.pw) return false;
     try {
         await apiPost('auth.php', { action: 'admin_reauth_password', password: got.pw });
@@ -29374,6 +29427,7 @@ async function approveEnquiry(enqId) {
         if (
             !(await glassConfirm(
                 `Heads up: these dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propName}. Approve anyway?`,
+                'Approve it anyway',
             ))
         )
             return;
@@ -29752,7 +29806,7 @@ async function expDelete(id) {
         if (row) row.remove();
         return;
     }
-    if (!(await glassConfirm('Delete this listing?'))) return;
+    if (!(await glassConfirm('Delete this listing?', 'Delete the listing', { danger: true }))) return;
     try {
         await apiPost('experiences.php', { action: 'delete', id });
         await loadExperiencesAdmin();
@@ -30472,7 +30526,7 @@ async function mailboxMarkUnread(uid) {
     }
 }
 async function mailboxDelete(uid) {
-    if (!(await glassConfirm('Delete this email from the mailbox? This can’t be undone.'))) return;
+    if (!(await glassConfirm('Delete this email from the mailbox? This can’t be undone.', 'Delete the email', { danger: true }))) return;
     try {
         await apiPost('mailbox.php', { action: 'delete', uid });
         __mbxMessages = __mbxMessages.filter((m) => m.uid !== uid);

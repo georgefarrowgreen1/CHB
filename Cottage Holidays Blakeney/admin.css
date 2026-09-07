@@ -3404,8 +3404,15 @@ body.light-mode .cmdk-editor-input {
 
 /* Guest typeahead in Add Booking — a dropdown of past guests under the name
    field, so a repeat guest is one tap. Glass surface to match the modal. */
+/* The 20px lives on the WRAPPER, not the input: `top: calc(100% + 4px)` is
+   measured from the wrapper, so with the margin on the field it floated 24px
+   down — over the Email and Phone labels rather than under Name. */
 .modal-name-wrap {
   position: relative;
+  margin-bottom: 20px;
+}
+.modal-name-wrap .input-glass {
+  margin-bottom: 0;
 }
 .modal-suggest {
   position: absolute;
@@ -3413,11 +3420,15 @@ body.light-mode .cmdk-editor-input {
   right: 0;
   top: calc(100% + 4px);
   z-index: 60;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-filter);
-  -webkit-backdrop-filter: var(--glass-filter);
+  /* OPAQUE. It was --glass-bg (0.02 alpha in dark) + a backdrop-filter that
+     cannot blur inside the box's own backdrop root (the .modal-foot comment
+     records the same finding) — so a guest's name painted over the placeholder.
+     --sheet-surface is already registered in a11y SURFACES. */
+  background: var(--sheet-surface);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel);
+  /* A 64–88px popover wearing the 28–40px panel radius read as a shape, not a
+     list. The CELL radius is the tier a list of rows belongs to. */
+  border-radius: var(--r-sm);
   box-shadow: var(--shadow-panel, 0 10px 34px rgba(0, 0, 0, 0.28));
   overflow-y: auto;
   max-height: 232px;
@@ -3425,8 +3436,10 @@ body.light-mode .cmdk-editor-input {
 .modal-suggest-row {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1px;
   width: 100%;
+  min-height: 44px;
   text-align: left;
   padding: 9px 13px;
   background: none;
@@ -5562,17 +5575,33 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 #edit-modal .modal-scroll {
     overflow-y: auto; overscroll-behavior: contain;
     min-height: 0; flex: 1 1 auto;
-    padding: 35px var(--mpad) 0;
+    padding: 4px var(--mpad) 0;
+}
+/* The head is a flex SIBLING of the scroller, not its first child: the title
+   stays put while the form moves under it, and the ✕ has a bar of its own to
+   sit in rather than floating over whatever has scrolled beneath. */
+.modal-head {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 16px var(--mpad) 12px;
+}
+.modal-head #modal-title {
+    font-family: var(--font-serif); font-size: var(--fs-title); margin: 0;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 @media (max-width: 639px) {
     #edit-modal .modal-box { --mpad: 22px; }
-    #edit-modal .modal-scroll { padding: 26px var(--mpad) 0; }
+    #edit-modal .modal-scroll { padding: 2px var(--mpad) 0; }
+    .modal-head { padding: 12px var(--mpad) 8px; }
 }
+/* In the head's flow now, never absolute over the scroller. `relative` is for
+   the hit region only — it keeps the 36px circle and reaches the 44px floor
+   (the round-seven rule), the look unchanged. */
 .modal-x {
-    position: absolute; top: 16px; right: 16px; width: 36px; height: 36px;
+    position: relative; flex: 0 0 auto; width: 36px; height: 36px;
     border-radius: 50%; border: 1px solid var(--glass-border); background: none;
     color: var(--text-light); font-family: inherit; font-size: var(--fs-body); cursor: pointer; z-index: 3;
 }
+.modal-x::before { content: ''; position: absolute; inset: -4px; }
 /* Inside the box, so sentence case at 600 — 'The stay' / 'The guest' / 'Money'
    were the last tracked-caps captions in a modal. */
 .modal-sec {

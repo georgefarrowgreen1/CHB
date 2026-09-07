@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 600;
+const ADMIN_BUNDLE_V = 602;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 259;
+const ADMIN_CSS_V = 261;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1038,9 +1038,19 @@ async function oqTrayOpen() {
         toast(__chbNetOff ? 'Nothing waiting to send.' : 'Nothing waiting — every change is on the server.');
         return;
     }
-    const lines = items.map((it) => '• ' + (it.label || it.endpoint || 'a change') + (it.at ? ' — saved ' + oqAgo(it.at) : ''));
-    glassAlert('Waiting to send when the signal returns:\n\n' + lines.join('\n')
-        + '\n\nThese post themselves the moment the connection comes back.');
+    // ROWS, not a typed bullet list — the {label, sub} shape #ods-queue already
+    // renders, so the queue reads the same wherever it is seen. It stays a
+    // DIALOG rather than scrolling to that section: the pill is reachable from
+    // every view, and a control that behaves differently by view is worse.
+    glassDialog({
+        type: 'alert',
+        title: 'Waiting to send',
+        message: 'These post themselves the moment the connection comes back.',
+        rows: items.map((it) => ({
+            label: it.label || it.endpoint || 'A change',
+            sub: 'saved ' + oqAgo(it.at) + ' · posts itself when the signal returns',
+        })),
+    });
 }
 let __oqFlushing = false;
 async function oqFlush() {
@@ -3634,6 +3644,7 @@ async function exportGuestData(btn) {
 async function deleteGuestAccount() {
     const ok = await glassConfirm(
         'Delete your account?\n\nThis erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised (your name & contact details removed). This cannot be undone.',
+        'Delete my account', { danger: true },
     );
     if (!ok) return;
     try {
@@ -4071,7 +4082,7 @@ async function loadPasskeys() {
     }
 }
 async function deletePasskey(id) {
-    if (!(await glassConfirm('Remove this passkey?'))) return;
+    if (!(await glassConfirm('Remove this passkey?', 'Remove the passkey', { danger: true }))) return;
     try {
         await apiPost('passkeys.php', { action: 'delete', id });
         loadPasskeys();
@@ -6784,7 +6795,7 @@ function renderNotifyEmails(primary, extras) {
     box.innerHTML = primaryRow + extraRows;
 }
 async function removeNotifyEmail(email) {
-    if (!(await glassConfirm(`Stop sending owner alerts to ${email}?`))) return;
+    if (!(await glassConfirm(`Stop sending owner alerts to ${email}?`, 'Stop the alerts'))) return;
     try {
         await apiPost('notify-recipients.php', { action: 'remove', email });
         const list = await apiPost('notify-recipients.php', { action: 'list' });
@@ -7873,7 +7884,9 @@ async function adminPasskeyFirst(skipConfirm) {
     if (
         !skipConfirm &&
         !(await glassConfirm(
-            'Sign in with a passkey?\n\nOK = use Face ID / Touch ID / device PIN\nCancel = use username & password',
+            'Face ID, Touch ID or your device PIN.',
+            'Use a passkey',
+            { title: 'Sign in', cancelLabel: 'Use my password' },
         ))
     )
         return false;
@@ -10248,6 +10261,7 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
             ? `This charge took ${gbp(maxAmount + dep)} — ${gbp(maxAmount)} of the stay plus a ${gbp(dep)} refundable deposit.\nRefund up to ${gbp(maxAmount)} here. The ${gbp(dep)} goes back through “Return deposit”, which records that it has.`
             : `Refund amount (£). Up to ${gbp(maxAmount)}:`,
         String(maxAmount),
+        { title: 'Refund to the card', okLabel: 'Continue' },
     );
     if (entered === null) return;
     const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
@@ -10259,7 +10273,7 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
         );
         return;
     }
-    if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`))) return;
+    if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`, `Refund ${gbp(amount)}`, { danger: true }))) return;
     try {
         // Money out → the server asks for a fresh confirmation (require_reauth).
         // chbWithReauth prompts and retries; it lives in admin.js, so this
@@ -11694,7 +11708,7 @@ async function chatSendArrival(bid) {
 }
 async function chatSendBalance(bid) {
     if (!__msgThreadId) return;
-    if (!(await glassConfirm('Email this guest a secure link to pay their balance?'))) return;
+    if (!(await glassConfirm('Email this guest a secure link to pay their balance?', 'Send the link'))) return;
     try {
         await apiPost('messages.php', {
             action: 'send_balance',
@@ -11858,7 +11872,7 @@ async function archiveCurrentThread() {
 // Permanently delete the open conversation and its messages.
 async function deleteCurrentThread() {
     if (!__msgThreadId) return;
-    if (!(await glassConfirm('Delete this conversation and all its messages permanently?'))) return;
+    if (!(await glassConfirm('Delete this conversation and all its messages permanently?', 'Delete the conversation', { danger: true }))) return;
     try {
         await apiPost('messages.php', { action: 'delete', thread_id: __msgThreadId });
         closeMessagesModal();
@@ -11965,7 +11979,7 @@ async function accomMovePhoto(k, i, dir) {
     await accomSavePhotos(k, imgs);
 }
 async function accomRemovePhoto(k, i) {
-    if (!(await glassConfirm('Remove this photo?'))) return;
+    if (!(await glassConfirm('Remove this photo?', 'Remove the photo', { danger: true }))) return;
     const imgs = accomImages(k);
     imgs.splice(i, 1);
     await accomSavePhotos(k, imgs);
@@ -12731,7 +12745,7 @@ async function loadGuestPhotosAdmin() {
         .join('')}</div>`;
 }
 async function moderatePhoto(id, action) {
-    if (action === 'delete' && !(await glassConfirm('Delete this photo permanently?'))) return;
+    if (action === 'delete' && !(await glassConfirm('Delete this photo permanently?', 'Delete the photo', { danger: true }))) return;
     try {
         await apiPost('photos.php', { action, id });
         loadGuestPhotosAdmin();
@@ -13380,6 +13394,32 @@ function glassDialog(opts) {
                 return;
             }
             msg.innerText = opts.message || '';
+            msg.style.display = opts.message ? '' : 'none';
+            // Optional ROWS — {label, sub} in the day sheet's .ods-qrow shape (the
+            // queue tray). A NARROW slot, never a raw-HTML one: the shared dialog
+            // must not gain an injection point for one caller, so both halves go
+            // through escapeHtml. Emptied on every open — the okLabel rule.
+            let rowsEl = document.getElementById('glass-dialog-rows');
+            if (!rowsEl && Array.isArray(opts.rows) && opts.rows.length) {
+                rowsEl = document.createElement('div');
+                rowsEl.id = 'glass-dialog-rows';
+                rowsEl.className = 'glass-dialog-rows';
+                msg.insertAdjacentElement('afterend', rowsEl);
+            }
+            if (rowsEl) {
+                const rws = Array.isArray(opts.rows) ? opts.rows : [];
+                rowsEl.innerHTML = rws
+                    .map(
+                        (r) =>
+                            '<div class="ods-qrow"><span class="ods-qlabel">' +
+                            escapeHtml(String((r && r.label) || '')) +
+                            '</span>' +
+                            (r && r.sub ? '<span class="ods-qsub">' + escapeHtml(String(r.sub)) + '</span>' : '') +
+                            '</div>',
+                    )
+                    .join('');
+                rowsEl.style.display = rws.length ? 'block' : 'none';
+            }
             // Optional PHOTO (data: URI) — the deposit sweep's evidence. The
             // node is SHARED, so it is reassigned on each open (the okLabel
             // rule) or a photo haunts the next plain confirm.
@@ -13457,6 +13497,13 @@ function glassDialog(opts) {
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
                                 (f.min != null ? ` min="${f.min}"` : '') +
                                 (f.step != null ? ` step="${f.step}"` : '') +
+                                // KEYBOARD HINTS — a four-digit key-safe code used to
+                                // raise the full QWERTY board and invite autofill for a
+                                // secret. Additive: absent, the field renders as before.
+                                (f.inputmode ? ` inputmode="${escapeHtml(String(f.inputmode))}"` : '') +
+                                (f.pattern ? ` pattern="${escapeHtml(String(f.pattern))}"` : '') +
+                                (f.maxlength != null ? ` maxlength="${Number(f.maxlength)}"` : '') +
+                                (f.autocomplete ? ` autocomplete="${escapeHtml(String(f.autocomplete))}"` : '') +
                                 // Prefill (the key safe dialog's generated code) —
                                 // additive: absent def renders exactly as before.
                                 (f.def != null ? ` value="${escapeHtml(String(f.def))}"` : '') +
@@ -13476,12 +13523,20 @@ function glassDialog(opts) {
                 if (!isForm) fields.innerHTML = '';
             }
             cancel.style.display = opts.type === 'alert' ? 'none' : 'inline-block';
-            // The OK button may NAME what it is about to do ("Send 2 requests"), so a
-            // confirm over several records can state its count in the button rather
-            // than only in the prose. Always reassigned — the node is shared by every
-            // dialog, so a custom label must not leak into the next plain confirm.
+            // The OK button NAMES what it does ("Delete the booking"), and Cancel
+            // may name the OTHER outcome where backing out is itself a choice
+            // ("Keep the booking"). BOTH are shared nodes, so BOTH are reassigned
+            // on every open — a label must never leak into the next plain confirm.
             const okBtn = document.getElementById('glass-dialog-ok');
-            if (okBtn) okBtn.textContent = opts.okLabel || 'OK';
+            if (okBtn) {
+                okBtn.textContent = opts.okLabel || 'OK';
+                // The primary looks primary (the accent fill) — except when it is
+                // DESTRUCTIVE, where the ink goes red on no fill rather than
+                // dressing "Delete" as the inviting default.
+                okBtn.classList.toggle('btn-accent', !opts.danger);
+                okBtn.classList.toggle('is-danger', !!opts.danger);
+            }
+            cancel.textContent = opts.cancelLabel || 'Cancel';
             __glassDlgResolve = (ok) => {
                 let formVals = null;
                 if (isForm && ok) {
@@ -13499,7 +13554,11 @@ function glassDialog(opts) {
                 __glassDlgResolve = null;
                 if (opts.type === 'prompt') resolve(ok ? inp.value : null);
                 else if (opts.type === 'form') resolve(ok ? formVals : null);
-                else if (opts.type === 'confirm') resolve(!!ok);
+                // `tri`: a confirm whose Cancel is a real SECOND CHOICE, not a
+                // way out ("Use a passkey" / "Type my password"). Escape and the
+                // backdrop then have to mean NEITHER — resolving them as Cancel
+                // would make backing out of a refund start a password box.
+                else if (opts.type === 'confirm') resolve(opts.tri && ok === null ? null : !!ok);
                 else resolve(true);
             };
             o.classList.add('open');
@@ -13544,11 +13603,18 @@ function gdfOpenDates(id) {
 function glassAlert(message) {
     return glassDialog({ type: 'alert', message });
 }
-function glassConfirm(message, okLabel) {
-    return glassDialog({ type: 'confirm', message, okLabel });
+// opts may carry {title, cancelLabel, danger, tri} — see glassDialog.
+function glassConfirm(message, okLabel, opts) {
+    return glassDialog(Object.assign({ type: 'confirm', message, okLabel }, opts || {}));
 }
+// opts: {password, title, okLabel, cancelLabel, danger} — a typed answer can
+// name itself and say what pressing the button will do.
 function glassPrompt(message, def, opts) {
-    return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) });
+    const o = opts || {};
+    return glassDialog({
+        type: 'prompt', message, def, password: !!o.password,
+        title: o.title, okLabel: o.okLabel, cancelLabel: o.cancelLabel, danger: o.danger,
+    });
 }
 // Several labelled inputs on one dialog. fields: [{id,label,type,value,min,step,
 // placeholder,hint}]. Resolves {id:value,…} on OK, null on Cancel. opts may
@@ -13583,7 +13649,7 @@ async function previewAndSendEmail(opts) {
     } catch (e) {}
     const ok = got
         ? await showSendConfirm({ subject, html, text, to: opts.to, sendLabel: opts.sendLabel })
-        : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`);
+        : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`, opts.sendLabel || 'Send it');
     if (!ok) return false;
     // Report whether it WENT, not whether the owner CONFIRMED. It used to `return !!ok`,
     // so an inline act strip said "sent" for a send that had failed or been refused —
@@ -13759,7 +13825,10 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'Escape') {
         e.preventDefault();
-        glassDialogResolve(false);
+        // NULL, not false: on an ordinary dialog the resolver folds it back to
+        // Cancel, but on a `tri` confirm (whose Cancel is a second choice)
+        // Escape has to mean "neither" or there is no way out at all.
+        glassDialogResolve(null);
     }
 });
 // Close the reviews modal on Escape or backdrop click
@@ -17306,10 +17375,18 @@ function decodeEntities(str) {
 // ===================================================================
 function openModal() {
     document.getElementById('edit-modal').classList.add('open');
-    // Land the owner ready to type (guest name is the first blank on an add).
+    // THE FORM OPENS AT ITS TOP. Focusing the name field scrolled it into view
+    // — measured scrollTop 337 at open — so the STAY (cottage + dates, what this
+    // form leads with) was already off screen, and on a phone the keyboard
+    // covered the rest: the rule the guest enquiry form already records. Kept
+    // only where the pointer is fine, with preventScroll and a reset.
+    const sc = document.querySelector('#edit-modal .modal-scroll');
+    if (sc) sc.scrollTop = 0;
     setTimeout(() => {
-        const nm = document.getElementById('modal-name');
-        if (nm && !nm.value) nm.focus();
+        const nm = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-name'));
+        const fine = typeof matchMedia === 'function' && matchMedia('(hover: hover) and (pointer: fine)').matches;
+        if (nm && !nm.value && fine) nm.focus({ preventScroll: true });
+        if (sc) sc.scrollTop = 0;
     }, 120);
 }
 function closeModal() {
@@ -18081,7 +18158,7 @@ function openEditBooking(bookingId) {
     // stays auditable via the hub's change history either way. Non-past bookings
     // open synchronously (cmdkPrefillEditDates relies on that).
     if (typeof hasCheckedOut === 'function' && hasCheckedOut(b)) {
-        glassConfirm('This stay is finished — it’s a record now (invoices and history point at it). Edit anyway?').then((okGo) => {
+        glassConfirm('This stay is finished — it’s a record now (invoices and history point at it). Edit anyway?', 'Edit it anyway').then((okGo) => {
             if (okGo) openEditBookingNow(bookingId);
         });
         return;
@@ -18248,8 +18325,9 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
     if (res && res.email_warn) {
         if (res.suggest) {
             const useIt = await glassConfirm(
-                res.message +
-                    `\n\nDid you mean ${res.suggest}?\n\nOK = use ${res.suggest}\nCancel = keep ${payload.email}`,
+                res.message + `\n\nDid you mean ${res.suggest}?`,
+                `Use ${res.suggest}`,
+                { cancelLabel: `Keep ${payload.email}` },
             );
             if (useIt) {
                 payload.email = res.suggest; // corrected address re-validates cleanly
@@ -18257,20 +18335,20 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
                 extra.override_email = true; // keep as typed, proceed
             }
         } else {
-            if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?'))) return null;
+            if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?', 'Save it anyway'))) return null;
             extra.override_email = true;
         }
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
     // Occupancy (party over the property's normal limit) — deliberate confirm.
     if (res && res.occupancy_warn) {
-        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?'))) return null;
+        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?', 'Save it anyway'))) return null;
         extra.override_occupancy = true;
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
     // Date clash.
     if (res && res.clash) {
-        if (!(await glassConfirm(res.message + '\n\n' + clashPrompt))) return null;
+        if (!(await glassConfirm(res.message + '\n\n' + clashPrompt, 'Save it anyway'))) return null;
         extra.override_clash = true;
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
@@ -18524,6 +18602,7 @@ async function saveModal() {
                     payment !== 'paid' &&
                     (await glassConfirm(
                         `Email ${payload.email} a secure card link for the deposit now?`,
+                        'Send the link',
                     ))
                 ) {
                     try {
@@ -18558,7 +18637,7 @@ async function deleteBooking(bookingId) {
         );
         return;
     }
-    if (!(await glassConfirm('Delete this booking permanently?'))) return;
+    if (!(await glassConfirm('Delete this booking permanently?', 'Delete the booking', { danger: true }))) return;
     try {
         await apiPost('bookings.php', { action: 'delete', id: b.dbId });
         await loadData();
@@ -18969,7 +19048,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higwords1';
+    const BUILD = 'higdialog2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

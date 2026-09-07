@@ -821,7 +821,7 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
     };
     const TAGS = /<(h[1-6]|label|button|option)\b[^>]*>([^<>$]*?)<\/\1>/g;
     const ROWLBL = /<span class="[^"]*(?:settings-row-label|bhub-fold-lbl|acr-cap|bhub-grpcap|bo-sec-title)[^"]*"[^>]*>([^<>$]*?)<\/span>/g;
-    const KEYS = /\b(?:label|title|btn|btnShort|actionLabel|okLabel)\s*:\s*'((?:[^'\\\n]|\\.)*)'/g;
+    const KEYS = /\b(?:label|title|btn|btnShort|actionLabel|okLabel|cancelLabel)\s*:\s*'((?:[^'\\\n]|\\.)*)'/g;
     const STRS = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"/g;
     const src4 = [];
     const seen = { tags: 0, rowlbl: 0, keys: 0, assign: 0, prose: 0 };
