@@ -8,6 +8,16 @@
 //  replaced them:
 //    §1 ONE MATERIAL FOR LISTS — adjacent fold groups join (no shadow, one
 //       hairline, squared shared corners), Needs-you rows likewise.
+//    §1b THE SAME MATERIAL ON EVERY .bk-row LIST — Today's bookings, the Inbox
+//       enquiries, the declined drawer and Payments & balances are one class on
+//       four screens: the cell radius with the outer corners on the run's ends
+//       only, no shadow, one hairline between rows, and no lift under a held
+//       pointer. They were --r-panel (28px on a phone, 40 on a desktop) with the
+//       glass drop shadow and a 10px gap — floating SHEETS directly under
+//       Needs-you rows that already joined at 12.
+//    §1c WELLS LIFT, AND A FIELD SITS IN AT MOST TWO BOXES — the settings well
+//       carried a raw INSET shadow (a sunken material beside lifted ones), and
+//       three pages put a third bordered surface round every field.
 //    §2 STATE IS SAID ONCE — no left rail or icon tile on a duty row; a
 //       Payments row TITLE stays in ink; the calm capsule is quiet text.
 //    §3 ONE CAPTION TIER — in-card captions are sentence case.
@@ -40,6 +50,21 @@ const bookings = [
 ];
 const enquiries = [
   { id: 11, prop_key: '21a', name: 'Nina Salt', email: 'nina@example.com', phone: '07700 900123', address: '14 Long Street', postcode: 'NR21 0AB', check_in: d(40), check_out: d(44), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: 'Any chance of a late checkout?', created_at: d(-1) + ' 09:12:00' },
+  // A SECOND enquiry and a pair of declines: §1b's join is a claim about a RUN,
+  // and one row can never fail it.
+  { id: 12, prop_key: 'jollyboat', name: 'Rob Hale', email: 'rob@example.com', phone: '07700 900999', address: '2 Quay', postcode: 'NR25 7NA', check_in: d(50), check_out: d(53), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: 'Is a late arrival all right?', created_at: d(-4) + ' 11:00:00' },
+];
+const declinedEnq = [
+  { id: 20, prop_key: 'jollyboat', name: 'Ada Vine', email: 'ada@x.com', check_in: d(30), check_out: d(33), adults: 2, children: 0, message: 'Any chance?', declined_at: d(-2) + ' 10:00:00', created_at: d(-5) + ' 09:00:00' },
+  { id: 21, prop_key: '21a', name: 'Bo Kerr', email: 'bo@x.com', check_in: d(35), check_out: d(38), adults: 2, children: 0, message: 'Hello', declined_at: d(-3) + ' 10:00:00', created_at: d(-6) + ' 09:00:00' },
+];
+// Two rows that need the owner and one switched-off extra — §2 reads the state
+// a Status row states, and an empty check list would test nothing.
+const DIAG_CHECKS = [
+  { label: 'Database', status: 'ok', detail: 'Connected' },
+  { label: 'Daily jobs (cron)', status: 'fail', detail: 'Last ran 4 days ago', hint: 'Check the host scheduler' },
+  { label: 'Calendar feeds', status: 'warn', detail: 'Jollyboat last imported 3 days ago' },
+  { label: 'Google review link', status: 'optional', detail: 'Not set' },
 ];
 // A guest with a stay in progress AND an upcoming one with a balance to pay.
 const midStay = { id: 3, prop_key: 'jollyboat', name: 'Priya Patel', email: 'guest@example.com', check_in: d(-2), check_out: d(2), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 495, agreed_total: 495, agreed_per_night: 120, agreed_nights: 4, agreed_nightly: 480, agreed_booking_fee: 0, agreed_txn_pct: 3, agreed_txn_fee: 15, agreed_on: d(-30) };
@@ -51,18 +76,66 @@ function stub(page, guest) {
     const url = route.request().url();
     let b = {}; try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
-    if (url.includes('auth.php')) { if (b.action === 'guest_status') return json({ ok: true, guest: guest ? GUEST : null }); return json({ ok: true, admin: false, guest: null }); }
+    if (url.includes('auth.php')) { if (b.action === 'guest_status') return json({ ok: true, guest: guest ? GUEST : null }); if (b.action === 'guest_crm') return json({ ok: true, guests: [{ name: 'Ada Vine', email: 'ada@x.com', stays: 2, last_stay: d(-40), fav_prop: '21a', ltv: 1200, repeat: 1, has_account: 1 }] }); return json({ ok: true, admin: false, guest: null }); }
     if (url.includes('rates.php')) return json({ properties: props, seasons: {}, occupancy: {} });
     // my-bookings BEFORE bookings — includes('bookings.php') matches both (the documented trap).
     if (url.includes('my-bookings.php')) return json({ ok: true, bookings: [midStay, upcoming], enquiries: [], completed_stays: 1 });
     if (url.includes('bookings.php')) { if (b.action === 'email_logs') return json({ logs: {} }); if (b.action === 'hub_bundle') return json({ ok: true, payments: [], events: [] }); return json({ bookings }); }
-    if (url.includes('enquiries.php')) return json({ enquiries });
+    if (url.includes('enquiries.php')) { if (b.action === 'declined') return json({ ok: true, enquiries: declinedEnq }); return json({ enquiries }); }
     if (url.includes('accounts.php')) return json({ years: [], deposit_liability: { gross: 75, feeBack: 1.31, net: 73.69, count: 1, rate: 0.0175, items: [{ outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: d(-3) }], transactions: { settled: 368.44, ringFence: 73.69, movable: 294.75, count: 1, items: [] }, payouts: { inBank: 294.75, onWay: 0, unknown: 0, nextArrival: null, counts: { inBank: 1, onWay: 0, unknown: 0 }, checked: Math.floor(Date.now() / 1000), error: null, known: 1, items: { inBank: [], onWay: [], unknown: [] } } } });
-    if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 0, fail: 0 }, checks: [], mail_ready: true });
+    if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 1, warn: 1, fail: 1 }, checks: DIAG_CHECKS, mail_ready: true, insights: {} });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences: [], content: {}, blocks: [], ranges: [], events: [], results: [] });
   });
 }
 const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
+
+// §1b — the list material, read off the RENDERED rows of one .bk-row surface.
+// A row's shadow may be the SELECTED ring and nothing else: `is-open` paints an
+// inset accent hairline (the docked row at ≥1200 always carries it), which is a
+// state, not a lift, so the test is that no row casts an OUTER shadow.
+const ROWS = (sel) => {
+  const rows = [...document.querySelectorAll(sel)].filter((r) => r.getClientRects().length);
+  if (!rows.length) return { n: 0 };
+  const cs = rows.map((r) => getComputedStyle(r));
+  const gaps = [], seams = [];
+  for (let i = 1; i < rows.length; i++) {
+    // Only rows that really are next to each other in the run: the mailbox wraps
+    // each row in its own accordion cell, so "adjacent" is a paint question.
+    gaps.push(+(rows[i].getBoundingClientRect().top - rows[i - 1].getBoundingClientRect().bottom).toFixed(1));
+    seams.push(parseFloat(cs[i].borderTopWidth));
+  }
+  const last = rows.length - 1;
+  return {
+    n: rows.length,
+    outerShadow: cs.map((c) => c.boxShadow).filter((sh) => sh !== 'none' && !/inset/.test(sh)),
+    firstTL: parseFloat(cs[0].borderTopLeftRadius),
+    firstBL: parseFloat(cs[0].borderBottomLeftRadius),
+    lastTL: parseFloat(cs[last].borderTopLeftRadius),
+    lastBL: parseFloat(cs[last].borderBottomLeftRadius),
+    midCorners: cs.slice(1, last).map((c) => parseFloat(c.borderTopLeftRadius) + parseFloat(c.borderBottomLeftRadius)),
+    gaps, seams,
+    rails: cs.map((c) => parseFloat(c.borderLeftWidth)),
+    railColours: cs.map((c) => c.borderLeftColor),
+  };
+};
+// The nesting question: how many BOXES (bordered on all four sides — a row
+// separator's single hairline is not a box) a field sits inside.
+const NEST = (rootSel) => {
+  const root = document.querySelector(rootSel);
+  if (!root) return null;
+  const boxed = (el) => {
+    const c = getComputedStyle(el);
+    return ['Top', 'Right', 'Bottom', 'Left'].every((s2) => parseFloat(c['border' + s2 + 'Width']) >= 1 && c['border' + s2 + 'Style'] !== 'none' && !/rgba\(.*,\s*0\)|transparent/.test(c['border' + s2 + 'Color']));
+  };
+  let worst = 0, where = '';
+  for (const f of root.querySelectorAll('input:not([type=hidden]):not([type=checkbox]), textarea, select')) {
+    if (!f.getClientRects().length) continue;
+    let n = 0, el = f, chain = [];
+    while (el && el !== root.parentElement) { if (boxed(el)) { n++; chain.push(el.tagName + '.' + (typeof el.className === 'string' ? el.className.split(' ')[0] : '')); } el = el.parentElement; }
+    if (n > worst) { worst = n; where = chain.join(' < '); }
+  }
+  return { worst, where };
+};
 
 (async () => {
   const t = await bootBrowser();
@@ -78,6 +151,74 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
     return page;
   };
   const open = async (page, code, ms) => { await page.evaluate((c) => eval(c), code); await page.waitForTimeout(ms || 900); };
+
+  // §1b — ONE LIST MATERIAL, on all four screens that wear .bk-row. Each is
+  // driven through its real route; the fixture mints a RUN on every one, since
+  // a join is a claim about two rows and a single row cannot fail it.
+  const sweepLists = async (page, w) => {
+    console.log(`§1b list material at ${w} — Today, Inbox, the declined drawer, Payments & balances`);
+    const surfaces = [];
+    let railedSeen = 0;
+    await open(page, "(async () => { nav('view-backoffice'); })()", 900);
+    surfaces.push(['Today bookings', await page.evaluate(ROWS, '#bookings-list .bk-row')]);
+    // Below 1200 the Inbox is three FOLDS; a list inside a closed one paints
+    // nothing, so the fold rule applies — open it before measuring.
+    await open(page, "(async () => { await openInbox(); inboxFolder('enquiries'); })()", 1600);
+    surfaces.push(['Inbox enquiries', await page.evaluate(ROWS, '#inbox-list .bk-row[data-enqid]')]);
+    await open(page, "(async () => { await inboxTab('declined'); inboxFolder('enquiries'); })()", 1600);
+    surfaces.push(['declined drawer', await page.evaluate(ROWS, '.enq-declined-row')]);
+    await open(page, "(async () => { await inboxTab('waiting'); await openAccounts(); })()", 1800);
+    const landingPairs = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-fold-grp')].filter((x) => x.getClientRects().length); const out = []; for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push(+(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1)); return out; });
+    await open(page, "accountsOpen('payments')", 1400);
+    surfaces.push(['Payments & balances', await page.evaluate(ROWS, '#money-panel .bk-row')]);
+    const cell = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-sm')));
+    for (const [name, r] of surfaces) {
+      ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the run (vacuity guard — one row cannot fail a join)`);
+      if (r.n < 2) continue;
+      ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
+      ok(r.firstTL === cell && r.lastBL === cell && r.firstBL === 0 && r.lastTL === 0,
+        `${w} ${name}: the outer corners are the CELL radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, cell ${cell})`);
+      ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
+      ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),
+        `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')})`);
+      // Only the rows that CARRY a traffic light have a rail; an ordinary row's
+      // left border is the hairline every side has.
+      const railed = r.rails.map((v, i) => [v, r.railColours[i]]).filter(([v]) => v >= 3);
+      if (railed.length) ok(railed.every(([, c]) => /rgba\(.*,\s*0\)|transparent/.test(c)),
+        `${w} ${name}: the ${railed.length} traffic-light rail(s) keep 3px of geometry and none of the colour (${railed[0][1]})`);
+      railedSeen += railed.length;
+    }
+    ok(railedSeen >= 2, `${w}: the sweep really met traffic-light rails (${railedSeen}) — the rail check is not vacuous`);
+
+    // §1 THE JOIN IS CONTAINER-INDEPENDENT. The negative margin that cancelled the
+    // join used to be one container's gap hardcoded: right on the Money LANDING
+    // (a flex column with a 12px gap, where it netted to 0) and an OVERLAP of
+    // -12px on every #asec-* section, which is a block and has no gap to cancel —
+    // two translucent 2% fills stacked into a lighter band with an edge at both
+    // ends. Both are measured, because it is the ASYMMETRY that was the defect.
+    const foldPairs = async (sel) => page.evaluate((s2) => {
+      const g = [...document.querySelectorAll(s2)].filter((x) => x.getClientRects().length);
+      const out = [];
+      for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push(+(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1));
+      return out;
+    }, sel);
+    const landing = landingPairs;
+    await open(page, "accountsOpen('income')", 1500);
+    const income = await foldPairs('#asec-income .bhub-fold-grp');
+    ok(landing.length >= 2 && income.length >= 1, `${w}: fold runs on both the Money landing (${landing.length}) and Income & tax (${income.length}) — vacuity guard`);
+    ok(landing.every((v) => v === 0), `${w}: the LANDING's groups abut, in a flex parent with a gap (${landing.join(',')})`);
+    ok(income.every((v) => v === 0), `${w}: and Income & tax's abut too, in a BLOCK parent with none — no overlapped fill (${income.join(',')})`);
+    // A HELD POINTER MUST NOT MOVE A LIST CELL — the row used to translateY(-1px)
+    // and take a shadow, a card saying "I respond to you" on a row you select.
+    await open(page, "(async () => { nav('view-backoffice'); })()", 900);
+    const row = await page.$('#bookings-list .bk-row');
+    await row.hover();
+    await page.waitForTimeout(500);
+    const held = await page.evaluate(() => { const r = document.querySelector('#bookings-list .bk-row'); const c = getComputedStyle(r); return { t: c.transform, sh: c.boxShadow, bg: c.backgroundColor }; });
+    ok(held.t === 'none' || held.t === 'matrix(1, 0, 0, 1, 0, 0)', `${w}: a held pointer does not lift the row (${held.t})`);
+    ok(held.sh === 'none' || /inset/.test(held.sh), `${w}: …and gives it no shadow, only a tint (${held.sh})`);
+    await page.mouse.move(0, 0);
+  };
 
   // ================= OWNER, 390 =================
   let page = await newPage(390, false);
@@ -107,6 +248,8 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(ny.act === 'none', `the action verb is sentence case (${ny.act})`);
   ok(ny.firstTL > 0 && ny.firstBL === 0 && ny.lastBL > 0, `the rows join: outer corners on the run's ends only (${ny.firstTL}/${ny.firstBL}/${ny.lastBL})`);
   ok(ny.gapY === 0 && ny.topBorders.slice(1).every((w) => w === 0), `rows share one hairline, no gap (gap ${ny.gapY}px)`);
+  const bkShadow = await page.evaluate(() => [...document.querySelectorAll('#bookings-list .bk-row')].map((r) => getComputedStyle(r).boxShadow).filter((x) => x !== 'none' && !/inset/.test(x)));
+  ok(bkShadow.length === 0, `and the bookings rows beneath them carry no shadow either (${bkShadow[0] || 'none'})`);
 
   console.log('§1/§3/§4 Booking hub — inset fold groups, sentence-case caption, symbol chevron');
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
@@ -175,6 +318,62 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(calm && (calm.bg === 'rgba(0, 0, 0, 0)' || calm.bg === 'transparent') && calm.border === 0, `the OK capsule has no tint and no border (${calm && calm.bg})`);
   ok(calm && calm.tickColor === calm.okRgb, 'and its tick is the ONE green mark');
 
+  // The ONE caption spec, read off the landing before we drill into a section.
+  const grpcapSpec = await page.evaluate(() => { const g = document.querySelector('#manage-verdicts .bhub-grpcap'); if (!g) return null; const c = getComputedStyle(g); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; });
+
+  console.log('§1c Manage — the well LIFTS, and a field sits in at most two boxes');
+  await open(page, "settingsOpen('notify')", 1100);
+  const well = await page.evaluate(() => {
+    const w = document.querySelector('.settings-sec .accounts-stat');
+    if (!w) return null;
+    const c = getComputedStyle(w);
+    const grp = getComputedStyle(document.querySelector('#manage-verdicts .bhub-fold-grp') || document.body);
+    return { shadow: c.boxShadow, bg: c.backgroundColor, radius: c.borderTopLeftRadius, grpBg: grp.backgroundColor, n: document.querySelectorAll('.settings-sec .accounts-stat').length };
+  });
+  ok(well && well.n >= 1, `the settings well is on screen (${well && well.n})`);
+  ok(well && well.shadow === 'none', `it carries NO inset shadow — a well lifts, it does not sink (${well && well.shadow})`);
+  ok(well && well.radius === '20px', `and wears the CARD radius (${well && well.radius})`);
+  // The two pages the box-in-a-box pass touched, driven through their own routes.
+  await open(page, "settingsOpen('chat-answers')", 1100);
+  const nestChat = await page.evaluate(NEST, '#chat-answers-editor');
+  ok(nestChat && nestChat.worst > 0, `Instant answers renders its fields (${nestChat && nestChat.worst})`);
+  ok(nestChat && nestChat.worst <= 2, `…each inside at most TWO boxes — the field and its well (${nestChat && nestChat.where})`);
+  await open(page, "settingsOpen('guests')", 1400);
+  const guests = await page.evaluate(() => ({ outer: !!document.querySelector('#sec-guests .accounts-stat'), well: !!document.querySelector('#guest-admin-list .acr-well'), rows: document.querySelectorAll('#guest-admin-list .acw-prow').length }));
+  ok(guests.rows >= 1 && guests.well, `Guest accounts renders its person rows in a well (${guests.rows})`);
+  ok(!guests.outer, 'and the well is the card — no second bordered box around it');
+  await open(page, "settingsOpen('search-learning')", 1600);
+  const sl = await page.evaluate(() => { const c = document.querySelector('.sl-card'); return c ? { r: getComputedStyle(c).borderTopLeftRadius, sh: getComputedStyle(c).boxShadow } : null; });
+  ok(sl && sl.r === '20px' && sl.sh === 'none', `the Search-learning cards wear the flat card material (${sl && sl.r}, ${sl && sl.sh})`);
+
+  console.log('§2 Status — the state is said ONCE');
+  await open(page, "settingsOpen('diagnostics')", 1700);
+  const st = await page.evaluate(() => {
+    const items = [...document.querySelectorAll('.status-item')];
+    const cs = items.map((i) => getComputedStyle(i));
+    const cap = items[0] ? items[0].querySelector('.st-cap') : null;
+    const gt = document.querySelector('.status-group-title');
+    const spec = (el) => { const c = getComputedStyle(el); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; };
+    return {
+      n: items.length,
+      rails: cs.map((c) => c.borderLeftColor),
+      railW: cs.map((c) => parseFloat(c.borderLeftWidth)),
+      shadows: cs.map((c) => c.boxShadow),
+      dots: items.reduce((n2, i) => n2 + i.querySelectorAll('.status-item-dot').length, 0),
+      capText: cap ? cap.textContent.trim() : null,
+      capTT: cap ? getComputedStyle(cap).textTransform : null,
+      radius: cs[0] ? cs[0].borderTopLeftRadius : null,
+      gt: gt ? spec(gt) : null,
+    };
+  });
+  ok(st.n >= 2, `${st.n} Status rows need the owner (vacuity guard)`);
+  ok(st.railW.every((v) => v >= 3) && st.rails.every((c) => /rgba\(.*,\s*0\)|transparent/.test(c)), `the rail keeps its 3px and loses its colour (${st.railW[0]}px ${st.rails[0]})`);
+  ok(st.dots === 0, `no row repeats itself with a dot (${st.dots} found)`);
+  ok(st.shadows.every((x) => x === 'none'), `and none of them casts a shadow (${st.shadows[0]})`);
+  ok(!!st.capText && st.capTT === 'none' && /^[A-Z][a-z]/.test(st.capText), `the state is the house capsule, sentence case ("${st.capText}")`);
+  ok(st.radius === '12px', `a Status row is a list cell (${st.radius})`);
+  ok(st.gt !== null && st.gt === grpcapSpec, `the group header is on the ONE caption spec (${st.gt} vs the landing's ${grpcapSpec})`);
+
   console.log('§5 The spine ≤640 — a sentence, then ONE scrolling row of chips that still route');
   const spine = await page.evaluate(() => {
     const sp = document.getElementById('day-spine');
@@ -200,6 +399,8 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(spine.heights.every((h) => h >= 30 && h <= 36), `chips are 32px (${spine.heights.join(',')})`);
   ok(spine.routed === spine.n, `every chip still carries its route (${spine.routed}/${spine.n})`);
   ok(spine.h !== null && spine.h <= 110, `the whole spine is ≤110px tall at 390 (${spine.h}px)`);
+
+  await sweepLists(page, 390);
   await page.close();
 
   // ================= OWNER, 1280 — the grouping holds on the docked hub =================
@@ -213,6 +414,7 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
     return { n: grps.length, joined, shadows: grps.every((g) => getComputedStyle(g).boxShadow === 'none') };
   });
   ok(wideHub.n >= 3 && wideHub.joined >= 2 && wideHub.shadows, `at 1280 the docked hub's groups join too (${wideHub.joined} joins of ${wideHub.n})`);
+  await sweepLists(page, 1280);
   await page.close();
 
   // ================= GUEST, 390 =================
@@ -232,6 +434,14 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(opaque(sheet.bg) && (sheet.bf === 'none' || !sheet.bf), `at 390 the sheet is OPAQUE with no blur (${sheet.bg} / ${sheet.bf})`);
   ok(whiteAlpha(sheet.well), `the dates field is a lifted well — white alpha, not black (${sheet.well})`);
   ok(whiteAlpha(sheet.host), `so is the reassurance note (${sheet.host})`);
+  // A SHEET is opaque; every OTHER panel keeps the material — and on a phone it
+  // used not to: the ≤768 block replaced --glass-filter with a bare blur(14px),
+  // so the saturate + brightness lift that MAKES the glass never painted on the
+  // device the owner uses (DESIGN.md: "build glass from them, never a bare
+  // blur()"). The header is excluded because it deliberately paints nothing
+  // itself — its fill and blur ride header::before.
+  const phoneGlass = await page.evaluate(() => { const el = document.querySelector('.glass-panel:not(header)'); if (!el) return null; const c = getComputedStyle(el); return { cls: el.className, bf: c.backdropFilter || c.webkitBackdropFilter }; });
+  ok(phoneGlass && /saturate/.test(phoneGlass.bf) && /brightness/.test(phoneGlass.bf), `at 390 a panel still carries the MATERIAL, not a bare blur (${phoneGlass && phoneGlass.bf})`);
   await open(page, 'closeEnquireModal()', 500);
 
   console.log('§7 The cottage calendar — free is unfilled, taken is marked');
@@ -273,14 +483,79 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(foot.tt.every((x) => x === 'none'), 'every link is sentence case — the header keeps the caps, the sitemap does not');
   ok(foot.heights.every((h) => h >= 44), `every link is a 44px row (min ${Math.min(...foot.heights)})`);
 
-  console.log('§9 No filled button glows');
-  const glow = await page.evaluate(() => {
-    const b = document.querySelector('.hero-cta');
-    const s = getComputedStyle(b).boxShadow;
-    const blur = (s.match(/\) (-?\d+)px (-?\d+)px (\d+)px/) || [])[3];
-    return { s, blur: blur ? +blur : null };
+  console.log('§9 No filled button glows — swept, not pinned to one control');
+  // The blur radius of the widest shadow layer a control paints. A 15-24px halo
+  // under a FILLED button is the signal the HIG pass retired from .btn-accent and
+  // then left on four more controls; a lift is <= 4.
+  // Two questions, because they are not the same one. A HALO is ACCENT-COLOURED
+  // ink under a filled control — decoration the HIG pass retired from
+  // .btn-accent — and no swept control may paint one. A BLUR is depth, and an
+  // in-flow button may not have 15-24px of it; the fixed Book CTA floats over the
+  // page and legitimately keeps a drop shadow, so what is asserted THERE is that
+  // it is the theme-retuned TOKEN and not a raw dark-theme value (it measured
+  // rgba(0,0,0,0.45), 62 levels of darkening under a pill on a cream ground).
+  const HALO = (sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return { missing: true };
+    const sh = getComputedStyle(el).boxShadow;
+    const probe = document.createElement('span');
+    probe.style.boxShadow = getComputedStyle(document.body).getPropertyValue('--shadow-float').trim();
+    probe.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+    document.body.appendChild(probe);
+    const floatShadow = getComputedStyle(probe).boxShadow;
+    const acc = (getComputedStyle(probe).color.match(/[\d.]+/g) || []).map(Number);
+    probe.remove();
+    let max = 0, accentInk = false;
+    for (const m of sh.matchAll(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/g)) max = Math.max(max, parseFloat(m[3]));
+    for (const m of sh.matchAll(/rgba?\(([^)]*)\)/g)) {
+      const p = m[1].split(',').map((x) => parseFloat(x));
+      if (p.length >= 3 && Math.abs(p[0] - acc[0]) + Math.abs(p[1] - acc[1]) + Math.abs(p[2] - acc[2]) < 60) accentInk = true;
+    }
+    return { sh, blur: max, accentInk, isFloatToken: sh === floatShadow };
+  };
+  const glowsHere = [];
+  glowsHere.push(['the hero CTA', await page.evaluate(HALO, '.hero-cta')]);
+  // .btn-primary — the amenity sheet's "Message us" is the reachable one.
+  await open(page, "openProperty('21a')", 900);
+  glowsHere.push(['the fixed Book CTA', await page.evaluate(HALO, '#guest-book-cta')]);
+  await open(page, "openFaqModal('21a')", 800);
+  glowsHere.push(['.btn-primary', await page.evaluate(HALO, '#faq-modal .btn-primary')]);
+  await open(page, "(async () => { try { closeFaqModal(); } catch (e) { document.getElementById('faq-modal').classList.remove('open'); } })()", 500);
+  await open(page, "(async () => { nav('view-main'); openGuestAuthModal ? openGuestAuthModal() : null; })()", 900);
+  glowsHere.push(['the Log in tab', await page.evaluate(HALO, '.toggle-btn.guest-tab.active-mode')]);
+  for (const [name, g] of glowsHere) {
+    ok(!g.missing, `${name} is on screen (vacuity guard)`);
+    if (g.missing) continue;
+    ok(!g.accentInk, `${name} paints no accent-coloured shadow (${g.sh})`);
+    if (name === 'the fixed Book CTA') ok(g.isFloatToken, `${name} takes the theme-retuned float token, not a raw dark glow (${g.sh})`);
+    else ok(g.blur <= 4, `${name} carries a hairline lift, not a halo (${g.sh})`);
+  }
+  // .toggle-btn.active-mode — the green owner variant of the same control. It is
+  // not in today's markup (only .guest-tab is), so it is asserted BY DECLARATION
+  // through the CSSOM rather than dressed up as a paint reading.
+  const greenRule = await page.evaluate(() => {
+    let hit = null;
+    const walk = (r) => { if (r.selectorText === '.toggle-btn.active-mode') hit = r.style.boxShadow || ''; if (r.cssRules && r.cssRules.length) [...r.cssRules].forEach(walk); };
+    for (const sh of document.styleSheets) { let rs; try { rs = sh.cssRules; } catch (e) { continue; } [...rs].forEach(walk); }
+    return hit;
   });
-  ok(glow.blur !== null && glow.blur <= 4, `the hero button's shadow is a hairline lift, not a 24px glow (${glow.s})`);
+  ok(greenRule === '', `.toggle-btn.active-mode declares no glow either (${JSON.stringify(greenRule)})`);
+
+  console.log('§2 The toast says its outcome ONCE');
+  await open(page, "toast('Saved that for you', 'ok', { label: 'Undo', fn: () => {} })", 900);
+  const ts = await page.evaluate(() => {
+    const t = document.querySelector('.toast');
+    if (!t) return null;
+    const c = getComputedStyle(t);
+    const a = t.querySelector('.toast-action');
+    const ic = t.querySelector('.ic');
+    return { r: c.borderTopLeftRadius, lw: parseFloat(c.borderLeftWidth), lc: c.borderLeftColor, tw: parseFloat(c.borderTopWidth), act: a ? Math.round(a.getBoundingClientRect().height) : null, ic: !!ic };
+  });
+  ok(!!ts, 'a toast is on screen (vacuity guard)');
+  ok(ts && ts.lw === ts.tw, `no 4px coloured rail — the border is one hairline all round (${ts && ts.lw}px vs ${ts && ts.tw}px)`);
+  ok(ts && ts.ic, 'the tinted icon is the one mark');
+  ok(ts && ts.r === '20px', `and the toast wears the CARD radius, not the off-scale 16 (${ts && ts.r})`);
+  ok(ts && ts.act >= 44, `its action reaches the 44px floor (${ts && ts.act}px)`);
   await page.close();
 
   // ================= §10 THE HEADER IS A BAR (guest + owner, 390) =================

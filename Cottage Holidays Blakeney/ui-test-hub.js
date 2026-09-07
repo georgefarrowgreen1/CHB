@@ -1829,6 +1829,16 @@ let approveWill409 = false;
       return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
     })(),
     draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'),
+    // A FOURTH MATERIAL: the message card inherited .bhub-card's --r-panel and
+    // .glass-panel's drop shadow, so it was the one RAISED, 28/40px-rounded
+    // element between a 20px state card and 12px fold groups. It leads by SIZE.
+    msgMaterial: (() => {
+      const m = document.querySelector('#inbox-detail-pane .bhub-msg');
+      const t = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      if (!m || !t) return null;
+      const c = getComputedStyle(m);
+      return { r: c.borderTopLeftRadius, sh: c.boxShadow, fs: Math.round(parseFloat(getComputedStyle(t).fontSize)) };
+    })(),
     menuItems: document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]').length,
     dangerLast: (() => {
       const rows = document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]');
@@ -1859,6 +1869,9 @@ let approveWill409 = false;
   ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
   ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
   ok(j1.msgOpen && j1.draftRow, 'the MESSAGE never folds, with the ✨ draft row beneath it');
+  ok(j1.msgMaterial && j1.msgMaterial.r === '20px' && j1.msgMaterial.sh === 'none',
+    `…on the page's own flat CARD material, not a raised 28/40px island (${j1.msgMaterial && j1.msgMaterial.r}, ${j1.msgMaterial && j1.msgMaterial.sh})`);
+  ok(j1.msgMaterial && j1.msgMaterial.fs === 17, `…and the quote leads by SIZE instead (${j1.msgMaterial && j1.msgMaterial.fs}px)`);
   ok(j1.menuItems === 3 && j1.dangerLast && j1.dangerInk, `Edit/Email/Decline live behind the ⋯; Decline last, painted in danger ink (${j1.menuItems})`);
   ok(j1.mailtos === 0 && j1.emailKvBtn && j1.priceBtn, 'contact email routes to the composer (no mailto); agreed-price stays');
   ok(/^£/.test(j1.quoteFig), `the quote is ONE row with the figure on it (${j1.quoteFig})`);

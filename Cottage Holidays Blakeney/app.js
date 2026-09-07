@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 595;
+const ADMIN_BUNDLE_V = 596;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 254;
+const ADMIN_CSS_V = 255;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4470,7 +4470,12 @@ async function renderGuestBookings() {
         const __card = `
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
-                    <h3 class="gb2-name"><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
+                    <!-- STATE SAID ONCE: the .gb2-band twelve pixels above already
+                         carries the cottage colour and the badge carries the stage,
+                         so the legend swatch that sat here said the cottage twice.
+                         The badge + heading pair is a pinned decision (guestrepairs
+                         §5) and stays. -->
+                    <h3 class="gb2-name">${escapeHtml(meta.name)} ${statusTag}</h3>
                     <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
                     <button type="button" class="gb2-payline" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}>
                         <span class="gb2-pl1">${pl1}</span>
@@ -18939,7 +18944,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higchrome2';
+    const BUILD = 'higlist1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

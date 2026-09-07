@@ -7,7 +7,9 @@
 //  and picker cells), the CARD (--r-lg 20: cards, wells, the to-do card) and the
 //  PILL (999). Sheets keep their panel radius. check-css-conventions ratchets the
 //  raw values in the stylesheets; this suite reads the PAINT:
-//    §1 a fold group's outer corners are the cell radius; a card is the card radius
+//    §1 a fold group's outer corners are the cell radius; a card is the card
+//       radius; a .bk-row LIST CELL is the cell radius too (it was the SHEET
+//       radius — 28 on a phone, 40 on a desktop — on four screens)
 //    §2 the picker's cells are 44px tall and the card is padded to fit seven at 390
 //    §3 Move money out's fields are 44px at 17px type (no iOS zoom on focus)
 //    §4 the chat header is a 52px bar; the terms sheet carries ONE close
@@ -62,6 +64,15 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   console.log('§1 three radii — cells at 12, cards at 20');
   let page = await newPage(390);
   await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
+  const rows = await page.evaluate(() => {
+    const rs = [...document.querySelectorAll('#bookings-list .bk-row')].filter((r) => r.getClientRects().length);
+    if (!rs.length) return null;
+    const c = getComputedStyle(rs[0]);
+    return { n: rs.length, tl: c.borderTopLeftRadius, sh: c.boxShadow };
+  });
+  ok(rows && rows.n >= 1, `the bookings list renders (${rows && rows.n} row(s))`);
+  ok(rows && rows.tl === '12px', `a booking row is a list CELL, not a sheet (${rows && rows.tl})`);
+  ok(rows && (rows.sh === 'none' || /inset/.test(rows.sh)), `…and casts no shadow (${rows && rows.sh})`);
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const r1 = await page.evaluate(() => {
     const grps = [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp')];

@@ -315,11 +315,18 @@ body.light-mode {
 }@media (hover: hover) {.area-ov-card:hover {
     background: var(--glass-hover);
     transform: translateY(-2px);
-  }}.money-row {
+  }}
+/* A queue of deposits is a LIST, not a stack of islands: the cell radius and no
+   drop shadow (they keep their 12px of air — each row carries two buttons, so
+   they are action cards rather than one-line cells). NB `body.light-mode
+   .glass-panel` is (0,2,1). */
+.money-row {
   padding: 16px 18px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   margin-bottom: 12px;
-}.money-row-head {
+}
+.money-row, body.light-mode .money-row { box-shadow: none; }
+.money-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -356,19 +363,60 @@ body.light-mode {
   }#bookings-detail-pane .bhub-head,
   #inbox-detail-pane .bhub-head {
     margin-top: 0;
-  }}.bk-row {
+  }}
+/* ONE MATERIAL FOR LISTS, on the five surfaces that wear this class (Today,
+   the Inbox enquiries, the declined drawer, the mailbox, Payments & balances).
+   It was --r-panel — 28px on a phone, 40 on a desktop — with the glass drop
+   shadow and a 10px gap: a stack of floating SHEETS sixty pixels under .ny-row
+   rows already joined at the CELL radius. The .ny-row model exactly. Geometry
+   untouched: the 3px .pay-* rail keeps its width and loses only its colour
+   (ROUND EIGHT), and the padding stays 14/16. */
+.bk-row {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   padding: 14px 16px;
-  border-radius: var(--r-panel);
+  border-radius: var(--r-sm);
   color: var(--text-light);
   font: inherit;
   cursor: pointer;
   text-align: left;
-}.bk-row.pay-danger {
+}
+/* NB `body.light-mode .glass-panel` is (0,2,1) and outranks a two-class
+   selector, so the flat material is restated there. The ONE shadow a row may
+   carry is the selected ring, and it rides a custom property rather than a
+   fourth restatement — a property cascades on its own, so the ring survives
+   every one of these specificity restatements. */
+.bk-row, body.light-mode .bk-row { box-shadow: var(--bk-ring, none); }
+.bk-row + .bk-row {
+  border-top-width: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.bk-row:has(+ .bk-row) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* The mailbox wraps every row in its own accordion cell, so those rows are NOT
+   adjacent siblings — the run joins through the wrapper, and an OPEN cell ends
+   it, its email now sitting between the two rows. */
+.mbx-item + .mbx-item > .bk-row {
+  border-top-width: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.mbx-item.open + .mbx-item > .bk-row {
+  border-top-width: 1px;
+  border-top-left-radius: var(--r-sm);
+  border-top-right-radius: var(--r-sm);
+}
+.mbx-item:not(.open):has(+ .mbx-item) > .bk-row {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.bk-row.pay-danger {
   border-left: 3px solid var(--danger);
 }.bk-row.pay-warn {
   border-left: 3px solid var(--warn);
@@ -387,7 +435,7 @@ body.light-mode {
    `border-color` blanked whichever traffic-light edge .pay-* had set. */
 }.bk-row.is-open {
   background: var(--glass-hover);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  --bk-ring: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }.bk-row-body {
   flex: 1;
   min-width: 0;
@@ -436,10 +484,17 @@ body.light-mode {
 }.bk-row {
   transition:
     transform 0.3s var(--spring),
-    box-shadow 0.3s var(--fluid-bezier);
-}.bk-row:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
+    background 0.2s var(--fluid-bezier);
+}
+/* A list cell answers the pointer with a TINT, never a lift: the
+   translateY(-1px) + shadow-soft this replaces was a card saying "I respond to
+   you" on a row you select. */
+@media (hover: hover) {
+  .bk-row:hover, body.light-mode .bk-row:hover {
+    transform: none;
+    box-shadow: var(--bk-ring, none);
+    background: var(--glass-hover);
+  }
 }.bk-row:active {
   transform: scale(0.995);
 }.bk-row:hover .bk-row-arrow {
@@ -1377,14 +1432,23 @@ body.light-mode .ny-act {
    quiet card with the draft row on a hairline beneath. */
 .bhub-msg {
   padding: 14px 18px 6px;
-}.bhub-msg-cap {
+  /* A FOURTH MATERIAL, on a page whose cards are flat 12 and 20: it inherited
+     .bhub-card's --r-panel and .glass-panel's drop shadow, so the message was
+     the one RAISED, 28/40px-rounded element between a 20px state card and 12px
+     fold groups. It leads by SIZE now, not by lift. Two specificity notes:
+     .bhub-card is (0,1,0) and sits LATER, so the radius takes two classes; and
+     `body.light-mode .glass-panel` is (0,2,1), so the shadow takes that. */
+}
+.bhub-msg.bhub-card { border-radius: var(--r-lg); }
+.bhub-msg, body.light-mode .bhub-msg { box-shadow: none; }
+.bhub-msg-cap {
   display: block;
   font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
 }.bhub-msg-text {
-  font-size: var(--fs-body);
+  font-size: var(--fs-headline);
   line-height: 1.55;
   margin: 0 0 6px;
 }.bhub-msg-draft {
@@ -1403,7 +1467,11 @@ body.light-mode .ny-act {
 }.bhub-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  /* --fold-gap is the ONE number: the container's gap AND the amount a joined
+     fold run cancels, so the join can never assume a gap the parent does not
+     have (see "THE JOIN MUST NOT ASSUME THE CONTAINER'S GAP"). */
+  --fold-gap: 12px;
+  gap: var(--fold-gap);
   margin: 12px 0 40px;
   align-items: start;
 }.bhub-card {
@@ -1526,8 +1594,9 @@ body.light-mode .ny-act {
 }.money-owed.all-paid strong,
 .money-owed.all-paid {
   color: var(--ok-text);
-}.money-row.due-soon {
-  border-color: rgba(255, 167, 38, 0.5);
+/* STATE IS SAID ONCE. `.money-row.due-soon` painted an amber hairline round the
+   whole card beside the words that already say it and the chip that already
+   carries it — state as chrome. The chip is the statement. */
 }.inbox-empty-inline {
   color: var(--text-muted);
   font-size: var(--fs-body);
@@ -3083,11 +3152,14 @@ body.light-mode .cmdk-editor-input {
   padding: 0 2px;
 }
 .status-group { max-width: 640px; margin: 0 0 20px; }
+/* A section header OUTSIDE the card keeps its tracked caps — the ONE caption
+   tier the HIG pass deliberately kept — but on .bhub-grpcap's spec (11px/600/
+   0.08em), not a second one 12px/700/0.96px a screen away from it. */
 .status-group-title {
-  font-size: var(--fs-caption);
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-muted);
   margin: 0 0 10px;
 }
@@ -3097,6 +3169,11 @@ body.light-mode .cmdk-editor-input {
   margin: -2px 0 12px;
   line-height: 1.45;
 }
+/* STATE IS SAID ONCE. A row said it THREE times — a 3px amber rail, a 9px dot
+   and an uppercase chip, the same colour on one 76px row — the exact rail the
+   HIG pass had already taken off .ny-row. The capsule is the statement; the
+   rail keeps its 3px of GEOMETRY and loses its colour (ROUND EIGHT: a
+   `border-left: 0` would shift every row's content). */
 .status-item {
   display: flex;
   gap: 12px;
@@ -3105,12 +3182,13 @@ body.light-mode .cmdk-editor-input {
   margin-bottom: 8px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-left: 3px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-left: 3px solid transparent;
+  border-radius: var(--r-sm);
+  box-shadow: none;
 }
-.status-item.is-warn { border-left-color: var(--warn-text); }
-.status-item.is-fail { border-left-color: var(--danger); }
 .status-item.is-optional { opacity: 0.92; }
+/* The dot survives for the two rows where it is the ONLY mark — the insight
+   rows and the all-clear list, neither of which carries a capsule. */
 .status-item-dot {
   flex-shrink: 0;
   width: 9px;
@@ -3130,19 +3208,8 @@ body.light-mode .cmdk-editor-input {
   font-weight: 600;
   color: var(--text-light);
 }
-.status-item-chip {
-  font-size: var(--fs-micro);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 2px 7px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, currentColor 14%, transparent);
-}
-.status-item-chip.ok { color: var(--ok-text); }
-.status-item-chip.warn { color: var(--warn-text); }
-.status-item-chip.fail { color: var(--danger-text); }
-.status-item-chip.optional { color: var(--text-muted); }
+/* .status-item-chip is GONE — the state rides the house stCap() capsule now,
+   sentence case, the same one Manage and the hubs already use. */
 .status-item-detail {
   font-size: var(--fs-sub);
   color: var(--text-muted);
@@ -3382,12 +3449,16 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
 }
 
 /* ===== Manage → Search learning (renderSearchLearning) ===== */
+/* The card material the rest of Manage wears — it was the page-panel radius
+   with the glass drop shadow, a raised island above the flat verdict groups
+   beneath it. NB `body.light-mode .glass-panel` is (0,2,1). */
 .sl-card {
   max-width: 720px;
   padding: 18px 20px;
-  border-radius: var(--r-panel);
+  border-radius: var(--r-lg);
   margin-bottom: 6px;
 }
+.sl-card, body.light-mode .sl-card { box-shadow: none; }
 .sl-model {
   font-size: var(--fs-body);
   line-height: 1.5;
@@ -4834,8 +4905,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 }
 .bhub-grpcap.is-attn { color: var(--danger-text); }
 /* ONE MATERIAL FOR LISTS — inset groups, not islands: adjacent fold groups JOIN
-   (no shadow, a hairline, outer radius on the run's ends only). The -12px is
-   the containers' own gap; a caption or card between two groups keeps it. */
+   (no shadow, a hairline, outer radius on the run's ends only). A caption or a
+   card between two groups keeps them apart. */
 .bhub-card.bhub-fold-grp {
   padding: 0;
   overflow: hidden;
@@ -4851,8 +4922,17 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   .bhub-card.bhub-fold-grp:hover, body.light-mode .bhub-card.bhub-fold-grp:hover,
   #needs-you-list .ny-row:hover, body.light-mode #needs-you-list .ny-row:hover { transform: none; box-shadow: none; }
 }
+/* THE JOIN MUST NOT ASSUME THE CONTAINER'S GAP. It was a flat -12px — one
+   container's gap, hardcoded. In a flex/grid parent with a 12px gap that nets
+   to a clean abutment; in a BLOCK parent (every #asec-* section) there is no
+   gap to cancel, so it OVERLAPPED, stacking two translucent 2% fills into a
+   12px lighter band with an edge at both ends (measured -12px on #asec-income
+   against the landing's 0). Groups ABUT by default now, and a container with a
+   gap declares it ONCE as --fold-gap and feeds its own `gap` from it, so the
+   two cannot drift. Zeroing the parents' gap would not do: .bhub-grid holds
+   the enquiry hub's message and state CARDS beside the fold run. */
 .bhub-fold-grp + .bhub-fold-grp {
-  margin-top: -12px;
+  margin-top: calc(-1 * var(--fold-gap, 0px));
   border-top-width: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -4975,7 +5055,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* ---- Manage's verdicts (above the untouched toolbox) + the calendar-feeds
    verdict list: the landing rhythm again — one flex column, 12px gaps, and
    the verdicts span both desktop columns of the settings index. ---- */
-#manage-verdicts { display: flex; flex-direction: column; gap: 12px; margin: 0 0 14px; }
+#manage-verdicts { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); margin: 0 0 14px; }
 #manage-verdicts:empty { display: none; }
 #manage-verdicts .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
 #manage-verdicts .mo-pulse { margin: 2px 0 0; }
@@ -5129,7 +5209,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    Money screens' .accounts-stat (gated .headline etc.) live outside
    .settings-sec and are untouched. Labels drop the letterspaced caps for the
    captions' voice; field labels take the frow look. */
-.settings-sec .accounts-stat { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 14px; }
+/* WELLS LIFT, THEY DO NOT SINK. This carried `inset 0 1px 3px rgba(0,0,0,.28)`
+   over a darker fill — the one raw shadow left on a card material after the HIG
+   pass, and a SUNKEN one: sampled in light at 1280 the well read [233,231,224]
+   against a page ground of [244,240,232] and the landing's fold groups at
+   [253,252,250], so Manage's cards were darker than the page while the Payments
+   landing's were lighter, one screen apart. Dropping both puts it back on
+   .accounts-stat's own card material. The inner `.acr-well` is the ONE inset. */
+.settings-sec .accounts-stat { box-shadow: none; padding: 14px; }
 .settings-sec .accounts-stat .label { font-size: var(--fs-micro); letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
 .settings-sec .modal-label, .settings-sec .host-edit-label { font-size: var(--fs-caption); color: var(--text-muted); }
 /* person-rows inside a well (waitlist, guest accounts): a row + its quiet
@@ -5199,7 +5286,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    folds (re-parented by inboxLayoutSync), so their own headings hide — the
    fold label carries the name. ≥1200px the landing hides and the Apple-Mail
    rail | list | pane layout is untouched. ---- */
-#inbox-landing { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 18px; }
+#inbox-landing { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); margin: 4px 0 18px; }
 #inbox-landing .bhub-fold-grp { width: 100%; }
 #inbox-landing .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
 #inbox-landing .bo-sec-title { display: none; }
@@ -5269,7 +5356,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    supplies it here — on the hub the grid does). Captions keep the 20/8
    rhythm via longhand top/bottom margins, because a margin SHORTHAND would
    silently overwrite the auto centring above (the .mo-pulse lesson). */
-#money-overview { display: flex; flex-direction: column; gap: 12px; }
+#money-overview { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); }
 #money-overview .bhub-grpcap { width: 100%; margin-top: 8px; margin-bottom: -4px; }
 /* [hidden] must actually hide: .bhub-grpcap's display:block out-ranks the
    UA rule, so the empty Needs-attention caption painted over a clean day. */

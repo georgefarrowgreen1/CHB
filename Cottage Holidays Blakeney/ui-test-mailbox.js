@@ -84,6 +84,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // (Apple-Mail layout); below 1200px it's simply hidden by CSS.
   ok(l.activeView === 'view-inbox' && l.emailShown && l.enqHidden && !l.noPane, `email folder active in the Inbox, pane kept (${l.activeView})`);
   ok(l.firstSubject === 'Question about parking', `subject shown (${l.firstSubject})`);
+  // ONE LIST MATERIAL — and here the rows are WRAPPED, one per .mbx-item, so
+  // they are not adjacent siblings and the run has to join through the wrapper.
+  // (ui-test-hig §1b owns the four unwrapped .bk-row surfaces.)
+  const mat = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#mailbox-body .bk-row')].filter((r) => r.getClientRects().length);
+    if (rows.length < 2) return null;
+    const cs = rows.map((r) => getComputedStyle(r));
+    const last = rows.length - 1;
+    return {
+      n: rows.length,
+      shadows: cs.map((c) => c.boxShadow).filter((x) => x !== 'none' && !/inset/.test(x)),
+      firstTL: parseFloat(cs[0].borderTopLeftRadius), firstBL: parseFloat(cs[0].borderBottomLeftRadius),
+      lastTL: parseFloat(cs[last].borderTopLeftRadius), lastBL: parseFloat(cs[last].borderBottomLeftRadius),
+      gap: +(rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom).toFixed(1),
+      seam: parseFloat(cs[1].borderTopWidth),
+    };
+  });
+  ok(mat, `the run is long enough to have a join (${mat && mat.n} rows)`);
+  ok(mat && mat.shadows.length === 0, `no email row casts a drop shadow (${(mat && mat.shadows[0]) || 'none'})`);
+  ok(mat && mat.firstTL === 12 && mat.firstBL === 0 && mat.lastTL === 0 && mat.lastBL === 12,
+    `the outer corners are the CELL radius on the run's ends only (${mat && mat.firstTL}/${mat && mat.firstBL} … ${mat && mat.lastTL}/${mat && mat.lastBL})`);
+  ok(mat && mat.gap === 0 && mat.seam === 0, `and the rows abut on ONE hairline through their wrappers (gap ${mat && mat.gap}, top border ${mat && mat.seam})`);
 
   console.log('1b. folder switch + unread chip');
   const f = await page.evaluate(() => {

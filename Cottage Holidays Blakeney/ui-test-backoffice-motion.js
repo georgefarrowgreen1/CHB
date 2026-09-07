@@ -101,8 +101,21 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   ok(await page.evaluate(() => document.getElementById('bhub-fold-guest').children.length === 1),
     'the fold holds exactly ONE element child (the 0fr grid collapses only the first track)');
 
-  await page.evaluate(() => bhubFoldToggle('guest'));
-  const mid = await foldBox();
+  // SEEK, NEVER RACE. The mid-flight sample used to be "toggle, then read the
+  // next frame", which under the runner's full concurrent load lands late — 209
+  // of a 226px fold, i.e. 92% open, and the check called a working unfold a
+  // teleport. Toggle, then PAUSE the transition and set its currentTime to a
+  // quarter of the way in; the reading is then a phase, not a clock.
+  const mid = await page.evaluate(() => {
+    bhubFoldToggle('guest');
+    const f = document.getElementById('bhub-fold-guest');
+    const anims = f.getAnimations();
+    for (const a of anims) { a.pause(); const d = (a.effect && a.effect.getTiming().duration) || 0; a.currentTime = (typeof d === 'number' ? d : 0) * 0.25; }
+    const cs = getComputedStyle(f);
+    return { h: f.getBoundingClientRect().height, hidden: f.hidden, vis: cs.visibility, rows: cs.gridTemplateRows, n: anims.length };
+  });
+  ok(mid && mid.n >= 1, `the fold really animates — ${mid && mid.n} transition(s) to seek (vacuity guard)`);
+  await page.evaluate(() => { document.getElementById('bhub-fold-guest').getAnimations().forEach((a) => a.play()); });
   ok(mid && mid.hidden === false, 'opening: `hidden` is false synchronously — every f.hidden read in the app still holds');
   ok(mid && mid.vis === 'visible', 'opening: visible at once, with no delay on the way in');
   await page.waitForFunction(() => {

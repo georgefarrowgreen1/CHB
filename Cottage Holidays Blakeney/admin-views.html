@@ -974,11 +974,13 @@
 
             <!-- Guest accounts -->
             <div class="settings-sec" id="sec-guests" style="display:none;">
-                <!-- The guest table is wide (5 columns + actions): give the card room on
-                     desktop and let the table SCROLL inside it (overflow-x) — it used to
-                     spill past the card's 640px edge. -->
-                <div class="accounts-stat" style="max-width:960px;">
-                    <div class="label">Reset a guest's password</div>
+                <!-- NO BOX IN A BOX: the body of this page is ONE .acr-well of person
+                     rows, and it used to sit inside an .accounts-stat well inside the
+                     section — two bordered surfaces round a list. The caption and the
+                     sentence stand on the page ground now, as they do on every other
+                     Manage section, and the well is the card. -->
+                <div style="max-width:960px;">
+                    <div class="acr-cap">Reset a guest's password</div>
                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
                     <div id="guest-admin-list" style="margin-top:4px;overflow-x:auto;"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
                 </div>

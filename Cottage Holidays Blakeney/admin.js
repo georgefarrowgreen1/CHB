@@ -23911,12 +23911,15 @@ async function loadDiagnostics() {
         : null;
     const item = (c) => {
         const route = c.status === 'optional' || c.status === 'warn' ? routeFor(c.label) : null;
-        const chipCls = c.status === 'fail' ? 'fail' : c.status;
+        // STATE IS SAID ONCE — the house capsule, sentence case. It used to be a
+        // coloured 3px rail AND a 9px dot AND an uppercase chip, three amber
+        // statements on one 76px row; the rail keeps its geometry and loses its
+        // colour (admin.css), the dot is gone, the capsule is the statement.
+        const capTone = c.status === 'fail' ? 'bad' : c.status === 'warn' ? 'warn' : c.status === 'ok' ? 'ok' : 'unk';
         return `
         <div class="status-item is-${c.status}">
-            <span class="status-item-dot" style="background:${dotColor(c.status)};"></span>
             <div class="status-item-body">
-                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span><span class="status-item-chip ${chipCls}">${word(c.status)}</span></div>
+                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span>${stCap(capTone, escapeHtml(word(c.status)))}</div>
                 <div class="status-item-detail">${escapeHtml(c.detail || '')}</div>
                 ${c.hint ? `<div class="status-item-hint">${escapeHtml(c.hint)}</div>` : ''}
                 ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" ${route.fn}>${route.t}</button></div>` : ''}

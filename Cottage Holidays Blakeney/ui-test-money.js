@@ -456,6 +456,23 @@ let mailWillFail = false;
   ok(rails.cash && rails.cash.ret && rails.cash.keep,
     `a CASH deposit can be kept for damage, not only given back (${rails.cash && rails.cash.say.slice(0, 60)})`);
   ok(rails.card && rails.card.keep, '…and the card rail is unchanged');
+  // STATE IS SAID ONCE on this queue too: the row used to paint an amber hairline
+  // round the whole card (`.money-row.due-soon`) beside the words that say it and
+  // the chip that carries it — state as chrome — on an off-scale 16px radius.
+  const depRow = await page.evaluate(() => {
+    const r = document.querySelector('#deposits-due .money-row');
+    if (!r) return null;
+    const c = getComputedStyle(r);
+    const page2 = getComputedStyle(document.body);
+    const probe = document.createElement('span'); probe.style.borderColor = page2.getPropertyValue('--glass-border').trim(); document.body.appendChild(probe);
+    const hair = getComputedStyle(probe).borderTopColor; probe.remove();
+    return { r: c.borderTopLeftRadius, top: c.borderTopColor, left: c.borderLeftColor, hair, sh: c.boxShadow };
+  });
+  ok(depRow, 'a deposit row is on screen (vacuity guard)');
+  ok(depRow && depRow.r === '12px', `a deposit row is a list CELL, not an off-scale 16 (${depRow && depRow.r})`);
+  ok(depRow && depRow.top === depRow.hair && depRow.left === depRow.hair,
+    `…and its border is the plain hairline, not an amber ring (${depRow && depRow.top})`);
+  ok(depRow && depRow.sh === 'none', `…and it casts no drop shadow — a queue is a list, not islands (${depRow && depRow.sh})`);
   // THE IDENTITY PILL SURVIVES THREE PILLS AT PHONE WIDTH (the UI pass:
   // "Pimpernel" crushed to "P" under paid-state + arrives-soon chips — the
   // no-shrink chips took the row and the ellipsised tag absorbed it all).

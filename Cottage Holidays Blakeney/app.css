@@ -2021,10 +2021,14 @@ a.card {
   text-decoration: none;
   color: var(--text-light);
 }
-/* A touch more lift + scale than the generic glass panel, with springy easing. */
+/* THREE SIGNALS FOR ONE HOVER: the card lifted 7px, scaled 1.012 AND glowed
+   rose (the accent layer the HIG pass had already taken off filled buttons),
+   while the photo inside scaled 1.05. The lift stays — .glass-panel's hover is
+   a documented card affordance — and the photo's zoom is the ONE moving thing;
+   the scale and the accent shadow layer (below) are gone. */
 @media (hover: hover) {
   .card:hover {
-    transform: translateY(-7px) scale(1.012);
+    transform: translateY(-7px);
   }
 }
 .card-img {
@@ -6255,13 +6259,13 @@ body.light-mode .tag-pimpernel {
   padding-top: 10px;
   border-top: 1px solid var(--glass-border);
 }
-/* Automation settings (Instant answers + Away auto-reply) read as tidy cards. */
+/* NO BOX IN A BOX. These two pages are ONE .acr-well each, and this wrapper put
+   a third bordered surface round every field: textarea (1px, r12) inside
+   .acr-well (1px, r20) inside this (1px, r28 at 390 / r40 at 1280). The well
+   sits on the page ground now, as it does on every other Manage section. */
 #chat-answers-editor,
 #chat-away-editor {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel);
-  padding: 20px 22px;
+  padding: 0;
 }
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
@@ -8437,7 +8441,8 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
   letter-spacing: 0.2px;
   cursor: pointer;
-  box-shadow: 0 8px 24px var(--accent-soft);
+  /* The 24px accent glow is gone (the .btn-accent rule): measured on "We've left
+     the cottage", rgba(214,167,133,0.55) 0 8px 24px. */
   transition: transform 320ms var(--settle), filter 320ms var(--settle), box-shadow 0.3s var(--fluid-bezier);
 }
 .btn-primary:hover {
@@ -8588,14 +8593,17 @@ body.light-mode .feed-dot-bad {
   max-width: 760px;
   margin: 16px auto 2px;
 }
+/* ON THE SYSTEM: it had its own 16px radius and its own padding, and its two
+   buttons measured 60px against 45px in one row — the accent one wearing the
+   hero CTA's padding. The card radius, and one button geometry. */
 .wb-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 16px 20px;
-  border-radius: var(--r-md);
+  padding: 20px 24px;
+  border-radius: var(--r-lg);
 }
 .wb-title {
   font-family: var(--font-serif);
@@ -8611,13 +8619,27 @@ body.light-mode .feed-dot-bad {
   gap: 10px;
   flex-wrap: wrap;
 }
-.wb-actions .btn-glass {
+/* One geometry for the pair: .btn-glass.btn-accent's 17px guest-CTA padding
+   made the accent 60px beside a 45px sibling in the same row (the .cal-add-btn
+   precedent — in a row of peers the accent is a COLOUR, not a size). */
+.wb-actions .btn-glass,
+.wb-actions .btn-glass.btn-accent {
   white-space: nowrap;
+  padding: 12px 28px;
+  min-height: 44px;
 }
 @media (max-width: 640px) {
   .wb-panel {
     flex-direction: column;
     align-items: flex-start;
+  }
+  /* Primary over secondary: on a phone the accent takes the row and "Your
+     stays" sits under it, rather than two equal pills side by side. */
+  .wb-actions {
+    width: 100%;
+  }
+  .wb-actions .btn-accent {
+    flex: 1 1 100%;
   }
 }
 /* A SENTENCE IS NOT A CHIP: a 999px stadium round a paragraph that wraps to two
@@ -9474,12 +9496,19 @@ body.light-mode .feed-dot-bad {
   color: var(--dark-grey);
   border-color: var(--text-light);
 }
+/* An experience card has NO click handler — only the pills inside act — and it
+   inherited .card's `cursor: pointer` plus .glass-panel's hover lift, so the
+   pointer promised a tap that does nothing. The cursor is the unambiguous half;
+   the lift is a JUDGEMENT (CLAUDE.md's opt-out list names surfaces you never
+   click, and keeps the lift for decorative bands — this is a content card, not
+   a band). */
 .exp-card {
   position: relative;
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  cursor: default;
 }
 .exp-card .card-img {
   height: clamp(150px, 26vw, 200px);
@@ -9597,23 +9626,22 @@ body.light-mode .feed-dot-bad {
     height: 44px;
   }
 }
-/* Lighter backdrop-blur on phones: blur cost scales with radius, so a
-           modest trim noticeably eases scroll/compositing on low-end devices
-           while keeping the frosted-glass look (these elements composite over
-           scrolling content). */
+/* THE PHONE GETS THE MATERIAL. Blur cost scales with radius, so a phone gets a
+   cheaper one — but this block REPLACED --glass-filter outright with a bare
+   blur(14px), so the saturate + brightness lift DESIGN.md defines as the glass
+   never painted on the device the owner and most guests actually use: measured
+   at 390, .card / .hero-content / .modal-box / .my-stay-hub all computed
+   `blur(14px)` against `blur(24px) saturate(1.8) brightness(1.04)` at 1280. The
+   token --glass-filter is built from says the intended thing in one line, so the
+   radius drops and the material stays. The .btn-glass restatement went with it,
+   and that is a correction too: the base rule declares NO backdrop-filter on
+   buttons on purpose ("a blur layer per button would cost more than it's
+   worth") and the phone override was adding exactly that cost on the device
+   least able to pay it. .prop-book-bar had TWO definitions (blur(20px) at ~2867,
+   blur(14px) here); it keeps the first. */
 @media (max-width: 768px) {
-  .glass-panel {
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  .btn-glass {
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-  }
-  .prop-book-bar,
-  .chat-widget {
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+  :root {
+    --glass-blur: 14px;
   }
 }
 .guest-booking {
@@ -9872,6 +9900,9 @@ body.light-mode .feed-dot-bad {
   max-width: 480px;
   padding: 36px;
   border-radius: var(--r-panel);
+  /* A sheet over a scrim lifts more than a page panel: the FLOAT token, stated
+     once for both themes, in place of the raw light-mode restatement. */
+  box-shadow: var(--shadow-float), var(--glass-rim);
   /* The overlay's safe-area padding is not enough on its own: a flex-CENTRED
      child that is taller than the content box overflows BOTH edges equally, so a
      90vh panel still crept back under the Dynamic Island by a few pixels. Cap the
@@ -10051,14 +10082,15 @@ body.light-mode .feed-dot-bad {
   width: calc(100% - 48px);
   pointer-events: none;
 }
+/* STATE IS SAID ONCE: the 4px coloured left rail is gone — the tinted icon is
+   the one mark — and the radius is the CARD step, not the off-scale 16. */
 .toast {
   pointer-events: auto;
   background: rgba(30, 24, 38, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-highlight);
-  border-left: 4px solid var(--warn);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   box-shadow: var(--shadow-float);
   animation: toastIn 0.45s var(--fluid-bezier);
@@ -10069,7 +10101,6 @@ body.light-mode .feed-dot-bad {
 /* The counted remainder of a capped stack — a LINE, not another card: it carries
    no action, so it must not spend a card's worth of a phone screen saying so. */
 .toast.toast-more {
-  border-left-color: var(--glass-border);
   padding: 10px 14px;
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -10172,7 +10203,6 @@ body.cmdk-open #changeover-toasts {
   visibility: hidden;
 }
 .toast.toast-mini {
-  border-left-color: var(--ok);
   padding: 13px 16px;
   cursor: pointer;
   display: flex;
@@ -10183,7 +10213,6 @@ body.cmdk-open #changeover-toasts {
    the rose-gold accent reads in both themes. */
 .toast-action {
   flex-shrink: 0;
-  margin-left: auto;
   background: none;
   border: none;
   color: var(--accent-text);
@@ -10191,15 +10220,19 @@ body.cmdk-open #changeover-toasts {
   font-weight: 700;
   font-size: var(--fs-sub);
   letter-spacing: 0.02em;
-  padding: 4px 2px;
+  /* The toast is the tap target, but the ACTION is what a keyboard reaches —
+     it measured 42x29. The region grows to 44 with a negative margin, so the
+     toast itself does not. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 4px;
+  margin: -8px -4px -8px auto;
   cursor: pointer;
 }
 .toast-action:hover,
 .toast-action:focus-visible {
   text-decoration: underline;
-}
-.toast.toast-mini.toast-err {
-  border-left-color: var(--danger);
 }
 .toast.toast-mini .toast-body {
   color: var(--text-light);
@@ -10337,18 +10370,19 @@ body.light-mode .theme-switch .ts-i-sun {
     display: inline-block;
   }
 }
+/* NO FILLED-BUTTON GLOWS — the pass that retired .btn-accent's 24px rose halo
+   to a 2px lift stopped at these two: the segment measured a 15px accent glow
+   on "Log in", the owner/green variant the same defect in raw rgba. */
 .toggle-btn.active-mode {
   background: var(--ok);
   color: white;
   border-color: var(--ok);
-  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
 }
 /* Guest Log In / Create Account tabs use the site's rose-gold accent, not green. */
 .toggle-btn.guest-tab.active-mode {
   background: var(--accent);
   color: #1b1208;
   border-color: var(--accent);
-  box-shadow: 0 4px 15px var(--accent-soft);
 }
 
 /* data-edit-* elements are the content render targets; keep their text in the
@@ -11698,19 +11732,26 @@ body.light-mode .hs-field:hover {
 .hs-unavail {
   opacity: 0.7;
 }
-/* Light mode: the shadows above are tuned for dark glass and read muddy on
-           light surfaces — swap to a cooler, tighter ink at lower opacity. */
-body.light-mode .glass-panel {
-  box-shadow: 0 6px 22px rgba(20, 22, 34, 0.08);
-}
+/* ONE SHADOW DEFINITION. The --shadow-* tokens ARE retuned for light (a cooler,
+   tighter ink), and these rules then restated them RAW on top — three different
+   shadows for one material on one screen, none of them a token, and every one
+   of them dropping the --glass-rim specular edge the dark theme gets. Measured
+   light before: .card 0 10px 30px rgba(30,54,72,.08), .hero-content/.host-card/
+   .my-stay-hub/.bk-row 0 6px 22px rgba(20,22,34,.08), .modal-box 0 18px 48px
+   rgba(20,22,34,.18), and no inset rim anywhere. The comment they carried
+   ("tuned for dark glass and read muddy on light — swap to a cooler ink")
+   predates the token retune that now does exactly that. The panel token is
+   slightly heavier than the value it replaces (0 10px 34px at .10 against
+   0 6px 22px at .08) and was re-judged on the rendered screens rather than
+   assumed; .modal-box takes --shadow-float, which is what a sheet over a scrim
+   asks for and what the raw value it replaces was. NB the light .datepicker-pop
+   shadow went with them: it is the full-viewport scrim, so it painted nothing.
+   The hover restatements stay for now — the hover VALUES they override are raw
+   in the base rules too, so consolidating them is its own pass. */
 @media (hover: hover) {
   body.light-mode .glass-panel:hover {
     box-shadow: 0 12px 30px rgba(20, 22, 34, 0.13);
   }
-}
-body.light-mode .modal-box,
-body.light-mode .datepicker-pop {
-  box-shadow: 0 18px 48px rgba(20, 22, 34, 0.18);
 }
 /* THE LIGHT DESKTOP MODAL WAS A GREY CARD, NOT GLASS — and SYSTEMIC, not the
    suggest sheet's: every desktop .modal-box (auth, enquiry, welcome book, security,
@@ -12133,13 +12174,8 @@ body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
     var(--shadow-panel),
     0 0 70px -22px var(--accent-soft);
 }
-@media (hover: hover) {
-  .card:hover {
-    box-shadow:
-      0 15px 45px rgba(0, 0, 0, 0.4),
-      0 0 44px -18px var(--accent-soft);
-  }
-}
+/* The accent glow layer is gone; the card keeps .glass-panel:hover's own lift
+   shadow, rim included (light keeps its own cooler restatement below). */
 
 /* The gradient flourish under centred titles is GONE (the sentence-case pass):
    the serif title carries the hierarchy; a rule beneath it was decoration. */
@@ -12378,11 +12414,20 @@ body.light-mode .heritage-num {
 body.light-mode .card {
   background: #fff;
   border: 1px solid rgba(28, 46, 58, 0.06);
-  box-shadow: 0 10px 30px rgba(30, 54, 72, 0.08);
 }
 @media (hover: hover) {
   body.light-mode .card:hover {
     box-shadow: 0 20px 46px rgba(30, 54, 72, 0.16);
+  }
+}
+/* …and the experience card opts out of both halves of that hover. It has to be
+   stated HERE: `body.light-mode .card:hover` is (0,3,0) and sits at the foot of
+   the file, so an opt-out written beside .exp-card loses on order. */
+@media (hover: hover) {
+  .exp-card:hover,
+  body.light-mode .exp-card:hover {
+    transform: none;
+    box-shadow: var(--shadow-panel), var(--glass-rim);
   }
 }
 /* The photo fills the card top edge-to-edge; the frame gets out of the way. */

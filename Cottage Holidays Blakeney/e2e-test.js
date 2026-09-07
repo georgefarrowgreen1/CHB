@@ -386,17 +386,37 @@ async function waitForServer(url, tries = 40) {
     console.log('== 8. Liquid Glass material + theme toggle (live) ==');
     // The glass material must be APPLIED at runtime, not just declared — a
     // saturation lift is what makes it Apple's Liquid Glass and not a flat frost.
-    const bf = await page.evaluate(() => {
-      const el = document.querySelector('.glass-panel');
+    // NB the selector must EXCLUDE the header: since the bar became a
+    // .glass-panel that paints nothing itself (its fill, blur and mask ride
+    // header::before), `querySelector('.glass-panel')` returned the header and
+    // this check read `none` — taking the "not reported by headless" branch and
+    // proving nothing. Measured: with :not(header) it reads the real material.
+    const GLASS = () => {
+      const el = document.querySelector('.glass-panel:not(header)');
       if (!el) return '';
       const cs = getComputedStyle(el);
       return cs.backdropFilter || cs.webkitBackdropFilter || '';
-    });
+    };
+    const bf = await page.evaluate(GLASS);
     if (bf && bf !== 'none') {
       /saturate/.test(bf) ? pass('glass-panel backdrop-filter lifts saturation (Liquid Glass live)') : fail('glass-panel lost the Liquid Glass material: ' + bf);
     } else {
       pass('backdrop-filter not reported by headless — material checked statically in smoke-test');
     }
+    // AND ON A PHONE, which is where it was missing: the <=768 override used to
+    // replace --glass-filter with a bare blur(14px), so the saturation lift that
+    // MAKES the material never painted on the device the owner uses. Measured at
+    // 390 the panels read `blur(14px)` against `blur(24px) saturate(…)` at 1280.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    const bfPhone = await page.evaluate(GLASS);
+    if (bfPhone && bfPhone !== 'none') {
+      /saturate/.test(bfPhone) ? pass('…and at 390 too — the phone gets the material, not a bare blur (' + bfPhone + ')') : fail('the phone override dropped the Liquid Glass material: ' + bfPhone);
+    } else {
+      pass('backdrop-filter not reported by headless at 390');
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(300);
     // Theme toggle flips the palette and returns (direction-agnostic — the guest
     // default is light, admin forces dark, so don't assume a starting state).
     const themeBefore = await page.evaluate(() => document.body.classList.contains('light-mode'));

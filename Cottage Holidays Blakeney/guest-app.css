@@ -268,7 +268,11 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
   border: none;
   border-radius: var(--r-pill);
   padding: 14px 30px;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+  /* A DARK-THEME GLOW ON A CREAM GROUND: measured in light, the page reads
+     (245,241,233) and directly under this fixed pill (183,180,173) — 62 levels
+     darker — while in dark the same value is invisible. The float token is
+     retuned per theme, so one definition serves both. */
+  box-shadow: var(--shadow-float);
   transition:
     transform 0.15s var(--fluid-bezier),
     filter 0.2s var(--fluid-bezier);
@@ -307,7 +311,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--r-pill);
   padding: 12px 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-float);
 }
 .guest-dock-btn {
   position: relative;
@@ -483,7 +487,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   letter-spacing: 0.3px;
   padding: 7px 11px;
   border-radius: var(--r-sm);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-soft);
   opacity: 0;
   pointer-events: none;
   transition:
@@ -784,7 +788,6 @@ body.guest-app:not(.owner-mode) .page-view.active {
 body.light-mode.guest-app:not(.owner-mode) .guest-dock {
   background: rgba(255, 255, 255, 0.82);
   border-color: rgba(28, 46, 58, 0.1);
-  box-shadow: 0 16px 44px rgba(30, 54, 72, 0.18);
 }
 /* Icons become ink-slate on the white dock (were white on dark). */
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn {
