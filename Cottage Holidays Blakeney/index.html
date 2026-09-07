@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=57">
+    <link rel="stylesheet" href="guest-app.css?v=58">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=335">
+    <link rel="stylesheet" href="app.css?v=336">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -568,7 +568,7 @@
             <label class="modal-label" for="exp-s-cat">Category</label>
             <select class="input-glass" id="exp-s-cat"></select>
             <label class="modal-label" for="exp-s-body">Description</label>
-            <textarea class="input-glass" id="exp-s-body" rows="3" placeholder="What is it, and why's it great?" style="resize:vertical;"></textarea>
+            <textarea class="input-glass" id="exp-s-body" rows="3" placeholder="What is it, and why's it great?"></textarea>
             <label class="modal-label" for="exp-s-link">Website (optional)</label>
             <input type="text" class="input-glass" id="exp-s-link" inputmode="url" autocapitalize="off" placeholder="https://…">
             <label class="modal-label" for="exp-s-phone">Phone (optional)</label>
@@ -728,15 +728,16 @@
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
         <div id="enquire-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-focus="#enq-date-trigger" data-act="backdropClose" data-close="closeEnquireModal">
             <div class="modal-box enquire-box glass-panel">
-                <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-
-                <!-- Two-step progress indicator -->
-                <div class="enq-progress" id="enq-progress" aria-hidden="true">
-                    <span class="enq-prog-step on" id="enq-prog-1">Your stay</span>
-                    <span class="enq-prog-line"></span>
-                    <span class="enq-prog-step" id="enq-prog-2">Your details</span>
-                    <span class="enq-prog-line" id="enq-prog-line2"></span>
-                    <span class="enq-prog-step" id="enq-prog-3">Account</span>
+                <!-- One row, not two: the ✕ is a SIBLING of the aria-hidden progress row, never a child (see .enq-head). -->
+                <div class="enq-head">
+                    <div class="enq-progress" id="enq-progress" aria-hidden="true">
+                        <span class="enq-prog-step on" id="enq-prog-1">Your stay</span>
+                        <span class="enq-prog-line"></span>
+                        <span class="enq-prog-step" id="enq-prog-2">Your details</span>
+                        <span class="enq-prog-line" id="enq-prog-line2"></span>
+                        <span class="enq-prog-step" id="enq-prog-3">Account</span>
+                    </div>
+                    <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
 
                 <!-- STEP 1: REVIEW -->
@@ -806,8 +807,11 @@
                         <button type="button" class="btn-glass" data-act="enqFaqAsk">Ask</button>
                     </div>
                     <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:4px 0 0;">Answered instantly from the cottage's own guide — anything it can't answer reaches us with your enquiry.</p>
-                    <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
-                    <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;margin-top:18px;" data-act="enquireContinue">Continue</button>
+                    <!-- .enq-foot pins the step's action at ≥900; below it the wrapper generates no box. -->
+                    <div class="enq-foot">
+                        <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
+                        <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireContinue">Continue</button>
+                    </div>
                 </div>
 
                 <!-- STEP 2: YOUR DETAILS -->
@@ -845,13 +849,13 @@
                     </label>
                     <div class="enq-fg" style="--efd:0.115s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK address</label>
-                        <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
+                        <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
                         <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
                     </div>
                     <div class="enq-fg" style="--efd:0.155s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 2px;" for="enq-message">About your party</label>
                         <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 5px;">A little about who&rsquo;s coming helps us look after you better.</p>
-                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="e.g. two of us and our teenage daughter" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
+                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="e.g. two of us and our teenage daughter" data-act-input="enqLiveSync"></textarea>
                     </div>
                     <!-- Two declarations, both required before sending. -->
                     <div class="enq-fg" style="--efd:0.195s;">
@@ -869,12 +873,14 @@
                     <!-- THE SEND IS NARRATED (enqStepsShow, app.js — the pay screen's
                          #pay-steps anatomy reused): what's happening while it goes,
                          revealed only once the wait has lasted 400ms. -->
+                    <div class="enq-foot">
                     <div class="pay-steps" id="enq-steps" style="display:none;" role="status" aria-live="polite"></div>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass btn-accent enq-fg" style="width: 100%; padding: 18px;--efd:0.195s;" id="enq-submit-btn">Send enquiry</button>
                     <!-- The living line — see enqLiveSync. -->
                     <p id="enq-live-sub" class="enq-fg" style="font-size:var(--fs-sub);color:var(--text-muted);text-align:center;margin:10px 0 0;--efd:0.195s;">No payment now — George usually replies the same day to confirm availability.</p>
                     <a class="btn-glass enq-fg" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;--efd:0.195s;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to discuss</a>
+                    </div>
                 </div>
 
                 <!-- STEP 3 (only shown to guests who aren't signed in): set a password to
@@ -889,7 +895,8 @@
                     <!-- The sentence and the schedule row below are rewritten by submitEnquiry when
                          the guest left the email field blank — an enquiry with a phone and no
                          address is deliberately accepted, so the reply cannot be an email. -->
-                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span id="enq-sent-how">George replies personally — usually the same day, by email.</span></div>
+                    <!-- Said once: the drawn tick above is the mark; this line says WHEN, so it keeps no ✓ of its own. -->
+                    <p class="enq-sent-how" id="enq-sent-how">George replies personally — usually the same day, by email.</p>
                     <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
                     <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
                     <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
@@ -1277,9 +1284,9 @@
             </div>
             <label class="modal-label" for="pu-caption">Caption (optional)</label>
             <input type="text" id="pu-caption" class="input-glass" maxlength="280" placeholder="e.g. Sunset over the marshes">
-            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
-                <button class="btn-glass" style="width:auto;padding:11px 22px;" data-act="submitGuestPhoto">Submit photo</button>
-                <span id="pu-msg" style="font-size:var(--fs-sub);" aria-live="polite"></span>
+            <div style="margin-top:14px;">
+                <button class="btn-glass btn-accent" style="width:100%;padding:14px;" data-act="submitGuestPhoto">Submit photo</button>
+                <span id="pu-msg" style="font-size:var(--fs-sub);display:block;margin-top:8px;" aria-live="polite"></span>
             </div>
         </div>
     </div>
@@ -1356,7 +1363,7 @@
             <label class="modal-label">Email</label>
             <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
             <div class="enq-modal-msg" id="wl-msg" role="alert"></div>
-            <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
+            <button class="btn-glass btn-accent" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
         </div>
     </div>
 
@@ -1668,7 +1675,7 @@
                     <h2 data-edit-text="terms-title">Booking terms &amp; conditions</h2>
                     <p class="terms-modal-sub">Please read these before you book — they're the terms you accept with your booking.</p>
                 </div>
-                <button class="toast-close" data-act="closeTermsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeTermsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="terms-modal-body" id="terms-modal-body">
                 <!-- terms rendered here by renderTerms() -->
@@ -2020,11 +2027,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=970"></script>
+    <script defer src="app.js?v=971"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=26"></script>
+    <script defer src="guest-app.js?v=27"></script>
 
 </body>
 </html>

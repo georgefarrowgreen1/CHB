@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 603;
+const ADMIN_BUNDLE_V = 604;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 262;
+const ADMIN_CSS_V = 263;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -14566,9 +14566,11 @@ function renderDatePicker() {
         else hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
         const n = nightsBetween(dpState.start, dpState.end) + (dpTarget && dpTarget.inclusive ? 1 : 0);
+        // NBSP AFTER THE MIDDOT: the separator binds to what FOLLOWS it, so a wrap
+        // can never leave a line ending on a bare "·" (measured at 390).
         const span = dpVoice
-            ? `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`
-            : `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+            ? `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`
+            : `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
         // "✓ LOOKS FREE" ONLY WHERE IT IS TRUE BY THIS MODE'S OWN RULES: the
         // enquiry picker refuses crossed nights, so a completed range here is
         // clear — but a SEEDED range (the hero search seeds any dates into this
@@ -14592,7 +14594,7 @@ function renderDatePicker() {
             hint.innerHTML =
                 freeCap +
                 escapeHtml(span) +
-                ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
+                ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
                 t.adults + ' adult' + (t.adults === 1 ? '' : 's') +
                 (t.children > 0 ? ', ' + t.children + ' child' + (t.children === 1 ? '' : 'ren') : '');
         } else {
@@ -16687,8 +16689,13 @@ function enqFirstProblem(propKey) {
     const adults = Math.max(1, parseInt(val('enq-adults'), 10) || 0);
     const children = Math.max(0, parseInt(val('enq-children'), 10) || 0);
     const message = val('enq-message');
-    if (!name || !checkIn || !checkOut)
-        return { msg: 'Please fill in your name and both dates.', focus: !name ? 'enq-name' : 'enq-date-trigger' };
+    // TWO RUNGS, NOT ONE. "Please fill in your name and both dates" was returned
+    // whenever ANY of the three was missing — so a guest who had chosen their dates
+    // and left the name blank was told the dates were missing while the trigger
+    // above read "Wed 9 Sept → 12 Sept". A refusal that names a field the guest has
+    // already filled reads as the app not having noticed them.
+    if (!name) return { msg: 'Please tell us your name.', focus: 'enq-name' };
+    if (!checkIn || !checkOut) return { msg: 'Please choose your dates.', focus: 'enq-date-trigger' };
     if (!address) return { msg: 'Please enter your UK address.', focus: 'enq-address' };
     // We must be able to reply: an email or a phone number is required, and a
     // typed email has to look like one (the server re-checks both).
@@ -16737,6 +16744,14 @@ function enqLiveSync() {
         dotEl.classList.toggle('done', !prob);
         dotEl.classList.toggle('todo', !!prob);
     }
+    // THE ALERT IS THE ANSWER TO A TAP; THIS LINE IS THE PREDICTION — so the alert
+    // may never outlive the state it answered. It was set at Send and never cleared
+    // by anything but another Send, so typing the missing name left "Please tell us
+    // your name" standing in red while this line had already moved on to the
+    // address: two sentences about one form, contradicting each other. Anything the
+    // freshly computed ladder no longer says is stale, and stale goes.
+    const alertEl = document.getElementById('enq-msg-details');
+    if (alertEl && alertEl.textContent && alertEl.textContent !== (prob ? prob.msg : '')) setEnqMsg('details', '');
     if (prob) {
         el.textContent = prob.msg;
         return;
@@ -16835,7 +16850,12 @@ function updateEnquiryPrice() {
 
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
-        box.innerHTML = `<p style="color: var(--text-light); font-size:var(--fs-body); text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size:var(--fs-sub);">Refundable deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+        // THE FROM-PRICE IS SAID ONCE. The heading directly above this well already
+        // reads "From £130.00 / night" with "per couple" under it, and the well
+        // restated both 170px later — so an empty step 1 stated one price twice and
+        // the second copy was the one carrying the deposit, which is the only fact
+        // here the heading does NOT have. Left-aligned like everything else in the card.
+        box.innerHTML = `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: left; margin: 0;">Refundable deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</p>`;
         enqAvailSync(null);
         try {
             enqReactSync(false, adults, children);
@@ -16866,10 +16886,10 @@ function updateEnquiryPrice() {
     } catch (e) {}
     const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
-                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
+                <div class="price-row total" style="border-top:none;padding-top:0;"><span>Estimated total</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">includes fees</span></span></div>
                 ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
                 ${sched}
-                <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
+                <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: left; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
         updateBookBar();
@@ -17056,9 +17076,27 @@ async function submitEnquiry(propKey) {
     if (prob) {
         setEnqMsg('details', prob.msg);
         if (prob.focus) {
-            const f = document.getElementById(prob.focus);
+            let f = document.getElementById(prob.focus);
+            // A REFUSAL MUST POINT AT A CONTROL THE GUEST CAN REACH. The date
+            // trigger lives on STEP ONE, so naming it from step two focused a
+            // display:none element — which does nothing at all, silently, leaving
+            // the guest marked at whatever they last touched. Take them back to
+            // the step that owns the control and carry the sentence with them.
+            // SCOPED TO A STEP-ONE CONTROL ON PURPOSE, and the scope is the STEP
+            // rather than the id, so a future control moved onto step one is
+            // covered without being named here. Every other rung points at a
+            // field on step two, where the guest already is when Send is tapped —
+            // so widening this to "any invisible target" would only ever fire in
+            // a state no guest can reach (a harness calling submitEnquiry while
+            // step one is showing), and there it would move the sentence to a
+            // different element for no one's benefit.
+            if (f && !f.getClientRects().length && f.closest('#enquire-step-review')) {
+                try { enquireBack(); } catch (e) {}
+                setEnqMsg('review', prob.msg);
+                f = document.getElementById(prob.focus);
+            }
             // NUDGE: the message named the field in words and never pointed at it.
-            if (f) { f.focus(); chbNudge(f); }
+            if (f && f.getClientRects().length) { f.focus(); chbNudge(f); }
         }
         // Stale-tab clash: refresh what we hold so the picker can show why
         // (the server re-checks authoritatively either way).
@@ -17207,17 +17245,18 @@ async function submitEnquiry(propKey) {
             am.textContent = '';
             am.classList.remove('show');
         }
+        // THE SENT MOMENT LEADS WITH THE TICK. The optional password field used to be
+        // focused 80ms in, with no preventScroll — which scrolled the sheet 111px and
+        // cut the progress row under the grabber, so the screen that exists to say
+        // "sent" opened on an OPTIONAL account form. setEnqStep(3) already focuses
+        // #enq-h-sent (preventScroll), which is what announces the change; the field
+        // is still cleared, and it is one tab away.
         if (!exists) {
             const pw = document.getElementById('enq-acct-password');
-            if (pw) {
-                pw.value = '';
-                setTimeout(() => {
-                    try {
-                        pw.focus();
-                    } catch (e) {}
-                }, 80);
-            }
+            if (pw) pw.value = '';
         }
+        const sheet = document.querySelector('#enquire-modal .modal-box');
+        if (sheet) sheet.scrollTop = 0;
         return;
     }
 
@@ -19149,7 +19188,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higpublic1';
+    const BUILD = 'higenq1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

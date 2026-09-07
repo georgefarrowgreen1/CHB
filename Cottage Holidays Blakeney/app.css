@@ -1104,6 +1104,15 @@ nav a:hover {
   cursor: progress;
   pointer-events: none;
 }
+/* …AND A BUSY BUTTON THAT IS ALSO DISABLED IS STILL BUSY. `disabled` stays — the
+   documented guard against a slow connection double-submitting an enquiry, and
+   pointer-events alone does not stop keyboard activation — but the two together
+   computed 0.6, so "Sending…" faded to 60% while it worked, which is exactly what
+   the WORK rule refuses. Busy is the spinner; only a genuinely unavailable
+   control dims. */
+.btn-glass.is-busy:disabled {
+  opacity: 1;
+}
 .btn-glass.is-busy::before {
   content: '';
   display: inline-block;
@@ -1485,6 +1494,23 @@ body.light-mode ::-webkit-scrollbar-thumb {
   max-height: min(90dvh, calc(100dvh - var(--safe-t) - var(--safe-b) - 40px));
   overflow-y: auto;
 }
+/* THE CARD STOPS MOVING UNDER THE FINGER. The pop is a CENTRED flex column and
+   the card's height changes twice per selection — the hint grows above the grid
+   and the foot's receipt below it — so the whole calendar walked up the screen
+   between the tap that chose a check-in and the tap that chose a check-out
+   (measured at 390: card top 204.3 → 178.3, the grid moving with it). Anchoring
+   the card to the top makes its own height irrelevant to where it sits. The cap
+   becomes the CONTAINER's remaining space rather than the viewport's, so
+   top-anchoring still cannot push the foot off screen on a short phone. */
+@media (max-width: 640px) {
+  .datepicker-pop {
+    align-items: flex-start;
+    padding-top: max(12vh, calc(var(--safe-t) + 24px));
+  }
+  .datepicker-card {
+    max-height: min(90dvh, 100%);
+  }
+}
 .dp-head {
   display: flex;
   align-items: center;
@@ -1512,12 +1538,16 @@ body.light-mode ::-webkit-scrollbar-thumb {
   border-color: var(--glass-highlight);
   background: var(--glass-hover);
 }
+/* THE ONLY GROWTH ABOVE THE GRID. The hint goes from one line ("When would you
+   like to arrive?") to two ("✓ Looks free … · 3 nights · £339.90 for 2 adults"),
+   which pushed the calendar down under the finger that had just tapped it.
+   Reserving the taller state costs nothing above a grid and stops the move. */
 .dp-hint {
   font-size: var(--fs-caption);
   color: var(--text-muted);
   text-align: center;
   margin-bottom: 14px;
-  min-height: 1.1em;
+  min-height: 2.8em;
 }
 .dp-weekdays,
 .dp-grid {
@@ -1690,7 +1720,12 @@ body.light-mode ::-webkit-scrollbar-thumb {
    just looked half the size of what they can hit. */
 .terms-accept {
   display: flex;
-  align-items: flex-start;
+  /* THE BOX SITS ON THE LINE IT BELONGS TO. flex-start with a 44px min-height put
+     the drawn box's centre on the ROW's centre while the first text line sat at its
+     top — measured 12.3px apart on both declarations at both widths, so the green
+     tick hung under the words it confirms. The input stays absolutely positioned at
+     top:50%, so the hit region is untouched. */
+  align-items: center;
   gap: 10px;
   margin: 4px 0 18px;
   min-height: 44px;
@@ -3123,14 +3158,27 @@ a.card {
   position: relative;
   max-width: 520px;
 }
+/* ONE ROW OF CHROME, NOT TWO. The ✕ used to sit in flow on a line of its own
+   ABOVE the progress: measured at 390, ✕ row + progress row + the first content
+   line spent 145px of an 844px phone (17%) before the cottage's name. It joins
+   the progress row's right end, where every sibling sheet already puts it. */
+.enq-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0;
+}
 /* Two-step progress indicator at the top of the enquiry modal. */
 .enq-progress {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* No right inset: the close X is in-flow on its own line above, so this row
-     gets the full width — which is what keeps the three labels from clipping. */
-  margin: 24px 0;
+  /* The connectors are flex:1, so the row takes whatever the ✕ beside it leaves
+     and the three nowrap labels are the floor — min-width:0 lets it shrink to
+     them rather than pushing the button off the box. */
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 .enq-prog-step {
   font-size: var(--fs-caption);
@@ -3351,6 +3399,9 @@ a.card {
 .enq-dot.done::after {
   content: '✓';
 }
+/* A MISSED SITE IN THE WELLS PASS: rgba(0,0,0,0.18) is a grey slab on the light
+   sheet (~203,200,195 on #f7f4ee) where every other well in this flow — .enq-host,
+   .date-range-trigger, .guest-price-box — took --well-bg. */
 .enq-sent-sum {
   display: flex;
   justify-content: space-between;
@@ -3358,11 +3409,60 @@ a.card {
   align-items: baseline;
   font-size: var(--fs-sub);
   color: var(--text-light);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--well-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-sm);
   padding: 10px 14px;
   margin-top: 12px;
+}
+/* SAID ONCE: the sent screen's "George replies personally" is a fact about WHEN
+   you will hear back, not a second "sent" — so it keeps its words and gives up
+   the ✓ icon and the green panel it wore, leaving the drawn tick above as the
+   one mark on the screen. */
+.enq-sent-how {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 0 4px;
+}
+/* DESKTOP IS A MAC SHEET, NOT A TALLER PHONE. At 1280×900 the enquiry box is
+   480×810 holding 1124px of form: 314px hidden on open, with Continue below the
+   fold — the one control that moves the guest on was not on screen when the
+   screen opened. A macOS sheet pins its action instead: the body scrolls, the
+   footer does not. Below 900 the wrapper generates NO BOX, so the phone's layout
+   is byte-for-byte what it was — and the refusal inside it can still stick to the
+   STEP rather than to a 190px wrapper, which is why this is `contents` and not a
+   `static` block. */
+.enq-foot {
+  display: contents;
+}
+/* 20, not the 18 this carried as an inline style: moving a declaration OUT of the
+   markup and into the sheet brings it under the 4pt ratchet for the first time, and
+   the ratchet only ever falls. A 2px snap nobody can see is the cheaper half of that
+   trade than a raised baseline. */
+#enquire-step-review .enq-foot > .btn-accent {
+  margin-top: 20px;
+}
+@media (min-width: 900px) {
+  #enquire-step-review .enq-foot,
+  #enquire-step-details .enq-foot {
+    display: block;
+    position: sticky;
+    /* NEGATIVE, and measured: Chromium's sticky rectangle here is the scroller's
+       CONTENT box, so `bottom: 0` left the box's own 36px bottom padding exposed
+       BELOW the bar — a 37px strip the form scrolled through. -36px puts the bar's
+       bottom edge on the box's inner bottom, where a footer bar belongs. */
+    bottom: -36px;
+    z-index: 3;
+    margin: 0 -36px -36px;
+    padding: 16px 36px calc(16px + var(--safe-b));
+    background: var(--sheet-surface);
+    border-top: 1px solid var(--glass-border);
+  }
+  #enquire-step-review .enq-foot > .btn-accent {
+    margin-top: 0;
+  }
 }
 /* Dates verdict capsule on the enquiry trigger + the in-place waitlist offer +
    the spoken payment schedule (the approved booking-flow demo). */
@@ -3484,6 +3584,35 @@ a.card {
 }
 .enq-modal-msg.show {
   display: block;
+  /* It sat flush against the Send button — 0px between the two, so the answer and
+     the control read as one block of colour. */
+  margin-bottom: 12px;
+}
+/* THE ANSWER TO THE TAP STAYS WITH THE GUEST. The refusal names a field and
+   FOCUSES it, which scrolls the sheet to that field — and the alert lives at the
+   foot of a 1250px form, so on a phone it left the screen in the same frame it
+   appeared: measured at 390, the alert at y=1207 in an 844px viewport with the
+   named field at 330. Pinned to the bottom of the sheet's own scroller it stays
+   with the field it names, and it unsticks into place the moment the guest
+   scrolls back to the button. The TINT is untouched — a11y §1b discovers and
+   measures this pair off the base rule — and the sheet's own ground goes UNDER
+   it so the form cannot read through. Above 900 the pinned foot carries it. */
+@media (max-width: 899px) {
+  #enq-msg-review.show,
+  #enq-msg-details.show {
+    position: sticky;
+    bottom: var(--safe-b);
+    z-index: 2;
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--warn) 12%, transparent),
+      color-mix(in srgb, var(--warn) 12%, transparent)
+    );
+    background-color: var(--sheet-surface);
+  }
+}
+/* The narration opened flush against the button it narrates. */
+#enq-steps.is-open {
+  margin-bottom: 12px;
 }
 /* THE ACCOUNT SCREENS' STATUS LINE — same block, same tokens. #login-error,
    #reg-error, #magic-link-msg, #pw-msg and #profile-msg each set a raw --danger /
@@ -12058,6 +12187,23 @@ body.light-mode .hs-field:hover {
    below 640 the .chb-sheet rule is (0,3,0) and still wins with --sheet-surface. */
 body.light-mode .modal-box {
   background: rgba(255, 255, 255, 0.9);
+}
+/* NO DESKTOP GRIP ON A ROUNDED GLASS FIELD. The diagonal resize handle is the
+   UA's own chrome painting inside our corner radius, and the field's rows are
+   already sized for what is asked of it. The three guest textareas carried
+   `resize: vertical` as an INLINE style, which no stylesheet rule can beat — so
+   the declarations went from the markup and the rule lives here, where the whole
+   family follows it. (.field-sm keeps its own vertical grip: those are owner-side
+   composer boxes where a long draft really is written.) */
+textarea.input-glass:not(.field-sm) {
+  resize: none;
+}
+/* THE PREDICTION STANDS DOWN WHILE THE ANSWER IS ON SCREEN. The living line and
+   the refusal share ONE ladder, so whenever the alert is up the two print the
+   SAME sentence — twice, 110px apart on the pinned foot. The alert answers the
+   tap; the line resumes the moment typing clears it. */
+#enquire-step-details:has(#enq-msg-details.show) #enq-live-sub {
+  display: none;
 }
 /* A PLACEHOLDER IS OUR INK, NOT THE UA'S. It was the browser's rgb(117,117,117),
    which follows neither theme and is a raw literal nothing can retune. */

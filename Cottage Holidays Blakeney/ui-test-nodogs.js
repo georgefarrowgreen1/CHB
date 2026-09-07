@@ -192,7 +192,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'outside the window → deposit row + balance row');
   const mDep = far.sched.match(/25% deposit £([\d.,]+)/);
   const mBal = far.sched.match(/£([\d.,]+) balance/);
-  const mTot = far.box.match(/From\s*£([\d.,]+)/);
+  // "From" was the label over an EXACT figure for a chosen range — the finding this
+  // row's copy change closes — so the total is located by its honest label now. The
+  // COHERENCE property being asserted is unchanged; only the word it is found by moved.
+  const mTot = far.box.match(/Estimated total\s*£([\d.,]+)/);
   ok(mDep && mBal && mTot && Math.abs(money(mDep[1]) + money(mBal[1]) - money(mTot[1])) < 0.01,
     `deposit ${mDep && mDep[1]} + balance ${mBal && mBal[1]} = total ${mTot && mTot[1]}`);
   // innerText reflects the CSS text-transform (the when-column renders
