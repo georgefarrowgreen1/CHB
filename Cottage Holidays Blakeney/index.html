@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=58">
+    <link rel="stylesheet" href="guest-app.css?v=59">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=336">
+    <link rel="stylesheet" href="app.css?v=337">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -987,8 +987,11 @@
                         <div class="pay-part" id="pay-part" style="display:none;">
                             <button type="button" class="pay-full-link" id="pay-part-toggle" data-act="payPartToggle" aria-expanded="false" aria-controls="pay-part-row"></button>
                             <div class="pay-part-row" id="pay-part-row" style="display:none;">
-                                <label class="pay-part-lbl" for="pay-part-amt" id="pay-part-lbl">How much would you like to pay now, in pounds?</label>
-                                <input class="input-glass" type="number" id="pay-part-amt" inputmode="decimal" step="0.01" min="0" autocomplete="off" data-act-input="payPartSync" data-act-change="payPartClamp" />
+                                <label class="pay-part-lbl" for="pay-part-amt" id="pay-part-lbl">How much would you like to pay now?</label>
+                                <!-- THE UNIT IS IN THE FIELD, not trailing the label (where
+                                     "pounds?" orphaned). text + inputmode=decimal: see
+                                     payPartNum, and no spin buttons in a money field. -->
+                                <div class="pay-money"><span class="pay-money-sign" aria-hidden="true">£</span><input class="input-glass" type="text" id="pay-part-amt" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" data-act-input="payPartSync" data-act-change="payPartClamp" /></div>
                                 <p class="pay-part-hint" id="pay-part-hint"></p>
                             </div>
                         </div>
@@ -1005,7 +1008,7 @@
                              file for merchant-initiated payments, so an automatic plan
                              needs the card form — said out loud, with the alternative
                              named, never a silent greying-out. -->
-                        <div class="pay-walnote" id="pay-walnote" style="display:none;" role="status"><b>Automatic payments need a card we can keep on file</b> — wallet cards can't be stored for later payments, so enter your card below. Prefer Apple&nbsp;Pay or Google&nbsp;Pay today? Choose &ldquo;I'll pay it myself&rdquo; and you can still pay the balance by wallet when it's due.</div>
+                        <div class="pay-walnote" id="pay-walnote" style="display:none;" role="status"><b>Automatic payments need a card we can keep on file</b> — wallet cards can't be stored for later payments, so enter your card below. Prefer a wallet? Choose &ldquo;I'll pay it myself&rdquo; and pay the balance that way when it's due.</div>
                         <!-- Express checkout: the caption names the LIVE figure the
                              wallets are priced to (mountWallets writes it). -->
                         <section class="pay-express" id="pay-express" style="display:none;" aria-labelledby="pay-express-cap">
@@ -1036,7 +1039,9 @@
                         <!-- Armed autopay only: what paying now (instead of waiting for
                              the collection) actually does. openPayView fills it. -->
                         <div class="pay-armed-note" id="pay-armed-note" style="display:none;"></div>
-                        <div class="pay-secure"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg><span>Secured by Square — we never see or store your card number.</span></div>
+                        <!-- The padlock is INSIDE the sentence: as a flex sibling it sat
+                             20px clear of its own first word, between two lines. -->
+                        <div class="pay-secure"><span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>Secured by Square — we never see or store your card number.</span></div>
                         <div class="pay-receipt-note">You&rsquo;ll get an email receipt straight away.</div>
                     </div>
                 </div>
@@ -1057,8 +1062,10 @@
                     <p id="pay-error-msg" style="color:var(--text-muted);"></p>
                     <!-- Revealed only when showPayError is given a remedy: this panel
                          also serves terminal states, where a retry misleads. -->
-                    <button type="button" id="pay-error-retry" class="btn-primary" style="margin-top:14px;padding:12px 26px;display:none;" data-act="payErrorRetry">Try again</button>
-                    <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" data-act="nav" data-view="view-main">Back to the site</button>
+                    <!-- ONE SIZE, AND THE PRIMARY IS THE FILLED ONE. Retry was 115×44
+                         at 13px beside a 174×45 .btn-glass at 15px. -->
+                    <button type="button" id="pay-error-retry" class="btn-glass btn-accent" style="margin-top:14px;display:none;" data-act="payErrorRetry">Try again</button>
+                    <button type="button" class="btn-glass" style="margin-top:14px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
             </div>
         </div>
@@ -2027,11 +2034,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=971"></script>
+    <script defer src="app.js?v=972"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=27"></script>
+    <script defer src="guest-app.js?v=28"></script>
 
 </body>
 </html>

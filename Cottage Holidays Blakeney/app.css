@@ -3644,6 +3644,10 @@ a.card {
 .pay-card {
   padding: 28px;
   border-radius: var(--r-panel);
+  /* The cottage's accent rule is the card's TOP EDGE, so it is pulled out of
+     the padding box and clipped to the card's own corner (see .pay-stay-band).
+     Nothing else reaches the edge — the Pay button's glow stops well inside. */
+  overflow: clip;
 }
 .pay-head {
   margin-bottom: 18px;
@@ -3765,9 +3769,23 @@ a.card {
 /* The field is the house .input-glass — a second glass control drawn beside the
    first would say the same thing in a different accent. Only the money-specific
    bits are stated here; the 16px font-size that stops iOS zooming on focus is
-   already the shared rule's. */
+   already the shared rule's. The £ is IN the field: the unit used to be carried
+   by the label's trailing ", in pounds?" and appeared nowhere near the number. */
+.pay-money {
+  position: relative;
+}
+.pay-money-sign {
+  position: absolute;
+  /* On the field's own 16px inset, so the sign and the figure share one rail. */
+  left: 16px;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--text-muted);
+  pointer-events: none;
+}
 #pay-part-amt {
   margin-bottom: 0;
+  padding-left: 32px;
   font-variant-numeric: tabular-nums;
 }
 .pay-part-hint {
@@ -3869,14 +3887,16 @@ a.card {
   padding: 11px 13px;
   margin-bottom: 14px;
 }
+/* A SENTENCE, NOT A PANEL. The consent restates the whole arrangement directly
+   above the button that acts on it — it is read in the flow, and the box it
+   used to wear was one more frame in a card that had thirteen. */
 .pay-consent {
   font-size: var(--fs-caption);
+  /* Body ink, not muted: unboxing already flattens it, and this is the sentence
+     the guest is agreeing to — the one thing on the screen not to dim. */
   color: var(--text-light);
-  background: rgba(127, 127, 127, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 11px 13px;
-  margin: 12px 0 2px;
+  line-height: 1.5;
+  margin: 12px 4px;
 }
 .pay-sec-amt:not(:empty)::before {
   content: ' · ';
@@ -3956,12 +3976,12 @@ a.card {
   text-underline-offset: 3px;
   cursor: pointer;
 }
-/* Quiet trust lines under the Pay button — a small lock, not a loud banner. */
+/* Quiet trust lines under the Pay button — a small lock, not a loud banner.
+   A BLOCK, not a flex row: the sentence wraps to two lines at 390 and as a
+   flex sibling the glyph was pinned at the left edge, vertically between them
+   and 20px clear of the first word. It is an inline mark in its own sentence. */
 .pay-secure {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
+  display: block;
   margin-top: 14px;
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -3973,6 +3993,9 @@ a.card {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 5px;
 }
 /* THE ONE THING THIS SCREEN IS FOR. It was .btn-glass — a translucent outline —
    under Square's solid-black and heavy-bordered wallet buttons, so the action
@@ -4050,40 +4073,50 @@ a.card {
    selected radio option read as unchecked radios — and STATE dots + a slim
    progress bar for a plan in flight (green done, accent next, hollow to come;
    the words beside them always carry the state too). */
+/* STEP 1 IS A STEP, NOT A BOX. It carried a border and a tint of its own around
+   three more bordered option cards around a bordered schedule — 13 framed
+   blocks in one card, three deep, and the plan step was the worst of it. It is
+   unboxed like step 2 beside it (a numbered caption is what names a step here);
+   the OPTIONS are the one frame, joined into a single group below. */
 .pay-autopay {
   display: block;
-  margin: 14px 0 2px;
-  padding: 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+  margin: 16px 0 4px;
 }
 .pay-ap-lead {
   margin: 4px 0 12px;
   font-size: var(--fs-sub);
   color: var(--text-muted);
 }
+/* ONE GROUP, HAIRLINE-SEPARATED — the house list material (no shadow, a
+   hairline, radius only on the run's ends). Three separate cards read as three
+   things to weigh; one group reads as one choice with three answers. */
 .pay-ap-opts {
   display: grid;
-  gap: 8px;
+  gap: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  overflow: clip;
 }
 .pay-ap-opt {
   display: block;
-  padding: 11px 13px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--glass-border);
+  padding: 12px;
   cursor: pointer;
   /* The pill-control press from the #1000 makeover — these are the same
      species of control as the part toggle. */
-  transition: transform 320ms var(--settle), filter 320ms var(--settle), border-color 0.18s var(--fluid-bezier);
+  transition: transform 320ms var(--settle), filter 320ms var(--settle), background 0.18s var(--fluid-bezier);
+}
+.pay-ap-opt + .pay-ap-opt {
+  border-top: 1px solid var(--glass-border);
 }
 .pay-ap-opt:active {
   transform: scale(var(--sc, 0.97));
   filter: brightness(0.94);
   transition: transform 80ms var(--in), filter 80ms var(--in);
 }
+/* The chosen row wears the tint; the checked radio beside it is the other half
+   of the state. The 62% accent RING is gone with the per-option border — a ring
+   inside a joined group is the second edge the group exists to remove. */
 .pay-ap-opt.is-sel {
-  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .pay-ap-optrow {
@@ -4294,6 +4327,15 @@ a.card {
   text-align: center;
   padding: 16px 0;
 }
+/* ONE GEOMETRY FOR THE PAIR. Retry is the accent fill now, and .btn-glass
+   .btn-accent's guest-CTA 17px padding would make it taller than the plain
+   "Back to the site" beside it — the same mismatch the other way round. Stated
+   at (1,1,0) so it outranks .btn-glass.btn-accent (0,2,0) whatever the order. */
+#pay-error .btn-glass {
+  min-height: 44px;
+  font-size: var(--fs-body);
+  padding: 12px 26px;
+}
 .pay-done-tick .ic {
   width: 64px;
   height: 64px;
@@ -4353,10 +4395,16 @@ a.card {
 .pj-row.is-dim .pj-fig { font-weight: 500; color: var(--text-muted); }
 /* The cottage's own colour opens the card — the money follows the thing it
    buys. Painted by openPayView from propertyMeta's accent; hidden without one. */
+/* It IS the top edge, not a rule floating in the padding: a 4px bar with its
+   own 4px radius, inset 8px inside a card whose own corner is 28px, read as a
+   stray bar above the title. Pulled the full 28px out of the padding box and
+   squared off — the card's `overflow: clip` gives it the card's corner. The
+   24px beneath restores the card's own top rhythm (4 + 24 = 28), so a cottage
+   with no accent (band display:none) is unmoved. */
 .pay-stay-band {
   height: 4px;
-  border-radius: 4px 4px 0 0;
-  margin: -8px -8px 14px;
+  border-radius: 0;
+  margin: -28px -28px 24px;
 }
 .pay-stay-cap {
   display: inline-flex;
@@ -4389,14 +4437,28 @@ a.card {
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   border-top-color: var(--accent);
 }
-/* The demoted ask on an armed plan: paying now is offered, never shouted. */
-.pay-cta.is-quiet {
+/* The demoted ask on an armed plan: paying now is offered, never shouted.
+   AT THE WINNING SPECIFICITY. This shipped as `.pay-cta.is-quiet` (0,2,0)
+   against `#pay-btn.pay-cta` (1,1,0) directly above, so the rule existed and
+   LOST: an already-arranged balance painted the accent fill, the accent-ink
+   text and the 18px rose glow — byte-identical to an unpaid ask, on the one
+   screen where "nothing to do" and "pay me now" must not look the same. The
+   hover twin is load-bearing too, or the pointer re-glows what this demotes. */
+#pay-btn.pay-cta.is-quiet {
   background: transparent;
   border: 1px solid var(--glass-border);
   color: var(--text-light);
+  box-shadow: none;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 600;
+}
+@media (hover: hover) {
+  #pay-btn.pay-cta.is-quiet:hover {
+    filter: none;
+    box-shadow: none;
+    background: var(--well-bg);
+  }
 }
 .pay-armed-note {
   font-size: var(--fs-caption);
@@ -4591,7 +4653,11 @@ a.card {
   overflow: hidden;
   pointer-events: none;
 }
-.pay-cta.is-busy::before {
+/* .btn-glass.is-busy::before is (0,3,0) and this was (0,2,0), so the shared
+   13px chbSpin ring painted here and the ring declared for the money screen
+   never did — the same "the rule exists and loses" shape as the quiet button
+   above. Restated at (0,3,0) and LATER in the sheet, so the pay ring wins. */
+.btn-glass.pay-cta.is-busy::before {
   content: '';
   display: inline-block;
   width: 14px;
@@ -4602,6 +4668,13 @@ a.card {
   vertical-align: -2px;
   margin-right: 8px;
   animation: paySpin 0.7s linear infinite;
+}
+/* BUSY IS THE SPINNER, NOT A DIM. The dispatcher disables the control while the
+   charge runs and `#pay-btn.pay-cta:disabled` (1,2,0) outranks the shared
+   `.btn-glass.is-busy:disabled` (0,3,0), so the button faded to 72% at the one
+   moment money is moving. (1,3,0) settles it. */
+#pay-btn.pay-cta.is-busy:disabled {
+  opacity: 1;
 }
 .pay-cta.is-busy::after {
   content: '';
@@ -4862,6 +4935,7 @@ a.card {
 }
 @media (prefers-reduced-motion: reduce) {
   .pay-cta.is-busy::before,
+  .btn-glass.pay-cta.is-busy::before,
   .pay-cta.is-busy::after {
     animation: none;
     content: none;
@@ -4969,23 +5043,12 @@ a.card {
 #pay-done button {
   animation: payRise 0.4s var(--fluid-bezier) 0.54s backwards;
 }
-#pay-btn.is-busy::after {
-  content: '';
-  display: inline-block;
-  width: 13px;
-  height: 13px;
-  margin-left: 9px;
-  vertical-align: -2px;
-  border: 2px solid var(--accent-ink);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: paySpin 0.7s linear infinite;
-}
-@keyframes paySpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* An older 13px TRAILING ring lived here (`#pay-btn.is-busy::after`, with a
+   duplicate @keyframes paySpin). At (1,1,0) it beat `.pay-cta.is-busy::after`
+   — the shimmer sweep — on display/size/border/animation while INHERITING its
+   `position:absolute; inset:0`, so the pay button painted a SECOND ring pinned
+   half-clipped at its top-left corner and the sweep never appeared at all. One
+   spinner: the ::before ring beside "Processing…", the ::after sweep behind it. */
 #view-pay .pay-full-link,
 #pay-done button {
   transition: transform 320ms var(--settle), filter 320ms var(--settle);
@@ -5010,8 +5073,7 @@ a.card {
   .pay-form > *,
   #pay-done h2,
   #pay-done p,
-  #pay-done button,
-  #pay-btn.is-busy::after {
+  #pay-done button {
     animation: none;
   }
   /* The DRAW starts invisible: with its animation gone the strokes must be
@@ -5042,13 +5104,25 @@ a.card {
            body and stay centred. */
 @media (min-width: 769px) {
   #view-pay .pay-wrap {
-    max-width: 700px;
+    /* 700 gave the FORM a 338px column — a phone layout inside a desktop card,
+       with the plan open at 1,152px beside a 607px summary and 290px of empty
+       ground each side. The plan options stay a vertical list (they are
+       mutually exclusive, with a schedule that expands under the chosen one);
+       what changes is that the column is no longer phone-width. */
+    max-width: 880px;
   }
   #view-pay #pay-body {
     display: grid;
     grid-template-columns: 0.9fr 1.1fr;
     gap: 28px;
     align-items: start;
+  }
+  /* …and the summary travels with the form instead of leaving dead ground
+     beside it. 100px is the app's own clearance under the fixed bar (the
+     scroll-margin-top pattern). */
+  #view-pay .pay-summary {
+    position: sticky;
+    top: calc(100px + var(--safe-t));
   }
   #view-pay .pay-summary .pay-amount-box {
     margin-bottom: 0;
@@ -9212,12 +9286,13 @@ body.light-mode .feed-dot-bad {
 .hub-cta {
   margin: 4px 0 2px;
 }
+/* The FILL is stated once, with the card's own CTA, further down — the two
+   painted the same "Pay balance £350.00" in two colours a screen apart, this
+   one in the green that means DONE everywhere else on the page. */
 .hub-cta-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: rgba(76, 175, 80, 0.22);
-  border-color: var(--booked-border);
   text-decoration: none;
 }
 /* Desktop: drop the tides line from the My Stay hub (kept on mobile, where
@@ -9345,14 +9420,20 @@ body.light-mode .feed-dot-bad {
   font-weight: 700;
   color: var(--text-light);
 }
+/* TWO LINES, NOT AN ELLIPSIS. A 62px cell against a 71px "partly cloudy" cut
+   three of four summaries to "partly clo…". The vocabulary is NOT the thing to
+   shorten — weather_code_text feeds the owner's day brief and the search
+   answers too, and test-weather.php gates it — so the cell wraps instead. */
 .gwx-s {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: var(--fs-micro);
   color: var(--text-muted);
   margin-top: 1px;
+  line-height: 1.15;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 .gwx-note {
   font-size: var(--fs-micro);
@@ -9585,13 +9666,32 @@ body.light-mode .feed-dot-bad {
 /* THE PRIMARY ASK IS NOT THE SMALLEST TYPE IN THE CARD. On base .btn-sm, "PAY
    BALANCE £250.00" was 10.88px uppercase 400 while "Invoice" beneath it was
    12.8px 600. This is .gb2-again's tier: 14.4 primary / 12.8 quiet. The hub's
-   CTA moves with it or the two hubs disagree. */
+   CTA moves with it or the two hubs disagree.
+   ONE RULE, ONE COLOUR. The hub's ask painted a 22% green fill with the
+   booked-border while the card's — the SAME "Pay balance £350.00", 1.2 screens
+   below — carried an inline accent fill; green is the done state everywhere
+   else on this page. Both are this rule now: the card's inline style is gone
+   and the hub's green with it, so they cannot drift again. */
 .gb2-cta .btn-sm,
 .hub-cta-btn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
   font-size: var(--fs-body);
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
+}
+/* DESKTOP IS NOT A STRETCHED PHONE. At 1280 the hub and every card ran the
+   container's full 1160px: a timeline label at x87 with its figure at x913 —
+   826px of nothing between "Paid so far" and "£100.00" — a 1110px-wide button,
+   and six tiles in one strip. The owner's own booking hub caps at a 760px
+   column for the same anatomy; this is that column, LEFT-aligned so it starts
+   on the title's rail rather than floating in the middle of the page. */
+@media (min-width: 900px) {
+  #guest-bookings-list {
+    max-width: 760px;
+  }
 }
 .gb2-again {
   display: block;

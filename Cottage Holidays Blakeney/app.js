@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 604;
+const ADMIN_BUNDLE_V = 605;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 263;
+const ADMIN_CSS_V = 264;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4498,7 +4498,7 @@ async function renderGuestBookings() {
                         <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
                     </div></div>
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
-                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:var(--accent);border-color:transparent;color:var(--accent-ink);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
+                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
                     ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
@@ -4525,13 +4525,25 @@ async function renderGuestBookings() {
         // booking card below).
         if (currentStay) {
             const nightsLeft = Math.max(0, nightsBetween(todayStr, b.checkOut));
+            // "Until 06/09/2026 · 10:00 · 0 nights left" is a database read-out on
+            // the one morning it matters most. The COUNTER is what changes — not
+            // the date form, which stays DD/MM/YYYY like every other screen date
+            // (switching it to the spoken form would put this line at odds with
+            // the house rule for a gain the counter already delivers).
+            const outTime = b.checkOutTime || '10:00';
+            const stayLeft =
+                nightsLeft === 0
+                    ? `Checkout today by ${escapeHtml(outTime)}`
+                    : nightsLeft === 1
+                      ? `Last night — checkout tomorrow by ${escapeHtml(outTime)}`
+                      : `Until ${fmtDate(b.checkOut)} · ${escapeHtml(outTime)} · ${nightsLeft} nights left`;
             hubCards.push(`
                     <div class="glass-panel my-stay-hub">
                         <div class="hub-head">
                             <span class="legend-swatch swatch-${propKey}"></span>
                             <div>
                                 <div class="hub-title">You're staying at <strong>${escapeHtml(meta.name)}</strong></div>
-                                <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
+                                <div class="hub-sub">${stayLeft}</div>
                             </div>
                         </div>
                         ${guestDoorCodeHeroHtml(b)}
@@ -5000,7 +5012,10 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <span class="legend-swatch swatch-${propKey}"></span>
                 <div class="hub-head-text">
                     <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong></div>
-                    <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${escapeHtml(b.checkInTime || '15:00')} · ${ready}</div>
+                    <!-- THE SUB IS THE ASK, and only the ask: the "Check in DD/MM/YYYY ·
+                         from 15:00 ·" prefix said, in a second date grammar, what the
+                         timeline's own "Your stay" row states directly below. -->
+                    <div class="hub-sub">${ready}</div>
                 </div>
                 <div class="hub-count chb-appear" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
             </div>
@@ -5386,14 +5401,28 @@ function payStepsEnd(ok) {
         }, 350);
     }
 }
+// THE PAGE TITLE IS THE PAGE'S OWN STATE. "Pay for your stay" is an instruction
+// and it stayed on screen above a receipt that had already been paid — so the
+// done panel renames it and openPayView puts it back on every open (a guest can
+// come straight back to pay the rest). One writer, both directions.
+function payHeadTitle(done) {
+    const h1 = document.querySelector('#view-pay .pay-head h1');
+    if (h1) h1.textContent = done ? 'Your payment' : 'Pay for your stay';
+}
 // WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
 // never dead-ends. Additive beside the (unchanged) spoken sub.
 function payDoneNextRender(res, rem) {
     const el = document.getElementById('pay-done-next');
     if (!el) return;
     const apo = res && res.autopay;
+    // THE RECEIPT IS SAID ONCE. This row read "Payment received" under an h2
+    // reading "Payment received" under an h1 still reading "Pay for your stay",
+    // with a toast saying it a fourth time — four statements of one fact on one
+    // screen. The heading owns the news; this row states what happens NEXT.
     const rows = [
-        payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
+        payState.kind === 'deposit'
+            ? payJourneyRow('done', 'Your dates are confirmed', 'A receipt is on its way to your inbox', '')
+            : payJourneyRow('done', 'Receipt on its way', "We've emailed it to you", ''),
     ];
     // Gate each row on the FACT it states, not on `rem`: a whole DEPOSIT pays
     // rem=0, so `if (rem>0.005)` deleted the balance, its date and the arranged
@@ -5442,6 +5471,11 @@ async function openPayView(token, bookingId, kind) {
         const e = document.getElementById(id);
         if (e) e.style.display = 'none';
     });
+    // Back to the ASK: the done panel renames both headings, and a guest
+    // returns here to pay the rest. Reset where every open passes.
+    payHeadTitle(false);
+    const doneTitle = document.getElementById('pay-done-title');
+    if (doneTitle) doneTitle.textContent = 'Payment received';
     const ld = document.getElementById('pay-loading');
     if (ld) ld.style.display = '';
     const cardEl = document.getElementById('sq-card');
@@ -5514,7 +5548,11 @@ async function openPayView(token, bookingId, kind) {
             const chip = s.propKey
                 ? `<span class="prop-tag tag-${escapeHtml(String(s.propKey))}">${escapeHtml(s.propName || '')}</span> `
                 : escapeHtml(s.propName || '') + ' · ';
-            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)} · ${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
+            // EVERY SEPARATOR TRAVELS WITH THE UNIT THAT FOLLOWS IT. At 390 this
+            // 304px line wraps, and it broke AFTER the "·" — flush against the
+            // column edge. The arrow would dangle next, so both glue forward: a
+            // line may START with one and can never END with one.
+            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} →&nbsp;${fmtDate(s.checkOut)} ·&nbsp;${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
         }
         // The headline says WHEN, from the booking's own payment plan — once
         // the date has passed it stays plain "Balance due" (it is due now).
@@ -5778,6 +5816,11 @@ async function payWithToken(sourceId, partOverride) {
         // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
         // a change made while it is display:none is not reliably announced.
         document.getElementById('pay-done').style.display = '';
+        payHeadTitle(true);
+        // A HOLD IS NOT A PAYMENT: the shared panel's heading said "Payment
+        // received" directly above "held, not charged".
+        const holdTitle = document.getElementById('pay-done-title');
+        if (holdTitle) holdTitle.textContent = 'Card hold placed';
         document.getElementById('pay-done-sub').textContent =
             "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
         try { payDoneBackRetarget(); } catch (e) {}
@@ -5828,6 +5871,7 @@ async function payWithToken(sourceId, partOverride) {
     // mis-charge to the guest.
     // Reveal BEFORE writing the text — see the hold branch above.
     document.getElementById('pay-done').style.display = '';
+    payHeadTitle(true);
     // A PART PAYMENT'S DONE SCREEN IS NOT A DEAD END: `remaining` is what is
     // left of the ask just read (the hint's "£X would remain", server-derived)
     // — before fullyPaid, since a max-bound slice settles the rental with the
@@ -5860,9 +5904,9 @@ async function payWithToken(sourceId, partOverride) {
         restBtn.style.display = rem > 0.005 ? '' : 'none';
         restBtn.textContent = rem > 0.005 ? `Pay the remaining ${gbp(rem)}` : '';
     }
-    try {
-        toast('Payment received — thank you.');
-    } catch (e) {}
+    // NO TOAST. The panel draws its own tick, is role="status" and says it in
+    // its heading — the toast was a fourth statement of one fact, over the
+    // Messages pill. The HOLD branch keeps its own: that is different news.
 }
 // THE RECEIPT LANDS WHERE ITS PROMISES LIVE: everything the done panel names
 // (plan, arrival email, deposit back) is on My Stays, so a SIGNED-IN guest's
@@ -5927,12 +5971,44 @@ function payPartToggle() {
 // nothing and the hint says what is needed — deliberately NOT clamped as they
 // type, which would turn "5" on the way to "50" into the minimum under their
 // fingers.
+// THE FIELD IS TEXT NOW, so it takes strings a number input used to refuse:
+// `parseFloat('12,50')` is 12, and a guest typing the European decimal comma
+// would have paid twelve pounds instead of twelve fifty, silently. One reader,
+// used by BOTH callers.
+//
+// A SEPARATOR IS DECIDED BY WHAT FOLLOWS IT, never by which character it is —
+// a naive `.replace(',', '.')` turns a four-figure balance typed "1,234.50"
+// into "1.234.50", which parseFloat reads as 1.23. That one is not silent (it
+// lands under the minimum, so the commit snaps it up and says so) but being
+// bounced to the minimum for typing a thousands separator is its own defect,
+// and half-normalising money is how the first bug got here.
+function payPartNum(raw) {
+    let s = String(raw == null ? '' : raw).replace(/[£\s]/g, '');
+    const dot = s.lastIndexOf('.');
+    const comma = s.lastIndexOf(',');
+    if (dot > -1 && comma > -1) {
+        // Both kinds present: the LAST one is the decimal point and every
+        // earlier separator groups thousands, in either convention.
+        const dec = Math.max(dot, comma);
+        s = s.slice(0, dec).replace(/[.,]/g, '') + '.' + s.slice(dec + 1);
+    } else if (comma > -1) {
+        // Commas only, and the grouping is the only signal: a comma followed by
+        // exactly three digits groups thousands ("1,234"), anything else is the
+        // decimal comma ("12,50").
+        s = /,\d{3}(?:\D|$)/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+    } else if ((s.match(/\./g) || []).length > 1) {
+        // "1.234.567" can only be grouped; a single dot stays a decimal point,
+        // which is the house convention on a £ field.
+        s = s.replace(/\./g, '');
+    }
+    return Math.round(parseFloat(s) * 100) / 100;
+}
 function payPartSync() {
     const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
     const p = payState.part;
     if (!amt || !p) return;
     payState.partSnap = ''; // typing resumed — any earlier auto-correct note is stale
-    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    const v = payPartNum(amt.value);
     payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
     payPartRender();
     payWalletsSchedule(); // re-price Apple/Google Pay to the slice once typing settles
@@ -5947,10 +6023,20 @@ function payPartClamp() {
     const p = payState.part;
     if (!amt || !p) return;
     if (String(amt.value).trim() === '') return;
-    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    const v = payPartNum(amt.value);
     if (!isFinite(v)) return; // unreadable — the hint is already asking for a number
     const snapped = v < p.min ? p.min : v > p.max ? p.max : null;
-    if (snapped === null) return;
+    // ON COMMIT THE FIELD SHOWS WHAT WILL BE CHARGED — never "12,50" over a
+    // £12.50 ask. Only when the normalisation MOVED something, so "120.50" is
+    // left exactly as typed.
+    const cleaned = String(amt.value).trim().replace(/[£\s]/g, '').replace(',', '.');
+    if (snapped === null) {
+        if (cleaned !== String(amt.value).trim()) {
+            amt.value = cleaned;
+            payPartSync();
+        }
+        return;
+    }
     amt.value = String(snapped);
     payPartSync();
     payState.partSnap = snapped === p.min ? 'min' : 'max';
@@ -9767,6 +9853,17 @@ function guestFlowHtml(propKey, b, payToken) {
         const strip = guestPayCta(b, gt);
         const stripCta = payToken && !bookingOwnerArranged(b) ? ` — use “Pay ${strip.word}” below.` : '.';
         next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${stripCta}</span></div>`;
+    } else if (flow.inStay) {
+        // A GUEST ALREADY IN THE COTTAGE IS NOT WAITING FOR ARRIVAL INFO. Both
+        // sentences below are about a stay that has not started — "we'll send
+        // your arrival info nearer the time" and "we can't wait to welcome you"
+        // — and this card renders under a hub reading "You're staying at
+        // Jollyboat". Checked BEFORE preArrivalSent, because the stay stage
+        // being `now` outranks whether the arrival email has gone.
+        next = `<div class="bkflow-next is-clear"><span>You’re here — checkout is by ${escapeHtml(b.checkOutTime || '10:00')} on ${fmtDate(b.checkOut)}, and everything you need is in the card at the top of this page.</span></div>`;
+        // (No `past` branch: the route only calls this for a stay that has not
+        // ended — a finished one renders guestDepositTrackerHtml instead, which
+        // is where the deposit-back story already lives.)
     } else if (!b.preArrivalSent) {
         next = `<div class="bkflow-next is-clear"><span>You’re paid up. We’ll send your arrival info (directions &amp; key) nearer the time.</span></div>`;
     } else {
@@ -19188,7 +19285,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higenq1';
+    const BUILD = 'higpay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
