@@ -3,10 +3,10 @@
  "index.html": 36400,
  "admin-views.html": 23200,
  "app.css": 108700,
- "app.js": 292400,
+ "app.js": 292900,
  "guest-app.css": 10700,
  "guest-app.js": 6927,
- "admin.js": 550800,
- "admin.css": 84700,
+ "admin.js": 553500,
+ "admin.css": 87800,
  "sw.js": 6300
 }

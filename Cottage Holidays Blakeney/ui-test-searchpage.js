@@ -2222,7 +2222,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(st.fb, 'the abstain renders the honest fallback first');
   ok(!st.shim && !macAsks.some((b) => b.action === 'ask'), 'no ask files before the settle delay');
+  // WAIT ON THE THING THIS CHECK ASSERTS. The shimmer row and the ask POST are two
+  // different events — the row is painted by the render that ARMS the ask, so waiting
+  // on the row and then reading the body is a race the row usually, but not always,
+  // loses. Measured: 0 failures in 4 runs on one tree and 2 in 4 on another, for a
+  // change that touches no search code — the window simply moved. The row is still
+  // asserted, three lines below, where it is the actual subject.
   await page.waitForFunction(() => __cmdkResults.some((r) => r && r.id === 'mac-recover'), null, { timeout: 6000 });
+  // macAsks is filled node-side by the route handler, so this is a plain wait on it.
+  for (let i = 0; i < 40 && !macAsks.some((b) => b.action === 'ask'); i++) await page.waitForTimeout(100);
   const askBody = macAsks.find((b) => b.action === 'ask');
   ok(!!askBody && askBody.kind === 'intent' && askBody.question === oddQ.toLowerCase()
     && Array.isArray(askBody.options) && askBody.options.includes('who owes me money'),

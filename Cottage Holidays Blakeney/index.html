@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=59">
+    <link rel="stylesheet" href="guest-app.css?v=60">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=337">
+    <link rel="stylesheet" href="app.css?v=338">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1232,11 +1232,13 @@
     </main>
 
     <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
-    <div id="messages-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" data-act="backdropClose" data-close="closeMessagesModal">
-        <div class="modal-box glass-panel" style="max-width:520px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
+    <!-- A SHEET ≤640 like the rest of the family. The max-width moved into a
+         :where() rule in app.css — an inline one outranks the sheet. -->
+    <div id="messages-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" data-act="backdropClose" data-close="closeMessagesModal">
+        <div class="modal-box glass-panel">
+            <div class="msg-head">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:var(--fs-title);">Messages</h3>
-                <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                <div class="msg-head-acts">
                     <button class="btn-sm btn-edit" id="msg-archive-btn" data-act="archiveCurrentThread">Archive</button>
                     <button class="btn-sm" id="msg-delete-btn" data-act="deleteCurrentThread" style="color:var(--danger);">Delete</button>
                     <button class="reviews-modal-close" data-act="closeMessagesModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1244,22 +1246,25 @@
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
             <div class="chat-thread" id="messages-modal-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
-            <select id="msg-canned" class="input-glass field-sm" data-act-change="adminCanned" data-pass="value" style="margin:0 0 8px;" aria-label="Quick replies">
-                <option value="">Quick replies…</option>
-                <option>Thanks for getting in touch — I'll check and reply shortly.</option>
-                <option>Those dates look available — would you like me to hold them for you?</option>
-                <option>Check-in is from 3pm and check-out by 10am.</option>
-                <option>Could you let me know your preferred dates and party size?</option>
-            </select>
-            <!-- Admin-only, revealed by admin.js's presence watcher when the
-                 owner's Mac is listening (integration step 5) — a guest never
-                 sees it, and an asleep Mac is never offered. -->
-            <button type="button" class="btn-glass btn-sm" id="msg-mac-draft" data-act="draftChatOnMac" hidden>✨ Draft on your Mac</button>
+            <!-- One row, helpers on one line above it (admin.css #messages-modal). -->
+            <div class="msg-quick">
+                <select id="msg-canned" class="input-glass field-sm" data-act-change="adminCanned" data-pass="value" aria-label="Quick replies">
+                    <option value="">Quick replies…</option>
+                    <option>Thanks for getting in touch — I'll check and reply shortly.</option>
+                    <option>Those dates look available — would you like me to hold them for you?</option>
+                    <option>Check-in is from 3pm and check-out by 10am.</option>
+                    <option>Could you let me know your preferred dates and party size?</option>
+                </select>
+                <!-- Admin-only, revealed by admin.js's presence watcher when the
+                     owner's Mac is listening (integration step 5) — a guest never
+                     sees it, and an asleep Mac is never offered. -->
+                <button type="button" class="btn-glass btn-sm" id="msg-mac-draft" data-act="draftChatOnMac" hidden>✨ Draft on your Mac</button>
+            </div>
             <div id="msg-attach-preview" class="chat-attach-preview" style="display:none;"></div>
             <div class="chat-composer">
                 <button type="button" id="msg-attach-btn" class="chat-attach-btn" data-act="adminAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…" data-act-input="adminTypingPing"></textarea>
-                <button class="btn-glass" data-act="adminSendMessage">Send</button>
+                <textarea id="messages-modal-input" class="input-glass" rows="1" placeholder="Write a reply…" data-act-input="adminTypingPing"></textarea>
+                <button class="chat-send" data-act="adminSendMessage" aria-label="Send reply" title="Send reply"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
             </div>
         </div>
     </div>
@@ -1526,8 +1531,12 @@
             <div class="reviews-modal-body" style="display:block;">
                 <!-- Compose view -->
                 <div id="enq-email-edit">
-                    <!-- Key details, visible while writing (filled by openEnquiryEmail/openBookingEmail). -->
-                    <div class="enq-ctx" id="enq-email-context"></div>
+                    <!-- The context folds (admin.css .enq-ctx-fold); both
+                         openers fill it via composeCtxSummary. -->
+                    <details class="enq-ctx-fold" id="enq-email-ctxfold">
+                        <summary class="enq-ctx-sum"><span id="enq-email-ctxsum">Their details</span><span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></summary>
+                        <div class="enq-ctx" id="enq-email-context"></div>
+                    </details>
                     <label class="modal-label" for="enq-email-subject">Subject</label>
                     <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -1541,11 +1550,12 @@
                     <!-- Optional file attachments (images / PDFs / docs). -->
                     <div style="margin:0 0 12px;">
                         <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" data-act-change="addComposeAttachments" data-pass="files">
-                        <button type="button" class="btn-sm btn-edit" data-act="clickTarget" data-target="enq-email-file-input">Attach a file</button>
+                        <button type="button" class="btn-sm btn-edit enq-email-attach" data-act="clickTarget" data-target="enq-email-file-input">Attach a file</button>
                         <div id="enq-email-attach-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                     </div>
                     <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
-                    <div style="display:flex;gap:10px;">
+                    <!-- Sticky footer — admin.css .enq-email-foot. -->
+                    <div class="enq-email-foot">
                         <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" data-act="previewComposedEmail">Preview</button>
                         <button class="btn-glass btn-accent" id="enq-email-send" style="flex:1;padding:14px;" data-act="sendEnquiryEmail">Send email</button>
                     </div>
@@ -2034,11 +2044,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=972"></script>
+    <script defer src="app.js?v=973"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=28"></script>
+    <script defer src="guest-app.js?v=29"></script>
 
 </body>
 </html>

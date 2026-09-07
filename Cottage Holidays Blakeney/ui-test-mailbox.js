@@ -584,6 +584,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('10. the three-answers landing (stacked)');
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
+  // BACK TO WAITING FIRST. The section above left the drawer open, and
+  // __inboxTab persists by design — the LIST stays declined until the owner
+  // switches back, and the landing's verdict now describes whichever list is
+  // on screen (it used to leave "⚠ 3 waiting" and a waiting enquirer's name
+  // over a declined list). Everything below is about the WAITING landing.
+  await page.evaluate(async () => { await inboxTab('waiting'); });
+  await page.waitForTimeout(400);
   await page.evaluate(() => { inboxFolder('enquiries'); });
   await page.waitForTimeout(300);
   const land = await page.evaluate(() => {

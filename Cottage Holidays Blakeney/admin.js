@@ -10120,15 +10120,31 @@ function inboxVerdicts() {
         if (el) el.textContent = text;
     };
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
-    // Enquiries — the waiting queue itself.
+    // Enquiries — the waiting queue itself. …UNLESS THE DRAWER IS OPEN: the
+    // fold label renames to "Declined enquiries" and the list beneath it is
+    // declined, so leaving "⚠ 3 waiting" and a WAITING enquirer's name above it
+    // described a list that was not on screen. The verdict names its own list,
+    // the rule the h2 already follows.
     const enqs = Array.isArray(enquiries) ? enquiries : [];
-    fig('iv-sum-enquiries', enqs.length ? 'warn' : 'ok', enqs.length ? `${enqs.length} waiting` : '0 waiting');
-    // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
-    const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
     const nDecl = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
-    sub('iv-sub-enquiries', newest
-        ? `${newest.name || 'Guest'} · ${newest.received ? relTime(newest.received) : 'new'}`
-        : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
+    if (__inboxTab === 'declined') {
+        // Muted, and no warning triangle: a decline is a DECISION, not a fault.
+        fig('iv-sum-enquiries', 'unk', nDecl === 1 ? '1 declined' : `${nDecl} declined`);
+        const dNew = (Array.isArray(__declinedEnq) ? __declinedEnq : []).slice()
+            .sort((a, z) => String(z.declinedAt || '').localeCompare(String(a.declinedAt || '')))[0];
+        sub('iv-sub-enquiries', __declinedEnq === null
+            ? 'looking for declined enquiries…'
+            : dNew
+              ? `${dNew.name || 'Guest'} · declined ${dNew.declinedAt ? relTime(dNew.declinedAt) : 'recently'}`
+              : 'anything you turn down is kept here');
+    } else {
+        fig('iv-sum-enquiries', enqs.length ? 'warn' : 'ok', enqs.length ? `${enqs.length} waiting` : '0 waiting');
+        // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
+        const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
+        sub('iv-sub-enquiries', newest
+            ? `${newest.name || 'Guest'} · ${newest.received ? relTime(newest.received) : 'new'}`
+            : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
+    }
     // Messages — unread count from the same chip loadAdminMessages writes.
     const msgN = chip('ifold-count-msg');
     fig('iv-sum-messages', msgN ? 'warn' : 'ok', msgN ? `${msgN} unread` : 'All read');
@@ -10178,10 +10194,20 @@ function inboxVerdicts() {
                       const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
                       est = e.priceOverride != null ? gbp(e.priceOverride) : pr && pr.total > 0 ? gbp(pr.total) : '';
                   } catch (err) {}
+                  // A CAPSULE IS A STATE, A SERIF FIGURE IS MONEY. "⚠ £370.80
+                  // stay" dressed the value of a stay as an alarm — the
+                  // triangle saying "warning" about a number. The capsule now
+                  // states what the row is FOR (the label above it already
+                  // carries how long they have waited) and the figure joins the
+                  // facts in the sub, where it reads as one. "asked N ago" went
+                  // with it: the label says "Waiting N days", so the sub was
+                  // saying the same thing again — and with the figure added it
+                  // ran past its two-line clamp at 360 (round eight's sweep
+                  // caught it the first time this shipped).
                   return bhubFoldGrp('iva' + i,
                       `Waiting ${enquiryAgeDays(e)} days — ${escapeHtml(e.name || 'Guest')}`,
-                      escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${e.received ? ' · asked ' + relTime(e.received) : ''}`),
-                      stCap('bad', est ? est + ' stay' : 'needs a reply'),
+                      escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${est ? ' · ' + est : ''}`),
+                      stCap('bad', 'Needs a reply'),
                       `${(e.message || '').trim() ? `<div class="bhub-mut" style="margin-bottom:4px;">&ldquo;${escapeHtml((e.message || '').trim().slice(0, 160))}&rdquo;</div>` : ''}
                        <div class="bhub-btn-row bhub-act-links">
                           <button class="bhub-actlink" ${chbAttrs('openEnquiryHub', String(e.id))}>Open the enquiry</button>
@@ -10990,7 +11016,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
-    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
+    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, capKey?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
     let next = null;
     if (!gt.fullyPaid && !past) {
         const canCard = squareAdminEnabled && b.email;
@@ -11003,7 +11029,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                     : `Nothing received yet — ${gbp(askAmt)} due.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
-                btnShort: canCard ? 'Email a card link' : 'Record a payment',
+                btnShort: canCard ? 'Email a card link' : 'Record payment',
                 fig: askAmt,
                 money: true,
             };
@@ -11018,7 +11044,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                     : `${gbp(askAmt)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? (askKind === 'deposit' ? 'Request the rest by card' : 'Request the balance by card') : 'Record a payment',
-                btnShort: canCard ? 'Request by card' : 'Record a payment',
+                btnShort: canCard ? 'Request by card' : 'Record payment',
                 fig: askAmt,
                 money: true,
             };
@@ -11034,7 +11060,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             text: `${gbp(askAmt)} still owed from this finished stay.`,
             onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
-            btnShort: canCard ? 'Request by card' : 'Record a payment',
+            btnShort: canCard ? 'Request by card' : 'Record payment',
             fig: askAmt,
             money: true,
         };
@@ -11070,6 +11096,11 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
                 onclick: chbAttrs('returnDeposit', String(b.id)),
                 btn: 'Return the deposit',
+                // NAMES ITS OWN STAGE. capLabel only RENAMES — it leaves the
+                // index where the flow cursor left it, so a finished stay read
+                // "Next · 4 of 6 · Arrival info" over a sentence about the
+                // deposit. capKey moves the index too.
+                capKey: 'depositback',
                 // …AND KEEPING IT IS OFFERED HERE TOO. The hub is where both the duty
                 // and the Money overview route, and it offered only Return — so with
                 // damage, the owner's one action on this screen was to give back money
@@ -11082,6 +11113,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `Checkout is today — ${gbp(dh.held)} refundable damage deposit goes back once they've left.`,
                 onclick: chbAttrs('openBookingHub', String(b.id)),
                 btn: 'Review after checkout',
+                capKey: 'depositback',
             };
         }
     }
@@ -11099,6 +11131,9 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
         const key = askKind === 'deposit' ? 'deposit' : 'paid';
         const i = stages.findIndex((s) => s.key === key);
         if (i > -1) { capIdx = i; capLbl = key === 'deposit' ? 'Deposit' : 'Balance'; }
+    } else if (next && next.capKey) {
+        const i = stages.findIndex((s) => s.key === next.capKey);
+        if (i > -1) { capIdx = i; capLbl = capLabel(stages[i]); }
     } else if (next && next.capLabel) {
         capLbl = next.capLabel;
     }
@@ -11420,19 +11455,24 @@ function hubIntelOpen(i) {
 }
 function hubIntelCardHtml(intel) {
     if (!intel) return '';
+    // THE FOLD KEEPS ONLY WHAT THE ROW DOES NOT SAY. Its first line used to be
+    // "2nd stay · £1,080.00 lifetime · 7 nights all-time" directly under a
+    // summary reading the first two of those word for word.
     const bits = [];
-    if (intel.ordinal) bits.push(`<strong>${escapeHtml(intel.ordinal)}</strong>`);
-    if (intel.stays >= 2) bits.push(`${gbp(intel.revenue)} lifetime`, `${intel.nights} night${intel.nights === 1 ? '' : 's'} all-time`);
+    if (intel.stays >= 2) bits.push(`${intel.nights} night${intel.nights === 1 ? '' : 's'} all-time`);
     const line2 = [];
     if (intel.favName) line2.push(`Usually books ${escapeHtml(intel.favName)}`);
     if (intel.lastStay) line2.push(`last stayed ${escapeHtml(intel.lastStay)}`);
-    // A disclosure group like its siblings — the summary row carries the one
-    // fact worth a glance (which visit this is, what they're worth), the
-    // detail + history mentions fold underneath.
-    const sum = intel.ordinal
+    // A disclosure group like its siblings — the one fact worth a glance
+    // (which visit this is, what they're worth) rides the row's SUB, the
+    // second-line slot every other group uses. As a right-rail SUMMARY it
+    // squeezed "Knows your guest" onto two lines at 390 (110px, flex 0 1 auto)
+    // and made the row 92px where its neighbours are 88 — a label wrapping
+    // beside a one-line value, to say something the fold then repeated.
+    const sub = intel.ordinal
         ? escapeHtml(intel.ordinal) + (intel.stays >= 2 ? ' · ' + gbp(intel.revenue) + ' lifetime' : '')
         : 'in your records';
-    return bhubFoldGrp('intel', 'Knows your guest', '', `<span class="bhub-sum-val">${sum}</span>`, `
+    return bhubFoldGrp('intel', 'Knows your guest', sub, '', `
             ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
             ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
             ${gbSummaryHtml(intel.gb)}
@@ -11754,7 +11794,7 @@ function renderBookingHub() {
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${fmtDate(x.checkIn)} → ${fmtDate(x.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span><span class="bhub-mut">open →</span></button>`,
               )
               .join('')
         : '';
@@ -11926,7 +11966,12 @@ function hubActivityHtml(bundle, bookingId) {
         // history list beside "Booking created from enquiry". The capability
         // moved to the money surface — "Refund a card payment" in the Payments
         // block's action row (hubRefundPicker).
-        html: hubLedgerRowHtml(p, bookingId, true),
+        // A FEED SORTED BY TIME PRINTS THE TIME. The rows are ordered on
+        // `at: p.created_at` and the money row was the one line in the story
+        // with no when — so it read as floating between two dated events.
+        // Wrapped HERE only: hubLedgerRowHtml is shared with the Payments
+        // screen, where the ledger is the content rather than one strand.
+        html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(p.created_at || ''))}</span><span class="bhub-hist-what">${hubLedgerRowHtml(p, bookingId, true)}</span></div>`,
     }));
     const evs = (bundle.events || [])
         .filter((e) => e.action !== 'payment.card')
@@ -20249,12 +20294,18 @@ function needsYouExpand() {
 // The frame (day spine + rail counts) rides every duty refresh — this function
 // is THE "duties changed" moment (a dozen call sites), and its sync call sits
 // before the early returns, or a strip that empties would leave stale chips.
-// The call is a single bare line ON PURPOSE: test-webpush's badge check scans
-// a 700-char window from this function's name to setAppBadgeCount, and a
+// refreshInboxBadge() rides beside it for the same reason: the Today dock pip
+// reads chbDuties() now (one fact, one number — it used to say "2 unseen
+// enquiries" 90px above "Needs you 8"), so the duties-changed moment is where
+// it has to be repainted.
+// BOTH calls are single bare lines ON PURPOSE: test-webpush's badge check scans
+// a 700-char window from this function's NAME to setAppBadgeCount, and a
 // five-line comment inside the window pushed it past — the CI-only failure
-// this comment is standing where it can't repeat.
+// this comment is standing where it can't repeat. Measured headroom is small;
+// put new prose HERE, above the declaration, never inside the body.
 function renderNeedsYou() {
     try { chbFrameSync(); } catch (e) {}
+    try { refreshInboxBadge(); } catch (e) {}
     const wrap = document.getElementById('needs-you');
     const list = document.getElementById('needs-you-list');
     if (!wrap || !list) return;
@@ -20262,10 +20313,7 @@ function renderNeedsYou() {
     try {
         items = needsYouItems();
     } catch (e) {}
-    // The Home Screen badge means "things needing you", not "unread enquiries" —
-    // this is the same list the strip renders, so the number on the icon and the
-    // number of rows on Today can never disagree. app.js owns the Badging API call
-    // and only sets its enquiries-based fallback before the bundle loads.
+    // The Home Screen icon counts THINGS NEEDING YOU, from this same list.
     try {
         setAppBadgeCount(items.length);
     } catch (e) {}
@@ -20716,7 +20764,16 @@ function todayOpsLine() {
     // booking-row badge). The tuples carry those judgements; chbOpsParts owns
     // the words, shared with the offline day sheet.
     const { parts, owed } = chbOpsParts(chbDayTuples());
-    if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
+    // THE MONEY UNIT CARRIES ITS OWN SEPARATOR. As a plain member of the join,
+    // the "·" before the £ button sat at the END of line one and the button
+    // dropped alone to line two — measured at 390 on a Saturday: "…1 arrival ·"
+    // inked to 261 of a 362px rail, the button 121px wide, so it broke AFTER
+    // the separator. A nowrap span holding "· <button>" means the line can only
+    // break BEFORE the "·". textContent is unchanged, so every gate reading
+    // "£… to collect" still fires.
+    const owedHtml = owed > 0.005
+        ? '<span class="ops-unit">· <button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button></span>'
+        : '';
     // On rail screens Today opens the way every other screen now does — the
     // serif day sentence — so the GREETING joins this line there (CSS gives
     // it the spine's scale and hides the h1 above; below the rail this
@@ -20730,7 +20787,10 @@ function todayOpsLine() {
         try { greet = '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + ' — </span>'; } catch (e) {}
     }
     // innerHTML: every part is generated (counts + the owed button) — no user text.
-    const opsHtml = greet + escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    const opsHtml = greet + escapeHtml(date) +
+        (parts.length || owedHtml
+            ? (parts.length ? ' · ' + parts.join(' · ') : '') + (owedHtml ? ' ' + owedHtml : '')
+            : ' · all quiet today');
     // The guard checks the DOM's TRUTH, not just its own memory: initBackOffice
     // paints this node with the bare date the instant the page opens (before
     // data lands), so a memo-only guard believed itself up to date and left
@@ -27259,6 +27319,11 @@ async function inboxTab(which) {
         }
     }
     renderInbox();
+    // THE DRAWER APPEARS ON THE TAP THAT ASKED FOR IT. Stacked, the enquiries
+    // list lives inside a fold on the landing — so switching to Declined
+    // renamed a fold that was still shut and the rows were out of sight until a
+    // second tap. Wide, the list is always on screen and this is a no-op.
+    if (window.matchMedia('(max-width: 1199px)').matches) inboxFolder('enquiries');
 }
 function declinedInboxHtml() {
     if (__declinedEnq === null) {
@@ -27446,18 +27511,32 @@ function renderInbox() {
                               ? ` · est. ${gbp(pr.total)}`
                               : '';
                 } catch (err) {}
-                const chip = av
-                    ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · waiting ${days} day${days === 1 ? '' : 's'}` : ''}</span>`
-                    : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `waiting ${days} day${days === 1 ? '' : 's'}` : 'New enquiry'}</span>`;
+                // THE ROW'S ANATOMY MUST NOT DEPEND ON VARIABLE TEXT. The chip
+                // used to read "Dates available · 5d waiting" or "Clashes with
+                // Alexandrina" — a pixel comparison against the enquiry's AGE
+                // and the blocker's NAME, so one row wrapped its chip under the
+                // cottage pill and stood 145px tall beside neighbours at 109.
+                // The capsule states the DECISION ("can I say yes?") in two
+                // fixed words; the wait moves to the sub, where it is words
+                // rather than a chip's width, and the clash's blocker is named
+                // on the hub the row opens. .bk-row-top keeps its flex-wrap —
+                // it is the documented safety valve for a long cottage name
+                // (three no-shrink chips once crushed the pill to one letter).
+                const cap = av
+                    ? stCap(av.free ? 'ok' : 'bad', av.free ? 'Dates free' : 'Dates taken')
+                    : stCap('unk', 'New enquiry');
+                const waitTxt = stale
+                    ? ` · <span class="bk-row-wait">waiting ${days} day${days === 1 ? '' : 's'}</span>`
+                    : '';
                 return `
                 <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" ${chbAttrs('openEnquiryHub', String(e.id))}>
                     <span class="bk-row-body">
                         <span class="bk-row-top">
                             <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
-                            ${chip}
+                            ${cap}
                         </span>
                         <strong class="bk-row-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}${(e.priorStays || 0) > 0 ? ' ★' : ''}</strong>
-                        <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}</span>
+                        <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}${waitTxt}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
                 </button>`;
@@ -28003,15 +28082,23 @@ function renderEnquiryHub() {
     // folded behind. ----
     const fin = (n) => typeof n === 'number' && isFinite(n);
     const custom = e.priceOverride != null && std != null && Math.abs(Number(e.priceOverride) - std) > 0.005;
-    const quoteRows = (e.priceOverride != null
-        ? `<div class="bhub-kv"><span class="bhub-kv-label">Agreed price${custom ? ' (custom)' : ''} · ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(Number(e.priceOverride))}</span></div>` +
-          (custom ? `<div class="bhub-kv"><span class="bhub-kv-label">Standard price</span><span class="bhub-kv-val bhub-mut">${gbp(std)}</span></div>` : '')
+    // THE BOOKING HUB'S OWN BREAKDOWN, not a second one. These rows were
+    // .bhub-kv — a 96px LABEL COLUMN, which is right for "Email / Phone /
+    // Address" and wrong for a price list: at 390 "Refundable deposit (charged
+    // with the first payment)" took FIVE lines in 96px beside 170px of empty
+    // rail, while the booking hub renders the identical sums as full-width
+    // .price-row lines with the figure on the right. One shape for one thing.
+    const quoteRows = `<div class="price-box" style="margin-bottom:0;">` +
+        (e.priceOverride != null
+        ? `<div class="price-row"><span>Agreed price${custom ? ' (custom)' : ''} · ${nights} night${nights === 1 ? '' : 's'}</span><span>${gbp(Number(e.priceOverride))}</span></div>` +
+          (custom ? `<div class="price-row"><span>Standard price</span><span class="bhub-mut">${gbp(std)}</span></div>` : '')
         : pr && fin(pr.perNight)
-          ? `<div class="bhub-kv"><span class="bhub-kv-label">${gbp(pr.perNight)} × ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(pr.nightly)}</span></div>` +
-            (pr.txFee > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Transaction fee</span><span class="bhub-kv-val">${gbp(pr.txFee)}</span></div>` : '')
+          ? `<div class="price-row"><span>${gbp(pr.perNight)} × ${nights} night${nights === 1 ? '' : 's'}</span><span>${gbp(pr.nightly)}</span></div>` +
+            (pr.txFee > 0 ? `<div class="price-row"><span>Transaction fee</span><span>${gbp(pr.txFee)}</span></div>` : '')
           : '') +
-        (dmg > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Refundable deposit (charged with the first payment)</span><span class="bhub-kv-val">${gbp(dmg)}</span></div>` : '') +
-        (askFig != null ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Their first payment</strong></span><span class="bhub-kv-val"><strong>${gbp(askFig)}</strong></span></div>` : '') +
+        (dmg > 0 ? `<div class="price-row"><span>Refundable deposit<small class="bhub-mut">charged with the first payment</small></span><span>${gbp(dmg)}</span></div>` : '') +
+        (askFig != null ? `<div class="price-row total"><span>Their first payment</span><span class="price-amount">${gbp(askFig)}</span></div>` : '') +
+        `</div>` +
         (enquiryHasPlan(e) ? `<div class="bhub-mut" style="margin:8px 0 2px;">Approving will use ${escapeHtml(enquiryPlanWords(e))}.</div>` : '') +
         `<div class="bhub-btn-row bhub-act-links">
             <button class="bhub-actlink" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
@@ -28750,6 +28837,17 @@ function draftComposeReply() {
     }
     return draftEnquiryReply();
 }
+// The composer's context fold shows ONE line closed: who this email is going to
+// and for which stay. Written by both openers, so the summary and the panel
+// beneath it can never describe different records.
+function composeCtxSummary(text) {
+    const el = document.getElementById('enq-email-ctxsum');
+    if (el) el.textContent = String(text || 'Their details');
+    // Always opens CLOSED: the Subject and Message fields are the work, and a
+    // panel that reopens itself every time is the 340px this fold removed.
+    const fold = /** @type {HTMLDetailsElement|null} */ (document.getElementById('enq-email-ctxfold'));
+    if (fold) fold.open = false;
+}
 // Takes an id OR the enquiry itself. The object form is load-bearing: declining
 // is a soft delete, so once loadData() has run the row is out of `enquiries`
 // (`declined_at IS NULL`) and an id lookup finds nothing — the decline ask hands
@@ -28806,6 +28904,8 @@ function openEnquiryEmail(enqId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(enq.guests)}${enq.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(enq.phone)}</span>` : ''}</span></div>
             ${priceRow}
             ${enq.message ? `<div class="enq-ctx-quote">“${escapeHtml(enq.message)}”</div>` : ''}`;
+        // The fold's one visible line: who this is going to and for which stay.
+        composeCtxSummary(`${enq.name || 'Guest'} · ${propName} · ${fmtStayRange(enq.checkIn, enq.checkOut)}`);
     }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your enquiry — ${propName}, ${fmtDate(enq.checkIn)} to ${fmtDate(enq.checkOut)}`;
@@ -29237,6 +29337,7 @@ function openBookingEmail(bookingId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
+        composeCtxSummary(`${b.name || 'Guest'} · ${propName} · ${fmtStayRange(b.checkIn, b.checkOut)}`);
         // The ✨ Draft control is the SHARED one beside Message
         // (draftComposeReply) — a second copy injected here put the same
         // action twice in one screen-height, running different code.
@@ -30012,8 +30113,9 @@ function mbxContextHtml(fromEmail, shownName) {
     if (up) {
         try {
             const dg = bookingDue(up.pk, up.b);
+            // Same rule: the capsule says the STATE, the figure is a figure.
             verdict = dg && dg.balance > 0.005
-                ? stCap('warn', `${gbp(dg.balance)} to pay`)
+                ? stCap('warn', 'Balance due') + `<span class="mbx-ctx-fig">${gbp(dg.balance)}</span>`
                 : stCap('ok', 'Paid in full');
         } catch (err) {}
     }
@@ -30214,7 +30316,7 @@ function renderMailboxList(keepSearchFocus) {
             </div>
         </div>
         <div class="bo-search" style="margin-bottom:14px;">
-            <input type="search" class="input-glass" id="mbx-search" aria-label="Find an email" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
+            <input type="search" class="input-glass" id="mbx-search" aria-label="Find an email" placeholder="Search sender or subject" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
         </div>
         ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'All caught up — nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;

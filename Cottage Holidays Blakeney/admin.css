@@ -475,16 +475,34 @@ body.light-mode {
 .bk-row-name {
   font-size: var(--fs-body);
   line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }.bk-row-dates {
   color: var(--text-muted);
   font-size: var(--fs-sub);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}.bk-row {
+}
+/* The wait, in WORDS as well as ink — the row's amber signal moved out of the
+   status capsule, whose width was deciding the row's height. */
+.bk-row-wait {
+  color: var(--warn-text);
+}
+/* The enquiry row's capsule is a right-rail state; the cottage pill is the
+   only thing that may give ground. */
+#inbox-list .bk-row-top .st-cap {
+  flex: 0 0 auto;
+}
+/* A price line's own footnote sits UNDER its label, not beside it — the label
+   is what the row names, the small print is why. (The enquiry quote's
+   refundable-deposit line; the booking hub's rows carry none.) */
+[data-grp='equote'] .price-row > span > small {
+  display: block;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 1px;
+}
+[data-grp='equote'] .price-box {
+  padding: 16px;
+}
+.bk-row {
   transition:
     transform 320ms var(--settle),
     background 200ms var(--out);
@@ -1037,10 +1055,14 @@ body.light-mode .ny-act {
   font-size: var(--fs-headline);
   font-weight: 500;
 }
+/* NO SIZE OF ITS OWN. "Add booking" is the one accent CTA on the owner's
+   landing and it wore 13px in a 44px pill while the rows it acts on read 15 —
+   the primary control smaller than its own list. It inherits .btn-glass's
+   15/600 like every other button; measured at 390 the pair still ends 74px
+   clear of the pinned ⟳. */
 .cal-actions .cal-add-btn {
   text-transform: none;
   letter-spacing: 0.01em;
-  font-size: var(--fs-sub);
 }
 .bk-caprow {
   display: flex;
@@ -1455,7 +1477,14 @@ body.light-mode .ny-act {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 3px;
-}/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
+}
+/* THE SEPARATOR TRAVELS WITH THE THING IT SEPARATES. The money unit is
+   "· £2,230 to collect" as ONE unbreakable run, so a wrap can only happen
+   BEFORE the "·" — never leaving it stranded at the end of the line above. */
+.ops-unit {
+  white-space: nowrap;
+}
+/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
    one line of words. Full-width inside the card's wrap. */
 /* A caption INSIDE a tinted card is sentence case: tracked uppercase is the
    grouped-list section header, which sits outside a container. Inside one it
@@ -1636,7 +1665,18 @@ body.light-mode .ny-act {
 }.bhub-stay-row > * {
   align-self: center;
   margin-block: 0;
-}.bhub-stay-row .prop-tag {
+}
+/* OUT OF WIDTH THE NAME YIELDS AND THE DATES DO NOT — the mailbox's packing,
+   lifted to the base component. The row's natural widths already sum under its
+   324px box, so nothing needed to give; the flex DEFAULTS were what wrapped
+   "17/02/2026 → 21/02/2026" over two lines and orphaned the arrow of "open →".
+   .prop-tag stays the one shrinkable child. */
+.bhub-stay-row > .bhub-stay-when,
+.bhub-stay-row > .bhub-mut {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.bhub-stay-row .prop-tag {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4792,7 +4832,16 @@ body.cmdk-open {
    do. The ledger row is scoped to #hub-history because hubLedgerRowHtml is
    SHARED with the Payments screen, where the ledger is the content rather than
    one strand of a story. */
+.bhub-ledger-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 0; border-top: 1px solid var(--glass-border);
+}
 #hub-history .bhub-ledger-row { font-size: var(--fs-sub); }
+/* IN THE STORY IT IS ONE STRAND, so the dated cell around it owns the rhythm —
+   a second border and a second 8px padding inside the feed's own row read as a
+   row inside a row. On the Payments screen the ledger IS the content and the
+   rule above stands. */
+#hub-history .bhub-hist-what > .bhub-ledger-row { padding: 0; border-top: 0; }
 .bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: var(--fs-sub); margin-top: 2px; }
 .bhub-feed-mailbody {
     margin-top: 6px; padding: 8px 10px; font-size: var(--fs-sub); color: var(--text-muted);
@@ -4816,6 +4865,12 @@ body.cmdk-open {
   border-color: transparent;
   color: var(--accent-ink);
 }
+/* .btn-glass's 28px of inline padding a side left 124px for a verb needing
+   144 — so the DEFAULT label clipped ("£340.00 Record a pay…") on the page's
+   primary control. 12px a side gives it 156, and the cash-rail label is
+   "Record payment" now; the ellipsis below stays as the backstop for a hostile
+   one, and the figure never gives ground. */
+.bhub-sticky-btn { padding-inline: 12px; }
 /* Money leads and never clips; the verb is the half that may ellipsise —
    a clipped verb still reads, a clipped amount is a different number. */
 /* An explicit ladder step: <strong>'s UA `bolder` resolves against the button's
@@ -4835,6 +4890,29 @@ body.cmdk-open {
    is offered once (A2c). Booking hub only: the enquiry hub's Approve has no
    sticky to hand over to. */
 @media (max-width: 900px) { #booking-hub-content .bhub-next .bhub-next-btn, #enquiry-hub-content .bhub-next .bhub-next-btn { display: none; } }
+/* …AND ABOVE 900 IT IS THE SAME CONTROL, so it wears the same clothes. The
+   card's button was a .btn-glass ghost — an outlined 42px pill, the quietest
+   thing on the pane — while the phone's sticky bar wears the accent fill for
+   the identical act. One action, one look. */
+@media (min-width: 901px) {
+  .bhub-next .bhub-next-btn {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--accent-ink);
+  }
+  /* APPROVE KEEPS ITS OWN COLOUR — it is the one next action with a meaning of
+     its own, and .btn-approve carries only a --booked-border plus a hover that
+     turns --ok. A (0,2,0) accent fill above would have left the border rule
+     dead and the hover intact, so Approve read accent and flipped green under
+     the pointer. Filled --ok in BOTH states instead. The ink is --accent-ink,
+     not white: white on --ok measures 2.78:1, this pair 6.65. */
+  .bhub-next .bhub-next-btn.btn-approve,
+  .bhub-next .bhub-next-btn.btn-approve:hover {
+    background: var(--ok);
+    border-color: transparent;
+    color: var(--accent-ink);
+  }
+}
 
 
 /* The per-booking payment plan, inside the Payments header (hubPlanHtml):
@@ -5495,10 +5573,59 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .mbx-ctx-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
 .mbx-ctx-lbl small { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mbx-ctx-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+/* Serif is money — the hub's own rule, so the reader's guest-match states the
+   balance as a figure beside a capsule that names the state. */
+.mbx-ctx-fig { font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); white-space: nowrap; }
 .mbx-ctx-d .bhub-chev { transition: transform 320ms var(--unfold); }
 .mbx-ctx-d[open] > .mbx-ctx-drow .bhub-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .mbx-ctx-d .bhub-chev { transition: none; } }
 .mbx-ctx-d .mbx-ctx, .mbx-ctx-d .mbx-chain { padding: 0 2px 10px; }
+
+/* ---- THE OWNER'S REPLY WINDOW (#messages-modal). These rules live in
+   admin.css rather than beside their base rules in app.css for the reason
+   stated at the top of the PR2 block: this window only ever opens for the
+   owner, and app.css is the sheet every anonymous visitor pays for.
+
+   THE NAME GETS ITS OWN ROW. Beside Archive / Delete / ✕ the serif title had a
+   72px column and wrapped a guest's name over two lines; the actions are a
+   quiet row beneath it instead of three pills competing with the person you
+   are writing to.
+
+   THE COMPOSER IS ONE ROW. Four stacked controls of three weights took 175px
+   under a 383px thread and left the reply field 138px, in which "Write a
+   reply…" wrapped onto two lines. Quick replies + ✨ Draft on your Mac are one
+   scrolling line above the field; the select STAYS a <select>, being the
+   accessible control, and chips would be five buttons for something used once
+   in ten replies. ---- */
+#messages-modal .msg-head { margin-bottom: 12px; }
+#messages-modal .msg-head h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+#messages-modal .msg-head-acts { display: flex; gap: 8px; align-items: center; }
+#messages-modal .msg-head-acts .reviews-modal-close { margin-left: auto; }
+#messages-modal .msg-quick {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+#messages-modal .msg-quick::-webkit-scrollbar { display: none; }
+#messages-modal .msg-quick > * { flex: 0 0 auto; margin: 0; }
+/* Wide enough for its OWN label: a <select> clips with no ellipsis, and at
+   140px "Quick replies…" rendered as "Quick replies.." (96px of inner width
+   for 121px of text) — the one control whose text says what it opens. */
+#messages-modal #msg-canned { flex: 1 1 auto; min-width: 168px; }
+#messages-modal .chat-composer { margin-top: 0; }
+#messages-modal .chat-attach-btn, #messages-modal .chat-send { width: 44px; height: 44px; }
+#messages-modal .chat-composer textarea { min-height: 44px; }
+/* THE RAIL ALREADY NAMED THIS FOLDER. Its selected row reads "Enquiries 2" and
+   the list column repeated the same label and count 20px to its right.
+   Visually hidden, NOT removed: ui-test-mailbox reads the heading's text to
+   check it renames to "Declined enquiries", and a11y §6 walks the outline —
+   both pass through `clip`, neither through display:none. */
+@media (min-width: 1200px) {
+  #inbox-main .bo-sec-title {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+}
+
 
 /* ---- Money landing + Income & tax folds: one centred 640px column (the
    overview spans both desktop columns, so children centre themselves). A
@@ -6216,6 +6343,39 @@ body.offline-snap .ods-mark {
 #enq-email-modal #enq-email-ctl { flex: 1 1 100%; margin: 6px 0 2px; }
 #enq-email-modal #enq-email-ctl .btn-sm { flex: 1 1 0; min-height: 44px; text-align: center; }
 #enq-email-modal #enq-email-body { margin-top: 10px; }
+/* THE CONTEXT IS REFERENCE, SO IT FOLDS. ~340px of avatar/name/pill/dates/
+   party/price/quote above the Subject field opened the Message box half off
+   the screen at 390 and Send below the card's own bottom edge at BOTH widths.
+   A native <details>: no state to keep, no re-render, and the summary is the
+   one line that says whose email this is. */
+#enq-email-modal .enq-ctx-fold { margin: 0 0 12px; }
+#enq-email-modal .enq-ctx-sum {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  list-style: none; min-height: 44px; padding: 0 2px;
+  font-size: var(--fs-body); font-weight: 600; color: var(--text-light);
+}
+#enq-email-modal .enq-ctx-sum::-webkit-details-marker { display: none; }
+#enq-email-modal .enq-ctx-sum > span:first-child { flex: 1 1 auto; min-width: 0; }
+#enq-email-modal .enq-ctx-sum .bhub-chev { flex: none; }
+#enq-email-modal .enq-ctx-fold[open] .enq-ctx-sum .bhub-chev { transform: rotate(90deg); }
+#enq-email-modal .enq-ctx-fold .enq-ctx { margin-top: 4px; }
+/* Attach meets the 44px floor like every other control in the modal. */
+#enq-email-modal .enq-email-attach { min-height: 44px; }
+/* SEND IS ALWAYS IN REACH. The body is the scroller, so the action row sticks
+   to its floor rather than sitting 281px below the card's own bottom edge.
+   An OPAQUE ground (the registered sheet surface) — the glass ground is
+   translucent and the message would scroll visibly through the buttons. */
+#enq-email-modal .enq-email-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  margin: 0 -2px;
+  padding: 12px 2px calc(4px + var(--safe-b, 0px));
+  background: var(--sheet-surface);
+  border-top: 1px solid var(--glass-border);
+}
 /* The arrival-review composer's read-only facts panel: what the template adds
    under the owner's message. Shown so they don't retype the address and the
    guest read everything twice. */
@@ -7250,10 +7410,16 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 .ops-owed::after { content: ''; position: absolute; inset: -9px 0; }
 .acr-step button::after { content: ''; position: absolute; inset: -3px; }
 /* A sub may take two lines: beside a capsule at 390 these lost 12–36% of their
-   words to an ellipsis on Today, the enquiry hub, the Inbox and the search rows. */
-.ny-sub, .bhub-fold-sub, .cmdk-row-sub {
+   words to an ellipsis on Today, the enquiry hub, the Inbox and the search rows.
+   .bk-row-dates joins them: the index row's sub ellipsised its LAST fact — the
+   quoted price on an enquiry ("est. £370…"), the word "free" on a declined
+   one — which is the fact worth reading. And .bk-row-name joins for the same
+   reason one line up: a phone has no hover, so the title attribute carrying
+   "Alexandrina Featherstonehaugh-Smythe" is not a fallback for cutting it. */
+.ny-sub, .bhub-fold-sub, .cmdk-row-sub, .bk-row-dates, .bk-row-name {
   white-space: normal; overflow: hidden; text-overflow: clip;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  text-wrap: pretty;
 }
 /* State said once: the chip carries it, the rail goes (transparent keeps the geometry). */
 .bk-row.pay-danger, .bk-row.pay-warn, .bk-row.pay-ok, .bk-row.pay-stay, .bk-row.pay-arrive { border-left-color: transparent; }

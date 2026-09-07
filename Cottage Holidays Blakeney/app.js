@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 605;
+const ADMIN_BUNDLE_V = 606;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 264;
+const ADMIN_CSS_V = 265;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3134,16 +3134,13 @@ function unseenEnquiries() {
     if (!Array.isArray(enquiries)) return 0;
     return enquiries.filter(function (e) { return !(e && e.seenAt); }).length;
 }
-// Keep the dock's pending-enquiries count badge live.
+// Keep the dock's count badges live. ONE WRITER: this used to paint
+// #dock-badge-enquiries itself, a second derivation of a number
+// refreshInboxBadge() owns — whichever ran last decided what the pip said.
 async function refreshOwnerHomeBadges() {
     try {
         await loadData();
-        const pending = unseenEnquiries();
-        const dockBadge = document.getElementById('dock-badge-enquiries');
-        if (dockBadge) {
-            dockBadge.textContent = pending;
-            dockBadge.style.display = pending > 0 ? 'flex' : 'none';
-        }
+        refreshInboxBadge();
     } catch (e) {
         /* badges are a nicety; never block the page */
     }
@@ -10388,7 +10385,10 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // Classed so the Activity feed can hold it to the story's own
                 // type size — it carries no font-size of its own and inherited
                 // the card base, rendering 16px among 13.12px event rows.
-                return `<div class="bhub-ledger-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--glass-border);">
+                // Layout in admin.css's .bhub-ledger-row now (both surfaces
+                // are owner-only), so the feed can drop the row's own border
+                // and padding when it wraps it in a dated cell.
+                return `<div class="bhub-ledger-row">
                         <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
@@ -17535,25 +17535,54 @@ function refreshInboxBadge() {
     if (badge) {
         badge.innerText = n;
         badge.classList.toggle('zero', n === 0);
+        // UNSEEN IS NOT WAITING, AND THE WORDS SAY WHICH: the Inbox counts
+        // enquiries nobody has opened (Mail's own sidebar badge), Today counts
+        // what needs the owner. Two honest numbers — but a bare "2" beside a
+        // bare "8" reads as a disagreement, so this one names itself.
+        badge.setAttribute('aria-label', n + ' unseen');
+        badge.setAttribute('title', n + ' unseen');
     }
     // Inbox folder-switch chip (comms dashboard) — same pending count.
     const folderChip = document.getElementById('ifold-count-enq');
     if (folderChip) folderChip.textContent = n > 0 ? n : '';
+    // A BADGE INSIDE A LABELLED BUTTON IS NEVER ANNOUNCED: the dock buttons
+    // carry an explicit aria-label, so their contents are not traversed for the
+    // accessible name — a bare aria-label on the pip itself (a span with no
+    // role) buys nothing. The count goes in the BUTTON's name, and the pip
+    // keeps a title for the sighted hover.
+    const pipName = (el, count, word) => {
+        if (!el) return;
+        el.title = count + ' ' + word;
+        const btn = el.parentElement;
+        const base = btn && btn.getAttribute('data-label');
+        if (btn && base) btn.setAttribute('aria-label', count > 0 ? `${base}, ${count} ${word}` : base);
+    };
     // Dock Inbox pip.
     const dock = document.getElementById('dock-badge-inbox');
     if (dock) {
         dock.textContent = n;
         dock.style.display = n > 0 ? '' : 'none';
+        pipName(dock, n, 'unseen');
         dockBadgePop(dock, n);
     }
-    // The Today pip shows the same pending-enquiries count — keep it in step here
-    // too so it can't lag behind the Inbox pip (this runs from far more places than
-    // refreshOwnerHomeBadges does).
+    // THE TODAY PIP COUNTS DUTIES, NOT ENQUIRIES — one fact, one number. It read
+    // unseenEnquiries() while the Needs-you strip 90px below it and the rail's
+    // Today row both read chbDuties(): "2" on the icon over "Needs you 8", and 8
+    // at 1440 for the same owner. ONE WRITER, guarded on __ADMIN_LOADED (the
+    // facade shape the chbFrameSync() call below uses) rather than moved into
+    // renderNeedsYou, which enquirySeen() does not call and whose adjacency to
+    // setAppBadgeCount test-webpush.php scans.
+    let todayN = n;
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbDuties === 'function') todayN = (w.chbDuties() || []).length;
+    } catch (e) {}
     const today = document.getElementById('dock-badge-enquiries');
     if (today) {
-        today.textContent = n;
-        today.style.display = n > 0 ? 'flex' : 'none';
-        dockBadgePop(today, n);
+        today.textContent = todayN;
+        today.style.display = todayN > 0 ? 'flex' : 'none';
+        pipName(today, todayN, 'needing you');
+        dockBadgePop(today, todayN);
     }
     // The rail's Inbox count is this number said in its own slot — refresh it
     // wherever the pips refresh, so the two can never disagree.
@@ -17561,11 +17590,10 @@ function refreshInboxBadge() {
         const w = /** @type {any} */ (window);
         if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
     } catch (e) {}
-    // Pending enquiries is the FALLBACK count, used only until the back office is
-    // loaded. Once it is, admin.js sets the badge from chbDuties() — the real
-    // "needs you" number, which also counts balances to chase, deposits to return
-    // and waiting chats. Guarded on __ADMIN_LOADED (the sanctioned facade signal)
-    // rather than reaching for an admin global from here.
+    // Pending enquiries is the FALLBACK count for the HOME SCREEN icon, used only
+    // until the back office is loaded. Once it is, renderNeedsYou() sets the app
+    // badge from chbDuties() — the real "needs you" number, which also counts
+    // balances to chase, deposits to return and waiting chats.
     if (!(/** @type {any} */ (window).__ADMIN_LOADED)) setAppBadgeCount(n);
 }
 
@@ -19285,7 +19313,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higpay1';
+    const BUILD = 'higowner1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

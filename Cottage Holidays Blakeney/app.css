@@ -5580,7 +5580,6 @@ textarea.input-glass.field-sm {
 }
 .cal-add-btn {
   padding: 12px 22px;
-  font-size: var(--fs-caption);
 }
 .cal-month-nav {
   display: flex;
@@ -10435,7 +10434,7 @@ body.light-mode .feed-dot-bad {
 :where(#waitlist-modal, #photo-upload-modal) .modal-box {
   max-width: 460px;
 }
-:where(#welcome-modal) .modal-box {
+:where(#welcome-modal, #messages-modal) .modal-box {
   max-width: 520px;
 }
 @media (max-width: 640px) {
@@ -10465,6 +10464,9 @@ body.light-mode .feed-dot-bad {
   .modal-overlay.chb-sheet .modal-box::before {
     content: '';
     display: block;
+    /* A box that is a flex COLUMN (the messages sheet) would otherwise let the
+       grabber shrink away under a full thread — it is a mark, not content. */
+    flex: none;
     width: 36px;
     height: 5px;
     border-radius: 3px;
