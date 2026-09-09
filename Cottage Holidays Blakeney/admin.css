@@ -726,7 +726,10 @@ body.light-mode .tl-cell:hover:not(:active) {
   margin: 0 0 10px;
   max-width: 62ch;
 }
-#night-ready .bhub-fold-grp { margin-bottom: 10px; }
+/* The night card spaces its groups by MARGIN rather than gap, so the token
+   names that margin and the join rule cancels it the same way. */
+#night-ready { --fold-gap: 10px; }
+#night-ready .bhub-fold-grp { margin-bottom: var(--fold-gap); }
 .night-src {
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -5612,8 +5615,19 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
    group full-width (cross-axis auto margins cancel stretch — the rail rule). */
-#search-learning-body, #content-editor { display: flex; flex-direction: column; gap: 12px; }
+/* --fold-gap DECLARED HERE, because the join rule reads it: the sibling join
+   (`.bhub-fold-grp + .bhub-fold-grp`) cancels the container's gap through
+   `var(--fold-gap)`, and a container that sets `gap` without the token gets
+   groups neither joined nor separated — 12px apart with no top hairline and
+   square corners. Four containers declared it and seven hold fold groups;
+   these two, Key safes and the night card were the three missed (final review). */
+#search-learning-body, #content-editor { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); }
 #search-learning-body > *, #content-editor > * { width: 100%; }
+/* `.btn-sm { display: inline-flex }` outranks the UA's [hidden], so the ✨ Draft
+   button painted in every reply window whose Mac was not listening — and the
+   one-row composer gave it a slot beside Quick replies. The #day-spine[hidden]
+   trap, one control over. */
+#msg-mac-draft[hidden] { display: none; }
 #search-learning-body .sl-card { margin: 0; }
 .sl-fold-body { padding-top: 2px; }
 
@@ -6311,7 +6325,7 @@ body.offline-snap .ods-mark {
 /* The page is one 640px rail at the fold rhythm; each cottage is a fold
    group (.ks-card kept as the suite's locator). The old card/head geometry
    went with the flat cards. */
-#keysafe-body { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+#keysafe-body { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); max-width: 640px; }
 #keysafe-body .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
 #keysafe-body .mo-pulse { margin: 2px 0 0; }
 .ks-card .prop-tag { margin-bottom: 0; }

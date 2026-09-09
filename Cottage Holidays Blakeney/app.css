@@ -9674,6 +9674,18 @@ body.light-mode .feed-dot-bad {
    below — carried an inline accent fill; green is the done state everywhere
    else on this page. Both are this rule now: the card's inline style is gone
    and the hub's green with it, so they cannot drift again. */
+/* THE HOVER MUST BE STATED TOO. `.hub-cta-btn` alone is (0,1,0) and
+   `.btn-glass:hover` is (0,2,0), so under a pointer the hub's ask went
+   accent → glass with its ink inverted while the card's twin (0,2,0, later)
+   kept the accent: the two "one rule" buttons diverged exactly where the
+   comment below says they cannot. Mirrors .btn-glass.btn-accent:hover. */
+.gb2-cta .btn-sm:hover,
+.hub-cta-btn:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  filter: brightness(1.05);
+}
 .gb2-cta .btn-sm,
 .hub-cta-btn {
   background: var(--accent);

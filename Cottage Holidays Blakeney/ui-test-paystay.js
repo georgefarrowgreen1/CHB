@@ -350,6 +350,37 @@ const near = (x, y, tol) => x && y && Math.abs(x.r - y.r) <= (tol || 2) && Math.
   const junk = await payPage.evaluate(() => ['', 'abc', '£'].map((s) => payPartNum(s)).filter((v) => isFinite(v)).length);
   ok(junk === 0, 'an empty or unparseable field stays NaN, never a silent zero');
 
+  // THE COMMIT MUST NOT UNDO THE READER. payPartClamp rewrites the field on blur
+  // so it shows what will be charged — and its first version did that with its
+  // own naive comma swap, turning a correct "1,234.50" into "1.234.50", which
+  // the reader then took as £123,450: over the maximum, button disarmed, on a
+  // figure the guest had typed right. Driven through the REAL clamp with the
+  // fixture's ceiling lifted so a four-figure amount is in bounds (the fixture's
+  // max is £290, where the defect cannot show), then put back.
+  const commit = await payPage.evaluate(() => {
+    const amt = document.getElementById('pay-part-amt');
+    // Both bounds lifted: the fixture's floor is £20, so "12,50" would
+    // legitimately snap UP and prove nothing about the rewrite.
+    const keep = { min: payState.part.min, max: payState.part.max };
+    payState.part.min = 1;
+    payState.part.max = 5000;
+    const out = [];
+    for (const typed of ['1,234.50', '12,50', '£150', '120.50']) {
+      amt.value = typed;
+      payPartSync();
+      payPartClamp();
+      out.push({ typed, field: amt.value, amount: payState.partAmount });
+    }
+    payState.part.min = keep.min;
+    payState.part.max = keep.max;
+    amt.value = '';
+    payPartSync();
+    return out;
+  });
+  const want2 = { '1,234.50': [1234.5, '1234.50'], '12,50': [12.5, '12.50'], '£150': [150, '150.00'], '120.50': [120.5, '120.50'] };
+  const bad2 = commit.filter((c) => c.amount !== want2[c.typed][0] || c.field !== want2[c.typed][1]);
+  ok(bad2.length === 0, `blurring the field keeps the figure the reader read and shows it as money (${bad2.length ? JSON.stringify(bad2) : commit.map((c) => c.typed + '→' + c.field).join(' · ')})`);
+
   // The error panel: one family, one geometry. The action that recovers the
   // payment was 115×44 at 13px beside a 174×45 .btn-glass at 15px.
   await payPage.evaluate(() => showPayError('Something went wrong.', () => {}));
