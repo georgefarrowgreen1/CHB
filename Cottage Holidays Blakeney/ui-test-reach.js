@@ -381,6 +381,30 @@ const reachOk = (name, list, floor, axis) => {
       return out;
     });
     ok(zoom.length === 2 && zoom.every((z) => z.w >= 44 && z.h >= 44), `cottage 390 · the map's +/− reach 44 (${zoom.map((z) => z.w + '×' + z.h).join(', ')})`);
+    // …AND THE RULE MUST OUTRANK LEAFLET'S OWN. The probe above paints under
+    // app.css alone — Leaflet is a CDN script whose stylesheet lands AFTER ours
+    // and sets `.leaflet-touch .leaflet-bar a { width: 30px; height: 30px }` at
+    // (0,3,0). Our 44 holds on a real phone only because it is `!important`;
+    // drop that and the probe stays green while every touch device paints 30px
+    // (found by break-test in the final review). Read the priority off the CSSOM.
+    const zoomPri = await page.evaluate(() => {
+      // Walk nested rules too (a media block hides its children from the top
+      // level), and match the control's own selector: `.leaflet-control-zoom a`.
+      const walk = (rules) => {
+        for (const r of rules) {
+          if (r.cssRules && r.cssRules.length && !r.selectorText) { const hit = walk(r.cssRules); if (hit) return hit; continue; }
+          if (!r.selectorText || !/leaflet-(control-zoom|bar) a/.test(r.selectorText) || r.style.width !== '44px') continue;
+          return { sel: r.selectorText, w: r.style.getPropertyPriority('width'), h: r.style.getPropertyPriority('height') };
+        }
+        return null;
+      };
+      for (const sh of document.styleSheets) {
+        let rules; try { rules = sh.cssRules; } catch (e) { continue; }
+        const hit = walk(rules); if (hit) return hit;
+      }
+      return null;
+    });
+    ok(!!zoomPri && zoomPri.w === 'important' && zoomPri.h === 'important', `…and the 44 is !important, so Leaflet's later (0,3,0) 30px cannot win (${zoomPri ? zoomPri.sel + ' w:' + zoomPri.w + ' h:' + zoomPri.h : 'rule not found'})`);
     await page.close();
   }
   {
