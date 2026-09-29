@@ -593,8 +593,15 @@ const EXPS = [
     if (!cardPress) check(false, '.card: a painted one to press');
     else {
         await cardPage.mouse.move(cardPress.x, cardPress.y);
+        await cardPage.bringToFront();
         await cardPage.mouse.down();
-        await cardPage.waitForTimeout(140);
+        // WAIT ON STATE, NOT A CLOCK. This page is a SECOND tab, and a tab that is
+        // not in front gets its frames late, so the 80ms press transition had not
+        // yet painted at a fixed 140ms in ~2 runs in 3 (transform read as identity
+        // while :active was already true; the press is there 250ms later). The
+        // question is whether the hover still OUTRANKS the press, not how fast a
+        // background tab paints, so wait for the press to land.
+        await cardPage.waitForFunction(() => { const el = document.querySelector('[data-cardprobe]'); const m = el && /matrix\(([\d.\-]+)/.exec(getComputedStyle(el).transform); return !!m && +m[1] < 1; }, null, { timeout: 2000 }).catch(() => {});
         const c1 = await cardPage.evaluate(() => { const el = document.querySelector('[data-cardprobe]'); const m = /matrix\(([\d.\-]+)/.exec(getComputedStyle(el).transform); return { sc: m ? +m[1] : 1, tr: getComputedStyle(el).transform, act: el.matches(':active') }; });
         await cardPage.waitForTimeout(250);
         const c2 = await cardPage.evaluate(() => { const el = document.querySelector('[data-cardprobe]'); const m = /matrix\(([\d.\-]+)/.exec(getComputedStyle(el).transform); return { sc: m ? +m[1] : 1 }; });
