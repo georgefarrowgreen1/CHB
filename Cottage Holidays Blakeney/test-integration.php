@@ -4280,6 +4280,29 @@ it_check('§34 …but the owner still gets them', count($r['json']['ranges'] ?? 
 $r = http($anon2, 'GET', '/availability.php?prop=' . rawurlencode($propKey));
 it_check('§34 a LISTED cottage answers anonymous callers exactly as before', is_array($r['json']['ranges'] ?? null), substr($r['raw'], 0, 200));
 
+// §35 A RECORDED DAMAGES DEPOSIT SURVIVES AN EDIT. The edit form sends `payment`
+// on every save, and reconcile_deposit('paid') means "received = rental total", so
+// correcting a phone number on a cash/bank booking whose £50 deposit had been
+// recorded ("Collected too") rewrote deposit_paid £310 -> £260 and the hub went
+// back to "£50 balance remaining" for a guest who had paid in full. Dates are
+// relative ($dd) so a fixed date can never be swept onto by a moving one.
+echo "\n== §35 an edit does not un-collect the damages deposit ==\n";
+$dpIn = $dd(950);
+$dpOut = $dd(952);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee) VALUES ('$propKey','Deposit Kept','dk@gmail.com','$dpIn','$dpOut',2,0,'paid',310,'Bank transfer','$dpIn',260,260,0,2,50)");
+$dpId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $dpId, 'prop_key' => $propKey, 'name' => 'Deposit Kept', 'email' => 'dk@gmail.com', 'phone' => '07700900321', 'check_in' => $dpIn, 'check_out' => $dpOut, 'adults' => 2, 'children' => 0, 'payment' => 'paid', 'payment_date' => $dpIn, 'payment_method' => 'Bank transfer']);
+$dpNow = (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $dpId")->fetchColumn();
+it_check('§35 editing a phone number keeps the recorded £50 deposit (£310, not £260)', $r['code'] === 200 && abs($dpNow - 310.0) < 0.005, 'deposit_paid=' . $dpNow . ' ' . substr($r['raw'], 0, 120));
+// The control: a booking that NEVER had the deposit recorded must not gain one.
+$dpIn2 = $dd(960);
+$dpOut2 = $dd(962);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee) VALUES ('$propKey','Deposit Not Taken','dn@gmail.com','$dpIn2','$dpOut2',2,0,'paid',260,'Bank transfer','$dpIn2',260,260,0,2,50)");
+$dpId2 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $dpId2, 'prop_key' => $propKey, 'name' => 'Deposit Not Taken', 'email' => 'dn@gmail.com', 'phone' => '07700900322', 'check_in' => $dpIn2, 'check_out' => $dpOut2, 'adults' => 2, 'children' => 0, 'payment' => 'paid', 'payment_date' => $dpIn2, 'payment_method' => 'Bank transfer']);
+$dpNow2 = (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $dpId2")->fetchColumn();
+it_check('§35 …and a booking that never had the deposit recorded does not gain one (£260 stays £260)', $r['code'] === 200 && abs($dpNow2 - 260.0) < 0.005, 'deposit_paid=' . $dpNow2);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
