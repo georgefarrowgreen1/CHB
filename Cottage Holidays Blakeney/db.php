@@ -1499,9 +1499,19 @@ function mailbox_is_report_robot($fromAddr)
     // matches a guest called e.dmarcus@… and silently eats their booking enquiry.
     // Either the local part starts with it (dmarcreply@, dmarcreport@) or it
     // stands alone between separators (noreply-dmarc-support@, dmarc_agg@).
+    // DELIVERY-FAILURE BOUNCES are the same species: "Mail Delivery System
+    // emailed you — Mail delivery failed: returning message to sender" is the
+    // mail server talking, not a person, and a duty for it sits above the next
+    // real guest email. mailer-daemon@ and postmaster@ are reserved system
+    // mailboxes (RFC 5321 §4.5.1 / RFC 2142) that no guest writes from; matched
+    // as the WHOLE local part (or a `mailer-daemon` prefix), never a substring,
+    // so a guest called postmaster.jones@ is not eaten. Like the DMARC reports
+    // this HIDES rather than deletes — the bounce is still in the real mailbox.
     return strpos($local, 'dmarc') === 0
         || preg_match('/[^a-z0-9]dmarc([^a-z0-9]|$)/', $local) === 1
-        || $domain === 'dmarc.yahoo.com';
+        || $domain === 'dmarc.yahoo.com'
+        || $local === 'postmaster'
+        || preg_match('/^mailer-daemon([^a-z0-9]|$)/', $local) === 1;
 }
 // True when replies are matched by header/subject token rather than a plus-
 // address (the zero-setup POP3 route) — the notification then also tags the
