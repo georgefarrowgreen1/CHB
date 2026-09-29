@@ -27410,7 +27410,14 @@ function sortedEnquiries() {
 // costs exactly what it did.
 let __inboxTab = 'waiting';
 let __declinedEnq = null; // null = not fetched yet
+let __inboxTabStamp = 0;
 async function inboxTab(which) {
+    // STAMP-GUARDED past the await: on a slow link the owner taps Declined,
+    // moves on to the Messages fold while it loads, and the late answer used
+    // to snap the accordion back to Enquiries — closing the folder they were
+    // in and clearing the reading pane. A stale answer still stores its rows
+    // (they are simply the declined list) but paints nothing and opens nothing.
+    const my = ++__inboxTabStamp;
     __inboxTab = which === 'declined' ? 'declined' : 'waiting';
     if (__inboxTab === 'declined' && __declinedEnq === null) {
         renderInbox(); // paint the switch + a loading line before the round trip
@@ -27419,9 +27426,12 @@ async function inboxTab(which) {
             __declinedEnq = ((r && r.enquiries) || []).map(mapEnquiryFromApi);
         } catch (e) {
             __declinedEnq = null;
-            glassAlert("Couldn't load declined enquiries: " + e.message);
-            __inboxTab = 'waiting';
+            if (my === __inboxTabStamp) {
+                glassAlert("Couldn't load declined enquiries: " + e.message);
+                __inboxTab = 'waiting';
+            }
         }
+        if (my !== __inboxTabStamp) return;
     }
     renderInbox();
     // THE DRAWER APPEARS ON THE TAP THAT ASKED FOR IT. Stacked, the enquiries

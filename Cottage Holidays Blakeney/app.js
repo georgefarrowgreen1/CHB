@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 607;
+const ADMIN_BUNDLE_V = 608;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 266;
+const ADMIN_CSS_V = 267;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -5417,9 +5417,15 @@ function payDoneNextRender(res, rem) {
     // with a toast saying it a fourth time — four statements of one fact on one
     // screen. The heading owns the news; this row states what happens NEXT.
     const rows = [
-        payState.kind === 'deposit'
-            ? payJourneyRow('done', 'Your dates are confirmed', 'A receipt is on its way to your inbox', '')
-            : payJourneyRow('done', 'Receipt on its way', "We've emailed it to you", ''),
+        // A CLAIM THE APP CAN KEEP: the receipt is emailed only to a guest who
+        // has an email on file (send_payment_receipt refuses otherwise, and the
+        // enquiry form accepts a phone alone). Without one, this page is the
+        // record and the row says so instead of promising an inbox.
+        payState.hasEmail === false
+            ? payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'We have no email address for you, so keep this page as your record', '')
+            : payState.kind === 'deposit'
+              ? payJourneyRow('done', 'Your dates are confirmed', 'A receipt is on its way to your inbox', '')
+              : payJourneyRow('done', 'Receipt on its way', "We've emailed it to you", ''),
     ];
     // Gate each row on the FACT it states, not on `rem`: a whole DEPOSIT pays
     // rem=0, so `if (rem>0.005)` deleted the balance, its date and the arranged
@@ -5537,6 +5543,9 @@ async function openPayView(token, bookingId, kind) {
         payState.apRepairInfo = s.autopayRepair && typeof s.autopayRepair === 'object' ? s.autopayRepair : null;
         payRepairRender();
         payState.guestName = s.guestName || '';
+        // Only an EXPLICIT false changes the receipt row's words; an older server
+        // that sends no flag keeps today's copy rather than being read as "no email".
+        payState.hasEmail = s.hasEmail === false ? false : true;
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
         const propEl = document.getElementById('pay-prop');
@@ -6026,10 +6035,20 @@ function payPartClamp() {
     // ON COMMIT THE FIELD SHOWS WHAT WILL BE CHARGED — never "12,50" over a
     // £12.50 ask. Only when the normalisation MOVED something, so "120.50" is
     // left exactly as typed.
-    const cleaned = String(amt.value).trim().replace(/[£\s]/g, '').replace(',', '.');
     if (snapped === null) {
-        if (cleaned !== String(amt.value).trim()) {
-            amt.value = cleaned;
+        // ONE READER, ONE FIGURE. The display is rewritten from the number
+        // payPartNum produced — never by a second string substitution. This
+        // used to be its own naive `.replace(',', '.')`, the exact swap the
+        // reader's header forbids: a correct "1,234.50" became "1.234.50",
+        // which re-read as £123,450 and disarmed the button on a figure the
+        // guest had typed correctly (found in the final review, two callers
+        // agreeing with each other and disagreeing with the reader). Rewrite
+        // only when what was typed is not already that figure in a clean money
+        // shape, so "120.50" stays exactly as typed while "12,50", "£50" and
+        // "50x" all become what will be charged.
+        const raw = String(amt.value).trim();
+        if (parseFloat(raw) !== v || !/^\d+(\.\d{1,2})?$/.test(raw)) {
+            amt.value = v.toFixed(2);
             payPartSync();
         }
         return;
@@ -9788,7 +9807,14 @@ function bookingFlow(propKey, b) {
     b = b || {};
     const today = typeof todayDashed === 'function' ? todayDashed() : '';
     const past = !!(b.checkOut && b.checkOut <= today);
-    const inStay = !past && hasCheckedIn(b);
+    // "HERE" IS THE HUB'S OWN PREDICATE (arrived by date, not yet departed by
+    // TIME — renderGuestBookings' currentStay), so the card and the hub above
+    // it can never disagree. It was `!past && hasCheckedIn(b)` with `past`
+    // date-based: on the checkout MORNING the hub read "Checkout today by
+    // 10:00" while this card, judging the stay already past, printed "we can't
+    // wait to welcome you" — the sentence the in-stay branch exists to stop.
+    // Found in the final review. `past` stays date-based for the stage labels.
+    const inStay = !!(b.checkIn && b.checkIn <= today) && !hasCheckedOut(b);
     const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     // (bookingRegComplete is defined below — hoisted, and read here as the
     // register stage's done-state.)
@@ -12826,11 +12852,18 @@ function setEnqStep(n) {
 }
 // Inline validation message inside the enquiry popup (replaces blocking
 // glassAlert for the two-step form). step = 'review' | 'details'.
-function setEnqMsg(step, text) {
+// `src` names WHO wrote the sentence. 'ladder' marks the client's own
+// refusal ladder (enqFirstProblem), which enqLiveSync is allowed to sweep
+// away the moment the ladder stops saying it; anything unmarked — a SERVER
+// refusal ("those dates are no longer available", a rate limit, a mail
+// failure) — is never the ladder's to clear and stands until the next Send.
+function setEnqMsg(step, text, src) {
     const el = document.getElementById(step === 'details' ? 'enq-msg-details' : 'enq-msg-review');
     if (!el) return;
     el.textContent = text || '';
     el.classList.toggle('show', !!text);
+    if (text && src) el.dataset.src = src;
+    else delete el.dataset.src;
 }
 // Review → Details: validate dates/rules/occupancy up front (same checks as submit).
 function enquireContinue() {
@@ -16847,8 +16880,19 @@ function enqLiveSync() {
     // your name" standing in red while this line had already moved on to the
     // address: two sentences about one form, contradicting each other. Anything the
     // freshly computed ladder no longer says is stale, and stale goes.
-    const alertEl = document.getElementById('enq-msg-details');
-    if (alertEl && alertEl.textContent && alertEl.textContent !== (prob ? prob.msg : '')) setEnqMsg('details', '');
+    // ONLY THE LADDER'S OWN SENTENCES ARE SWEPT (dataset.src === 'ladder').
+    // The first version swept anything that differed from the ladder — and a
+    // SERVER refusal never matches the ladder, so "those dates are no longer
+    // available" was cleared by the guest's 30-second background tick
+    // (liveUpdateTick → updateEnquiryPrice → here) with nothing touched, the
+    // dot turned green and the form claimed to be sendable after the server
+    // had said no. Found in the final review. Both slots, same rule: the
+    // step-one reroute writes "Please choose your dates" into the review
+    // slot, and picking the dates must clear that too.
+    for (const slot of ['details', 'review']) {
+        const alertEl = document.getElementById('enq-msg-' + slot);
+        if (alertEl && alertEl.dataset.src === 'ladder' && alertEl.textContent !== (prob ? prob.msg : '')) setEnqMsg(slot, '');
+    }
     if (prob) {
         el.textContent = prob.msg;
         return;
@@ -17171,7 +17215,7 @@ async function submitEnquiry(propKey) {
     // enqFirstProblem for the checks and their order.
     const prob = enqFirstProblem(propKey);
     if (prob) {
-        setEnqMsg('details', prob.msg);
+        setEnqMsg('details', prob.msg, 'ladder');
         if (prob.focus) {
             let f = document.getElementById(prob.focus);
             // A REFUSAL MUST POINT AT A CONTROL THE GUEST CAN REACH. The date
@@ -17189,7 +17233,7 @@ async function submitEnquiry(propKey) {
             // different element for no one's benefit.
             if (f && !f.getClientRects().length && f.closest('#enquire-step-review')) {
                 try { enquireBack(); } catch (e) {}
-                setEnqMsg('review', prob.msg);
+                setEnqMsg('review', prob.msg, 'ladder');
                 f = document.getElementById(prob.focus);
             }
             // NUDGE: the message named the field in words and never pointed at it.
@@ -19313,7 +19357,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higmoney1';
+    const BUILD = 'finalchk1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

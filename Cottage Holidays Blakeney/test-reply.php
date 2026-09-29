@@ -287,6 +287,9 @@ chk('a platform noreply is NOT blocked — it can carry a real enquiry',
 // false positive while its label claimed the opposite.
 chk('a guest whose name merely contains the letters is safe', !mailbox_is_report_robot('e.dmarcus@gmail.com'));
 chk('…and one whose name ends with it', !mailbox_is_report_robot('adamdmarc@gmail.com'));
+chk('a delivery-failure bounce is a robot too (mailer-daemon@)', mailbox_is_report_robot('MAILER-DAEMON@mail.example.com') && mailbox_is_report_robot('mailer-daemon@googlemail.com'));
+chk('…and postmaster@', mailbox_is_report_robot('postmaster@outlook.com'));
+chk('a guest whose name merely starts with it is safe', !mailbox_is_report_robot('postmaster.jones@gmail.com') && !mailbox_is_report_robot('mailerdaemon@gmail.com'));
 chk('rubbish in, false out — never a crash', !mailbox_is_report_robot('') && !mailbox_is_report_robot('not-an-address'));
 
 // mailbox_is_self_notification is the ONE test both the list filter and the

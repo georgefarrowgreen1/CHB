@@ -552,7 +552,15 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         const att = q('.chat-attach-btn'), ta = q('.chat-composer textarea'), snd = q('.chat-send');
         const quick = box.querySelector('.msg-quick');
         const title = box.querySelector('#messages-modal-title');
+        // HIDDEN MEANS NOT PAINTED. `.btn-sm { display: inline-flex }` outranks
+        // the UA's [hidden], so the ✨ Draft button — hidden by chbChatMacBtnSync
+        // whenever the Mac is not listening, i.e. always in this harness — painted
+        // in every reply window and took a slot on the one-row composer (the
+        // #day-spine[hidden] trap; final review). The attribute is not the pixel.
+        const draft = box.querySelector('#msg-mac-draft');
+        const draftGone = draft ? (draft.hidden && draft.getClientRects().length === 0) : null;
         return {
+            draftGone,
             sheet: ov.classList.contains('chb-sheet'),
             edge: Math.round(r.bottom) >= window.innerHeight - 1 && Math.round(r.left) <= 1 && Math.round(r.right) >= window.innerWidth - 1,
             topCorners: parseFloat(cs.borderBottomLeftRadius) === 0 && parseFloat(cs.borderTopLeftRadius) > 0,
@@ -590,6 +598,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(!!chat && chat.topCorners && chat.opaque, '…with top corners only, and opaque (no blur over the scrim)');
     ok(!!chat && chat.titleOwnRow, 'the guest\'s name has its own row, not a 72px column beside three pills');
     ok(!!chat && chat.oneRow && chat.sendRound, 'attach · field · send are ONE row, send a circle');
+    ok(!!chat && chat.draftGone === true, `a hidden "Draft on your Mac" button paints NOTHING (${chat && chat.draftGone === null ? 'button absent' : String(chat && chat.draftGone)})`);
     ok(!!chat && chat.floors, 'and all three meet the 44px floor');
     ok(!!chat && chat.chrome > 0 && chat.chrome <= 60, `the chrome above the field is one line (${chat && chat.chrome}px, was 175)`);
     ok(!!chat && chat.cannedWhole, 'the quick-replies control shows its own label whole (a select cannot ellipsise)');

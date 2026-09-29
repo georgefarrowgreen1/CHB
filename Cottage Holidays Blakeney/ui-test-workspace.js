@@ -308,10 +308,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // 2-of-3 (failed on main, 25 Aug — the same green-on-the-19th trap the pinned
   // range below already documents). The stay always sits inside this month +
   // next, so the sum is date-proof.
-  const bdNext = await page.evaluate(() => {
-    dpChangeMonth(1);
-    return document.querySelectorAll('#dp-grid .dp-booked').length;
-  });
+  // dpChangeMonth PAGES ANIMATED (the grid travels, then repaints), so a read in
+  // the same tick still sees the OLD month — 0 crossed nights whenever the
+  // fixture's stay sits in the NEXT month, i.e. from the ~26th of any month
+  // (failed 29 Sept). Wait on STATE: the title changing is the repaint.
+  const bdNext = await (async () => {
+    const before = await page.evaluate(() => (document.getElementById('dp-title') || {}).textContent);
+    await page.evaluate(() => dpChangeMonth(1));
+    await page.waitForFunction((t) => (document.getElementById('dp-title') || {}).textContent !== t, before, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector('#dp-grid.dp-mo-out, #dp-grid .dp-mo-out'), null, { timeout: 5000 }).catch(() => {});
+    return page.evaluate(() => document.querySelectorAll('#dp-grid .dp-booked').length);
+  })();
   await page.evaluate(() => dpChangeMonth(-1));
   ok(bd2.crossed + bdNext >= 3, `…with the chosen cottage's stays shaded (${bd2.crossed}+${bdNext} crossed nights over two months)`);
   // Escape closes the PICKER and the form survives underneath.

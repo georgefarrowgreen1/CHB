@@ -108,8 +108,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       dueBad: !!(due && due.querySelector('.st-cap.is-bad .st-wic')),
       dueBefore: attnCapIdx === 0,
       foldClosed: !!(due && due.querySelector('.bhub-fold') && due.querySelector('.bhub-fold').hidden),
+      // THE GROUPS JOIN. The sibling join reads `--fold-gap` off the container
+      // to cancel its gap; #keysafe-body set `gap: 12px` without the token, so
+      // its groups sat 12px apart with square corners and no top hairline —
+      // neither joined nor separated (final review; three containers had it).
+      join: (() => {
+        const grps = [...host.querySelectorAll('.bhub-fold-grp')].filter((g) => g.getClientRects().length);
+        const out = [];
+        for (let i = 1; i < grps.length; i++) {
+          if (grps[i].previousElementSibling !== grps[i - 1]) continue; // a caption between two keeps its air
+          const a = grps[i - 1].getBoundingClientRect(), b = grps[i].getBoundingClientRect();
+          out.push({ gap: Math.round(b.top - a.bottom), topBorder: parseFloat(getComputedStyle(grps[i]).borderTopWidth) });
+        }
+        return out;
+      })(),
     };
   });
+  ok(anat.join.length >= 1 && anat.join.every((j) => j.gap === 0 && j.topBorder === 0),
+    `adjacent safe groups JOIN — 0px apart, no top hairline on the second (${JSON.stringify(anat.join)})`);
   ok(/needs? a new code/.test(anat.pulse), `the pulse states the day's work (${anat.pulse})`);
   ok(anat.dueBefore && anat.caps.includes('The safes'), `the due safe hoists above The safes (${anat.caps.join(' / ')})`);
   ok(anat.dueIs21a && anat.dueBad, 'the exception wears the red warning capsule');

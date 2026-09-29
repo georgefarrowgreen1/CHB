@@ -129,6 +129,10 @@ if ($action === 'summary') {
         'propName' => $propName,
         'propKey' => $b['prop_key'], // for the cottage accent chip on the pay screen
         'guestName' => $b['name'],
+        // The done panel's receipt row must not promise an email the sender
+        // will refuse: send_payment_receipt returns 'No guest email on file'
+        // for a phone-only guest, and the enquiry form accepts a phone alone.
+        'hasEmail' => trim((string) ($b['email'] ?? '')) !== '',
         'checkIn' => $b['check_in'],
         'checkOut' => $b['check_out'],
         'currency' => 'GBP',

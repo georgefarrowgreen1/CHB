@@ -1049,6 +1049,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(co1.block && /We've left the cottage/.test(co1.btn) && !co1.tick,
     `the last morning carries the button (${co1.btn.trim()})`);
+  // THE CARD AGREES WITH THE HUB ABOVE IT. bookingFlow's `inStay` was
+  // `!past && hasCheckedIn` with `past` DATE-based, so on this very morning —
+  // the hub reading "Checkout today", the button offering "We've left" — the
+  // card's next-step sentence judged the stay already over and printed "we
+  // can't wait to welcome you", the sentence the in-stay branch exists to stop
+  // (final review). It reads the hub's own predicate now: arrived by date, not
+  // departed by TIME. This fixture is paid AND priced, so the pay branch cannot
+  // mask the case the way an unpriced one would.
+  const coNext = await coPage.evaluate(() => (document.querySelector('.bkflow-next') || {}).textContent || '');
+  ok(!/welcome you|nearer the time/i.test(coNext) && /checkout|everything you need/i.test(coNext),
+    `…and the card's next step speaks about NOW, not the arrival (${JSON.stringify(coNext.trim().slice(0, 70))})`);
   // The tap ASKS first — and "Not yet" sends nothing.
   await coPage.click('.hub-co-btn');
   await coPage.waitForTimeout(300);

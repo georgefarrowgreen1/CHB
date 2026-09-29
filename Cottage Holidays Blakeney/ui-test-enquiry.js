@@ -129,6 +129,30 @@ const FILL = {
     const r3 = await read();
     check(!r3.shown && r3.msg === '', `a sendable form carries no refusal at all (${JSON.stringify(r3.msg)})`);
 
+    // A SERVER REFUSAL IS NOT THE LADDER'S TO CLEAR. The sweep above used to
+    // clear anything that differed from the ladder — and a server's sentence
+    // never matches the ladder, so "those dates are no longer available" was
+    // wiped by the guest's 30-second background tick (liveUpdateTick →
+    // updateEnquiryPrice → enqLiveSync) with nothing touched, the dot turned
+    // green and the form claimed to be sendable after the server had said no.
+    // Drive the exact path: an UNMARKED write (the server's shape), then the
+    // tick's own call; then a LADDER-marked write, which the sweep may take.
+    const srv = await page.evaluate(() => {
+        setEnqMsg('details', "Sorry, your enquiry couldn't be sent: those dates are no longer available");
+        updateEnquiryPrice(); // what liveUpdateTick runs every 30s
+        enqLiveSync();
+        const el = document.getElementById('enq-msg-details');
+        return { shown: el.classList.contains('show'), msg: el.textContent };
+    });
+    check(srv.shown && /no longer available/.test(srv.msg), `a server refusal survives the background tick (${JSON.stringify(srv.msg)})`);
+    const lad = await page.evaluate(() => {
+        setEnqMsg('details', 'Please tell us your name.', 'ladder'); // stale: the name IS filled
+        enqLiveSync();
+        const el = document.getElementById('enq-msg-details');
+        return { shown: el.classList.contains('show'), msg: el.textContent };
+    });
+    check(!lad.shown && lad.msg === '', `…while a stale LADDER sentence is swept (${JSON.stringify(lad.msg)})`);
+
     // THE SECOND RUNG IS ITS OWN SENTENCE. One rung used to cover the name AND both
     // dates, so a guest with dates chosen and no name was told the dates were missing.
     await page.evaluate(() => {

@@ -1098,7 +1098,15 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
         activeFrontProperty = 'jollyboat';
         Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); Object.keys(dbBlocks).forEach((k) => dbBlocks[k] = []);
     `, ctx);
-    const enq = { id: 99, name: 'Priya Shah', email: 'p@x.co', propKey: 'jollyboat', checkIn: '2026-09-10', checkOut: '2026-09-13', adults: 2, children: 0, guests: '2 adults', message: 'Hi, can we bring our dog?' };
+    // RELATIVE DATES, NOT SEPTEMBER 2026. This fixture hardcoded 10–13 Sept 2026
+    // and went red the day that became the past: enquiryFreeNearby never offers a
+    // window before today, so with the enquiry behind us it found none and the
+    // "names the free windows" check failed for a reason nothing to do with the
+    // drafter (the clock class this file documents — a fixed date is only true on
+    // the days before it). Fourteen days out keeps both ±windows in the future.
+    const fwdIso = (n) => { const dd = new Date(ctx.todayDashed() + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + n); return dd.toISOString().slice(0, 10); };
+    const ukd = (iso) => iso.split('-').reverse().join('/');
+    const enq = { id: 99, name: 'Priya Shah', email: 'p@x.co', propKey: 'jollyboat', checkIn: fwdIso(14), checkOut: fwdIso(17), adults: 2, children: 0, guests: '2 adults', message: 'Hi, can we bring our dog?' };
     const draft = ctx.chbDraftEnquiryReply(enq);
     // THE DRAFT DOES NOT GREET, and that is the fix, not an omission.
     // build_enquiry_reply_email() opens every reply with its own "Hello <name>,"
@@ -1109,7 +1117,7 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
     // body; test-emails-render §6 asserts the template greets exactly once.
     check('draft does NOT greet — the template owns that', !/^\s*(Hi|Hello|Dear)\s+Priya/i.test(draft), draft.split('\n')[0]);
     check('draft opens on the thanks line instead', /^Thanks so much for your enquiry/.test(draft), draft.split('\n')[0]);
-    check('draft names the cottage + dates', /Jollyboat/.test(draft) && /10\/09\/2026/.test(draft) && /13\/09\/2026/.test(draft));
+    check('draft names the cottage + dates', /Jollyboat/.test(draft) && draft.includes(ukd(enq.checkIn)) && draft.includes(ukd(enq.checkOut)));
     check('draft states availability when free', /those dates are free/i.test(draft));
     check('draft includes the live quote + refundable deposit', /total for your stay would be £\d/.test(draft) && /refundable damage deposit/.test(draft));
     check('draft answers the asked question from the cottage FAQ (dogs)', /two well-behaved dogs are welcome/i.test(draft));
@@ -1118,7 +1126,7 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
     // rather than promising to go and look for them. enquiryFreeNearby() already
     // knew them, and the enquiry hub was already printing them on the screen
     // directly above the button that writes this draft.
-    vm.runInContext(`dbBookings.jollyboat = [{ id: 1, name: 'Xavier Blake', checkIn: '2026-09-11', checkOut: '2026-09-14' }];`, ctx);
+    vm.runInContext(`dbBookings.jollyboat = [{ id: 1, name: 'Xavier Blake', checkIn: '${fwdIso(15)}', checkOut: '${fwdIso(18)}' }];`, ctx);
     const clash = ctx.chbDraftEnquiryReply(enq);
     check('draft flags a clash when the dates are taken', /have just gone/i.test(clash));
     const wins = ctx.enquiryFreeNearby(enq);
