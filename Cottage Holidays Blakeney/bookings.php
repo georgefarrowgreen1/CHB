@@ -945,7 +945,26 @@ if ($action === 'update') {
         $status = in_array($in['payment'] ?? $b['payment'], ['unpaid', 'deposit', 'paid'])
             ? $in['payment'] ?? $b['payment']
             : $b['payment'];
-        $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
+        // THE DAMAGES DEPOSIT ALREADY RECORDED SURVIVES AN EDIT. The edit form sends
+        // `payment` on EVERY save (the select is hidden on a paid stay but still
+        // carries its value), and reconcile_deposit('paid') means "received =
+        // the rental total" — so correcting a phone number on a cash/bank booking
+        // whose £50 deposit had been recorded through "Collected too" rewrote
+        // deposit_paid from £310 to £260 and the hub went back to "£50 balance
+        // remaining" for a guest who had paid in full. What was received ABOVE the
+        // rental (capped at the agreed deposit, cash rail only — the same
+        // paid-above-rental rule damages_collected reads) is carried across.
+        $carry = 0.0;
+        $prevTotal = $b['price_override'] !== null && $b['price_override'] !== ''
+            ? (float) $b['price_override']
+            : (float) ($b['agreed_total'] ?? 0);
+        if ($status === 'paid' && $prevTotal > 0 && ($b['hold_status'] ?? 'none') === 'none') {
+            $carry = min(
+                round(max(0.0, (float) ($b['agreed_booking_fee'] ?? 0)), 2),
+                max(0.0, round((float) ($b['deposit_paid'] ?? 0) - $prevTotal, 2)),
+            );
+        }
+        $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null, $carry);
         if ($dep === null) {
             json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
         }
