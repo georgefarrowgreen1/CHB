@@ -4303,6 +4303,71 @@ $r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $dpId2
 $dpNow2 = (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $dpId2")->fetchColumn();
 it_check('§35 …and a booking that never had the deposit recorded does not gain one (£260 stays £260)', $r['code'] === 200 && abs($dpNow2 - 260.0) < 0.005, 'deposit_paid=' . $dpNow2);
 
+// §36 migration-123 GIVES A BOOKING BACK THE AGREED PRICE ITS EDIT FORM TOOK. The
+// Edit form opened with its price-override input blank and saveModal posts it on
+// every save ('' = clear), so saving anything dropped a negotiated price. That
+// leaves agreed_total at the agreed figure with no override and a snapshot that no
+// longer adds up to it — and the hub, damages_collected and accounts then measure
+// a cash deposit against the STANDARD rental, so a guest who paid rental + deposit
+// in full still read as owing the deposit. The migration restores the override for
+// exactly those rows and nothing else. Run here by hand (migrate.php applied it to
+// the EMPTY database in §2 and records it, so it will not run again by itself).
+echo "\n== §36 migration-123 restores a lost agreed price — and only that ==\n";
+$mig123 = __DIR__ . '/migration-123-restore-agreed-price.sql';
+$mkRow = function (string $name, array $c) use ($rootDb, $propKey): int {
+    $cols = array_merge([
+        'prop_key' => $propKey, 'name' => $name, 'email' => strtolower(str_replace(' ', '', $name)) . '@gmail.com',
+        'adults' => 2, 'children' => 0, 'payment' => 'paid', 'deposit_paid' => 310,
+        'agreed_nights' => 2, 'agreed_booking_fee' => 50, 'price_override' => null,
+    ], $c);
+    $names = array_keys($cols);
+    $rootDb->prepare('INSERT INTO bookings (' . implode(',', $names) . ') VALUES (' . implode(',', array_fill(0, count($names), '?')) . ')')->execute(array_values($cols));
+    return (int) $rootDb->lastInsertId();
+};
+$ovOf = fn(int $id) => $rootDb->query("SELECT price_override FROM bookings WHERE id = $id")->fetchColumn();
+$fx = ['check_in' => $dd(970), 'check_out' => $dd(972)];
+// A: a negotiated £260 (standard £267.80) whose override was lost — THE case.
+$mA = $mkRow('Mig Lost', $fx + ['agreed_total' => 260, 'agreed_nightly' => 260, 'agreed_txn_fee' => 7.8]);
+// B: an ordinary standard-priced booking — total IS nightly + fee.
+$mB = $mkRow('Mig Standard', ['check_in' => $dd(974), 'check_out' => $dd(976), 'agreed_total' => 267.8, 'agreed_nightly' => 260, 'agreed_txn_fee' => 7.8]);
+// C: the older "refundable deposit folded into the total" shape (nightly + fee + £50).
+$mC = $mkRow('Mig Folded', ['check_in' => $dd(978), 'check_out' => $dd(980), 'agreed_total' => 317.8, 'agreed_nightly' => 260, 'agreed_txn_fee' => 7.8]);
+// D: the same lost override, but the stay is OVER — history is left exactly as it was.
+$mD = $mkRow('Mig Past', ['check_in' => $dd(-6), 'check_out' => $dd(-4), 'agreed_total' => 260, 'agreed_nightly' => 260, 'agreed_txn_fee' => 7.8]);
+// E: already has an override — never overwritten, even where it differs from the total.
+$mE = $mkRow('Mig Has Override', ['check_in' => $dd(982), 'check_out' => $dd(984), 'agreed_total' => 260, 'agreed_nightly' => 260, 'agreed_txn_fee' => 7.8, 'price_override' => 250]);
+// F: half a snapshot (no fee line) says nothing about what the total should be.
+$mF = $mkRow('Mig Half', ['check_in' => $dd(986), 'check_out' => $dd(988), 'agreed_total' => 260, 'agreed_nightly' => 260, 'agreed_txn_fee' => null]);
+// G: a lost override on a booking that never stored a refundable deposit.
+$mG = $mkRow('Mig NoDeposit', ['check_in' => $dd(990), 'check_out' => $dd(992), 'agreed_total' => 260, 'agreed_nightly' => 300, 'agreed_txn_fee' => 9, 'agreed_booking_fee' => null]);
+$stmts123 = split_sql($mig123);
+it_check('§36 the migration is a single DATA statement (force never re-runs it)', count($stmts123) === 1 && !migration_stmt_is_schema($stmts123[0]), (string) count($stmts123));
+foreach ($stmts123 as $st) {
+    $rootDb->exec($st);
+}
+it_check('§36 a lost agreed price is restored to the agreed total (£260)', abs((float) $ovOf($mA) - 260.0) < 0.005, var_export($ovOf($mA), true));
+it_check('§36 …including where no refundable deposit was ever stored', abs((float) $ovOf($mG) - 260.0) < 0.005, var_export($ovOf($mG), true));
+it_check('§36 a standard-priced booking is NOT relabelled custom', $ovOf($mB) === null, var_export($ovOf($mB), true));
+it_check('§36 …nor the older folded-deposit shape', $ovOf($mC) === null, var_export($ovOf($mC), true));
+it_check('§36 a finished stay is left exactly as it was', $ovOf($mD) === null, var_export($ovOf($mD), true));
+it_check('§36 an existing override is never overwritten', abs((float) $ovOf($mE) - 250.0) < 0.005, var_export($ovOf($mE), true));
+it_check('§36 a half-snapshotted row is left alone', $ovOf($mF) === null, var_export($ovOf($mF), true));
+$before123 = $rootDb->query("SELECT id, price_override, agreed_total, deposit_paid FROM bookings WHERE name LIKE 'Mig %' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($stmts123 as $st) {
+    $rootDb->exec($st);
+}
+$after123 = $rootDb->query("SELECT id, price_override, agreed_total, deposit_paid FROM bookings WHERE name LIKE 'Mig %' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+it_check('§36 a second run changes nothing (idempotent)', $before123 === $after123);
+it_check('§36 no total or amount received moved — only the override was filled in',
+    abs((float) $rootDb->query("SELECT agreed_total FROM bookings WHERE id = $mA")->fetchColumn() - 260.0) < 0.005
+    && abs((float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $mA")->fetchColumn() - 310.0) < 0.005);
+// The server half of the same contract: an update that does not mention the
+// override keeps it (absent = keep, '' = clear). The form's fix is what makes the
+// client send the real value; this is what makes ABSENCE safe for any other caller.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $mA, 'prop_key' => $propKey, 'name' => 'Mig Lost', 'email' => 'miglost@gmail.com', 'phone' => '07700900330', 'check_in' => $fx['check_in'], 'check_out' => $fx['check_out'], 'adults' => 2, 'children' => 0, 'notes' => 'phone corrected', 'payment' => 'paid', 'payment_date' => $dd(-10), 'payment_method' => 'Bank transfer']);
+it_check('§36 an edit that does not mention the price keeps it (and the £310 received)',
+    $r['code'] === 200 && abs((float) $ovOf($mA) - 260.0) < 0.005 && abs((float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $mA")->fetchColumn() - 310.0) < 0.005, substr($r['raw'], 0, 160));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

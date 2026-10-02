@@ -18499,6 +18499,13 @@ function openEditBookingNow(bookingId) {
         children: b.children,
         notes: b.notes,
         payment: b.payment,
+        // saveModal posts all of these on every save — a blank form wiped them (CLAUDE.md)
+        depositPaid: b.depositPaid,
+        paymentDate: b.paymentDate,
+        paymentMethod: b.paymentMethod,
+        agreedPrice: b.agreedPrice,
+        damagesDeposit: b.damagesDeposit,
+        priceOverride: b.priceOverride,
     });
     togglePaymentField(true);
     openModal();
@@ -19357,7 +19364,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'zq4352';
+    const BUILD = 'ed1tpr';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
