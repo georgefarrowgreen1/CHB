@@ -474,12 +474,36 @@ const EXPS = [
     // the mouse goes down proves nothing: the compress is 80ms, so a rule that wins
     // for a frame and loses to a hover afterwards would pass. What this catches is
     // the state HOLDING, which is what a finger on a control actually does.
+    // WAIT ON STATE, NOT A CLOCK. The press is an 80ms transition and a transition
+    // only advances when frames arrive, which on a loaded CI runner they do late:
+    // a fixed 140ms sample read a ground at 0.106 of 0.12, a scale still at 1, a
+    // rail row still at rest, and `.ny-row` at 2.8px of 4 — every one mid-flight
+    // with the press rule intact (three CI runs in four, passing alone). So poll
+    // until the value has LEFT rest and stopped moving. The cap means a rule that
+    // never presses still fails — on the check, not by hanging — and `rest` is
+    // settled the same way so a hover still in flight cannot pass for a press.
+    const settled = async (page, read, rest) => {
+        let prev = null, last = null;
+        for (let i = 0; i < 60; i++) {
+            await page.waitForTimeout(50);
+            last = await read();
+            const still = !!prev && prev.sc === last.sc && prev.bg === last.bg;
+            const left = !rest || (last.act && (last.sc !== rest.sc || last.bg !== rest.bg));
+            if (still && left) break;
+            prev = last;
+        }
+        return last;
+    };
     const held = async (sel, label, kind) => {
         // BRING IT ON SCREEN FIRST. A control below the fold cannot be pressed by
         // real mouse coordinates, and skipping it would be a check that quietly
         // stopped running. Playwright's own scroll-into-view is used rather than a
         // scripted one because it waits for the scroll to COMMIT (a rAF does not —
         // the documented trap) before handing back a box.
+        // The strip and the lists render once the page's data has landed, which on a
+        // loaded runner is after ownerBoot hands the page back — so wait for a painted
+        // one instead of sampling the first frame it might not exist in.
+        await op.waitForFunction((s) => [...document.querySelectorAll(s)].some((x) => { const r = x.getBoundingClientRect(); return r.width > 6 && r.height > 6; }), sel, { timeout: 5000 }).catch(() => {});
         const marked = await op.evaluate((s) => {
             document.querySelectorAll('[data-msprobe]').forEach((e) => e.removeAttribute('data-msprobe'));
             const el = [...document.querySelectorAll(s)].find((x) => { const b = x.getBoundingClientRect(); return b.width > 6 && b.height > 6; });
@@ -490,23 +514,24 @@ const EXPS = [
         let box = null;
         if (marked) {
             const h = await op.$('[data-msprobe]');
-            try { await h.scrollIntoViewIfNeeded(); } catch (e) {}
+            try { if (h) await h.scrollIntoViewIfNeeded(); } catch (e) {}
             await op.waitForTimeout(120);
-            const bb = await h.boundingBox();
+            const bb = h ? await h.boundingBox() : null;
             if (bb && bb.y > 74 && bb.y + bb.height < 896) box = { x: Math.round(bb.x + Math.min(bb.width / 2, 24)), y: Math.round(bb.y + bb.height / 2), w: Math.round(bb.width) };
         }
         if (!box) { check(false, `${label}: a painted one to press`, sel); return; }
         const read = () => op.evaluate(() => {
             const el = document.querySelector('[data-msprobe]');
+            if (!el) return { sc: 1, bg: '', act: false };
             const cs = getComputedStyle(el);
             const m = /matrix\(([\d.\-]+)/.exec(cs.transform);
             return { sc: m ? +m[1] : 1, bg: cs.backgroundColor, act: el.matches(':active') };
         });
+        await op.bringToFront();
         await op.mouse.move(box.x, box.y);
-        const rest = await read();
+        const rest = await settled(op, read, null);
         await op.mouse.down();
-        await op.waitForTimeout(140);
-        const a = await read();
+        const a = await settled(op, read, rest);
         await op.waitForTimeout(250);
         const b = await read();
         // A PROBE MUST NOT ACTIVATE THE CONTROL. mouse.down + mouse.up IS a click,
@@ -553,12 +578,12 @@ const EXPS = [
         if (!h) return null;
         const bb = await h.boundingBox();
         if (!bb || bb.width < 6) return { dead: true };
+        await railPage.bringToFront();
         await railPage.mouse.move(Math.round(bb.x + bb.width / 2), Math.round(bb.y + bb.height / 2));
         const read = () => railPage.evaluate(() => { const el = document.querySelector('[data-msprobe]'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, act: el.matches(':active') }; });
-        const rest = await read();
+        const rest = await settled(railPage, read, null);
         await railPage.mouse.down();
-        await railPage.waitForTimeout(140);
-        const a = await read();
+        const a = await settled(railPage, read, rest);
         await railPage.waitForTimeout(250);
         const b = await read();
         await railPage.evaluate(() => window.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, { capture: true, once: true }));

@@ -2266,6 +2266,25 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   paints from the cottage page. General rule: an overlay's markup belongs at
   body level; inside a `.page-view` it inherits that view's display.
 
+- **§12's PRESS SAMPLES WAIT ON STATE, AND THE FLAKE WAS REPRODUCED BY SLOWING THE
+  TRANSITION, NOT BY LOADING THE MACHINE.** "mouse down, sleep 140ms, read" failed in
+  three CI runs in four and passed alone: the press is an 80ms transition that only
+  advances when frames arrive, and on a loaded runner they arrive late — CI printed
+  `.ny-row 2.8px` of 4, a ground at `0.106` of `0.12`, a scale still at 1, a rail row
+  still at rest. The earlier one-control fix (`.card`) had not covered the rest of the
+  section. Eight-times CPU throttling and twelve busy loops on four cores both left the
+  old sampling GREEN, so neither is a reproduction; forcing the probe's
+  `transition-duration` to 450ms is — the old sampling then fails six checks with the
+  same kind of mid-flight numbers, the new one passes, and a press rule deliberately
+  broken fails exactly its own two checks and nothing else (the wait has a 3s cap, so a
+  rule that never presses fails on the CHECK, not by hanging). `settled()` polls until
+  the value has LEFT rest and stopped moving — and `rest` is settled the same way, so a
+  hover still in flight cannot pass for a press. The same pass fixed a second race in
+  `held()`: the probe is marked and found in two round trips, and a re-render between
+  them crashed the suite with a `TypeError` instead of failing a check. A flake that
+  will not reproduce under load is usually waiting on a CLOCK: lengthen the thing it
+  waits for and it reproduces on demand.
+
 ## Sentence case on the controls — the brand keeps its caps where they are the voice (built)
 
 **HIG proposal 4, demoed on the real pages and then "Build it".** app.css carried
