@@ -330,6 +330,8 @@ $bkW3 = (string) file_get_contents(__DIR__ . '/bookings.php');
 chk('the payments action flags the charge the deposit rode',
     preg_match("/\\\$r\['deposit_carried'\] =\s*\n\s*\\\$hpid !== '' && \(string\) \\\$r\['square_payment_id'\] === \\\$hpid && in_array\(\\\$r\['kind'\], \['deposit', 'balance'\], true\)/", $bkW3) === 1);
 $admW = (string) file_get_contents(__DIR__ . '/admin.js');
+chk('Record Payment reads rental + deposit typed as one figure as "collected too"',
+    strpos($admW, "Math.abs(dep - (total + dmg)) < 0.01) vals.withdep = 'yes'") !== false);
 chk('Record Payment offers the deposit as a yes/no and sends the flag only on paid',
     strpos($admW, "vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true") !== false
     && preg_match('/askDep = dmg > 0 && \(booking\.holdStatus \|\| .none.\) === .none./', $admW) === 1);

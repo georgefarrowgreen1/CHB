@@ -18340,7 +18340,7 @@ async function recordPayment(bookingId) {
     const fields = [
         {
             id: 'amount',
-            label: 'Rental received so far (£)',
+            label: askDep ? `Received so far (£) — rental, or rental + ${gbp(dmg)} deposit` : 'Rental received so far (£)',
             type: 'number',
             min: 0,
             step: 0.01,
@@ -18374,6 +18374,12 @@ async function recordPayment(bookingId) {
     );
     if (vals === null) return;
     let dep = Math.max(0, parseFloat(vals.amount) || 0);
+    // THE OWNER TYPES WHAT THEY RECEIVED. A guest who sent rental + deposit in one
+    // transfer is recorded as that sum (310), not as 260 plus a dropdown beside it:
+    // the figure used to clamp silently to the rental, the dropdown stayed on "Not
+    // collected yet", and the deposit read as still owing. Exactly rental + deposit
+    // IS "collected too".
+    if (askDep && dep > total + 0.001 && Math.abs(dep - (total + dmg)) < 0.01) vals.withdep = 'yes';
     if (dep > total) dep = total;
     let status;
     if (dep <= 0.001) status = 'unpaid';
@@ -18420,7 +18426,7 @@ async function recordPayment(bookingId) {
         afterPaymentChange(bookingId);
         toast(
             dep > 0.001
-                ? `Payment recorded — ${gbp(dep)} received${status === 'paid' ? ' (paid in full)' : ''}.`
+                ? `Payment recorded — ${gbp(dep + (payload.deposit_collected ? dmg : 0))} received${status === 'paid' ? ' (paid in full)' : ''}.`
                 : 'Marked as unpaid.',
         );
         if (dep > 0.001) await offerUpdatedConfirmationEmail(bookingId);
