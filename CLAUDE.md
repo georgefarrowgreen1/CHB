@@ -7388,6 +7388,61 @@ earned a fix — 14 confirmed, 1 refuted (PR #1208). The rules it set:
   over). It had to be re-aimed, not extended. When a fix makes an existing check
   fail, read the check before believing the code.
 
+## The Edit form opened BLANK, and a save with nothing changed lost the agreed price
+
+**Reported as "paid in full by bank transfer but still showing the damage deposit owing"
+— three times, and it had three causes** (#1238 the edit wiping `deposit_paid`, #1239 the
+Record dialog clamping 310 to 260, and this). The last one was found by building a
+throwaway FULL-STACK harness (fresh MariaDB + the real `php -S` + the real client in
+Chromium, seeding through the real endpoints) and doing what the owner did — which
+reproduced the screenshot to the penny, with the database holding the full £310.
+- **`openEditBookingNow` never fed the form the booking's money.** `setModalFields`
+  prefills the amount / date / method / deposit / price-override inputs from its argument
+  and the call passed none of them, so they opened BLANK — and `saveModal` posts every one
+  on every save, `price_override` as `''` meaning "clear it". A paid stay hides those
+  inputs (`trimPaidBookingFields`), so a save that changed NOTHING dropped the agreed
+  price, wiped the payment method and re-dated the payment to today
+  (`togglePaymentDetails` defaults a blank date to today — and `payment_date` decides the
+  tax year income lands in). Present in the oldest commit of the clone; the server only
+  ever did what it was told ("absent keeps, '' clears" is a fine contract for a form that
+  KNOWS the value).
+- **Why it read as a deposit bug.** With the override gone the booking has `agreed_total`
+  £260 but `agreed_nightly + agreed_txn_fee` at the standard price, and the two frames
+  that mean "the rental" disagree: `set_payment`, `update` and the emails use
+  `price_override ?? agreed_total`; the hub (`displayGrand`), `damages_collected`
+  (`booking_rental_price`) and accounts.php use `price_override ?? nightly + fee`. So
+  £310 was stored correctly and the confirmation email said "Paid in full" while the hub
+  measured the £50 cash deposit against the STANDARD rental and said £50 owing. **THE
+  TELL is on the hub itself**: its note read "Agreed price · agreed …" with no "(custom)"
+  while the breakdown row said "Agreed price (custom)" — a custom total with no override.
+  When two surfaces of one booking disagree, suspect the frame before the figure.
+- **The fix is three parts.** The form is fed `depositPaid` / `paymentDate` /
+  `paymentMethod` / `agreedPrice` / `damagesDeposit` / `priceOverride`;
+  **migration-123** restores `price_override = agreed_total` for exactly the damaged rows
+  (no override, a snapshot that no longer adds up to the total, not the older
+  deposit-folded shape, both snapshot lines present, stay not yet over — history and
+  closed tax years are never restated; no amount changes, the total is `agreed_total`
+  either way); and the gates below. It is DATA, so `migrate.php?force=1` skips it.
+- **Gates.** `ui-test-price-lock` §4 opens the REAL form for a custom-priced paid booking
+  and asserts what it shows and what a no-change save POSTS (8 checks fail with the feed
+  removed, reproducing the real-stack numbers: blank override, date = today).
+  `test-integration` §36 runs the migration against seven shapes (lost / standard /
+  folded / past / has-override / half-snapshot / no-stored-deposit), twice for
+  idempotence — four of its five guards were each break-tested by removing them (the
+  fifth, the half-snapshot test, is redundant: NULL arithmetic excludes those rows anyway).
+- **What was NOT recoverable or NOT done.** A payment method and date already wiped by an
+  earlier edit are gone (the Record dialog re-sets them). The two "rental" frames still
+  exist; they now agree for every row the app can produce, which is the cheaper trade than
+  unifying money maths mid-incident. And clearing an override on an enquiry-approved
+  booking still does not revert the price, because approval stored the agreed figure in
+  `agreed_total` as well — the form can no longer do it by accident, but a deliberate
+  clear is still a half-action.
+- **The general lesson: a stub feeds the client whatever shape you hand it, which is
+  exactly why no suite saw this** — every UI gate booted the form from a fixture that
+  never asked whether `openEditBookingNow` supplied the fields. The full-stack harness is
+  worth rebuilding whenever a symptom crosses the client/server line: seed through the
+  real endpoints, drive the real UI, and read the database after each step.
+
 ## The maps: a third party defaced them and nothing noticed
 
 **Reported from a phone**: "Where you'll be" on the Pimpernel page showing
