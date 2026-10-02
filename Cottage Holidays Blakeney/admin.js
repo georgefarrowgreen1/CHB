@@ -18426,7 +18426,7 @@ async function recordPayment(bookingId) {
         afterPaymentChange(bookingId);
         toast(
             dep > 0.001
-                ? `Payment recorded — ${gbp(dep)} received${status === 'paid' ? ' (paid in full)' : ''}.`
+                ? `Payment recorded — ${gbp(dep + (payload.deposit_collected ? dmg : 0))} received${status === 'paid' ? ' (paid in full)' : ''}.`
                 : 'Marked as unpaid.',
         );
         if (dep > 0.001) await offerUpdatedConfirmationEmail(bookingId);
