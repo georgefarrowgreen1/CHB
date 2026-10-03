@@ -971,6 +971,11 @@ function is_internal_content_key($key)
                      // plan-presets; the guest only ever sees its consequence
                      // (the offer pay.php derives), never the setting
     }
+    if ($key === 'duty-dismissed') {
+        return true; // which Needs-you rows the owner has swiped away (chbDutyDismiss) —
+                     // names guests and bookings by id; rides the admin boot payload
+                     // (admin-bootstrap.php), never the public content GET
+    }
     if ($key === 'search-undo') {
         return true; // the owner's reversible changes (chbUndoPush) — their own
                      // history, naming cottages and rates; never public

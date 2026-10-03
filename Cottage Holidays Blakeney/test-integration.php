@@ -2623,8 +2623,9 @@ it_check('…and the boot payload says off', ($r['json']['night']['on'] ?? 1) ==
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
 $anon = [];
 $r = http($anon, 'GET', '/content.php');
+// The payload is {content: {...}}: looking at the top level could never fail.
 it_check('the public content GET never carries the night-shift setting',
-    !array_key_exists('night-shift', (array) ($r['json'] ?? [])), mb_substr($r['raw'], 0, 200));
+    is_array($r['json']['content'] ?? null) && !array_key_exists('night-shift', $r['json']['content']), mb_substr($r['raw'], 0, 200));
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4367,6 +4368,42 @@ it_check('§36 no total or amount received moved — only the override was fille
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $mA, 'prop_key' => $propKey, 'name' => 'Mig Lost', 'email' => 'miglost@gmail.com', 'phone' => '07700900330', 'check_in' => $fx['check_in'], 'check_out' => $fx['check_out'], 'adults' => 2, 'children' => 0, 'notes' => 'phone corrected', 'payment' => 'paid', 'payment_date' => $dd(-10), 'payment_method' => 'Bank transfer']);
 it_check('§36 an edit that does not mention the price keeps it (and the £310 received)',
     $r['code'] === 200 && abs((float) $ovOf($mA) - 260.0) < 0.005 && abs((float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $mA")->fetchColumn() - 310.0) < 0.005, substr($r['raw'], 0, 160));
+
+// §37 SWIPED-AWAY DUTIES. A row on the Needs-you strip can be swiped away; the
+// record of which ones lives under the internal content key `duty-dismissed` so a
+// swipe on the phone holds on the Mac. Two facts are load-bearing and neither is
+// visible from the client: the key must NEVER reach the public content GET (it names
+// bookings by id), and it must ride the ADMIN BOOT payload — an internal key is absent
+// from the page's content at first render, the strip paints at boot, and read any
+// later a dismissed row would flash back first.
+echo "\n== §37 swiped-away duties: private, and on the boot payload ==\n";
+$dutyMap = ['register:91' => ['sev' => 'warn', 'at' => (int) (microtime(true) * 1000)]];
+$r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => $dutyMap]);
+it_check('§37 the owner can save the map under the internal key', $r['code'] === 200, $r['raw']);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('§37 …and it rides the admin boot payload, so the strip honours it at first paint',
+    ($r['json']['dismissed']['register:91']['sev'] ?? '') === 'warn', mb_substr($r['raw'], 0, 160));
+// The payload is {content: {...}}, so the key is looked for INSIDE it — and the admin GET
+// is the positive control: without it, an absence proves only that the shape moved.
+$r = http($admin, 'GET', '/content.php');
+it_check('§37 the admin content GET carries it (the control for the next check)', isset($r['json']['content']['duty-dismissed']['register:91']), mb_substr($r['raw'], 0, 160));
+$anonDuty = [];
+$r = http($anonDuty, 'GET', '/content.php');
+it_check('§37 …but the PUBLIC content GET never does', is_array($r['json']['content'] ?? null) && !array_key_exists('duty-dismissed', $r['json']['content']), mb_substr($r['raw'], 0, 200));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => 'garbage']);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('§37 a value that is not a map degrades to nothing dismissed', is_array($r['json']['dismissed'] ?? null) && count($r['json']['dismissed']) === 0, mb_substr($r['raw'], 0, 160));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => '']);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('§37 …and nothing set goes out as {} (an object), never []', strpos($r['raw'], '"dismissed":{}') !== false, mb_substr($r['raw'], 0, 200));
+$bigDuty = [];
+for ($i = 0; $i < 500; $i++) {
+    $bigDuty['balance:' . (1000 + $i)] = ['sev' => 'warn', 'at' => $i];
+}
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => $bigDuty]);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('§37 a runaway map is truncated on the way out (400)', count($r['json']['dismissed'] ?? []) === 400, (string) count($r['json']['dismissed'] ?? []));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => '']);
 
 echo "\n== Summary ==\n";
 if ($fail) {

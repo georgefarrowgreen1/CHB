@@ -141,10 +141,27 @@ try {
     $night = ['on' => 0, 'n' => 0];
 }
 
+// Which Needs-you rows the owner has swiped away. Their own record of what they
+// have already seen, kept server-side so a dismissal made on the phone holds on the
+// Mac — and carried HERE, on the payload the strip already waits on, because an
+// internal content key is absent from the page's content at first render and the
+// strip paints at boot: read any later, a dismissed row would flash back first.
+// The client sanitises it (chbDutyDismissClean); this only refuses a non-array.
+$dismissed = [];
+try {
+    $dv = content_json('duty-dismissed', []);
+    if (is_array($dv)) {
+        $dismissed = array_slice($dv, 0, 400, true);
+    }
+} catch (\Throwable $e) {
+    $dismissed = [];
+}
+
 $out = [
     'ok' => true,
     'feeds' => $feeds,
     'night' => $night,
+    'dismissed' => (object) $dismissed,
     'payoutTrouble' => $payoutTrouble,
     'newMail' => $newMail,
     'blocks' => ['ok' => true, 'blocks' => $blocks],
