@@ -171,8 +171,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await touch(phone, cdp, { x: b.x + b.w - 30, y: b.y + b.h / 2 }, { x: b.x + 20, y: b.y + b.h / 2 }, 10);
   ok(await gone(phone, 'register:93'), 'swiping a stale row refreshes the strip — it does not bounce back');
   ok(saves.length === 0 && (await rows(phone)).length === 3, '…and records nothing: there was nothing left to dismiss');
-  b = await box(phone, 'register:92');
-  await phone.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2);
+  // A tap the BROWSER loses (a loaded runner can drop a touch sequence that follows
+  // another) is not what this control asks about; a click that ARRIVES and is swallowed
+  // is. So count the clicks reaching rows, and re-tap once only if none arrived at all.
+  await phone.evaluate(() => { window.__rowClicks = 0; window.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('.ny-row')) window.__rowClicks++; }, true); });
+  const tapRow = async () => {
+    await phone.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'), null, { timeout: 15000 }).catch(() => {});
+    const t = await box(phone, 'register:92');
+    await phone.touchscreen.tap(t.x + t.w / 2, t.y + t.h / 2);
+    for (let i = 0; i < 100 && !hubOpens.length && !(await phone.evaluate(() => window.__rowClicks)); i++) await phone.waitForTimeout(50);
+  };
+  await tapRow();
+  if (!hubOpens.length && !(await phone.evaluate(() => window.__rowClicks))) await tapRow();
   const opened = await phone.waitForFunction(() => document.getElementById('view-booking-hub').classList.contains('active'), null, { timeout: 15000 }).then(() => true, () => false);
   for (let i = 0; i < 200 && !hubOpens.length; i++) await phone.waitForTimeout(50); // the view flips BEFORE the request is issued
   const tapDiag = opened && hubOpens.length >= 1 ? '' : await phone.evaluate(() => JSON.stringify({ view: (document.querySelector('.page-view.active') || {}).id, toasts: [...document.querySelectorAll('#app-toasts .toast')].map((t) => t.textContent), rows: [...document.querySelectorAll('#needs-you-list .ny-row')].map((r) => r.getAttribute('data-nykey')) }));
