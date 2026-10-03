@@ -788,6 +788,30 @@ body.light-mode .tl-cell:hover:not(:active) {
 #needs-you-list .ny-row + .ny-row { border-top-width: 0; }
 #needs-you-list .ny-row:first-child { border-top-left-radius: var(--r-sm); border-top-right-radius: var(--r-sm); }
 #needs-you-list .ny-row:last-child { border-bottom-left-radius: var(--r-sm); border-bottom-right-radius: var(--r-sm); }
+/* SWIPE TO DISMISS. A dismissible row (data-nykey) follows the finger on `translate`
+   (an individual property, so it composes with the press scale instead of fighting
+   it); pan-y leaves vertical scrolling to the browser. The label is uncovered in the
+   gap the row leaves — .ny-reveal, one per drag, sized by JS. The spring-back and the
+   slide-out are Web Animations, so the press system's transition list is left alone. */
+#needs-you-list { position: relative; }
+.ny-row[data-nykey] { touch-action: pan-y; }
+.ny-row.ny-drag { transition: none; transform: none; }
+.ny-reveal {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: color-mix(in srgb, var(--text-light) 12%, transparent);
+  color: var(--text-light);
+  font-size: var(--fs-sub);
+  font-weight: 600;
+}
+.ny-reveal span { padding: 0 16px; }
 .ny-ic {
   flex: none;
   width: 24px;

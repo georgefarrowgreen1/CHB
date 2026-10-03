@@ -7462,6 +7462,87 @@ reproduced the screenshot to the penny, with the database holding the full £310
   worth rebuilding whenever a symptom crosses the client/server line: seed through the
   real endpoints, drive the real UI, and read the database after each step.
 
+## Swiping a Needs-you row away
+
+**Asked for from a screenshot of "Tina Nudd's details are not on the register"** — a
+row the owner could do nothing about at that moment and could not clear. A swipe left
+on a Needs-you row dismisses it, with an Undo toast.
+- **WHAT A DISMISSAL MEANS IS NARROW ON PURPOSE.** The row stops nagging *at the level
+  it was dismissed at* and comes back the moment it gets WORSE: the record is
+  `{sev, at}` and the row is hidden while its current severity is ≤ the stored one, so
+  amber → red resurfaces it ("the duty escalates rather than nags", already how a read
+  enquiry returns at two days). The FACT is untouched — the register is still
+  outstanding on the booking hub, the money in Payments, the enquiry in the Inbox. An
+  entry also lapses after 120 days, the map is capped at the newest 200, and none of it
+  is shown anywhere once dismissed (see below).
+- **THE FILTER IS IN `chbDuties()`, NOT ON THE STRIP.** The composer became
+  `chbDutiesAll()`; `chbDuties()` is its filtered view, because the strip, the Home
+  Screen badge, the spine chips, the search brief and the AI chat's welcome all read
+  `chbDuties()` — hiding a row on one surface would leave a badge saying 3 over a strip
+  of 2. `chbDutiesAll()` is what the dismissal itself reads.
+- **A DUTY IS DISMISSIBLE ONLY IF IT WAS GIVEN AN IDENTITY (`key`)**, and only five kinds
+  were: `register:<id>`, `balance:<id>`, `deposit:<id>`, `enquiry:<id>`,
+  `arrival-review:<id>`. A stopped automation, a failed payout, a dispute, a refused
+  offline write, a failed autopay, a stuck calendar sync, a quiet Mac and a key-safe
+  rotation have none, so a swipe on them does nothing — they are resolved at the source —
+  and a new kind starts life un-dismissable. The aggregates (chats, new emails, approvals)
+  are not dismissible either: "3 chats" has no identity, and a stale entry would swallow
+  the NEXT unrelated chat. The stored-entry pattern is a closed
+  `^(register|balance|deposit|enquiry|arrival-review):\d+$`, so a hand-edited row cannot
+  hide an alarm. The Manage → Pricing page reuses `.ny-row` markup and deliberately has no
+  `data-nykey`.
+- **IT RIDES THE BOOT PAYLOAD.** Internal content key `duty-dismissed`, saved with
+  `saveContent` (mirror-first on a serialised chain, the pins store's shape) and carried on
+  `admin-bootstrap.php` as `dismissed` (an OBJECT on the wire — `(object)` — never `[]`).
+  An internal key is absent from the page's content at first render and the strip paints
+  at boot, so read any later a dismissed row would flash back first. app.js stashes it as
+  `window.__dutyDismissedPre`; `chbDutyMap()` adopts a NEW payload only while none of our
+  own saves is in flight, so a refresh that raced a swipe cannot put the row back.
+- **THE GESTURE** (admin.js `nySwipe*`): pointer events, so one path serves a finger and
+  a mouse; `touch-action: pan-y` leaves vertical scrolling to the browser (without it a
+  horizontal touch drag is `pointercancel`led and nothing dismisses); the row follows on
+  `translate` (an individual property, so it composes with the press scale); a "Dismiss"
+  panel is uncovered in the gap it leaves (`.ny-reveal`, one per drag, sized by JS, so
+  nothing wraps the rows and the HIG join rules keep working). Past a third of the width or
+  a flick it goes; short of that it springs back. **The spring-back and slide-out are Web
+  Animations, not a CSS transition** — restating the row's `transition` list would silently
+  drop what the late shared press rule gives it. A swipe's own click is swallowed in the
+  capture phase, **keyed to the ROW that was swiped** (600ms): the first version swallowed
+  every click for 400ms, which ate the very next tap on a different row — the suite found it.
+  A row whose duty was resolved while it sat there (the guest filed the register) swipes
+  into a refresh of the strip rather than a bounce back. Reduced motion removes the row at
+  once.
+- **THE KEYBOARD PATH, AND ITS LIMIT.** A swipe is a dragging movement (WCAG 2.5.7), so a
+  focused row also dismisses on Delete/Backspace (`aria-keyshortcuts`, and
+  `aria-describedby` → a screen-reader-only hint). There is still NO visible
+  single-pointer, non-drag control; a button inside each row would be a button inside a
+  `<button>`, and wrapping the rows would break the joined-list rules — offered, not built.
+  Likewise there is no "show dismissed" list: the Undo toast (8s, pauses on hover/focus),
+  escalation, and the fact living on in its own screen are the safety nets.
+- **THE TRAPS.** `renderNeedsYou` is scanned by test-webpush for a 700-character window
+  from its name to `setAppBadgeCount` — the gesture setup sits AFTER the badge call. tsc
+  infers the duty shape from the first `push` (the cron row, which has no `key`), so the
+  one read of `.key` needed a cast. The first gate for the click guard was VACUOUS: a real
+  touch drag never ends in a click, so removing the guard failed nothing — only a MOUSE
+  drag ends in one on the row it started on, which is the path the gate now covers.
+- **Gates.** `search-test` §40 A6 (identity per kind, hidden/escalation both ways, no entry
+  can hide the cron row, malformed and lapsed entries, the write + Undo, refusals, the cap,
+  adoption mid-save), `test-integration` §37 (private, on the boot payload as `{}`,
+  truncated at 400), and `ui-test-dismiss.js` driving REAL touch (CDP) and mouse input:
+  dismissible rows and the hint, a short drag springing back, a vertical drag left to
+  scrolling, a full swipe (one save, the toast, the badge, the count), Undo, the stopped
+  automation refusing, a tap still opening, the mouse and Delete paths, the boot payload
+  honoured at first render, reduced motion. Twenty declarations (sixteen client, four
+  server) were each break-tested in isolation — and FOUR of the first sixteen survived,
+  every one a gate that could not fail: the click guard (touch never clicks), the key
+  pattern (an ancient test entry lapsed on its own), the public-GET check (the payload is
+  `{content: {...}}`, so it looked at the wrong level — and so had the night-shift check it
+  was copied from, now fixed with a positive control), and a hub-opened check that looked
+  500ms too early. Proven end to end on a real PHP + MariaDB + browser stack: a touch swipe
+  saves `{"register:N":{sev,at}}`, a second device never paints the row during boot, and
+  moving the arrival to tomorrow brings it back red. Budgets raised: admin.js +3.1KB, admin.css +0.4KB gz (owner-only,
+  immutable-cached; app.js took one line and stayed inside).
+
 ## The maps: a third party defaced them and nothing noticed
 
 **Reported from a phone**: "Where you'll be" on the Pimpernel page showing

@@ -19778,7 +19778,7 @@ function chbChaseInfo(k, b) {
 // owner has time to chase the guest, narrow enough that a booking made in January
 // does not nag from January.
 const REG_DUTY_DAYS = 3;
-function chbDuties() {
+function chbDutiesAll() {
     const out = [];
     const today = todayDashed();
     const dayMs = 86400e3;
@@ -19861,7 +19861,7 @@ function chbDuties() {
                 const days = nightsBetween(today, ci);
                 const soon = days <= 1;
                 out.push({
-                    kind: 'arrival-review',
+                    kind: 'arrival-review', key: 'arrival-review:' + b.dbId,
                     sev: soon ? 'danger' : 'warn', ic: 'mail',
                     label: `Arrival email to send — ${b.name || 'guest'}`,
                     sub: days === 0
@@ -19976,7 +19976,7 @@ function chbDuties() {
             // already turns it red it comes back, read or not.
             if (q.seenAt && ageDays < 2) return;
             out.push({
-                kind: 'enquiry', sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
+                kind: 'enquiry', key: 'enquiry:' + q.dbId, sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
                 label: `${q.name || 'A guest'}’s enquiry — ${age}`,
                 sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${pname(q.propKey)}`,
                 act: 'Answer', go: chbAttrs('openEnquiryHub', String(q.id)),
@@ -20005,7 +20005,7 @@ function chbDuties() {
             // so nothing ever WAITS on a guest tapping.
             if (damageHeld(k, b).held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) {
                 out.push({
-                    kind: 'deposit', sev: 'warn', ic: 'deposit',
+                    kind: 'deposit', key: 'deposit:' + b.dbId, sev: 'warn', ic: 'deposit',
                     label: `Return ${b.name || 'the guest'}’s damages deposit`,
                     sub: !hasCheckedOut(b) && b.guestCheckedOutAt
                         ? `Left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'this morning'} ✓ (guest-declared) · ${pname(k)}`
@@ -20024,7 +20024,7 @@ function chbDuties() {
             const regDays = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
             if (b.regUrl && !hasCheckedOut(b) && regDays >= 0 && regDays <= REG_DUTY_DAYS && (!b.regSubmitted || !bookingRegComplete(b))) {
                 out.push({
-                    kind: 'register', sev: regDays <= 1 ? 'danger' : 'warn', ic: 'guest',
+                    kind: 'register', key: 'register:' + b.dbId, sev: regDays <= 1 ? 'danger' : 'warn', ic: 'guest',
                     label: `${b.name || 'A guest'}’s details are not on the register`,
                     sub: `${regDays === 0 ? 'Arriving today' : regDays === 1 ? 'Arriving tomorrow' : `Arriving in ${regDays} days`} · ${pname(k)} · required before arrival`,
                     act: 'Open', go: chbAttrs('openBookingHub', String(b.id)),
@@ -20071,7 +20071,7 @@ function chbDuties() {
                 ? ` · balance ${gbp(Math.round((gt.balance - amount) * 100) / 100)} due ${fmtDate(dueDate)}`
                 : '';
             out.push({
-                kind: 'balance', sev: late || days <= 7 ? 'danger' : 'warn', ic: 'money',
+                kind: 'balance', key: 'balance:' + b.dbId, sev: late || days <= 7 ? 'danger' : 'warn', ic: 'money',
                 label,
                 sub: `${when} · ${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}${balLater}`,
                 act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
@@ -20131,6 +20131,213 @@ function chbDuties() {
         }
     });
     return out;
+}
+// ── DISMISSING A DUTY — a swipe on a Needs-you row (CLAUDE.md has the reasoning) ──
+// A dismissed row stops nagging at the level it was dismissed at and returns if it gets
+// WORSE (amber → red); the fact itself is untouched. The filter lives in chbDuties()
+// because the strip, badge, spine, brief and welcome all read it. A duty is dismissible
+// only if it was given an identity (`key`); system-health kinds have none, so they can
+// never be hidden. Kept server-side (internal key, carried on the boot payload).
+const CHB_DUTY_DISMISS_KEY = 'duty-dismissed';
+const CHB_DUTY_DISMISS_MAX = 200;
+const CHB_DUTY_DISMISS_DAYS = 120;
+const CHB_DUTY_SEV = { ok: 0, warn: 1, danger: 2 };
+const CHB_DUTY_KEY_OK = /^(register|balance|deposit|enquiry|arrival-review):\d{1,9}$/;
+/** @type {Record<string, {sev: string, at: number}> | null} */
+let __dutyDismissed = null;
+let __dutyDismissSeen;
+let __dutyDismissPending = 0;
+let __dutyDismissSaveQ = Promise.resolve();
+// Only well-formed entries for known kinds survive, so a bad row can hide nothing.
+function chbDutyDismissClean(raw) {
+    /** @type {Record<string, {sev: string, at: number}>} */
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const cutoff = Date.now() - CHB_DUTY_DISMISS_DAYS * 864e5;
+    Object.keys(raw).slice(0, CHB_DUTY_DISMISS_MAX * 2).forEach((k) => {
+        const v = raw[k];
+        if (!CHB_DUTY_KEY_OK.test(k) || !v || typeof v !== 'object') return;
+        if (!Object.prototype.hasOwnProperty.call(CHB_DUTY_SEV, v.sev)) return;
+        const at = Number(v.at) || 0;
+        if (at && at < cutoff) return;
+        out[k] = { sev: v.sev, at };
+    });
+    return out;
+}
+// A NEW boot payload is adopted only while none of our saves is in flight.
+function chbDutyMap() {
+    const pre = /** @type {any} */ (window).__dutyDismissedPre;
+    if (pre !== __dutyDismissSeen && !__dutyDismissPending) {
+        __dutyDismissSeen = pre;
+        __dutyDismissed = chbDutyDismissClean(pre);
+    }
+    return __dutyDismissed || {};
+}
+function chbDutyHidden(d) {
+    const e = d && d.key ? chbDutyMap()[d.key] : null;
+    return !!e && (CHB_DUTY_SEV[d.sev] || 0) <= (CHB_DUTY_SEV[e.sev] || 0);
+}
+function chbDuties() {
+    return chbDutiesAll().filter((d) => !chbDutyHidden(d));
+}
+// Mirror first, save after, on a chain that saves the CURRENT map (the pins store's
+// shape). A failed save only means the row is back after a refresh — the safe direction.
+function chbDutyStore(map) {
+    const keep = Object.keys(map).sort((a, b) => (map[b].at || 0) - (map[a].at || 0)).slice(0, CHB_DUTY_DISMISS_MAX);
+    /** @type {Record<string, {sev: string, at: number}>} */
+    const next = {};
+    keep.forEach((k) => { next[k] = map[k]; });
+    __dutyDismissed = next;
+    __dutyDismissPending++;
+    __dutyDismissSaveQ = __dutyDismissSaveQ.then(async () => {
+        try { await saveContent(CHB_DUTY_DISMISS_KEY, __dutyDismissed); } catch (e) { chbSwallow(e, 'duty-dismiss'); } finally { __dutyDismissPending--; }
+    });
+    return __dutyDismissSaveQ;
+}
+function chbDutyDismiss(key) {
+    const d = CHB_DUTY_KEY_OK.test(String(key)) ? /** @type {any[]} */ (chbDutiesAll()).find((x) => x.key === key) : null;
+    if (!d) return false;
+    const next = Object.assign({}, chbDutyMap());
+    next[key] = { sev: d.sev, at: Date.now() };
+    chbDutyStore(next);
+    toast('Dismissed — ' + d.label, undefined, { label: 'Undo', fn: () => chbDutyRestore(key) });
+    return true;
+}
+function chbDutyRestore(key) {
+    const next = Object.assign({}, chbDutyMap());
+    delete next[key];
+    chbDutyStore(next);
+    renderNeedsYou();
+}
+// The gesture: pointer events (finger and mouse), `touch-action: pan-y` leaves scrolling
+// to the browser, the row follows on `translate`, past a third of its width or a flick it
+// goes. The click a swipe ends in — on THAT row — is swallowed, or dismissing would also open it.
+let __nySwipe = null;
+let __nySwallow = null;
+function nySwipeInit(list) {
+    if (/** @type {any} */ (list).__nySwipe) return;
+    /** @type {any} */ (list).__nySwipe = true;
+    list.addEventListener('pointerdown', nySwipeDown);
+    list.addEventListener('pointermove', nySwipeMove);
+    list.addEventListener('pointerup', nySwipeUp);
+    list.addEventListener('pointercancel', () => { if (__nySwipe && __nySwipe.on) nySwipeBack(__nySwipe.row, __nySwipe.dx); __nySwipe = null; });
+    list.addEventListener('click', (e) => {
+        const r = e.target instanceof Element ? e.target.closest('.ny-row') : null;
+        if (__nySwallow && r && r.getAttribute('data-nykey') === __nySwallow.key && Date.now() - __nySwallow.at < 600) { e.stopImmediatePropagation(); e.preventDefault(); }
+    }, true);
+    list.addEventListener('keydown', nySwipeKey);
+    const wrap = document.getElementById('needs-you');
+    if (wrap && !document.getElementById('ny-hint')) {
+        const h = document.createElement('span');
+        h.id = 'ny-hint';
+        h.className = 'sr-only';
+        h.textContent = 'Swipe left, or press Delete, to dismiss.';
+        wrap.appendChild(h);
+    }
+}
+function nySwipeDown(e) {
+    const row = e.target instanceof Element ? e.target.closest('.ny-row[data-nykey]') : null;
+    if (!row || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    __nySwipe = { row, id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, dx: 0, on: false, w: row.offsetWidth || 320 };
+}
+function nySwipeMove(e) {
+    const g = __nySwipe;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x0;
+    const dy = e.clientY - g.y0;
+    if (!g.on) {
+        if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { __nySwipe = null; return; }
+        if (dx > -8 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+        g.on = true;
+        g.x0 = e.clientX;
+        g.t0 = e.timeStamp;
+        try { g.row.setPointerCapture(g.id); } catch (_) {}
+        g.row.classList.add('ny-drag');
+        nyReveal(g.row, true);
+        return;
+    }
+    g.dx = dx < 0 ? dx : dx * 0.15;
+    g.row.style.translate = g.dx + 'px 0';
+    nyReveal(g.row, false, -g.dx);
+}
+function nySwipeUp(e) {
+    const g = __nySwipe;
+    if (!g || e.pointerId !== g.id) return;
+    __nySwipe = null;
+    if (!g.on) return;
+    __nySwallow = { key: g.row.getAttribute('data-nykey'), at: Date.now() };
+    const v = g.dx / Math.max(1, e.timeStamp - g.t0);
+    if (-g.dx >= Math.max(80, g.w * 0.35) || (v < -0.5 && -g.dx > 40)) nyDismissRow(g.row, g.dx);
+    else nySwipeBack(g.row, g.dx);
+}
+function nyCalm() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+// Web Animations, not a CSS transition: restating the row's transition list would drop
+// what the press system gives it. An animation also beats the inline `translate`.
+function nySwipeBack(row, from) {
+    row.classList.remove('ny-drag');
+    const rv = row.parentNode && row.parentNode.querySelector('.ny-reveal');
+    if (from && row.animate && !nyCalm()) {
+        const ease = 'cubic-bezier(.25,1,.5,1)';
+        row.animate([{ translate: from + 'px 0' }, { translate: '0px 0' }], { duration: 300, easing: ease });
+        if (rv) rv.animate([{ width: rv.style.width }, { width: '0px' }], { duration: 300, easing: ease }).onfinish = () => rv.remove();
+    } else if (rv) rv.remove();
+    row.style.translate = '';
+}
+function nyReveal(row, make, w) {
+    const list = row.parentNode;
+    let el = list.querySelector('.ny-reveal');
+    if (make && !el) {
+        el = document.createElement('div');
+        el.className = 'ny-reveal';
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = '<span>Dismiss</span>';
+        list.appendChild(el);
+    }
+    if (!el) return;
+    if (make) { el.style.top = row.offsetTop + 'px'; el.style.height = row.offsetHeight + 'px'; }
+    if (w != null) el.style.width = Math.max(0, w) + 'px';
+}
+function nyDismissRow(row, dx) {
+    // No longer a live duty (it was resolved while the row sat there): show the truth, don't bounce.
+    if (!chbDutyDismiss(row.getAttribute('data-nykey'))) { renderNeedsYou(); return; }
+    const done = () => { try { renderNeedsYou(); } catch (e) {} };
+    if (nyCalm() || !row.animate) { done(); return; }
+    // Slide out, then close the gap.
+    row.classList.remove('ny-drag');
+    row.style.pointerEvents = 'none';
+    const rv = row.parentNode.querySelector('.ny-reveal');
+    if (rv) rv.animate([{ width: rv.style.width }, { width: row.offsetWidth + 'px' }], { duration: 190, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    const slide = row.animate(
+        [{ translate: (dx || 0) + 'px 0', opacity: 1 }, { translate: '-110% 0', opacity: 0 }],
+        { duration: 190, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' },
+    );
+    slide.onfinish = () => {
+        row.style.overflow = 'hidden';
+        const gap = row.animate(
+            [{ height: row.offsetHeight + 'px' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', borderTopWidth: '0px', borderBottomWidth: '0px' }],
+            { duration: 200, easing: 'cubic-bezier(.2,0,0,1)', fill: 'forwards' },
+        );
+        gap.onfinish = done;
+        gap.oncancel = done;
+    };
+    slide.oncancel = done;
+}
+// Delete/Backspace on a focused row: a swipe is a drag, so keyboard and screen-reader
+// users need another way in (the row's aria-describedby names it).
+function nySwipeKey(e) {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    const row = e.target instanceof Element ? e.target.closest('.ny-row[data-nykey]') : null;
+    if (!row) return;
+    e.preventDefault();
+    const list = row.parentNode;
+    const at = [...list.querySelectorAll('.ny-row')].indexOf(row);
+    if (!chbDutyDismiss(row.getAttribute('data-nykey'))) { renderNeedsYou(); return; }
+    renderNeedsYou();
+    const rows = list.querySelectorAll('.ny-row');
+    const next = rows[Math.min(at, rows.length - 1)];
+    if (next) /** @type {HTMLElement} */ (next).focus();
 }
 // Money owed that is NOT yet a duty — outside the 21-day window, or not yet
 // due under the booking's OWN plan (custom date ahead, deposit settled). The
@@ -20381,7 +20588,7 @@ function needsYouItems() {
     let duties = [];
     try { duties = chbDuties(); } catch (e) { chbSwallow(e, 'duties'); }
     return duties.map((d) => ({
-        sev: d.sev, ic: d.ic, act: d.act, go: d.go, run: d.run,
+        sev: d.sev, ic: d.ic, act: d.act, go: d.go, run: d.run, key: d.key || '',
         label: escapeHtml(d.label),
         sub: escapeHtml(d.sub),
     }));
@@ -20435,13 +20642,14 @@ function renderNeedsYou() {
         return;
     }
     wrap.style.display = '';
+    nySwipeInit(list);
     const MAX = 4;
     const shown = __nyExpanded ? items : items.slice(0, MAX);
     list.innerHTML =
         shown
             .map(
                 (it) => `
-        <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}>
+        <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}${it.key ? ` data-nykey="${escapeHtml(it.key)}" aria-describedby="ny-hint" aria-keyshortcuts="Delete"` : ''}>
             <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
             <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
             <span class="ny-act">${it.act} ›</span>

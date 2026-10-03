@@ -2340,7 +2340,7 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // pop-out £955.
         vm.runInContext(`propertyMeta.jollyboat={name:'Jollyboat'};
             Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
-            enquiries=[{id:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
+            enquiries=[{id:9,dbId:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
             dbBookings.jollyboat=[
               {id:71,dbId:71,name:'Soon Guest',email:'s@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:540,perNight:520,nights:4,txnFee:20}},
               {id:72,dbId:72,name:'Later Guest',email:'l@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:615,perNight:600,nights:4,txnFee:15}}];`, ctx);
@@ -2353,6 +2353,9 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('…and the row LEADS with the figure, not the arrival', /^£[\d,]+\.\d{2} to collect from /.test(bal[0].label), bal[0].label);
         check('…with the timing in the sub, where the dates already are', /^Arriving in \d+ days · /.test(bal[0].sub), bal[0].sub);
         check('…and leave the one 60 days out alone (the 21-day window)', !bal.some((d) => /Later Guest/.test(d.label)));
+        check('…and it carries an identity, so it can be swiped away (balance:<booking id>)', bal[0].key === 'balance:71', String(bal[0].key));
+        const enqKeyed = duties.filter((d) => d.kind === 'enquiry');
+        check('an enquiry carries one too (enquiry:<id>)', enqKeyed.length === 1 && enqKeyed[0].key === 'enquiry:9', enqKeyed.map((d) => d.key).join(','));
 
         // A2) THE PLAN DECIDES, NOT THE CALENDAR ALONE (owner screenshots, 06
         // Aug: Today said "£340.00 to collect — CHASE" of a guest whose custom
@@ -2406,6 +2409,7 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
             /Left 8:41am ✓ \(guest-declared\)/.test(depTap[0] ? depTap[0].sub : ''), depTap[0] && depTap[0].sub);
         check('…while an untapped guest still in the cottage is left alone until the checkout hour',
             !depTap.some((d) => /Still In/.test(d.label)));
+        check('a deposit-return duty carries an identity (deposit:<booking id>)', depTap.length > 0 && /^deposit:\d+$/.test(String(depTap[0].key)), depTap.map((d) => d.key).join(','));
         vm.runInContext('ukNowMinutes = __realUkNowMinutes;', ctx);
 
         // A4) THE GUEST REGISTER IS A DUTY. It is treated as one at booking level —
@@ -2576,7 +2580,7 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // restored rather than just replaced — leaving Debbie in place made four
         // later checks read her figures instead (the ui-test-money lesson).
         vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
-            enquiries=[{id:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
+            enquiries=[{id:9,dbId:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
             dbBookings.jollyboat=[
               {id:71,dbId:71,name:'Soon Guest',email:'s@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:540,perNight:520,nights:4,txnFee:20}},
               {id:72,dbId:72,name:'Later Guest',email:'l@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:615,perNight:600,nights:4,txnFee:15}}];`, ctx);
@@ -2684,6 +2688,106 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
             vm.runInContext('propertySeasons.jollyboat.length', ctx) === beforeRows
             && vm.runInContext('propertySeasons.jollyboat', ctx).some((x) => +x.couple_rate === 150));
         vm.runInContext("apiPost = __undoOldApi; siteContent['search-undo'] = null; __chbUndo.length = 0; enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); propertySeasons.jollyboat = [];", ctx);
+        const realSave = ctx.saveContent, realToast = ctx.toast;
+
+        // A6) A DUTY CAN BE SWIPED AWAY — and it comes back when it gets WORSE. The
+        // filter lives in chbDuties() because the strip, the Home Screen badge, the
+        // spine, the brief and the AI chat's welcome all read it; filtering one
+        // surface would leave a badge saying 3 over a strip of 2. Only a duty GIVEN AN
+        // IDENTITY can be dismissed, so a stopped automation (and every kind nobody
+        // has decided about) cannot be hidden by a swipe or a hand-edited row.
+        const saves = [], toasts = [];
+        ctx.saveContent = async (k, v) => { saves.push({ k, v: JSON.parse(JSON.stringify(v)) }); };
+        ctx.toast = (m, t, a) => { toasts.push({ m, t, a }); };
+        const regAt = (n, id, name) => `{id:${id},dbId:${id},name:'${name}',email:'d${id}@x.co',checkIn:'${dFut(n)}',checkOut:'${dFut(n + 3)}',adults:2,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/d${id}',regSubmitted:false,regCount:0,agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}`;
+        const setPre = (o) => vm.runInContext(`window.__dutyDismissedPre = ${JSON.stringify(o)};`, ctx);
+        const settle = () => vm.runInContext('__dutyDismissSaveQ', ctx);
+        vm.runInContext(`enquiries=[]; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); __nyChats = 0; __nyCronQuiet = false;
+            dbBookings.jollyboat=[${regAt(3, 91, 'Dismiss Warn')}, ${regAt(1, 92, 'Dismiss Red')}];`, ctx);
+        setPre(null);
+        const keysOf = () => ctx.chbDuties().filter((d) => d.kind === 'register').map((d) => d.key).sort();
+        check('a register duty carries an identity (register:<booking id>)', keysOf().join() === 'register:91,register:92', keysOf().join());
+        const nowMs = Date.now();
+        setPre({ 'register:91': { sev: 'warn', at: nowMs } });
+        check('a dismissed duty leaves chbDuties — the one list every surface reads', keysOf().join() === 'register:92', keysOf().join());
+        check('…but not chbDutiesAll: the fact is untouched, only the nag stops',
+            ctx.chbDutiesAll().filter((d) => d.kind === 'register').length === 2);
+        // ESCALATION: dismissed while amber, the booking is now a day away → red.
+        setPre({ 'register:92': { sev: 'warn', at: nowMs } });
+        check('dismissed while AMBER, it comes back RED (the duty escalates rather than nags)', keysOf().includes('register:92'), keysOf().join());
+        setPre({ 'register:92': { sev: 'danger', at: nowMs } });
+        check('dismissed while red, it stays dismissed at red', !keysOf().includes('register:92'), keysOf().join());
+        // WHAT CANNOT BE DISMISSED. A system-health duty has no identity, and the
+        // entry pattern refuses any key that is not one of the five per-entity kinds.
+        vm.runInContext('__nyCronQuiet = true;', ctx);
+        const cronD = ctx.chbDutiesAll().find((d) => d.kind === 'cron');
+        check('a stopped automation carries NO identity', !!cronD && !cronD.key, JSON.stringify(cronD && cronD.key));
+        setPre({ cron: { sev: 'danger', at: nowMs }, 'cron:1': { sev: 'danger', at: nowMs }, '__proto__': { sev: 'danger', at: nowMs }, 'keysafe:1': { sev: 'danger', at: nowMs } });
+        check('…and no stored entry can hide it, however it was written', ctx.chbDuties().some((d) => d.kind === 'cron'));
+        vm.runInContext('__nyCronQuiet = false;', ctx);
+        // The pattern's OBSERVABLE job: junk is never WRITTEN BACK. Hiding already needs a
+        // `key`, so a stored 'cron' hides nothing either way — but the next dismissal saves
+        // the whole map, and a row that survives the sanitiser is a row the server keeps.
+        // (`at` is NOW: an ancient entry lapses on its own and would pass this vacuously.)
+        const junk = JSON.parse('{"cron":{"sev":"danger","at":' + nowMs + '},"__proto__":{"sev":"danger","at":' + nowMs + '},"keysafe:1":{"sev":"danger","at":' + nowMs + '},"register:92":{"sev":"danger","at":' + nowMs + '}}');
+        vm.runInContext(`window.__dutyDismissedPre = JSON.parse(${JSON.stringify(JSON.stringify(junk))});`, ctx);
+        saves.length = 0;
+        ctx.chbDutyDismiss('register:91');
+        await settle();
+        const written = saves.length ? saves[0].v : {};
+        check('…and junk entries are dropped, never written back to the server on the next dismissal',
+            Object.keys(written).sort().join() === 'register:91,register:92' && !Object.prototype.hasOwnProperty.call(written, '__proto__'), Object.keys(written).join());
+        // A malformed row hides nothing.
+        setPre({ 'register:91': { sev: 'bogus', at: nowMs }, 'register:92': 'yes', 'register:x': { sev: 'warn', at: nowMs } });
+        check('malformed entries (bad severity, wrong shape, bad key) hide nothing', keysOf().join() === 'register:91,register:92', keysOf().join());
+        setPre({ 'register:91': { sev: 'warn', at: nowMs - 130 * 864e5 } });
+        check('a dismissal older than the window has lapsed', keysOf().includes('register:91'), keysOf().join());
+        // THE WRITE. Mirror first (the gesture re-reads synchronously), then one save of
+        // the current map under the internal key, with an Undo that really undoes it.
+        setPre({});
+        saves.length = 0; toasts.length = 0;
+        const did = ctx.chbDutyDismiss('register:91');
+        check('dismissing a live duty succeeds', did === true);
+        check('…hides it at once, before the save lands', !keysOf().includes('register:91'));
+        await settle();
+        check('…saves the map under the internal content key', saves.length === 1 && saves[0].k === 'duty-dismissed' && saves[0].v['register:91'] && saves[0].v['register:91'].sev === 'warn', JSON.stringify(saves));
+        check('…and offers Undo, naming what was dismissed', toasts.length === 1 && /Dismiss Warn/.test(toasts[0].m) && toasts[0].a && toasts[0].a.label === 'Undo' && typeof toasts[0].a.fn === 'function', JSON.stringify(toasts.map((t) => t.m)));
+        toasts[0].a.fn();
+        await settle();
+        check('Undo brings it back and saves the removal', keysOf().includes('register:91') && saves.length === 2 && !saves[1].v['register:91'], JSON.stringify(saves[1]));
+        // REFUSALS. Not a live duty, not a known kind, not a key at all: nothing saved.
+        saves.length = 0;
+        check('a key that is not a live duty is refused', ctx.chbDutyDismiss('register:999') === false);
+        check('…as is a kind without an identity', ctx.chbDutyDismiss('cron') === false && ctx.chbDutyDismiss('keysafe:1') === false && ctx.chbDutyDismiss('') === false);
+        await settle();
+        check('…and nothing was saved for either', saves.length === 0, JSON.stringify(saves));
+        // CAP: newest 200 are kept.
+        const big = {};
+        for (let i = 0; i < 260; i++) big['balance:' + (1000 + i)] = { sev: 'warn', at: nowMs - i * 1000 };
+        setPre(big);
+        saves.length = 0;
+        vm.runInContext(`chbDutyStore(Object.assign({}, chbDutyMap(), { 'register:91': { sev: 'warn', at: ${nowMs + 5} } }))`, ctx);
+        await settle();
+        const savedKeys = Object.keys(saves[0].v);
+        check('the stored map is capped at the newest 200', savedKeys.length === 200 && savedKeys.includes('register:91') && !savedKeys.includes('balance:1259'), String(savedKeys.length));
+        // ADOPTION. A new boot payload replaces ours — unless one of OUR saves is in flight,
+        // when a refresh that raced the swipe must not put the row back.
+        setPre({});
+        check('a fresh payload is adopted when nothing of ours is in flight', keysOf().includes('register:91'));
+        let release = () => {};
+        ctx.saveContent = () => new Promise((r) => { release = r; });
+        ctx.chbDutyDismiss('register:91');
+        check('(setup) the dismissal hides it while its save is pending', !keysOf().includes('register:91'));
+        setPre({});
+        check('a payload landing while our save is in flight does NOT resurrect the row', !keysOf().includes('register:91'));
+        release();
+        await settle();
+        setPre({});
+        check('…once it has landed, the next payload is adopted again', keysOf().includes('register:91'));
+        ctx.saveContent = realSave;
+        ctx.toast = realToast;
+        setPre(null);
+        vm.runInContext("enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);", ctx);
     } else fail('chbDuties / chbUndoList missing from the bundle');
 
     // ---- 41. PINNED ANSWERS — the landing you compose yourself. A pin stores the
