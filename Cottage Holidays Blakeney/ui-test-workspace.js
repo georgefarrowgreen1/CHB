@@ -104,6 +104,22 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }));
   ok(addUi.standalone === 0 && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
     `Add booking + Block dates share one button; zoom and refresh live in the calendar ⋯ (${addUi.menu.join(', ')})`);
+  // THE ⋯ MENUS STAY ON THE SCREEN. The calendar's ⋯ sits beside Add, near the LEFT edge, and
+  // its menu hangs off the wrapper's right edge, so on a phone it opened half off the left
+  // side. Measured at phone width for both menus on the row.
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.evaluate(() => window.nav('view-backoffice'));
+  await page.waitForTimeout(500);
+  for (const [label, btnSel, menuSel] of [['calendar ⋯', '.cal-actions .bhub-menu-btn', '.cal-actions .bhub-actions:last-child .bhub-menu'], ['Add ▾', '.cal-actions .cal-add-btn', '.cal-actions .bhub-actions:first-child .bhub-menu']]) {
+    await page.click(btnSel);
+    await page.waitForTimeout(600);
+    const r = await page.evaluate((sel) => { const m = document.querySelector(sel); const b = m.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), w: Math.round(b.width), vw: window.innerWidth }; }, menuSel);
+    ok(r.w > 100 && r.left >= 0 && r.right <= r.vw, `${label} menu opens fully on a 390px screen (${r.left}→${r.right} of ${r.vw}, ${r.w}px wide)`);
+    await page.click(btnSel);
+    await page.waitForTimeout(350);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(250);
   // ---- The lane's own cells must agree with the bars on it ----------------
   // Bars are inset half a day at each end so a changeover reads as shared, which
   // leaves a bare strip on the check-in day and the checkout day. Measured, BOTH
