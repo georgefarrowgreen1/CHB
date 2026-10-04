@@ -1,8 +1,7 @@
 // THE SIMPLER TODAY — what the owner's landing says and shows, gated as the approved demo drew it.
 //
-//  §1 THE DAY IS A SENTENCE with the one thing to do in bold: one duty → "There's one thing to do:
-//     <task>", several → "N things need you, starting with <task>", none → "Nothing needs you".
-//     No date line, no movements list, no ✓ capsule repeating it.
+//  §1 NO DAY SENTENCE: the card says what to do, so a line above it said it twice. The line is
+//     empty and unpainted on a phone; no date line, no movements list, no ✓ capsule.
 //  §2 ONE TASK IS A CARD WITH ONE BUTTON: the heading stands down and the action is a full-width
 //     accent button reading the action ("Return £60"); several tasks keep the heading and the list.
 //  §3 THE MONTH ROW holds ‹ Today › and a + (44px, named); there is no ⋯ beside it, and the +'s
@@ -50,14 +49,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // ── ONE duty: a deposit to hand back, and a stay in progress that owes nothing ──
   rows = [mkB(2, 'jollyboat', 'Emma Clarke', -6, -2, 'paid', 0, 'charged')];
   await open();
-  console.log('§1 the day is a sentence');
+  console.log('§1 no day sentence');
   const one = await page.evaluate(() => {
     const el = document.getElementById('today-date');
-    return { text: el.textContent, bold: (el.querySelector('b') || {}).textContent || '', cap: document.getElementById('today-verdict').textContent.trim(), h: el.getBoundingClientRect().height };
+    return { text: el.textContent, shown: el.getClientRects().length > 0, cap: document.getElementById('today-verdict').textContent.trim() };
   });
-  ok(/^\w+day\. There’s one thing to do: return Emma Clarke’s £60 deposit\.$/.test(one.text), `one duty → one sentence naming it ("${one.text}")`);
-  ok(one.bold === 'return Emma Clarke’s £60 deposit', `…with the task in bold ("${one.bold}")`);
-  ok(!/·/.test(one.text) && one.cap === '', '…no movements list on the line and no ✓ capsule beside the title');
+  ok(one.text === '' && !one.shown, `the line above the card is gone — empty and not painted ("${one.text}")`);
+  ok(one.cap === '', 'and there is no ✓ capsule beside the title');
   console.log('§2 one task is a card with one button');
   const card = await page.evaluate(() => {
     const w = document.getElementById('needs-you');
@@ -143,18 +141,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   rows = [mkB(2, 'jollyboat', 'Emma Clarke', -6, -2, 'paid', 0, 'charged'), mkB(3, 'pimpernel', 'Dan Rowe', -5, -1, 'paid', 0, 'charged')];
   await open();
   const many = await page.evaluate(() => ({
-    text: document.getElementById('today-date').textContent,
     solo: document.getElementById('needs-you').classList.contains('ny-solo'),
     head: document.querySelector('#needs-you .bo-sec-title').getClientRects().length > 0,
   }));
-  ok(/^\w+day\. 2 things need you, starting with return /.test(many.text), `two duties → "2 things need you, starting with …" ("${many.text}")`);
   ok(!many.solo && many.head, 'several tasks keep the heading and the list');
-
-  // ── NONE: say so ──
-  rows = [];
-  await open();
-  const none = await page.evaluate(() => document.getElementById('today-date').textContent);
-  ok(/^\w+day\. Nothing needs you today\.$/.test(none), `nothing to do → "${none}"`);
 
   console.log(fails ? `\n${fails} SIMPLER-TODAY CHECK(S) FAILED ❌` : '\nSIMPLER TODAY GATE PASSED ✅');
   await done(fails);
