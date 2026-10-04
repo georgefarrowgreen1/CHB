@@ -1761,7 +1761,7 @@ $prevMsg = (string) ($r['json']['message'] ?? '');
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'arrival' => true, 'subject' => 'You arrive', 'message' => $prevMsg]);
 $prevHtml = (string) ($r['json']['html'] ?? '');
 it_check('the arrival preview renders the ARRIVAL template',
-    strpos($prevHtml, 'You arrive') !== false && strpos($prevHtml, 'About your booking') === false, substr($prevHtml, 0, 300));
+    strpos($prevHtml, 'See you') !== false && strpos($prevHtml, 'About your booking') === false, substr($prevHtml, 0, 300));
 // The name appears (it is in the message) — what must not happen is a GREETING
 // of it twice. Counted the way the render gate counts, on the tags-to-spaces text.
 $prevPlain = preg_replace('/\s+/', ' ', html_entity_decode(preg_replace('/<[^>]*>/', ' ', $prevHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
@@ -4455,6 +4455,40 @@ it_check('§39 the blocks route serves a block\'s kind and label', ($by39[$dd(90
 it_check('§39 …and a booking\'s', ($by39[$dd(910)]['kind'] ?? '') === 'booking');
 it_check('§39 an event stored with no kind defaults to unknown (it keeps counting as a stay)', ($by39[$dd(920)]['kind'] ?? '') === 'unknown');
 $rootDb->exec("DELETE FROM ical_blocks WHERE uid LIKE 'it39-%'");
+
+// §40 THE THANK-YOU IS OFF UNTIL SWITCHED ON, AND CLAIMS BEFORE IT SENDS (migration-125). Driven
+// through the live cron URL against a real stay that ended yesterday. MAIL_ENABLED is off in this
+// harness, so a send cannot succeed: what is provable is that OFF touches nothing, that ON takes
+// the claim-first path (and a clean failure un-claims, so a later run retries), and that the
+// pass never blocks the review requests that follow it.
+echo "\n== §40 the day-after-checkout thank-you ==\n";
+$col40 = in_array('thankyou_sent', $rootDb->query('SHOW COLUMNS FROM bookings')->fetchAll(PDO::FETCH_COLUMN), true);
+it_check('§40 migration-125 added thankyou_sent', $col40);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey', 'Thank Yu', 'thanks40@gmail.com', '" . $dd(-5) . "', '" . $dd(-1) . "', 2, 0, 'paid', 0, 0, 0, 0, 4)");
+$ty40 = (int) $rootDb->lastInsertId();
+// Isolate it: every OTHER stay is marked thanked so the counts below are about this one alone.
+$rootDb->exec("UPDATE bookings SET thankyou_sent = NOW() WHERE id <> $ty40");
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'thankyou-email', 'value' => '']);
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('§40 OFF (the default): nothing is attempted, stamped or sent', ($r['json']['thankyou_attempted'] ?? -1) === 0 && ($r['json']['thankyou_sent'] ?? -1) === 0
+    && $rootDb->query("SELECT thankyou_sent FROM bookings WHERE id = $ty40")->fetchColumn() === null, $r['raw']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'thankyou-email', 'value' => '1']);
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('§40 ON, with mail disabled: the stay was claimed and attempted, zero sent, and the clean failure un-claimed (a later run retries)',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['thankyou_attempted'] ?? -1) === 1 && ($r['json']['thankyou_sent'] ?? -1) === 0
+    && $rootDb->query("SELECT thankyou_sent FROM bookings WHERE id = $ty40")->fetchColumn() === null, $r['raw']);
+it_check('§40 …and the review-request pass after it still ran', array_key_exists('review_requests_sent', $r['json'] ?? []), $r['raw']);
+$rootDb->exec("UPDATE bookings SET thankyou_sent = NOW() WHERE id = $ty40");
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('§40 an already-thanked stay is never picked up again', ($r['json']['thankyou_attempted'] ?? -1) === 0
+    && $rootDb->query("SELECT thankyou_sent FROM bookings WHERE id = $ty40")->fetchColumn() !== null, $r['raw']);
+$rootDb->exec("UPDATE bookings SET thankyou_sent = NULL, review_request_sent = NOW() WHERE id = $ty40");
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+// (ON for this one: the toggle is still on from above, so a miss here is the review filter, not the switch)
+it_check('§40 a stay already asked for a review is not thanked after the fact (the order is thank-you first)',
+    ($r['json']['thankyou_attempted'] ?? -1) === 0, $r['raw']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'thankyou-email', 'value' => '']);
+$rootDb->exec("DELETE FROM bookings WHERE id = $ty40");
 
 echo "\n== Summary ==\n";
 if ($fail) {

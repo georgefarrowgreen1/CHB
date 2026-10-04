@@ -9980,6 +9980,9 @@ function hydrateFollowUpToggles() {
     // one tap would silently turn reviewing off (the bacs-details rule).
     const rv = /** @type {HTMLInputElement|null} */ (document.getElementById('arrival-review-toggle'));
     if (rv) rv.checked = (adminPrivateContent['arrival-review'] ?? siteContent['arrival-review']) === '1';
+    // The thank-you is the same shape: an INTERNAL key, default OFF, hydrated from the private map first.
+    const ty = /** @type {HTMLInputElement|null} */ (document.getElementById('thankyou-toggle'));
+    if (ty) ty.checked = (adminPrivateContent['thankyou-email'] ?? siteContent['thankyou-email']) === '1';
 }
 // ---- Inbox folders: the Inbox is ONE comms dashboard — website enquiries,
 // guest chat and the cottage EMAIL mailbox behind a segmented folder switch.

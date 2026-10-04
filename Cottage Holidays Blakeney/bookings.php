@@ -1282,7 +1282,7 @@ if ($action === 'arrival_preview') {
     }
     json_out([
         'ok' => true,
-        'subject' => 'You arrive ' . email_date($b['check_in']) . ' — everything you need for ' . $prop,
+        'subject' => 'See you ' . email_date($b['check_in'], false) . ': directions and everything for ' . $prop,
         'message' => arrival_default_message($name, $prop),
         'facts' => [
             'cottage' => $prop,

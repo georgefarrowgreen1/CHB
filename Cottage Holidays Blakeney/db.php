@@ -919,6 +919,11 @@ function is_internal_content_key($key)
                      // send it (pre-arrival.php). An operating decision about
                      // their own workflow — a guest has no business reading it
     }
+    if ($key === 'thankyou-email') {
+        return true; // whether the day-after-checkout thank-you goes (pre-arrival.php).
+                     // An operating decision about their own follow-ups — a guest has
+                     // no business reading it. Default OFF.
+    }
     if ($key === 'night-warm-until') {
         return true; // the search-open warm hint the Mac's poll reads
     }
