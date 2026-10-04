@@ -64,24 +64,46 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // were read only inside the hub's own plan panel, so a mistyped plan stayed
   // invisible until the money came out wrong. Driven by CLICKING the chip — a
   // filter reachable only by calling the function is a filter nobody has.
-  const plan = await page.evaluate(async () => {
-    const chip = document.querySelector('#bookings-filters [data-bfilter="customplan"]');
-    if (!chip) return { missing: true };
-    chip.click();
-    await new Promise((r) => setTimeout(r, 250));
-    return {
-      on: chip.classList.contains('is-on'),
-      names: [...document.querySelectorAll('#bookings-list .bk-row strong')].map((e) => e.textContent.trim()),
-    };
-  });
-  ok(!plan.missing && plan.on, 'the bookings list offers a Custom plan filter');
+  // THE FILTERS ARE THREE TABS PLUS A ⋯. Custom plan and All are audits, not everyday
+  // views, so they live in the caption's ⋯ menu; the tabs are Upcoming / Needs payment / Past.
+  const tabsNow = await page.evaluate(() => [...document.querySelectorAll('#bookings-filters [data-bfilter]')].map((b) => b.getAttribute('data-bfilter')));
+  ok(JSON.stringify(tabsNow) === JSON.stringify(['upcoming', 'needspay', 'past']), `the tab row is three filters (${tabsNow.join(', ')})`);
+  await page.click('#bookings-more-btn');
+  await page.waitForTimeout(300);
+  const menuItems = await page.evaluate(() => [...document.querySelectorAll('.bk-more .bhub-menu [data-bfilter]')].map((b) => b.getAttribute('data-bfilter')));
+  ok(JSON.stringify(menuItems) === JSON.stringify(['customplan', 'all']), `…and the ⋯ menu holds the other two (${menuItems.join(', ')})`);
+  // Driven by CLICKING the menu item — a filter reachable only by calling the
+  // function is a filter nobody has.
+  await page.click('.bk-more .bhub-menu [data-bfilter="customplan"]');
+  await page.waitForTimeout(350);
+  const plan = await page.evaluate(() => ({
+    on: !!document.querySelector('.bk-more .bhub-menu [data-bfilter="customplan"].is-on'),
+    tabOn: document.querySelectorAll('#bookings-filters [data-bfilter].is-on').length,
+    chip: (document.getElementById('bookings-filter-chip') || {}).textContent || '',
+    active: document.getElementById('bookings-more-btn').classList.contains('is-active'),
+    names: [...document.querySelectorAll('#bookings-list .bk-row strong')].map((e) => e.textContent.trim()),
+  }));
+  ok(plan.on, 'the bookings list offers a Custom plan filter (in the ⋯)');
   ok(plan.names.length === 1 && plan.names[0] === 'Second Guest',
     `…and it finds the one booking off the standard schedule (${JSON.stringify(plan.names)})`);
-  await page.evaluate(async () => {
-    document.querySelector('#bookings-filters [data-bfilter="upcoming"]').click();
-    await new Promise((r) => setTimeout(r, 250));
-  });
+  ok(plan.tabOn === 0 && /Custom plans only/.test(plan.chip) && plan.active,
+    `a menu filter selects NO tab, says what is on in a chip, and marks the ⋯ (${plan.tabOn} tabs on, "${plan.chip.trim()}")`);
+  // The chip is the way back.
+  await page.click('#bookings-filter-chip button');
+  await page.waitForTimeout(350);
+  const back = await page.evaluate(() => ({
+    tab: (document.querySelector('#bookings-filters [data-bfilter].is-on') || {}).getAttribute?.('data-bfilter'),
+    chip: (document.getElementById('bookings-filter-chip') || {}).textContent || '',
+  }));
+  ok(back.tab === 'upcoming' && back.chip.trim() === '', `one tap on the chip returns to Upcoming (${back.tab})`);
 
+  // ONE Add button, two choices; the old standalone Block dates button is gone.
+  const addUi = await page.evaluate(() => ({
+    standalone: [...document.querySelectorAll('.cal-actions > button.cal-add-btn')].length,
+    menu: [...document.querySelectorAll('.cal-actions .bhub-menu [data-act]')].map((b) => b.getAttribute('data-act')),
+  }));
+  ok(addUi.standalone === 0 && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
+    `Add booking + Block dates share one button; zoom and refresh live in the calendar ⋯ (${addUi.menu.join(', ')})`);
   // ---- The lane's own cells must agree with the bars on it ----------------
   // Bars are inset half a day at each end so a changeover reads as shared, which
   // leaves a bare strip on the check-in day and the checkout day. Measured, BOTH

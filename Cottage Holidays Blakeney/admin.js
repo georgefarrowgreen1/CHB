@@ -10309,9 +10309,24 @@ function fmtLogWhen(at) {
 }
 function bookingsSetFilter(f) {
     __bookingsFilter = f;
+    // The three tabs AND the two menu items carry data-bfilter, so one pass keeps
+    // every one of them honest. A filter that lives in the ⋯ menu (Custom plan, All)
+    // selects NO tab — the chip row says what is on and offers the way back, and the
+    // ⋯ itself shows it is in use.
     document
-        .querySelectorAll('#bookings-filters [data-bfilter]')
+        .querySelectorAll('#bookings-main [data-bfilter]')
         .forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-bfilter') === f));
+    const tabs = document.querySelectorAll('#bookings-filters [data-bfilter]');
+    tabs.forEach((b) => b.setAttribute('aria-selected', b.getAttribute('data-bfilter') === f ? 'true' : 'false'));
+    const inMenu = f === 'customplan' || f === 'all';
+    const chip = document.getElementById('bookings-filter-chip');
+    if (chip) {
+        chip.innerHTML = inMenu
+            ? `<button type="button" class="bk-fchip" ${chbAttrs('bookingsSetFilter', 'upcoming')}>${f === 'customplan' ? 'Custom plans only' : 'Showing every booking'} \u2715</button>`
+            : '';
+    }
+    const more = document.getElementById('bookings-more-btn');
+    if (more) more.classList.toggle('is-active', inMenu);
     renderBookings();
 }
 function bookingsSetSearch(v) {
@@ -10344,6 +10359,9 @@ function renderBookings() {
     Object.keys(dbBookings).forEach((propKey) => {
         (dbBookings[propKey] || []).forEach((b) => rows.push({ propKey, b }));
     });
+    // The Needs-payment count is a fact about EVERY booking, not about the rows the
+    // current filter and search left on screen.
+    const allRows = rows.slice();
     const q = __bookingsSearch;
     if (q) {
         rows = rows.filter(({ b }) => {
@@ -10380,48 +10398,27 @@ function renderBookings() {
     if (sum) {
         const label =
             { upcoming: 'upcoming', past: 'past', needspay: 'needing payment', all: 'in total' }[f] || '';
-        // The summary carries the money too: what these rows still owe.
-        let owed = 0;
-        rows.forEach(({ propKey, b }) => {
-            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
-                // The deposit-aware figure, so this agrees with each row's own
-                // "£X due" chip instead of quoting the rental balance alone —
-                // and skips owner-arranged money like the header line above it.
-                const due = bookingDue(propKey, b);
-                if (!due.fullyPaid) owed += Math.max(0, due.balance || 0);
-            }
-        });
         // "· 3 upcoming", not "· 3 bookings upcoming": the caption beside it already
-        // says Bookings, and the longer form wrapped onto two lines beside the
-        // verdict capsule at 390 (round eight).
+        // says Bookings (and the longer form once wrapped beside the verdict capsule).
         sum.textContent = rows.length ? `· ${rows.length} ${label}` : '';
-        // The money moved from summary PROSE into the caption's VERDICT capsule —
-        // COMPUTED from the rows on screen, never asserted (the To-collect
-        // zero-state rule): money due anywhere in the list keeps it amber, and
-        // only a list with nothing owed earns the ✓. An empty list claims nothing.
-        const verd = document.getElementById('bookings-verdict');
-        if (verd) {
-            // A FIGURE THAT CHANGED SAYS SO. This is recomputed live — a payment
-            // lands, a booking is edited — and the number silently became a
-            // different number. It SETTLES rather than pops: the capsule was
-            // already on screen, so a pop would read as "this appeared".
-            // Compared as WORDS, not as the owed float: rounding means £953.10
-            // and £953.40 print the same capsule, and a settle on a figure that
-            // did not visibly change is motion saying nothing.
-            const was = verd.textContent || '';
-            verd.innerHTML = !rows.length
-                ? ''
-                : owed > 0.005
-                    ? stCap('warn', `£${Math.round(owed).toLocaleString('en-GB')} to collect`)
-                    : stCap('ok', 'All paid up');
-            const now = verd.textContent || '';
-            verd.classList.remove('bk-verdict-settle');
-            // Never on the first paint — an empty `was` is the screen arriving,
-            // not a figure moving.
-            if (was && now && was !== now) {
-                void verd.offsetWidth;
-                verd.classList.add('bk-verdict-settle');
-            }
+    }
+    // WHO OWES IS SAID ONCE, ON THE TAB THAT LISTS THEM. The caption used to carry a
+    // verdict capsule ("£340 to collect" / "✓ All paid up") beside a Needs payment tab
+    // answering the same question, and the Today line above both says the figure. The
+    // tab now carries the COUNT, amber when someone owes and ABSENT when no one does
+    // (silence is the all-clear). Same predicate as the filter, so the badge and the
+    // list it opens cannot disagree. It SETTLES when the count changes — never on first
+    // paint, and compared as WORDS, the rule the old capsule followed.
+    const badge = document.getElementById('bk-needs-count');
+    if (badge) {
+        const n = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && (b.checkOut || '') >= today).length;
+        const was = badge.textContent || '';
+        badge.textContent = n ? String(n) : '';
+        badge.hidden = !n;
+        badge.classList.remove('bk-verdict-settle');
+        if (was && n && was !== String(n)) {
+            void badge.offsetWidth;
+            badge.classList.add('bk-verdict-settle');
         }
     }
     if (!rows.length) {

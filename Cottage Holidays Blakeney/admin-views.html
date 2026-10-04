@@ -80,15 +80,27 @@
                             <button aria-label="Earlier" data-act="changeMonth" data-arg="-1">&#10094;</button>
                             <button class="tl-today-btn" data-act="timelineToday">Today</button>
                             <button aria-label="Later" data-act="changeMonth" data-arg="1">&#10095;</button>
-                            <button aria-label="Compact view — fit more days" title="Compact view — fit more days" aria-pressed="false" data-act="tlToggleZoom"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;"><path d="M8 4v16M16 4v16M3 4h18M3 20h18"/></svg></button>
                         </div>
                     </div>
                     <div class="cal-actions">
-                        <button class="btn-glass btn-accent cal-add-btn" data-act="openAddBooking" data-edit-text="cal-add-btn">Add booking</button>
-                        <button class="btn-glass cal-add-btn" data-act="openBlockDates">Block dates</button>
-                        <div class="cal-updated">
-                            <span id="cal-updated-text"></span>
-                            <button class="cal-refresh-btn" id="cal-refresh-btn" data-act="autoSyncIcalBlocks" data-arg="true" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
+                        <!-- ONE Add button: adding a booking and blocking dates are the same kind
+                             of act (put something on the calendar), so they share a two-item
+                             choice. The ⋯ holds what is rarely wanted — the compact zoom and the
+                             external refresh (with how fresh the data is). -->
+                        <div class="bhub-actions">
+                            <button class="btn-glass btn-accent cal-add-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" data-edit-text="cal-add-btn">Add &#9662;</button>
+                            <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                                <button role="menuitem" data-act="openAddBooking">Add a booking</button>
+                                <button role="menuitem" data-act="openBlockDates">Block dates</button>
+                            </div>
+                        </div>
+                        <div class="bhub-actions">
+                            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="More calendar options" title="More calendar options">&#8943;</button>
+                            <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                                <p class="bhub-menu-note" role="none"><span id="cal-updated-text"></span></p>
+                                <button role="menuitem" aria-pressed="false" data-act="tlToggleZoom">Compact calendar</button>
+                                <button role="menuitem" id="cal-refresh-btn" data-act="autoSyncIcalBlocks" data-arg="true">Refresh external bookings</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -118,17 +130,25 @@
             <div class="bk-caprow">
                 <h2 class="bo-sec-title">Bookings</h2>
                 <span id="bookings-summary"></span>
-                <span id="bookings-verdict"></span>
+                <!-- The ⋯ holds the two filters that are audits rather than everyday
+                     views (Custom plan, All). The money verdict that used to sit here is
+                     the count on the Needs payment tab now. -->
+                <div class="bhub-actions bk-more">
+                    <button class="btn-sm btn-edit bhub-menu-btn" id="bookings-more-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="More ways to filter bookings" title="More ways to filter">&#8943;</button>
+                    <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                        <button role="menuitem" data-act="bookingsSetFilter" data-arg="customplan" data-bfilter="customplan">Custom plans only</button>
+                        <button role="menuitem" data-act="bookingsSetFilter" data-arg="all" data-bfilter="all">Show every booking</button>
+                    </div>
+                </div>
             </div>
             <!-- Per-page search removed — the back-office ⌘K search covers finding a
                  booking by guest, email or reference. The filters below stay. -->
             <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
-                <button class="inbox-sort-btn is-on" role="tab" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
-                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="needspay" data-bfilter="needspay">Needs payment</button>
-                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="customplan" data-bfilter="customplan">Custom plan</button>
-                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
-                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="all" data-bfilter="all">All</button>
+                <button class="inbox-sort-btn is-on" role="tab" aria-selected="true" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
+                <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="needspay" data-bfilter="needspay">Needs payment<span class="bk-count" id="bk-needs-count" hidden></span></button>
+                <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
             </div>
+            <div id="bookings-filter-chip"></div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
         </div>
         <aside id="bookings-detail-pane" aria-label="Selected booking">

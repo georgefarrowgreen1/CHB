@@ -1120,7 +1120,22 @@ body.light-mode .ny-act {
   font-size: var(--fs-caption);
   color: var(--text-muted);
 }
-#bookings-verdict { margin-left: auto; }
+/* The caption's ⋯ (Custom plan / All) sits on the right where the verdict capsule was. */
+.bk-more { margin-left: auto; }
+.bk-more .bhub-menu-btn { min-height: 44px; }
+.bhub-menu-btn.is-active { color: var(--accent-text); border-color: var(--accent-text); }
+/* WHO OWES, said once: a count on the tab that lists them. Same warn pair as .st-cap.is-warn
+   (a11y §1b discovers it), absent when it is zero. Settles when the count changes. */
+.bk-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 8px; margin-left: 8px; border-radius: var(--r-pill); font-size: var(--fs-micro); font-weight: 700; color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
+.bk-count[hidden] { display: none; }
+/* The way back from a filter that lives in the ⋯: what is on, and one tap to leave it. */
+#bookings-filter-chip:empty { display: none; }
+#bookings-filter-chip { margin: 8px 0 0; }
+.bk-fchip { font: inherit; font-size: var(--fs-sub); font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid var(--accent-text); color: var(--accent-text); background: transparent; cursor: pointer; }
+/* Calendar ⋯ menu: the sync note reads at every width (the phone rule hides it beside buttons), and
+   the refresh item shows it is working. */
+.cal-actions .bhub-menu #cal-updated-text { display: inline; }
+#cal-refresh-btn.syncing { opacity: 0.6; }
 /* The day's ✓ capsule BESIDE the Today title (todayOpsLine — only when the
    Needs-you strip below is empty; with duties present the strip carries the
    state). Wraps rather than squeezing the serif title at 390px. */

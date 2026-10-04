@@ -1233,7 +1233,7 @@ let approveWill409 = false;
   await page.waitForTimeout(300);
   // Share stay details: for the cleaner's chat — and deliberately NO money.
   await page.evaluate(() => { window.__shared = null; navigator.clipboard.writeText = (t) => { window.__shared = t; return Promise.resolve(); }; });
-  await page.click('.bhub-menu-btn');
+  await page.click('#booking-hub-content .bhub-menu-btn, #enquiry-hub-content .bhub-menu-btn');
   await page.waitForTimeout(200);
   await page.click('[data-act="shareStayDetails"]');
   await page.waitForTimeout(400);
@@ -1580,11 +1580,11 @@ let approveWill409 = false;
   // the source. The note must NOT be a menuitem (role="none"), or arrow keys land on
   // a line that does nothing.
   const delWhy = await page.evaluate(() => {
-    const notes = [...document.querySelectorAll('.bhub-menu .bhub-menu-note')];
+    const notes = [...document.querySelectorAll('#booking-hub-content .bhub-menu .bhub-menu-note')];
     return {
       says: notes.map((n) => n.textContent.trim()).join(' | '),
       roles: notes.map((n) => n.getAttribute('role')).join(','),
-      menuitems: document.querySelectorAll('.bhub-menu [role="menuitem"]').length,
+      menuitems: document.querySelectorAll('#booking-hub-content .bhub-menu [role="menuitem"]').length,
     };
   });
   ok(/Deleting isn’t possible/.test(delWhy.says) && /Cancel & refund/.test(delWhy.says),
@@ -1597,12 +1597,12 @@ let approveWill409 = false;
   // spot). The control is chrome, so its words ride aria-label/title; the
   // dropdown opens DOWNWARD from up there and must stay on screen.
   const menu1 = await page.evaluate(() => {
-    const menu = document.querySelector('.bhub-menu');
-    const btnEl = document.querySelector('.bhub-menu-btn');
+    const menu = document.querySelector('#booking-hub-content .bhub-menu');
+    const btnEl = document.querySelector('#booking-hub-content .bhub-menu-btn');
     return {
       hidden: menu && menu.style.display === 'none',
       items: menu ? menu.innerHTML : '',
-      headerBtns: document.querySelectorAll('.bhub-actions > .btn-sm').length,
+      headerBtns: document.querySelectorAll('#booking-hub-content .bhub-actions > .btn-sm').length,
       inHead: !!document.querySelector('.bhub-head .bhub-head-top .bhub-actions .bhub-menu-btn'),
       footGone: !document.querySelector('.bhub-foot'),
       named: btnEl ? (btnEl.getAttribute('aria-label') || '') : '',
@@ -1615,10 +1615,10 @@ let approveWill409 = false;
   ok(/edit/i.test(menu1.named), `the ⋯ carries its words as an accessible name (${menu1.named})`);
   ok(menu1.opensDown, 'its dropdown opens downward from the header');
   ok(/openEditBooking|bhubEdit/.test(menu1.items) && /cancelBooking|bhubCancel/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
-  await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
+  await page.evaluate(() => document.querySelector('#booking-hub-content .bhub-menu-btn').click());
   await page.waitForTimeout(200);
   const menuOpen = await page.evaluate(() => {
-    const m = document.querySelector('.bhub-menu');
+    const m = document.querySelector('#booking-hub-content .bhub-menu');
     const r = m.getBoundingClientRect();
     return { shown: m.style.display !== 'none', fits: r.top >= 0 && r.left >= -1 && r.right <= innerWidth + 1 };
   });
@@ -1633,7 +1633,7 @@ let approveWill409 = false;
   await page.waitForTimeout(300);
   const swallowed = await page.evaluate(async () => {
     window.scrollTo(0, 0);
-    const m = document.querySelector('.bhub-menu');
+    const m = document.querySelector('#booking-hub-content .bhub-menu');
     // Open it AT THIS SIZE — reusing the copy left open by the check above would
     // measure a placement made for the taller window (caught: maxHeight 686px in a
     // 390px viewport), which tests nothing about a short screen.
@@ -1642,7 +1642,7 @@ let approveWill409 = false;
     // document-level once-listener retire, then re-open.
     bhubMenuClose();
     await new Promise((r) => setTimeout(r, 60));
-    document.querySelector('.bhub-menu-btn').click();
+    document.querySelector('#booking-hub-content .bhub-menu-btn').click();
     await new Promise((r) => setTimeout(r, 60));
     const items = [...m.querySelectorAll('[role="menuitem"]')];
     const bad = [];
@@ -1663,20 +1663,20 @@ let approveWill409 = false;
   });
   ok(swallowed.n >= 3 && swallowed.sticky, `(fixture) a short screen shows the sticky bar under an open ⋯ menu (${swallowed.n} items)`);
   ok(swallowed.bad.length === 0, `every ⋯ item takes its own tap on a short screen (${swallowed.bad.join(' | ') || 'all clear'}) ${swallowed.dbg}`);
-  await page.evaluate(() => { const m = document.querySelector('.bhub-menu'); if (m) m.style.display = 'none'; });
+  await page.evaluate(() => { const m = document.querySelector('#booking-hub-content .bhub-menu'); if (m) m.style.display = 'none'; });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
-  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display === 'none'), 'Escape closes the menu');
+  ok(await page.evaluate(() => document.querySelector('#booking-hub-content .bhub-menu').style.display === 'none'), 'Escape closes the menu');
   // …AND THE NEXT TAP STILL OPENS IT. The outside-click listener is {once:true} and
   // was the only one bhubMenuClose did not remove, so closing by any other route
   // left it armed on `document` — where the data-act dispatcher also lives — and the
   // next tap ran the dispatcher (open) then the stale listener (close) in one event.
   // A dead second tap on the hub's only menu.
-  await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
+  await page.evaluate(() => document.querySelector('#booking-hub-content .bhub-menu-btn').click());
   await page.waitForTimeout(200);
-  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'),
+  ok(await page.evaluate(() => document.querySelector('#booking-hub-content .bhub-menu').style.display !== 'none'),
     'and the NEXT tap opens it again — no stale outside-click listener swallowing it');
   // …and blocked in code even if something calls it directly.
   const guard = page.evaluate(() => deleteBooking('b1'));
