@@ -685,7 +685,7 @@ body.light-mode .tl-cell:hover:not(:active) {
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 0); /* inside the first lane: the line starts below the header row */
 }
 .tl-cell:hover:not(:active) {
   background: rgba(255, 255, 255, 0.06);
