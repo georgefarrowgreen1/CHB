@@ -1,0 +1,15 @@
+{
+  "_doc": "ONE source of truth for 'what is this booking's rental?' — looped by test-payrail.php against booking_total_shape()/booking_rental_price()/booking_agreed_total() (db.php) and by smoke-test.js against bookingRentalPure() (app.js). Add a case here, never to either test. Row keys are the DB columns; `hasSnapshot` is what the client mapper derives from nightly/fee being non-null.",
+  "cases": [
+    { "name": "standard price, no override", "row": { "agreed_total": 500, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": null }, "shape": "standard", "rental": 500, "agreedTotal": 500 },
+    { "name": "negotiated price WITH its override", "row": { "agreed_total": 310, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": 310 }, "shape": "custom", "rental": 310, "agreedTotal": 310 },
+    { "name": "override lost: total negotiated, snapshot still standard (the reported shape)", "row": { "agreed_total": 260, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": null }, "shape": "lost", "rental": 260, "agreedTotal": 260 },
+    { "name": "older folded shape: total = standard + deposit", "row": { "agreed_total": 550, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": null }, "shape": "folded", "rental": 500, "agreedTotal": 550 },
+    { "name": "override that disagrees with the stored total keeps the override", "row": { "agreed_total": 400, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": 310 }, "shape": "mismatch", "rental": 310, "agreedTotal": 310 },
+    { "name": "a comped stay (override 0) is a real price", "row": { "agreed_total": 0, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": 0 }, "shape": "custom", "rental": 0, "agreedTotal": 0 },
+    { "name": "zero total with no override stays standard (never relabelled)", "row": { "agreed_total": 0, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": 50, "price_override": null }, "shape": "standard", "rental": 500, "agreedTotal": 0 },
+    { "name": "half-snapshotted legacy row says nothing about the total", "row": { "agreed_total": 260, "agreed_nightly": null, "agreed_txn_fee": null, "agreed_booking_fee": 50, "price_override": null }, "hasSnapshot": false, "shape": "unsnapshotted", "rental": 0, "agreedTotal": 260 },
+    { "name": "no snapshot at all", "row": { "agreed_total": null, "agreed_nightly": null, "agreed_txn_fee": null, "agreed_booking_fee": null, "price_override": null }, "hasSnapshot": false, "shape": "unsnapshotted", "rental": 0, "agreedTotal": 0 },
+    { "name": "no deposit snapshot: a total above standard is a negotiated price", "row": { "agreed_total": 560, "agreed_nightly": 480, "agreed_txn_fee": 20, "agreed_booking_fee": null, "price_override": null }, "shape": "lost", "rental": 560, "agreedTotal": 560 }
+  ]
+}

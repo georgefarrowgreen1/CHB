@@ -418,7 +418,7 @@ if ($b['agreed_total'] !== null) {
     $txPct = (float) $b['agreed_txn_pct'];
     $txFee = (float) $b['agreed_txn_fee'];
     $damages = (float) $b['agreed_booking_fee'];
-    $total = $b['price_override'] !== null ? (float) $b['price_override'] : (float) $b['agreed_total'];
+    $total = booking_agreed_total($b);
 } elseif ($rate) {
     $p = price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
     $nights = $p['nights'];

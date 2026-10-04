@@ -316,6 +316,33 @@ if ($cronTs === false) {
     }
 }
 
+// ---- Booking prices that lost their override ----------------------------
+// A negotiated price whose price_override was lost reads as a different rental on
+// different screens (booking_total_shape 'lost'). Migration-123 repaired the known
+// cases; this says if any exist now. Read-only.
+if (!empty($bcols['price_override']) && !empty($bcols['agreed_total'])) {
+    try {
+        $lost = 0;
+        $q = db()->query("SELECT agreed_total, agreed_nightly, agreed_txn_fee, agreed_booking_fee, price_override
+                          FROM bookings WHERE price_override IS NULL AND agreed_total > 0 AND check_out >= CURDATE()");
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            if (booking_total_shape($r) === 'lost') { $lost++; }
+        }
+        add(
+            $checks,
+            'Data',
+            'Booking prices',
+            $lost ? 'warn' : 'ok',
+            $lost
+                ? $lost . ' upcoming booking(s) have an agreed total that matches neither the standard price nor standard + deposit, with no custom price recorded.'
+                : 'Every upcoming booking\'s agreed total is consistent.',
+            $lost ? 'Open them and re-enter the agreed price in Edit so the screens agree.' : '',
+        );
+    } catch (Throwable $e) {
+        // best-effort: a diagnostics line must never break the page
+    }
+}
+
 // ---- Reply-by-email ------------------------------------------------------
 // Three states: webhook route (REPLY_INBOX), zero-setup POP3 (auto), or off.
 require_once __DIR__ . '/chat-lib.php';

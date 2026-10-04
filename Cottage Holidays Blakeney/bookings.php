@@ -289,12 +289,7 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
     if ($b === null) {
         $b = booking_by_id($bookingId);
     }
-    $total =
-        $b && $b['agreed_total'] !== null
-            ? ($b['price_override'] !== null
-                ? (float) $b['price_override']
-                : (float) $b['agreed_total'])
-            : 0.0;
+    $total = $b && $b['agreed_total'] !== null ? booking_agreed_total($b) : 0.0;
     $ledgerNet = booking_ledger_net($bookingId);
     // The booking's recorded deposit_paid can include MANUALLY entered cash/bank
     // payments that have NO ledger rows (set_payment). Recomputing paid purely from
@@ -406,7 +401,7 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             $txPct = (float) $b['agreed_txn_pct'];
             $txFee = (float) $b['agreed_txn_fee'];
             $deposit = (float) $b['agreed_booking_fee'];
-            $total = $b['price_override'] !== null ? (float) $b['price_override'] : (float) $b['agreed_total'];
+            $total = booking_agreed_total($b);
         } else {
             if (!$rate) {
                 return ['error' => 'Property rate not found'];
@@ -955,9 +950,7 @@ if ($action === 'update') {
         // rental (capped at the agreed deposit, cash rail only — the same
         // paid-above-rental rule damages_collected reads) is carried across.
         $carry = 0.0;
-        $prevTotal = $b['price_override'] !== null && $b['price_override'] !== ''
-            ? (float) $b['price_override']
-            : (float) ($b['agreed_total'] ?? 0);
+        $prevTotal = booking_agreed_total($b);
         if ($status === 'paid' && $prevTotal > 0 && ($b['hold_status'] ?? 'none') === 'none') {
             $carry = min(
                 round(max(0.0, (float) ($b['agreed_booking_fee'] ?? 0)), 2),
@@ -1165,10 +1158,7 @@ if ($action === 'set_payment') {
     // Honour a manual price override as the total (matches reconcile_booking_payment,
     // pay.php and the JS) so a part-payment against an overridden price reconciles to
     // the same figure everywhere instead of the un-overridden agreed_total.
-    $total =
-        $b['price_override'] !== null && $b['price_override'] !== ''
-            ? (float) $b['price_override']
-            : (float) ($b['agreed_total'] ?? 0);
+    $total = booking_agreed_total($b);
     // Legacy pre-snapshot rows have agreed_total NULL → total 0, against which
     // choosing 'Paid' reconciled deposit_paid to £0 (wiping recorded income) and
     // 'deposit' was impossible. Fall back to the LIVE price via booking_price()
@@ -1923,7 +1913,7 @@ if ($action === 'record_square_payment') {
         // Strict-null, not ?: — a £0 price override is a real price (a comped
         // stay), and ?: read it as "no override" and fell back to agreed_total.
         // Same predicate booking_amount_due uses; this site sat outside the fix.
-        $total = round((($b['price_override'] ?? null) !== null && $b['price_override'] !== '') ? (float) $b['price_override'] : (float) ($b['agreed_total'] ?? 0), 2);
+        $total = round(booking_agreed_total($b), 2);
         $cap = $total > 0 ? round($total + ($bundled ? $depDue : 0), 2) : 0;
         $paid = round(booking_paid_so_far(['id' => $id, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
         $paid = $cap > 0 ? min($cap, $paid) : $paid;

@@ -159,6 +159,15 @@ function booking_ledger_net($id)
 {
     return 0.0;
 }
+// Pure arithmetic, so the seam is the real rule (db.php's booking_agreed_total) rather
+// than an identity: the money assertions here measure against the figure it returns.
+function booking_agreed_total($b)
+{
+    if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
+        return (float) $b['price_override'];
+    }
+    return (float) ($b['agreed_total'] ?? 0);
+}
 function uk_date($iso)
 {
     $t = strtotime((string) $iso);

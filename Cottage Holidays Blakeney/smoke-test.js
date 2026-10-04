@@ -1096,6 +1096,25 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check(`deposit status matches all ${dfx.cases.length} shared fixtures`, disBad.length === 0, disBad.slice(0, 3).join(' | '));
     }
 
+    // The rental total: ONE fixture file, looped here against the client mirror and in
+    // test-payrail.php against db.php's booking_rental_price. Add cases to the JSON.
+    const brp = get('bookingRentalPure');
+    if (typeof brp !== 'function') { fail('bookingRentalPure is not defined'); }
+    else {
+        const rfx = JSON.parse(fs.readFileSync(path.join(path.dirname(HTML_PATH), 'rental-fixtures.json'), 'utf8'));
+        check('rental fixtures load', Array.isArray(rfx.cases) && rfx.cases.length >= 8);
+        const rBad = [];
+        for (const c of rfx.cases) {
+            const r = c.row;
+            const has = c.hasSnapshot !== undefined ? c.hasSnapshot : (r.agreed_nightly != null && r.agreed_txn_fee != null);
+            const b = { priceOverride: r.price_override != null ? Number(r.price_override) : null };
+            const p = { total: Number(r.agreed_total) || 0, rentalTotal: (parseFloat(r.agreed_nightly) || 0) + (parseFloat(r.agreed_txn_fee) || 0), damagesDeposit: Number(r.agreed_booking_fee) || 0, hasSnapshot: has };
+            const got = brp(b, p);
+            if (Math.abs(got - c.rental) > 0.005) rBad.push(`${c.name}: got ${got} want ${c.rental}`);
+        }
+        check(`bookingRentalPure matches all ${rfx.cases.length} shared fixtures`, rBad.length === 0, rBad.slice(0, 3).join(' | '));
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  THE OWNER'S PDF INVOICE, DRIVEN FOR REAL (downloadInvoice → jsPDF).
     //
