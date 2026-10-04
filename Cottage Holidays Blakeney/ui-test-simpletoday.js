@@ -56,6 +56,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   });
   ok(one.text === '' && !one.shown, `the line above the card is gone — empty and not painted ("${one.text}")`);
   ok(one.cap === '', 'and there is no ✓ capsule beside the title');
+  ok(await page.evaluate(() => getComputedStyle(document.querySelector('#view-backoffice .dashboard-header')).borderBottomWidth === '0px'), 'and no divider line sits under the Today title');
   console.log('§2 one task is a card with one button');
   const card = await page.evaluate(() => {
     const w = document.getElementById('needs-you');
@@ -136,6 +137,32 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(owes.btn && /£[\d,]+ to collect from 1 guest/.test(owes.txt), `someone owes → the figure, as a button ("${owes.txt}")`);
 
   if (process.env.CHB_SHOT) await page.screenshot({ path: process.env.CHB_SHOT, fullPage: true });
+
+  // The empty state is the standard one — and joined to the status row above it as ONE well, with no button.
+  await page.evaluate((o) => {
+    // Only a FINISHED stay remains, so Upcoming is empty while the books are known to be clear.
+    dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b8', dbId: 8, name: 'Old Guest', checkIn: o.a, checkOut: o.b, depositPaid: 640, payment: 'paid' })];
+    dbBookings['21a'] = []; dbBookings['pimpernel'] = []; renderBookings();
+  }, { a: d(-9), b: d(-5) });
+  await page.waitForTimeout(600); // let the list's own fade-in settle before measuring a gap
+  const emp = await page.evaluate(() => {
+    const e = document.querySelector('#bookings-list .bk-empty');
+    const o = document.querySelector('#bookings-owed .bk-owed');
+    const er = e ? e.getBoundingClientRect() : null, or = o ? o.getBoundingClientRect() : null;
+    return {
+      has: !!e, title: e ? (e.querySelector('p') || {}).textContent : '', sub: e ? (e.querySelector('small') || {}).textContent : '',
+      icon: !!(e && e.querySelector('svg')), buttons: e ? e.querySelectorAll('button, a').length : -1,
+      joined: !!(er && or) && Math.abs(or.bottom - er.top) <= 1,
+      seg: getComputedStyle(document.getElementById('bookings-filters')).borderTopWidth,
+    };
+  });
+  ok(emp.has && emp.title === 'No upcoming bookings' && /will appear here/.test(emp.sub), `the empty state names what is true and what fills it ("${emp.title}")`);
+  ok(emp.icon && emp.buttons === 0, 'it carries the mark and NO button (the + in the month row is the way to add)');
+  ok(emp.joined, 'it joins the status row above into one well (no gap between them) ');
+  ok(emp.seg !== '0px', `the tabs are a bordered segmented control, not a floating pill (${emp.seg})`);
+  await page.evaluate(() => { bookingsSetFilter('customplan'); });
+  ok(await page.evaluate(() => (document.querySelector('#bookings-list .bk-empty p') || {}).textContent === 'No bookings here'), 'a filter with nothing in it says so in its own words');
+  await page.evaluate(() => { bookingsSetFilter('upcoming'); });
 
   // ── SEVERAL duties keep the heading and the list ──
   rows = [mkB(2, 'jollyboat', 'Emma Clarke', -6, -2, 'paid', 0, 'charged'), mkB(3, 'pimpernel', 'Dan Rowe', -5, -1, 'paid', 0, 'charged')];

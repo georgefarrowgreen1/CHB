@@ -10418,9 +10418,9 @@ function renderBookings() {
         let html = '';
         if (owers.length) {
             const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay">£${Math.round(sumOwed).toLocaleString('en-GB')} to collect from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'} <span aria-hidden="true">›</span></button>`;
+            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay"><span class="bk-owed-ic" aria-hidden="true">£</span><span class="bk-owed-tx"><b>£${Math.round(sumOwed).toLocaleString('en-GB')} to collect</b> <small>from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}</small></span><span class="bk-owed-go">View <span aria-hidden="true">›</span></span></button>`;
         } else if (allRows.length) {
-            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything.</p>';
+            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything</p>';
         }
         if (owedEl.innerHTML !== html) {
             // A figure that CHANGED settles (3px, no scale — it was already on screen); the first
@@ -10435,8 +10435,17 @@ function renderBookings() {
         }
     }
     if (!rows.length) {
+        // THE STANDARD EMPTY STATE: a mark, a title that says what is true, one line on
+        // what fills it. No action — the + in the month row is the way to add one.
+        const emptyWords = q
+            ? ['No bookings match your search', 'Try a different name or reference.']
+            : f === 'upcoming'
+              ? ['No upcoming bookings', 'Stays you add, and enquiries you approve, will appear here.']
+              : f === 'past'
+                ? ['No past bookings', 'Stays that have finished will appear here.']
+                : ['No bookings here', 'Nothing matches this filter right now.'];
         list.innerHTML =
-            `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+            '<div class="bk-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><p>' + emptyWords[0] + '</p><small>' + emptyWords[1] + '</small></div>';
         // A filter with nothing in it is a subject change too — and calling it on
         // BOTH branches is what keeps the memo honest: recording the subject only
         // when rows exist would make the return trip read as unchanged.
