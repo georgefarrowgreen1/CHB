@@ -1352,8 +1352,8 @@ chk('...and that nothing was needed from them', strpos($auto['text'], 'Nothing w
 chk('the HTML half agrees with the text half', strpos($auto['html'], 'as arranged, we&#039;ve now collected your') !== false || strpos($auto['html'], "as arranged, we've now collected your") !== false);
 chk('the HTML half of a manual payment still thanks them', strpos($auto['html'], "thank you — we've received your") === false && strpos($manual['html'], "thank you — we've received your") !== false);
 // The subject is read before the mail is opened, so it carries the distinction too.
-chk('the subject names a collection', $auto['subject'] === 'Balance collected — Jollyboat');
-chk('...and a payment is still "Payment received"', $manual['subject'] === 'Payment received — Jollyboat');
+chk('the subject names a collection', $auto['subject'] === 'Balance collected: £300.00 — Jollyboat');
+chk('...and a payment is still "Payment received"', $manual['subject'] === 'Payment received: £300.00 — Jollyboat');
 // Everything else about the two must be identical — this is a wording branch,
 // not a second receipt.
 chk('both quote the same figure', strpos($auto['text'], '£300.00') !== false && strpos($manual['text'], '£300.00') !== false);
@@ -1917,7 +1917,7 @@ chk('...but says nothing about refunds when none is coming',
 // sender. A content_value() call in there would need a database and this gate has
 // none, which is the same reason payment_request_body takes $bacs as an argument.
 chk('the cancellation sender resolves the host name for it',
-    preg_match("/send_cancellation_email_body\\(\\\$b \\+ \\['host_name' => email_host_name\\(\\)\\]\\)/", $mlE) === 1);
+    preg_match("/send_cancellation_email_body\\(\\\$b \\+ \\['host_name' => email_host_name\\(\\)/", $mlE) === 1);
 // The other three outcome emails are DB-touching senders, so these are wiring
 // scans — but of the decision, not the ingredient.
 chk('the refund email attributes its note and dates the money',
@@ -1946,8 +1946,8 @@ chk('...and says it is single-use before they tap it, in both halves',
 // Both halves again, for the reason above (break-tested: deleting the HTML one
 // left the plain-text copy answering the scan).
 chk('the acknowledgement gives a timeframe, twice bounded, in both halves',
-    preg_match('/function send_enquiry_ack[\s\S]{0,2000}"usually within a few hours, and always by the end of the next day\./', $mlE) === 1
-    && preg_match("/function send_enquiry_ack[\s\S]{0,3200}'usually within a few hours, and always by the end of the next day\.',/", $mlE) === 1);
+    preg_match('/function send_enquiry_ack[\s\S]{0,2600}"usually within a few hours, and always by the end of the next day\./', $mlE) === 1
+    && preg_match("/function send_enquiry_ack[\s\S]{0,3800}'usually within a few hours, and always by the end of the next day\.',/", $mlE) === 1);
 chk('...and its preheader is PLAIN text (email_shell escapes it)',
     preg_match('/\$pre = "We\x27ll confirm your dates and price"/', $mlE) === 1
     && preg_match('/\$pre = .{0,120}&rsquo;/', $mlE) !== 1);

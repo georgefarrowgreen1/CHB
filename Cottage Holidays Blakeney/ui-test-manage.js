@@ -470,6 +470,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ids: !!document.querySelector('#sec-follow-ups .chb-switch #enq-nudge-toggle') && !!document.querySelector('#sec-follow-ups .chb-switch #anniv-nudge-toggle'),
       well: !!document.querySelector('#sec-follow-ups .acr-well'),
     };
+    // The thank-you switch: a REAL switch on the real checkbox, OFF by default, and filled from the
+    // PRIVATE map (an internal key is absent from the anonymous boot GET — the bacs-details rule).
+    const ty = document.getElementById('thankyou-toggle');
+    fu.ty = !!ty && !!ty.closest('.chb-switch') && ty.getAttribute('data-key') === 'thankyou-email' && !ty.hasAttribute('data-invert');
+    delete adminPrivateContent['thankyou-email']; delete siteContent['thankyou-email'];
+    hydrateFollowUpToggles();
+    fu.tyOff = ty ? ty.checked === false : null;
+    adminPrivateContent['thankyou-email'] = '1';
+    hydrateFollowUpToggles();
+    fu.tyOn = ty ? ty.checked === true : null;
+    delete adminPrivateContent['thankyou-email'];
+    hydrateFollowUpToggles();
     settingsOpen('notify');
     await new Promise((r) => setTimeout(r, 300));
     const nf = {
@@ -495,6 +507,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { fu, nf, sms, pay, away };
   });
   ok(p1.fu.ids && p1.fu.well, 'Follow-up emails: the REAL toggles wear the switch, in a well');
+  ok(p1.fu.ty && p1.fu.tyOff === true && p1.fu.tyOn === true, `the thank-you switch is off by default and shows ON from the private setting (${p1.fu.ty}/${p1.fu.tyOff}/${p1.fu.tyOn})`);
   ok(p1.nf.rows === p1.nf.cats && p1.nf.cats >= 4 && p1.nf.quiet === 2, `Notifications: every category is a switch row + quiet-hour pills (${p1.nf.rows}/${p1.nf.cats}/${p1.nf.quiet})`);
   ok(p1.sms.sw && p1.sms.wells === 2 && p1.sms.token === 'password', `Text messages: switch + two wells, the token stays write-only (${p1.sms.wells})`);
   ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the input only — Save stays the write (${p1.pay.bumped})`);

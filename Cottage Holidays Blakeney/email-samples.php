@@ -193,6 +193,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'deposit_return' => ['Damage deposit return', fn() => send_deposit_return_email($b)],
         'cancellation' => ['Booking cancelled', fn() => send_cancellation_email($b)],
         'anniversary' => ['Anniversary re-invite', fn() => send_anniversary_email($b)],
+        'thank_you' => ['Thank-you (day after checkout)', fn() => send_thank_you_email($b + ['deposit' => 75.0])],
         'direct_followup' => ['Book-direct re-invite (external reviewer)', fn() => send_direct_followup_email($b)],
         // THE SIX THAT HAD NO PREVIEW. The selection above looked decided and was
         // accidental: it omitted both AUTOMATIC-PAYMENT emails — the newest and most

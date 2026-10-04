@@ -1029,6 +1029,20 @@ function email_serif()
 {
     return "'Playfair Display',Georgia,'Times New Roman',serif";
 }
+// A short, single-line excerpt for a SUBJECT: whitespace collapsed, square brackets
+// dropped (a "[#token]" typed by a stranger must never read as a reply-routing tag) and
+// cut on a word with an ellipsis. Plain text out; callers escape for HTML as usual.
+function email_snip($s, $max = 60)
+{
+    $t = trim(preg_replace('/\s+/', ' ', str_replace(['[', ']'], '', (string) $s)));
+    if (function_exists('mb_strlen') && mb_strlen($t) > $max) {
+        $t = mb_substr($t, 0, $max);
+        $t = rtrim(preg_replace('/\s+\S*$/u', '', $t) ?: $t, " ,.;:-") . '…';
+    } elseif (!function_exists('mb_strlen') && strlen($t) > $max) {
+        $t = rtrim(substr($t, 0, $max), " ,.;:-") . '…';
+    }
+    return $t;
+}
 function email_esc($s)
 {
     return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
@@ -1250,6 +1264,83 @@ function email_btn2($href, $label)
         '<a href="' . email_esc($href) . '" style="display:block;color:' . email_accent_ink() . ';text-decoration:none;font-family:' . $sans .
         ';font-size:14.5px;font-weight:700;line-height:48px;">' . email_esc($label) . '</a>' .
         '</td></tr></table>';
+}
+// "Sun 6 – Fri 11 Sep": a stay range as people say it. The month is named once when both
+// ends share it. Email-only, like email_date.
+function email_range($fromIso, $toIso)
+{
+    $a = strtotime((string) $fromIso);
+    $z = strtotime((string) $toIso);
+    if (!$a || !$z) {
+        return trim(email_date($fromIso, false) . ' – ' . email_date($toIso, false), ' –');
+    }
+    if (date('Y-m', $a) === date('Y-m', $z)) {
+        return date('D j', $a) . ' – ' . date('D j M', $z);
+    }
+    return date('D j M', $a) . ' – ' . date('D j M', $z);
+}
+// WHAT HAPPENS NEXT, as steps a guest can tick off in their head. $steps = [[title,
+// sub, done], …]: title and sub are PLAIN TEXT (escaped here), done is a bool. A tick
+// for what has happened, an open circle for what has not — and no promise the system
+// does not keep: callers state only steps they can stand behind.
+function email_timeline($steps)
+{
+    $sans = email_sans();
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 10px;">';
+    foreach ($steps as $st) {
+        $done = !empty($st[2]);
+        $out .= '<tr><td width="30" valign="top" style="padding:7px 0;font-family:' . $sans . ';font-size:16px;line-height:1.4;color:' .
+            ($done ? '#2E7D32' : email_muted_ink()) . ';">' . ($done ? '&#10003;' : '&#9675;') . '</td>' .
+            '<td valign="top" style="padding:7px 0;font-family:' . $sans . ';">' .
+            '<div style="font-size:14.5px;font-weight:700;color:#2A2622;line-height:1.4;">' . email_esc($st[0]) . '</div>' .
+            (isset($st[1]) && $st[1] !== '' ? '<div style="font-size:13px;color:' . email_muted_ink() . ';line-height:1.5;">' . email_esc($st[1]) . '</div>' : '') .
+            '</td></tr>';
+    }
+    return $out . '</table>';
+}
+// ARRIVE / LEAVE as a pair, side by side — the two facts a traveller checks first.
+// Times are optional ('' prints nothing, never "from 12am").
+function email_dates($inIso, $inTime, $outIso, $outTime)
+{
+    $sans = email_sans();
+    $cell = function ($label, $iso, $time, $prep) use ($sans) {
+        $t = email_time($time);
+        return '<td width="50%" valign="top" style="padding:13px 0;font-family:' . $sans . ';">' .
+            '<div style="font-size:13px;font-weight:600;color:' . email_muted_ink() . ';">' . $label . '</div>' .
+            '<div style="font-size:18px;font-weight:700;letter-spacing:-0.01em;color:#2A2622;line-height:1.35;">' . email_esc(email_date($iso)) . '</div>' .
+            ($t !== '' ? '<div style="font-size:13px;color:' . email_muted_ink() . ';">' . $prep . ' ' . email_esc($t) . '</div>' : '') .
+            '</td>';
+    };
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0 6px;border-top:1px solid #EFE9DD;"><tr>' .
+        $cell('Arrive', $inIso, $inTime, 'from') . $cell('Leave', $outIso, $outTime, 'by') . '</tr></table>';
+}
+// Add the stay to a calendar in one tap. Google and Outlook take a link (no file); Apple
+// Calendar opens the .ics the confirmation attaches. Pure: facts in, URLs out.
+function email_cal_urls($b)
+{
+    $prop = trim((string) ($b['prop_name'] ?? '')) !== '' ? (string) $b['prop_name'] : 'Your cottage';
+    $inT = trim((string) ($b['check_in_time'] ?? '')) !== '' ? (string) $b['check_in_time'] : '15:00';
+    $outT = trim((string) ($b['check_out_time'] ?? '')) !== '' ? (string) $b['check_out_time'] : '10:00';
+    $s = date('Ymd', strtotime((string) $b['check_in'])) . 'T' . date('Hi', strtotime('2000-01-01 ' . $inT)) . '00';
+    $e = date('Ymd', strtotime((string) $b['check_out'])) . 'T' . date('Hi', strtotime('2000-01-01 ' . $outT)) . '00';
+    $title = 'Stay at ' . $prop;
+    $where = trim((string) ($b['address'] ?? ''));
+    $google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' . rawurlencode($title) .
+        '&dates=' . $s . '/' . $e . '&ctz=Europe%2FLondon' . ($where !== '' ? '&location=' . rawurlencode($where) : '');
+    $outlook = 'https://outlook.live.com/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=' . rawurlencode($title) .
+        '&startdt=' . rawurlencode(date('Y-m-d', strtotime((string) $b['check_in'])) . 'T' . date('H:i', strtotime('2000-01-01 ' . $inT)) . ':00') .
+        '&enddt=' . rawurlencode(date('Y-m-d', strtotime((string) $b['check_out'])) . 'T' . date('H:i', strtotime('2000-01-01 ' . $outT)) . ':00') .
+        ($where !== '' ? '&location=' . rawurlencode($where) : '');
+    return ['google' => $google, 'outlook' => $outlook];
+}
+function email_cal_links($b)
+{
+    $u = email_cal_urls($b);
+    $sans = email_sans();
+    $link = fn($href, $label) => '<a href="' . email_esc($href) . '" style="font-family:' . $sans . ';font-size:13.5px;font-weight:700;color:' . email_accent_ink() . ';text-decoration:none;">' . $label . '</a>';
+    return '<p style="font-family:' . $sans . ';font-size:13.5px;color:' . email_muted_ink() . ';line-height:1.9;margin:12px 0 0;">Add to your calendar: ' .
+        $link($u['google'], 'Google') . ' &nbsp;&middot;&nbsp; ' . $link($u['outlook'], 'Outlook') .
+        ' &nbsp;&middot;&nbsp; <span>Apple (the attached invite)</span></p>';
 }
 // Small print that is PROSE. email_rows() splits its content across two columns, so a
 // sentence put through it wraps 2+2 lines and reads as a label beside a value.
@@ -1591,6 +1682,77 @@ function send_owner_payment_notice($b)
     return send_owner($m['subject'], $m['text']);
 }
 
+// The day-after-checkout thank-you — PURE (facts in as arguments, like arrival_email_body), so
+// the render gate drives the real thing. $b: name, prop_key, prop_name, check_in, check_out,
+// deposit (the refundable amount charged, 0 for none), rebook_url, photo (data URI or '').
+// It fills the silence between checkout and the review ask, leads with what a guest is
+// wondering (their deposit), and makes the review request a follow-up rather than the
+// first thing we say after they leave. It promises only what the system keeps: the
+// deposit really is returned after checkout (and emailed), and the review ask really
+// does follow in a day or two.
+function thank_you_body($b)
+{
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];
+    $name = first_name($b['name'] ?? '', 'there');
+    $prop = trim((string) ($b['prop_name'] ?? '')) !== '' ? (string) $b['prop_name'] : 'your cottage';
+    $dep = round((float) ($b['deposit'] ?? 0), 2);
+    $url = trim((string) ($b['rebook_url'] ?? ''));
+    $range = !empty($b['check_in']) && !empty($b['check_out']) ? email_range($b['check_in'], $b['check_out']) : '';
+    $depSentence = $dep > 0
+        ? 'Your £' . number_format($dep, 2) . ' refundable deposit comes back after checkout, provided there’s no damage — we’ll email you when it’s on its way.'
+        : '';
+    $subject = "Thank you for staying, {$name}";
+    $text =
+        "Thank you for staying, {$name}.\n\n" .
+        "We hope you had a lovely time at {$prop}" . ($range !== '' ? " ({$range})" : '') . " and that Blakeney treated you well.\n\n" .
+        ($depSentence !== '' ? $depSentence . "\n\n" : '') .
+        ($url !== '' ? "Coming back? Booking direct is the best price — no platform fees.\nSee dates & prices: {$url}\n\n" : '') .
+        "In a day or two we'll ask how it went — it takes a minute and helps other guests.\n\n" .
+        "Cottage Holidays Blakeney";
+    $inner =
+        email_h('Thank you for staying, ' . $name . '.') .
+        email_p(
+            'We hope you had a lovely time at <strong style="color:#2A2622;">' . email_esc($prop) . '</strong>' .
+                ($range !== '' ? ' (' . email_esc($range) . ')' : '') . ' and that Blakeney treated you well.',
+        ) .
+        ($depSentence !== '' ? email_note(email_esc($depSentence), $accent) : '') .
+        ($url !== ''
+            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#2A2622;margin:22px 0 2px;">Coming back?</div>' .
+                email_p('Booking direct is the best price &mdash; no platform fees &mdash; and the easiest way to get the weeks you like.', true) .
+                email_btn($url, 'See dates & prices')
+            : '') .
+        email_footnote('In a day or two we&rsquo;ll ask how it went &mdash; it takes a minute and helps other guests.') .
+        email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell(
+        'We hope ' . $prop . ' treated you well.' . ($dep > 0 ? ' Your deposit comes back after checkout.' : ''),
+        $inner,
+        $accent,
+        ['photo' => email_photo_band((string) ($b['photo'] ?? ''), $prop)] +
+            (trim((string) ($b['unsub'] ?? '')) !== '' ? ['unsubscribe' => (string) $b['unsub']] : []),
+    );
+    return ['subject' => $subject, 'text' => $text, 'html' => $html, 'name' => $name];
+}
+// Thin sender: resolves what the pure builder cannot (the photo and the cottage's own page).
+function send_thank_you_email($b)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $b['photo'] = (string) ($b['photo'] ?? email_prop_photo($b['prop_key'] ?? ''));
+    $b['rebook_url'] = (string) ($b['rebook_url'] ?? email_cottage_url($b['prop_key'] ?? ''));
+    // It carries a come-back pitch, so it gets the same one-click unsubscribe the other
+    // marketing-ish email (the anniversary invite) has — and the cron skips anyone on the list.
+    $base = function_exists('site_base_url') ? site_base_url() : '';
+    $b['unsub'] = (string) ($b['unsub'] ?? ($base && function_exists('email_optout_token')
+        ? $base . 'email-optout.php?e=' . rawurlencode($b['email']) . '&t=' . email_optout_token($b['email'])
+        : ''));
+    $m = thank_you_body($b);
+    $headers = $b['unsub'] !== ''
+        ? ['List-Unsubscribe' => '<' . $b['unsub'] . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']
+        : [];
+    return smtp_send($b['email'], $m['name'], $m['subject'], $m['text'], $m['html'], [], null, null, $headers);
+}
+
 // Ask a past guest to leave a review. $b: name, email, prop_key, prop_name, reviewUrl.
 function send_review_request_email($b)
 {
@@ -1879,7 +2041,9 @@ function send_enquiry_ack($enq, $accountExists = false)
         ? 'You already have an account with us — sign in to track this enquiry and manage your bookings.'
         : 'Tip: create an account next time you visit (just set a password) to track this enquiry, message us and book faster.';
 
-    $subject = "We've received your enquiry — Cottage Holidays Blakeney";
+    // THE PROMISE IN THE SUBJECT: the one question this email answers is "when do I hear
+    // back?", so it is readable before the email is opened.
+    $subject = "We've got your enquiry" . ($prop ? " for {$prop}" : '') . " — we'll reply within a day";
     // The preheader is the line the inbox shows beside the subject, so it earns its
     // place by carrying the answer to the next question rather than repeating the
     // subject back — which is what "We've received your enquiry" did.
@@ -1903,11 +2067,9 @@ function send_enquiry_ack($enq, $accountExists = false)
         'Cottage Holidays Blakeney';
 
     $inner =
-        email_h('Enquiry received') .
+        email_h('Thanks, ' . $first . ' — we\'ve got it.') .
         email_p(
-            'Hi ' .
-                email_esc($first) .
-                ', thanks for your enquiry' .
+            'Thanks for your enquiry' .
                 ($prop ? ' about <strong style="color:#2A2622;">' . email_esc($prop) . '</strong>' : '') .
                 ($dates ? ' for <strong style="color:#2A2622;">' . email_esc($dates) . '</strong>' : '') .
                 '.',
@@ -2231,8 +2393,11 @@ function send_owner_enquiry_email($e)
         ((int) ($e['children'] ?? 0)
             ? ' + ' . (int) $e['children'] . ' child' . ((int) $e['children'] === 1 ? '' : 'ren')
             : '');
+    // WHO, WHERE, WHEN AND HOW MUCH, readable on a lock screen — the four things the
+    // decision starts from. The quote is the site's own figure; absent, it is simply left out.
+    $quoteTotal = is_array($e['price'] ?? null) && isset($e['price']['total']) ? ' (£' . number_format((float) $e['price']['total'], 2) . ')' : '';
     $subject =
-        'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . email_date($e['check_in']) . ' to ' . email_date($e['check_out']);
+        'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . email_range($e['check_in'], $e['check_out']) . $quoteTotal;
 
     // Full booking context so the owner can decide (and reply) straight from the
     // inbox without opening the back office: contact, address, times, the price
@@ -2330,7 +2495,7 @@ function send_owner_enquiry_email($e)
         email_btn($e['approve_url'], 'Review & approve') .
         email_btn2($e['decline_url'], 'Decline this enquiry') .
         email_footnote('Each link opens a confirmation page first &mdash; nothing happens until you press the button there.');
-    $html = email_shell('New enquiry — ' . $prop, $inner);
+    $html = email_shell('You promised a reply by the end of the next day. ' . $party . ' · ' . $prop . '.', $inner);
     return send_owner($subject, $text, $html);
 }
 
@@ -2378,11 +2543,13 @@ function send_booking_emails($b)
 
     // ---- Guest confirmation ----
     if (!empty($b['email'])) {
-        $subject = "Your booking is confirmed — {$b['prop_name']}";
+        // THE SUBJECT SAYS WHICH STAY AND WHEN, so it can be found again in a search for
+        // "Jollyboat" or "Sep" — not just that "a booking" happened.
+        $subject = "You’re booked: {$b['prop_name']}, " . email_range($b['check_in'], $b['check_out']);
 
         // Plain-text fallback (clients that block HTML still get this)
-        $body = "Dear " . first_name($b['name'], 'Guest') . ",\n\n";
-        $body .= "Good news — your booking at {$b['prop_name']} is confirmed.\n\n";
+        $body = "You’re booked, " . first_name($b['name'], 'Guest') . ".\n\n";
+        $body .= "{$b['prop_name']} is yours from " . email_date($b['check_in']) . ".\n\n";
         $body .= "Booking reference: {$b['ref']}\n";
         $body .= 'Check in:  ' . email_date($b['check_in']) . ' from ' . email_time($b['check_in_time']) . "\n";
         $body .= 'Check out: ' . email_date($b['check_out']) . ' by ' . email_time($b['check_out_time']) . "\n";
@@ -2448,6 +2615,27 @@ function send_booking_emails($b)
         }
         if ($balNow > 0.001 && !empty($b['id']) && payment_rail($b) === 'card' && function_exists('square_enabled') && square_enabled() && function_exists('pay_token')) {
             $body .= "\nPay the balance: " . site_base_url() . 'index.html?pay=' . pay_token((int) $b['id']) . '&b=' . (int) $b['id'] . "\n";
+        }
+        // WHAT HAPPENS NEXT — the same steps the designed email shows, stated only where
+        // the system keeps the promise (the arrival email really does go out a few days
+        // before, the deposit really is returned after checkout).
+        $nextSteps = [];
+        if ($paidNow > 0) {
+            $nextSteps[] = [$balNow > 0.001 ? 'Payment received' : 'Paid in full', $money($paidNow) . ' — thank you', true];
+        }
+        if ($balNow > 0.001) {
+            $nextSteps[] = ['Balance of ' . $money($balNow), !empty($b['balance_due_date']) ? 'due by ' . email_date((string) $b['balance_due_date']) : 'still to come', false];
+        }
+        $nextSteps[] = ['Arrival details', 'directions and entry information, emailed a few days before you arrive', false];
+        $nextSteps[] = ['Your stay', email_range($b['check_in'], $b['check_out']), false];
+        if ($depAmt > 0) {
+            $nextSteps[] = ['Your ' . $money($depAmt) . ' deposit', 'returned after checkout, provided there’s no damage', false];
+        }
+        $calUrls = email_cal_urls($b);
+        $body .= "\nAdd to your calendar:\n  Google:  " . $calUrls['google'] . "\n  Outlook: " . $calUrls['outlook'] . "\n  Apple:   open the attached invite\n";
+        $body .= "\nWHAT HAPPENS NEXT\n";
+        foreach ($nextSteps as $st) {
+            $body .= ($st[2] ? '[x] ' : '[ ] ') . $st[0] . ($st[1] !== '' ? ' — ' . $st[1] : '') . "\n";
         }
         $body .= "\nYour booking page: " . site_base_url() . "index.html?open=stay\n";
         if (!empty($b['invoice_url'])) {
@@ -2547,20 +2735,19 @@ function send_booking_emails($b)
                     : '')) .
             '</table></td></tr></table>';
         $inner =
-            email_h($b['prop_name'], $accent) .
+            email_h('You’re booked, ' . first_name($b['name'], 'Guest') . '.', $accent) .
             '<div style="font-family:' .
             $sans .
-            ';font-size:12px;font-weight:600;color:' . email_muted_ink() . ';margin:2px 0 16px;">Booking ref ' .
+            ';font-size:12px;font-weight:600;color:' . email_muted_ink() . ';margin:2px 0 6px;">Booking ref ' .
             $esc($b['ref']) .
             ' &nbsp;&middot;&nbsp; ' .
             $statusBadge .
             '</div>' .
-            email_p('Dear ' . $esc(first_name($b['name'], 'Guest')) . ', good news — your stay is confirmed. Here are the details:') .
+            email_p('<strong style="color:#2A2622;">' . $esc($b['prop_name']) . '</strong> is yours from ' . email_date($b['check_in']) . '. Here are the details:') .
+            email_dates($b['check_in'], $b['check_in_time'], $b['check_out'], $b['check_out_time']) .
+            email_cal_links($b) .
+            // (Arrive and Leave are the dates block above — said once, not twice.)
             email_rows([
-                // email_time('') is '' — a cleared time field must not leave a
-                // dangling "· from " on the row, so the fragment is conditional.
-                ['Arrive', '<strong>' . email_date($b['check_in']) . '</strong>' . (email_time($b['check_in_time']) !== '' ? ' &middot; from ' . email_time($b['check_in_time']) : '')],
-                ['Leave', '<strong>' . email_date($b['check_out']) . '</strong>' . (email_time($b['check_out_time']) !== '' ? ' &middot; by ' . email_time($b['check_out_time']) : '')],
                 ['Party', $esc($party)],
                 ['Payment', '<span style="color:' . $paymentColor . ';font-weight:600;">' . $paymentLabel . '</span>'],
             ]) .
@@ -2575,6 +2762,8 @@ function send_booking_emails($b)
             // card rail is the guest's (an owner-arranged stay is settled by hand — the
             // bookingOwnerArranged rule).
             $payCta .
+            '<div style="font-family:' . $sans . ';font-size:15px;font-weight:700;color:#2A2622;margin:22px 0 2px;">What happens next</div>' .
+            email_timeline($nextSteps) .
             (!empty($b['invoice_url']) ? email_btn2($b['invoice_url'], 'View your invoice') : '') .
             (!empty($b['guest_reg_url']) ? email_p('<strong>Before you arrive:</strong> UK law asks us to record the name &amp; nationality of everyone staying who is 16 or over. Please add your guest details — it only takes a minute.', true) . email_btn($b['guest_reg_url'], 'Add your guest details') : '') .
             ($depAmt > 0
@@ -2588,8 +2777,10 @@ function send_booking_emails($b)
         // THE PREVIEW FINISHES THE THOUGHT the subject starts — the ~90 inbox
         // characters carry the facts the subject doesn't, instead of restating it.
         $html = email_shell(
-            email_date($b['check_in'], false) . ' – ' . email_date($b['check_out'], false) .
-                ' — your dates are held, and everything you need is inside',
+            ($balNow > 0.001
+                ? ($paidNow > 0 ? $money($paidNow) . ' paid; ' . $money($balNow) . ' still to come' . $dueByLine . '.' : $money($balNow) . ' to pay' . $dueByLine . '.')
+                : 'Paid in full — nothing more to pay.') .
+                ' Add the dates to your calendar.',
             $inner,
             $accent,
             ['photo' => email_photo_band(email_prop_photo($b['prop_key'] ?? ''), (string) ($b['prop_name'] ?? ''))],
@@ -2611,7 +2802,9 @@ function send_booking_emails($b)
     // Skipped on a payment re-send (skip_owner) so the owner isn't re-pinged with
     // "new booking" each time a payment is recorded.
     if (empty($b['skip_owner']) && owner_recipients()) {
-        $subject = "New confirmed booking — {$b['prop_name']} (" . email_date($b['check_in']) . ")";
+        // WHO, WHERE, WHEN, and the money state — what the owner wants from a lock screen.
+        $subject = 'New booking: ' . ($b['name'] ?: 'A guest') . ", {$b['prop_name']}, " . email_range($b['check_in'], $b['check_out']) .
+            (round((float) ($b['paid_so_far'] ?? 0), 2) > 0 ? ' (£' . number_format((float) $b['paid_so_far'], 2) . ' paid)' : '');
         $body = "A booking has just been confirmed.\n\n";
         $body .= "Reference: {$b['ref']}\n";
         $body .= "Property: {$b['prop_name']}\n";
@@ -2743,7 +2936,7 @@ function arrival_email_body($b)
         }
     }
 
-    $subject = "You arrive {$inDate} — everything you need for {$prop}";
+    $subject = 'See you ' . email_date($b['check_in'], false) . ": directions and everything for {$prop}";
     $text =
         ($note !== '' ? $note . "\n\n" : "Hello {$name},\n\n") .
         "Arrive: {$inDate}, any time from {$time}\n" .
@@ -2755,22 +2948,11 @@ function arrival_email_body($b)
         ($phone !== '' ? "Trouble getting in, or running late? Call {$phone} — or just reply to this email.\n\n" : "Running late or stuck? Just reply to this email.\n\n") .
         "We look forward to seeing you.\n\nCottage Holidays Blakeney";
 
-    $rows = [
-        [
-            'Arrive',
-            '<strong>' . $inDate . '</strong><br><span style="font-weight:400;color:' . email_muted_ink() . ';">any time from ' . $time . '</span>',
-        ],
-    ];
-    // Check-out was absent from this email entirely, and it is the second thing guests
-    // forget.
-    if ($outDate !== '') {
-        $rows[] = [
-            'Leave',
-            '<strong>' . $outDate . '</strong><br><span style="font-weight:400;color:' . email_muted_ink() . ';">by ' . $outTime . '</span>',
-        ];
-    }
+    // THE FIRST THING ON THE DAY IS "HOW DO I GET THERE", so directions lead as the one
+    // filled button; the booking page is the quiet second. Arrive/Leave is the dates pair
+    // (check-out is the second thing guests forget, so it stays).
     $inner =
-        email_h('You arrive ' . email_date($b['check_in'], false), $accent) .
+        email_h('See you ' . date('l', strtotime((string) $b['check_in'])) . ', ' . $name . '.', $accent) .
         // The owner's own words when they reviewed it, else the house sentence.
         // email_p expects PRE-ESCAPED HTML (the asymmetry in CLAUDE.md), and a
         // reviewed note is free text typed by a person — so it is escaped here
@@ -2779,13 +2961,14 @@ function arrival_email_body($b)
             ? nl2br(email_esc($note))
             : 'Hello ' . email_esc($name) . ' — everything you need for <strong>' .
                 email_esc($prop) . '</strong> is below. We look forward to seeing you.') .
-        email_rows($rows) .
+        ($addr !== '' ? email_btn(email_maplink($addr), 'Directions to ' . $prop) : '') .
+        email_dates($b['check_in'], $b['check_in_time'] ?: '15:00', $outDate !== '' ? $b['check_out'] : $b['check_in'], $outDate !== '' ? ($b['check_out_time'] ?: '10:00') : '') .
         email_address_block($addr) .
         email_note(
-            '<strong style="color:#2A2622;">Your entry details</strong><br>They appear on your booking page once you&rsquo;re here — tap below and open <strong style="color:#2A2622;">Your stay</strong>.',
+            '<strong style="color:#2A2622;">Your entry details</strong><br>They appear on your booking page once you&rsquo;re here &mdash; we never email a door code. Tap below and open <strong style="color:#2A2622;">Your stay</strong>.',
             $accent,
         ) .
-        email_btn($stayUrl, 'Open my booking') .
+        ($addr !== '' ? email_btn2($stayUrl, 'Open my booking') : email_btn($stayUrl, 'Open my booking')) .
         // THE HOUSE RULES, and only the owner's OWN. The arrive/leave rows above
         // already state the times, so repeating them as "Check-in after 3pm"
         // would say one fact twice in one email — the guest's stay screen leads
@@ -2813,7 +2996,7 @@ function arrival_email_body($b)
                 : 'Running late or stuck? Just reply to this email and we&rsquo;ll help.',
         );
     $html = email_shell(
-        'You arrive ' . email_date($b['check_in'], false) . ' — address, times and your entry details.',
+        'Check-in from ' . $time . '. Directions are the first button; your entry details appear in your booking on the day.',
         $inner,
         $accent,
         ['photo' => email_photo_band((string) ($b['photo'] ?? ''), $prop)],
@@ -3062,7 +3245,11 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         $offerText = "\n\n" . $offerLead . "\n" . implode("\n", $oLines) . "\n" . $offerFine;
     }
 
-    $subject = "Pay your {$what} — {$prop}";
+    // THE FIGURE (AND THE DATE) IN THE SUBJECT: it is what is read on a lock screen, and
+    // what a search for "£525" finds later.
+    $subject = $b['kind'] === 'balance' && $dueBy !== ''
+        ? $money($f['chargedNow']) . ' due ' . email_date($dueBy, false) . " — {$prop}"
+        : "Pay your {$what}: " . $money($f['chargedNow']) . " for {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Thank you for booking {$prop} (" . email_date($b['check_in']) . " to " . email_date($b['check_out']) . ").\n\n" .
@@ -3381,7 +3568,8 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
         '<strong>' . $esc($money($f['chargedNow'])) . '</strong>',
     ];
 
-    $subject = "Reminder: {$noun} due for {$prop}";
+    $subject = 'Reminder: ' . $money($f['chargedNow']) .
+        ($dueBy !== '' ? ' due ' . email_date($dueBy, false) : ($kind === 'deposit' ? ' deposit due now' : ' due')) . " — {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Just a friendly reminder that the {$noun} for your stay at {$prop} is still outstanding, " .
@@ -3557,7 +3745,7 @@ function send_refund_email($b)
     $prop = $b['prop_name'] ?: 'your cottage';
     $reason = trim((string) ($b['reason'] ?? ''));
 
-    $subject = "Refund on its way — {$prop}";
+    $subject = $money($b['amount']) . " refunded to your card — {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "We've issued a refund of " .
@@ -3568,6 +3756,7 @@ function send_refund_email($b)
         ($reason !== '' ? "A note from " . email_host_name() . ": {$reason}\n\n" : '') .
         "It's been sent back to the card you paid with, and usually appears in 3-5 working days,\n" .
         "though some banks take a little longer.\n\n" .
+        "WHAT HAPPENS NEXT\n[x] Refund issued — today\n[ ] It reaches your card — 3-5 working days\n\n" .
         "Any questions, just reply to this email.\n\nCottage Holidays Blakeney";
 
     $inner =
@@ -3588,6 +3777,7 @@ function send_refund_email($b)
         // a rejection letter, on an email about money going back. Attributed to the
         // person who wrote it, the same words read as what they are.
         email_ownernote(email_host_name(), $reason) .
+        email_timeline([['Refund issued', 'Today', true], ['It reaches your card', '3–5 working days', false]]) .
         email_footnote(
             'It&rsquo;s on its way back to the card you paid with, and usually appears in 3&ndash;5 working days &mdash; though some banks take a little longer.',
         ) .
@@ -3618,7 +3808,9 @@ function send_deposit_return_email($b)
     $retained = round(max(0, $held - (float) $b['amount']), 2);
     $how = !empty($b['manual']) ? 'by the method we agreed' : 'to the card you paid with';
 
-    $subject = "Your damage deposit — {$prop}";
+    $subject = $retained > 0.001
+        ? 'Your deposit: ' . $money($b['amount']) . " returned — {$prop}"
+        : 'Your ' . $money($b['amount']) . " deposit is on its way back — {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Thank you for staying at {$prop}. We're returning your refundable damage deposit.\n\n" .
@@ -3628,10 +3820,11 @@ function send_deposit_return_email($b)
         ($retained > 0.001 ? 'Retained: ' . $money($retained) . ' of the ' . $money($held) . " held.\n" : '') .
         ($retained > 0.001 && $reason !== '' ? "\nA note from " . email_host_name() . ": {$reason}\n" : '') .
         "\nIt usually appears in 3-5 working days, though some banks take a little longer.\n\n" .
+        "WHAT HAPPENS NEXT\n[x] Returned — today\n[ ] It reaches you — 3-5 working days\n\n" .
         "We hope to welcome you back.\n\nCottage Holidays Blakeney";
 
     $inner =
-        email_h('Your damage deposit', $accent) .
+        email_h($retained > 0.001 ? 'Your deposit' : 'Your deposit is on its way back', $accent) .
         email_p(
             'Hello ' .
                 $esc($name) .
@@ -3653,7 +3846,8 @@ function send_deposit_return_email($b)
                 ['Returned to you', '<strong>' . $esc($money($b['amount'])) . '</strong>'],
             ]) . email_ownernote(email_host_name(), $reason)
             : '') .
-        email_footnote('It usually appears in 3&ndash;5 working days, though some banks take a little longer.') .
+        email_timeline([['Returned', 'Today', true], ['It reaches you', '3–5 working days', false]]) .
+        email_footnote('Some banks take a little longer.') .
         email_p('We hope to welcome you back.<br>Cottage Holidays Blakeney', true);
     $html = email_shell(
         $money($b['amount']) . ' is on its way back to you — usually 3 to 5 working days',
@@ -3701,7 +3895,11 @@ function send_cancellation_email_body($b)
         ? 'Your refundable damage deposit of ' . $money($depBack) . ' is also on its way back to the card you paid with.'
         : '';
 
-    $subject = "Booking cancelled — {$prop}";
+    // OUTCOME IN NUMBERS when money is coming back; the plain fact otherwise.
+    $backTotal = round(($refund > 0.001 ? $refund : 0) + $depBack, 2);
+    $subject = $backTotal > 0.001
+        ? 'Cancelled — ' . $money($backTotal) . ' is on its way to you'
+        : "Booking cancelled — {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Your booking at {$prop}" .
@@ -3713,6 +3911,10 @@ function send_cancellation_email_body($b)
         ($refundLine !== '' || $depLine !== ''
             ? "Card refunds usually appear in 3-5 working days, though some banks take a little longer.\n\n"
             : '') .
+        ($backTotal > 0.001
+            ? "WHAT HAPPENS NEXT\n[x] Refund issued — today\n[ ] It reaches your card — 3-5 working days\n\n"
+            : '') .
+        (($b['rebook_url'] ?? '') !== '' ? "Look at other dates: " . $b['rebook_url'] . "\n\n" : '') .
         "If you have any questions, just reply to this email.\n\nCottage Holidays Blakeney";
 
     $inner =
@@ -3731,14 +3933,25 @@ function send_cancellation_email_body($b)
         // mind" set as the email's own bold heading reads like a file being closed
         // on someone.
         email_ownernote($host, $reason) .
-        ($refundLine !== '' ? email_note($esc($refundLine)) : '') .
-        ($depLine !== '' ? email_note($esc($depLine)) : '') .
-        // Money going back is the one thing this email leaves the guest waiting on,
-        // so it says how long — the same 3-5 working days every other refund email
-        // now states, and stated only when something is actually coming back.
-        ($refundLine !== '' || $depLine !== ''
-            ? email_footnote('Card refunds usually appear in 3&ndash;5 working days, though some banks take a little longer.')
+        // THE FIGURE FIRST when money is coming back, then the arithmetic and what
+        // happens next — the same anatomy every other money email now has. Where the
+        // rental refund is by hand ("will be arranged with you"), the sentences stay.
+        ($backTotal > 0.001 && !empty($b['card']) ? email_amount('Back to your card', $money($backTotal), 'Usually 3&ndash;5 working days', email_accent_ink()) : '') .
+        ($backTotal > 0.001 && !empty($b['card']) && $refund > 0.001 && $depBack > 0.001
+            ? email_money_rows([['Rental refund', $esc($money($refund))], ['Refundable deposit', $esc($money($depBack))], ['Total back to you', '<strong>' . $esc($money($backTotal)) . '</strong>']])
             : '') .
+        (($backTotal > 0.001 && empty($b['card'])) || ($refundLine !== '' && !$backTotal) ? email_note($esc($refundLine)) : '') .
+        ($backTotal > 0.001 && empty($b['card']) && $depLine !== '' ? email_note($esc($depLine)) : '') .
+        // The deposit is stated in words too, not only as a row — the amount that lands
+        // on their statement should match a sentence they hold in writing.
+        ($backTotal > 0.001 && !empty($b['card']) && $depLine !== '' ? email_footnote($esc($depLine)) : '') .
+        // Money going back is the one thing this email leaves the guest waiting on,
+        // so it says what happens and how long — only when something is coming back.
+        ($backTotal > 0.001
+            ? email_timeline([['Refund issued', 'Today', true], ['It reaches your card', '3–5 working days', false]]) .
+                email_footnote('Some banks take a little longer.')
+            : '') .
+        (($b['rebook_url'] ?? '') !== '' ? email_btn2((string) $b['rebook_url'], 'Look at other dates') : '') .
         email_p('If you have any questions, just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Booking cancelled — ' . $prop, $inner);
 
@@ -3750,7 +3963,7 @@ function send_cancellation_email($b)
         return ['ok' => false, 'error' => 'No guest email on file'];
     }
     // Resolve the DB-backed bits HERE, so the builder above stays pure.
-    $m = send_cancellation_email_body($b + ['host_name' => email_host_name()]);
+    $m = send_cancellation_email_body($b + ['host_name' => email_host_name(), 'rebook_url' => email_cottage_url($b['prop_key'] ?? '')]);
     return smtp_send($b['email'], $m['name'], $m['subject'], $m['text'], $m['html']);
 }
 
@@ -4011,7 +4224,8 @@ function payment_receipt_body($b)
     // An automatic INSTALMENT collects a slice, not the whole balance — so it must
     // not claim "Balance collected" over its own "Remaining balance £Y" row.
     $autoPartial = $auto && !empty($b['partial']);
-    $subject = $auto ? ($autoPartial ? "Payment collected — {$prop}" : "Balance collected — {$prop}") : "Payment received — {$prop}";
+    // THE FIGURE IN THE SUBJECT: a receipt is opened to check one number.
+    $subject = ($auto ? ($autoPartial ? 'Payment collected: ' : 'Balance collected: ') : 'Payment received: ') . $money($paidNow) . " — {$prop}";
     // Three states, not two: a part payment can settle the whole RENTAL while
     // the refundable deposit it displaced is still to take (a slice typed at
     // the max bound). "Remaining balance: £0.00 — we'll be in touch about
@@ -4040,6 +4254,22 @@ function payment_receipt_body($b)
     $statusText = str_replace('&rsquo;', "'", $statusLine);
     $payUrl = trim((string) ($b['pay_url'] ?? ''));
     $owes = empty($b['fully_paid']) && (float) $b['balance'] > 0.005;
+    // WHAT'S LEFT, as steps: the rest of the money (and how it is collected), and the
+    // refundable deposit coming back. Only what is true of THIS booking.
+    $leftSteps = [];
+    if ($owes) {
+        $leftSteps[] = ['Balance of ' . $money($b['balance']), $auto ? 'Collected automatically' . $byWhen . ' — nothing to do' : 'Due' . $byWhen, false];
+    }
+    if ($dep > 0) {
+        $leftSteps[] = ['Your ' . $money($dep) . ' deposit', 'Returned after checkout, provided there’s no damage', false];
+    }
+    $leftText = '';
+    if ($leftSteps) {
+        $leftText = "\nWHAT'S LEFT\n";
+        foreach ($leftSteps as $st) {
+            $leftText .= '[ ] ' . $st[0] . ' — ' . $st[1] . "\n";
+        }
+    }
     $text =
         "Hello {$name},\n\n" .
         ($auto
@@ -4058,6 +4288,7 @@ function payment_receipt_body($b)
         ".\n" .
         $statusText .
         "\n" .
+        $leftText .
         ($owes && $payUrl !== '' ? "\nPay the rest here: {$payUrl}\n" : '') .
         (!empty($b['invoice_url']) ? "\nView or download your updated invoice: {$b['invoice_url']}\n" : '') .
         "\n" .
@@ -4100,6 +4331,9 @@ function payment_receipt_body($b)
             ]),
         ) .
         email_p($statusLine, true) .
+        ($leftSteps
+            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#2A2622;margin:18px 0 2px;">What&rsquo;s left</div>' . email_timeline($leftSteps)
+            : '') .
         // WHICHEVER ACTION IS ACTUALLY WANTED LEADS. With money still owing the
         // primary action is paying it; the invoice is then the quiet one. With
         // nothing owing there is only the invoice, and it takes the primary slot
@@ -4231,7 +4465,7 @@ function send_arrival_for_booking($bk, $note = '')
 function owner_note_review($guestName, $propName, $stars, $text)
 {
     return [
-        'subject' => 'New guest review awaiting approval',
+        'subject' => 'New ' . (int) $stars . "\u{2605} review for " . $propName . ' — approve?',
         'text' =>
             'A review was submitted by ' . $guestName . ' for ' . $propName . ' (' . (int) $stars . "\u{2605}):\n\n" .
             trim((string) $text) .
@@ -4243,7 +4477,7 @@ function owner_note_review($guestName, $propName, $stars, $text)
 function owner_note_lead($name, $propName, $stars, $text, $email, $phone = '')
 {
     return [
-        'subject' => 'New guest review awaiting approval',
+        'subject' => 'New ' . (int) $stars . "\u{2605} review for " . $propName . ' via your link — approve?',
         'text' =>
             $name . ' left a ' . (int) $stars . "\u{2605} review for " . $propName . " via the review link:\n\n" .
             trim((string) $text) .
@@ -4256,7 +4490,7 @@ function owner_note_lead($name, $propName, $stars, $text, $email, $phone = '')
 function owner_note_experience($guestName, $title, $body, $linkUrl = '', $phone = '')
 {
     return [
-        'subject' => 'New experience suggestion to review',
+        'subject' => 'New suggestion: “' . email_snip($title, 50) . '”',
         'text' =>
             ($guestName ?: 'A guest') . " suggested an experience:\n\n" .
             $title . "\n\n" . trim((string) $body) . "\n\n" .
@@ -4366,7 +4600,7 @@ function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = fals
     $who = $guestName ?: 'there';
     $reply = 'Reply on our website chat' . ($replyable ? ' — or just reply to this email' : '') . '.';
     return [
-        'subject' => 'A message from Cottage Holidays Blakeney',
+        'subject' => 'New message: “' . email_snip($message, 50) . '”',
         'text' =>
             'Hello ' . $who . ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
             $message . '"' .
@@ -4396,7 +4630,7 @@ function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = fals
 function owner_note_chat_reply($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
 {
     return [
-        'subject' => 'New website message — Cottage Holidays Blakeney' . $subjTag,
+        'subject' => ($guestName ?: 'A guest') . ' replied: “' . email_snip($message, 50) . '”' . $subjTag,
         'text' =>
             "A guest has replied by email to a website chat.\n\nFrom: " .
             ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
@@ -4431,7 +4665,7 @@ function guest_message_body($guestName, $message)
 function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
 {
     return [
-        'subject' => 'New website message — Cottage Holidays Blakeney' . $subjTag,
+        'subject' => ($guestName ?: 'Someone') . ': “' . email_snip($message, 50) . '”' . $subjTag,
         'text' =>
             "Someone has sent you a message via the website chat.\n\nFrom: " .
             ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
@@ -4455,7 +4689,11 @@ function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesG
         "Or just reply to this email (or message us on the website) and we'll " .
         ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.');
     return [
-        'subject' => 'Still thinking about your Blakeney stay?',
+        // THE ANSWER IN THE SUBJECT: whether the dates are still there is the whole
+        // reason to open it.
+        'subject' => $datesGone
+            ? 'Your dates have gone — let’s find another stay at ' . $propName
+            : 'Still thinking about ' . $propName . '? Those dates are still free',
         'text' =>
             'Hello ' . $name . ",\n\nThanks for your enquiry about " . $propName . ' for ' . $dateSpan . ".\n\n" .
             $holdLine . ' ' .
@@ -4465,7 +4703,7 @@ function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesG
                 : '') .
             $close . "\n\nWarm wishes,\nCottage Holidays Blakeney",
         'html' => email_shell(
-            'Still thinking about your Blakeney stay?',
+            $datesGone ? 'See what’s free instead — it takes a minute.' : 'Pick up where you left off — your details are saved.',
             email_h('Still thinking it over?') .
                 email_p(
                     'Hello ' . email_esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' .
@@ -4491,7 +4729,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
 {
     $span = $dateSpan !== '' ? ' for ' . $dateSpan : '';
     return [
-        'subject' => 'Finish your ' . $propName . ' enquiry?',
+        'subject' => 'Nearly there: finish your ' . $propName . ' enquiry',
         'text' =>
             'Hello ' . $name . ",\n\nIt looks like you were part-way through an enquiry about " . $propName . $span .
             " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
@@ -4501,7 +4739,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             "Or just reply to this email and we'll happily sort it out for you.\n\n" .
             "Warm wishes,\nCottage Holidays Blakeney",
         'html' => email_shell(
-            'Finish your ' . $propName . ' enquiry?',
+            'One tap picks it up where you left off.',
             email_h('Finish your enquiry?') .
                 email_p(
                     'Hello ' . email_esc($name) .
@@ -4652,14 +4890,15 @@ function owner_digest_body($d)
     $nameOf = fn($k) => prop_display($k)['name'];
     $pretty = fn($dt) => date('D j M', strtotime($dt));
     $accentOf = fn($k) => prop_display($k)['accent'];
+    // THE THREE NUMBERS THAT DECIDE THE WEEK, with the one thing that needs doing named
+    // first when there is one — read on a Monday-morning lock screen.
+    $attn = is_array($d['actAttention'] ?? null) ? count($d['actAttention']) : 0;
     $subject =
-        'Your Blakeney week: ' .
-        $d['newBookings'] .
-        ' new booking' .
-        ($d['newBookings'] === 1 ? '' : 's') .
-        ', ' .
-        $money($d['received']) .
-        ' in';
+        'Week ahead: ' .
+        count((array) ($d['arrivals'] ?? [])) . ' arrival' . (count((array) ($d['arrivals'] ?? [])) === 1 ? '' : 's') .
+        ((float) ($d['owedSum'] ?? 0) > 0.005 ? ', ' . $money($d['owedSum']) . ' to collect' : '') .
+        ', ' . $d['newBookings'] . ' new booking' . ($d['newBookings'] === 1 ? '' : 's') .
+        ($attn > 0 ? ' — ' . $attn . ' to fix' : '');
 
     $arrivalsTxt = $d['arrivals']
         ? implode(

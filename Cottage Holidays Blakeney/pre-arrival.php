@@ -155,6 +155,61 @@ foreach ($due as $b) {
     ];
 }
 
+// ---- The day-after-checkout thank-you (OFF unless the owner switches it on) ------
+// Content key 'thankyou-email' ('1' = on; Manage → Follow-ups). It fills the silence between
+// checkout and the review ask, so it only ever runs for a stay that finished 1–3 days ago and
+// has NOT already been asked for a review. Claim-first like every guest-emailing pass here
+// (rowCount arbitrates overlapping runs; a clean send failure un-claims), and a missing column
+// simply stands the pass down — it must never stop the review requests below.
+$thanksSent = 0;
+$thanksTried = 0; // claimed and attempted (a send can fail cleanly and be un-claimed)
+if (content_value('thankyou-email') === '1') {
+    try {
+        $ts = db()->query(
+            "SELECT b.*, p.name AS property_name FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
+             WHERE b.check_out < CURDATE() AND b.check_out >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+               AND b.email <> '' AND b.thankyou_sent IS NULL AND b.review_request_sent IS NULL",
+        );
+        foreach ($ts->fetchAll() as $b) {
+            // The one-click unsubscribe (it carries a come-back pitch).
+            if (function_exists('email_optout_has') && email_optout_has($b['email'])) {
+                continue;
+            }
+            $claim = db()->prepare('UPDATE bookings SET thankyou_sent = NOW() WHERE id = ? AND thankyou_sent IS NULL');
+            $claim->execute([(int) $b['id']]);
+            if ($claim->rowCount() !== 1) {
+                continue;
+            }
+            $thanksTried++;
+            $res = send_thank_you_email([
+                'name' => $b['name'],
+                'email' => $b['email'],
+                'prop_key' => $b['prop_key'],
+                'prop_name' => $b['property_name'] ?? $b['prop_key'],
+                'check_in' => $b['check_in'],
+                'check_out' => $b['check_out'],
+                // Only a deposit the card actually took and that is still to come back: a
+                // returned or kept one is not a promise to make, and a cash/bank stay's is
+                // not ours to state here.
+                'deposit' => ($b['hold_status'] ?? '') === 'charged' ? (float) ($b['hold_amount'] ?? 0) : 0,
+            ]);
+            if (empty($res['ok'])) {
+                db()->prepare('UPDATE bookings SET thankyou_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
+                continue;
+            }
+            log_activity('comms', 'email.thankyou', 'Thank-you emailed — ' . ($b['name'] ?? ''), [
+                'actor' => 'cron',
+                'prop_key' => $b['prop_key'] ?? '',
+                'entity' => 'booking',
+                'entity_id' => (string) $b['id'],
+            ]);
+            $thanksSent++;
+        }
+    } catch (\Throwable $e) {
+        // column not migrated yet, or a transient failure — the review requests are unaffected
+    }
+}
+
 // ---- Post-checkout review requests --------------------------------------
 // A few days after checkout, ask the guest for a review (once per booking).
 $reviewDays = defined('REVIEW_REQUEST_DAYS') ? max(1, (int) REVIEW_REQUEST_DAYS) : 2;
@@ -237,6 +292,8 @@ json_out([
     'readied' => $readied,
     'sent' => $review ? 0 : count(array_filter($results, fn($r) => $r['ok'])),
     'details' => $results,
+    'thankyou_attempted' => $thanksTried,
+    'thankyou_sent' => $thanksSent,
     'review_requests_sent' => $reviewsSent,
     'review_days_after' => $reviewDays,
 ]);

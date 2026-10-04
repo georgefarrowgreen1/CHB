@@ -258,6 +258,7 @@ $JOBS = [
   ['autopay-failure', 'guest', fn() => send_autopay_failure($B, 'card_declined', false, '2026-07-20')],
   ['refund', 'guest', fn() => send_refund_email($B)],
   ['anniversary', 'guest', fn() => send_anniversary_email($B)],
+  ['thank-you', 'guest', fn() => send_thank_you_email($B + ['deposit' => 75.0])],
   ['enquiry-reply', 'guest', fn() => send_enquiry_reply_email(array_merge($ENQ, ['price' => null]), 'About your stay at Jollyboat', "Yes — there's parking for one car right outside, and a late arrival is no trouble at all. Just let us know roughly when to expect you.\n\nThe dates you asked about are free.", 'enquiry')],
   ['direct-followup', 'guest', fn() => send_direct_followup_email($B)],
   ['hold-request', 'guest', fn() => send_hold_request($B, $PAYURL)],
@@ -882,7 +883,7 @@ chk('§8 the house sentence is REPLACED, not doubled',
 chk('§8 the facts are still generated beneath it (dates, address, button)',
     strpos($avH, 'Sun 6 Sep 2026') !== false && strpos($avH, 'Quay Lane') !== false
     && strpos($avH, 'open=stay') !== false);
-chk('§8 the subject is untouched by the note', strpos($avRev['subject'], 'You arrive') === 0);
+chk('§8 the subject is untouched by the note', strpos($avRev['subject'], 'See you') === 0);
 
 // ---------------------------------------------------------------------------
 //  §9  NO EMAIL GREETS THE SAME PERSON TWICE
@@ -967,7 +968,7 @@ chk('§9 …and the reply shell it used to use really did greet twice (' . ($avO
 // The reply shell is what it must NOT be — asserted as an absence, because the
 // wrong template renders perfectly well and only looks wrong.
 chk('§9 …and is the ARRIVAL template, not the reply shell',
-    strpos($avPrevHtml, 'About your booking') === false && strpos($avPrevHtml, 'You arrive') !== false);
+    strpos($avPrevHtml, 'About your booking') === false && strpos($avPrevHtml, 'See you') !== false);
 
 // ---------------------------------------------------------------------------
 //  §10 THE ARRIVAL EMAIL CARRIES THE HOUSE RULES
@@ -991,8 +992,8 @@ chk('§10 free text is ESCAPED', strpos($hrOut['html'], '<before>') === false
 // IT MUST NOT SAY THE TIMES TWICE. The Arrive/Leave rows above already state
 // them, so the AUTO lines the guest's stay screen leads with are deliberately
 // NOT here — only the owner's own list travels.
-chk('§10 the arrive/leave rows stay the only statement of the times',
-    substr_count($hrOut['html'], 'any time from') === 1
+chk('§10 the arrive/leave pair stays the only statement of the times',
+    substr_count($hrOut['html'], '>Arrive<') === 1
     && strpos($hrOut['html'], 'Check-in after') === false
     && strpos($hrOut['html'], 'Checkout before') === false);
 // Nothing saved → no heading and no empty block, on either half.
@@ -1041,6 +1042,77 @@ $GLOBALS['__photo_fixture'] = json_encode(['uploads/../config.php']);
 chk('§11 a traversal path is refused', email_prop_photo('bandprop') === '');
 chk('§11 no gallery at all is a quiet absence', email_prop_photo('nosuchprop') === '');
 @unlink($tmpDir . '/uploads/chb-band-fixture.jpg');
+
+// ── §12 THE OVERHAUL — outcome in the subject, one fact once, what happens next ──
+// The facts these emails now lead with are asserted on the REAL senders' output, and each
+// check targets the block rather than the words (the §-lessons: both halves, separately).
+$cap12 = function (callable $fn) { $before = count($GLOBALS['CAP']); $fn(); $m = $GLOBALS['CAP'][count($GLOBALS['CAP']) - 1] ?? ['subject' => '', 'html' => '', 'text' => '']; return count($GLOBALS['CAP']) > $before ? $m : ['subject' => '', 'html' => '', 'text' => '']; };
+chk('§12 a stay range names the month once when both ends share it', email_range('2026-09-06', '2026-09-11') === 'Sun 6 – Fri 11 Sep');
+chk('§12 …and both months when they differ', email_range('2026-08-30', '2026-09-04') === 'Sun 30 Aug – Fri 4 Sep');
+$cu = email_cal_urls(['prop_name' => 'Jollyboat', 'check_in' => '2026-09-06', 'check_out' => '2026-09-11', 'check_in_time' => '15:00', 'check_out_time' => '10:00', 'address' => '3 Quay Lane, Blakeney']);
+chk('§12 the Google link carries the stay\'s own start, end and place', strpos($cu['google'], 'dates=20260906T150000/20260911T100000') !== false && strpos($cu['google'], 'location=3%20Quay%20Lane') !== false && strpos($cu['google'], 'Stay%20at%20Jollyboat') !== false);
+chk('§12 …and the Outlook link the same', strpos($cu['outlook'], 'startdt=2026-09-06T15%3A00%3A00') !== false && strpos($cu['outlook'], 'enddt=2026-09-11T10%3A00%3A00') !== false);
+chk('§12 an unset check-in time falls back to 3pm, never midnight', strpos(email_cal_urls(['prop_name' => 'J', 'check_in' => '2026-09-06', 'check_out' => '2026-09-07', 'check_in_time' => ''])['google'], 'T150000/') !== false);
+$conf = $cap12(fn() => send_booking_emails($B));
+$confGuest = null;
+foreach ($GLOBALS['CAP'] as $c12) { if (strpos((string) $c12['subject'], 'You’re booked') === 0) { $confGuest = $c12; } }
+chk('§12 the confirmation subject names the stay and its dates', $confGuest !== null && strpos($confGuest['subject'], 'Jollyboat, ') !== false && preg_match('/You’re booked: Jollyboat, \w{3} \d+/u', $confGuest['subject']) === 1);
+chk('§12 …its HTML leads with "You’re booked", the dates pair and the calendar links', $confGuest !== null && strpos($confGuest['html'], 'You’re booked, Test.') !== false && substr_count($confGuest['html'], '>Arrive<') === 1 && strpos($confGuest['html'], 'calendar.google.com') !== false && strpos($confGuest['html'], 'outlook.live.com') !== false);
+chk('§12 …Arrive/Leave are said ONCE (the dates pair), not also as table rows', $confGuest !== null && substr_count($confGuest['html'], '>Leave<') === 1);
+chk('§12 …it carries a "What happens next" timeline, ticked for what has happened', $confGuest !== null && strpos($confGuest['html'], 'What happens next') !== false && strpos($confGuest['html'], '&#10003;') !== false && strpos($confGuest['html'], 'Arrival details') !== false);
+chk('§12 …and the text half carries the same steps and the same calendar links', $confGuest !== null && strpos($confGuest['text'], 'WHAT HAPPENS NEXT') !== false && strpos($confGuest['text'], '[x] Payment received') !== false && strpos($confGuest['text'], 'calendar.google.com') !== false);
+chk('§12 …a refundable deposit is a step of its own', $confGuest !== null && strpos($confGuest['text'], 'deposit — returned after checkout') !== false);
+chk('§12 …and it does NOT invite forwarding (it holds the money details)', $confGuest !== null && stripos($confGuest['html'], 'forward this') === false);
+// The arrival email: directions are the first button, the door code is never emailed.
+$arr12 = $cap12(fn() => send_arrival_email($avB));
+chk('§12 the arrival subject leads with the day and the promise of directions', strpos($arr12['subject'], 'See you ') === 0 && strpos($arr12['subject'], 'directions') !== false);
+chk('§12 …directions is the FIRST button, ahead of the booking link', ($pDir = strpos($arr12['html'], 'Directions to Jollyboat')) !== false && ($pStay = strpos($arr12['html'], 'Open my booking')) !== false && $pDir < $pStay);
+chk('§12 …and says outright that a door code is never emailed', strpos($arr12['html'], 'never email a door code') !== false);
+// Money emails: the figure in the subject.
+$cx12 = send_cancellation_email_body(['name' => 'Priya Patel', 'prop_name' => 'Jollyboat', 'check_in' => '2026-09-06', 'check_out' => '2026-09-11', 'refund' => 220.0, 'card' => true, 'deposit_refunded' => 75.0, 'rebook_url' => 'https://example.test/cottages/jollyboat']);
+chk('§12 a cancellation with money back says the total in the subject', $cx12['subject'] === 'Cancelled — £295.00 is on its way to you');
+chk('§12 …leads with the figure, then the arithmetic, then what happens next, then a way back', strpos($cx12['html'], 'Back to your card') !== false && strpos($cx12['html'], 'Total back to you') !== false && strpos($cx12['html'], 'Refund issued') !== false && strpos($cx12['html'], 'Look at other dates') !== false);
+chk('§12 …and the text half has the steps and the way back too', strpos($cx12['text'], 'WHAT HAPPENS NEXT') !== false && strpos($cx12['text'], 'Look at other dates: https://example.test/cottages/jollyboat') !== false);
+$cx12b = send_cancellation_email_body(['name' => 'Priya Patel', 'prop_name' => 'Jollyboat', 'refund' => 0.0]);
+chk('§12 a cancellation with NOTHING coming back says so plainly and shows no refund block', $cx12b['subject'] === 'Booking cancelled — Jollyboat' && strpos($cx12b['html'], 'Back to your card') === false && strpos($cx12b['html'], 'What happens next') === false);
+$ref12 = $cap12(fn() => send_refund_email($B));
+chk('§12 a refund names its amount in the subject and what happens next', strpos($ref12['subject'], 'refunded to your card') !== false && preg_match('/£\d/', $ref12['subject']) === 1 && strpos($ref12['html'], 'Refund issued') !== false && strpos($ref12['text'], 'WHAT HAPPENS NEXT') !== false);
+$dep12 = $cap12(fn() => send_deposit_return_email(array_merge($B, ['amount' => 75.0])));
+chk('§12 a deposit return names the amount in the subject', preg_match('/deposit/i', $dep12['subject']) === 1 && preg_match('/£75\.00/', $dep12['subject']) === 1);
+$req12 = $cap12(fn() => send_payment_request($B + ['kind' => 'deposit'], 'https://example.test/pay'));
+chk('§12 a deposit ask carries the figure in the subject', preg_match('/^Pay your deposit: £\d/', $req12['subject']) === 1);
+$rem12 = $cap12(fn() => send_payment_reminder(array_merge($B, ['kind' => 'balance']), 'https://example.test/pay'));
+chk('§12 a reminder carries the figure and the due date in the subject', preg_match('/^Reminder: £\d[\d,.]* due \w{3} \d+ \w{3} — Jollyboat$/u', $rem12['subject']) === 1);
+$rc12 = payment_receipt_body(['name' => 'C', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'ref' => 'R', 'kind' => 'deposit', 'amount' => 150.0, 'deposit_charged' => 75.0, 'total' => 750.0, 'paid_so_far' => 150.0, 'balance' => 525.0, 'fully_paid' => false, 'automatic' => false, 'balance_due_date' => '2026-08-07']);
+chk('§12 a receipt\'s subject is the figure it states', $rc12['subject'] === 'Payment received: £225.00 — Jollyboat');
+chk('§12 …and "What’s left" lists the balance and the deposit, in both halves', strpos($rc12['html'], 'What&rsquo;s left') !== false && strpos($rc12['html'], 'Balance of £525.00') !== false && strpos($rc12['text'], "WHAT'S LEFT") !== false && strpos($rc12['text'], 'Your £75.00 deposit') !== false && strpos($rc12['html'], 'Your £75.00 deposit') !== false);
+$ack12 = $cap12(fn() => send_enquiry_ack($ENQ, false));
+chk('§12 the enquiry acknowledgement puts its promise in the subject', strpos($ack12['subject'], 'we\'ll reply within a day') !== false);
+// The thank-you: the deposit sentence only when there is a deposit; the unsubscribe always.
+$ty = thank_you_body(['name' => 'Priya Patel', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'check_in' => '2026-09-06', 'check_out' => '2026-09-11', 'deposit' => 75.0, 'rebook_url' => 'https://example.test/cottages/jollyboat', 'unsub' => 'https://example.test/email-optout.php?e=x&t=y']);
+chk('§12 the thank-you subject thanks them by name', $ty['subject'] === 'Thank you for staying, Priya');
+chk('§12 …states the deposit, with the figure, in both halves', strpos($ty['html'], '£75.00 refundable deposit') !== false && strpos($ty['text'], '£75.00 refundable deposit') !== false);
+$ty0 = thank_you_body(['name' => 'Priya Patel', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'deposit' => 0, 'rebook_url' => '']);
+chk('§12 …and says NOTHING about a deposit when there is none, nor a rebook button without a link', stripos($ty0['html'], 'deposit') === false && stripos($ty0['text'], 'deposit') === false && strpos($ty0['html'], 'See dates') === false);
+chk('§12 …a come-back pitch carries the one-click unsubscribe', strpos($ty['html'], 'Unsubscribe') !== false);
+chk('§12 …and only promises the review ask that really follows', strpos($ty['html'], 'we&rsquo;ll ask how it went') !== false);
+// Owner emails: who/where/when/how-much in the subject.
+$oe12 = $cap12(fn() => send_owner_enquiry_email(array_merge($ENQ, ['price' => ['total' => 750.0, 'nights' => 5, 'perNight' => 130]])));
+chk('§12 the owner\'s new-enquiry subject carries the dates and the quote', strpos($oe12['subject'], '(£750.00)') !== false && preg_match('/\w{3} \d+ – \w{3} \d+/u', $oe12['subject']) === 1);
+chk('§12 a subject excerpt strips a spoofable reply token and cuts on a word', email_snip('hello [#abc123] there', 60) === 'hello #abc123 there' && email_snip(str_repeat('word ', 30), 20) === 'word word word word…');
+$nr12 = owner_note_review('Priya', 'Jollyboat', 5, 'Lovely');
+chk('§12 a review note puts rating and cottage in the subject', $nr12['subject'] === "New 5\u{2605} review for Jollyboat — approve?");
+chk('§12 a chat note puts the message in the subject but keeps the routing tag', owner_note_chat_new('Priya', 'p@x.co', 'Is parking free outside?', true, ' [#tok]')['subject'] === 'Priya: “Is parking free outside?” [#tok]');
+
+// Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
+// output can be looked at, not just measured. Nothing runs without the variable.
+if (($dumpDir = getenv('CHB_EMAIL_DUMP')) && is_dir($dumpDir)) {
+    foreach ($GLOBALS['CAP'] as $i => $c) {
+        $slug = sprintf('%02d-', $i) . substr(preg_replace('/[^a-z0-9]+/', '-', strtolower((string) $c['subject'])), 0, 40);
+        if (!empty($c['html'])) { file_put_contents($dumpDir . '/' . $slug . '.html', $c['html']); }
+        file_put_contents($dumpDir . '/' . $slug . '.txt', "Subject: " . $c['subject'] . "\n\n" . $c['text']);
+    }
+}
 
 @unlink($tmp);
 echo "\n== Summary ==\n";
