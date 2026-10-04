@@ -281,6 +281,23 @@ else {
     check('garbage in comes back unchanged, not Invalid Date', usd('not-a-date', 3) === 'not-a-date');
 }
 
+// WHAT A CANCELLATION IS OWED UNDER EACH POLICY (cancelPolicyTier drives the Cancel
+// dialog's verdict and prefill). Both sides of every window boundary.
+const cpt = get('cancelPolicyTier');
+if (typeof cpt !== 'function') { fail('cancelPolicyTier is not defined'); }
+else {
+    const T = (pol, days) => cpt(pol, usd('2026-10-04', days), '2026-10-04').tier;
+    check('limited: 14 days out is full', T('limited', 14) === 'full');
+    check('limited: 13 days out is partial', T('limited', 13) === 'part');
+    check('limited: 7 days out is partial', T('limited', 7) === 'part');
+    check('limited: 6 days out is none', T('limited', 6) === 'none');
+    check('moderate: 5 days out is full, 4 partial', T('moderate', 5) === 'full' && T('moderate', 4) === 'part');
+    check('flexible: 1 day out is full', T('flexible', 1) === 'full');
+    check('arrived (0 days) is none under every policy', ['flexible', 'moderate', 'limited'].every((p) => T(p, 0) === 'none'));
+    check('days count is reported', cpt('limited', '2026-10-13', '2026-10-04').days === 9);
+    check('unknown policy falls back to the default (flexible)', T('nonsense', 1) === 'full');
+}
+
 // A CHILD IS UNDER 16, AND THREE FILES HAVE TO AGREE ABOUT IT. The guest picks a
 // number of children (index.html), pricing applies childRate to it (app.js), and
 // guest-details.php registers the booking's ADULTS as "everyone staying who is 16

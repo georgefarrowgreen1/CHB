@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 618;
+const ADMIN_BUNDLE_V = 619;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3239,6 +3239,17 @@ function rentalRefundBlocked(propKey, b) {
     if (within <= 0) return false;
     const daysUntil = Math.round((new Date(b.checkIn) - new Date(today)) / 864e5);
     return daysUntil < within;
+}
+
+// What the policy gives back for a cancellation on `today`: 'full' | 'part' | 'none' (the
+// windows CANCELLATION_POLICIES publishes; never an amount — a partial is the owner's call).
+// 'none' once arrived, as rentalRefundBlocked() does. Pure, so smoke-test drives it.
+function cancelPolicyTier(policy, checkIn, today) {
+    const POL = { flexible: { full: 1, part: 1 }, moderate: { full: 5, part: 1 }, limited: { full: 14, part: 7 } };
+    const w = POL[policy] || POL[DEFAULT_CANCEL_POLICY];
+    const days = Math.round((new Date(checkIn).getTime() - new Date(today).getTime()) / 864e5);
+    const tier = !(days > 0) ? 'none' : days >= w.full ? 'full' : days >= w.part ? 'part' : 'none';
+    return { tier, days, window: w };
 }
 
 
@@ -19381,7 +19392,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'fish3610';
+    const BUILD = 'cxprev610';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
