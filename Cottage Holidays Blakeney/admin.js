@@ -21096,14 +21096,12 @@ let __todayOpsDom = '';
 function todayOpsLine() {
     const el = document.getElementById('today-date');
     if (!el) return;
-    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     // THE HEADER LINE the owner reads first — deposit-aware (bookingDue), so it
     // agrees with the bookings summary below it and with each booking's own
     // row; owner-arranged money is never volunteered; before their check-in
     // time a guest is an "arrival", after it they're "staying" (matches the
     // booking-row badge). The tuples carry those judgements; chbOpsParts owns
     // the words, shared with the offline day sheet.
-    const { parts } = chbOpsParts(chbDayTuples());
     // On rail screens Today opens the way every other screen now does — the
     // serif day sentence — so the GREETING joins this line there (CSS gives
     // it the spine's scale and hides the h1 above; below the rail this
@@ -21114,27 +21112,9 @@ function todayOpsLine() {
     // rewrite would destroy focus on the owed button (the spine's lesson).
     let greet = '';
     if (document.body.classList.contains('rail-on')) {
-        try { greet = '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + ' — </span>'; } catch (e) {}
+        try { greet = chbDaySentence().greet; } catch (e) {}
     }
-    // THE DAY IS A SENTENCE, with the one thing to do in bold. Where the line used
-    // to list the date and the day's movements ("Sunday 4 October · 1 departure ·
-    // £75 to collect"), it now says what needs doing, because the owner opens this
-    // screen to find out exactly that; the timeline below carries the movements and
-    // the Bookings caption carries who owes. The words come from the duties' own
-    // (plain-text) labels, escaped here at the one render boundary.
-    const weekday = chbNow().toLocaleDateString('en-GB', { weekday: 'long' });
-    let say;
-    let dutyList = [];
-    try { dutyList = chbDuties() || []; } catch (e) {}
-    const task = (d) => '<b>' + escapeHtml(String(d.label || '').replace(/^./, (c) => c.toLowerCase())) + '</b>';
-    if (dutyList.length === 1) {
-        say = weekday + '. There’s one thing to do: ' + task(dutyList[0]) + '.';
-    } else if (dutyList.length > 1) {
-        say = weekday + '. ' + dutyList.length + ' things need you, starting with ' + task(dutyList[0]) + '.';
-    } else {
-        say = weekday + '. ' + (parts.length ? parts.join(' and ') + ' today, and nothing needs you.' : 'Nothing needs you today.');
-    }
-    const opsHtml = greet + say;
+    const opsHtml = greet ? '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + '</span>' : '';
     // The guard checks the DOM's TRUTH, not just its own memory: initBackOffice
     // paints this node with the bare date the instant the page opens (before
     // data lands), so a memo-only guard believed itself up to date and left
@@ -22563,10 +22543,6 @@ async function odsRetry() {
 }
 let __odsPatienceUsed = false; // the boot's patience window — armed once per page
 async function initBackOffice() {
-    // The page header carries the living date ("Friday 10 July") instantly;
-    // once the data lands, todayOpsLine() enriches it with the day's ops.
-    const td = document.getElementById('today-date');
-    if (td) td.textContent = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     // Unlock the encrypted phone-side stores BEFORE anything reads them — the
     // day sheet and the deposit sweep both render from the decrypted mirrors.
     try {

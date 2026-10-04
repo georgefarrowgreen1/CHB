@@ -2022,12 +2022,11 @@ Now eight.
 ## The simpler Today (approved demo, built "exactly as shown")
 
 **Asked for as "simplify it a little bit more, make it more clear", demoed twice, then
-"Build it exactly as shown".** Gated by **`ui-test-simpletoday.js`**.
-- **THE DAY IS A SENTENCE** (`todayOpsLine`, into `#today-date`): "Sunday. There's one thing to do:
-  **return Emma Clarke's £60 deposit**." / "N things need you, starting with …" / "Nothing needs you
-  today." (with the day's movements only when nothing needs you). The date line, the movements list,
-  the "£… to collect" button and the ✓ capsule beside the title are gone — the capsule repeated the
-  sentence. `#today-verdict` is kept and cleared so a stale one cannot linger.
+"Build it exactly as shown" — and then the sentence came out.** Gated by **`ui-test-simpletoday.js`**.
+- **THERE IS NO DAY SENTENCE.** It shipped ("There's one thing to do: return …") and was REMOVED the
+  same day at the owner's ask: the card below says what to do, so the line said it twice. `#today-date`
+  is empty and collapses (`:empty`) on a phone, carries the greeting alone on rail screens, and the date
+  line, movements list, "£… to collect" button and ✓ capsule beside the title are all gone.
 - **ONE TASK IS A CARD WITH ONE BUTTON** (`#needs-you.ny-solo`, set by renderNeedsYou when exactly one
   item): heading hidden, the action a full-width accent button ("Return £60"). The deposit duty now
   names the figure (`Return <full name>'s £60 deposit`, act `Return £60`); the FULL name stays on

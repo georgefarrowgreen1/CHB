@@ -7843,8 +7843,7 @@ body.light-mode .tl-cell:active {
    One sentence leads, the one task is a card with one button, the calendar
    shows dates only, and Add is a + in the month row. Everything below only
    restates what the earlier rules drew. */
-#today-date { font-family: var(--font-serif); font-size: var(--fs-title); font-weight: 500; line-height: 1.3; color: var(--text-light); text-wrap: balance; margin: 8px 0 0 !important; }
-#today-date b { color: var(--accent-text); font-weight: 600; }
+#today-date:empty { display: none; }
 /* One task: a card, no heading, the action a full-width accent button. */
 #needs-you.ny-solo > .bo-sec-title { display: none; }
 #needs-you.ny-solo .ny-row { flex-wrap: wrap; align-items: flex-start; }

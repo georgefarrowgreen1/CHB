@@ -237,7 +237,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(q.hidden, 'strip hides when nothing needs the owner');
-  ok(/Nothing needs you/.test(q.ops), `the day sentence says nothing needs you (${q.ops})`);
+  ok(!/Nothing needs you|thing to do|things need you/.test(q.ops), `no day sentence repeats the strip ("${q.ops}")`);
   // The ✓ capsule beside the title is GONE — the sentence says it, and a capsule repeating a
   // sentence is noise. Asserted as an absence so it cannot creep back beside the title.
   ok(q.cap === '', `no capsule repeats it beside the title ("${q.cap}")`);
