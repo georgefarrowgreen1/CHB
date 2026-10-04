@@ -1995,6 +1995,30 @@ through today's day number.
   at 10:00 the line is over the weekday letter and the check proves nothing). All three
   declarations break-tested.
 
+## The Bookings menus, simplified (approved demo, built)
+
+**Asked for as "the bookings menus need simplifying".** Twelve tappable controls sat above the
+first booking: five filter tabs, Add booking, Block dates, ‹ Today ›, the compact zoom and the
+refresh icon — plus a green "All paid up" capsule saying what the Needs payment tab already said.
+Now eight.
+- **Three tabs, not five**: Upcoming / Needs payment / Past. `Custom plan` (an audit) and `All`
+  (just Upcoming + Past) live in the caption's ⋯ menu. A filter chosen there selects NO tab,
+  says what is on in a chip (`#bookings-filter-chip`, one tap back to Upcoming) and marks the ⋯
+  (`.is-active`). `bookingsSetFilter` keeps ONE pass over every `data-bfilter` in
+  `#bookings-main`, tabs and menu items alike.
+- **WHO OWES IS SAID ONCE**, as the COUNT on the Needs payment tab (`#bk-needs-count`) — same
+  predicate as the filter, over EVERY booking (not the filtered rows), absent at zero because
+  silence is the all-clear. The old `#bookings-verdict` capsule is gone; its settle motion moved
+  to the badge and fires only when the COUNT changes (a part-payment that leaves the same guest
+  owing moves nothing — the gate adds a second owing booking to prove the settle).
+- **One Add button, two choices**: "Add ▾" opens the existing `.bhub-menu` pattern with Add a
+  booking / Block dates. The compact zoom and the external refresh (with its "updated N minutes
+  ago" note, `#cal-updated-text`) are in the calendar's own ⋯. Both menus reuse
+  `bhubMenuToggle`, so Escape, click-away and viewport fitting come free.
+- Gated by ui-test-workspace §1c (three tabs, the menu's two items, the filter driven by
+  CLICKING the item, the chip's way back, one Add button) and ui-test-backoffice-motion §3.
+  ui-test-smallthings lost its refresh hit-region check — the icon it measured no longer exists.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

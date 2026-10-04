@@ -286,34 +286,36 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   console.log('\n§3 A figure that changed says so');
   await page.evaluate(() => openBookings());
   await page.waitForFunction(() => {
-    const v = document.getElementById('bookings-verdict');
-    return v && /to collect|paid up/i.test(v.textContent || '');
+    const v = document.getElementById('bk-needs-count');
+    return v && /^\d+$/.test((v.textContent || '').trim());
   }, { timeout: 15000 });
   const firstPaint = await page.evaluate(() => {
-    const v = document.getElementById('bookings-verdict');
+    const v = document.getElementById('bk-needs-count');
     return { txt: (v.textContent || '').trim(), anims: v.getAnimations().length };
   });
-  ok(/to collect/.test(firstPaint.txt), `the caption carries the owed capsule (${firstPaint.txt})`);
+  ok(/^\d+$/.test(firstPaint.txt), `the Needs payment tab carries the owed count (${firstPaint.txt})`);
   ok(firstPaint.anims === 0, 'the FIRST paint does not settle — the screen arriving is not a figure moving');
 
   // A repaint that changes nothing must stay still.
   await page.evaluate(() => renderBookings());
   await page.waitForTimeout(30);
-  ok(await page.evaluate(() => document.getElementById('bookings-verdict').getAnimations().length === 0),
+  ok(await page.evaluate(() => document.getElementById('bk-needs-count').getAnimations().length === 0),
     'a repaint with the same figure stays still');
 
-  // A payment lands.
+  // The COUNT changes: a second booking arrives owing. (A part-payment that leaves the same
+  // guest owing changes no count, so nothing moves — a settle on a figure that did not visibly
+  // change is motion saying nothing.)
   const settled = await page.evaluate(() => {
-    dbBookings['21a'].forEach((b) => { if (b.id === 'b1') { b.depositPaid = 400; } });
-    Object.keys(dbBookings).forEach((k) => dbBookings[k].forEach((b) => { if (b.name === 'Sarah Pemberton') b.depositPaid = 400; }));
+    const first = dbBookings['jollyboat'][0] || dbBookings['21a'][0];
+    dbBookings['jollyboat'].push(Object.assign({}, first, { id: 'b-owes-2', dbId: 9902, name: 'Late Arrival', depositPaid: 0, payment: 'unpaid', checkIn: first.checkIn, checkOut: first.checkOut, paymentMethod: 'Card' }));
     renderBookings();
-    const v = document.getElementById('bookings-verdict');
+    const v = document.getElementById('bk-needs-count');
     return { txt: (v.textContent || '').trim(), anims: v.getAnimations().map((a) => a.animationName) };
   });
-  ok(settled.anims.includes('bkFigSettle'), `a payment lands and the figure settles (now "${settled.txt}")`);
+  ok(settled.anims.includes('bkFigSettle'), `a second booking owes and the count settles (now "${settled.txt}")`);
   // It SETTLES, it does not pop: the capsule was already on screen.
   const settleFrom = await page.evaluate(() => {
-    const v = document.getElementById('bookings-verdict');
+    const v = document.getElementById('bk-needs-count');
     const a = v.getAnimations()[0]; if (!a) return null;
     a.pause(); a.currentTime = 0;
     const cs = getComputedStyle(v);

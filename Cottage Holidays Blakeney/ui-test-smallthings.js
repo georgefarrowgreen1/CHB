@@ -195,15 +195,13 @@ function stub(page, mode, mine) {
   await page.waitForTimeout(1000);
   const ad = await slop(page, 'header .admin-dock-btn');
   ok(ad.n >= 5 && ad.allFour === ad.n, `the admin dock's ${ad.n} buttons (${ad.sizes}) answer a tap 3px outside their drawn edge (${ad.allFour}/${ad.n})`);
-  const rf = await slop(page, '.cal-refresh-btn');
-  ok(rf.n === 1 && rf.allFour === 1, `the calendar refresh (${rf.sizes}) does too`);
   await page.evaluate(async () => { await openInbox(); });
   await page.waitForTimeout(700);
   const sp = await slop(page, '#day-spine .spine-duty', 'TB');
   ok(sp.n >= 1 && sp.allFour === sp.n, `the day spine's ${sp.n} duty chips (${sp.sizes}) answer a tap above and below their 34px`);
   await page.evaluate(async () => { const b = (dbBookings[Object.keys(dbBookings)[0]] || [])[0]; if (b) await openBookingHub(b.id); });
   await page.waitForTimeout(800);
-  const menu = await page.evaluate(() => { const b = document.querySelector('.bhub-menu-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
+  const menu = await page.evaluate(() => { const b = document.querySelector('#booking-hub-content .bhub-menu-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
   ok(menu !== null && menu >= 44, `the hub's ⋯ stands at the floor (${menu}px)`);
   await page.close();
 
