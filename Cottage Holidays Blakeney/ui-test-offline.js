@@ -913,7 +913,9 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   apiDead = false;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle();
-  const onlineLine = await page.evaluate(() => (document.getElementById('today-date') || {}).textContent || '');
+  // The online header no longer LISTS the day's movements (it says what needs doing in a
+  // sentence), so the shared grammar is read from where both surfaces get it: chbOpsParts.
+  const onlineLine = await page.evaluate(() => chbOpsParts(chbDayTuples()).parts.join(' · '));
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);

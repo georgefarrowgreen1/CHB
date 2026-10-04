@@ -83,20 +83,16 @@
                         </div>
                     </div>
                     <div class="cal-actions">
-                        <!-- ONE Add button: adding a booking and blocking dates are the same kind
-                             of act (put something on the calendar), so they share a two-item
-                             choice. The ⋯ holds what is rarely wanted — the compact zoom and the
-                             external refresh (with how fresh the data is). -->
+                        <!-- ONE + : adding a booking and blocking dates are the same kind of
+                             act (put something on the calendar), so they share a two-item
+                             choice, and the calendar's two rarely-wanted view options (the
+                             compact zoom, the external refresh and how fresh it is) sit
+                             beneath them. There is no separate ⋯ any more. -->
                         <div class="bhub-actions">
-                            <button class="btn-glass btn-accent cal-add-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" data-edit-text="cal-add-btn">Add &#9662;</button>
+                            <button class="cal-add-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Add to the calendar" title="Add to the calendar"><span aria-hidden="true">+</span></button>
                             <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                                 <button role="menuitem" data-act="openAddBooking">Add a booking</button>
                                 <button role="menuitem" data-act="openBlockDates">Block dates</button>
-                            </div>
-                        </div>
-                        <div class="bhub-actions">
-                            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="More calendar options" title="More calendar options">&#8943;</button>
-                            <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                                 <p class="bhub-menu-note" role="none"><span id="cal-updated-text"></span></p>
                                 <button role="menuitem" aria-pressed="false" data-act="tlToggleZoom">Compact calendar</button>
                                 <button role="menuitem" id="cal-refresh-btn" data-act="autoSyncIcalBlocks" data-arg="true">Refresh external bookings</button>
@@ -130,24 +126,16 @@
             <div class="bk-caprow">
                 <h2 class="bo-sec-title">Bookings</h2>
                 <span id="bookings-summary"></span>
-                <!-- The ⋯ holds the two filters that are audits rather than everyday
-                     views (Custom plan, All). The money verdict that used to sit here is
-                     the count on the Needs payment tab now. -->
-                <div class="bhub-actions bk-more">
-                    <button class="btn-sm btn-edit bhub-menu-btn" id="bookings-more-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="More ways to filter bookings" title="More ways to filter">&#8943;</button>
-                    <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" data-act="bookingsSetFilter" data-arg="customplan" data-bfilter="customplan">Custom plans only</button>
-                        <button role="menuitem" data-act="bookingsSetFilter" data-arg="all" data-bfilter="all">Show every booking</button>
-                    </div>
+                <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
+                    <button class="inbox-sort-btn is-on" role="tab" aria-selected="true" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
+                    <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
                 </div>
             </div>
-            <!-- Per-page search removed — the back-office ⌘K search covers finding a
-                 booking by guest, email or reference. The filters below stay. -->
-            <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
-                <button class="inbox-sort-btn is-on" role="tab" aria-selected="true" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
-                <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="needspay" data-bfilter="needspay">Needs payment<span class="bk-count" id="bk-needs-count" hidden></span></button>
-                <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
-            </div>
+            <!-- WHO OWES, SAID ONCE: one quiet line under the caption row (filled by
+                 renderBookings). "Nobody owes you anything." with a tick, or the figure
+                 with a way to the list. It replaces the Needs payment tab, which was a
+                 fact dressed as a place. -->
+            <div id="bookings-owed"></div>
             <div id="bookings-filter-chip"></div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
         </div>

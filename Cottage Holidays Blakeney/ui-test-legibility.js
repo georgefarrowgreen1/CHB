@@ -176,11 +176,12 @@ const ORPHANS = (sel) => {
       const line = document.querySelector('#cal-body .tl-nowline');
       const lineVsNum = num && line && hit(box(num), box(line)) ? 1 : 0;
       const wide = labs.filter((l) => l.getBoundingClientRect().width > l.parentElement.getBoundingClientRect().width).length;
-      return { firstHasLabel: !!first.querySelector('b'), labelChg, sharedColumn, lineVsNum, hasNum: !!num, hasLine: !!line, wide, chg: chgs.length };
+      return { firstHasLabel: !!first.querySelector('b'), labelChg, sharedColumn, lineVsNum, hasNum: !!num, hasLine: !!line, wide, chg: chgs.length, pips: document.querySelectorAll('#cal-body .tl-occ').length };
     });
     ok(!r.firstHasLabel, `${label}: the window's first column carries no month label`);
-    ok(r.chg >= 1, `${label}: the fixture really draws changeover marks (${r.chg})`);
-    ok(r.labelChg === 0 && r.sharedColumn === 0, `${label}: no ↺ shares a column with a month label (overlap ${r.labelChg}, shared ${r.sharedColumn})`);
+    // The ↺ marks and the occupancy pips are GONE (the simpler Today) — asserted as an absence, with
+    // the fixture really holding changeovers, so it cannot pass because there was nothing to draw.
+    ok(r.chg === 0 && r.pips === 0, `${label}: the header draws no ↺ marks and no occupancy pips (${r.chg} / ${r.pips})`);
     ok(r.wide === 0, `${label}: no month label is wider than its own column`);
     ok(r.hasNum && r.hasLine, `${label}: today's number and the playhead both paint`);
     ok(r.lineVsNum === 0, `${label}: the playhead does not strike through today's day number`);

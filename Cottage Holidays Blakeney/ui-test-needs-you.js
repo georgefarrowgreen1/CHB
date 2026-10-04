@@ -82,7 +82,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(s.count === '6', `count badge = 6 (${s.count})`);
   ok(/automation looks stopped/.test(s.labels[0] || ''), `automation warning leads (${s.labels[0]})`);
   ok(/Jane Doe/.test(s.labels[1] || '') && /waiting 2 days/.test(s.labels[1] || ''), `enquiry second with age (${s.labels[1]})`);
-  ok(s.labels.some((l) => /damages deposit/.test(l)), 'deposit-return row present');
+  ok(s.labels.some((l) => /Return .*’s £[\d.,]+ deposit/.test(l)), 'deposit-return row present, naming whose and how much');
   // £580 = £520 rental balance (640 − 120) + the £60 refundable deposit, which
   // hold_status 'none' says has NOT been taken yet. It USED to read £520: the strip
   // quoted the rental balance while the booking's own row quoted the deposit-aware
@@ -104,9 +104,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // question as the row, so it has to be the same number; and the needspay filter
   // behind the button has to contain exactly the bookings that figure counted, or
   // the owner taps a total and lands on a list missing one of them.
+  // The figure now lives in ONE line under the Bookings caption (#bookings-owed), not in the
+  // day sentence — same derivation (bookingDue), so the same property holds.
   const ops = await page.evaluate(() => {
-    try { todayOpsLine(); } catch (e) {}
-    const el = document.getElementById('today-date');
+    try { renderBookings(); } catch (e) {}
+    const el = document.getElementById('bookings-owed');
     return el ? el.textContent : '';
   });
   // Asserted as a PROPERTY, not a pinned number: the line must equal the sum of
@@ -131,7 +133,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(sums.due > sums.rent, `the fixture really has an untaken deposit to find (due ${sums.due} > rental ${sums.rent})`);
   ok(sums.withCash > sums.due, `…and owner-arranged money to exclude (all ${sums.withCash} > counted ${sums.due})`);
   ok(ops.includes('£' + sums.due.toLocaleString('en-GB') + ' to collect'),
-    `the day line quotes the deposit-aware total (${ops})`);
+    `the owed line quotes the deposit-aware total (${ops})`);
   ok(!ops.includes('£' + sums.rent.toLocaleString('en-GB') + ' to collect'),
     '…and not the rental-only one it used to');
   ok(!ops.includes('£' + sums.withCash.toLocaleString('en-GB') + ' to collect'),
@@ -166,7 +168,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { held, labels };
   }, { in: d(-5), out: d(-1) });
   ok(Math.abs(dep.held - 60) < 0.006, `the injected booking really holds a £60 cash deposit (${dep.held})`);
-  ok(dep.labels.some((l) => /Cash Departed/.test(l) && /damages deposit/.test(l)),
+  ok(dep.labels.some((l) => /Cash Departed/.test(l) && /£60 deposit/.test(l)),
     `a cash-taken deposit becomes a duty (${dep.labels.filter((l) => /deposit/.test(l)).join(' | ') || 'none'})`);
   ok(s.sevs[0] === 'danger' && s.sevs[1] === 'danger', 'severities: automation + 2-day-old enquiry are danger');
 
@@ -235,11 +237,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(q.hidden, 'strip hides when nothing needs the owner');
-  ok(/all quiet/.test(q.ops), `ops line says all quiet (${q.ops})`);
-  // The day's verdict answers "is anything wrong?" — a fact about the screen,
-  // so it sits with the title, not trailing the movements line beneath it.
-  ok(/Nothing needs you/.test(q.cap) && !q.onDate, `the verdict is in its own slot, off the date line (${q.cap})`);
-  ok(q.beside, 'and it renders BESIDE the Today title, on the same row');
+  ok(/Nothing needs you/.test(q.ops), `the day sentence says nothing needs you (${q.ops})`);
+  // The ✓ capsule beside the title is GONE — the sentence says it, and a capsule repeating a
+  // sentence is noise. Asserted as an absence so it cannot creep back beside the title.
+  ok(q.cap === '', `no capsule repeats it beside the title ("${q.cap}")`);
 
   console.log('5. pricing ideas moved OFF the strip and onto Manage → Pricing');
   await page.evaluate(() => {

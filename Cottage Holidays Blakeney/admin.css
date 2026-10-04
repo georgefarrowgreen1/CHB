@@ -1022,37 +1022,7 @@ body.light-mode .ny-act {
 }
 .tl-bar.tl-pay-warn::before { background: var(--warn); }
 .tl-bar.tl-pay-danger::before { background: var(--danger); }
-/* OCCUPANCY PIPS under each day header — one segment per cottage, filled
-   when taken. Decorative (aria-hidden). */
-.tl-day .tl-occ {
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 2px;
-  text-decoration: none;
-}
-.tl-day .tl-occ s {
-  display: block;
-  width: 6px;
-  height: 3px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--text-light) 9%, transparent);
-  text-decoration: none;
-}
-.tl-day .tl-occ s.f { background: color-mix(in srgb, var(--accent) 60%, transparent); }
 .tl-day { padding-bottom: 9px; }
-/* ↺ on a changeover day — someone leaves AND someone arrives: the days that
-   need the key safe and the cleaner, readable in the header row. */
-.tl-day .tl-chg {
-  position: absolute;
-  top: 1px;
-  right: 2px;
-  font-size: var(--fs-micro);
-  line-height: 1;
-  color: var(--info-text);
-}
 /* GAP SPARK — a sellable hole (chbGapScan); real button at the 24px floor. */
 .tl-spark {
   grid-row: 1;
@@ -1120,14 +1090,6 @@ body.light-mode .ny-act {
   font-size: var(--fs-caption);
   color: var(--text-muted);
 }
-/* The caption's ⋯ (Custom plan / All) sits on the right where the verdict capsule was. */
-.bk-more { margin-left: auto; }
-.bk-more .bhub-menu-btn { min-height: 44px; }
-.bhub-menu-btn.is-active { color: var(--accent-text); border-color: var(--accent-text); }
-/* WHO OWES, said once: a count on the tab that lists them. Same warn pair as .st-cap.is-warn
-   (a11y §1b discovers it), absent when it is zero. Settles when the count changes. */
-.bk-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 8px; margin-left: 8px; border-radius: var(--r-pill); font-size: var(--fs-micro); font-weight: 700; color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
-.bk-count[hidden] { display: none; }
 /* The way back from a filter that lives in the ⋯: what is on, and one tap to leave it. */
 #bookings-filter-chip:empty { display: none; }
 #bookings-filter-chip { margin: 8px 0 0; }
@@ -5552,7 +5514,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acp-cell { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; background: none; }
 .acp-thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-sm); background-size: cover; background-position: center; }
 .acp-main { position: absolute; left: 5px; top: 5px; font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
-.acp-n { position: absolute; right: 5px; bottom: 4px; font-size: var(--fs-micro); color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
+.acp-n { position: absolute; right: 5px; bottom: 4px; font-size: var(--fs-micro); color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 2px 8px; }
 /* (0,2,0) on purpose — app.css's .content-edit-row .accom-photo-actions
    sets wrap and would win at equal specificity. ONE ⋯ button now (see the
    PR2 block at the foot of this file for why the four glyphs went). */
@@ -7876,3 +7838,42 @@ body.light-mode .tl-cell:active {
     animation: none;
   }
 }
+
+/* ═══ THE SIMPLER TODAY ═══════════════════════════════════════════════════
+   One sentence leads, the one task is a card with one button, the calendar
+   shows dates only, and Add is a + in the month row. Everything below only
+   restates what the earlier rules drew. */
+#today-date { font-family: var(--font-serif); font-size: var(--fs-title); font-weight: 500; line-height: 1.3; color: var(--text-light); text-wrap: balance; margin: 8px 0 0 !important; }
+#today-date b { color: var(--accent-text); font-weight: 600; }
+/* One task: a card, no heading, the action a full-width accent button. */
+#needs-you.ny-solo > .bo-sec-title { display: none; }
+#needs-you.ny-solo .ny-row { flex-wrap: wrap; align-items: flex-start; }
+#needs-you.ny-solo .ny-main { flex: 1 1 0; min-width: 0; }
+#needs-you.ny-solo .ny-label { font-size: var(--fs-headline); font-weight: 600; }
+#needs-you.ny-solo .ny-act { flex: 1 1 100%; order: 3; display: flex; align-items: center; justify-content: center; min-height: 48px; margin-top: 12px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-body); font-weight: 600; }
+#needs-you.ny-solo .ny-chev { display: none; }
+/* The month row: title, the ‹ Today › control, then + — one row at every width. */
+.cal-header-bar { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cal-header-bar .cal-month-nav { order: 0; flex: 1 1 auto; width: auto; min-width: 0; justify-content: space-between; gap: 8px; }
+.cal-header-bar .cal-actions { flex: none; justify-content: flex-end; }
+.cal-actions .cal-add-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-title)/1 var(--font-sans); letter-spacing: 0; display: inline-grid; place-items: center; cursor: pointer; }
+.cal-actions .cal-add-btn span { display: block; transform: translateY(-1px); }
+/* Today in the header is the one circled number; the playhead keeps clear of the words. */
+.tl-day.is-today .tl-num { background: var(--text-light); color: var(--dark-grey); border-radius: var(--r-pill); padding: 2px 8px; }
+.tl-bar { padding-left: 16px; }
+/* A platform block is not a guest: faint hatching, no outline, still reads busy. */
+.tl-bar.tl-ext.tl-blocked { border: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--text-muted) 28%, transparent) 6px 7px); }
+/* Bookings: a serif caption with Upcoming | Past beside it, then who owes, said once. */
+.bk-caprow { flex-wrap: wrap; gap: 4px 8px; }
+.bk-caprow .bo-sec-title { font-family: var(--font-serif); font-size: var(--fs-title); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-light); }
+.bk-caprow #bookings-filters { flex: 0 0 auto; width: auto; max-width: none; margin: 0 0 0 auto; padding: 0; border: 0; background: none; gap: 4px; }
+.bk-caprow #bookings-filters .inbox-sort-btn { flex: 0 0 auto; padding: 0 16px; }
+@media (max-width: 640px) { #bookings-summary { display: none; } }
+.bk-caprow .inbox-sort-btn { min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); font-weight: 500; color: var(--text-muted); background: none; box-shadow: none; }
+.bk-caprow .inbox-sort-btn.is-on { background: var(--text-light); color: var(--dark-grey); font-weight: 600; }
+#bookings-owed:empty { display: none; }
+.bk-owed { display: flex; align-items: center; gap: 10px; margin: 4px 2px 8px; font: inherit; font-size: var(--fs-sub); color: var(--text-muted); }
+.bk-owed.is-due { min-height: 44px; border: 0; background: none; padding: 0; color: var(--warn-text); font-weight: 600; cursor: pointer; text-align: left; }
+.bk-owed-tick { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok-text); font-size: var(--fs-caption); font-weight: 700; }
+/* The count rides the CORNER of its icon, outside the selected pill, so the glyph stays readable. */
+.admin-dock-badge { top: -3px; right: -5px; box-shadow: 0 0 0 2px var(--dark-grey); }
