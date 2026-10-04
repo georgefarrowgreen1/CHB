@@ -10666,6 +10666,15 @@ function bhubMenuPlace(btn, menu) {
     } else {
         menu.style.maxHeight = Math.max(120, Math.floor(below)) + 'px';
     }
+    // AND ACROSS: the menu hangs off its wrapper's RIGHT edge, so a ⋯ near the left of
+    // the screen (the calendar's, beside Add) sent it off the left side of the phone.
+    // offsetWidth, not getBoundingClientRect — the open animation scales the box.
+    menu.style.right = '';
+    const wr = (btn.parentElement || btn).getBoundingClientRect();
+    const left = wr.right - menu.offsetWidth;
+    const edge = 12;
+    if (left < edge) menu.style.right = -(edge - left) + 'px';
+    else if (wr.right > window.innerWidth - edge) menu.style.right = wr.right - (window.innerWidth - edge) + 'px';
 }
 function __bhubMenuEsc(e) {
     if (e.key === 'Escape') bhubMenuClose();
@@ -10685,6 +10694,7 @@ function bhubMenuHide(m) {
         // measurement of the window as it WAS, and the next open would inherit it.
         m.style.top = '';
         m.style.bottom = '';
+        m.style.right = '';
         m.style.maxHeight = '';
     };
     if (chbReducedMotion()) { m.classList.add('bhub-menu-out'); done(); return; }
