@@ -501,7 +501,7 @@ function cmdkBookClash(pk, from, to, excludeId) {
     const b = (dbBookings[pk] || []).find((o) => o.id !== excludeId && o.checkIn && o.checkOut && o.checkIn < to && o.checkOut > from);
     if (b) return { name: b.name || 'a guest', checkIn: b.checkIn, checkOut: b.checkOut };
     const bl = (((dbBlocks || {})[pk]) || []).find((x) => x.checkIn && x.checkOut && x.checkIn < to && x.checkOut > from);
-    if (bl) return { name: (bl.source && bl.source !== 'owner' ? bl.source + ' booking' : 'an owner block'), checkIn: bl.checkIn, checkOut: bl.checkOut };
+    if (bl) return { name: (bl.source && bl.source !== 'owner' && bl.kind !== 'blocked' ? bl.source + ' booking' : bl.source && bl.source !== 'owner' ? 'a block you made on ' + bl.source : 'an owner block'), checkIn: bl.checkIn, checkOut: bl.checkOut };
     return null;
 }
 // A pricing-review question — surfaces the instant gap offers + routes to the
@@ -27480,7 +27480,13 @@ function renderCalendar() {
                     return;
                 }
                 const dm = drawMark();
-                bars += `<span class="tl-bar tl-ext${sp.clip}${dm.c}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="${dm.s}grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
+                // WHAT THE PLATFORM SAYS IT IS: a clear host block reads "Blocked" on a lighter,
+                // dashed bar (it still blocks the dates, it just isn't a guest); a reservation
+                // keeps the plain platform bar; and an event it could not tell stays as it
+                // always was, with the tooltip saying so — never a guess.
+                const isBlk = bl.kind === 'blocked';
+                const what = isBlk ? 'blocked by you on ' + src : bl.kind === 'booking' ? src + ' booking' : src + ' (booking or block — the calendar does not say)';
+                bars += `<span class="tl-bar tl-ext${isBlk ? ' tl-blocked' : ''}${sp.clip}${dm.c}" data-search="${escapeHtml(((isBlk ? 'blocked unavailable ' : 'ota external booking ') + src + ' ' + meta.name).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(what)} · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${isBlk ? 'Blocked' : escapeHtml(src)}</span>`;
             });
             // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);
             // tap → the priced offer via tlGapTap, the strip's own plumbing.

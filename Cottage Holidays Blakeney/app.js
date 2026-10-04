@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 620;
+const ADMIN_BUNDLE_V = 621;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 273;
+const ADMIN_CSS_V = 274;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9829,7 +9829,9 @@ function isInResidence(b) { return hasCheckedIn(b) && !hasCheckedOut(b); }
 // An imported iCal block is an OTA booking — a real guest, a booked night —
 // unless it's the owner's own maintenance/personal block (source 'owner',
 // set by ical-import.php add_block). Blocked-out dates aren't booking days.
-function isOtaBlock(bl) { return !!(bl && bl.checkIn && bl.checkOut && bl.source && bl.source !== 'owner'); }
+// A platform event the feed itself labels as the host BLOCKING dates (kind 'blocked') is not a
+// guest either: it still blocks the calendar everywhere, but it is not a stay to count.
+function isOtaBlock(bl) { return !!(bl && bl.checkIn && bl.checkOut && bl.source && bl.source !== 'owner' && bl.kind !== 'blocked'); }
 function bookingFlow(propKey, b) {
     b = b || {};
     const today = typeof todayDashed === 'function' ? todayDashed() : '';
@@ -10176,6 +10178,10 @@ async function loadData() {
                     source: row.source,
                     checkIn: row.check_in,
                     checkOut: row.check_out,
+                    // What the feed says it is: 'booking' | 'blocked' | 'unknown' (absent
+                    // before migration-124 reads as unknown, i.e. a stay, as it always did).
+                    kind: row.kind === 'booking' || row.kind === 'blocked' ? row.kind : 'unknown',
+                    label: row.label || '',
                 });
             });
             dedupeExternalBlocks();
@@ -10278,6 +10284,10 @@ function dedupeExternalBlocks() {
                 byRange.set(rangeKey, bl);
             } else if (!existing.sources.includes(bl.source)) {
                 existing.sources.push(bl.source); // same booking, second feed
+                // One feed's "Blocked" is often the OTHER platform's guest mirrored across, so
+                // for identical dates the stronger reading wins: booking > unknown > blocked.
+                const rank = { booking: 2, unknown: 1, blocked: 0 };
+                if ((rank[bl.kind] || 0) > (rank[existing.kind] || 0)) { existing.kind = bl.kind; existing.label = bl.label; }
             }
         });
         dbBlocks[k] = Array.from(byRange.values());
@@ -19392,7 +19402,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'menufit610';
+    const BUILD = 'blockkind610';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

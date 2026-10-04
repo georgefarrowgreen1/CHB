@@ -443,6 +443,38 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   });
   ok(blk.ownIsControl && /9001/.test(blk.ownArgs), `an owner block is a control carrying its own id (${blk.ownArgs})`);
   ok(blk.otaInert && !blk.otaHasAct, 'an imported platform block stays display-only');
+  // 5c. …AND A PLATFORM BLOCK LOOKS LIKE ONE. The feed's label says whether an imported event is a
+  // guest or the host blocking dates; a clear block reads "Blocked" on a lighter dashed bar and is
+  // not counted as a stay, a reservation keeps its platform bar, and an event the calendar could not
+  // classify keeps the old look with a tooltip saying so — never a guess.
+  const kinds = await page.evaluate(() => {
+    const k = Object.keys(dbBlocks)[0] || '21a';
+    const save = dbBlocks[k];
+    const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    dbBlocks[k] = [
+      { id: 9101, source: 'airbnb', kind: 'blocked', label: 'Airbnb (Not available)', checkIn: iso(2), checkOut: iso(4) },
+      { id: 9102, source: 'vrbo', kind: 'booking', label: 'Reserved', checkIn: iso(6), checkOut: iso(9) },
+      { id: 9103, source: 'airbnb', kind: 'unknown', label: '', checkIn: iso(12), checkOut: iso(15) },
+    ];
+    renderCalendar();
+    const bars = [...document.querySelectorAll('#cal-body .tl-ext')];
+    const find = (t) => bars.find((e) => (e.textContent || '').trim() === t);
+    const blocked = find('Blocked'), booking = find('Vrbo'), unknown = find('Airbnb');
+    const out = {
+      blocked: !!blocked && blocked.classList.contains('tl-blocked') && /blocked by you on Airbnb/.test(blocked.title),
+      bookingPlain: !!booking && !booking.classList.contains('tl-blocked') && /Vrbo booking/.test(booking.title),
+      unknownSays: !!unknown && !unknown.classList.contains('tl-blocked') && /does not say/.test(unknown.title),
+      counted: dbBlocks[k].filter((b) => isOtaBlock(b)).map((b) => b.id).join(','),
+      dashed: blocked ? getComputedStyle(blocked).borderTopStyle : '',
+    };
+    dbBlocks[k] = save;
+    renderCalendar();
+    return out;
+  });
+  ok(kinds.blocked && kinds.dashed === 'dashed', `a platform block reads "Blocked" on a dashed bar and says it is yours (${kinds.dashed})`);
+  ok(kinds.bookingPlain, 'a reservation keeps the plain platform bar');
+  ok(kinds.unknownSays, 'an event the calendar cannot classify keeps the old look and says it cannot tell');
+  ok(kinds.counted === '9102,9103', `only the booking and the unclassified event count as stays (${kinds.counted})`);
   // Confirm-then-delete, driven through the real dialog.
   const del = await page.evaluate(async () => {
     window.__delPosts = [];

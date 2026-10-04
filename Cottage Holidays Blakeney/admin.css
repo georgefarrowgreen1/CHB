@@ -1163,7 +1163,14 @@ body.light-mode .ny-act {
   border-left-color: rgba(128, 128, 128, 0.5);
   color: var(--text-muted);
   cursor: default;
-}.tl-bar.tl-clip-l {
+}/* A platform block the host made: the dates are still taken, but it is not a guest, so it is
+   a quiet dashed outline with no stripes — the calendar must still read busy on the eye. */
+.tl-bar.tl-ext.tl-blocked {
+  background: transparent;
+  border: 1px dashed rgba(128, 128, 128, 0.55);
+  border-left-color: rgba(128, 128, 128, 0.55);
+}
+.tl-bar.tl-clip-l {
   margin-left: 1px;
 }.tl-bar.tl-clip-r {
   margin-right: 1px;

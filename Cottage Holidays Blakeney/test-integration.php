@@ -4436,6 +4436,26 @@ foreach ($rfx38['cases'] as $i => $rc) {
 }
 it_check('§38 every fixture was driven', $n38 === count($rfx38['cases']) && $n38 >= 8, (string) $n38);
 
+// §39 A PLATFORM BLOCK IS NOT A STAY (migration-124). The sync stores what the feed says each
+// event is, and the back office reads it through the real door. The classifier itself is gated
+// in test-ical.php; this is the column, its default and the route that serves it.
+echo "\n== §39 imported events carry what they are ==\n";
+$cols39 = $rootDb->query("SHOW COLUMNS FROM ical_blocks")->fetchAll(PDO::FETCH_COLUMN);
+it_check('§39 migration-124 added kind and label', in_array('kind', $cols39, true) && in_array('label', $cols39, true), implode(',', $cols39));
+$ins39 = $rootDb->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out, kind, label) VALUES (?,?,?,?,?,?,?)');
+$ins39->execute([$propKey, 'airbnb', 'it39-block', $dd(900), $dd(903), 'blocked', 'Airbnb (Not available)']);
+$ins39->execute([$propKey, 'airbnb', 'it39-res', $dd(910), $dd(913), 'booking', 'Reserved']);
+$rootDb->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')->execute([$propKey, 'vrbo', 'it39-plain', $dd(920), $dd(923)]);
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'blocks']);
+$by39 = [];
+foreach (($r['json']['blocks'] ?? []) as $bl) {
+    $by39[$bl['check_in']] = $bl;
+}
+it_check('§39 the blocks route serves a block\'s kind and label', ($by39[$dd(900)]['kind'] ?? '') === 'blocked' && ($by39[$dd(900)]['label'] ?? '') === 'Airbnb (Not available)');
+it_check('§39 …and a booking\'s', ($by39[$dd(910)]['kind'] ?? '') === 'booking');
+it_check('§39 an event stored with no kind defaults to unknown (it keeps counting as a stay)', ($by39[$dd(920)]['kind'] ?? '') === 'unknown');
+$rootDb->exec("DELETE FROM ical_blocks WHERE uid LIKE 'it39-%'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

@@ -96,7 +96,7 @@ function parse_ical($text)
     $cur = null;
     foreach ($lines as $line) {
         if (strpos($line, 'BEGIN:VEVENT') === 0) {
-            $cur = ['uid' => null, 'start' => null, 'end' => null];
+            $cur = ['uid' => null, 'start' => null, 'end' => null, 'summary' => '', 'description' => ''];
             continue;
         }
         if (strpos($line, 'END:VEVENT') === 0) {
@@ -115,9 +115,52 @@ function parse_ical($text)
             $cur['start'] = ical_date(substr($line, strpos($line, ':') + 1));
         } elseif (strpos($line, 'DTEND') === 0) {
             $cur['end'] = ical_date(substr($line, strpos($line, ':') + 1));
+        } elseif (strpos($line, 'SUMMARY') === 0) {
+            $cur['summary'] = ical_unescape(substr($line, strpos($line, ':') + 1));
+        } elseif (strpos($line, 'DESCRIPTION') === 0) {
+            $cur['description'] = ical_unescape(substr($line, strpos($line, ':') + 1));
         }
     }
     return $events;
+}
+
+// RFC 5545 text escapes (\n \, \; \\) back to plain text.
+function ical_unescape($v)
+{
+    return str_replace(['\\n', '\\N', '\\,', '\\;', '\\\\'], ["\n", "\n", ',', ';', '\\'], (string) $v);
+}
+
+// IS THIS EVENT A GUEST'S BOOKING OR THE HOST BLOCKING DATES OUT? The feed carries a
+// label and a description, and the platforms use them differently — but never a
+// guess: anything not recognised is 'unknown', and 'unknown' is treated EXACTLY as
+// every imported event was before this existed (a stay). Only a clear block is
+// treated as not-a-stay, and even then it still blocks the calendar everywhere.
+//   booking — a reservation link / id / "last 4 digits of the phone" in the
+//             description (Airbnb), or a label that is plainly a reservation
+//   blocked — a label that is plainly the host's block ("Airbnb (Not available)",
+//             "Blocked", "Unavailable", "Closed")
+// Reservation evidence wins over a blocked-looking label.
+function ical_classify($summary, $description)
+{
+    $s = strtolower(trim((string) $summary));
+    $d = strtolower((string) $description);
+    if (preg_match('/(reservation|booking)\s*(url|id|number|code)|\/reservations\/details|last\s*4\s*digits/', $d)) {
+        return 'booking';
+    }
+    if (preg_match('/^(airbnb\s*)?\(?(not available|unavailable|blocked|closed)\b/', $s)) {
+        return 'blocked';
+    }
+    if (preg_match('/^(reserved|reservation|booked|booking)\b/', $s)) {
+        return 'booking';
+    }
+    return 'unknown';
+}
+
+// The label kept for display: plain text, no control characters, short.
+function ical_label($summary)
+{
+    $t = trim(preg_replace('/[\x00-\x1F\x7F]+/', ' ', (string) $summary));
+    return function_exists('mb_substr') ? mb_substr($t, 0, 80) : substr($t, 0, 80);
 }
 
 // Normalise an iCal date/datetime value to YYYY-MM-DD.
