@@ -10325,15 +10325,13 @@ function bookingsSetFilter(f) {
         .forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-bfilter') === f));
     const tabs = document.querySelectorAll('#bookings-filters [data-bfilter]');
     tabs.forEach((b) => b.setAttribute('aria-selected', b.getAttribute('data-bfilter') === f ? 'true' : 'false'));
-    const inMenu = f === 'customplan' || f === 'all';
+    const inMenu = f === 'customplan' || f === 'all' || f === 'needspay';
     const chip = document.getElementById('bookings-filter-chip');
     if (chip) {
         chip.innerHTML = inMenu
-            ? `<button type="button" class="bk-fchip" ${chbAttrs('bookingsSetFilter', 'upcoming')}>${f === 'customplan' ? 'Custom plans only' : 'Showing every booking'} \u2715</button>`
+            ? `<button type="button" class="bk-fchip" ${chbAttrs('bookingsSetFilter', 'upcoming')}>${f === 'customplan' ? 'Custom plans only' : f === 'needspay' ? 'Bookings that owe you' : 'Showing every booking'} \u2715</button>`
             : '';
     }
-    const more = document.getElementById('bookings-more-btn');
-    if (more) more.classList.toggle('is-active', inMenu);
     renderBookings();
 }
 function bookingsSetSearch(v) {
@@ -10409,23 +10407,31 @@ function renderBookings() {
         // says Bookings (and the longer form once wrapped beside the verdict capsule).
         sum.textContent = rows.length ? `· ${rows.length} ${label}` : '';
     }
-    // WHO OWES IS SAID ONCE, ON THE TAB THAT LISTS THEM. The caption used to carry a
-    // verdict capsule ("£340 to collect" / "✓ All paid up") beside a Needs payment tab
-    // answering the same question, and the Today line above both says the figure. The
-    // tab now carries the COUNT, amber when someone owes and ABSENT when no one does
-    // (silence is the all-clear). Same predicate as the filter, so the badge and the
-    // list it opens cannot disagree. It SETTLES when the count changes — never on first
-    // paint, and compared as WORDS, the rule the old capsule followed.
-    const badge = document.getElementById('bk-needs-count');
-    if (badge) {
-        const n = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b)).length;
-        const was = badge.textContent || '';
-        badge.textContent = n ? String(n) : '';
-        badge.hidden = !n;
-        badge.classList.remove('bk-verdict-settle');
-        if (was && n && was !== String(n)) {
-            void badge.offsetWidth;
-            badge.classList.add('bk-verdict-settle');
+    // WHO OWES IS SAID ONCE, IN ONE QUIET LINE under the caption row. It used to be
+    // a count on a Needs payment tab, which was a fact dressed as a place: nobody
+    // goes to a list of who owes them nothing. Same predicate as the filter, so the
+    // line and the list it opens cannot disagree. Silence from ignorance is refused:
+    // with no bookings loaded at all it claims nothing either way.
+    const owedEl = document.getElementById('bookings-owed');
+    if (owedEl) {
+        const owers = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b));
+        let html = '';
+        if (owers.length) {
+            const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
+            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay">£${Math.round(sumOwed).toLocaleString('en-GB')} to collect from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'} <span aria-hidden="true">›</span></button>`;
+        } else if (allRows.length) {
+            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything.</p>';
+        }
+        if (owedEl.innerHTML !== html) {
+            // A figure that CHANGED settles (3px, no scale — it was already on screen); the first
+            // paint and an unchanged repaint stay still. Compared as WORDS.
+            const was = owedEl.textContent || '';
+            owedEl.innerHTML = html;
+            const el = owedEl.firstElementChild;
+            if (el && was && was !== (owedEl.textContent || '')) {
+                void (/** @type {HTMLElement} */ (el)).offsetWidth;
+                el.classList.add('bk-verdict-settle');
+            }
         }
     }
     if (!rows.length) {
@@ -19714,7 +19720,7 @@ function renderPricing() {
             <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}>
                 <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
                 <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
-                <span class="ny-act">${it.act} ›</span>
+                <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
             </button>`).join('')
         : `<p class="sl-empty">No pricing suggestions right now — no short gaps between stays to fill, and next month is pacing fine. Ideas appear here as your calendar fills.</p>`;
     wrap.innerHTML = `
@@ -20030,11 +20036,11 @@ function chbDutiesAll() {
             if (damageHeld(k, b).held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) {
                 out.push({
                     kind: 'deposit', key: 'deposit:' + b.dbId, sev: 'warn', ic: 'deposit',
-                    label: `Return ${b.name || 'the guest'}’s damages deposit`,
+                    label: `Return ${b.name || 'the guest'}’s ${'£' + (Math.round(damageHeld(k, b).held * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} deposit`,
                     sub: !hasCheckedOut(b) && b.guestCheckedOutAt
                         ? `Left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'this morning'} ✓ (guest-declared) · ${pname(k)}`
                         : `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
-                    act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
+                    act: 'Return £' + (Math.round(damageHeld(k, b).held * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 }), go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
@@ -20666,6 +20672,9 @@ function renderNeedsYou() {
         return;
     }
     wrap.style.display = '';
+    // ONE thing to do reads as a card with one button and no heading (the sentence
+    // above already says it); several keep the heading and the list.
+    wrap.classList.toggle('ny-solo', items.length === 1);
     nySwipeInit(list);
     const MAX = 4;
     const shown = __nyExpanded ? items : items.slice(0, MAX);
@@ -20676,7 +20685,7 @@ function renderNeedsYou() {
         <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}${it.key ? ` data-nykey="${escapeHtml(it.key)}" aria-describedby="ny-hint" aria-keyshortcuts="Delete"` : ''}>
             <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
             <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
-            <span class="ny-act">${it.act} ›</span>
+            <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
         </button>`,
             )
             .join('') +
@@ -21094,17 +21103,7 @@ function todayOpsLine() {
     // time a guest is an "arrival", after it they're "staying" (matches the
     // booking-row badge). The tuples carry those judgements; chbOpsParts owns
     // the words, shared with the offline day sheet.
-    const { parts, owed } = chbOpsParts(chbDayTuples());
-    // THE MONEY UNIT CARRIES ITS OWN SEPARATOR. As a plain member of the join,
-    // the "·" before the £ button sat at the END of line one and the button
-    // dropped alone to line two — measured at 390 on a Saturday: "…1 arrival ·"
-    // inked to 261 of a 362px rail, the button 121px wide, so it broke AFTER
-    // the separator. A nowrap span holding "· <button>" means the line can only
-    // break BEFORE the "·". textContent is unchanged, so every gate reading
-    // "£… to collect" still fires.
-    const owedHtml = owed > 0.005
-        ? '<span class="ops-unit">· <button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button></span>'
-        : '';
+    const { parts } = chbOpsParts(chbDayTuples());
     // On rail screens Today opens the way every other screen now does — the
     // serif day sentence — so the GREETING joins this line there (CSS gives
     // it the spine's scale and hides the h1 above; below the rail this
@@ -21117,11 +21116,25 @@ function todayOpsLine() {
     if (document.body.classList.contains('rail-on')) {
         try { greet = '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + ' — </span>'; } catch (e) {}
     }
-    // innerHTML: every part is generated (counts + the owed button) — no user text.
-    const opsHtml = greet + escapeHtml(date) +
-        (parts.length || owedHtml
-            ? (parts.length ? ' · ' + parts.join(' · ') : '') + (owedHtml ? ' ' + owedHtml : '')
-            : ' · all quiet today');
+    // THE DAY IS A SENTENCE, with the one thing to do in bold. Where the line used
+    // to list the date and the day's movements ("Sunday 4 October · 1 departure ·
+    // £75 to collect"), it now says what needs doing, because the owner opens this
+    // screen to find out exactly that; the timeline below carries the movements and
+    // the Bookings caption carries who owes. The words come from the duties' own
+    // (plain-text) labels, escaped here at the one render boundary.
+    const weekday = chbNow().toLocaleDateString('en-GB', { weekday: 'long' });
+    let say;
+    let dutyList = [];
+    try { dutyList = chbDuties() || []; } catch (e) {}
+    const task = (d) => '<b>' + escapeHtml(String(d.label || '').replace(/^./, (c) => c.toLowerCase())) + '</b>';
+    if (dutyList.length === 1) {
+        say = weekday + '. There’s one thing to do: ' + task(dutyList[0]) + '.';
+    } else if (dutyList.length > 1) {
+        say = weekday + '. ' + dutyList.length + ' things need you, starting with ' + task(dutyList[0]) + '.';
+    } else {
+        say = weekday + '. ' + (parts.length ? parts.join(' and ') + ' today, and nothing needs you.' : 'Nothing needs you today.');
+    }
+    const opsHtml = greet + say;
     // The guard checks the DOM's TRUTH, not just its own memory: initBackOffice
     // paints this node with the bare date the instant the page opens (before
     // data lands), so a memo-only guard believed itself up to date and left
@@ -21132,21 +21145,11 @@ function todayOpsLine() {
         __todayOpsHtml = opsHtml;
         __todayOpsDom = el.innerHTML;
     }
-    // The day's VERDICT sits BESIDE THE TITLE, not trailing the date line —
-    // it answers "is anything wrong?", which is a fact about the screen, while
-    // the line beneath it lists the day's movements. Only the ✓, and only when
-    // the Needs-you strip below is empty: with duties present the strip carries
-    // the state, and a capsule repeating its badge is noise. Written to its own
-    // slot, so it is CLEARED on the render that grows a duty (leaving the last
-    // one painted would say "nothing needs you" above a list of things that do).
+    // The ✓ "Nothing needs you" capsule that used to sit beside the title is GONE: the
+    // sentence above says it, and a capsule repeating a sentence is noise. The slot
+    // is kept (cleared) so a stale one can never linger.
     const vEl = document.getElementById('today-verdict');
-    if (vEl) {
-        let cap = '';
-        try {
-            if (!(needsYouItems() || []).length) cap = '<span class="st-cap is-ok ops-cap"><span class="st-tick" aria-hidden="true">✓</span>Nothing needs you</span>';
-        } catch (e) {}
-        vEl.innerHTML = cap;
-    }
+    if (vEl && vEl.innerHTML) vEl.innerHTML = '';
 }
 // Unified back office: load data once, render calendar and inbox.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -27358,12 +27361,10 @@ function renderCalendar() {
         (dbBlocks[k] || []).forEach((bl) => markNights(bl.checkIn, bl.checkOut, ''));
         laneData[k] = { takenBy, starts, ends };
     });
-    const occOf = (ds) => keys.reduce((n, k) => n + (laneData[k].takenBy.has(ds) ? 1 : 0), 0);
-    const chgOf = (ds) => keys.some((k) => laneData[k].starts.has(ds) && laneData[k].ends.has(ds));
-
-    // Header lane: day cells + OCCUPANCY PIPS (one segment per cottage, filled
-    // when taken) and the ↺ changeover mark (someone leaves AND arrives).
-    // Decorative duplicates of the lanes below, so aria-hidden.
+    // Header lane: the day cells, dates only. The occupancy pips and the ↺
+    // changeover mark are GONE (the simpler Today): they were small decorative
+    // duplicates of the lanes below, needed a key to be read at all, and the
+    // bars meeting in a lane already say a changeover.
     let head = '';
     for (let i = 0; i < N; i++) {
         const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
@@ -27380,10 +27381,7 @@ function renderCalendar() {
         // is-mstart draws the month-boundary rule down the whole column, so
         // mid-scroll you can SEE where a month turns, not just read the label.
         const mstart = d.getDate() === 1 && i > 0;
-        const occ = occOf(dates[i]);
-        const pips = `<u class="tl-occ" aria-hidden="true">${keys.map((_, p) => `<s class="${p < occ ? 'f' : ''}"></s>`).join('')}</u>`;
-        const chg = chgOf(dates[i]) && !monthTag ? '<span class="tl-chg" aria-hidden="true" title="Changeover day">↺</span>' : '';
-        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}${chg}<i>${dows[d.getDay()]}</i><span class="tl-num">${d.getDate()}</span>${pips}</span>`;
+        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i><span class="tl-num">${d.getDate()}</span></span>`;
     }
     const lock =
         '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';

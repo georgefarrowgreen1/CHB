@@ -2019,6 +2019,34 @@ Now eight.
   CLICKING the item, the chip's way back, one Add button) and ui-test-backoffice-motion §3.
   ui-test-smallthings lost its refresh hit-region check — the icon it measured no longer exists.
 
+## The simpler Today (approved demo, built "exactly as shown")
+
+**Asked for as "simplify it a little bit more, make it more clear", demoed twice, then
+"Build it exactly as shown".** Gated by **`ui-test-simpletoday.js`**.
+- **THE DAY IS A SENTENCE** (`todayOpsLine`, into `#today-date`): "Sunday. There's one thing to do:
+  **return Emma Clarke's £60 deposit**." / "N things need you, starting with …" / "Nothing needs you
+  today." (with the day's movements only when nothing needs you). The date line, the movements list,
+  the "£… to collect" button and the ✓ capsule beside the title are gone — the capsule repeated the
+  sentence. `#today-verdict` is kept and cleared so a stale one cannot linger.
+- **ONE TASK IS A CARD WITH ONE BUTTON** (`#needs-you.ny-solo`, set by renderNeedsYou when exactly one
+  item): heading hidden, the action a full-width accent button ("Return £60"). The deposit duty now
+  names the figure (`Return <full name>'s £60 deposit`, act `Return £60`); the FULL name stays on
+  purpose (two Sarahs). Several tasks keep the heading and list unchanged.
+- **THE MONTH ROW** is title + ‹ Today › + a 44px **+**; the calendar ⋯ and the Add ▾ pill are gone.
+  The + menu holds Add a booking, Block dates, the sync note, Compact calendar and Refresh external
+  bookings.
+- **THE CALENDAR SAYS LESS**: no occupancy pips, no ↺ marks (so no key), today's number circled, a
+  platform block is faint hatching with no outline, `.tl-bar` has 16px of left padding so the playhead
+  never strikes the first letter of a bar that starts at today's checkout.
+- **BOOKINGS**: serif caption with Upcoming | Past beside it. **Needs payment is no longer a tab** —
+  who owes is ONE line under the caption (`#bookings-owed`): "✓ Nobody owes you anything." or a button
+  "£528 to collect from 1 guest ›" → `openBookingsNeedsPay`, which selects no tab and shows the
+  "Bookings that owe you ✕" chip (the existing tab-less-filter mechanism). The figure settles when
+  it changes (never on first paint). With no bookings loaded it claims nothing.
+- **REMOVED, said plainly**: the Bookings ⋯ with its **Custom plans only** and **Show every booking**
+  audits. `bookingsSetFilter('customplan'|'all')` still works but nothing on screen offers it.
+- The dock count badge sits on the icon's corner (`.admin-dock-badge`), outside the selected pill.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

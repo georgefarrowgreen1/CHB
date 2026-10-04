@@ -405,35 +405,33 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
 
-    // (C) The one accent CTA on the owner's landing reads at BODY size — it
-    // wore 13px in a 44px pill while the rows it acts on read 15.
+    // (C) The one accent control on the owner's landing is the + in the month row: a 44px
+    // target, a real name for a screen reader, and the accent as its fill (it carries a glyph,
+    // not words, so the house ink-on-accent pair is what it must read in).
     await page.evaluate(async () => { await openBookings(); });
     await page.waitForTimeout(900);
     const cta = await page.evaluate(() => {
         const add = document.querySelector('.cal-actions .cal-add-btn');
-        const row = document.querySelector('.ny-label') || document.querySelector('.bk-row-name');
-        const px = (e) => (e ? parseFloat(getComputedStyle(e).fontSize) : 0);
-        return { add: px(add), row: px(row), body: parseFloat(getComputedStyle(document.body).getPropertyValue('--fs-body')) || 0 };
+        const r = add ? add.getBoundingClientRect() : { width: 0, height: 0 };
+        return { w: Math.round(r.width), h: Math.round(r.height), name: add ? add.getAttribute('aria-label') || '' : '' };
     });
-    ok(cta.add > 0 && Math.abs(cta.add - cta.row) < 0.5,
-        `“Add booking” reads at the size of the rows it acts on (${cta.add}px vs ${cta.row}px)`);
+    ok(cta.w >= 44 && cta.h >= 44, `the + is a 44px target (${cta.w}x${cta.h})`);
+    ok(/Add/.test(cta.name), `…and is named for a screen reader ("${cta.name}")`);
 
-    // (B) The money unit carries its own separator, so a wrap can only break
-    // BEFORE the "·" — never leave it stranded at the end of the line above.
+    // (B) Who owes is said ONCE, in one line under the Bookings caption — a real button that
+    // says the figure and opens the list. (It used to ride the day line as an unbreakable run.)
     const dayLine = await page.evaluate(() => {
-        const u = document.querySelector('#today-date .ops-unit');
+        const b = document.querySelector('#bookings-owed .bk-owed');
         return {
-            has: !!u,
-            starts: u ? (u.textContent || '').trim().startsWith('·') : false,
-            nowrap: u ? getComputedStyle(u).whiteSpace === 'nowrap' : false,
-            btnInside: !!(u && u.querySelector('.ops-owed')),
-            said: /to collect/.test((document.getElementById('today-date') || {}).textContent || ''),
+            has: !!b,
+            isBtn: !!b && b.tagName === 'BUTTON' && b.getAttribute('data-act') === 'openBookingsNeedsPay',
+            said: /£[\d,]+ to collect from/.test((b && b.textContent) || ''),
+            onDayLine: /to collect/.test((document.getElementById('today-date') || {}).textContent || ''),
         };
     });
-    ok(dayLine.has && dayLine.starts && dayLine.btnInside,
-        'the day line\'s money unit holds its own separator and its button');
-    ok(dayLine.nowrap, '…as one unbreakable run');
-    ok(dayLine.said, '…and the line still says "£… to collect" for the gates that read it');
+    ok(dayLine.has && dayLine.isBtn, 'who owes is one button under the Bookings caption');
+    ok(dayLine.said, '…saying the figure and the number of guests');
+    ok(!dayLine.onDayLine, '…and the day sentence no longer repeats it');
 
     // (I) The cap names the ASK's stage. A finished stay with the deposit still
     // held read "Next · 4 of 6 · Arrival info" over a sentence about the

@@ -430,8 +430,8 @@ const reachOk = (name, list, floor, axis) => {
   {
     const page = await newPage(390, 'owner');
     await run(page, "(async () => { await window.loadAdminBundle(); nav('view-backoffice'); await initBackOffice(); })()", 2500);
-    // 1. TODAY: the three booking tabs.
-    reachOk('today 390 · the booking filters', await page.evaluate(REACH, '#bookings-filters .inbox-sort-btn'), 3, 'y');
+    // 1. TODAY: the two booking tabs.
+    reachOk('today 390 · the booking filters', await page.evaluate(REACH, '#bookings-filters .inbox-sort-btn'), 2, 'y');
     // 2. THE INBOX: the folder switch and the sort segments.
     // the folder SWITCH is hidden on the stacked landing by design, so the seg
     // measured here is the enquiry tab bar inside the folder (the fold rule:

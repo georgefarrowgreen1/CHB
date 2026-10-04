@@ -64,31 +64,27 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // were read only inside the hub's own plan panel, so a mistyped plan stayed
   // invisible until the money came out wrong. Driven by CLICKING the chip — a
   // filter reachable only by calling the function is a filter nobody has.
-  // THE FILTERS ARE THREE TABS PLUS A ⋯. Custom plan and All are audits, not everyday
-  // views, so they live in the caption's ⋯ menu; the tabs are Upcoming / Needs payment / Past.
+  // THE FILTERS ARE TWO TABS. Upcoming / Past are the everyday views; "who owes" is one
+  // quiet line under the caption (#bookings-owed) that opens the list as a chip-marked
+  // filter, and the audits (Custom plans, All) are no longer offered on screen.
   const tabsNow = await page.evaluate(() => [...document.querySelectorAll('#bookings-filters [data-bfilter]')].map((b) => b.getAttribute('data-bfilter')));
-  ok(JSON.stringify(tabsNow) === JSON.stringify(['upcoming', 'needspay', 'past']), `the tab row is three filters (${tabsNow.join(', ')})`);
-  await page.click('#bookings-more-btn');
-  await page.waitForTimeout(300);
-  const menuItems = await page.evaluate(() => [...document.querySelectorAll('.bk-more .bhub-menu [data-bfilter]')].map((b) => b.getAttribute('data-bfilter')));
-  ok(JSON.stringify(menuItems) === JSON.stringify(['customplan', 'all']), `…and the ⋯ menu holds the other two (${menuItems.join(', ')})`);
-  // Driven by CLICKING the menu item — a filter reachable only by calling the
-  // function is a filter nobody has.
-  await page.click('.bk-more .bhub-menu [data-bfilter="customplan"]');
+  ok(JSON.stringify(tabsNow) === JSON.stringify(['upcoming', 'past']), `the tab row is two filters (${tabsNow.join(', ')})`);
+  ok(await page.evaluate(() => !document.getElementById('bookings-more-btn') && !document.querySelector('.bk-more')),
+    'there is no ⋯ on the Bookings caption any more');
+  const owedLine = await page.evaluate(() => (document.getElementById('bookings-owed') || {}).textContent || '');
+  ok(/to collect|Nobody owes you anything/.test(owedLine), `who owes is said once, in one line under the caption ("${owedLine.trim()}")`);
+  // A filter with no tab selects NO tab, says what is on in a chip, and the chip is the way back.
+  await page.evaluate(() => window.bookingsSetFilter('customplan'));
   await page.waitForTimeout(350);
   const plan = await page.evaluate(() => ({
-    on: !!document.querySelector('.bk-more .bhub-menu [data-bfilter="customplan"].is-on'),
     tabOn: document.querySelectorAll('#bookings-filters [data-bfilter].is-on').length,
     chip: (document.getElementById('bookings-filter-chip') || {}).textContent || '',
-    active: document.getElementById('bookings-more-btn').classList.contains('is-active'),
     names: [...document.querySelectorAll('#bookings-list .bk-row strong')].map((e) => e.textContent.trim()),
   }));
-  ok(plan.on, 'the bookings list offers a Custom plan filter (in the ⋯)');
   ok(plan.names.length === 1 && plan.names[0] === 'Second Guest',
-    `…and it finds the one booking off the standard schedule (${JSON.stringify(plan.names)})`);
-  ok(plan.tabOn === 0 && /Custom plans only/.test(plan.chip) && plan.active,
-    `a menu filter selects NO tab, says what is on in a chip, and marks the ⋯ (${plan.tabOn} tabs on, "${plan.chip.trim()}")`);
-  // The chip is the way back.
+    `the custom-plan filter still finds the one booking off the standard schedule (${JSON.stringify(plan.names)})`);
+  ok(plan.tabOn === 0 && /Custom plans only/.test(plan.chip),
+    `a tab-less filter selects NO tab and says what is on in a chip (${plan.tabOn} tabs on, "${plan.chip.trim()}")`);
   await page.click('#bookings-filter-chip button');
   await page.waitForTimeout(350);
   const back = await page.evaluate(() => ({
@@ -97,27 +93,27 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }));
   ok(back.tab === 'upcoming' && back.chip.trim() === '', `one tap on the chip returns to Upcoming (${back.tab})`);
 
-  // ONE Add button, two choices; the old standalone Block dates button is gone.
+  // ONE + (Add), two choices and the calendar's two view options beneath them; there is no ⋯ beside it.
   const addUi = await page.evaluate(() => ({
     standalone: [...document.querySelectorAll('.cal-actions > button.cal-add-btn')].length,
+    dots: !!document.querySelector('.cal-actions .bhub-menu-btn'),
     menu: [...document.querySelectorAll('.cal-actions .bhub-menu [data-act]')].map((b) => b.getAttribute('data-act')),
+    label: (document.querySelector('.cal-actions .cal-add-btn') || {}).getAttribute?.('aria-label') || '',
   }));
-  ok(addUi.standalone === 0 && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
-    `Add booking + Block dates share one button; zoom and refresh live in the calendar ⋯ (${addUi.menu.join(', ')})`);
-  // THE ⋯ MENUS STAY ON THE SCREEN. The calendar's ⋯ sits beside Add, near the LEFT edge, and
-  // its menu hangs off the wrapper's right edge, so on a phone it opened half off the left
-  // side. Measured at phone width for both menus on the row.
+  ok(addUi.standalone === 0 && !addUi.dots && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
+    `Add booking, Block dates, zoom and refresh share ONE + menu and there is no ⋯ (${addUi.menu.join(', ')})`);
+  ok(/Add/.test(addUi.label), `the + is named for a screen reader ("${addUi.label}")`);
+  // THE MENU STAYS ON THE SCREEN: the + sits at the RIGHT edge now and its menu hangs off the
+  // wrapper's right edge; measured at phone width.
   await page.setViewportSize({ width: 390, height: 850 });
   await page.evaluate(() => window.nav('view-backoffice'));
   await page.waitForTimeout(500);
-  for (const [label, btnSel, menuSel] of [['calendar ⋯', '.cal-actions .bhub-menu-btn', '.cal-actions .bhub-actions:last-child .bhub-menu'], ['Add ▾', '.cal-actions .cal-add-btn', '.cal-actions .bhub-actions:first-child .bhub-menu']]) {
-    await page.click(btnSel);
-    await page.waitForTimeout(600);
-    const r = await page.evaluate((sel) => { const m = document.querySelector(sel); const b = m.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), w: Math.round(b.width), vw: window.innerWidth }; }, menuSel);
-    ok(r.w > 100 && r.left >= 0 && r.right <= r.vw, `${label} menu opens fully on a 390px screen (${r.left}→${r.right} of ${r.vw}, ${r.w}px wide)`);
-    await page.click(btnSel);
-    await page.waitForTimeout(350);
-  }
+  await page.click('.cal-actions .cal-add-btn');
+  await page.waitForTimeout(600);
+  const addR = await page.evaluate(() => { const m = document.querySelector('.cal-actions .bhub-menu'); const b = m.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), w: Math.round(b.width), vw: window.innerWidth }; });
+  ok(addR.w > 100 && addR.left >= 0 && addR.right <= addR.vw, `the + menu opens fully on a 390px screen (${addR.left}→${addR.right} of ${addR.vw}, ${addR.w}px wide)`);
+  await page.click('.cal-actions .cal-add-btn');
+  await page.waitForTimeout(350);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.waitForTimeout(250);
   // ---- The lane's own cells must agree with the bars on it ----------------
@@ -465,13 +461,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       bookingPlain: !!booking && !booking.classList.contains('tl-blocked') && /Vrbo booking/.test(booking.title),
       unknownSays: !!unknown && !unknown.classList.contains('tl-blocked') && /does not say/.test(unknown.title),
       counted: dbBlocks[k].filter((b) => isOtaBlock(b)).map((b) => b.id).join(','),
-      dashed: blocked ? getComputedStyle(blocked).borderTopStyle : '',
+      dashed: blocked ? (getComputedStyle(blocked).borderTopStyle === 'none' && /repeating-linear-gradient/.test(getComputedStyle(blocked).backgroundImage) ? 'hatched' : getComputedStyle(blocked).borderTopStyle) : '',
     };
     dbBlocks[k] = save;
     renderCalendar();
     return out;
   });
-  ok(kinds.blocked && kinds.dashed === 'dashed', `a platform block reads "Blocked" on a dashed bar and says it is yours (${kinds.dashed})`);
+  ok(kinds.blocked && kinds.dashed === 'hatched', `a platform block reads "Blocked" on a faint hatched bar with no outline and says it is yours (${kinds.dashed})`);
   ok(kinds.bookingPlain, 'a reservation keeps the plain platform bar');
   ok(kinds.unknownSays, 'an event the calendar cannot classify keeps the old look and says it cannot tell');
   ok(kinds.counted === '9102,9103', `only the booking and the unclassified event count as stays (${kinds.counted})`);
