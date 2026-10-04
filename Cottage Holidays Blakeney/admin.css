@@ -2515,10 +2515,10 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding-inline: 22px;
 }
 .cmdk-none .cmdk-none-ic {
-  width: 128px;
+  width: 180px;
   height: auto;
   color: var(--accent-text);
-  opacity: 0.8;
+  opacity: 1;
 }
 .cmdk-none strong {
   display: block;
