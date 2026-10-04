@@ -27256,7 +27256,7 @@ function tlPlaceNowLine() {
     const inner = host && host.querySelector('.tl-inner');
     if (!inner) return;
     const cell = inner.querySelector('.tl-headrow .tl-day.is-today');
-    let line = inner.querySelector('.tl-nowline');
+    let line = /** @type {HTMLElement|null} */ (inner.querySelector('.tl-nowline'));
     if (!cell) { if (line) line.remove(); return; } // today outside the window
     if (!line) { line = document.createElement('div'); line.className = 'tl-nowline'; inner.appendChild(line); }
     const now = chbNow();
@@ -27266,7 +27266,7 @@ function tlPlaceNowLine() {
     line.style.left = ((cr.left - ir.left) + frac * cr.width) + 'px';
     // The playhead belongs to the LANES: it starts where the header row ends, so it never
     // strikes through today's day number (reported: "S4" with the line through the 4).
-    const hr = inner.querySelector('.tl-headrow');
+    const hr = /** @type {HTMLElement|null} */ (inner.querySelector('.tl-headrow'));
     line.style.top = (hr ? hr.offsetHeight : 0) + 'px';
 }
 // Compact ↔ comfortable day width. Compact fits roughly half as many more days
