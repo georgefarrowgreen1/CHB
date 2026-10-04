@@ -2515,8 +2515,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding-inline: 22px;
 }
 .cmdk-none .cmdk-none-ic {
-  width: 34px;
-  height: 34px;
+  width: 128px;
+  height: auto;
   color: var(--accent-text);
   opacity: 0.8;
 }

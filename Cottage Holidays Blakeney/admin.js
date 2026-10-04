@@ -9060,7 +9060,10 @@ function cmdkDeepApply() {
 // deliberate rather than broken. This is that state, once — and CMDK_WIDEN is the
 // widen instruction stated once, so it cannot drift again.
 const CMDK_WIDEN = 'Tap “All” above to search everywhere.';
-const CMDK_NONE_IC = '<svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
+// A crab on the quay, crabbing — the Blakeney pastime — with nothing on the line. One
+// illustration for every "nothing found" state; it paints in currentColor so it takes the
+// accent-text ink (gated by ui-test-searchpage §18e) and needs no per-theme art.
+const CMDK_NONE_IC = '<svg class="cmdk-none-ic ic" viewBox="0 0 160 110" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 62h92M16 62v22M52 62v22M88 62v22" opacity=".55"/><path d="M4 94c10-5 20 5 30 0s20 5 30 0 20 5 30 0 20 5 30 0 20 5 26 0" opacity=".45"/><path d="M100 94c8 4 20-2 30 0" opacity=".25"/><ellipse cx="62" cy="52" rx="15" ry="10" fill="currentColor" fill-opacity=".14"/><path d="M52 44l-3-7M72 44l3-7"/><circle cx="49" cy="34" r="2.6" fill="currentColor"/><circle cx="75" cy="34" r="2.6" fill="currentColor"/><path d="M48 52l-9-4-5 5M48 57l-10 3M76 52l9-4M76 57l10 3M54 61l-4 1M70 61l4 1"/><path d="M42 40c-6-3-10-9-7-14 4-1 8 2 9 6" /><path d="M82 40c8-2 14-8 12-15" /><path d="M94 25L128 8" stroke-width="2.4"/><path d="M128 8v78"/><ellipse cx="128" cy="90" rx="9" ry="2.6" opacity=".6"/><ellipse cx="128" cy="90" rx="15" ry="4.4" opacity=".3"/><path d="M57 54c3 2.5 7 2.5 10 0" stroke-width="1.6"/></svg>';
 // title/sub are PLAIN TEXT and escaped here — the same boundary rule chbDuties
 // follows, so a guest called O'Brien can reach this without being escaped twice.
 function cmdkNoneHtml(title, sub) {
