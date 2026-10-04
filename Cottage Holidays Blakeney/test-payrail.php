@@ -2140,6 +2140,27 @@ chk('a REAL time is honoured (16:30 → DTSTART carries it, DESC states it)',
     // 2026-09-06 is BST, so 16:30 London = 15:30Z in the DTSTART.
     && strpos($ics3, 'DTSTART:20260906T153000Z') !== false);
 
+// ── The rental total: one fixture file, shared with smoke-test.js (the client mirror) ──
+echo "\n== Rental total (rental-fixtures.json) ==\n";
+$rfx = json_decode((string) file_get_contents(__DIR__ . '/rental-fixtures.json'), true);
+chk('rental fixtures load', is_array($rfx) && count($rfx['cases'] ?? []) >= 8);
+foreach (($rfx['cases'] ?? []) as $rc) {
+    $row = $rc['row'];
+    chk('shape: ' . $rc['name'], booking_total_shape($row) === $rc['shape']);
+    chk('rental: ' . $rc['name'], abs(booking_rental_price($row) - $rc['rental']) < 0.005);
+    chk('agreed total: ' . $rc['name'], abs(booking_agreed_total($row) - $rc['agreedTotal']) < 0.005);
+}
+// A ratchet: no new inline `price_override ?? agreed_total` read outside the two named
+// functions. (SQL COALESCE(price_override, agreed_total) is the same read and is allowed.)
+$inline = [];
+foreach (glob(__DIR__ . '/*.php') as $f) {
+    $bn = basename($f);
+    if (strpos($bn, 'test-') === 0 || $bn === 'db.php') { continue; }
+    $src = preg_replace('#^\s*(//|\*|/\*).*$#m', '', (string) file_get_contents($f));
+    if (preg_match('/price_override\'\]\s*\?\?\s*\$\w+\[\'agreed_total\'\]|\$\w+\[\'agreed_total\'\]\s*\?\?\s*\$\w+\[\'price_override\'\]/', $src)) { $inline[] = $bn; }
+}
+chk('no inline price_override/agreed_total read outside db.php' . ($inline ? ' (' . implode(', ', $inline) . ')' : ''), !$inline);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

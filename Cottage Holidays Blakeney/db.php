@@ -1923,10 +1923,59 @@ function derive_payment_status($total, $paid)
 // damages_collected caps at the agreed deposit AND at what was actually paid
 // above the rental — a legacy override with the deposit folded in has
 // paid == override, so it still collects £0 there.
-function booking_rental_price($b)
+//
+// THE SHAPE OF A BOOKING'S STORED MONEY decides which snapshot line IS the rental:
+// a booking whose price_override was lost (the Edit form used to post it back
+// blank) keeps agreed_total at the negotiated figure while nightly + fee still
+// read the standard price, so "the rental" had two answers — the hub and the
+// accounts measured a cash deposit against the STANDARD one while set_payment and
+// the emails used the agreed total, and a fully paid guest read as owing the
+// deposit. The decision is stated once, here, and booking_total_shape() is the
+// same predicate migration-123 repairs on (JS mirror: bookingRentalPure, app.js —
+// both driven by rental-fixtures.json).
+function booking_total_shape($b)
+{
+    $total = $b['agreed_total'] ?? null;
+    $nightly = $b['agreed_nightly'] ?? null;
+    $fee = $b['agreed_txn_fee'] ?? null;
+    if ($total === null || $total === '' || $nightly === null || $fee === null) {
+        return 'unsnapshotted'; // legacy / half-snapshotted: nothing to judge
+    }
+    $total = (float) $total;
+    $std = (float) $nightly + (float) $fee;
+    if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
+        return abs((float) $b['price_override'] - $total) > 0.005 ? 'mismatch' : 'custom';
+    }
+    if ($total <= 0 || abs($std - $total) <= 0.005) {
+        return 'standard';
+    }
+    // The older shape folded the refundable deposit INTO the total: standard + deposit.
+    if (abs($std + (float) ($b['agreed_booking_fee'] ?? 0) - $total) <= 0.005) {
+        return 'folded';
+    }
+    return 'lost'; // a negotiated total with no override recorded
+}
+
+// What the guest owes for the stay AS STORED: the override if there is one, else
+// the agreed total (0 with no snapshot). For a legacy 'folded' row this includes
+// the deposit, which is what that era's paid-status maths measures against; every
+// other shape it IS the rental. ONE definition of the read that eleven sites
+// spelled out inline (SQL COALESCE(price_override, agreed_total) is the same read).
+function booking_agreed_total($b)
 {
     if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
         return (float) $b['price_override'];
+    }
+    return (float) ($b['agreed_total'] ?? 0);
+}
+
+function booking_rental_price($b)
+{
+    if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
+        return (float) $b['price_override']; // deliberate, whatever the snapshot says
+    }
+    if (booking_total_shape($b) === 'lost') {
+        return (float) $b['agreed_total']; // the same figure set_payment and the emails use
     }
     return (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
 }

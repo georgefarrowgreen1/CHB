@@ -4405,6 +4405,37 @@ $r = http($admin, 'GET', '/admin-bootstrap.php');
 it_check('§37 a runaway map is truncated on the way out (400)', count($r['json']['dismissed'] ?? []) === 400, (string) count($r['json']['dismissed'] ?? []));
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'duty-dismissed', 'value' => '']);
 
+// ---------------------------------------------------------------------------
+// §38 ONE RENTAL TOTAL. The hub, the emails and the accounts read a booking's rental
+// through booking_rental_price / booking_agreed_total; they used to disagree whenever a
+// price override was lost. Real rows, read back through PDO (so values arrive as the
+// strings the app sees), against the same fixtures the client mirror is held to.
+echo "\n== §38 the shared rental fixtures against real stored rows ==\n";
+require_once __DIR__ . '/db.php'; // the pure money helpers (db() stays lazy)
+$rfx38 = json_decode((string) file_get_contents(__DIR__ . '/rental-fixtures.json'), true);
+$n38 = 0;
+foreach ($rfx38['cases'] as $i => $rc) {
+    $row = $rc['row'];
+    $cols = [
+        'prop_key' => $propKey, 'name' => 'Rental Fx ' . $i, 'email' => 'rentalfx' . $i . '@gmail.com',
+        'adults' => 2, 'children' => 0, 'payment' => 'paid', 'deposit_paid' => 0, 'agreed_nights' => 2,
+        'check_in' => $dd(1100 + $i * 4), 'check_out' => $dd(1102 + $i * 4),
+    ] + $row;
+    $names = array_keys($cols);
+    $rootDb->prepare('INSERT INTO bookings (' . implode(',', $names) . ') VALUES (' . implode(',', array_fill(0, count($names), '?')) . ')')->execute(array_values($cols));
+    $stored = $rootDb->query('SELECT * FROM bookings WHERE id = ' . (int) $rootDb->lastInsertId())->fetch(PDO::FETCH_ASSOC);
+    $ok = booking_total_shape($stored) === $rc['shape']
+        && abs(booking_rental_price($stored) - $rc['rental']) < 0.005
+        && abs(booking_agreed_total($stored) - $rc['agreedTotal']) < 0.005;
+    it_check('§38 stored row: ' . $rc['name'], $ok, booking_total_shape($stored) . ' ' . booking_rental_price($stored) . ' ' . booking_agreed_total($stored));
+    // THE PROPERTY: where the two frames used to diverge (a lost override), they agree.
+    if ($rc['shape'] === 'lost') {
+        it_check('§38 …and for a lost override the rental and the agreed total are ONE figure', abs(booking_rental_price($stored) - booking_agreed_total($stored)) < 0.005);
+    }
+    $n38++;
+}
+it_check('§38 every fixture was driven', $n38 === count($rfx38['cases']) && $n38 >= 8, (string) $n38);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

@@ -16425,9 +16425,7 @@ function damageHeld(propKey, b) {
     // stay in lockstep with): max() kept a discounted booking's floor at the
     // snapshot, so a £750 cash payment against an agreed £700 read as £0 deposit
     // collected and the job never surfaced.
-    let rental = b.priceOverride != null
-        ? b.priceOverride
-        : p.rentalTotal != null ? p.rentalTotal : Math.max(0, p.total);
+    const rental = bookingRentalPure(b, p);
     const paid = Math.max(0, Number(b.depositPaid) || 0);
     const collected = Math.round(Math.max(0, Math.min(dep, paid - rental)) * 100) / 100;
     const returned = Math.round((Number(damagesReturnedMap[b.dbId]) || 0) * 100) / 100;

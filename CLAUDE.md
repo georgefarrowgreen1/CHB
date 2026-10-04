@@ -7462,6 +7462,29 @@ reproduced the screenshot to the penny, with the database holding the full £310
   worth rebuilding whenever a symptom crosses the client/server line: seed through the
   real endpoints, drive the real UI, and read the database after each step.
 
+## One rental total: two frames became one rule
+
+The "paid in full but still owing" reports (#1238–#1240) had one root: two definitions of
+"the rental". The emails, `set_payment`, `booking_amount_due`, the invoice and autopay read
+`price_override ?? agreed_total`; the hub, `damages_collected`, accounts and `damageHeld`
+read `price_override ?? agreed_nightly + agreed_txn_fee`. They agree until an override is
+lost, and then the negotiated total sits in `agreed_total` while nightly + fee still say
+standard — so £310 was stored correctly and one surface said £50 owing.
+- **Three named functions in db.php**: `booking_total_shape()` (unsnapshotted / standard /
+  custom / mismatch / folded / lost — the predicate migration-123 repairs on),
+  `booking_agreed_total()` (override ?? `agreed_total`) and `booking_rental_price()`
+  (override wins; a `lost` row's rental IS `agreed_total`; else nightly + fee). Client twin:
+  `bookingRentalPure(b, p)` in app.js, fed `hasSnapshot` by the mapper.
+- **`folded` legacy rows** keep their deposit inside `booking_agreed_total` on purpose: that
+  era's paid-status maths measures against it. The rental is still nightly + fee.
+- **ONE fixture file, `rental-fixtures.json`**, looped by test-payrail (PHP), smoke-test
+  (client) and test-integration §38 (real stored rows). Add cases there, never to a test.
+- **Ratchet**: test-payrail fails on a new inline `price_override ?? agreed_total` outside
+  db.php. SQL `COALESCE(price_override, agreed_total, 0)` (auth, customers, owner-digest) is
+  the same read as `booking_agreed_total` and is deliberately left.
+- **Manage → System check → "Booking prices"** (diagnostics.php) warns if any upcoming
+  booking is still `lost`.
+
 ## Swiping a Needs-you row away
 
 **Asked for from a screenshot of "Tina Nudd's details are not on the register"** — a

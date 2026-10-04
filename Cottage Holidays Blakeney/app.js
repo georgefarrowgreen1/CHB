@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 611;
+const ADMIN_BUNDLE_V = 612;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1870,6 +1870,7 @@ function mapBookingFromApi(row) {
             transactionPct: parseFloat(row.agreed_txn_pct),
             txFee: txFee,
             rentalTotal: nightly + txFee,
+            hasSnapshot: row.agreed_nightly != null && row.agreed_txn_fee != null,
             agreedOn: row.agreed_on || '',
         };
     }
@@ -9660,6 +9661,21 @@ function bookingOwnerArranged(b) {
     const m = String((b && b.paymentMethod) || '').trim();
     return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
 }
+// The RENTAL of a booking (deposit excluded) — mirror of booking_rental_price()/
+// booking_total_shape() in db.php, both driven by rental-fixtures.json. An override
+// is deliberate; otherwise a stored total that matches neither the standard rental
+// nor standard + deposit (the older folded shape) is a negotiated price whose
+// override was lost, and IS the rental — measuring against the standard price
+// instead made the hub say a fully paid guest still owed the deposit.
+function bookingRentalPure(b, p) {
+    if (b && b.priceOverride != null) return Number(b.priceOverride);
+    if (!p || p.rentalTotal == null) return Math.max(0, Number(p && p.total) || 0);
+    const std = Number(p.rentalTotal);
+    const tot = Number(p.total);
+    const dep = Number(p.damagesDeposit) || 0;
+    const lost = p.hasSnapshot !== false && tot > 0 && Math.abs(std - tot) > 0.005 && Math.abs(std + dep - tot) > 0.005;
+    return lost ? tot : std;
+}
 function displayGrand(p, ps, holdStatus, b) {
     const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
@@ -9669,9 +9685,9 @@ function displayGrand(p, ps, holdStatus, b) {
     // the same one damageHeld uses (priceOverride, else rentalTotal). Measuring it
     // against ps.total instead made the two disagree on legacy folded-total rows.
     // Zero on a legacy booking and once the card rail has charged it. See CLAUDE.md.
-    const rentalBasis = b && b.priceOverride != null
-        ? Number(b.priceOverride)
-        : (p && p.rentalTotal != null ? Number(p.rentalTotal) : ps.total);
+    const rentalBasis = !(b && b.priceOverride != null) && !(p && p.rentalTotal != null)
+        ? ps.total
+        : bookingRentalPure(b, p);
     const cashDep = holdStatus === 'none' && b
         ? Math.min(dep, Math.max(0, Math.round(((Number(b.depositPaid) || 0) - rentalBasis) * 100) / 100))
         : 0;
@@ -19365,7 +19381,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dsm1ss';
+    const BUILD = 'rental100412';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -871,12 +871,7 @@ function booking_has_price($b)
 
 function booking_amount_due($b, $kind)
 {
-    $total =
-        $b['agreed_total'] !== null
-            ? ($b['price_override'] !== null
-                ? (float) $b['price_override']
-                : (float) $b['agreed_total'])
-            : 0.0;
+    $total = $b['agreed_total'] !== null ? booking_agreed_total($b) : 0.0;
     // A price_override of 0 leaves agreed_total 0 too (the add/update paths copy
     // it across), so the guard has to ask the PREDICATE rather than the figure.
     if ($total <= 0 && !booking_has_price($b)) {
