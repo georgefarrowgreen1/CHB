@@ -2044,6 +2044,15 @@ Now eight.
   it changes (never on first paint). With no bookings loaded it claims nothing.
 - **REMOVED, said plainly**: the Bookings ⋯ with its **Custom plans only** and **Show every booking**
   audits. `bookingsSetFilter('customplan'|'all')` still works but nothing on screen offers it.
+- **THE BOOKINGS BLOCK WEARS THE HOUSE VOCABULARY (second pass).** The tabs are the hairline segmented
+  control (bordered container, active segment a flat fill, no floating shadow); `#bookings-owed` is a
+  ROW — ✓ "Nobody owes you anything" or an amber "£528 to collect · from 1 guest · View ›" — and an
+  empty list is the standard empty state (`.bk-empty`: mark, a title that says what is true, one line on
+  what fills it, **no button** — owner's ask; the + in the month row is the way to add). The row and the
+  empty state JOIN into one well via `:has(~ #bookings-list .bk-empty)` (NB `~`, not `+`: the filter
+  chip sits between them). With NO bookings loaded at all the row claims nothing and the empty state
+  stands alone. Today's title carries no divider (the `.dashboard-header` border belonged to the
+  removed sentence; it is cleared for `#view-backoffice` only).
 - The dock count badge sits on the icon's corner (`.admin-dock-badge`), outside the selected pill.
 
 ## Five back-office motions (approved demo, built)

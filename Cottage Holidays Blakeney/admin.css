@@ -7865,14 +7865,27 @@ body.light-mode .tl-cell:active {
 /* Bookings: a serif caption with Upcoming | Past beside it, then who owes, said once. */
 .bk-caprow { flex-wrap: wrap; gap: 4px 8px; }
 .bk-caprow .bo-sec-title { font-family: var(--font-serif); font-size: var(--fs-title); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-light); }
-.bk-caprow #bookings-filters { flex: 0 0 auto; width: auto; max-width: none; margin: 0 0 0 auto; padding: 0; border: 0; background: none; gap: 4px; }
-.bk-caprow #bookings-filters .inbox-sort-btn { flex: 0 0 auto; padding: 0 16px; }
-@media (max-width: 640px) { #bookings-summary { display: none; } }
-.bk-caprow .inbox-sort-btn { min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); font-weight: 500; color: var(--text-muted); background: none; box-shadow: none; }
-.bk-caprow .inbox-sort-btn.is-on { background: var(--text-light); color: var(--dark-grey); font-weight: 600; }
+.bk-caprow #bookings-filters { flex: 0 0 auto; width: auto; max-width: none; margin: 0 0 0 auto; padding: 0; gap: 0; overflow: hidden; }
+.bk-caprow #bookings-filters .inbox-sort-btn { flex: 0 0 auto; min-height: 40px; padding: 0 16px; border-radius: 0; font-weight: 600; color: var(--text-muted); background: none; box-shadow: none; }
+.bk-caprow #bookings-filters .inbox-sort-btn + .inbox-sort-btn { border-left: 1px solid var(--glass-border); }
+.bk-caprow #bookings-filters .inbox-sort-btn.is-on { background: color-mix(in srgb, var(--text-light) 9%, transparent); color: var(--text-light); box-shadow: none; }
 #bookings-owed:empty { display: none; }
-.bk-owed { display: flex; align-items: center; gap: 10px; margin: 4px 2px 8px; font: inherit; font-size: var(--fs-sub); color: var(--text-muted); }
-.bk-owed.is-due { min-height: 44px; border: 0; background: none; padding: 0; color: var(--warn-text); font-weight: 600; cursor: pointer; text-align: left; }
+.bk-owed { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; margin: 0 0 8px; padding: 12px 16px; font: inherit; font-size: var(--fs-sub); color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); text-align: left; }
+.bk-owed.is-due { cursor: pointer; background: color-mix(in srgb, var(--warn) 9%, var(--glass-bg)); border-color: color-mix(in srgb, var(--warn) 24%, transparent); }
+.bk-owed-tx { display: grid; gap: 1px; min-width: 0; }
+.bk-owed-tx b { font-weight: 600; font-size: var(--fs-body); }
+.bk-owed-tx small { color: var(--text-muted); font-size: var(--fs-sub); }
+.bk-owed-ic { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn-text); font-size: var(--fs-caption); font-weight: 700; }
+.bk-owed-go { margin-left: auto; white-space: nowrap; color: var(--warn-text); font-weight: 600; }
+/* The empty state joins the calm row above it into ONE well. */
+#bookings-owed:not(:empty):has(~ #bookings-list .bk-empty) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.bk-empty { display: grid; justify-items: center; gap: 6px; padding: 28px 24px 24px; text-align: center; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); }
+#bookings-owed:not(:empty) ~ #bookings-list .bk-empty { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.bk-empty svg { width: 28px; height: 28px; margin-bottom: 4px; fill: none; stroke: var(--accent-text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.bk-empty p { margin: 0; font-weight: 600; font-size: var(--fs-body); }
+.bk-empty small { max-width: 30ch; color: var(--text-muted); font-size: var(--fs-sub); text-wrap: balance; }
 .bk-owed-tick { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok-text); font-size: var(--fs-caption); font-weight: 700; }
 /* The count rides the CORNER of its icon, outside the selected pill, so the glyph stays readable. */
 .admin-dock-badge { top: -3px; right: -5px; box-shadow: 0 0 0 2px var(--dark-grey); }
+/* Today's title carries no divider: the line under it belonged to the day sentence that was removed. */
+#view-backoffice .dashboard-header { border-bottom: 0; padding-bottom: 0; margin-bottom: 8px; }
