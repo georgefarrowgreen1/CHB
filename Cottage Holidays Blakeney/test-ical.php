@@ -185,6 +185,30 @@ echo "\n== 5. What the sync's own readers say about it ==\n";
     ick('…by DECRYPTING the private value, not reading the ciphertext', strpos($near, 'decrypt_value(') !== false);
 }
 
+
+// ---- 5. A BOOKING OR A BLOCK? (ical_classify — never a guess) ----------------
+echo "\n5. is it a booking or the host blocking dates out\n";
+$AB_RES = "Reservation URL: https://www.airbnb.com/hosting/reservations/details/HMXYZ\\nPhone Number (Last 4 Digits): 4471";
+ick('Airbnb reservation (link + last 4 digits) is a booking', ical_classify('Reserved', ical_unescape($AB_RES)) === 'booking');
+ick('…even if its label looked like a block', ical_classify('Not available', ical_unescape($AB_RES)) === 'booking');
+ick('Airbnb (Not available) is a block', ical_classify('Airbnb (Not available)', '') === 'blocked');
+ick('Vrbo "Blocked" / "Unavailable" / "Closed" are blocks', ical_classify('Blocked', '') === 'blocked' && ical_classify('Unavailable', '') === 'blocked' && ical_classify('Closed - Not available', '') === 'blocked');
+ick('a plain "Reserved" label is a booking', ical_classify('Reserved', '') === 'booking');
+ick('a guest\'s name is UNKNOWN, never guessed', ical_classify('Jane Smith', '') === 'unknown');
+ick('a guest whose name merely starts like a word is not a block', ical_classify('Blocksidge family', '') === 'unknown');
+ick('an empty event is UNKNOWN (and so keeps counting as a stay, as before)', ical_classify('', '') === 'unknown');
+$cal = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a1\r\nDTSTART;VALUE=DATE:20261010\r\nDTEND;VALUE=DATE:20261014\r\nSUMMARY:Airbnb (Not available)\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:a2\r\nDTSTART;VALUE=DATE:20261020\r\nDTEND;VALUE=DATE:20261024\r\nSUMMARY:Reserved\r\nDESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/details/HM1\\nPhone Number (Last 4\r\n  Digits): 9921\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+$ev = parse_ical($cal);
+ick('parse keeps the summary and the (folded, unescaped) description', count($ev) === 2 && $ev[0]['summary'] === 'Airbnb (Not available)' && strpos($ev[1]['description'], "\n") !== false && stripos($ev[1]['description'], 'Last 4 Digits') !== false);
+ick('…and classifying what was parsed gives block then booking', ical_classify($ev[0]['summary'], $ev[0]['description']) === 'blocked' && ical_classify($ev[1]['summary'], $ev[1]['description']) === 'booking');
+ick('the dates are untouched by the new fields (10→14 is still four nights)', $ev[0]['start'] === '2026-10-10' && $ev[0]['end'] === '2026-10-14');
+ick('the stored label is plain, short text', ical_label("A\x01B" . str_repeat('x', 200)) === 'A B' . str_repeat('x', 77));
+// THE WIRING: a lib-only gate misses the route. The sync must write what it classified,
+// but only where the column exists, and must never let a missing column stop it.
+$imp = file_get_contents(__DIR__ . '/ical-import.php');
+ick('the sync stores kind + label through ical_classify', strpos($imp, "ical_classify(\$e['summary']") !== false && strpos($imp, 'kind, label) VALUES') !== false);
+ick('…guarded by a column probe, so an un-migrated install still syncs', strpos($imp, 'ical_has_kind()') !== false && strpos($imp, 'SHOW COLUMNS FROM ical_blocks LIKE') !== false);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED \xE2\x9D\x8C\n\n";

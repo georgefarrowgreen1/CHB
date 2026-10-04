@@ -24,9 +24,16 @@ require_once __DIR__ . '/cron-status.php';
 // Imported OTA blocks — mirrors ical-import.php action 'blocks' exactly.
 $blocks = [];
 try {
-    $blocks = db()
-        ->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')
-        ->fetchAll();
+    // `kind`/`label` (migration-124) where they exist; the plain columns before it.
+    try {
+        $blocks = db()
+            ->query('SELECT id, prop_key, source, check_in, check_out, kind, label FROM ical_blocks ORDER BY check_in ASC')
+            ->fetchAll();
+    } catch (\Throwable $e0) {
+        $blocks = db()
+            ->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')
+            ->fetchAll();
+    }
 } catch (\Throwable $e) {
 }
 

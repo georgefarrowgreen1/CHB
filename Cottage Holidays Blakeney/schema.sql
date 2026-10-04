@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS ical_blocks (
     uid         VARCHAR(190) NULL,
     check_in    DATE         NOT NULL,
     check_out   DATE         NOT NULL,
+    kind        VARCHAR(12)  NOT NULL DEFAULT 'unknown',
+    label       VARCHAR(80)  NULL,
     updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_prop (prop_key),
     INDEX idx_dates (prop_key, check_in, check_out)

@@ -281,6 +281,32 @@ else {
     check('garbage in comes back unchanged, not Invalid Date', usd('not-a-date', 3) === 'not-a-date');
 }
 
+// A PLATFORM BLOCK IS NOT A STAY. The feed's own label says whether an imported event is a
+// guest or the host blocking dates; a clear block no longer counts as a booking anywhere
+// (it still blocks the calendar), an unrecognised event keeps counting as it always did, and
+// when two feeds carry the same dates the stronger reading wins.
+const isOta = get('isOtaBlock');
+if (typeof isOta !== 'function') { fail('isOtaBlock is not defined'); }
+else {
+    const bl = (kind) => ({ checkIn: '2026-10-10', checkOut: '2026-10-14', source: 'airbnb', kind });
+    check('a booking counts as a stay', isOta(bl('booking')) === true);
+    check('an unrecognised event still counts as a stay (never a guess)', isOta(bl('unknown')) === true && isOta({ checkIn: '2026-10-10', checkOut: '2026-10-14', source: 'airbnb' }) === true);
+    check('a platform block is not a stay', isOta(bl('blocked')) === false);
+    check('an owner block is not a stay either (unchanged)', isOta({ checkIn: '2026-10-10', checkOut: '2026-10-14', source: 'owner' }) === false);
+    const dd = get('dedupeExternalBlocks');
+    if (typeof dd === 'function') {
+        const run = (kinds) => { const o = vm.runInContext('dbBlocks', ctx); const k = Object.keys(o)[0] || '21a'; o[k] = kinds.map((x, i) => ({ id: i + 1, source: x[0], kind: x[1], label: x[1], checkIn: '2026-10-10', checkOut: '2026-10-14' })); dd(); const out = o[k]; o[k] = []; return out; };
+        const a1 = run([['vrbo', 'blocked'], ['airbnb', 'booking']]);
+        check('same dates: a booking in one feed beats "Blocked" in the other', a1.length === 1 && a1[0].kind === 'booking');
+        const a2 = run([['airbnb', 'booking'], ['vrbo', 'blocked']]);
+        check('…whichever feed comes first', a2.length === 1 && a2[0].kind === 'booking');
+        const a3 = run([['vrbo', 'blocked'], ['airbnb', 'blocked']]);
+        check('two feeds that both say blocked stay blocked', a3.length === 1 && a3[0].kind === 'blocked');
+        const a4 = run([['vrbo', 'blocked'], ['airbnb', 'unknown']]);
+        check('"unknown" outranks "blocked" (we do not hide a stay we cannot read)', a4.length === 1 && a4[0].kind === 'unknown');
+    } else { fail('dedupeExternalBlocks is not defined'); }
+}
+
 // WHAT A CANCELLATION IS OWED UNDER EACH POLICY (cancelPolicyTier drives the Cancel
 // dialog's verdict and prefill). Both sides of every window boundary.
 const cpt = get('cancelPolicyTier');

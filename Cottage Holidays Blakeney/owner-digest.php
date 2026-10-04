@@ -119,8 +119,15 @@ try {
 } catch (\Throwable $e) {
 }
 try {
-    $s = db()->query("SELECT source, prop_key, check_in, check_out FROM ical_blocks
+    // A host's own block on Airbnb/Vrbo is not a guest arriving (migration-124's `kind`);
+    // before that column exists every imported event counts, as it always did.
+    try {
+        $s = db()->query("SELECT source, prop_key, check_in, check_out FROM ical_blocks
+                      WHERE source <> 'owner' AND kind <> 'blocked' AND check_in >= CURDATE() AND check_in <= (CURDATE() + INTERVAL 7 DAY)");
+    } catch (\Throwable $e1) {
+        $s = db()->query("SELECT source, prop_key, check_in, check_out FROM ical_blocks
                       WHERE source <> 'owner' AND check_in >= CURDATE() AND check_in <= (CURDATE() + INTERVAL 7 DAY)");
+    }
     foreach ($s->fetchAll() as $bl) {
         $src = ucfirst((string) $bl['source']);
         $arrivals[] = ['name' => 'Guest via ' . $src, 'prop_key' => $bl['prop_key'], 'check_in' => $bl['check_in'], 'check_out' => $bl['check_out']];
@@ -179,8 +186,14 @@ try {
     $rows = db()->query("SELECT check_in, check_out FROM bookings
                       WHERE check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll();
     try {
-        $rows = array_merge($rows, db()->query("SELECT check_in, check_out FROM ical_blocks
-                      WHERE source <> 'owner' AND check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll());
+        try {
+            $ota = db()->query("SELECT check_in, check_out FROM ical_blocks
+                      WHERE source <> 'owner' AND kind <> 'blocked' AND check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll();
+        } catch (\Throwable $e1) {
+            $ota = db()->query("SELECT check_in, check_out FROM ical_blocks
+                      WHERE source <> 'owner' AND check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll();
+        }
+        $rows = array_merge($rows, $ota);
     } catch (\Throwable $e) {
         /* pre-migration — direct bookings still counted */
     }

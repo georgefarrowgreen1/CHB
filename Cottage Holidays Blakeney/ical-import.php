@@ -103,6 +103,27 @@ function fetch_url($url)
 
 
 
+// Has migration-124 added `kind`/`label`? Probed once per request.
+function ical_has_kind()
+{
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = db()->query("SHOW COLUMNS FROM ical_blocks LIKE 'kind'")->fetch() ? true : false;
+        } catch (\Throwable $e) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
+// Every imported block for the back office — with what it is, where the column exists.
+function ical_blocks_rows()
+{
+    $cols = ical_has_kind() ? 'id, prop_key, source, check_in, check_out, kind, label' : 'id, prop_key, source, check_in, check_out';
+    return db()->query("SELECT $cols FROM ical_blocks ORDER BY check_in ASC")->fetchAll();
+}
+
 // Sync one property's feeds: refresh ical_blocks from all its feed URLs.
 function sync_property($prop)
 {
@@ -154,7 +175,12 @@ function sync_property($prop)
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')->execute([$prop, $source]);
-            $ins = $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
+            // `kind`/`label` only where migration-124 has run — a missing column must
+            // never stop the sync (it is what keeps the calendar from reading free).
+            $hasKind = ical_has_kind();
+            $ins = $hasKind
+                ? $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out, kind, label) VALUES (?,?,?,?,?,?,?)')
+                : $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
             $count = 0;
             foreach ($events as $e) {
                 if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
@@ -162,7 +188,12 @@ function sync_property($prop)
                 }
                 // An over-long UID from a non-platform feed would abort the whole
                 // loop; the column is the identity, not the payload.
-                $ins->execute([$prop, $source, mb_substr((string) ($e['uid'] ?? ''), 0, 190), $e['start'], $e['end']]);
+                $row = [$prop, $source, mb_substr((string) ($e['uid'] ?? ''), 0, 190), $e['start'], $e['end']];
+                if ($hasKind) {
+                    $row[] = ical_classify($e['summary'] ?? '', $e['description'] ?? '');
+                    $row[] = ical_label($e['summary'] ?? '');
+                }
+                $ins->execute($row);
                 $count++;
             }
             $pdo->commit();
@@ -346,10 +377,7 @@ if ($action === 'sync') {
 if ($action === 'blocks') {
     // Return every imported external block so the back-office calendar can show
     // them as "taken", colour-coded by property.
-    $rows = db()
-        ->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')
-        ->fetchAll();
-    json_out(['ok' => true, 'blocks' => $rows]);
+    json_out(['ok' => true, 'blocks' => ical_blocks_rows()]);
 }
 
 if ($action === 'add_block') {
