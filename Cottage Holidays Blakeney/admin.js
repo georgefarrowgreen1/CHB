@@ -10263,6 +10263,7 @@ function inboxVerdicts() {
 
 // ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
 let __bookingsFilter = 'upcoming';
+let __bkGoneCount = -1;
 let __bookingsSearch = '';
 // Per-booking email history, keyed by booking dbId → [{action,summary,at}].
 let bookingEmailLogs = {};
@@ -10376,12 +10377,12 @@ function renderBookings() {
     }
     const f = __bookingsFilter;
     rows = rows.filter(({ propKey, b }) => {
-        if (f === 'upcoming') return (b.checkOut || '') >= today;
-        if (f === 'past') return (b.checkOut || '') < today;
+        if (f === 'upcoming') return !hasCheckedOut(b);
+        if (f === 'past') return hasCheckedOut(b);
         // Deposit-aware, so this list holds exactly the bookings the header's
         // "£X to collect" button just counted — it links straight here, which
         // is why owner-arranged (cash/bank) bookings sit this filter out too.
-        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && (b.checkOut || '') >= today;
+        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b);
         // WHICH BOOKINGS ARE NOT ON THE STANDARD SCHEDULE? The override columns
         // were read only inside the hub's own plan panel, so a mistyped plan was
         // invisible until the money came out wrong. Same test the panel uses to
@@ -10411,7 +10412,7 @@ function renderBookings() {
     // paint, and compared as WORDS, the rule the old capsule followed.
     const badge = document.getElementById('bk-needs-count');
     if (badge) {
-        const n = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && (b.checkOut || '') >= today).length;
+        const n = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b)).length;
         const was = badge.textContent || '';
         badge.textContent = n ? String(n) : '';
         badge.hidden = !n;
@@ -10490,7 +10491,7 @@ function bookingListRow(propKey, b, today) {
         if (inHouse) { payLabel = 'Staying'; payClass = 'stay'; }
         else if (arrivingToday) { payLabel = 'Arriving'; payClass = 'arrive'; }
     }
-    const past = (b.checkOut || '') < today;
+    const past = hasCheckedOut(b);
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
     return `
@@ -27529,6 +27530,11 @@ function renderCalendar() {
         __tlNowTimer = setInterval(() => {
             if (todayDashed() !== __tlRenderedToday) { try { renderCalendar(); } catch (e) {} }
             else { try { tlPlaceNowLine(); } catch (e) {} }
+            // A stay moves from Upcoming to Past the minute its checkout time passes.
+            try {
+                const gone = Object.values(dbBookings).flat().filter((b) => hasCheckedOut(b)).length;
+                if (gone !== __bkGoneCount) { __bkGoneCount = gone; renderBookings(); }
+            } catch (e) {}
         }, 60000);
     }
 }
