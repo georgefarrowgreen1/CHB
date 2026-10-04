@@ -382,6 +382,7 @@ const VERBS = /^(add|approve|block|cancel|capture|change|check|clear|continue|de
         ok: document.getElementById('glass-dialog-ok').textContent.trim(),
         cancel: document.getElementById('glass-dialog-cancel').textContent.trim(),
         danger: document.getElementById('glass-dialog-ok').classList.contains('is-danger'),
+        msg: (document.getElementById('glass-dialog-msg') || {}).textContent || '',
         fields: [...document.querySelectorAll('#glass-dialog-fields input')].map((i2) => ({ id: i2.id, type: i2.type, value: i2.value })),
         hints: [...document.querySelectorAll('#glass-dialog-fields .gdf-hint')].map((h) => h.textContent),
       });
@@ -402,7 +403,11 @@ const VERBS = /^(add|approve|block|cancel|capture|change|check|clear|continue|de
     `the refund and the reason are labelled fields on the one dialog (${(c1.fields || []).map((f) => f.id + ':' + f.type).join(', ')})`);
   ok((c1.hints || []).some((h) => /Received so far/.test(h)), `the refund field explains what it is against (${(c1.hints || [])[0]})`);
   const cancelPost = posts.filter((p) => p && p.action === 'cancel').pop();
-  ok(!!cancelPost && cancelPost.refund_amount === 440,
+  // The fixture stay began 9 days ago, so the policy gives no rental refund and the
+  // prefill follows it (it used to offer everything received whatever the policy said).
+  ok(/stay has started, so no rental refund is due/.test(c1.msg || ''), `the dialog says what the policy gives before anything is typed (${(c1.msg || '').slice(0, 70)})`);
+  ok(c1.fields[0].value === '0', `…and the refund is prefilled to match: nothing for a stay that has started (${c1.fields[0].value})`);
+  ok(!!cancelPost && cancelPost.refund_amount === 0,
     `…and the one dialog still posts the cancellation it collected (refund ${cancelPost && cancelPost.refund_amount})`);
 
   console.log(fails ? `\n${fails} FAILED` : '\nAll dialog checks passed');

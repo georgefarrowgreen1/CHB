@@ -16563,8 +16563,20 @@ async function cancelBooking(bookingId) {
     // a message beginning "Cancel this booking" — where Cancel meant KEEP it.
     // glassForm exists for exactly this ("so recording a payment isn't three
     // pop-ups in a row"); both outcomes are named on their own buttons.
+    // Say what the policy gives back BEFORE the owner types, and prefill to match (it used
+    // to offer everything received whatever the policy said). A partial is a starting point.
+    const polKey = cancelPolicyOf(propKey);
+    const pt = cancelPolicyTier(polKey, booking.checkIn, todayDashed());
+    const polName = CANCELLATION_POLICIES[polKey].name;
+    const received = ps.deposit || 0;
+    const verdict = {
+        full: `${polName} policy, ${pt.days} day${pt.days === 1 ? '' : 's'} before check-in: a full refund is due.`,
+        part: `${polName} policy, ${pt.days} day${pt.days === 1 ? '' : 's'} before check-in: a partial refund is due — the policy doesn\u2019t set an amount, so it\u2019s your call.`,
+        none: pt.days > 0 ? `${polName} policy, ${pt.days} day${pt.days === 1 ? '' : 's'} before check-in: no rental refund is due.` : `The stay has started, so no rental refund is due under the ${polName} policy.`,
+    }[pt.tier];
+    const prefill = pt.tier === 'full' ? received : pt.tier === 'none' ? 0 : Math.round(received / 2 / 5) * 5;
     const vals = await glassForm(
-        'This frees the dates and emails the guest. The refundable damage deposit is returned automatically.',
+        verdict + '\n\nThis frees the dates and emails the guest. The refundable damage deposit is returned automatically.',
         [
             {
                 id: 'refund',
@@ -16572,8 +16584,8 @@ async function cancelBooking(bookingId) {
                 type: 'number',
                 min: 0,
                 step: 0.01,
-                value: ps.deposit || 0,
-                hint: `Received so far ${gbp(ps.deposit)} — 0 for none. Don't add the damage deposit here.`,
+                value: prefill,
+                hint: `Received so far ${gbp(received)}${pt.tier === 'part' ? ' — a starting point, not set by the policy' : pt.tier === 'full' ? ' — the full amount, as the policy allows' : ' — you can still refund some if you choose'}. Don't add the damage deposit here.`,
             },
             { id: 'reason', label: 'Reason (optional, shown to the guest)', type: 'text' },
         ],
