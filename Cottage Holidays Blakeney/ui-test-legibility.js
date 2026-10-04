@@ -138,19 +138,55 @@ const ORPHANS = (sel) => {
     }
   }
 
-  // THE YEAR IS NOT SIMPLY DELETED — it is dropped only where it would collide.
-  // Both halves are asserted, so this can neither erode back into a collision
-  // nor swell into "the timeline never says which year".
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.clock.setFixedTime(new Date(yr, 8, 15, 10, 0, 0));
-  await reCal();
-  const yearWhenRoom = await page.evaluate(() => (document.querySelector('#cal-body .tl-day b') || {}).textContent || '');
-  ok(/\d{4}/.test(yearWhenRoom), `mid-month the year still rides the first label (\u201c${yearWhenRoom.trim()}\u201d)`);
-  await page.clock.setFixedTime(new Date(yr, 8, 2, 10, 0, 0));
-  await reCal();
-  const yearWhenCrowded = await page.evaluate(() => (document.querySelector('#cal-body .tl-day b') || {}).textContent || '');
-  ok(!/\d{4}/.test(yearWhenCrowded), `\u2026and drops ONLY when the month-start is on top of it (\u201c${yearWhenCrowded.trim()}\u201d)`);
+  // THE WINDOW'S FIRST COLUMN CARRIES NO MONTH LABEL, and a month label and a changeover
+  // mark never share a column. The caption above the grid names the month under the left
+  // edge, so the first-column label ("Oct 2026", 59px in a 32px column) said it twice and
+  // spilled into the next day, where a changeover ↺ painted through it ("Oct↺2026").
+  // Pinned to the 4th, the day the owner screenshotted it, plus the 1st (the one case where
+  // a label and a changeover can still want the same column) and mid-month.
+  const FIXTURE = (day) => {
+    // changeovers on the pinned day's own neighbours: someone leaves and someone arrives.
+    const iso = (n) => { const x = new Date(new Date().getFullYear(), 8, n); return todayDashed().slice(0, 0) + x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+    const mk = (id, ci, co) => ({ id, dbId: id, propKey: 'jollyboat', name: 'Fx ' + id, checkIn: iso(ci), checkOut: iso(co), adults: 2, children: 0, payment: 'paid', depositPaid: 1 });
+    const days = [day - 1, day, 1].filter((v, i, a) => a.indexOf(v) === i);
+    const out = []; let id = 9000;
+    days.forEach((n) => { out.push(mk(id++, n - 2, n)); out.push(mk(id++, n, n + 2)); });
+    dbBookings['jollyboat'] = out;
+  };
+  for (const [day, label] of [[4, 'the 4th (your screenshot)'], [1, 'the 1st'], [15, 'mid-month']]) {
+    // 14:15, the time on the screenshot: the playhead sits 59% across the day, which is where
+    // it crosses the digit (at 10:00 it is over the weekday letter and the check proves nothing).
+    await page.clock.setFixedTime(new Date(yr, 8, day, 14, 15, 0));
+    await page.setViewportSize({ width: 390, height: 900 });
+    await reCal();
+    await page.evaluate(FIXTURE, day);
+    await page.evaluate(() => renderCalendar());
+    await page.waitForTimeout(250);
+    await page.evaluate(() => tlPlaceNowLine());
+    const r = await page.evaluate(() => {
+      const first = document.querySelector('#cal-body .tl-headrow .tl-day');
+      const days = [...document.querySelectorAll('#cal-body .tl-headrow .tl-day')];
+      const box = (e) => e.getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      let labelChg = 0;
+      const sharedColumn = days.filter((d) => d.querySelector('b') && d.querySelector('.tl-chg')).length;
+      const labs = days.flatMap((d) => [...d.querySelectorAll('b')]), chgs = days.flatMap((d) => [...d.querySelectorAll('.tl-chg')]);
+      labs.forEach((l) => chgs.forEach((c) => { if (hit(box(l), box(c))) labelChg++; }));
+      const num = document.querySelector('#cal-body .tl-headrow .tl-day.is-today .tl-num');
+      const line = document.querySelector('#cal-body .tl-nowline');
+      const lineVsNum = num && line && hit(box(num), box(line)) ? 1 : 0;
+      const wide = labs.filter((l) => l.getBoundingClientRect().width > l.parentElement.getBoundingClientRect().width).length;
+      return { firstHasLabel: !!first.querySelector('b'), labelChg, sharedColumn, lineVsNum, hasNum: !!num, hasLine: !!line, wide, chg: chgs.length };
+    });
+    ok(!r.firstHasLabel, `${label}: the window's first column carries no month label`);
+    ok(r.chg >= 1, `${label}: the fixture really draws changeover marks (${r.chg})`);
+    ok(r.labelChg === 0 && r.sharedColumn === 0, `${label}: no ↺ shares a column with a month label (overlap ${r.labelChg}, shared ${r.sharedColumn})`);
+    ok(r.wide === 0, `${label}: no month label is wider than its own column`);
+    ok(r.hasNum && r.hasLine, `${label}: today's number and the playhead both paint`);
+    ok(r.lineVsNum === 0, `${label}: the playhead does not strike through today's day number`);
+  }
   await page.clock.setFixedTime(new Date());
+  await page.evaluate(() => { dbBookings['jollyboat'] = []; });
   await reCal();
 
   // ------------------------------------------------- §2 nothing is cut off

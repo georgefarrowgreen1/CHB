@@ -1977,6 +1977,24 @@ survived. Gated by **`ui-test-legibility.js`** (37 checks), each break-tested.
   71300 → 71700**. Both owner-only and immutable-cached; app.css was untouched,
   which is the point of putting the text-wrap rule in admin.css.
 
+## The timeline header's last two collisions (approved demo, built)
+
+**Reported from a phone on the 4th: "Oct↺2026" and "S4" with the playhead through the 4.**
+The earlier fix only covered the 1st and 2nd. The cause was the window's FIRST column
+carrying a month label (59px "Oct 2026" in a 32px column) beside a changeover ↺ in the
+next one, and the playhead (`.tl-nowline`, one element down the whole timeline) striking
+through today's day number.
+- **The first column carries NO month label** — the caption above (`tlSyncMonthLabel`)
+  already names the month under the left edge. Labels mark the 1st only, with no year at
+  all (the caption carries it, January included).
+- **A month label and a ↺ never share a column**: where the 1st is also a changeover the
+  label wins; the pips and the bars meeting below still say it.
+- **The playhead starts where the header row ends** (`tlPlaceNowLine` sets its `top`), so it
+  never crosses the number. The day number is wrapped in `.tl-num` for the gate.
+- Gated by ui-test-legibility §1 (the 4th, the 1st, mid-month; the clock pinned to 14:15 —
+  at 10:00 the line is over the weekday letter and the check proves nothing). All three
+  declarations break-tested.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

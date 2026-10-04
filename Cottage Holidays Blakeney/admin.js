@@ -27264,6 +27264,10 @@ function tlPlaceNowLine() {
     const cr = cell.getBoundingClientRect();
     const ir = inner.getBoundingClientRect();
     line.style.left = ((cr.left - ir.left) + frac * cr.width) + 'px';
+    // The playhead belongs to the LANES: it starts where the header row ends, so it never
+    // strikes through today's day number (reported: "S4" with the line through the 4).
+    const hr = inner.querySelector('.tl-headrow');
+    line.style.top = (hr ? hr.offsetHeight : 0) + 'px';
 }
 // Compact ↔ comfortable day width. Compact fits roughly half as many more days
 // on screen (whole-month planning); comfortable is the readable default. The
@@ -27338,30 +27342,22 @@ function renderCalendar() {
     for (let i = 0; i < N; i++) {
         const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
         const wknd = d.getDay() === 0 || d.getDay() === 6;
-        // THE YEAR IS WHAT MAKES THE LABEL COLLIDE. `.tl-day b` is absolute +
-        // nowrap inside a 32–38px column, so it runs across its neighbours —
-        // "Aug 2026" measures 59px against "Aug" at 23px. tlStartOffset() is a
-        // constant -2 from TODAY, so on the 2nd of a month the window opens on
-        // the last day of the previous one and the i===0 label sits ONE column
-        // from the month-start label: the two paint on top of each other and it
-        // reads "Aug 2⩝⩝⩝6" (measured 26px of overlap at 390px, 20px at
-        // 900/1280/1440). On the 1st it clears by 1-5px, which is not clearance.
-        // So this is a MONTHLY recurrence on the screen the owner opens most,
-        // not an everyday one — and the fix is a line, so it is still worth it.
-        // The year is the part to drop: the caption directly above the grid
-        // already says "September 2026". Two columns is the threshold because
-        // three (96px at the narrowest) clears the 59px label.
-        const toMonthStart = i === 0 ? new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1 : 99;
-        const crowded = i === 0 && toMonthStart <= 2 && toMonthStart < N;
-        const monthTag =
-            d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${(d.getMonth() === 0 || i === 0) && !crowded ? ' ' + d.getFullYear() : ''}</b>` : '';
+        // A MONTH LABEL MARKS WHERE A MONTH TURNS, AND NOTHING ELSE. `.tl-day b` is
+        // absolute + nowrap in a 32-38px column, so a label wider than the column runs
+        // into its neighbours ("Oct 2026" is 59px). The window's FIRST column used to
+        // carry one too, and with tlStartOffset() a constant -2 from today that put it
+        // beside a changeover mark (reported: "Oct↺2026") or, on the 1st/2nd, on top of
+        // the month-start label. The caption above the grid (tlSyncMonthLabel) already
+        // names the month under the left edge, so the first-column label said it twice.
+        // It is gone; the 1st keeps its label, with no year (the caption carries it, January included).
+        const monthTag = d.getDate() === 1 ? `<b>${M[d.getMonth()]}</b>` : '';
         // is-mstart draws the month-boundary rule down the whole column, so
         // mid-scroll you can SEE where a month turns, not just read the label.
         const mstart = d.getDate() === 1 && i > 0;
         const occ = occOf(dates[i]);
         const pips = `<u class="tl-occ" aria-hidden="true">${keys.map((_, p) => `<s class="${p < occ ? 'f' : ''}"></s>`).join('')}</u>`;
-        const chg = chgOf(dates[i]) ? '<span class="tl-chg" aria-hidden="true" title="Changeover day">↺</span>' : '';
-        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}${chg}<i>${dows[d.getDay()]}</i>${d.getDate()}${pips}</span>`;
+        const chg = chgOf(dates[i]) && !monthTag ? '<span class="tl-chg" aria-hidden="true" title="Changeover day">↺</span>' : '';
+        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}${chg}<i>${dows[d.getDay()]}</i><span class="tl-num">${d.getDate()}</span>${pips}</span>`;
     }
     const lock =
         '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
