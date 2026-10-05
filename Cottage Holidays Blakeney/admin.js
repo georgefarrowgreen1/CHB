@@ -16544,9 +16544,8 @@ function renderDepositsDue() {
             ({ propKey, b, dh }) => `
                 <div class="money-row glass-panel due-soon">
                     <div class="money-row-head">
-                        <div><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span>
-                            <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:var(--fs-sub);">left ${fmtDate(b.checkOut)}</span></div>
+                        <div class="mr-id"><strong>${escapeHtml(b.name)}</strong>
+                            <span class="mr-sub"><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span><span class="mr-left">left ${fmtDate(b.checkOut)}</span></span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
                     <!-- KEEP IS RAIL-BLIND. This was gated on holdStatus === 'charged',

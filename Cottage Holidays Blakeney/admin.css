@@ -8143,3 +8143,20 @@ body.owner-mode .acct-preview-shell, body.owner-mode .ac-sheet-card, body.owner-
     body.owner-mode .modal-overlay.chb-sheet .modal-box, body.owner-mode .modal-overlay.chb-sheet .terms-modal-box { border-radius: var(--r-lg) var(--r-lg) 0 0; }
 }
 body.owner-mode .bhub-menu { padding: 8px; }
+
+/* ---- PAYMENTS & BALANCES, laid out (owner-asked "improve layout"): the guest leads with the cottage as a quiet sub-line, the held figure
+   sits on the right rail as a capsule, and the two answers are equal-width full buttons — Return is the primary. The empty line is a
+   left-aligned note under the list, not 50px of nothing floating mid-screen. ---- */
+body.owner-mode .money-row-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+body.owner-mode .mr-id { min-width: 0; }
+body.owner-mode .mr-id strong { display: block; font-size: var(--fs-body); }
+body.owner-mode .mr-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+body.owner-mode .mr-sub .prop-tag { margin: 0; }
+body.owner-mode .mr-left { font-size: var(--fs-sub); color: var(--text-muted); }
+body.owner-mode .money-row .money-status { flex-shrink: 0; white-space: nowrap; font-size: var(--fs-caption); font-weight: 600; padding: 4px 12px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--warn) 13%, transparent); color: var(--warn-text); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+body.owner-mode .money-row .money-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+body.owner-mode .money-row .money-actions .btn-sm { min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; margin: 0; }
+body.owner-mode .money-row .money-actions .btn-sm:first-child { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+body.owner-mode #asec-payments .accounts-section-title { font-size: var(--fs-headline); margin: 8px 0 4px; }
+body.owner-mode .money-owed { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 0 12px; }
+body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size: var(--fs-sub); }
