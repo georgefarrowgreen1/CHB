@@ -7992,3 +7992,9 @@ body.light-mode .tl-cell:active {
   font-family: inherit; font-size: var(--fs-body); font-weight: 600; line-height: 1.2; letter-spacing: 0; text-transform: none; text-decoration: none;
 }
 .bhub-next .bhub-next-acts > .bhub-next-alt::after { content: none; }
+
+/* "New email" is a WORDED accent button; the 44px circle above is for the "+" only. */
+.cal-actions .cal-add-btn.mbx-new { width: auto; padding: 0 20px; font: 600 var(--fs-body)/1 var(--font-sans); white-space: nowrap; }
+/* Flat accent buttons: no specular rim, lift or sweep. */
+.btn-glass.btn-accent, .btn-glass.btn-accent:hover { box-shadow: none; transform: none; }
+.btn-glass.btn-accent::after { display: none; }
