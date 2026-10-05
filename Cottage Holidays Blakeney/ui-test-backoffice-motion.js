@@ -254,10 +254,11 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   // The sync paint: the placeholder is there and NOTHING is animating.
   const preFill = await page.evaluate(() => {
     const f = document.getElementById('mo-move-fig');
-    return f ? { txt: f.textContent.trim(), anims: f.getAnimations().length } : null;
+    return f ? { txt: f.textContent.trim(), anims: f.getAnimations().filter((a) => a.animationName !== 'chbPulse').length, pulse: f.getAnimations().some((a) => a.animationName === 'chbPulse') } : null;
   });
   ok(preFill && /working it out/i.test(preFill.txt), 'the sync paint says "working it out…"');
-  ok(preFill && preFill.anims === 0, 'and it does not animate — the placeholder is not an arrival');
+  // RE-AIMED: a placeholder now PULSES (work is visible); what it must never do is play the ARRIVAL, which means 'the answer landed'.
+  ok(preFill && preFill.anims === 0 && preFill.pulse, 'and it only pulses (work in progress) — it never plays the arrival, the placeholder is not an arrival');
 
   await page.waitForFunction(() => {
     const f = document.getElementById('mo-move-fig');

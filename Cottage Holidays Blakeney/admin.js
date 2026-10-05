@@ -9940,10 +9940,13 @@ function renderCottagesOverview() {
 function adminLoading(id, what) {
     const el = document.getElementById(id);
     if (!el || el.firstElementChild) return; // already has real content — leave it
+    // SKELETON ROWS in the shape of the list that is coming, not a bare word: the screen visibly has somewhere to go.
+    // The words stay for a screen reader (the live region) and are gone from the paint.
     el.innerHTML =
-        '<p class="admin-loading" role="status" style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0;">Loading ' +
-        escapeHtml(what || 'this') +
-        '…</p>';
+        '<div class="admin-loading" role="status"><span class="sr-only">Loading ' + escapeHtml(what || 'this') + '…</span>' +
+        '<div class="sk-grp" aria-hidden="true">' +
+        '<div class="sk-row"><div><i class="sk sk-a"></i><i class="sk sk-b"></i></div><i class="sk sk-c"></i></div>'.repeat(3) +
+        '</div></div>';
 }
 function adminNetFail(retry) {
     toast(
@@ -17186,8 +17189,8 @@ function renderMoneyOverview() {
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
         : '';
     const moveGrp = bhubFoldGrp('momove', 'To move out', 'paid in, net of fees',
-        `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
-        `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
+        `<span id="mo-move-fig" class="mo-run">${stCap('unk', 'working it out…')}</span>`,
+        `<div id="mo-move-rows" class="bhub-mut mo-run" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
     // CALM IS ONE LINE, NOT A ROW EACH: "To collect" with nothing owed and "To give back" with nothing
     // held used to take a full row apiece to say "all clear". They render only when there is something to
@@ -17207,7 +17210,7 @@ function renderMoneyOverview() {
          </div>`);
     const recentGrp = bhubFoldGrp('morecent', 'Recent', 'the latest money in',
         `<span class="bhub-sum-val" id="mo-recent-sum">…</span>`,
-        `<div id="mo-recent-rows" class="bhub-mut" style="margin-bottom:6px;">Loading the feed…</div>
+        `<div id="mo-recent-rows" class="bhub-mut mo-run" style="margin-bottom:6px;">Loading the feed…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'recent')}>Full payment history</button></div>`);
     const trendsGrp = bhubFoldGrp('motrends', 'Trends &amp; history', 'year on year, by cottage', '',
         `${yoyCard}
@@ -17304,6 +17307,7 @@ async function moChaseDue() {
 // whichever came back first.
 function moLand(el, i) {
     if (!el) return;
+    el.classList.remove('mo-run'); // the placeholder pulse ends the moment the answer lands
     el.style.setProperty('--mo-land-d', (i || 0) * 90 + 'ms');
     el.classList.remove('mo-landed');
     void (/** @type {HTMLElement} */ (el)).offsetWidth;

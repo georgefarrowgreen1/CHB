@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 651;
+const ADMIN_BUNDLE_V = 653;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 304;
+const ADMIN_CSS_V = 306;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1217,6 +1217,26 @@ function chbNetDown() {
         if (navigator.onLine === false) setTimeout(chbGoOffline, 0);
     } catch (e) {}
 }
+// A DROPPED REQUEST IS NOT AN OUTAGE. One failed fetch used to flip the whole back office offline at once
+// (pill, trimmed header, day sheet on a hinted device), so a single stalled request on a weak 4G bar painted
+// "offline" over a link that was working. The verdict now needs the SERVER to fail to answer a tiny probe too: if
+// version.php answers, the failure was a blip and nothing changes (the request itself still reports its error, and
+// idempotent reads retry once before even getting that far). navigator.onLine === false is a verdict on its own.
+let __chbNetConfirming = false;
+function chbNetFail() {
+    if (__chbNetOff) return;
+    try {
+        if (navigator.onLine === false) return chbNetDown();
+    } catch (e) {}
+    if (__chbNetConfirming) return;
+    __chbNetConfirming = true;
+    fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store', credentials: 'include' }, 3500)
+        .then((r) => !(r && r.ok), () => true)
+        .then((down) => {
+            __chbNetConfirming = false;
+            if (down) chbNetDown();
+        });
+}
 function chbNetUp() {
     chbNetProbeStop();
     if (!__chbNetOff) return;
@@ -1433,7 +1453,36 @@ function apiErr(message, status, code) {
 // Full history in CLAUDE.md.
 /** Endpoints answer arbitrary JSON, so the body is `any` — stated, not inferred.
  * @returns {Promise<any>} */
+// THE WORK IS VISIBLE: a thin bar sweeps the top edge while any request is in flight (body.chb-busy, styled in admin.css).
+// Delayed 500ms so a fast load never flashes it, and the two long-poll doors never light it (they are always in flight).
+let __chbBusyN = 0;
+let __chbBusyT = null;
+function chbBusy(d, endpoint) {
+    if (/^(nightshift|version)\.php/.test(endpoint || '')) return;
+    __chbBusyN = Math.max(0, __chbBusyN + d);
+    try {
+        if (__chbBusyN > 0 && !__chbBusyT && !document.body.classList.contains('chb-busy')) {
+            __chbBusyT = setTimeout(() => {
+                __chbBusyT = null;
+                if (__chbBusyN > 0) document.body.classList.add('chb-busy');
+            }, 500);
+        } else if (__chbBusyN === 0) {
+            clearTimeout(__chbBusyT);
+            __chbBusyT = null;
+            document.body.classList.remove('chb-busy');
+        }
+    } catch (e) {}
+}
+/** @returns {Promise<any>} */
 async function apiPost(endpoint, payload) {
+    chbBusy(1, endpoint);
+    try {
+        return await apiPostCore(endpoint, payload);
+    } finally {
+        chbBusy(-1, endpoint);
+    }
+}
+async function apiPostCore(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
     // whole preview safe (no payments, chats, reviews, profile edits, etc.).
@@ -1453,7 +1502,7 @@ async function apiPost(endpoint, payload) {
             body: JSON.stringify(payload || {}),
         }, __chbNetOff ? 5000 : undefined);
     } catch (netErr) {
-        chbNetDown(); // evidence: the transport failed (a status is a different case)
+        chbNetFail(); // evidence: the transport failed (a status is a different case) — confirmed by a probe before it counts
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
@@ -1489,12 +1538,29 @@ async function apiPost(endpoint, payload) {
     }
     return data;
 }
+/** @returns {Promise<any>} */
 async function apiGet(endpoint) {
+    chbBusy(1, endpoint);
+    try {
+        return await apiGetCore(endpoint);
+    } finally {
+        chbBusy(-1, endpoint);
+    }
+}
+async function apiGetCore(endpoint) {
     let res;
     try {
-        res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, __chbNetOff ? 5000 : undefined);
+        try {
+            res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, __chbNetOff ? 5000 : undefined);
+        } catch (first) {
+            // A read is idempotent, so a FAST transport failure (not a 15s timeout) is retried once after a beat —
+            // most weak-signal drops are gone by then and the owner never sees them.
+            if (__chbNetOff || (first && first.name === 'AbortError')) throw first;
+            await new Promise((r) => setTimeout(r, 600));
+            res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, undefined);
+        }
     } catch (netErr) {
-        chbNetDown();
+        chbNetFail();
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
@@ -19425,7 +19491,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sizes1';
+    const BUILD = 'loading2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
