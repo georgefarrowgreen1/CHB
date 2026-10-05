@@ -651,14 +651,6 @@ body.light-mode .tl-cell:hover:not(:active) {
   opacity: 0.75;
   margin-left: 4px;
   white-space: nowrap;
-}/* Compact zoom: narrower day columns to plan whole months at a glance. The
-   day-of-week letters go (no room), dates + bars stay readable. */
-.tl-wrap.tl-compact {
-  --tl-day-w: 26px;
-}.tl-wrap.tl-compact .tl-day i {
-  display: none;
-}.tl-wrap.tl-compact .tl-day {
-  font-size: var(--fs-micro); /* the 11px floor (compact was 9.6px) */
 }
 /* Live "now" playhead: a thin accent line through today that advances with the
    clock (positioned in JS by tlPlaceNowLine), so by evening it reaches today's

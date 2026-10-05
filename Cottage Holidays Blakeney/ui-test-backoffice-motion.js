@@ -167,6 +167,8 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   await page.evaluate(() => bhubFoldToggle('guest'));
   await page.waitForFunction(() => document.getElementById('bhub-fold-guest').getBoundingClientRect().height < 1, { timeout: 8000 });
   await page.setViewportSize({ width: 1280, height: 950 });
+  // NB the booking page's entrance (.bhub-enter, fill: both) leaves a FINISHED animation on the
+  // fold group for ever, so "nothing in flight" means nothing that is not finished.
   await page.waitForTimeout(200);
 
   // THE FOCUS RING SURVIVES THE CLIP, measured on PIXELS. The wrapper's edge is
@@ -183,7 +185,7 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   // animation in flight and the fold open, then a settled frame.
   await page.waitForFunction(() => {
     const f = document.getElementById('bhub-fold-guest');
-    return f && f.getAnimations({ subtree: true }).length === 0 && f.getBoundingClientRect().height > 60;
+    return f && f.getAnimations({ subtree: true }).filter((x) => x.playState !== 'finished').length === 0 && f.getBoundingClientRect().height > 60;
   }, { timeout: 8000 });
   await page.waitForTimeout(120);
   // The probe is a ZERO-HEIGHT element flush with the wrapper's bottom edge, so

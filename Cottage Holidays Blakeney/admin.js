@@ -27401,33 +27401,11 @@ function tlPlaceNowLine() {
     const hr = /** @type {HTMLElement|null} */ (inner.querySelector('.tl-headrow'));
     line.style.top = (hr ? hr.offsetHeight : 0) + 'px';
 }
-// Compact ↔ comfortable day width. Compact fits roughly half as many more days
-// on screen (whole-month planning); comfortable is the readable default. The
-// choice persists, and the leftmost DATE stays put across the switch so the
-// view doesn't jump.
-function tlToggleZoom() {
-    const host = document.getElementById('cal-body');
-    const compact = localStorage.getItem('chb-tl-compact') === '1' ? '' : '1';
-    try { localStorage.setItem('chb-tl-compact', compact); } catch (e) {}
-    const leftDay = host ? host.scrollLeft / tlDayW() : 0;
-    renderCalendar();
-    if (host) host.scrollLeft = leftDay * tlDayW();
-}
 function renderCalendar() {
     renderCalUpdated();
     const host = document.getElementById('cal-body');
     if (!host) return;
-    let compactPref = false;
-    try { compactPref = localStorage.getItem('chb-tl-compact') === '1'; } catch (e) {}
-    host.classList.toggle('tl-compact', compactPref);
-    try {
-        const zb = document.querySelector('[data-act="tlToggleZoom"]');
-        if (zb) {
-            zb.setAttribute('aria-pressed', compactPref ? 'true' : 'false');
-            zb.title = compactPref ? 'Comfortable view — wider days' : 'Compact view — fit more days';
-            zb.setAttribute('aria-label', zb.title);
-        }
-    } catch (e) {}
+    host.classList.remove('tl-compact'); // the compact zoom is gone; clear a class an older render left
     const keepScroll = __tlScrolled ? host.scrollLeft : null;
     const todayIso = todayDashed();
     const t0 = dpParse(todayIso);
