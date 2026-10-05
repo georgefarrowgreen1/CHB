@@ -159,6 +159,11 @@ let approveWill409 = false;
     // ONE when-line under the name: the house compact range (fmtStayRange, the
     // enquiry hub's own sub) + nights + party + in/out times.
     sub: ((document.querySelector('.bhub-sub') || {}).textContent || '').trim(),
+    state: ((document.querySelector('.bhub-sub .bhub-state') || {}).textContent || '').trim(),
+    guestSub: ((document.querySelector('[data-grp=guest] .bhub-fold-sub, #bhub-fold-guest-sub') || {}).textContent || '').trim(),
+    contact: [...document.querySelectorAll('.bhub-contact .bhub-cbtn')].map((x) => x.textContent.trim()),
+    spineShown: !!document.querySelector('#day-spine') && !document.querySelector('#day-spine').hidden,
+    cardBtn: !!document.querySelector('.bhub-next .bhub-next-acts .bhub-next-btn') && getComputedStyle(document.querySelector('.bhub-next .bhub-next-btn')).display !== 'none',
     // The cards are DISCLOSURE GROUPS now (only-what-needs-seeing): each is a
     // summary row stating its conclusion, detail folded underneath, closed by
     // default. b1 is a repeat guest so the intel group renders too.
@@ -178,8 +183,13 @@ let approveWill409 = false;
   ok(a.headTitle === 'Walk-in', `the condensed bar names the guest, first name (${a.headTitle})`);
   ok(a.noStrips, 'the journey pill strips are gone — the stage is a caption');
   ok(/^Next · 2 of \d · Deposit$/.test(a.cap), `unpaid → the card's cap names the stage with its counter (${a.cap})`);
-  ok(/ · 3 nights · /.test(a.sub) && / · in 15:00 \/ out 10:00$/.test(a.sub) && !/→/.test(a.sub),
-    `ONE when-line: compact range · nights · party · in/out times (${a.sub})`);
+  ok(/ · 3 nights · /.test(a.sub) && !/in 15:00/.test(a.sub) && !/→/.test(a.sub),
+    `ONE when-line: compact range · nights · party, no clock times (${a.sub})`);
+  ok(/^(Arrives|Staying|Past)/.test(a.state), `…and the state is ONE capsule ("${a.state}")`);
+  ok(/In 15:00 · out 10:00/.test(a.guestSub), `the clock times live in the Guest row ("${a.guestSub}")`);
+  ok(a.contact.join() === 'Call,Email' || a.contact.join() === 'Email', `call and email are plain buttons under the name (${a.contact.join()})`);
+  ok(a.cardBtn, "the decision card keeps its own button on every width (the sticky bar no longer takes it)");
+  ok(!a.spineShown, 'the day strip stands down on a booking page — the card already says it');
   ok(a.grps.length === 6, `all six disclosure groups render (${a.grps.join(', ')})`);
   ok(a.foldsClosed, 'every fold starts CLOSED — the page opens at its summary');
   // THE EXCEPTION RULE: b1's register is outstanding, so the Guest details
@@ -1117,7 +1127,19 @@ let approveWill409 = false;
     const btn = document.querySelector('#booking-hub-content .bhub-next .bhub-next-btn');
     return { exists: !!btn, hidden: !btn || getComputedStyle(btn).display === 'none' };
   });
-  ok(cardBtn.exists && cardBtn.hidden, 'the card\'s own button yields to the sticky at phone width');
+  // ONE TAP, OFFERED ONCE — now by the BAR standing down: the card keeps its button, and the sticky
+  // only exists while the card is off screen (IntersectionObserver adds .is-away; default is shown).
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForFunction(() => document.querySelector('#booking-hub-content .bhub-sticky.is-away'), null, { timeout: 4000 }).catch(() => {});
+  const away = await page.evaluate(() => {
+    const bar = document.querySelector('#booking-hub-content .bhub-sticky'), btn = document.querySelector('#booking-hub-content .bhub-next .bhub-next-btn');
+    return { exists: !!btn, btnShown: !!btn && getComputedStyle(btn).display !== 'none', barAway: !!bar && bar.classList.contains('is-away') && getComputedStyle(bar).visibility === 'hidden' };
+  });
+  ok(cardBtn.exists && away.btnShown && away.barAway, `the card keeps its button and the sticky bar stands down while it is on screen (${JSON.stringify(away)})`);
+  await page.evaluate(() => { const el = document.querySelector('#booking-hub-content .bhub-next'); window.scrollTo(0, document.body.scrollHeight); if (el) el.scrollIntoView({ block: 'start' }); window.scrollBy(0, 4000); });
+  await page.waitForFunction(() => { const b = document.querySelector('#booking-hub-content .bhub-sticky'); return b && !b.classList.contains('is-away'); }, null, { timeout: 4000 }).catch(() => {});
+  ok(await page.evaluate(() => { const b = document.querySelector('#booking-hub-content .bhub-sticky'); return !!b && !b.classList.contains('is-away') && getComputedStyle(b).visibility !== 'hidden'; }), 'scrolled past the card, the sticky bar returns');
+  await page.evaluate(() => window.scrollTo(0, 0));
   // MONEY LEADS AND NEVER CLIPS: the label used to be verb-first with the
   // figure trailing, and "Request the balance by card — £930.37" measured
   // 104px wider than the button at 390px — the AMOUNT ran under the call
@@ -1167,7 +1189,7 @@ let approveWill409 = false;
   // the call client).
   ok(await page.evaluate(() => !document.querySelector('#booking-hub-content a[href^="mailto:"]')),
     'no mailto anywhere on the hub — email goes through the site\'s composer');
-  await page.click('.bhub-sticky button[data-act="openBookingEmail"]');
+  await page.click('.bhub-contact button[data-act="openBookingEmail"]');
   await page.waitForTimeout(400);
   ok(await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open')),
     'the sticky ✉️ opens the composer in place');
