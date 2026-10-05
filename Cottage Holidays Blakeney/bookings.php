@@ -2153,6 +2153,8 @@ if ($action === 'return_deposit') {
                 'reason' => $note,
                 'manual' => $status === 'MANUAL',
                 'method' => (string) ($b['payment_method'] ?? ''),
+                'last4' => $status === 'MANUAL' ? '' : booking_card_info($b)['last4'],
+                'brand' => $status === 'MANUAL' ? '' : booking_card_info($b)['brand'],
             ]);
         } catch (\Throwable $e) {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
@@ -2638,6 +2640,16 @@ if ($action === 'email_render') {
 }
 
 // Per-booking damage-deposit returns, summed (Money & income dashboard).
+// WHICH CARD the deposit rode on — the confirm says "Visa ending 4471" before
+// money moves. Stored at charge time; older bookings are fetched from Square once.
+// Never an error: empty means "say the card you paid with".
+if ($action === 'deposit_card') {
+    $b = booking_by_id((int) ($in['id'] ?? 0));
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    json_out(booking_card_info($b));
+}
 if ($action === 'deposit_returns') {
     try {
         // The SHARED figure. Unfiltered, a FAILED refund removed the deposit from the

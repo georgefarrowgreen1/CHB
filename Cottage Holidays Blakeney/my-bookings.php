@@ -107,6 +107,14 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // no safe, and a held-back card would assert one.
         $bk['door_code_pending'] = $ks['enabled'] && !$ksMine && $bk['check_in'] >= $ksToday;
         $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
+        // WHICH CARD, for the returned-deposit tracker only ("Visa ending 4471"). Stored at
+        // charge time; an older booking is read from Square ONCE and kept. Never on a
+        // preview, never for a stay whose deposit is not on its way back.
+        if (!$preview && ($bk['hold_status'] ?? '') === 'returned' && trim((string) ($bk['card_last4'] ?? '')) === '') {
+            $ci = booking_card_info($bk);
+            $bk['card_last4'] = $ci['last4'];
+            $bk['card_brand'] = $ci['brand'];
+        }
         // WHEN the balance is due, DERIVED — deliberately its own field, not the
         // raw `balance_due_date` column beside it. That column is the per-booking
         // OVERRIDE and NULL means "site standard", which is exactly what the owner

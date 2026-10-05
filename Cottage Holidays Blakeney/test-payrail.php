@@ -828,9 +828,8 @@ chk('…and its paid-so-far line is labelled as the RENTAL rail',
 chk('a partial deposit return states the retained difference',
     preg_match("/function send_deposit_return_email[\s\S]{0,700}\\\$retained = round\(max\(0, \\\$held - \(float\) \\\$b\['amount'\]\), 2\);/", $mailR) === 1);
 chk('…and a manual return never claims the card rail',
-    preg_match("/function send_deposit_return_email[\s\S]{0,1300}\\\$manual \? \(\\\$method !== '' \? 'by ' \. \\\$method \. ', the way you paid' : 'by the method we agreed'\) : 'to the card you paid with'/", $mailR) === 1
+    preg_match("/function send_deposit_return_email[\s\S]{0,2600}\\\$manual\s*\? \(\\\$method !== '' \? 'by ' \. \\\$method \. ', the way you paid' : 'by the method we agreed'\)[\s\S]{0,260}'to the card you paid with'/", $mailR) === 1
     && strpos($bkW3, "'manual' => \$status === 'MANUAL',") !== false);
-
 chk('…and a manual return names the method and promises no card timescale',
     strpos($mailR, "'Shortly' : '3–5 working days'") !== false
     && strpos($bkW3, "'method' => (string) (\$b['payment_method'] ?? '')") !== false);
@@ -838,6 +837,24 @@ chk('…and a manual return names the method and promises no card timescale',
 chk('the deposit return states the rail BEFORE the confirm, and off-card the button claims the owner sent it',
     preg_match("/async function returnDeposit[\s\S]{0,3200}depositRailInfo\(booking\)[\s\S]{0,1600}I’ve sent it — record it[\s\S]{0,2200}return_deposit/", $admW) === 1
     && strpos($admW, 'bookingOwnerArranged(b)') !== false);
+
+echo "\n== WHICH CARD a payment was taken on (migration-126) ==\n";
+$cp = card_from_payment(['card_details' => ['card' => ['last_4' => '4471', 'card_brand' => 'VISA']]]);
+chk('Square\'s brand + last four become "Visa" + 4471', $cp === ['last4' => '4471', 'brand' => 'Visa']);
+chk('anything that is not exactly four digits is refused (no line noise to a guest)',
+    card_from_payment(['card_details' => ['card' => ['last_4' => '44 71']]])['last4'] === ''
+    && card_from_payment(['card_details' => ['card' => ['last_4' => '<b>1</b>']]])['last4'] === ''
+    && card_from_payment(null)['last4'] === '' && card_from_payment([])['last4'] === '');
+chk('an unknown brand keeps the digits and drops the brand', card_from_payment(['card_details' => ['card' => ['last_4' => '0001', 'card_brand' => 'NEW_SCHEME']]]) === ['last4' => '0001', 'brand' => '']);
+chk('a stored card is returned without asking Square', booking_card_info(['card_last4' => '1234', 'card_brand' => 'Visa', 'hold_payment_id' => 'x', 'id' => 1]) === ['last4' => '1234', 'brand' => 'Visa']);
+chk('no stored card and no payment id is empty, never an error', booking_card_info(['id' => 1]) === ['last4' => '', 'brand' => '']);
+$mig126 = (string) file_get_contents(__DIR__ . '/migration-126-card-last4.sql');
+chk('migration-126 adds both columns as a plain ALTER (no PREPARE guard)', strpos($mig126, 'ADD COLUMN card_last4 CHAR(4)') !== false && strpos($mig126, 'PREPARE') === false);
+chk('pay.php stores the card in its OWN statement, only when a deposit rode the charge',
+    preg_match("/\\\$damagesDue > 0 && \\\$cardInfo\['last4'\] !== ''[\s\S]{0,200}UPDATE bookings SET card_last4/", (string) file_get_contents(__DIR__ . '/pay.php')) === 1);
+chk('the return email names the card and the return route passes it (wiring)',
+    strpos($mailR, "'to your ' . \$cardName . ' ending ' . \$last4") !== false
+    && strpos($bkW3, "'last4' => \$status === 'MANUAL' ? '' : booking_card_info(\$b)['last4']") !== false);
 
 echo "\n== The per-booking payment plan (migration-103) ==\n";
 // booking_deposit_amount — the ONE deposit derivation. Pure paths only here (the
@@ -1932,7 +1949,7 @@ chk('the refund email attributes its note and dates the money',
     preg_match('/function send_refund_email[\s\S]{0,2600}email_ownernote\(email_host_name\(\), \$reason\)/', $mlE) === 1
     && preg_match('/function send_refund_email[\s\S]{0,2900}3&ndash;5 working days/', $mlE) === 1);
 chk('a part-returned deposit shows its arithmetic instead of a bare figure',
-    preg_match('/function send_deposit_return_email[\s\S]{0,3400}Deposit held[\s\S]{0,300}Retained[\s\S]{0,300}Returned to you/', $mlE) === 1);
+    preg_match('/function send_deposit_return_email[\s\S]{0,4600}Deposit held[\s\S]{0,300}Retained[\s\S]{0,300}Returned to you/', $mlE) === 1);
 chk('a released hold names a number of days, not "a few"',
     preg_match('/function send_hold_released[\s\S]{0,1800}3&ndash;5 working days/', $mlE) === 1
     && preg_match('/function send_hold_released[\s\S]{0,1800}a few working days/', $mlEc) !== 1);

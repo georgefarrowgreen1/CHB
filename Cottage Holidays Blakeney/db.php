@@ -2210,6 +2210,56 @@ function token_link_error_page($what, $why, $code = 403)
 // Minimal Square REST call over cURL (no Composer/SDK needed on shared hosting,
 // matching the raw SMTP/webpush approach). Returns ['status'=>int,'body'=>array].
 // Never throws; a transport failure comes back as status 0 with an 'error' body.
+// WHICH CARD A PAYMENT WAS TAKEN ON — brand + last four, from Square's payment
+// object. PURE (test-payrail drives it): anything that is not exactly four digits
+// is refused, so a surprising response can never print line noise to a guest.
+function card_from_payment($payment)
+{
+    $c = is_array($payment) ? $payment['card_details']['card'] ?? null : null;
+    $last4 = is_array($c) ? (string) ($c['last_4'] ?? '') : '';
+    if (!preg_match('/^\d{4}$/', $last4)) {
+        return ['last4' => '', 'brand' => ''];
+    }
+    $raw = strtoupper((string) ($c['card_brand'] ?? ''));
+    $names = [
+        'VISA' => 'Visa',
+        'MASTERCARD' => 'Mastercard',
+        'AMERICAN_EXPRESS' => 'American Express',
+        'DISCOVER' => 'Discover',
+        'JCB' => 'JCB',
+        'DISCOVER_DINERS' => 'Diners Club',
+        'UNION_PAY' => 'UnionPay',
+        'CHINA_UNIONPAY' => 'UnionPay',
+        'MAESTRO' => 'Maestro',
+    ];
+    return ['last4' => $last4, 'brand' => $names[$raw] ?? ''];
+}
+// The card on a booking, stored or fetched ONCE. A booking charged before the
+// columns existed has none, so the first ask reads Square's payment and keeps it.
+// Never throws and never blocks money: unreachable/unmigrated → empty.
+function booking_card_info($b)
+{
+    $last4 = trim((string) ($b['card_last4'] ?? ''));
+    if ($last4 !== '') {
+        return ['last4' => $last4, 'brand' => (string) ($b['card_brand'] ?? '')];
+    }
+    $pid = trim((string) ($b['hold_payment_id'] ?? ''));
+    if ($pid === '' || empty($b['id']) || !function_exists('square_enabled') || !square_enabled()) {
+        return ['last4' => '', 'brand' => ''];
+    }
+    try {
+        $res = square_api('GET', '/v2/payments/' . rawurlencode($pid));
+        $card = card_from_payment($res['body']['payment'] ?? null);
+        if ($card['last4'] !== '') {
+            db()
+                ->prepare('UPDATE bookings SET card_last4 = ?, card_brand = ? WHERE id = ?')
+                ->execute([$card['last4'], $card['brand'], (int) $b['id']]);
+        }
+        return $card;
+    } catch (\Throwable $e) {
+        return ['last4' => '', 'brand' => ''];
+    }
+}
 function square_api($method, $path, $payload = null)
 {
     $url = square_api_base() . $path;

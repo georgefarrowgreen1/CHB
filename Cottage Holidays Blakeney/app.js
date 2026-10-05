@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 635;
+const ADMIN_BUNDLE_V = 636;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1847,6 +1847,8 @@ function mapBookingFromApi(row) {
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
         damagesReturned: parseFloat(row.damages_returned) || 0,
+        cardLast4: /^\d{4}$/.test(row.card_last4 || '') ? row.card_last4 : '',
+        cardBrand: row.card_brand || '',
         // The guest's own "we've left" tap (migration-120). '' = never tapped —
         // a SIGNAL the surfaces may add, never a state anything depends on.
         guestCheckedOutAt: row.guest_checked_out_at || '',
@@ -4204,31 +4206,39 @@ function chbAddWorkingDays(fromIso, days) {
     }
     return d.toISOString().slice(0, 10);
 }
+// "Visa ending 4471" — or the plain "card ending 4471" when the brand is unknown;
+// '' when no digits are recorded (the caller says "the card you paid with").
+function chbCardLabel(b) {
+    const l4 = b && /^\d{4}$/.test(b.cardLast4 || '') ? b.cardLast4 : '';
+    return l4 ? (b.cardBrand || 'card') + ' ending ' + l4 : '';
+}
+// The returned deposit as ONE card in the stay's own vocabulary, on either rail. Card:
+// issued -> due-by bar (the days behind the guest are the filled stretch), retired
+// past the window. Off the card rail the site cannot know when it lands, so it says
+// SENT, how, and where to go if it hasn't arrived — no bar, no card words.
 function guestDepositTrackerHtml(b) {
     if ((b.holdStatus || 'none') !== 'returned') return '';
     const fig = Math.round((Number(b.damagesReturned) || 0) * 100) / 100;
     if (!(fig > 0)) return '';
     const issued = b.holdSettledAt ? String(b.holdSettledAt).split(' ')[0] : '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(issued)) return '';
-    const today = todayDashed();
-    const elapsed = chbWorkingDaysBetween(issued, today);
-    // Past the window it has landed (or the guest is talking to their bank
-    // anyway) — a tracker still "in flight" on day 12 would be the lie.
+    const elapsed = chbWorkingDaysBetween(issued, todayDashed());
+    const head = (cap) =>
+        `<div class="dep-h"><span>Your refundable deposit</span><span class="dep-cp${cap.ok ? ' ok' : ''}">${cap.ok ? '✓ ' : ''}${cap.t}</span></div><div class="dep-fig">${gbp(fig)}</div>`;
+    if (bookingOwnerArranged(b)) {
+        // Past ten working days it is the guest's bank statement, not our tracker.
+        if (elapsed > 10) return '';
+        const how = String(b.paymentMethod || '').trim().toLowerCase();
+        return `<div class="dep-track">${head({ ok: true, t: 'Sent' })}<div class="dep-bar ok"><b></b></div><div class="dep-d"><span>Sent ${fmtDate(issued)}</span><span>${escapeHtml(how ? 'By ' + how : 'By hand')}</span></div><div class="dep-f">Sent <b>${escapeHtml(how ? 'by ' + how : 'by hand')}</b>, the way you paid. It should be with you shortly. Nothing is needed from you.</div></div>`;
+    }
+    // Past the window it has landed (or the guest is talking to their bank anyway) —
+    // a tracker still "in flight" on day 12 would be the lie.
     if (elapsed > 6) return '';
     const byIso = chbAddWorkingDays(issued, 5);
     const dayN = Math.min(Math.max(elapsed, 0) + 1, 5);
-    const pct = Math.min(90, Math.max(8, Math.round((elapsed / 5) * 100)));
-    return `
-        <div class="pay-track">
-            <div class="pay-track-cap">Your ${gbp(fig)} deposit — on its way back</div>
-            <div class="pay-track-row">
-                <div class="pay-tnode is-done"><span class="pay-td" aria-hidden="true"></span><span class="pay-tl">Refund issued</span><span class="pay-ts">${fmtDate(issued)}</span></div>
-                <div class="pay-tline" aria-hidden="true"><span class="pay-tfill" style="width:${pct}%;"></span></div>
-                <div class="pay-tnode"><span class="pay-td" aria-hidden="true"></span><span class="pay-tl">Your bank</span><span class="pay-ts">by ${fmtDate(byIso)}</span></div>
-            </div>
-            <div class="pay-track-day">Day ${dayN} of 3–5 working days</div>
-            <div class="pay-track-note">Nothing is needed from you — it lands on the card you paid with.</div>
-        </div>`;
+    const pct = Math.min(90, Math.max(10, Math.round((elapsed / 5) * 100)));
+    const lbl = chbCardLabel(b);
+    return `<div class="dep-track">${head({ t: 'On its way' })}<div class="dep-bar"><b style="width:${pct}%"></b></div><div class="dep-d"><span>Refunded ${fmtDate(issued)}</span><span>Due by ${fmtDate(byIso)}</span></div><div class="dep-f">Returning to <b>${escapeHtml(lbl || 'the card you paid with')}</b> · day ${dayN} of 3–5 working days. Nothing is needed from you.</div></div>`;
 }
 async function renderGuestBookings() {
     const list = document.getElementById('guest-bookings-list');
@@ -19415,7 +19425,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bbjffef';
+    const BUILD = 'bcaahhh';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -466,6 +466,24 @@ else {
 // and the journey pipeline all read. The server half is the same shape by
 // construction (booking_amount_due and pay.php both resolve price_override before
 // the pct/balance maths — gated in test-payrail).
+// THE RETURNED-DEPOSIT TRACKER FOLLOWS THE RAIL: a card guest gets the due-by bar and
+// the card they paid with (digits when held); off the card rail the site cannot know
+// when it lands, so it says SENT, how, and never prints a card timescale or the word card.
+{
+    const evalIn = (src) => vm.runInContext(src, ctx);
+    const trk = (o) => evalIn(`(() => { const t = todayDashed(); return guestDepositTrackerHtml(Object.assign({ holdStatus: 'returned', damagesReturned: 50, holdSettledAt: t + ' 09:00:00', paymentMethod: '', cardLast4: '', cardBrand: '' }, ${JSON.stringify(o || {})})); })()`);
+    const c1 = trk({ cardLast4: '4471', cardBrand: 'Visa' });
+    check('tracker (card): names the card by brand + last four', /Visa ending 4471/.test(c1) && /3–5 working days/.test(c1) && /On its way/.test(c1));
+    const c2 = trk({});
+    check('tracker (card, no digits held): falls back to the card they paid with, never "ending"', /the card you paid with/.test(c2) && !/ending/.test(c2));
+    const b1 = trk({ paymentMethod: 'Bank transfer' });
+    check('tracker (bank): says Sent, by bank transfer, and promises no card timescale', /✓ Sent/.test(b1) && /by bank transfer/i.test(b1) && !/3–5|card/i.test(b1));
+    check('tracker (bank): a "Square card" method stays on the card rail', /On its way/.test(trk({ paymentMethod: 'Square card', cardLast4: '1234' })));
+    check('tracker: nothing renders unless the deposit was returned with a dated issue', trk({ holdStatus: 'charged' }) === '' && trk({ holdSettledAt: '' }) === '' && trk({ damagesReturned: 0 }) === '');
+    const old = evalIn(`guestDepositTrackerHtml({ holdStatus: 'returned', damagesReturned: 50, holdSettledAt: '2020-01-06 09:00:00', paymentMethod: '' })`);
+    check('tracker: retires once the window has passed (never "in flight" weeks later)', old === '');
+    check('tracker: a malformed last four never reaches the page', !/<b>/.test(evalIn(`chbCardLabel({ cardLast4: '<b>x', cardBrand: 'Visa' })`)) && evalIn(`chbCardLabel({ cardLast4: '12345' })`) === '');
+}
 {
     const evalIn = (src) => vm.runInContext(src, ctx);
     const row = (extra) => Object.assign({
