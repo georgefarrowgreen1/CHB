@@ -11222,7 +11222,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const nextHtml = next
         ? next.money
             ? '' // the Payments block's own header carries it (bhub-payask)
-            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button>${next.alt ? `<button class="bhub-actlink bhub-next-alt" ${next.alt.act}>${escapeHtml(next.alt.label)}</button>` : ''}</div>`
+            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><div class="bhub-next-acts"><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button>${next.alt ? `<button class="bhub-actlink bhub-next-alt" ${next.alt.act}>${escapeHtml(next.alt.label)}</button>` : ''}</div></div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
     return nextHtml;
 }
@@ -11561,6 +11561,20 @@ function hubIntelMentionRowsHtml(mentions) {
         .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span><span class="bhub-mut">open →</span></button>`)
         .join('');
 }
+// The when-line's STATE as one capsule (Past stay / Staying now / Arrives in 4 days) — the fact the
+// line used to bury in prose. Check-in and out times live in the Guest row now.
+function hubStateCap(b, past) {
+    let t = '', tone = '';
+    const today = todayDashed();
+    if (past) t = 'Past stay';
+    else if (b.checkIn <= today) { t = 'Staying now'; tone = ' is-now'; }
+    else {
+        const n = nightsBetween(today, b.checkIn);
+        t = n <= 0 ? 'Arrives today' : n === 1 ? 'Arrives tomorrow' : 'Arrives in ' + n + ' days';
+        tone = ' is-soon';
+    }
+    return ` <span class="bhub-state${tone}">${t}</span>`;
+}
 function renderBookingHub() {
     const el = document.getElementById('booking-hub-content');
     if (!el) return;
@@ -11714,7 +11728,7 @@ function renderBookingHub() {
     // plan's deposit, defined in the rental frame.
     const pipeHtml = hubPipelineHtml(propKey, b, gt, dh, ps);
     const payAsk = __hubNext && __hubNext.money
-        ? `<div class="bhub-next bhub-payask">${__hubNext.cap ? `<span class="bhub-next-cap">${escapeHtml(__hubNext.cap)}</span>` : ''}<span class="bhub-next-text">${__hubNext.text}</span><button class="btn-glass bhub-next-btn" ${__hubNext.onclick}>${__hubNext.btn}</button></div>`
+        ? `<div class="bhub-next bhub-payask">${__hubNext.cap ? `<span class="bhub-next-cap">${escapeHtml(__hubNext.cap)}</span>` : ''}<span class="bhub-next-text">${__hubNext.text}</span><div class="bhub-next-acts"><button class="btn-glass bhub-next-btn" ${__hubNext.onclick}>${__hubNext.btn}</button></div></div>`
         : '';
     // NO GAP OFFER HERE. A dashed chip used to price the hole after this stay
     // and offer it in one tap, on the reasoning that it surfaced the decision
@@ -11790,6 +11804,11 @@ function renderBookingHub() {
                     </div>
                 </div>`;
 
+    // Call and Email as two plain buttons under the name — the sticky bar's icons only exist while the
+    // decision card is off screen, so the guest is never more than one tap away.
+    const contactRow = b.phone || b.email
+        ? `<div class="bhub-contact">${b.phone ? `<a class="bhub-cbtn press" href="tel:${escapeHtml(String(b.phone))}">${BHUB_IC_PHONE}<span>Call</span></a>` : ''}${b.email ? `<button class="bhub-cbtn press" ${chbAttrs('openBookingEmail', String(b.id))}>${BHUB_IC_MAIL}<span>Email</span></button>` : ''}</div>`
+        : '';
     // ---- Header — identity on the PAGE GROUND now (the only-what-needs-
     // seeing demo: no enclosing glass panel; the tinted to-do card and the
     // Money group are the only surfaces up here). Serif name over ONE
@@ -11802,11 +11821,12 @@ function renderBookingHub() {
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : past ? ' · past stay' : ''}</div>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : ''}${hubStateCap(b, past)}</div>
                     ${changeover}
                 </div>
                 ${editMenu}
             </div>
+            ${contactRow}
             ${pipeHtml}
             ${payBlock}
         </div>`;
@@ -11939,7 +11959,7 @@ function renderBookingHub() {
             </div>`
                 : ''}
             ${staysHtml}`;
-    const guestCard = bhubFoldGrp('guest', 'Guest details', '', guestSum, guestFold);
+    const guestCard = bhubFoldGrp('guest', 'Guest details', `In ${escapeHtml(b.checkInTime || '15:00')} · out ${escapeHtml(b.checkOutTime || '10:00')}`, guestSum, guestFold);
 
     // ---- Your note — its own group: the summary row quotes the note's first
     // line (or offers to add one); the editor folds underneath. ----
@@ -11996,6 +12016,31 @@ function renderBookingHub() {
     // card without re-docking the whole hub mid-interaction.
     const ratingCard = past ? `<div id="gb-card-host">${hubGuestBookCard(propKey, b)}</div>` : '';
     el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${intelCard}${guestCard}${ratingCard}${emailsCard}${historyCard}${noteCard}</div>${sticky}`;
+    // The page settles in ONCE per booking opened (a data refresh re-renders this and must not replay it).
+    if (__hubDrewId !== b.id) {
+        __hubDrewId = b.id;
+        el.classList.remove('bhub-enter');
+        void el.offsetWidth;
+        el.classList.add('bhub-enter');
+    }
+    hubWatchSticky(el);
+}
+let __hubDrewId = null;
+let __hubStickyIO = null;
+// The sticky bar repeats the decision card's button, so it only exists while that card is OFF screen.
+// Default (no observer, no card, old engine) is SHOWN — the observer can only ever add `.is-away`.
+function hubWatchSticky(el) {
+    try {
+        if (__hubStickyIO) __hubStickyIO.disconnect();
+        __hubStickyIO = null;
+        const card = el.querySelector('.bhub-next'), bar = el.querySelector('.bhub-sticky');
+        if (!card || !bar || typeof IntersectionObserver !== 'function') return;
+        __hubStickyIO = new IntersectionObserver((es) => {
+            const e = es[es.length - 1];
+            bar.classList.toggle('is-away', !!e && e.isIntersecting && e.intersectionRatio >= 0.9);
+        }, { threshold: [0, 0.9, 1] });
+        __hubStickyIO.observe(card);
+    } catch (e) {}
 }
 // (hubChipsHtml — the header's five-fact status-chip row — is REMOVED: the
 // iOS restyle states those facts as label+value rows in the Guest card, where
@@ -21002,6 +21047,9 @@ function chbFrameSync() {
         ADMIN_VIEWS.indexOf(avId) !== -1 &&
         avId !== 'view-backoffice' &&
         avId !== 'view-aichat' &&
+        // A hub is ONE record: its own card already says what to do, so the day strip above it said it twice.
+        avId !== 'view-booking-hub' &&
+        avId !== 'view-enquiry-hub' &&
         !document.body.classList.contains('offline-snap');
     if (!on) {
         sp.hidden = true;

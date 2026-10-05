@@ -4986,7 +4986,7 @@ body.cmdk-open {
 /* ≤900px the sticky bar IS the action — the card drops its button so one tap
    is offered once (A2c). Booking hub only: the enquiry hub's Approve has no
    sticky to hand over to. */
-@media (max-width: 900px) { #booking-hub-content .bhub-next .bhub-next-btn, #enquiry-hub-content .bhub-next .bhub-next-btn { display: none; } }
+/* (superseded: the card now keeps its button on a phone and the sticky bar stands down while the card is on screen — see THE BOOKING PAGE, ONE DECISION) */
 /* …AND ABOVE 900 IT IS THE SAME CONTROL, so it wears the same clothes. The
    card's button was a .btn-glass ghost — an outlined 42px pill, the quietest
    thing on the pane — while the phone's sticky bar wears the accent fill for
@@ -7896,3 +7896,30 @@ body.light-mode .tl-cell:active {
 #bookings-owed:not(:empty):has(~ #bookings-list .bk-row) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 #bookings-owed:not(:empty) ~ #bookings-list .bk-row:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 #bookings-owed:not(:empty) ~ #bookings-list .bk-row:last-child { border-bottom-left-radius: var(--r-lg); border-bottom-right-radius: var(--r-lg); }
+
+/* THE BOOKING PAGE, ONE DECISION AT A TIME (approved demo). The decision card owns its buttons on every
+   width; the sticky bar only exists while the card is off screen; call/email are plain buttons under the
+   name; the when-line carries one state capsule; the page settles in once per booking opened. */
+.bhub-next-acts { display: flex; gap: 12px; align-items: stretch; margin-top: 12px; }
+.bhub-next-acts .bhub-next-btn { flex: 1.4 1 0; min-height: 48px; padding: 0 20px; border-radius: var(--r-pill); background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; font-size: var(--fs-body); }
+.bhub-next-acts .bhub-next-alt { flex: 1 1 0; display: grid; place-items: center; min-height: 48px; margin: 0; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); background: var(--glass-bg); color: var(--text-light); font-weight: 600; font-size: var(--fs-body); text-align: center; }
+.bhub-next-acts .bhub-next-btn.btn-approve, .bhub-next-acts .bhub-next-btn.btn-approve:hover { background: var(--ok); }
+.bhub-state { display: inline-block; padding: 2px 10px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-muted) 16%, transparent); color: var(--text-muted); font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; }
+.bhub-state.is-soon { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info-text); }
+.bhub-state.is-now { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-text); }
+.bhub-contact { display: flex; gap: 12px; margin: 12px 0 4px; }
+.bhub-cbtn { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); background: var(--glass-bg); color: var(--text-light); font: inherit; font-weight: 600; font-size: var(--fs-body); text-decoration: none; cursor: pointer; }
+.bhub-cbtn .ic { width: 18px; height: 18px; }
+.bhub-sticky { transition: transform 0.45s var(--settle), opacity 0.2s var(--out); }
+.bhub-sticky.is-away { transform: translateY(120%); opacity: 0; pointer-events: none; visibility: hidden; transition: transform 0.28s var(--in), opacity 0.2s var(--in), visibility 0s 0.28s; }
+@keyframes bhubAppear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.bhub-enter .bhub-head > *, .bhub-enter .bhub-head .bhub-iden > *, .bhub-enter > .bhub-grpcap, .bhub-enter .bhub-grid > * { animation: bhubAppear 0.5s var(--out) backwards; }
+.bhub-enter .bhub-head .bhub-iden > :nth-child(2) { animation-delay: 55ms; }
+.bhub-enter .bhub-head .bhub-iden > :nth-child(3) { animation-delay: 110ms; }
+.bhub-enter .bhub-head .bhub-iden > :nth-child(4) { animation-delay: 165ms; }
+.bhub-enter .bhub-contact { animation-delay: 220ms; }
+.bhub-enter .bhub-headpay { animation-delay: 275ms; }
+.bhub-enter .bhub-grid > :nth-child(1) { animation-delay: 330ms; }
+.bhub-enter .bhub-grid > :nth-child(2) { animation-delay: 385ms; }
+.bhub-enter .bhub-grid > :nth-child(3) { animation-delay: 440ms; }
+.bhub-enter .bhub-grid > :nth-child(n+4) { animation-delay: 495ms; }

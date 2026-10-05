@@ -2061,6 +2061,26 @@ Now eight.
   and the caption clearing.
 - The dock count badge sits on the icon's corner (`.admin-dock-badge`), outside the selected pill.
 
+## The booking page, one decision at a time (approved demo, built)
+
+**Asked for as "improve the look and feel of the individual booking pages — cleaner, more intuitive",
+demoed (static, then a working animated prototype), then "Build it".** Gated by ui-test-hub (§A and the
+phone-width block), each declaration break-tested.
+- **THE DAY STRIP STANDS DOWN ON A HUB** (`chbFrameSync` excludes `view-booking-hub` and
+  `view-enquiry-hub`): "Return Tina's £50 deposit" sat above a card saying the same thing.
+- **THE WHEN-LINE IS FACTS PLUS ONE STATE CAPSULE** (`hubStateCap`: Past stay / Staying now / Arrives in N
+  days). The check-in/out times moved into the Guest row's sub, where they are looked up, not scanned.
+- **CALL AND EMAIL ARE TWO PLAIN BUTTONS** (`.bhub-contact`) under the name. Email still goes through the
+  site's composer, never mailto:.
+- **THE DECISION CARD KEEPS ITS BUTTON ON EVERY WIDTH, and the STICKY BAR is what yields**:
+  `hubWatchSticky` adds `.is-away` while the card is ≥90% on screen. The default is SHOWN — the observer
+  can only ever hide the bar, so no card, no observer or an old engine leave today's behaviour. This
+  reverses the old "card drops its button ≤900px" rule (A2c); the one-tap-offered-once intent is kept.
+  The secondary answer (Keep it for damage) sits beside the primary as a pill (`.bhub-next-acts`).
+- **THE PAGE SETTLES IN ONCE PER BOOKING OPENED** (`.bhub-enter`, `__hubDrewId`): a data refresh re-renders
+  the hub constantly and must not replay the entrance. Reduced motion is covered by the killswitch.
+- NB the existing disclosure groups already were the "one grouped list"; this pass did not rebuild them.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more
