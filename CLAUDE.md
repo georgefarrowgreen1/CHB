@@ -2097,6 +2097,28 @@ booking reference (now in History), the "Next · 2 of 6 ·" counter (the cap is 
 nights/party/times from the when-line (they open the Guest fold). Call and Email are 44px icon buttons
 beside the name (`aria-label`ed, with sr-only text). Gated by ui-test-hub.
 
+## A block is not a booked night (audit, "check sitewide")
+
+**Asked for from the Cottages & pricing screenshot ("97% booked in October").** Every figure that says
+BOOKED must count direct bookings plus imported platform STAYS and nothing else: the owner's own blocks and a
+host's "Not available" hold on an imported calendar (`kind: 'blocked'`, migration-124) are availability, not
+occupancy. The shared rule is `isOtaBlock` (client) / `source <> 'owner' AND kind <> 'blocked'` (server).
+Swept: the pulse, insights, price model, owner digest, day sheet, assistant answers and the books caveat
+already followed it; **two did not** — `cottageMonthOccupancy` (the "% booked" on Manage → Cottages and the
+cottage verdicts) and the projected-occupancy table (`renderProjection`-area, admin.js ~17606) counted every
+block, so a month the owner had held back read as nearly full. Both fixed. DELIBERATELY unchanged: every
+AVAILABILITY surface (timeline, free-window scans, clash checks, gap brief, `pricing-suggest.php`'s
+is_booked_date, the assistant's "is it free" tool) — a block makes a night unavailable, which is the point.
+An imported event with no recognisable label ('unknown') still counts as a stay, as it always did.
+Gated by search-test §44 (a2) (3 nights from the stay, none from the owner block or the host hold;
+break-tested: 9 without the filter).
+- **AND search-test HAD BEEN ENDING EARLY, SILENTLY, FOR EVERY SECTION AFTER §40.** The dismissal block's
+  `release()` ran before the queue's `.then` had assigned it (a microtask), released a no-op, and
+  `await settle()` hung on a promise nothing would resolve — node then exits 0 with the event loop empty, so
+  the gate printed a clean-looking half and passed. It now awaits the tick, and the file carries an exit guard:
+  no summary reached means exit 1. ~140 checks (§41–§44) ran for the first time in a while and all pass.
+  General rule: an async main that can exit before its summary needs a "reached the end" assertion.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

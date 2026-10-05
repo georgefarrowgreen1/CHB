@@ -17608,9 +17608,9 @@ function renderMoneyForecast() {
         });
     });
     Object.keys(dbBlocks || {}).forEach((propKey) => {
-        (dbBlocks[propKey] || []).forEach((bl) =>
-            months.forEach((m) => addNights(m, propKey, bl.checkIn, bl.checkOut)),
-        );
+        (dbBlocks[propKey] || []).forEach((bl) => {
+            if (isOtaBlock(bl)) months.forEach((m) => addNights(m, propKey, bl.checkIn, bl.checkOut)); // blocks are not bookings
+        });
     });
     const body = months
         .map((m) => {
@@ -27240,7 +27240,7 @@ function osHBars(items) {
         })
         .join('');
 }
-// Booked cottage-nights this calendar month, per cottage (direct + iCal blocks).
+// Booked cottage-nights this calendar month, per cottage (direct bookings + imported platform STAYS; blocks excluded).
 function cottageMonthOccupancy() {
     const now = chbNow();
     const mStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -27265,8 +27265,10 @@ function cottageMonthOccupancy() {
     Object.keys(dbBookings).forEach((k) =>
         (dbBookings[k] || []).forEach((b) => add(k, b.checkIn, b.checkOut)),
     );
+    // A BLOCK IS NOT A BOOKING: the owner's own blocks and a host's "Not available" hold on an imported
+    // calendar do not count as booked nights (isOtaBlock — the rule the pulse, insights and price model share).
     Object.keys(dbBlocks || {}).forEach((k) =>
-        (dbBlocks[k] || []).forEach((bl) => add(k, bl.checkIn, bl.checkOut)),
+        (dbBlocks[k] || []).forEach((bl) => { if (isOtaBlock(bl)) add(k, bl.checkIn, bl.checkOut); }),
     );
     Object.keys(out).forEach((k) => {
         out[k].nights = sets[k].size;
