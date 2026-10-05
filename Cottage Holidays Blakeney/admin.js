@@ -10725,7 +10725,16 @@ function bhubMenuHide(m) {
     setTimeout(done, 160); // belt: an animation that never starts must still close it
 }
 let __bhubMenuResize = null;
-function bhubMenuClose() {
+/** @param {Event} [ev] */
+function bhubMenuClose(ev) {
+    // A control that works IN the menu (Refresh calendar) opts out of the outside-click
+    // close with data-keep-menu: the owner watches it work, then closes the menu themselves.
+    // The listener is {once: true}, so it has to be armed again.
+    const t = ev && /** @type {any} */ (ev.target);
+    if (t && t.closest && t.closest('[data-keep-menu]')) {
+        document.addEventListener('click', bhubMenuClose, { once: true });
+        return;
+    }
     if (__bhubMenuResize) {
         window.removeEventListener('resize', __bhubMenuResize);
         __bhubMenuResize = null;
@@ -22841,7 +22850,7 @@ function renderCalUpdated() {
     const el = document.getElementById('cal-updated-text');
     if (!el) return;
     if (icalSyncing) {
-        el.textContent = 'Syncing…';
+        el.textContent = ''; // the spinning icon on the Refresh item says it; no words
         return;
     }
     let last = 0;

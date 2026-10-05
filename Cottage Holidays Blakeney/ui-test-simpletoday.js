@@ -29,6 +29,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     let act = ''; try { act = JSON.parse(route.request().postData() || '{}').action || ''; } catch (e) {}
     if (url.includes('cron-status.php')) return json({ stale: false, everRan: true, ageHours: 3 });
+    if (url.includes('ical-import.php')) { return setTimeout(() => json({ ok: true }), 1500); }
     if (url.includes('bookings.php')) {
       if (act === 'email_logs') return json({ ok: true, logs: {} });
       if (act === 'history') return json({ ok: true, history: [] });
@@ -194,5 +195,34 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!many.solo && many.head, 'several tasks keep the heading and the list');
 
   console.log(fails ? `\n${fails} SIMPLER-TODAY CHECK(S) FAILED ❌` : '\nSIMPLER TODAY GATE PASSED ✅');
+  // Last, because a real refresh reloads the stores and would replace the fixtures the sections above inject.
+  console.log('§3b Refresh calendar works IN the menu: it stays open, spins, and says nothing in words');
+  await page.evaluate(() => { try { localStorage.removeItem('chb-ical-last-sync'); } catch (e) {} bhubMenuToggle({ stopPropagation() {}, currentTarget: document.querySelector('.cal-add-btn') }); });
+  await page.waitForTimeout(300);
+  await page.click('#cal-refresh-btn');
+  await page.waitForTimeout(400);
+  const rf = await page.evaluate(() => {
+    const menu = document.querySelector('.cal-actions .bhub-menu');
+    const btn = document.getElementById('cal-refresh-btn');
+    const ic = btn.querySelector('.ic');
+    return {
+      open: !!menu && menu.style.display !== 'none' && !menu.classList.contains('bhub-menu-out'),
+      syncing: btn.classList.contains('syncing'),
+      anim: ic ? getComputedStyle(ic).animationName : '',
+      note: (document.getElementById('cal-updated-text') || {}).textContent || '',
+      label: btn.textContent.trim(),
+    };
+  });
+  ok(rf.syncing, 'the refresh runs');
+  ok(rf.open, 'the menu is still open while it runs');
+  ok(/calSyncSpin/.test(rf.anim), `the refresh icon spins (${rf.anim})`);
+  ok(!/sync/i.test(rf.note), `no "Syncing…" words (note: "${rf.note}")`);
+  ok(rf.label === 'Refresh calendar', `the item is "Refresh calendar" (${rf.label})`);
+  await page.waitForTimeout(1800);
+  ok(await page.evaluate(() => { const m = document.querySelector('.cal-actions .bhub-menu'); return m.style.display !== 'none'; }), 'and it is STILL open when the refresh finishes');
+  await page.mouse.click(5, 5);
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.querySelector('.cal-actions .bhub-menu').style.display === 'none'), 'a tap outside still closes it');
+
   await done(fails);
 })().catch((e) => { console.error(e); process.exit(1); });
