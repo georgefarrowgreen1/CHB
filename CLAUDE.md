@@ -1001,6 +1001,8 @@ gave-up 30d).
 
 ## The Money area is FIVE ANSWERS, not an index
 
+**Update (one size):** every word on the landing — headline, pulse, row titles/subs, figures, calm line, Tools — is the status capsule's own type (`--fs-caption`, 600, sans, tabular); hierarchy is ink and position, there are no serif figures there (owner-asked, demo "One size"). Scoped under `#money-overview`/`#accounts-index` at the foot of admin.css.
+
 **Update (calm is one line):** the landing opens with a SENTENCE (`moHeadline`, `#mo-headline`) built from the
 same figures the groups show — what is yours to move, who owes you, what is held, how many things need a look —
 and leaves out any part still loading rather than guessing. "To collect" renders only when money is owed and "To
