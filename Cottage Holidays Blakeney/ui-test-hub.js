@@ -182,12 +182,12 @@ let approveWill409 = false;
   ok(a.name === 'Walk-in Guest', `guest name in header (${a.name})`);
   ok(a.headTitle === 'Walk-in', `the condensed bar names the guest, first name (${a.headTitle})`);
   ok(a.noStrips, 'the journey pill strips are gone — the stage is a caption');
-  ok(/^Next · 2 of \d · Deposit$/.test(a.cap), `unpaid → the card's cap names the stage with its counter (${a.cap})`);
-  ok(/ · 3 nights · /.test(a.sub) && !/in 15:00/.test(a.sub) && !/→/.test(a.sub),
-    `ONE when-line: compact range · nights · party, no clock times (${a.sub})`);
+  ok(/^Deposit$/.test(a.cap), `unpaid → the card's cap names the stage, with no "2 of 6" counter (${a.cap})`);
+  ok(/^4–7 Nov 2026/.test(a.sub) && !/nights|adults|in 15:00/.test(a.sub) && !/→/.test(a.sub),
+    `ONE when-line: the compact range and the state capsule only — nights, party and times live in Guest (${a.sub})`);
   ok(/^(Arrives|Staying|Past)/.test(a.state), `…and the state is ONE capsule ("${a.state}")`);
   ok(/In 15:00 · out 10:00/.test(a.guestSub), `the clock times live in the Guest row ("${a.guestSub}")`);
-  ok(a.contact.join() === 'Call,Email' || a.contact.join() === 'Email', `call and email are plain buttons under the name (${a.contact.join()})`);
+  ok(/^Call,Email$|^Email$/.test(a.contact.join()), `call and email are plain buttons under the name (${a.contact.join()})`);
   ok(a.cardBtn, "the decision card keeps its own button on every width (the sticky bar no longer takes it)");
   ok(!a.spineShown, 'the day strip stands down on a booking page — the card already says it');
   ok(a.grps.length === 6, `all six disclosure groups render (${a.grps.join(', ')})`);
@@ -815,7 +815,7 @@ let approveWill409 = false;
   // The cap follows the ASK's stage, not the flow cursor: £100 of a £160
   // deposit is still the DEPOSIT stage (the sentence beside it says so), even
   // though the flow's coarse "anything in" test moved its cursor past it.
-  ok(/^Next · \d of \d · Deposit$/.test(pipe2), `the stage cap names the ask's own stage (${pipe2})`);
+  ok(/^Deposit$/.test(pipe2), `the stage cap names the ask's own stage (${pipe2})`);
   // Part-paid folds too: one "Received so far" payline with the running figures.
   const foldPart = await page.evaluate(() => {
     const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');

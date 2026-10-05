@@ -2084,6 +2084,19 @@ phone-width block), each declaration break-tested.
   The host is `display: contents` with join rules that look THROUGH it, and the money group abuts the grid
   below it ≤1199px. The earlier claim that the groups "already were one list" was wrong on the phone.
 
+## The booking page has THREE rows (approved simplification, built)
+
+**Asked for as "simplify it down, currently lots of info that isn't necessarily needed".** Money, Guest,
+History. Guest holds the facts, "Knows your guest", the guest book and the private note; History holds the
+booking reference, emails and activity. The sections inside are the SAME `bhubFoldGrp`s (keys `intel`,
+`rating`, `note`, `emails`, `activity` — ids, handlers and hub_bundle's summary slots untouched) rendered
+FLAT inside their parent's fold (`.bhub-foldin .bhub-fold-grp`). `BHUB_PARENT`/`BHUB_KIDS`: opening a
+nested key opens its parent, and a parent renders open while any child is open — which keeps
+`__bhubOpenFolds.add('rating')` (the deposit decision's rating offer) working. Also gone from the page: the
+booking reference (now in History), the "Next · 2 of 6 ·" counter (the cap is the stage label alone), and
+nights/party/times from the when-line (they open the Guest fold). Call and Email are 44px icon buttons
+beside the name (`aria-label`ed, with sr-only text). Gated by ui-test-hub.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

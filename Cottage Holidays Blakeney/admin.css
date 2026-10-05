@@ -7939,3 +7939,15 @@ body.light-mode .tl-cell:active {
   .bhub-head + .bhub-grid { margin-top: 0; }
   .bhub-head + .bhub-grid > .bhub-fold-grp:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 }
+
+/* THREE ROWS (approved simplification): the groups nested inside Guest and History are the same groups,
+   rendered FLAT — no card, no border — as hairline-separated sections inside their parent's fold. */
+.bhub-foldin .bhub-fold-grp { background: none; border: 0; border-radius: 0; box-shadow: none; margin: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.bhub-foldin .bhub-fold-grp + .bhub-fold-grp, .bhub-foldin .bhub-fold-grp + #gb-card-host > .bhub-fold-grp, .bhub-foldin #gb-card-host + .bhub-fold-grp { margin-top: 0; border-top: 1px solid var(--glass-border); border-radius: 0; }
+.bhub-foldin .bhub-fold-grp .bhub-fold-row { padding-left: 0; padding-right: 0; }
+.bhub-foldin .bhub-fold-grp .bhub-fold-lbl { font-size: var(--fs-sub); color: var(--text-muted); }
+.bhub-facts { padding: 2px 0 8px; }
+.bhub-namerow { display: flex; align-items: center; gap: 12px; }
+.bhub-namerow .bhub-name { flex: 1 1 auto; min-width: 0; margin: 0; }
+.bhub-namerow .bhub-contact { flex: none; margin: 0; gap: 8px; }
+.bhub-namerow .bhub-cbtn { flex: none; width: 44px; min-height: 44px; padding: 0; border-radius: 50%; }

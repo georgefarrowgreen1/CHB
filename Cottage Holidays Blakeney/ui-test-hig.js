@@ -261,11 +261,11 @@ const NEST = (rootSel) => {
   console.log('§1/§3/§4 Booking hub — inset fold groups, sentence-case caption, symbol chevron');
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const hub = await page.evaluate(() => {
-    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp')];
+    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-money-grp, #booking-hub-content .bhub-grid > .bhub-fold-grp')];
     const pairs = [];
     for (let i = 1; i < grps.length; i++) {
       const a = grps[i - 1], b = grps[i];
-      if (a.nextElementSibling !== b) continue;
+      // Money sits in the header and the other two in the grid, so adjacency is by PAINT (no gap), not by DOM sibling.
       pairs.push({
         gap: Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom),
         aBL: parseFloat(getComputedStyle(a).borderBottomLeftRadius),
@@ -291,7 +291,7 @@ const NEST = (rootSel) => {
   ok(hub.shadows.every((s) => s === 'none'), 'no fold group carries a shadow');
   ok(hub.pairs.length >= 2 && hub.pairs.every((p) => p.gap === 0 && p.aBL === 0 && p.bTL === 0 && p.bTop === 0), `adjacent groups JOIN — no gap, squared shared corners, one hairline (${hub.pairs.map((p) => p.gap + '/' + p.aBL + '/' + p.bTL).join(' ')})`);
   ok(hub.chevSvg && hub.chevText === '' && hub.chevBox >= 12, 'the disclosure chevron is a stroke SVG, not the "›" glyph');
-  ok(hub.capTT === 'none' && /^Next · /.test(hub.capText), `the in-card caption is sentence case ("${hub.capText}")`);
+  ok(hub.capTT === 'none' && /^[A-Z][a-z]/.test(hub.capText) && !/^Next · /.test(hub.capText), `the in-card caption is sentence case ("${hub.capText}")`);
   ok(/999|9999/.test(hub.menuRadius || ''), `the ⋯ menu button is a circle (${hub.menuRadius})`);
 
   console.log('§3 Enquiry hub — eyebrow, state caption and message caption are sentence case');
@@ -453,12 +453,12 @@ const NEST = (rootSel) => {
   await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const wideHub = await page.evaluate(() => {
-    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp')];
+    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-money-grp, #booking-hub-content .bhub-grid > .bhub-fold-grp')];
     let joined = 0;
     for (let i = 1; i < grps.length; i++) if (grps[i - 1].nextElementSibling === grps[i] && Math.round(grps[i].getBoundingClientRect().top - grps[i - 1].getBoundingClientRect().bottom) === 0) joined++;
     return { n: grps.length, joined, shadows: grps.every((g) => getComputedStyle(g).boxShadow === 'none') };
   });
-  ok(wideHub.n >= 3 && wideHub.joined >= 2 && wideHub.shadows, `at 1280 the docked hub's groups join too (${wideHub.joined} joins of ${wideHub.n})`);
+  ok(wideHub.n >= 3 && wideHub.joined >= 1 && wideHub.shadows, `at 1280 the docked hub's groups join too (${wideHub.joined} joins of ${wideHub.n})`);
   await sweepLists(page, 1280);
   await page.close();
 

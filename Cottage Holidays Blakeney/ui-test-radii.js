@@ -81,7 +81,7 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   ok(rows && (rows.sh === 'none' || /inset/.test(rows.sh)), `…and casts no shadow (${rows && rows.sh})`);
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const r1 = await page.evaluate(() => {
-    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp')];
+    const grps = [...document.querySelectorAll('#booking-hub-content .bhub-money-grp, #booking-hub-content .bhub-grid > .bhub-fold-grp')];
     const first = grps[0], last = grps[grps.length - 1];
     const card = document.querySelector('#booking-hub-content .bhub-next');
     const tok = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
