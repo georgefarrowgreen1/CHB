@@ -393,12 +393,16 @@ let mailWillFail = false;
   await secCheck('pricingcoach', /pricing|suggestion|coach|demand|not enough/i, 'Pricing coach');
 
   console.log('recent payments + pricing coach wear the unified anatomy (owner-asked)');
+  const recentDay = d(-1);
+  await page.evaluate((x) => { window.__recentDay = x; }, recentDay);
   const skin = await page.evaluate(async () => {
     const realPost = window.apiPost, realGet = window.apiGet;
     window.apiPost = async (url, body) => {
       if (String(url).includes('bookings.php') && body.action === 'recent_payments') return { payments: [
         { created_at: '2026-08-07 10:00:00', name: 'Jean Robinson', prop_key: '21a', kind: 'balance', amount: 525, fee: 8.4, status: 'COMPLETED' },
-        { created_at: '2026-07-17 10:00:00', name: 'Richard Berry', prop_key: '21a', kind: 'damages_return', amount: -75, fee: null, status: 'PENDING' },
+        { created_at: window.__recentDay + ' 10:00:00', name: 'Richard Berry', prop_key: '21a', kind: 'damages_return', amount: -75, fee: null, status: 'PENDING' },
+        // Issued long ago and never reconciled: the refund DID go through, so it is not "on its way".
+        { created_at: '2026-06-15 10:00:00', name: 'Old Refund', prop_key: '21a', kind: 'damages_return', amount: -75, fee: null, status: 'PENDING' },
       ] };
       return realPost(url, body);
     };
@@ -438,11 +442,11 @@ let mailWillFail = false;
     window.apiGet = realGet;
     return { recent, coach };
   });
-  ok(skin.recent.noStutter && skin.recent.figs === 3 && skin.recent.welled && skin.recent.rows === 2,
+  ok(skin.recent.noStutter && skin.recent.figs === 3 && skin.recent.welled && skin.recent.rows === 3,
     `Recent payments: no repeated heading, three recon figures in a well (${skin.recent.figs}), the feed framed (${skin.recent.rows} rows)`);
-  ok(skin.recent.pills === 'In:+ Out:−' || skin.recent.pills === 'Out:− In:+',
+  ok(skin.recent.pills.split(' ').sort().join(' ') === 'In:+ Out:− Out:−',
     `Recent payments: one In/Out pill per line, agreeing with the sign (${skin.recent.pills})`);
-  ok(skin.recent.waitRow && skin.recent.month && /£525\.00 in · £0\.00 returned · £75\.00 on its way/.test(skin.recent.head),
+  ok(skin.recent.waitRow && skin.recent.month && /£525\.00 in · £75\.00 returned · £75\.00 on its way/.test(skin.recent.head),
     `Recent payments: a pending return sits apart as "Back in 3–5 days" and is kept out of the totals (${skin.recent.head})`);
   ok(skin.coach.cap && skin.coach.opp && skin.coach.insight && skin.coach.well && skin.coach.apply,
     'Pricing coach: caption + wells + ✓ opportunity / quiet insight capsules + Apply intact');
