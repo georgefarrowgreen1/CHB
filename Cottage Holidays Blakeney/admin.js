@@ -10767,6 +10767,11 @@ const __bhubOpenFolds = new Set();
 // 2) replacing the emoji, which painted in the platform's colours.
 const BHUB_IC_PHONE = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/><path d="M15.5 4.5a5 5 0 0 1 4 4"/></svg>';
 const BHUB_IC_MAIL = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4.5" width="20" height="15" rx="2.5"/><path d="m2.5 8 8.3 5.4a2.2 2.2 0 0 0 2.4 0L21.5 8"/></svg>';
+// The three-row hub nests groups: Guest holds intel / rating / note, History holds emails / activity.
+// Opening a nested one opens its parent too (a fold you asked for must be visible), and a parent renders
+// open while any of its sections is open — which also covers the code that opens one by key after a decision.
+const BHUB_KIDS = { guest: ['intel', 'rating', 'note'], history: ['emails', 'activity'] };
+const BHUB_PARENT = { intel: 'guest', rating: 'guest', note: 'guest', emails: 'history', activity: 'history' };
 function bhubFoldToggle(key) {
     const f = document.getElementById('bhub-fold-' + key);
     if (!f) return;
@@ -10776,13 +10781,23 @@ function bhubFoldToggle(key) {
     else __bhubOpenFolds.delete(key);
     const btn = document.querySelector(`.bhub-fold-row[data-args*='"${key}"']`);
     if (btn) btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    const par = opening ? BHUB_PARENT[key] : '';
+    if (par) {
+        const pf = document.getElementById('bhub-fold-' + par);
+        if (pf && pf.hidden) {
+            pf.hidden = false;
+            __bhubOpenFolds.add(par);
+            const pb = document.querySelector(`.bhub-fold-row[data-args*='"${par}"']`);
+            if (pb) pb.setAttribute('aria-expanded', 'true');
+        }
+    }
 }
 // The disclosure indicator, stated once: a stroke chevron (a symbol, never the
 // "›" text glyph). Every row that discloses — fold groups, the payline, the
 // cottage sections, the mailbox context — carries this same span.
 const BHUB_CHEV = '<span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
 function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs) {
-    const open = __bhubOpenFolds.has(key);
+    const open = __bhubOpenFolds.has(key) || (BHUB_KIDS[key] || []).some((k) => __bhubOpenFolds.has(k));
     return `
         <section class="bhub-card glass-panel bhub-fold-grp" data-grp="${key}"${attrs || ''}>
             <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${key}">
@@ -11213,7 +11228,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     } else if (next && next.capLabel) {
         capLbl = next.capLabel;
     }
-    const stageCap = capIdx === -1 || !capLbl ? '' : `Next · ${capIdx + 1} of ${stages.length} · ${capLbl}`;
+    const stageCap = capIdx === -1 || !capLbl ? '' : capLbl; // the label only: "7 of 7" counted a journey nobody was asked to follow
     // The stage cap rides `next` so the payask (rendered by renderBookingHub)
     // wears the same caption this card does — one derivation of "N of M".
     if (next) next.cap = stageCap;
@@ -11807,7 +11822,7 @@ function renderBookingHub() {
     // Call and Email as two plain buttons under the name — the sticky bar's icons only exist while the
     // decision card is off screen, so the guest is never more than one tap away.
     const contactRow = b.phone || b.email
-        ? `<div class="bhub-contact">${b.phone ? `<a class="bhub-cbtn press" href="tel:${escapeHtml(String(b.phone))}">${BHUB_IC_PHONE}<span>Call</span></a>` : ''}${b.email ? `<button class="bhub-cbtn press" ${chbAttrs('openBookingEmail', String(b.id))}>${BHUB_IC_MAIL}<span>Email</span></button>` : ''}</div>`
+        ? `<div class="bhub-contact">${b.phone ? `<a class="bhub-cbtn press" aria-label="Call ${escapeHtml(b.name || 'the guest')}" href="tel:${escapeHtml(String(b.phone))}">${BHUB_IC_PHONE}<span class="sr-only">Call</span></a>` : ''}${b.email ? `<button class="bhub-cbtn press" aria-label="Email ${escapeHtml(b.name || 'the guest')}" ${chbAttrs('openBookingEmail', String(b.id))}>${BHUB_IC_MAIL}<span class="sr-only">Email</span></button>` : ''}</div>`
         : '';
     // ---- Header — identity on the PAGE GROUND now (the only-what-needs-
     // seeing demo: no enclosing glass panel; the tinted to-do card and the
@@ -11819,14 +11834,12 @@ function renderBookingHub() {
             <div class="bhub-head-top">
                 <div class="bhub-iden">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
-                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
-                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : ''}${hubStateCap(b, past)}</div>
+                    <div class="bhub-namerow"><h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>${contactRow}</div>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : ''}${hubStateCap(b, past)}</div>
                     ${changeover}
                 </div>
                 ${editMenu}
             </div>
-            ${contactRow}
             ${pipeHtml}
             ${payBlock}
         </div>`;
@@ -11921,6 +11934,7 @@ function renderBookingHub() {
         ? stCap('ok', 'All recorded')
         : stCap('warn', missingFacts + ' not recorded');
     const guestFold = `
+            <div class="bhub-mut bhub-facts">${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}</div>
             ${noContact}
             <div class="bhub-kvs">
                 ${/* The address opens the SITE'S composer (draft reply, preview,
@@ -11959,7 +11973,6 @@ function renderBookingHub() {
             </div>`
                 : ''}
             ${staysHtml}`;
-    const guestCard = bhubFoldGrp('guest', 'Guest details', `In ${escapeHtml(b.checkInTime || '15:00')} · out ${escapeHtml(b.checkOutTime || '10:00')}`, guestSum, guestFold);
 
     // ---- Your note — its own group: the summary row quotes the note's first
     // line (or offers to add one); the editor folds underneath. ----
@@ -12015,7 +12028,13 @@ function renderBookingHub() {
     // in its own host node so the star/mark handlers can re-render just the
     // card without re-docking the whole hub mid-interaction.
     const ratingCard = past ? `<div id="gb-card-host">${hubGuestBookCard(propKey, b)}</div>` : '';
-    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${intelCard}${guestCard}${ratingCard}${emailsCard}${historyCard}${noteCard}</div>${sticky}`;
+    // THREE ROWS, NOT SEVEN: Guest holds the guest facts, what we know of them, the guest book and the
+    // private note; History holds emails and activity. The sections inside are the SAME groups (same keys,
+    // ids and handlers) rendered flat inside their parent's fold, so nothing that finds them changes.
+    const guestAll = bhubFoldGrp('guest', 'Guest', `In ${escapeHtml(b.checkInTime || '15:00')} · out ${escapeHtml(b.checkOutTime || '10:00')}`, guestSum, `${guestFold}${intelCard}${ratingCard}${noteCard}`);
+    const refLine = ref ? `<div class="bhub-mut bhub-facts">Reference ${escapeHtml(ref)}</div>` : '';
+    const historyAll = bhubFoldGrp('history', 'History', '', '', `${refLine}${emailsCard}${historyCard}`);
+    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${guestAll}${historyAll}</div>${sticky}`;
     // The page settles in ONCE per booking opened (a data refresh re-renders this and must not replay it).
     if (__hubDrewId !== b.id) {
         __hubDrewId = b.id;
