@@ -2053,6 +2053,12 @@ Now eight.
   chip sits between them). With NO bookings loaded at all the row claims nothing and the empty state
   stands alone. Today's title carries no divider (the `.dashboard-header` border belonged to the
   removed sentence; it is cleared for `#view-backoffice` only).
+- **ONE CARD IN EVERY STATE (continuity, approved demo).** The status row is the HEADER of the card that
+  holds the list: a list with bookings joins it exactly as the empty state does (no gap, the first row
+  loses its top radius/border, the last takes the card's), and the count ("6 past" / "0 upcoming") rides
+  the clear row's right edge instead of the caption. The owing row keeps "View ›" and the caption count.
+  Gated by ui-test-simpletoday §5 (join in both states, count placement), break-tested on the row rule
+  and the caption clearing.
 - The dock count badge sits on the icon's corner (`.admin-dock-badge`), outside the selected pill.
 
 ## Five back-office motions (approved demo, built)

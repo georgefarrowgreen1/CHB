@@ -179,7 +179,11 @@ const NEST = (rootSel) => {
       ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the run (vacuity guard — one row cannot fail a join)`);
       if (r.n < 2) continue;
       ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
-      ok(r.firstTL === cell && r.lastBL === cell && r.firstBL === 0 && r.lastTL === 0,
+      // Today's bookings are the BODY of one card whose header is the status row: the run's top is
+      // squared against that header and its foot takes the CARD radius, not the cell's.
+      const card = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-lg')));
+      const bodyOfCard = name === 'Today bookings';
+      ok((bodyOfCard ? r.firstTL === 0 && r.lastBL === card : r.firstTL === cell && r.lastBL === cell) && r.firstBL === 0 && r.lastTL === 0,
         `${w} ${name}: the outer corners are the CELL radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, cell ${cell})`);
       ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
       ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),

@@ -10420,7 +10420,11 @@ function renderBookings() {
             const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
             html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay"><span class="bk-owed-ic" aria-hidden="true">£</span><span class="bk-owed-tx"><b>£${Math.round(sumOwed).toLocaleString('en-GB')} to collect</b> <small>from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}</small></span><span class="bk-owed-go">View <span aria-hidden="true">›</span></span></button>`;
         } else if (allRows.length) {
-            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything</p>';
+            // The count rides this row's right edge (it is the header of the card that holds the
+            // list), so the empty and the full versions answer the same question in the same place.
+            const nWord = !q && (f === 'upcoming' || f === 'past') ? `<span class="bk-owed-n">${rows.length} ${f}</span>` : '';
+            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything' + nWord + '</p>';
+            if (nWord && sum) sum.textContent = '';
         }
         if (owedEl.innerHTML !== html) {
             // A figure that CHANGED settles (3px, no scale — it was already on screen); the first

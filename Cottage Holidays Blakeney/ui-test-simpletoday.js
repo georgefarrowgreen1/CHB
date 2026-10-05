@@ -136,6 +136,26 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }, { f: d(5), g: d(9) });
   ok(owes.btn && /£[\d,]+ to collect from 1 guest/.test(owes.txt), `someone owes → the figure, as a button ("${owes.txt}")`);
 
+  // ONE CARD IN EVERY STATE: with bookings listed, the status row is the header of the same card.
+  await page.waitForTimeout(600);
+  const joinOf = () => page.evaluate(() => {
+    const o = document.querySelector('#bookings-owed .bk-owed'), r = document.querySelector('#bookings-list .bk-row');
+    if (!o || !r) return null;
+    const or = o.getBoundingClientRect(), rr = r.getBoundingClientRect(), os = getComputedStyle(o), rs = getComputedStyle(r);
+    return { gap: Math.abs(rr.top - or.bottom), oRad: parseFloat(os.borderBottomLeftRadius), rRad: parseFloat(rs.borderTopLeftRadius), rTop: rs.borderTopWidth, n: (o.querySelector('.bk-owed-n') || {}).textContent || '' };
+  });
+  const j1 = await joinOf();
+  ok(j1 && j1.gap <= 1 && j1.oRad === 0 && j1.rRad === 0 && j1.rTop === '0px', `owing: the status row and the first booking are ONE card (gap ${j1 && j1.gap}, radii ${j1 && j1.oRad}/${j1 && j1.rRad})`);
+  await page.evaluate((o) => {
+    dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b7', dbId: 7, name: 'Paid Guest', checkIn: o.f, checkOut: o.g, depositPaid: 640, payment: 'paid' })];
+    renderBookings();
+  }, { f: d(5), g: d(9) });
+  await page.waitForTimeout(600);
+  const j2 = await joinOf();
+  ok(j2 && j2.gap <= 1 && j2.oRad === 0 && j2.rRad === 0, `clear: the same join holds (gap ${j2 && j2.gap})`);
+  ok(j2 && /^\d+ upcoming$/.test(j2.n), `the count rides the status row ("${j2 && j2.n}")`);
+  ok(await page.evaluate(() => !(document.getElementById('bookings-summary') || {}).textContent), 'and is not said a second time in the caption');
+
   if (process.env.CHB_SHOT) await page.screenshot({ path: process.env.CHB_SHOT, fullPage: true });
 
   // The empty state is the standard one — and joined to the status row above it as ONE well, with no button.
