@@ -102,6 +102,14 @@ const BODIES = {
   ok(/Lovely, thanks George/.test(r3.last), 'the routine "Lovely, thanks" is a one-line row at the end');
   ok(!r3.override, 'no extra Important / Not important buttons');
 
+  const r6 = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('.mbx-acts-quiet .mbx-act')];
+    const w = t.map((b) => Math.round(b.getBoundingClientRect().width));
+    return { n: t.length, w, h: Math.min(...t.map((b) => b.getBoundingClientRect().height)), one: t.every((b) => b.getBoundingClientRect().height < 80), chev: t.some((b) => getComputedStyle(b, '::after').content !== 'none') };
+  });
+  ok(r6.n === 3 && Math.max(...r6.w) - Math.min(...r6.w) <= 2, `Mark unread / Delete / Close are three equal tiles (${r6.w.join('/')})`);
+  ok(r6.h >= 44 && r6.one && !r6.chev, `each is a tall single-line tap target with no stray arrow (${r6.h}px)`);
+
   console.log('§5 Reply quotes only their new words, cursor on top');
   await page.click('.mbx-reply');
   await page.waitForTimeout(500);
