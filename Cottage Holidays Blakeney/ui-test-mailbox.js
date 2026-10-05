@@ -528,7 +528,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(dec.lead, 'the drawer explains itself once, above the rows');
   ok(/^Enquiries/.test(dec.heading) && !/Declined enquiries/.test(dec.heading), `the heading keeps ONE title on both tabs — the switch, its counts and the capsule say which list ("${dec.heading}")`);
   ok(!dec.badgeShown, 'the WAITING count is not shown over the declined list');
-  ok(/declined enquir/i.test(dec.subline), `the subline describes this screen ("${dec.subline}")`);
+  ok(/every conversation in one place/.test(dec.subline) && !/declined|waiting|caught up/i.test(dec.subline), `the sentence under the title never changes with the tab ("${dec.subline}")`);
   ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);
 
   // THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES. Reported from

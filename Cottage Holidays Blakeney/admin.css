@@ -5658,11 +5658,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.01em;
   padding: 4px 12px; border-radius: var(--r-pill); white-space: nowrap;
 }
-/* CALM IS QUIET. Three identical green capsules stacked on Manage made the
-   settled state the loudest thing on the screen; OK is muted text with a
-   green tick, and the tint is kept for warn and danger — the states that ask. */
-.st-cap.is-ok { color: var(--text-muted); background: none; border: 0; padding: 0; gap: 8px; }
-.st-cap.is-ok .st-tick { color: var(--ok-text); }
+/* ONE PILL FOR EVERY STATE. Calm used to be bare text with a green tick (so "✓ 0 waiting" read as a
+   different kind of thing from "not checked yet" in the same column); it is a pill now, the same size
+   and shape as the others, tinted green. */
+.st-cap.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 13%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent); }
 .st-cap.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
 .st-cap.is-bad { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
 .st-cap.is-unk { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }

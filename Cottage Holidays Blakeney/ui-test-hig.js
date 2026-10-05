@@ -348,7 +348,7 @@ const NEST = (rootSel) => {
   ok(pay.lbls.length >= 3, `${pay.lbls.length} answer rows found (vacuity guard)`);
   ok(pay.lbls.every((l) => l.color === pay.ink && !/ok-text/.test(l.style)), `every answer title is body ink, none green (${pay.lbls.map((l) => l.text + '=' + l.color).join('; ')})`);
 
-  console.log('§2 Manage — the calm capsule is quiet text with a green tick');
+  console.log('§2 Manage — the calm capsule is the same pill as the others, tinted green');
   await open(page, "(async () => { await openArea('manage'); })()", 1000);
   const calm = await page.evaluate(() => {
     const c = document.querySelector('#manage-verdicts .st-cap.is-ok');
@@ -360,7 +360,7 @@ const NEST = (rootSel) => {
     return { bg: cs.backgroundColor, border: parseFloat(cs.borderTopWidth), tickColor: tick ? getComputedStyle(tick).color : null, okRgb, n: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length };
   });
   ok(calm && calm.n >= 2, `Manage shows ${calm && calm.n} calm capsules (vacuity guard)`);
-  ok(calm && (calm.bg === 'rgba(0, 0, 0, 0)' || calm.bg === 'transparent') && calm.border === 0, `the OK capsule has no tint and no border (${calm && calm.bg})`);
+  ok(calm && calm.bg !== 'rgba(0, 0, 0, 0)' && calm.bg !== 'transparent' && calm.border >= 1, `the OK capsule is a tinted, bordered pill like warn and unk (${calm && calm.bg}, border ${calm && calm.border})`);
   ok(calm && calm.tickColor === calm.okRgb, 'and its tick is the ONE green mark');
 
   // The ONE caption spec, read off the landing before we drill into a section.
