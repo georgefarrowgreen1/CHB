@@ -161,7 +161,10 @@ let mailWillFail = false;
       collectCapTxt: ((el.querySelector('[data-grp="mocollect"] .st-cap') || {}).textContent || '').trim(),
     };
   });
-  ok(['mocollect', 'momove', 'moback', 'mobooks', 'morecent', 'motrends'].every((k) => ov.grps.includes(k)), `the five verdicts + trends render (${ov.grps.join(',')})`);
+  // CALM IS ONE LINE: with nothing to hand back and the only money owed sitting in the exception row
+  // above, neither "To collect" nor "To give back" takes a row to say so.
+  ok(['momove', 'mobooks', 'morecent', 'motrends'].every((k) => ov.grps.includes(k)), `the answers that have something to say render (${ov.grps.join(',')})`);
+  ok(!ov.grps.includes('mocollect'), 'To collect does not render when the only money owed is the overdue exception');
   ok(ov.foldsOpen === 0, `every verdict starts folded (${ov.foldsOpen} open)`);
   // The fixture's ower checks in at d(20) — INSIDE the 30-day window with the
   // standard due date 10 days gone, so it is genuinely OVERDUE: an exception
@@ -172,12 +175,13 @@ let mailWillFail = false;
   // paid-up claim over an overdue row, and the sub must point AT that row. The
   // wording itself is copy and moved once already (it was shortened so the sub
   // stops being cut off on a phone — see ui-test-legibility §2).
-  ok(/To collect/.test(ov.collect) && !/paid up/i.test(ov.collect) && /overdue/i.test(ov.collect),
-    `To collect never claims "paid up" over an overdue row, and points at it (${ov.collect.slice(0, 90)})`);
-  // …and neither does its capsule (break-tested: reverting the capsule to the
-  // unconditional green stCap('ok','Paid up') fails this while the sub check
-  // above stays green — the sub was fixed first and the capsule shipped on).
-  ok(!ov.collectGreenCap && /nothing due/.test(ov.collectCapTxt), `the capsule follows the sub — grey "nothing due", never a green ✓ over an overdue row (${ov.collectCapTxt})`);
+  const head = await page.evaluate(() => ({
+    h: ((document.getElementById('mo-headline') || {}).textContent || '').replace(/,/g, ''),
+    calm: ((document.getElementById('mo-calm') || {}).textContent || '').trim(),
+    calmShown: !!(document.getElementById('mo-calm') && document.getElementById('mo-calm').getClientRects().length),
+  }));
+  ok(/£490\.00 is owed to you \(1 overdue\)/.test(head.h) && !/Nobody owes you/.test(head.h), `the headline names what is owed and that it is overdue, never "nobody owes you" (${head.h})`);
+  ok(!/nothing to collect/i.test(head.calm), `the calm line never claims nothing is owed over an overdue row (${head.calm || 'hidden'})`);
   ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
   // The exception's figure is a red capsule carrying the warning triangle —
   // and it is the row's ONE mark (the label's red dot came off with it).
@@ -192,7 +196,7 @@ let mailWillFail = false;
   // hairline between) and the AIR sits between RUNS — at the caption that
   // separates the exceptions from the five answers. Both halves asserted, so
   // the list can neither drift back to islands nor lose its section break.
-  ok(ov.gaps.length >= 5 && ov.gaps.every((g) => g === 0 || g >= 8), `every block either joins its neighbour or has air (${ov.gaps.join(',')})`);
+  ok(ov.gaps.length >= 3 && ov.gaps.every((g) => g === 0 || g >= 8), `every block either joins its neighbour or has air (${ov.gaps.join(',')})`);
   ok(ov.gaps.some((g) => g === 0) && ov.gaps.some((g) => g >= 8), 'adjacent answers join, and the caption break keeps its air');
   ok(ov.rails.lefts.length === 1 && ov.rails.rights.length === 1, `every card stands on ONE rail (lefts ${ov.rails.lefts.join('/')}, rights ${ov.rails.rights.join('/')})`);
   // The books figure is the SERVER'S net once the async fill lands
@@ -235,39 +239,60 @@ let mailWillFail = false;
   // return" on every row, under a headline that had the total right — on the one
   // screen that tells the owner what to hand back. Driven through the REAL
   // moAsyncFill payload shape.
-  const backChk = await page.evaluate(() => {
-    const el = document.getElementById('mo-back-rows');
-    if (!el) return { missing: true };
-    // The shape accounts.php actually ships for deposit_liability.items.
+  // Drive the REAL path: stub the accounts payload with the shape accounts.php ships and let moAsyncFill build
+  // the deposits group from it.
+  const backChk = await page.evaluate(async () => {
+    const real = window.apiGet;
     const items = [
       { name: 'Sarah Pemberton', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
       { name: 'Dan Rowe', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
     ];
-    // Render exactly as the landing does.
-    el.innerHTML = items
-      .map(
-        (it) =>
-          `<div class="bhub-kv"><span class="bhub-kv-label">${it.name} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">ready to return</span></div>`,
-      )
-      .join('');
-    return { txt: el.textContent || '' };
+    window.apiGet = async (u) => (/accounts\.php/.test(u) ? { total: 0, deposit_liability: { items, net: 147.38, payouts: null } } : real(u));
+    renderMoneyOverview();
+    await new Promise((r) => setTimeout(r, 900));
+    window.apiGet = real;
+    const el = document.getElementById('mo-back-rows');
+    return { missing: !el, txt: el ? el.textContent || '' : '', head: (document.getElementById('mo-headline') || {}).textContent || '', calm: (document.getElementById('mo-calm') || {}).textContent || '' };
   });
-  ok(!backChk.missing, 'the To-give-back rows container exists on the money landing');
+  ok(!backChk.missing, 'a held deposit gives the money landing its To-give-back group');
   ok(!backChk.missing && !/£0\.00/.test(backChk.txt), `a held deposit never renders as £0.00 (${(backChk.txt || '').slice(0, 60)})`);
   ok(!backChk.missing && /£73\.69/.test(backChk.txt), '…it states the net the owner actually hands back');
-  // The renderer itself must read a key the payload HAS. NB the source is stripped
-  // of // comments FIRST: the comment explaining this defect names `it.amount`, and
-  // a negative scan that can see its own explanation is either always-failing or
-  // (worse) always-passing — the trap test-payrail already strips for.
+  ok(/£147\.38 of deposits is held for guests/.test(backChk.head.replace(/,/g, '')), `…and the headline says so (${backChk.head})`);
+  ok(!/deposits to give back/i.test(backChk.calm), 'the calm line does not claim there are no deposits to give back');
+  // The renderer must read a key the payload HAS (comments stripped first, so the scan cannot see its own explanation).
   const admSrc = require('fs')
     .readFileSync(__dirname + '/admin.js', 'utf8')
     .split('\n')
     .filter((l) => !/^\s*\/\//.test(l))
     .join('\n');
-  const backRegion = admSrc.slice(admSrc.indexOf("getElementById('mo-back-rows')"), admSrc.indexOf("getElementById('mo-back-rows')") + 1200);
+  const backRegion = admSrc.slice(admSrc.indexOf("id=\"mo-back-rows\""), admSrc.indexOf("id=\"mo-back-rows\"") + 700);
   ok(backRegion.length > 200, '(fixture) the To-give-back renderer region was found');
   ok(!/Number\(it\.amount\)/.test(backRegion), 'the To-give-back renderer does not read the non-existent `amount` key');
   ok(/it\.net/.test(backRegion), '…it reads it.net, the key the liability payload carries');
+
+  // The calm state, driven for real: nobody owing and no deposits held is ONE line and one sentence — and
+  // neither group takes a row.
+  const calmChk = await page.evaluate(async () => {
+    const real = window.apiGet;
+    const keep = dbBookings['21a'].slice();
+    dbBookings['21a'] = dbBookings['21a'].filter((x) => x.name !== 'Owes Money');
+    window.apiGet = async (u) => (/accounts\.php/.test(u) ? { total: 0, deposit_liability: { items: [], net: 0, payouts: null } } : real(u));
+    renderMoneyOverview();
+    await new Promise((r) => setTimeout(r, 900));
+    window.apiGet = real;
+    const out = {
+      h: ((document.getElementById('mo-headline') || {}).textContent || '').replace(/,/g, ''),
+      calm: ((document.getElementById('mo-calm') || {}).textContent || '').trim(),
+      shown: !!(document.getElementById('mo-calm') && document.getElementById('mo-calm').getClientRects().length),
+      grps: Array.from(document.querySelectorAll('#money-overview .bhub-fold-grp')).map((g) => g.getAttribute('data-grp')),
+    };
+    dbBookings['21a'] = keep;
+    renderMoneyOverview();
+    return out;
+  });
+  ok(/Nobody owes you anything and no deposits are held/.test(calmChk.h), `the headline says everything is clear in one sentence (${calmChk.h})`);
+  ok(calmChk.shown && /nothing to collect/i.test(calmChk.calm) && /no deposits to give back/i.test(calmChk.calm), `…and one calm line replaces two rows (${calmChk.calm})`);
+  ok(!calmChk.grps.includes('mocollect') && !calmChk.grps.includes('moback'), `…with neither calm group rendered (${calmChk.grps.join(',')})`);
 
   // 2c. chase-everyone-due appears only at TWO+ chaseable owers — under two,
   // the bulk action is the row's own action wearing a worse label.

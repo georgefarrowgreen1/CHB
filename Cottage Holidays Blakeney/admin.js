@@ -17184,21 +17184,18 @@ function renderMoneyOverview() {
         ? bhubFoldGrp('mocollect', 'To collect',
             escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}${overdueRows.length ? ` · ${gbp(overdueSum)} overdue above` : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
-        : bhubFoldGrp('mocollect', 'To collect',
-            // "Paid up" is a claim — with an overdue row above, the sub AND
-            // the capsule both stand down (green ✓ beside a red exception is
-            // the colour contradicting the words).
-            overdueRows.length ? 'see the overdue above' : 'every booking is paid up',
-            overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
-            `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
+        : '';
     const moveGrp = bhubFoldGrp('momove', 'To move out', 'paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
-    const backGrp = bhubFoldGrp('moback', 'To give back', 'deposits still held',
-        `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
-        `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
-         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
+    // CALM IS ONE LINE, NOT A ROW EACH: "To collect" with nothing owed and "To give back" with nothing
+    // held used to take a full row apiece to say "all clear". They render only when there is something to
+    // do; otherwise `#mo-calm` says so once. The deposits group is filled in by moAsyncFill when it finds
+    // held money (it is the only one that needs the payout/ledger fetch).
+    __moCalmState = { collect: !(collectTotal > 0.005) && !overdueRows.length, back: null };
+    __moHead = { collect: collectTotal + overdueSum, over: overdueRows.length, move: null, held: null, unk: 0 };
+    const backGrp = '<div id="mo-back-slot"></div>';
     // A row TITLE stays in ink; the trailing figure carries the state (the
     // capsule-is-state rule, applied to the landing's own labels).
     const booksGrp = bhubFoldGrp('mobooks', `The books · ${taxYearShort(curTY)}`, 'after fees and expenses',
@@ -17223,10 +17220,13 @@ function renderMoneyOverview() {
          </div>`);
 
     el.innerHTML = `
+                <h2 class="mo-headline" id="mo-headline"></h2>
                 <div class="mo-pulse">${pulse}</div>
                 ${attn}
-                <span class="bhub-grpcap">The five answers</span>
+                <div class="mo-calm" id="mo-calm" hidden></div>
+                <span class="bhub-grpcap">The answers</span>
                 ${collectGrp}${moveGrp}${backGrp}${booksGrp}${recentGrp}${trendsGrp}`;
+    moHeadline();
     // The fleet's live arrangements ride the same repaint (display-only
     // derivation — see chbMoneyOnTheWayHtml).
     try {
@@ -17235,6 +17235,32 @@ function renderMoneyOverview() {
     // Kick the slow answers — they fill in place, stamp-guarded so a repaint
     // mid-flight never writes into a newer render.
     moAsyncFill();
+}
+// THE LANDING SAYS IT IN A SENTENCE. One line composed from the same figures the groups below show
+// (never a second derivation): what is yours to move, who owes you, what is held, and how many things need
+// a look. Parts that are still loading are left out rather than guessed, so it never claims "no deposits
+// are held" before the ledger has answered.
+let __moHead = { collect: 0, over: 0, move: null, held: null, unk: 0 };
+let __moCalmState = { collect: false, back: null };
+function moHeadline() {
+    const h = document.getElementById('mo-headline');
+    if (!h) return;
+    const H = __moHead;
+    const owes = H.collect > 0.005 ? `<b>${gbp(H.collect)}</b> is owed to you${H.over ? ` (${H.over} overdue)` : ''}` : 'Nobody owes you anything';
+    const held = H.held == null ? '' : H.held > 0.005 ? `<b>${gbp(H.held)}</b> of deposits is held for guests` : 'no deposits are held';
+    const parts = [];
+    if (H.move != null && H.move > 0.005) parts.push(`<b>${gbp(H.move)}</b> is yours to move out`);
+    parts.push(owes + (held ? ' and ' + held : ''));
+    if (H.unk > 0) parts.push(`<b>${H.unk === 1 ? 'One charge' : H.unk + ' charges'}</b> ${H.unk === 1 ? 'needs' : 'need'} a look`);
+    h.innerHTML = parts.join('. ') + '.';
+    const calm = document.getElementById('mo-calm');
+    if (calm) {
+        const c = [];
+        if (__moCalmState.collect) c.push('nothing to collect');
+        if (__moCalmState.back === true) c.push('no deposits to give back');
+        calm.hidden = !c.length;
+        calm.innerHTML = c.length ? `<span class="st-tick" aria-hidden="true">✓</span> ${c.join(' · ').replace(/^./, (x) => x.toUpperCase())}` : '';
+    }
 }
 // Rows the landing's chase-all acts on (set by renderMoneyOverview).
 let __moOwedRows = [];
@@ -17304,29 +17330,28 @@ function moAsyncFill() {
                 moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
                 if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
             }
+            __moHead.move = P && P.known > 0 ? Number(P.inBank) || 0 : null;
             moLand(moveFig, 0);
             moLand(moveRows, 0);
-            // To give back — the ring-fenced deposits with their states.
-            const backFig = document.getElementById('mo-back-fig');
-            const backRows = document.getElementById('mo-back-rows');
-            if (backFig && L && !L.error) {
+            // To give back — only exists when a deposit is held; otherwise the calm line says so.
+            const slot = document.getElementById('mo-back-slot');
+            if (slot && L && !L.error) {
                 const items = L.items || [];
-                backFig.innerHTML = items.length ? `<span class="bhub-payline-fig">${gbp(Number(L.net || 0))}</span>` : stCap('ok', 'None held');
-                const today2 = todayDashed();
-                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok-text);">ready to return</span>');
-                // `it.net` — the liability items carry outstanding/awaiting/rental/fee/
-                // gross/feeBack/net and NO `amount` key, so `Number(it.amount) || 0`
-                // printed £0.00 on every row: "Sarah Pemberton · £0.00 — ready to
-                // return" under a headline correctly reading £147.38, on the screen
-                // that tells the owner what to hand back. The sibling renderer on Move
-                // money out already prints it.net.
-                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
-            } else if (backFig) {
-                backFig.innerHTML = stCap('unk', 'couldn’t work it out');
-                if (backRows) backRows.textContent = 'The deposits screen has the detail.';
+                __moHead.held = items.length ? Number(L.net || 0) : 0;
+                __moCalmState.back = !items.length;
+                if (items.length) {
+                    const today2 = todayDashed();
+                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return');
+                    // `it.net` — the liability items carry outstanding/awaiting/rental/fee/gross/feeBack/net and NO `amount`.
+                    slot.innerHTML = bhubFoldGrp('moback', 'To give back', 'deposits still held',
+                        `<span class="bhub-payline-fig" id="mo-back-fig">${gbp(Number(L.net || 0))}</span>`,
+                        `<div id="mo-back-rows" style="margin-bottom:6px;">${items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net) || 0)}</span></div>`).join('')}</div>
+                         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
+                    moLand(document.getElementById('mo-back-fig'), 1);
+                }
+            } else if (slot) {
+                __moCalmState.back = null;
             }
-            moLand(backFig, 1);
-            moLand(backRows, 1);
             // The books — the SERVER'S net (rental + kept − fees − expenses),
             // replacing the client's fee-less estimate.
             const booksFig = document.getElementById('mo-books-fig');
@@ -17348,15 +17373,17 @@ function moAsyncFill() {
                 const unk = P.items.unknown || [];
                 const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
                 const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
+                const win = Number(P.lookback) || 90;
                 if (oldDays > 7) {
+                    __moHead.unk = unk.length;
                     // The sub is a nowrap right-rail caption beside a capsule —
                     // measured at 390 it had 197px for 66 characters and painted
                     // "…it should be by…". It names the FACT; the sentence that
                     // explains it lives inside the fold, where it has the width.
                     holder.innerHTML = bhubFoldGrp('mounk', `Square hasn’t said`,
-                        `${oldDays}-day-old charge · not in the payout data`,
+                        oldDays >= win ? `${oldDays} days old · past Square’s ${win}-day window` : `${oldDays}-day-old charge · not in the payout data`,
                         stCap('warn', gbp(total)),
-                        `<div class="bhub-mut" style="margin-bottom:6px;">Square has reported other payouts, so ${unk.length === 1 ? 'this charge' : 'these charges'} should have appeared by now.</div>
+                        `<div class="bhub-mut" style="margin-bottom:6px;">${oldDays >= win ? `${unk.length === 1 ? 'This charge is' : 'These charges are'} older than the ${win} days of payouts Square reports, so ${unk.length === 1 ? 'it' : 'they'} can’t be matched here. If you’ve seen the money in your bank, there is nothing to do.` : `Square has reported other payouts, so ${unk.length === 1 ? 'this charge' : 'these charges'} should have appeared by now.`}</div>
                          ${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}${it.paid_on ? ' · taken ' + escapeHtml(fmtDate(String(it.paid_on).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('')}
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
                     const cap = document.getElementById('mo-attn-cap');
@@ -17364,6 +17391,7 @@ function moAsyncFill() {
                 }
             }
         })
+        .then(() => moHeadline(), () => {})
         .catch(() => {
             const moveFig = document.getElementById('mo-move-fig');
             if (__moFillStamp === stamp && moveFig) moveFig.innerHTML = stCap('unk', 'couldn’t load');
