@@ -110,6 +110,12 @@ const BODIES = {
   ok(r6.n === 3 && Math.max(...r6.w) - Math.min(...r6.w) <= 2, `Mark unread / Delete / Close are three equal tiles (${r6.w.join('/')})`);
   ok(r6.h >= 44 && r6.one && !r6.chev, `each is a tall single-line tap target with no stray arrow (${r6.h}px)`);
 
+  ok(await page.evaluate(() => { const d = document.querySelector('details.mbx-earlier'); return !!d && !d.open; }), 'Earlier in this conversation stays folded until opened, even with facts worth a look');
+  await page.click('.mbx-earlier > summary');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => document.querySelector('details.mbx-earlier').open), 'and opens on tap');
+  await page.click('.mbx-earlier > summary');
+
   console.log('§5 Reply quotes only their new words, cursor on top');
   await page.click('.mbx-reply');
   await page.waitForTimeout(500);

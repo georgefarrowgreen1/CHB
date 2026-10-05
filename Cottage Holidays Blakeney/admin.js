@@ -31078,8 +31078,12 @@ async function mbxEarlierSmart(uid, m) {
     };
     // The summary names what is worth reading; the list is newest first, so the order never surprises.
     const sorted = items.filter((x) => x.imp).concat(items.filter((x) => !x.imp));
+    // Folded until the owner opens it — and if they already have (the plain chain stood in while this
+    // fetched), the swap keeps it open rather than snapping it shut under their finger.
+    const prevFold = /** @type {HTMLDetailsElement|null} */ (host.querySelector('details.mbx-earlier'));
+    const wasOpen = !!prevFold && prevFold.open;
     if (stillHere())
-        host.innerHTML = `<details class="mbx-ctx-d mbx-earlier"${nImp ? ' open' : ''}>
+        host.innerHTML = `<details class="mbx-ctx-d mbx-earlier"${wasOpen ? ' open' : ''}>
         <summary class="mbx-ctx-drow">
             <span class="mbx-ctx-lbl">Earlier in this conversation<small>${items.length} email${items.length === 1 ? '' : 's'}${nImp ? ` · ${nImp} worth a look` : ' · all routine'}</small></span>
             <span class="mbx-ctx-right">${BHUB_CHEV}</span>
