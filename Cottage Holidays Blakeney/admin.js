@@ -11834,11 +11834,11 @@ function renderBookingHub() {
             <div class="bhub-head-top">
                 <div class="bhub-iden">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
-                    <div class="bhub-namerow"><h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>${contactRow}</div>
+                    <div class="bhub-namerow"><h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1></div>
                     <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : ''}${hubStateCap(b, past)}</div>
                     ${changeover}
                 </div>
-                ${editMenu}
+                <div class="bhub-tools">${contactRow}${editMenu}</div>
             </div>
             ${pipeHtml}
             ${payBlock}

@@ -7972,3 +7972,15 @@ body.light-mode .tl-cell:active {
 #enq-email-modal .enq-email-foot .btn-accent { min-height: 48px; }
 #enq-email-modal .input-glass:focus-visible { outline-offset: 0; }
 #enq-email-modal .enq-email-foot .toggle-btn { color: var(--text-light); }
+
+/* ONE ROW OF THREE: call, email and ⋯ are the same 44px circles on one line, top-right, level with the
+   cottage tag; the name takes the full width beneath. */
+.bhub-head-top { min-height: 44px; }
+.bhub-head-top > .bhub-tools { position: absolute; top: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 8px; }
+.bhub-tools .bhub-contact { margin: 0; gap: 8px; }
+.bhub-tools .bhub-actions { position: relative; top: auto; right: auto; }
+.bhub-tools .bhub-cbtn, .bhub-tools .bhub-menu-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: var(--r-pill); flex: none; }
+.bhub-iden .prop-tag { margin-top: 8px; }
+.bhub-namerow { margin-top: 12px; }
+.bhub-namerow .bhub-name { width: 100%; }
+.bhub-tools .bhub-menu-btn { border: 1px solid var(--glass-border); background: var(--glass-bg); box-shadow: none; display: grid; place-items: center; color: var(--text-light); }
