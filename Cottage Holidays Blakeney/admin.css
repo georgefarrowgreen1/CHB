@@ -8132,3 +8132,14 @@ body.owner-mode.chb-busy::before { content: ""; position: fixed; top: 0; left: 0
     body.owner-mode.chb-busy::before { animation: none; width: 100%; opacity: .5; }
     .sk::after, .mo-run { animation: none; }
 }
+
+/* ---- ONE WINDOW CURVE (owner-asked, from the Refresh-calendar menu: a 28px menu around a 12px item read as two different shapes).
+   Every back-office window — menus, dialogs, modals, the search pop-out, the account preview, sheets, the date picker — is the CARD
+   radius (20). Inside a window an item is CONCENTRIC: outer 20 − 8px of padding = the CELL radius (12). Buttons stay pills, fields stay cells. ---- */
+body.owner-mode .bhub-menu, body.owner-mode .glass-dialog-box, body.owner-mode .modal-box, body.owner-mode .terms-modal-box,
+body.owner-mode .reviews-modal-box, body.owner-mode .cmdk-box, body.owner-mode #cmdk.cmdk-overlay .cmdk-box,
+body.owner-mode .acct-preview-shell, body.owner-mode .ac-sheet-card, body.owner-mode .datepicker-card { border-radius: var(--r-lg); }
+@media (max-width: 640px) {
+    body.owner-mode .modal-overlay.chb-sheet .modal-box, body.owner-mode .modal-overlay.chb-sheet .terms-modal-box { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+}
+body.owner-mode .bhub-menu { padding: 8px; }
