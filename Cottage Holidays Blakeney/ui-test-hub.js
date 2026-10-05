@@ -1113,7 +1113,8 @@ let approveWill409 = false;
   ok(await page.evaluate(() => getComputedStyle(document.querySelector('.bhub-sticky')).display === 'none'),
     'the sticky bar stays out of the way at desktop width');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(900);
+  if (process.env.CHB_SHOT) await page.screenshot({ path: process.env.CHB_SHOT, fullPage: true });
   const sticky = await page.evaluate(() => {
     const el = document.querySelector('.bhub-sticky');
     return { shown: el && getComputedStyle(el).display !== 'none', text: el ? el.textContent : '' };
