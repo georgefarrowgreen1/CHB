@@ -419,31 +419,8 @@ const NEST = (rootSel) => {
   ok(st.radius === '12px', `a Status row is a list cell (${st.radius})`);
   ok(st.gt !== null && st.gt === grpcapSpec, `the group header is on the ONE caption spec (${st.gt} vs the landing's ${grpcapSpec})`);
 
-  console.log('§5 The spine ≤640 — a sentence, then ONE scrolling row of chips that still route');
-  const spine = await page.evaluate(() => {
-    const sp = document.getElementById('day-spine');
-    const row = sp ? sp.querySelector('.spine-duties') : null;
-    const chips = row ? [...row.querySelectorAll('.spine-duty')] : [];
-    return {
-      painted: !!sp && sp.getClientRects().length > 0,
-      h: sp ? Math.round(sp.getBoundingClientRect().height) : null,
-      rowDisplay: row ? getComputedStyle(row).display : null,
-      overflowX: row ? getComputedStyle(row).overflowX : null,
-      oneLine: chips.length > 1 ? Math.abs(chips[0].getBoundingClientRect().top - chips[chips.length - 1].getBoundingClientRect().top) < 2 : null,
-      heights: chips.map((c) => Math.round(c.getBoundingClientRect().height)),
-      routed: chips.filter((c) => c.hasAttribute('data-act')).length,
-      n: chips.length,
-      scrolls: row ? row.scrollWidth > row.clientWidth : null,
-    };
-  });
-  ok(spine.painted, 'Payments/Manage carry the spine at 390');
-  ok(spine.n >= 3, `the fixture mints ${spine.n} chips (vacuity guard)`);
-  ok(spine.rowDisplay === 'flex' && spine.overflowX === 'auto', `the chips are one scrolling row (${spine.rowDisplay}/${spine.overflowX})`);
-  ok(spine.oneLine === true, 'every chip sits on ONE line');
-  ok(spine.scrolls === true, 'and the row scrolls to reach the rest');
-  ok(spine.heights.every((h) => h >= 30 && h <= 36), `chips are 32px (${spine.heights.join(',')})`);
-  ok(spine.routed === spine.n, `every chip still carries its route (${spine.routed}/${spine.n})`);
-  ok(spine.h !== null && spine.h <= 110, `the whole spine is ≤110px tall at 390 (${spine.h}px)`);
+  console.log('§5 The phone carries no day strip above Payments/Manage (it was removed)');
+  ok(await page.evaluate(() => !document.getElementById('day-spine') || document.getElementById('day-spine').getClientRects().length === 0), 'no day strip is painted at 390');
 
   await sweepLists(page, 390);
   await page.close();

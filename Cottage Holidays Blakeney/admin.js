@@ -20844,20 +20844,6 @@ function renderNeedsYou() {
 // Today = chbDuties().length (the Home-badge number), Inbox = unseenEnquiries()
 // (the dock pip's number), Payments = chbOpsParts(chbDayTuples()).owed (the
 // ops line's figure), Key safes = the keysafe duties in the same list.
-let __chbFrameHtml = '';
-function chbSpineEnsure() {
-    let el = document.getElementById('day-spine');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'day-spine';
-        el.hidden = true;
-        // Parked on <body>; chbFrameSync re-parents it into the ACTIVE view so
-        // it inherits that view's container width and padding at every
-        // breakpoint (the #booking-hub-content re-parenting pattern).
-        document.body.appendChild(el);
-    }
-    return el;
-}
 // The dock's own stroke glyphs (kept byte-identical so the two navs read as
 // one vocabulary) + a house glyph for Cottages, which has no dock button.
 const CHB_RAIL_ROWS = [
@@ -20957,20 +20943,6 @@ function chbRailEnsure() {
             });
             ro.observe(el);
         }
-    } catch (e) {}
-    // The spine condenses on scroll while it is the top of the page (rail
-    // screens have no header). HYSTERESIS is load-bearing, ported from the
-    // prototype: condensing shortens the document, which can clamp scrollTop
-    // and re-expand it — a dead zone wider than the reclaim settles it, and a
-    // page too short to reach 120px simply keeps the full spine.
-    try {
-        window.addEventListener('scroll', () => {
-            const sp = document.getElementById('day-spine');
-            if (!sp || sp.hidden || !document.body.classList.contains('rail-on')) return;
-            const y = window.scrollY;
-            if (y > 120) sp.classList.add('spine-cond');
-            else if (y < 40) sp.classList.remove('spine-cond');
-        }, { passive: true });
     } catch (e) {}
 }
 function chbRailSync(duties, owed) {
@@ -21102,68 +21074,11 @@ function chbFrameSync() {
         const avNow = document.querySelector('.page-view.active');
         if (owner && avNow && avNow.id === 'view-backoffice') todayOpsLine();
     } catch (e) {}
-    const sp = chbSpineEnsure();
-    const av = document.querySelector('.page-view.active');
-    const avId = av ? av.id : '';
-    const on =
-        owner &&
-        !!av &&
-        ADMIN_VIEWS.indexOf(avId) !== -1 &&
-        avId !== 'view-backoffice' &&
-        avId !== 'view-aichat' &&
-        // A hub is ONE record: its own card already says what to do, so the day strip above it said it twice.
-        avId !== 'view-booking-hub' &&
-        avId !== 'view-enquiry-hub' &&
-        !document.body.classList.contains('offline-snap');
-    if (!on) {
-        sp.hidden = true;
-        return;
-    }
-    if (sp.parentElement !== av || av.firstElementChild !== sp) av.insertBefore(sp, av.firstChild);
-    let line = '';
-    try { line = cmdkDayLine(day); } catch (e) {}
-    // Labels are chbDuties' PLAIN TEXT, escaped here at the render boundary —
-    // the needsYouItems contract; the go string is interpolated RAW because it
-    // is attribute markup built by chbAttrs, exactly as the strip does it.
-    const chips = duties
-        .slice(0, 2)
-        .map(
-            (d) => `<button type="button" class="spine-duty is-${d.sev}" ${d.go} title="${escapeHtml(d.label)}"><span class="spine-dot" aria-hidden="true"></span><span class="spine-lbl">${escapeHtml(d.label)}</span></button>`,
-        )
-        .join('');
-    const more =
-        duties.length > 2
-            ? `<button type="button" class="spine-duty is-more" data-act="tryAccessBackOffice" title="Everything on Today">${duties.length - 2} more</button>`
-            : '';
-    // The condensed state (rail screens, scrolled) folds the chips away and
-    // says the count instead — the prototype's own anatomy. The pill routes to
-    // Today, where the full strip lives.
-    const cnt = duties.length
-        ? `<button type="button" class="spine-cnt" data-act="tryAccessBackOffice" title="${duties.length} thing${duties.length === 1 ? '' : 's'} still want${duties.length === 1 ? 's' : ''} you">${duties.length}</button>`
-        : '';
-    // NB the spine deliberately does NOT name the record you are in. It was
-    // proposed (the condensed header used to, and losing that looked like a
-    // regression) and REFUTED by driving it: at rail widths a hub DOCKS into
-    // its list's pane — bookingsSplitWide, ≥1200 — so the active view is
-    // still the workspace and the record is on screen beside its list, named
-    // by its own head; below 1200 the hub is standalone and the header, which
-    // exists there, names it exactly as it always did. There is no width at
-    // which the place is missing, so a place here would be a second name for
-    // a fact already on screen.
-    // THE INNER SPAN IS THE FOLD'S ONE CHILD. A 0fr grid collapses only the FIRST
-    // track (the .bhub-fold rule), so the chips cannot be direct children of the
-    // row that has to collapse. It is `display: contents` everywhere the row is
-    // not collapsing, which is why the phone's scrolling chip row and the default
-    // wrap are byte-for-byte what they were.
-    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties"><span class="spine-dutiesin">${chips}${more}</span></span>`;
-    // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
-    // and an unconditional innerHTML would destroy keyboard focus (and any
-    // mid-press tap) on a chip every time data lands with nothing new to say.
-    if (html !== __chbFrameHtml) {
-        sp.innerHTML = html;
-        __chbFrameHtml = html;
-    }
-    sp.hidden = false;
+    // THE DAY STRIP IS GONE (asked for: the sentence + duty chips above every admin
+    // page said what Today and the Needs-you strip already say). A stray node from an
+    // older render is removed so nothing paints it.
+    const old = document.getElementById('day-spine');
+    if (old) old.remove();
 }
 // The header's living second line: the date plus what today actually holds —
 // arrivals, departures, changeovers and money still to collect. Quiet days
