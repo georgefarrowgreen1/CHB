@@ -7961,3 +7961,14 @@ body.light-mode .tl-cell:active {
 .bhub-head-top > .bhub-actions { position: absolute; top: 0; right: 0; z-index: 2; }
 .bhub-namerow { margin-top: 8px; }
 .bhub-next-acts .bhub-next-alt { justify-content: center; justify-items: center; text-align: center; }
+
+/* THE EMAIL COMPOSER IS ONE SURFACE ("the background is inconsistent"). The box was translucent glass
+   (mid-grey over the scrim) while its sticky footer was the opaque sheet surface (cream), so the footer
+   read as a different, square-cornered card poking past the edge. The box takes the sheet surface too, the
+   footer sits flush on it, and Preview wears the same type as Send. */
+#enq-email-modal .reviews-modal-box { background: var(--sheet-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+#enq-email-modal .enq-email-foot { margin: 0; padding-left: 0; padding-right: 0; }
+#enq-email-modal .enq-email-foot .toggle-btn { font-size: var(--fs-body); font-weight: 600; border-radius: var(--r-pill); text-transform: none; letter-spacing: 0; min-height: 48px; }
+#enq-email-modal .enq-email-foot .btn-accent { min-height: 48px; }
+#enq-email-modal .input-glass:focus-visible { outline-offset: 0; }
+#enq-email-modal .enq-email-foot .toggle-btn { color: var(--text-light); }
