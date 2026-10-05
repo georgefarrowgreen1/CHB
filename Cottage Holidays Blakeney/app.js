@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 653;
+const ADMIN_BUNDLE_V = 657;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 306;
+const ADMIN_CSS_V = 311;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -10455,6 +10455,23 @@ function paymentStatusLabel(kind, status) {
 // Traffic-light meta for a payment row: a dot LEVEL (ok=green done, wait=amber
 // in-progress, bad=red problem) plus a Title-cased word for the hover / screen-
 // reader label (also unifies "COMPLETED" vs "Completed").
+// One In/Out pill for every money line (Recent payments, the booking's ledger):
+// the word carries the direction, the tint only agrees. Pending = dashed, no tint.
+function payDirPill(isReturn, wait) {
+    return `<span class="pay-dir ${isReturn ? 'is-out' : 'is-in'}${wait ? ' is-wait' : ''}">${isReturn ? 'Out' : 'In'}</span>`;
+}
+// Still on its way? Card-in rows follow Square's live status; a RETURN reads
+// Completed in the ledger the moment it is issued (paymentStatusLabel), but the
+// money is only back with the guest once Square settles it, so raw PENDING is
+// "on its way" here — said calmly, never as a problem.
+function payIsWait(kind, status) {
+    const isReturn = kind === 'refund' || kind === 'damages_return';
+    return isReturn ? String(status || '').toUpperCase() === 'PENDING' : paymentStatusMeta(kind, status).level === 'wait';
+}
+// When a pending line lands — Square's usual window, in working days.
+function payEta(isReturn) {
+    return isReturn ? '<b>Back in</b> 3–5 days' : '<b>Arrives in</b> 1–2 days';
+}
 function paymentStatusMeta(kind, status) {
     const st = String(paymentStatusLabel(kind, status) || '').toUpperCase();
     // APPROVED counts as PAID in reconcile_booking_payment (bookings.php), so it
@@ -10541,7 +10558,7 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // are owner-only), so the feed can drop the row's own border
                 // and padding when it wraps it in a dated cell.
                 return `<div class="bhub-ledger-row">
-                        <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
+                        <span style="min-width:0;">${payDirPill(isReturn, payIsWait(p.kind, p.status))} ${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${payIsWait(p.kind, p.status) ? ` <span class="pay-eta">${payEta(isReturn)}</span>` : ''}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
 }
@@ -19491,7 +19508,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'loading2';
+    const BUILD = 'money4';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

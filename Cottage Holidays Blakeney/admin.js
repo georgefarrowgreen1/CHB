@@ -16544,9 +16544,8 @@ function renderDepositsDue() {
             ({ propKey, b, dh }) => `
                 <div class="money-row glass-panel due-soon">
                     <div class="money-row-head">
-                        <div><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span>
-                            <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:var(--fs-sub);">left ${fmtDate(b.checkOut)}</span></div>
+                        <div class="mr-id"><strong>${escapeHtml(b.name)}</strong>
+                            <span class="mr-sub"><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span><span class="mr-left">left ${fmtDate(b.checkOut)}</span></span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
                     <!-- KEEP IS RAIL-BLIND. This was gated on holdStatus === 'charged',
@@ -17532,84 +17531,83 @@ function renderMoneyPanel() {
 // rules) moved to app.js — the booking-hub ledger (loadBookingPayments, app.js)
 // shares them, and app.js must not reach into admin globals.
 // Recent Square transactions across all bookings (deposits, balances, refunds).
+let __mfList = [];
+let __mfFilter = 'all';
 async function renderMoneyFeed() {
     const el = document.getElementById('money-feed');
     if (!el) return;
-    let list = [];
     try {
         const r = await apiPost('bookings.php', { action: 'recent_payments' });
-        list = r.payments || [];
+        __mfList = r.payments || [];
     } catch (e) {
         el.innerHTML = '';
         return;
     }
+    mfPaint();
+}
+// Month groups, an In/Out pill per line and the pending ones apart ("On its
+// way", kept out of every total until they complete). Everything is derived
+// from the one list, so the headline, the month nets and the rows agree.
+function mfPaint() {
+    const el = document.getElementById('money-feed');
+    if (!el) return;
+    const list = __mfList;
     if (!list.length) {
         // No repeated h3 — the section's own page title already says
         // "Recent payments" directly above (it read as a stutter on a phone).
         el.innerHTML = `<div class="accounts-empty">No card payments yet. Card deposits, balances and refunds will appear here.</div>`;
         return;
     }
-    let grossIn = 0,
-        feeSum = 0,
-        feeKnown = 0;
-    const rows = list
-        .map((p) => {
-            const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
-            const label =
-                p.kind === 'refund'
-                    ? 'Refund'
-                    : p.kind === 'damages_return'
-                      ? 'Deposit return'
-                      : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
-            const gross = Math.abs(parseFloat(p.amount) || 0);
-            const fee = p.fee != null && p.fee !== '' ? Math.abs(parseFloat(p.fee) || 0) : null;
-            const amt = (isReturn ? '−' : '') + gbp(gross);
-            if (!isReturn) {
-                grossIn += gross;
-                if (fee != null) {
-                    feeSum += fee;
-                    feeKnown++;
-                }
-            }
-            // Gross / fee / net per card-in transaction (fees settle after the charge).
-            const feeNote =
-                !isReturn && fee != null && fee > 0
-                    ? ` · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}`
-                    : '';
-            // DD/MM/YYYY like every other date on an owner screen — this was raw SQL.
-            const date = fmtDate((p.created_at || '').slice(0, 10)) || '—';
-            const propName = propertyMeta[p.prop_key]
-                ? propertyMeta[p.prop_key].name
-                : p.prop_key || '';
-            const deleted = p.booking_deleted == 1 || p.booking_deleted === true;
-            const note = (p.note || '').trim();
-            const who =
-                (p.name || 'Guest') +
-                (deleted ? ' · deleted booking' : '') +
-                (note ? ' · ' + note : '');
-            // THE STATE IS SAID IN WORDS, AND THE FIGURE AGREES WITH IT. The status
-            // was a bare traffic-light DOT with the word only in a title/aria-label —
-            // unreachable on touch — while the AMOUNT was inked green for every
-            // charge whatever its status, so a FAILED £110.00 painted success-green
-            // beside a red dot. The house capsule carries the word; a failure takes
-            // danger ink and a pending charge goes muted, because green is a claim
-            // that the money arrived.
-            const sMeta = paymentStatusMeta(p.kind, p.status);
-            const capTone = sMeta.level === 'ok' ? 'ok' : sMeta.level === 'bad' ? 'bad' : 'warn';
-            const amtInk =
-                sMeta.level === 'bad' ? 'var(--danger-text)'
-                    : sMeta.level === 'wait' ? 'var(--text-muted)'
-                        : isReturn ? 'var(--danger-text)' : 'var(--ok-text)';
-            return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
-                    <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
-                    <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
-                    <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
-                    <span class="feed-kind">${label}${feeNote}</span>
-                    <span class="feed-amt" style="color:${amtInk};"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
-                    <span class="feed-status">${stCap(capTone, escapeHtml(sMeta.label))}</span>
-                </div>`;
-        })
-        .join('');
+    const f = __mfFilter;
+    const info = list.map((p) => {
+        const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
+        const sMeta = paymentStatusMeta(p.kind, p.status);
+        return { p, isReturn, sMeta, wait: payIsWait(p.kind, p.status), gross: Math.abs(parseFloat(p.amount) || 0), fee: p.fee != null && p.fee !== '' ? Math.abs(parseFloat(p.fee) || 0) : null };
+    });
+    let grossIn = 0, feeSum = 0, feeKnown = 0, totIn = 0, totOut = 0, totWait = 0;
+    info.forEach((x) => {
+        if (!x.isReturn) {
+            grossIn += x.gross;
+            if (x.fee != null) { feeSum += x.fee; feeKnown++; }
+        }
+        if (x.wait) totWait += x.gross;
+        else if (x.sMeta.level === 'ok') { if (x.isReturn) totOut += x.gross; else totIn += x.gross; }
+    });
+    const row = (x) => {
+        const { p, isReturn, sMeta, gross, fee, wait } = x;
+        const label = p.kind === 'refund' ? 'Refund' : p.kind === 'damages_return' ? 'Deposit return' : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
+        const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : p.prop_key || '';
+        const deleted = p.booking_deleted == 1 || p.booking_deleted === true;
+        const note = (p.note || '').trim();
+        const date = fmtDate((p.created_at || '').slice(0, 10)) || '—';
+        const sub = [date, label, propName, deleted ? 'deleted booking' : '', note].filter(Boolean).join(' · ');
+        // A failure takes danger ink; pending is plain ink (green is a claim
+        // that the money arrived, and so is red for money that has left).
+        const ink = sMeta.level === 'bad' ? 'var(--danger-text)' : wait ? 'var(--text-light)' : isReturn ? 'var(--danger-text)' : 'var(--ok-text)';
+        const under = wait
+            ? `<small class="pay-eta">${payEta(isReturn)}</small>`
+            : sMeta.level === 'bad'
+              ? stCap('bad', escapeHtml(sMeta.label))
+              : !isReturn && fee != null && fee > 0
+                ? `<small title="Gross ${gbp(gross)} · fee ${gbp(fee)}">net ${gbp(Math.max(0, gross - fee))}</small>`
+                : '';
+        return `<div class="feed-row mf-row"${note ? ` title="${escapeHtml(note)}"` : ''}>${payDirPill(isReturn, wait)}<span class="mf-main"><span class="mf-name">${escapeHtml(p.name || 'Guest')}</span><span class="mf-sub">${escapeHtml(sub)}</span></span><span class="mf-fig"><b class="mf-amt" style="color:${ink};">${isReturn ? '−' : '+'}${gbp(gross)}</b>${under}</span></div>`;
+    };
+    const show = (x) => f === 'all' || (f === 'in' && !x.isReturn) || (f === 'out' && x.isReturn);
+    const waiting = info.filter((x) => x.wait && show(x));
+    const done = info.filter((x) => !x.wait && show(x));
+    const months = [];
+    done.forEach((x) => {
+        const key = (x.p.created_at || '').slice(0, 7);
+        let m = months[months.length - 1];
+        if (!m || m.key !== key) { m = { key, rows: [], net: 0 }; months.push(m); }
+        m.rows.push(x);
+        if (x.sMeta.level === 'ok') m.net += x.isReturn ? -x.gross : x.gross;
+    });
+    const monthName = (k) => {
+        const [y, mo] = k.split('-').map(Number);
+        return y && mo ? new Date(y, mo - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' }) : 'Earlier';
+    };
     // Gross / fees / net reconciliation across the shown card payments — a
     // captioned WELL with each figure on its own labelled row (the unified
     // anatomy; the three inline spans wrapped unevenly at phone width). The
@@ -17625,10 +17623,23 @@ async function renderMoneyFeed() {
                     ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:8px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
                </div>`
             : '';
-    // No repeated h3 — the section's page title already reads "Recent payments".
-    el.innerHTML = `${recon}
-                <div class="acr-cap">The latest money in</div>
-                <div class="feed-list mf-list">${rows}</div>`;
+    const head = `<p class="mf-head"><span class="is-in">${gbp(totIn)}</span> in · <span class="is-out">${gbp(totOut)}</span> returned${totWait > 0 ? ` · <span class="is-wait">${gbp(totWait)} on its way</span>` : ''}</p>`;
+    const seg = `<div class="inbox-sort seg" role="group" aria-label="Which payments">${[['all', 'All'], ['in', 'Money in'], ['out', 'Returned']]
+        .map(([k, l]) => `<button type="button" class="inbox-sort-btn${f === k ? ' is-on' : ''}" data-mf="${k}">${l}</button>`)
+        .join('')}</div>`;
+    const waitHtml = waiting.length
+        ? `<div class="mf-wait"><div class="mf-whead"><span class="acr-cap" style="margin:0;color:var(--warn-text);">Still on its way</span><em>Not in your totals yet</em></div><div class="feed-list mf-list">${waiting.map(row).join('')}</div></div>`
+        : '';
+    const monthsHtml = months
+        .map((m) => `<div class="mf-month"><span class="acr-cap" style="margin:0;">${escapeHtml(monthName(m.key))}</span><em>${m.net < 0 ? '−' : ''}${gbp(Math.abs(m.net))} net</em></div><div class="feed-list mf-list">${m.rows.map(row).join('')}</div>`)
+        .join('');
+    el.innerHTML = `${recon}${head}<div class="acr-capsub" style="margin:0 4px 12px;">From the latest ${list.length} payments.</div>${waitHtml}${seg}${monthsHtml || `<div class="mf-calm">Nothing in this view.</div>`}${waiting.length ? '' : `<div class="mf-calm">${info.some((x) => x.sMeta.level === 'bad') ? '' : 'Every payment here has completed.'}</div>`}`;
+    el.querySelectorAll('[data-mf]').forEach((b) => {
+        b.addEventListener('click', () => {
+            __mfFilter = b.getAttribute('data-mf') || 'all';
+            mfPaint();
+        });
+    });
 }
 // Projected revenue + occupancy by month from confirmed upcoming bookings.
 function renderMoneyForecast() {
