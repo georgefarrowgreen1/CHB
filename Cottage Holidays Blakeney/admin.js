@@ -10127,33 +10127,11 @@ function inboxFolder(which) {
 // the same counts the folder chips show (enquiries live; chats/emails read
 // from their chips so this never re-fetches anything).
 function inboxSubline() {
-    // The verdicts render FIRST — the declined branch below returns early,
-    // and a subline about the drawer must not freeze the landing's counts.
+    // The verdicts render here; the sentence under the page title is NOT touched. It used to
+    // restate the counts ("2 enquiries waiting", "All caught up…", "2 declined enquiries…") and so
+    // changed under the reader's eyes while the answers beneath it already carried every count.
+    // It stays the one line the page ships with.
     inboxVerdicts();
-    const el = document.getElementById('inbox-subline');
-    if (!el) return;
-    const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
-    // Count ALL pending enquiries, matching the Enquiries verdict capsule beside
-    // it — a SEEN but unanswered enquiry still needs a reply, so counting only
-    // UNSEEN ones let the subline say "nothing needs a reply" above an amber
-    // "2 waiting" capsule for the same two enquiries.
-    const enq = Array.isArray(enquiries) ? enquiries.length : (typeof unseenEnquiries === 'function' ? unseenEnquiries() : chip('ifold-count-enq'));
-    const msg = chip('ifold-count-msg');
-    const mbx = chip('ifold-count-mbx');
-    const parts = [];
-    if (enq) parts.push(enq === 1 ? '1 enquiry waiting' : `${enq} enquiries waiting`);
-    if (msg) parts.push(msg === 1 ? '1 unread chat' : `${msg} unread chats`);
-    if (mbx) parts.push(mbx === 1 ? '1 unread email' : `${mbx} unread emails`);
-    // It only ever counted WAITING work, so the Declined drawer was captioned
-    // "All caught up — nothing needs a reply" over a list of rows.
-    if (__inboxFolder === 'enquiries' && __inboxTab === 'declined') {
-        const n = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
-        el.textContent = n
-            ? (n === 1 ? '1 declined enquiry' : `${n} declined enquiries`) + ' — restore any of them.'
-            : 'Nothing declined.';
-        return;
-    }
-    el.textContent = parts.length ? parts.join(' · ') : 'All caught up — nothing needs a reply.';
 }
 // The landing's verdicts + exceptions — composed from the SAME stores and
 // chips the badges and subline read; rides inboxSubline so it re-renders
