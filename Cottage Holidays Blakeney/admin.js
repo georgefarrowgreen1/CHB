@@ -30980,9 +30980,9 @@ async function mailboxOpen(uid) {
             <div id="mbx-earlier-host">${mbxEarlierHtml(uid)}</div>
             <div class="mbx-acts">
                 <button class="btn-sm mbx-reply" ${chbAttrs('mailboxReply', uid)}>Reply</button>
-                <div class="bhub-act-links mbx-acts-quiet">
+                <div class="mbx-acts-quiet">
                     <button class="bhub-actlink" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
-                    <button class="bhub-actlink is-danger" ${chbAttrs('mailboxDelete', uid)}>Delete this email</button>
+                    <button class="bhub-actlink is-danger" ${chbAttrs('mailboxDelete', uid)}>Delete</button>
                     <button class="bhub-actlink" data-act="mailboxCollapse">Close</button>
                 </div>
             </div>
@@ -31065,38 +31065,27 @@ async function mbxEarlierSmart(uid, m) {
         });
         return h;
     };
-    const imp = items.filter((x) => x.imp),
-        rou = items.filter((x) => !x.imp);
-    const tagWord = { amount: 'amount', time: 'time', date: 'date', party: 'party', access: 'access', change: 'change', question: 'question', file: 'attachment' };
-    const open = (x) => (x.own ? `${chbAttrs('mailboxOpenSent', x.sentId)}` : `${chbAttrs('mailboxOpen', x.uid)}`);
-    const impHtml = imp.length
-        ? `<details class="mbx-ctx-d mbx-worth" open>
-            <summary class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Worth a look from earlier<small>${imp.length} of ${items.length} earlier email${items.length === 1 ? '' : 's'} hold facts</small></span><span class="mbx-ctx-right"><span class="st-cap is-warn">${imp.length}</span>${BHUB_CHEV}</span></summary>
-            ${imp
-                .map(
-                    (x) => `<div class="mbx-earlyitem">
-                <div class="mbx-earlyh"><b>${mbxEsc(x.who)}</b><span>${mbxEsc(x.when.date)}${x.when.time ? ' · ' + mbxEsc(x.when.time) : ''}</span></div>
-                <p class="mbx-earlytx">${mark(x.text.length > 420 ? x.text.slice(0, 420) + '…' : x.text, x.s.hits)}</p>
-                <div class="mbx-earlytags">${x.s.hits.map((k) => `<span>${tagWord[k]}</span>`).join('')}</div>
-                <div class="mbx-earlyacts"><button type="button" class="bhub-actlink" ${open(x)}>Open</button><button type="button" class="bhub-actlink" ${chbAttrs('mbxMarkImp', x.key, '0')}>Not important</button></div>
-            </div>`,
-                )
-                .join('')}
-        </details>`
-        : `<div class="mbx-ctx-d mbx-worth is-none"><div class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Nothing important earlier<small>${items.length} earlier email${items.length === 1 ? '' : 's'} — all routine</small></span><span class="mbx-ctx-right"><span class="st-cap is-ok"><span class="st-tick" aria-hidden="true">✓</span>0</span></span></div></div>`;
-    const rouHtml = rou.length
-        ? `<details class="mbx-ctx-d mbx-routine">
-            <summary class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Routine<small>${rou.length} tucked away</small></span><span class="mbx-ctx-right">${BHUB_CHEV}</span></summary>
-            ${rou
-                .map(
-                    (x) => `<div class="mbx-routrow"><span class="mbx-routwhen">${mbxEsc(x.when.date)}</span><span class="mbx-routtx">${x.own ? 'You: ' : ''}${mbxEsc(x.text.replace(/\s+/g, ' '))}</span><button type="button" class="bhub-actlink" ${chbAttrs('mbxMarkImp', x.key, '1')}>Important</button></div>`,
-                )
-                .join('')}
-        </details>`
-        : '';
-    // The plain chain stays beneath (every earlier email, newest first, each one tap to read) — the sorting
-    // sits ABOVE it and never replaces it, so no email is reachable only through the heuristic.
-    if (stillHere()) host.innerHTML = impHtml + rouHtml + mbxEarlierHtml(uid);
+    // ONE section. Emails that hold facts show their words with the facts marked; everything else is a one-line
+    // row. Every row opens its email in one tap, so nothing is reachable only through the heuristic.
+    const nImp = items.filter((x) => x.imp).length;
+    const rowHtml = (x) => {
+        const open = x.own ? chbAttrs('mailboxOpenSent', x.sentId) : chbAttrs('mailboxOpen', x.uid);
+        const txt = x.imp ? mark(x.text.length > 320 ? x.text.slice(0, 320) + '…' : x.text, x.s.hits) : mbxEsc(x.text.replace(/\s+/g, ' '));
+        return `<button type="button" class="mbx-chain-row mbx-erow${x.imp ? ' is-imp' : ''}" ${open}>
+            <span class="mbx-erow-h"><b>${mbxEsc(x.who)}</b><span><span class="mbx-chain-when">${mbxEsc(x.when.date)}</span>${x.when.time ? ` · <span class="mbx-chain-time">${mbxEsc(x.when.time)}</span>` : ''}</span></span>
+            <span class="mbx-erow-tx">${txt}</span>
+        </button>`;
+    };
+    // The summary names what is worth reading; the list is newest first, so the order never surprises.
+    const sorted = items.filter((x) => x.imp).concat(items.filter((x) => !x.imp));
+    if (stillHere())
+        host.innerHTML = `<details class="mbx-ctx-d mbx-earlier"${nImp ? ' open' : ''}>
+        <summary class="mbx-ctx-drow">
+            <span class="mbx-ctx-lbl">Earlier in this conversation<small>${items.length} email${items.length === 1 ? '' : 's'}${nImp ? ` · ${nImp} worth a look` : ' · all routine'}</small></span>
+            <span class="mbx-ctx-right">${BHUB_CHEV}</span>
+        </summary>
+        <div class="mbx-chain">${sorted.map(rowHtml).join('')}</div>
+    </details>`;
 }
 function mailboxOpenSent(id) {
     const m = __mbxSent.find((x) => x.id === id);
