@@ -8113,3 +8113,22 @@ body.owner-mode .btn-sm, body.owner-mode .bhub-actlink, body.owner-mode .mo-tool
 body.owner-mode { --font-serif: var(--font-sans); }
 body.owner-mode .settings-row-label { font-size: var(--fs-headline); font-weight: 600; }
 body.owner-mode #admin-rail .rail-row, body.owner-mode #admin-rail .rail-lbl { font-size: var(--fs-headline); }
+
+/* ---- THE WORK IS VISIBLE (owner-asked, demo "Loading proposal"): a top sweep bar while requests are in flight (body.chb-busy,
+   set by chbBusy in app.js after 500ms), skeleton rows where a list is coming (adminLoading), and a quiet pulse on the Payments
+   placeholders until their answer lands. Reduced motion: a still bar and no shimmer. ---- */
+body.owner-mode.chb-busy::before { content: ""; position: fixed; top: 0; left: 0; height: 3px; width: 40%; z-index: 3000; border-radius: 0 3px 3px 0; background: var(--accent); pointer-events: none; animation: chbSweep 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes chbSweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+.sk { position: relative; display: block; overflow: hidden; background: color-mix(in srgb, var(--text-muted) 16%, transparent); border-radius: 8px; }
+.sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-light) 10%, transparent), transparent); animation: chbShim 1.4s ease-in-out infinite; }
+@keyframes chbShim { to { transform: translateX(100%); } }
+.sk-grp { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); overflow: hidden; margin: 12px 0; }
+.sk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; min-height: 64px; border-top: 1px solid var(--glass-border); }
+.sk-row:first-child { border-top: 0; }
+.sk-a { height: 14px; width: 120px; } .sk-b { height: 12px; width: 168px; margin-top: 8px; } .sk-c { height: 16px; width: 64px; }
+.mo-run { animation: chbPulse 1.3s ease-in-out infinite; }
+@keyframes chbPulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+    body.owner-mode.chb-busy::before { animation: none; width: 100%; opacity: .5; }
+    .sk::after, .mo-run { animation: none; }
+}
