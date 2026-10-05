@@ -7984,3 +7984,11 @@ body.light-mode .tl-cell:active {
 .bhub-namerow { margin-top: 12px; }
 .bhub-namerow .bhub-name { width: 100%; }
 .bhub-tools .bhub-menu-btn { border: 1px solid var(--glass-border); background: var(--glass-bg); box-shadow: none; display: grid; place-items: center; color: var(--text-light); }
+/* THE DECISION BUTTONS ARE ONE SPEC ("text is in the wrong format"): same type, same height, same centring,
+   stated at (0,3,0) so no actlink/btn-glass rule can pull one of them left or change its face. */
+.bhub-next .bhub-next-acts > .bhub-next-btn, .bhub-next .bhub-next-acts > .bhub-next-alt {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 48px; padding: 0 20px; border-radius: var(--r-pill);
+  font-family: inherit; font-size: var(--fs-body); font-weight: 600; line-height: 1.2; letter-spacing: 0; text-transform: none; text-decoration: none;
+}
+.bhub-next .bhub-next-acts > .bhub-next-alt::after { content: none; }
