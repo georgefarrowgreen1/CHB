@@ -197,8 +197,6 @@ function stub(page, mode, mine) {
   ok(ad.n >= 5 && ad.allFour === ad.n, `the admin dock's ${ad.n} buttons (${ad.sizes}) answer a tap 3px outside their drawn edge (${ad.allFour}/${ad.n})`);
   await page.evaluate(async () => { await openInbox(); });
   await page.waitForTimeout(700);
-  const sp = await slop(page, '#day-spine .spine-duty', 'TB');
-  ok(sp.n >= 1 && sp.allFour === sp.n, `the day spine's ${sp.n} duty chips (${sp.sizes}) answer a tap above and below their 34px`);
   await page.evaluate(async () => { const b = (dbBookings[Object.keys(dbBookings)[0]] || [])[0]; if (b) await openBookingHub(b.id); });
   await page.waitForTimeout(800);
   const menu = await page.evaluate(() => { const b = document.querySelector('#booking-hub-content .bhub-menu-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });

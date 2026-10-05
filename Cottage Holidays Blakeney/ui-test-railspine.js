@@ -78,50 +78,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const painted = (sel) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, sel);
     const activeView = () => page.evaluate(() => { const v = document.querySelector('.page-view.active'); return v ? v.id : ''; });
 
-    console.log('§1 the spine is the day, where the day is not already');
+    console.log('§1 there is NO day strip above any admin page (asked for: it said what Today already says)');
     ok(await activeView() === 'view-backoffice', 'the suite starts on Today');
-    ok(!(await painted('#day-spine')), 'Today shows NO spine — Today IS the day (header line + strip)');
+    const noStrip = async (m) => ok(!(await page.evaluate(() => !!document.getElementById('day-spine') && document.getElementById('day-spine').getClientRects().length > 0)) && !(await painted('.spine-duty')), m);
+    await noStrip('Today carries no strip');
     await page.evaluate(async () => { await openAccounts(); });
     await page.waitForTimeout(900);
-    ok(await painted('#day-spine'), 'Payments carries the spine');
-    ok(await page.evaluate(() => { const sp = document.getElementById('day-spine'); const av = document.querySelector('.page-view.active'); return !!sp && !!av && sp.parentElement === av && av.firstElementChild === sp; }), 'as the first child of the ACTIVE view, so it wears that view’s own container width');
-    const eq = await page.evaluate(() => {
-        const el = document.querySelector('#day-spine .spine-day');
-        return { shown: el ? el.textContent : '', derived: cmdkDayLine() };
-    });
-    ok(!!eq.shown && eq.shown === eq.derived, `the sentence IS cmdkDayLine — one derivation ("${eq.shown}")`);
-    ok(/1 arrival/.test(eq.shown) && /to collect/.test(eq.shown), `and it carries the day's shape (${eq.shown})`);
+    await noStrip('Payments carries no strip');
     await page.evaluate(() => openAiChat());
     await page.waitForTimeout(700);
-    ok(await activeView() === 'view-aichat', 'the AI chat opens');
-    ok(!(await painted('#day-spine')), 'the AI chat shows NO spine — its welcome card already opens the day (one statement, never two)');
-    await page.evaluate(async () => { await openAccounts(); });
+    await noStrip('the AI chat carries no strip');
+    await page.evaluate(async () => { await openArea(); });
     await page.waitForTimeout(700);
-    ok(await painted('#day-spine'), 'and coming back, the spine is back');
-    ok(await page.evaluate(() => !document.querySelector('#day-spine h1, #day-spine h2, #day-spine h3, #day-spine h4')), 'the spine carries NO heading — it must never sit above a view’s own h1 in the outline');
-
-    console.log('§2 duty chips carry the duties’ own routes');
-    const chips = await page.evaluate(() => ({
-        n: document.querySelectorAll('#day-spine .spine-duty:not(.is-more)').length,
-        more: (document.querySelector('#day-spine .spine-duty.is-more') || {}).textContent || '',
-        first: (document.querySelector('#day-spine .spine-duty') || {}).textContent || '',
-        firstLabel: (chbDuties()[0] || {}).label || '',
-        duties: chbDuties().length,
-    }));
-    ok(chips.duties >= 3, `the fixture mints ${chips.duties} duties (2 enquiries + a balance)`);
-    ok(chips.n === 2, `the spine shows exactly two chips (${chips.n})`);
-    ok(/more/.test(chips.more), `the rest fold into “${chips.more.trim()}”`);
-    ok(chips.first.includes(chips.firstLabel), 'chip one carries duty one’s own label');
-    ok(await page.evaluate(() => !document.querySelector('#day-spine .spine-duty b')), 'a hostile guest name cannot inject markup — escaped at the render boundary');
-    ok(await page.evaluate(() => (document.querySelector('#day-spine .spine-duty') || { textContent: '' }).textContent.includes("O'Brien")), 'and the name itself still reads');
-    await page.click('#day-spine .spine-duty');
-    await page.waitForTimeout(900);
-    ok(await activeView() === 'view-enquiry-hub', 'tapping the enquiry chip lands on that enquiry’s hub — the duty’s own route, not a copy');
-    await page.evaluate(async () => { await openAccounts(); });
-    await page.waitForTimeout(700);
-    await page.click('#day-spine .spine-duty.is-more');
-    await page.waitForTimeout(900);
-    ok(await activeView() === 'view-backoffice', '“N more” lands on Today, where the full strip lives');
+    await noStrip('Manage carries no strip');
+    ok(await page.evaluate(() => chbDuties().length >= 3), 'and the duties it used to show still exist (the strip was a view of them, not their owner)');
+    ok(await page.evaluate(() => (chbFrameSync(), !document.getElementById('day-spine'))), 'a stray strip node left by an older render is removed on sync');
 
     console.log('§3 the rail at 1440 — live state beside every destination');
     await page.setViewportSize({ width: 1440, height: 950 });
@@ -246,47 +217,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.evaluate(async () => { await openAccounts(); });
     await page.waitForTimeout(700);
     ok(!(await painted('#admin-rail')), 'no rail at 390');
-    ok(await painted('#day-spine'), 'the spine is there');
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'and the page never scrolls sideways');
-
-    console.log('§7 the spine condenses on scroll — the prototype’s head, hysteresis and all');
-    await page.setViewportSize({ width: 1440, height: 700 });
-    await page.waitForTimeout(300);
-    await page.evaluate(async () => { await openArea(); });
-    await page.waitForTimeout(800);
-    const tall = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
-    ok(tall > 200, `the Manage index overflows enough to scroll (${tall}px)`);
-    await page.evaluate(() => window.scrollTo(0, 300));
-    await page.waitForTimeout(300);
-    ok(await page.evaluate(() => document.getElementById('day-spine').classList.contains('spine-cond')), 'scrolled past 120, the spine condenses to one line + the count');
-    ok(await page.evaluate(() => { const c = document.querySelector('#day-spine .spine-cnt'); return !!c && c.getClientRects().length > 0; }), 'and the count pill is painted in its place');
-    // No flapping: hold the scroll and sample twice — the hysteresis dead zone
-    // is what stops condense→reclaim→expand oscillation (measured in the
-    // prototype at 1440×620 before the dead zone existed).
-    await page.waitForTimeout(350);
-    const stable = await page.evaluate(() => document.getElementById('day-spine').classList.contains('spine-cond'));
-    ok(stable, 'and it HOLDS — no condense/expand flap');
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(300);
-    ok(await page.evaluate(() => !document.getElementById('day-spine').classList.contains('spine-cond')), 'back under 40, it expands again');
-    await page.setViewportSize({ width: 1440, height: 950 });
-    await page.waitForTimeout(300);
-    await page.evaluate(async () => { await openAccounts(); });
-    await page.waitForTimeout(500);
 
     console.log('§6 the floors the 390px a11y sweep can never see at 1440');
     await page.setViewportSize({ width: 1440, height: 950 });
     await page.waitForTimeout(400);
     const floors = await page.evaluate(() => {
         const bad = [];
-        document.querySelectorAll('#admin-rail .rail-row, #day-spine .spine-duty').forEach((el) => {
+        document.querySelectorAll('#admin-rail .rail-row').forEach((el) => {
             const b = el.getBoundingClientRect();
             if (b.width && b.height && (b.width < 24 || b.height < 24)) bad.push(`${el.className} ${Math.round(b.width)}×${Math.round(b.height)}`);
             if (!(el.textContent || '').trim()) bad.push(`${el.className} unnamed`);
         });
         return bad;
     });
-    ok(floors.length === 0, `every rail row and spine chip is ≥24px and named${floors.length ? ' — ' + floors.join(', ') : ''}`);
+    ok(floors.length === 0, `every rail row is ≥24px and named${floors.length ? ' — ' + floors.join(', ') : ''}`);
 
     console.log('§8 the refinements');
     // ---- The spine does NOT name the record you are in, and that is a
