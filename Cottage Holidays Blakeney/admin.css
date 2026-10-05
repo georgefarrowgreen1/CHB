@@ -8099,14 +8099,14 @@ body.light-mode .tl-cell:active {
 .mo-tool .ic { width: 22px; height: 22px; color: var(--accent-text); }
 .mo-tool:hover { background: color-mix(in srgb, var(--text-light) 6%, transparent); }
 
-/* ---- PAYMENTS LANDING: ONE SIZE. Every word is the capsule's own type (caption step, 600, sans); hierarchy is ink and position. ---- */
-#money-overview .mo-headline, #money-overview .mo-pulse, #money-overview .bhub-fold-lbl, #money-overview .bhub-fold-sub,
-#money-overview .bhub-payline-fig, #money-overview .bhub-sum-val, #money-overview .bhub-grpcap, #money-overview .mo-calm,
-#money-overview .bhub-kv-label, #money-overview .bhub-kv-sub, #money-overview .bhub-kv-val, #accounts-index .mo-tool, #accounts-index .bhub-grpcap {
-    font-family: var(--font-sans); font-size: var(--fs-caption); font-weight: 600; line-height: 1.4; letter-spacing: 0; font-variant-numeric: tabular-nums;
-}
-#money-overview .bhub-grpcap, #accounts-index .bhub-grpcap { letter-spacing: 0.08em; }
-#money-overview .bhub-fold-sub, #money-overview .bhub-kv-sub { color: var(--text-muted); }
+/* ---- TYPE BY ROLE (owner-asked, approved demo). One family everywhere; size follows the job a line does.
+   Headline sentence 17 · section caption 12 · row sub-line 13 · row figure 17 · buttons 15. Row titles (15), capsules (12),
+   notes (13), page titles (28) and chat (15) were already right. Supersedes the Payments "one size" block. ---- */
+body.owner-mode .mo-headline { font-size: var(--fs-headline); line-height: 1.35; font-weight: 600; }
+body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title, body.owner-mode .status-group-title { font-size: var(--fs-caption); }
+body.owner-mode .bhub-fold-sub, body.owner-mode .settings-row-sub, body.owner-mode .ny-sub, body.owner-mode .bhub-kv-sub { font-size: var(--fs-sub); }
+body.owner-mode .bhub-payline-fig, body.owner-mode .bhub-sum-val { font-size: var(--fs-headline); }
+body.owner-mode .btn-sm, body.owner-mode .bhub-actlink, body.owner-mode .mo-tool { font-size: var(--fs-body); }
 
 /* ---- ONE FONT. Every admin screen is Montserrat: the serif token is the sans in owner-mode (sizes and hierarchy unchanged).
    The menu rows (Manage index, rail) take the next step up. ---- */
