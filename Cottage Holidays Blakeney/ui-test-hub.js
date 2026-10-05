@@ -183,7 +183,12 @@ let approveWill409 = false;
   ok(a.headTitle === 'Walk-in', `the condensed bar names the guest, first name (${a.headTitle})`);
   ok(a.noStrips, 'the journey pill strips are gone — the stage is a caption');
   ok(/^Deposit$/.test(a.cap), `unpaid → the card's cap names the stage, with no "2 of 6" counter (${a.cap})`);
-  ok(/^4–7 Nov 2026/.test(a.sub) && !/nights|adults|in 15:00/.test(a.sub) && !/→/.test(a.sub),
+  // The stay is d(30)→d(33) from TODAY, so the expected range is derived, never a literal date
+  // (a hardcoded "4–7 Nov" passed only on 5 October).
+  const sd0 = new Date(d(30) + 'T00:00:00Z'), ed0 = new Date(d(33) + 'T00:00:00Z');
+  const mon = (x) => x.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
+  const wantRange = sd0.getUTCMonth() === ed0.getUTCMonth() ? `${sd0.getUTCDate()}–${ed0.getUTCDate()} ${mon(sd0)} ${sd0.getUTCFullYear()}` : `${sd0.getUTCDate()} ${mon(sd0)} – ${ed0.getUTCDate()} ${mon(ed0)}`;
+  ok(a.sub.startsWith(wantRange) && !/nights|adults|in 15:00/.test(a.sub) && !/→/.test(a.sub),
     `ONE when-line: the compact range and the state capsule only — nights, party and times live in Guest (${a.sub})`);
   ok(/^(Arrives|Staying|Past)/.test(a.state), `…and the state is ONE capsule ("${a.state}")`);
   ok(/In 15:00 · out 10:00/.test(a.guestSub), `the clock times live in the Guest row ("${a.guestSub}")`);
