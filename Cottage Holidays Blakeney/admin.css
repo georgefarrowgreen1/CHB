@@ -7998,3 +7998,6 @@ body.light-mode .tl-cell:active {
 /* Flat accent buttons: no specular rim, lift or sweep. */
 .btn-glass.btn-accent, .btn-glass.btn-accent:hover { box-shadow: none; transform: none; }
 .btn-glass.btn-accent::after { display: none; }
+
+/* Toolbar items share one centre line: the sort pill's own 12px bottom margin lifted it above its neighbours. */
+.cal-header-bar > .inbox-sort.seg { margin-bottom: 0; }
