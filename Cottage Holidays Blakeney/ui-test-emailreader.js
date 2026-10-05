@@ -70,7 +70,7 @@ const BODIES = {
   ok(r1.chips.join('|') === 'Quoted message|Whole email', `the folds are named plainly (${r1.chips.join(' | ')})`);
   ok(r1.quotedHidden === true, 'and they start shut');
   await page.click('.mbx-fchip[data-fold="q"]');
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() => { const f = document.getElementById('mbx-fold-q'); return f.classList.contains('open') && f.getAnimations({ subtree: true }).filter((a) => a.playState !== 'finished').length === 0 && f.getBoundingClientRect().height > 20; }, { timeout: 8000 }).catch(() => {});
   const q = await page.evaluate(() => ({ open: document.getElementById('mbx-fold-q').classList.contains('open'), exp: document.querySelector('.mbx-fchip[data-fold="q"]').getAttribute('aria-expanded'), h: Math.round(document.getElementById('mbx-fold-q').getBoundingClientRect().height), txt: document.getElementById('mbx-fold-q').textContent }));
   ok(q.open && q.exp === 'true' && q.h > 20 && /check-in is from 3pm/.test(q.txt), `the quoted message opens (height ${q.h}px) and says what was quoted`);
   await page.click('.mbx-fchip[data-fold="o"]');
@@ -108,6 +108,8 @@ const BODIES = {
   await page.click('.mbx-routine .mbx-routrow:first-of-type [data-act="mbxMarkImp"]');
   await page.waitForTimeout(900);
   ok(await page.evaluate(() => document.querySelectorAll('.mbx-worth .mbx-earlyitem').length === 2), '"Important" brings one back — the owner can overrule either call');
+
+  ok(await page.evaluate(() => document.querySelectorAll('.mbx-earlier .mbx-chain-row').length === 2), 'the plain chain stays beneath the sorting — every earlier email is still one tap away');
 
   console.log('§5 Reply quotes only their new words, cursor on top');
   await page.click('.mbx-reply');

@@ -31094,7 +31094,9 @@ async function mbxEarlierSmart(uid, m) {
                 .join('')}
         </details>`
         : '';
-    if (stillHere()) host.innerHTML = impHtml + rouHtml;
+    // The plain chain stays beneath (every earlier email, newest first, each one tap to read) — the sorting
+    // sits ABOVE it and never replaces it, so no email is reachable only through the heuristic.
+    if (stillHere()) host.innerHTML = impHtml + rouHtml + mbxEarlierHtml(uid);
 }
 function mailboxOpenSent(id) {
     const m = __mbxSent.find((x) => x.id === id);
