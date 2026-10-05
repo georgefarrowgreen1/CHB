@@ -1938,6 +1938,10 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
 // own threshold), the sync static path declining an encoder index it can't
 // query, rebuild-on-upgrade, and full graceful fallback with no model at all.
 // This section is async (index builds await), so the summary lives at its end.
+let __searchTestDone = false;
+// An async main whose promise never settles lets node exit 0 with the rest of the suite UNRUN — it did, for
+// every section after §40, which is how this guard came to exist.
+process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.error('\nsearch-test ended before its summary — a section awaited something that never settled'); process.exitCode = 1; } });
 (async () => {
     // §35 async tail: the price-command Apply saved the SPLICED season list
     // through the validated endpoint and updated local state. Yield first so
@@ -2780,6 +2784,9 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('(setup) the dismissal hides it while its save is pending', !keysOf().includes('register:91'));
         setPre({});
         check('a payload landing while our save is in flight does NOT resurrect the row', !keysOf().includes('register:91'));
+        // saveContent runs on a microtask (the queue's .then), so `release` is only assigned after a tick —
+        // calling it straight away released a no-op and settle() then hung for ever.
+        await Promise.resolve(); await Promise.resolve();
         release();
         await settle();
         setPre({});
@@ -3325,6 +3332,19 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const lv = (ctx.cmdkIntent('who is leaving this week') || []).map((r) => String(r.label));
         check('…nor a departure', !lv.join(' ').match(/owner|maintenance/i), lv.join(' | ').slice(0, 120));
         vm.runInContext('dbBlocks.jollyboat = [];', ctx);
+        // (a2) A BLOCK IS NOT A BOOKED NIGHT in the occupancy figures: the owner's block and a host's
+        // "Not available" hold on an imported calendar must not inflate "% booked this month".
+        if (typeof ctx.cottageMonthOccupancy === 'function') {
+            const nowM = ctx.chbNow(); const mk = (day) => `${nowM.getFullYear()}-${String(nowM.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            vm.runInContext(`dbBlocks.jollyboat = [
+                { id: 9101, checkIn: '${mk(10)}', checkOut: '${mk(13)}', source: 'owner', kind: 'blocked' },
+                { id: 9102, checkIn: '${mk(14)}', checkOut: '${mk(17)}', source: 'airbnb', kind: 'blocked' },
+                { id: 9103, checkIn: '${mk(20)}', checkOut: '${mk(23)}', source: 'airbnb', kind: 'booking' },
+            ];`, ctx);
+            const mo = ctx.cottageMonthOccupancy();
+            check('occupancy counts the imported STAY (3 nights) and neither the owner block nor the host hold', mo.jollyboat && mo.jollyboat.nights === 3, JSON.stringify(mo.jollyboat));
+            vm.runInContext('dbBlocks.jollyboat = [];', ctx);
+        } else fail('cottageMonthOccupancy missing from the bundle');
         // (b) AN EXPLICIT BARE YEAR IS A PERIOD, honoured and labelled.
         vm.runInContext(`dbBookings.jollyboat = [
             { id: 'b9101', dbId: 9101, name: 'Past Year Guest', checkIn: '2024-06-10', checkOut: '2024-06-13', adults: 2, children: 0, agreedPrice: { total: 300, perNight: 100 }, deposit_paid: 300 },
@@ -3370,7 +3390,8 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
 
     // ---- Summary ----
     console.log('\n== Summary ==');
-    if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
+    if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); __searchTestDone = true; process.exit(1); }
     console.log('  ALL CHECKS PASSED ✅\n');
+    __searchTestDone = true;
     process.exit(0);
 })();
