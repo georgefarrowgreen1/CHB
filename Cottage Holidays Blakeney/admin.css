@@ -1089,7 +1089,11 @@ body.light-mode .ny-act {
 /* Calendar ⋯ menu: the sync note reads at every width (the phone rule hides it beside buttons), and
    the refresh item shows it is working. */
 .cal-actions .bhub-menu #cal-updated-text { display: inline; }
-#cal-refresh-btn.syncing { opacity: 0.6; }
+#cal-refresh-btn { display: flex; align-items: center; gap: 12px; }
+#cal-refresh-btn .ic { width: 18px; height: 18px; flex: none; transform-box: fill-box; transform-origin: 50% 50%; }
+#cal-refresh-btn.syncing { opacity: 0.6; pointer-events: none; }
+#cal-refresh-btn.syncing .ic { animation: calSyncSpin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { #cal-refresh-btn.syncing .ic { animation-duration: 2.4s; } }
 /* The day's ✓ capsule BESIDE the Today title (todayOpsLine — only when the
    Needs-you strip below is empty; with duties present the strip carries the
    state). Wraps rather than squeezing the serif title at 390px. */
