@@ -100,8 +100,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     menu: [...document.querySelectorAll('.cal-actions .bhub-menu [data-act]')].map((b) => b.getAttribute('data-act')),
     label: (document.querySelector('.cal-actions .cal-add-btn') || {}).getAttribute?.('aria-label') || '',
   }));
-  ok(addUi.standalone === 0 && !addUi.dots && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
-    `Add booking, Block dates, zoom and refresh share ONE + menu and there is no ⋯ (${addUi.menu.join(', ')})`);
+  ok(addUi.standalone === 0 && !addUi.dots && addUi.menu.includes('openAddBooking') && addUi.menu.includes('openBlockDates') && !addUi.menu.includes('tlToggleZoom') && addUi.menu.includes('autoSyncIcalBlocks'),
+    `Add booking, Block dates and refresh share ONE + menu and there is no ⋯ (${addUi.menu.join(', ')})`);
   ok(/Add/.test(addUi.label), `the + is named for a screen reader ("${addUi.label}")`);
   // THE MENU STAYS ON THE SCREEN: the + sits at the RIGHT edge now and its menu hangs off the
   // wrapper's right edge; measured at phone width.

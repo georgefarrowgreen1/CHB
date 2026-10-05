@@ -86,7 +86,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(row.oneRow, 'title, ‹ Today › and + share one row at 390px');
   ok(row.w >= 44 && row.h >= 44 && row.right <= row.vw, `the + is a 44px target inside the screen (${row.w}x${row.h}, right ${row.right} of ${row.vw})`);
   ok(!row.dots, 'there is no ⋯ beside it');
-  ok(['openAddBooking', 'openBlockDates', 'tlToggleZoom', 'autoSyncIcalBlocks'].every((a) => row.items.includes(a)), `the + menu holds add, block, zoom and refresh (${row.items.join(', ')})`);
+  ok(['openAddBooking', 'openBlockDates', 'autoSyncIcalBlocks'].every((a) => row.items.includes(a)) && !row.items.includes('tlToggleZoom'), `the + menu holds add, block and refresh, and no compact-calendar toggle (${row.items.join(', ')})`);
 
   console.log('§4 the calendar says less');
   await page.evaluate((o) => {
