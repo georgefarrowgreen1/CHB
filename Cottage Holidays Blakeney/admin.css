@@ -7951,3 +7951,13 @@ body.light-mode .tl-cell:active {
 .bhub-namerow .bhub-name { flex: 1 1 auto; min-width: 0; margin: 0; }
 .bhub-namerow .bhub-contact { flex: none; margin: 0; gap: 8px; }
 .bhub-namerow .bhub-cbtn { flex: none; width: 44px; min-height: 44px; padding: 0; border-radius: 50%; }
+
+/* BUTTON LAYOUT FIXES (reported from a phone): the secondary answer wrapped to two lines with its chevron
+   dropped underneath, and the call/email icons floated mid-row because the ⋯ column narrowed the name row. */
+@media (max-width: 480px) { .bhub-next-acts { flex-direction: column; } .bhub-next-acts .bhub-next-btn, .bhub-next-acts .bhub-next-alt { flex: none; width: 100%; } }
+.bhub-next-acts .bhub-next-alt::after, .bhub-next-acts .bhub-next-alt .bhub-chev { display: none; }
+.bhub-next-acts .bhub-next-alt { white-space: nowrap; }
+.bhub-head-top { position: relative; }
+.bhub-head-top > .bhub-actions { position: absolute; top: 0; right: 0; z-index: 2; }
+.bhub-namerow { margin-top: 8px; }
+.bhub-next-acts .bhub-next-alt { justify-content: center; justify-items: center; text-align: center; }
