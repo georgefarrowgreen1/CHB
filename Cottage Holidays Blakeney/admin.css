@@ -5875,7 +5875,7 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
     flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
     padding: 12px var(--mpad) 14px;
     border-top: 1px solid var(--glass-border);
-    border-radius: 0 0 var(--r-panel) var(--r-panel);
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
     background: var(--cmdk-surface);
 }
 /* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */

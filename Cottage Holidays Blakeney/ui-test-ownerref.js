@@ -77,7 +77,7 @@ const LOST = (sel) => {
 const READ_SELS = [
     '.bhub-fold-sub', '.bhub-kv-label', '.bhub-kv-sub',
     '.mo-pulse', '.bk-row-dates', '.bk-row-name', '.feed-who',
-    '.cmdk-turn-a', '.ks-kv .ks-v', '.acr-cap',
+    '.cmdk-turn-a', '.ks-kv .ks-v', '.acr-cap', '.mf-name', '.mf-sub',
 ].join(', ');
 
 (async () => {
@@ -219,6 +219,7 @@ const READ_SELS = [
             n: figs.length,
             fams: figs.map((f) => ({ t: (f.textContent || '').trim(), ff: getComputedStyle(f).fontFamily })),
             bodyFf: body,
+            tokenFf: (() => { const pr = document.createElement('span'); pr.style.fontFamily = 'var(--font-serif)'; document.body.appendChild(pr); const v = getComputedStyle(pr).fontFamily; pr.remove(); return v; })(),
             painted: figs.filter((f) => f.getClientRects().length).length,
         };
     });
@@ -229,9 +230,11 @@ const READ_SELS = [
     ok(serif.n >= 4, `(vacuity guard) every money figure on the screen is being measured (${serif.n})`);
     ok(serif.painted === serif.n, `…and every one of them is painted (${serif.painted})`);
     const sans = /Montserrat/i;
-    const bad = serif.fams.filter((f) => !/Playfair/i.test(f.ff));
-    ok(bad.length === 0, `every sweep figure computes the house serif${bad.length ? ' — ' + bad.map((f) => `"${f.t}" is ${f.ff}`).join('; ') : ''}`);
-    ok(!serif.fams.some((f) => sans.test(f.ff)), 'and none of them has fallen back to the body sans');
+    // The back office sets --font-serif to the sans (ONE FONT), so "the house serif"
+    // is whatever the TOKEN resolves to: a figure must come from the token, not a hardcoded face.
+    const bad = serif.fams.filter((f) => f.ff !== serif.tokenFf);
+    ok(bad.length === 0, `every sweep figure computes the house serif token${bad.length ? ' — ' + bad.map((f) => `"${f.t}" is ${f.ff}`).join('; ') : ''}`);
+    ok(serif.fams.every((f) => f.ff === serif.tokenFf), 'and none of them has drifted from the token');
     ok(sans.test(serif.bodyFf), '(fixture) the body sans IS Montserrat, so the fallback would be visible to this check');
 
     // =====================================================================
