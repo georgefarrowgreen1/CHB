@@ -1001,6 +1001,8 @@ gave-up 30d).
 
 ## The Money area is FIVE ANSWERS, not an index
 
+**ONE FONT (owner-asked, supersedes the "serif is money" rule in the back office):** `body.owner-mode { --font-serif: var(--font-sans) }` at the foot of admin.css, so every admin screen is Montserrat with sizes and hierarchy unchanged; the Manage index and rail rows are one step bigger (`--fs-headline`). The guest site keeps its serif.
+
 **Update (one size):** every word on the landing — headline, pulse, row titles/subs, figures, calm line, Tools — is the status capsule's own type (`--fs-caption`, 600, sans, tabular); hierarchy is ink and position, there are no serif figures there (owner-asked, demo "One size"). Scoped under `#money-overview`/`#accounts-index` at the foot of admin.css.
 
 **Update (calm is one line):** the landing opens with a SENTENCE (`moHeadline`, `#mo-headline`) built from the

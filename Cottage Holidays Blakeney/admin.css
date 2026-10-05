@@ -8107,3 +8107,9 @@ body.light-mode .tl-cell:active {
 }
 #money-overview .bhub-grpcap, #accounts-index .bhub-grpcap { letter-spacing: 0.08em; }
 #money-overview .bhub-fold-sub, #money-overview .bhub-kv-sub { color: var(--text-muted); }
+
+/* ---- ONE FONT. Every admin screen is Montserrat: the serif token is the sans in owner-mode (sizes and hierarchy unchanged).
+   The menu rows (Manage index, rail) take the next step up. ---- */
+body.owner-mode { --font-serif: var(--font-sans); }
+body.owner-mode .settings-row-label { font-size: var(--fs-headline); font-weight: 600; }
+body.owner-mode #admin-rail .rail-row, body.owner-mode #admin-rail .rail-lbl { font-size: var(--fs-headline); }
