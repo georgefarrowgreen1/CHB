@@ -1001,6 +1001,14 @@ gave-up 30d).
 
 ## The Money area is FIVE ANSWERS, not an index
 
+**Update (calm is one line):** the landing opens with a SENTENCE (`moHeadline`, `#mo-headline`) built from the
+same figures the groups show — what is yours to move, who owes you, what is held, how many things need a look —
+and leaves out any part still loading rather than guessing. "To collect" renders only when money is owed and "To
+give back" only when a deposit is held (filled by `moAsyncFill` into `#mo-back-slot`); otherwise ONE `#mo-calm`
+line says so. The "More" cards are three `.mo-tool` buttons. The Square-hasn't-said row says when a charge is
+older than Square's payout window and so cannot be matched. The destination pages (Move out, Income & tax,
+Recent, Expenses, Pricing coach) are NOT yet reworked.
+
 `renderMoneyOverview` (admin.js) renders the landing in the hub's fold anatomy
 (`bhubFoldGrp` — see the booking-hub notes): a pulse line, the EXCEPTIONS, then one
 verdict group per money question — **To collect / To move out / To give back / The
