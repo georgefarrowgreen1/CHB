@@ -16619,6 +16619,7 @@ async function returnDeposit(bookingId) {
     const sure = rail.card
         ? await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`, `Return ${gbp(amount)}`, {
               title: 'Paid by card',
+              ledger: true,
               rows: [
                   { label: 'Refunded to', sub: rail.method || 'The card they paid with' },
                   { label: 'Arrives', sub: '3–5 working days' },
@@ -16630,11 +16631,12 @@ async function returnDeposit(bookingId) {
               'I’ve sent it — record it',
               {
                   title: `Return ${gbp(amount)} by ${rail.label}`,
+                  ledger: true,
                   cancelLabel: 'Not yet',
                   rows: [
-                      { label: 'Originally paid by', sub: rail.label },
+                      { label: 'Originally paid by', sub: rail.label.charAt(0).toUpperCase() + rail.label.slice(1) },
                       { label: `Send ${gbp(amount)} to`, sub: booking.name || '' },
-                      { label: 'Guest is emailed', sub: 'Yes — it says it is on its way' },
+                      { label: 'Guest is emailed', sub: 'Yes' },
                   ],
               },
           );

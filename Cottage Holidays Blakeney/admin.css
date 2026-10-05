@@ -8012,3 +8012,16 @@ body.light-mode .tl-cell:active {
 .glass-dialog-rows .ods-qrow:nth-child(3) { animation-delay: .16s; }
 @keyframes appear-rows { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .glass-dialog-rows .ods-qrow { animation: none; } }
+
+/* LEDGER DIALOG (deposit return): an opaque sheet, facts as label-left / value-right rows,
+   and two full-width stacked buttons — the primary on top, the way back beneath it. */
+#glass-dialog.gd-ledger .glass-dialog-box { background: var(--sheet-surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+#glass-dialog.gd-ledger .glass-dialog-title { font-family: var(--font-serif); font-weight: 400; font-size: var(--fs-title); }
+#glass-dialog.gd-ledger .glass-dialog-msg { font-size: var(--fs-body); line-height: 1.5; color: var(--text-muted); text-wrap: pretty; }
+#glass-dialog.gd-ledger .glass-dialog-rows { margin-top: 16px; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: var(--r-lg); max-height: none; }
+#glass-dialog.gd-ledger .glass-dialog-rows .ods-qrow { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--glass-border); }
+#glass-dialog.gd-ledger .glass-dialog-rows .ods-qrow:last-child { border-bottom: 0; }
+#glass-dialog.gd-ledger .glass-dialog-rows .ods-qlabel { flex: 0 0 auto; font-weight: 400; font-size: var(--fs-sub); color: var(--text-muted); }
+#glass-dialog.gd-ledger .glass-dialog-rows .ods-qsub { flex: 1 1 auto; text-align: right; font-size: var(--fs-body); font-weight: 500; color: var(--text-light); }
+#glass-dialog.gd-ledger .glass-dialog-btns { flex-direction: column-reverse; gap: 8px; margin-top: 20px; }
+#glass-dialog.gd-ledger .glass-dialog-btns > * { width: 100%; min-height: 48px; justify-content: center; text-align: center; }
