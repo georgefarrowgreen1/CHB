@@ -1217,6 +1217,26 @@ function chbNetDown() {
         if (navigator.onLine === false) setTimeout(chbGoOffline, 0);
     } catch (e) {}
 }
+// A DROPPED REQUEST IS NOT AN OUTAGE. One failed fetch used to flip the whole back office offline at once
+// (pill, trimmed header, day sheet on a hinted device), so a single stalled request on a weak 4G bar painted
+// "offline" over a link that was working. The verdict now needs the SERVER to fail to answer a tiny probe too: if
+// version.php answers, the failure was a blip and nothing changes (the request itself still reports its error, and
+// idempotent reads retry once before even getting that far). navigator.onLine === false is a verdict on its own.
+let __chbNetConfirming = false;
+function chbNetFail() {
+    if (__chbNetOff) return;
+    try {
+        if (navigator.onLine === false) return chbNetDown();
+    } catch (e) {}
+    if (__chbNetConfirming) return;
+    __chbNetConfirming = true;
+    fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store', credentials: 'include' }, 3500)
+        .then((r) => !(r && r.ok), () => true)
+        .then((down) => {
+            __chbNetConfirming = false;
+            if (down) chbNetDown();
+        });
+}
 function chbNetUp() {
     chbNetProbeStop();
     if (!__chbNetOff) return;
@@ -1248,6 +1268,8 @@ function chbNetUp() {
 function chbNetProbeArm() {
     if (__chbNetProbeT) return;
     __chbNetProbeT = setInterval(chbNetProbe, CHB_NET_PROBE_MS);
+    // The first look comes sooner than the 15s cadence: most outages on a phone are a lift or a tunnel.
+    setTimeout(chbNetProbe, 4000);
 }
 function chbNetProbeStop() {
     if (__chbNetProbeT) {
@@ -1453,7 +1475,7 @@ async function apiPost(endpoint, payload) {
             body: JSON.stringify(payload || {}),
         }, __chbNetOff ? 5000 : undefined);
     } catch (netErr) {
-        chbNetDown(); // evidence: the transport failed (a status is a different case)
+        chbNetFail(); // evidence: the transport failed (a status is a different case) — confirmed by a probe before it counts
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
@@ -1492,9 +1514,17 @@ async function apiPost(endpoint, payload) {
 async function apiGet(endpoint) {
     let res;
     try {
-        res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, __chbNetOff ? 5000 : undefined);
+        try {
+            res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, __chbNetOff ? 5000 : undefined);
+        } catch (first) {
+            // A read is idempotent, so a FAST transport failure (not a 15s timeout) is retried once after a beat —
+            // most weak-signal drops are gone by then and the owner never sees them.
+            if (__chbNetOff || (first && first.name === 'AbortError')) throw first;
+            await new Promise((r) => setTimeout(r, 600));
+            res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, undefined);
+        }
     } catch (netErr) {
-        chbNetDown();
+        chbNetFail();
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
@@ -19425,7 +19455,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sizes1';
+    const BUILD = 'netstable1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
