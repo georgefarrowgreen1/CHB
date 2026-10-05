@@ -8103,7 +8103,7 @@ body.light-mode .tl-cell:active {
    Headline sentence 17 · section caption 12 · row sub-line 13 · row figure 17 · buttons 15. Row titles (15), capsules (12),
    notes (13), page titles (28) and chat (15) were already right. Supersedes the Payments "one size" block. ---- */
 body.owner-mode .mo-headline { font-size: var(--fs-headline); line-height: 1.35; font-weight: 600; }
-body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title { font-size: var(--fs-caption); }
+body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title, body.owner-mode .status-group-title { font-size: var(--fs-caption); }
 body.owner-mode .bhub-fold-sub, body.owner-mode .settings-row-sub, body.owner-mode .ny-sub, body.owner-mode .bhub-kv-sub { font-size: var(--fs-sub); }
 body.owner-mode .bhub-payline-fig, body.owner-mode .bhub-sum-val { font-size: var(--fs-headline); }
 body.owner-mode .btn-sm, body.owner-mode .bhub-actlink, body.owner-mode .mo-tool { font-size: var(--fs-body); }
