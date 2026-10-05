@@ -1268,8 +1268,6 @@ function chbNetUp() {
 function chbNetProbeArm() {
     if (__chbNetProbeT) return;
     __chbNetProbeT = setInterval(chbNetProbe, CHB_NET_PROBE_MS);
-    // The first look comes sooner than the 15s cadence: most outages on a phone are a lift or a tunnel.
-    setTimeout(chbNetProbe, 4000);
 }
 function chbNetProbeStop() {
     if (__chbNetProbeT) {
