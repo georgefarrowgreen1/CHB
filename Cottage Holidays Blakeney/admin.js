@@ -30415,6 +30415,98 @@ function mbxThreads(list) {
     out.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     return out;
 }
+// ---- READING AN EMAIL: THEIR NEW WORDS FIRST --------------------------------------------------------
+// A reply carries the whole history under it (the quoted copy, a signature, a client footer), so the
+// guest's one line sat above 40 lines of our own earlier email. mbxSplit separates what they WROTE
+// from the quote, the signature and the footer; nothing is thrown away (each part is one tap open),
+// and anything that does not look like a normal reply is shown whole. PURE — smoke-test drives it.
+const MBX_SIG_RE = /^(sent from my (iphone|ipad|android|galaxy|phone|mobile)|sent from (outlook|mail|yahoo mail|gmail|samsung)|get outlook for (ios|android)|sent via .*|--\s*$)/i;
+function mbxSplit(raw) {
+    const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
+    const L = text.split('\n');
+    // An email whose first line is already quoted text has no "new words" to isolate: show it whole.
+    if (/^>/.test((L.find((x) => x.trim()) || '').trim())) return { body: text.trim(), quoted: '', sig: '', split: false };
+    let cut = -1;
+    for (let i = 1; i < L.length; i++) {
+        const l = L[i].trim();
+        // never cut at the very top: an email that BEGINS with a header is not a reply with a quote
+        if (!L.slice(0, i).some((x) => x.trim())) continue;
+        const hdr =
+            /^on .{6,}wrote:?$/i.test(l) || // "On 18 Aug 2026, at 11:07, X wrote:"
+            (/^from:\s/i.test(l) && /(sent|date):/i.test(L.slice(i + 1, i + 4).join(' '))) || // an Outlook header block
+            (/^on .{6,}/i.test(l) && /wrote:\s*$/i.test((L[i + 1] || '').trim())) || // the same, wrapped onto two lines
+            /^-{2,}\s*(original message|forwarded message)\s*-{2,}$/i.test(l);
+        const quote = /^>/.test(l) && L.slice(i + 1, i + 4).some((x) => /^>/.test(x.trim()));
+        if (hdr || quote) {
+            cut = i;
+            break;
+        }
+    }
+    let head = cut < 0 ? L : L.slice(0, cut);
+    let sig = '';
+    for (let i = head.length - 1; i >= 0; i--) {
+        if (MBX_SIG_RE.test(head[i].trim())) {
+            sig = head.slice(i).join('\n');
+            head = head.slice(0, i);
+            break;
+        }
+        if (head[i].trim() && i < head.length - 6) break; // a signature sits at the foot, not mid-message
+    }
+    const body = head.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    // SAFETY: never leave the reader empty — if nothing is left, the whole email IS the message.
+    if (!body) return { body: text.trim(), quoted: '', sig: '', split: false };
+    const quoted = cut < 0 ? '' : L.slice(cut).map((x) => x.replace(/^(>\s?)+/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { body, quoted, sig: sig.trim(), split: !!(quoted || sig) };
+}
+// WHICH EARLIER MESSAGES ARE WORTH SURFACING: transparent signals, each with a weight — money, times,
+// dates, party size / dogs / allergies, access, change requests, questions, attachments. A short
+// acknowledgement scores zero. RULES, NOT A MODEL: every call can be explained by its tags and
+// overruled by the owner (mbxImpGet / mbxMarkImp).
+const MBX_SIGNALS = [
+    { k: 'amount', w: 3, re: /£\s?\d[\d,.]*/i },
+    { k: 'time', w: 3, re: /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b(noon|midday)\b/i },
+    { k: 'date', w: 2, re: /\b\d{1,2}(st|nd|rd|th)?\s(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*|\b\d{1,2}\/\d{1,2}\b/i },
+    { k: 'party', w: 2, re: /\b\d+\s?(adults?|children|kids?|guests?|dogs?|nights?)\b|\b(baby|toddler|spaniel|labrador|wheelchair|allerg\w+)\b/i },
+    { k: 'access', w: 2, re: /\b(parking|campervan|door code|check-?in|arriv\w+|late|earlier)\b/i },
+    { k: 'change', w: 3, re: /\b(cancel\w*|change|move|extend|refund|instead)\b/i },
+    { k: 'question', w: 2, re: /\?/ },
+    { k: 'file', w: 3, re: /\b(attached|attachment|photo)\b/i },
+];
+const MBX_ROUTINE_RE = /^(thanks?|thank you|many thanks|ok(ay)?|great|perfect|sounds good|lovely|cheers|will do|got it|all sorted)\b/i;
+const MBX_IMPORTANT_AT = 3;
+function mbxScore(text) {
+    const t = String(text || '');
+    const hits = MBX_SIGNALS.filter((x) => x.re.test(t));
+    let n = hits.reduce((a, x) => a + x.w, 0);
+    if (t.trim().split(/\s+/).length < 14 && MBX_ROUTINE_RE.test(t.trim()) && !hits.some((x) => ['amount', 'time', 'change', 'file'].includes(x.k))) n = 0;
+    return { n, hits: hits.map((x) => x.k), important: n >= MBX_IMPORTANT_AT };
+}
+// The owner's overrides, remembered per message on THIS device (a convenience, never a record).
+function mbxImpMap() {
+    try {
+        const o = JSON.parse(localStorage.getItem('chb-mbx-imp') || '{}');
+        return o && typeof o === 'object' ? o : {};
+    } catch (e) {
+        return {};
+    }
+}
+function mbxMarkImp(key, val) {
+    const o = mbxImpMap();
+    o[String(key)] = val === '1' || val === true;
+    const ks = Object.keys(o);
+    if (ks.length > 300) delete o[ks[0]];
+    try { localStorage.setItem('chb-mbx-imp', JSON.stringify(o)); } catch (e) {}
+    const host = document.getElementById('mbx-earlier-host');
+    if (host && __mbxLastOpen) mbxEarlierSmart(__mbxLastOpen.uid, __mbxLastOpen);
+}
+function mbxToggleFold(which) {
+    const f = document.getElementById('mbx-fold-' + which);
+    const c = document.querySelector(`.mbx-fchip[data-fold="${which}"]`);
+    if (!f) return;
+    const open = !f.classList.contains('open');
+    f.classList.toggle('open', open);
+    if (c) { c.classList.toggle('open', open); c.setAttribute('aria-expanded', String(open)); }
+}
 function mbxEsc(v) {
     return escapeHtml(String(v == null ? '' : v));
 }
@@ -30871,6 +30963,8 @@ async function mailboxOpen(uid) {
         // of type for two facts. One line, one muted line under it.
         const when = mbxWhenFull(m.date) || { date: '', time: '' };
         const who = mbxSender(m.fromRaw, m.from);
+        const sp = mbxSplit(m.body);
+        const replyCtx = mbxReplyingTo(m);
         pane.innerHTML = `
         <section class="bhub-card glass-panel mbx-inline-card">
             <div class="mbx-head">
@@ -30879,9 +30973,11 @@ async function mailboxOpen(uid) {
                 <span class="mbx-head-when">${mbxEsc(when.date)}${when.time ? ' · ' + mbxEsc(when.time) : ''}</span>
             </div>
             ${mbxContextHtml(m.from, who.name)}
-            <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
+            <pre class="mbx-text">${mbxEsc(sp.body || '(no text content)')}</pre>
+            ${replyCtx ? `<p class="mbx-replying"><b>Replying to:</b> “${mbxEsc(replyCtx)}”</p>` : ''}
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
-            ${mbxEarlierHtml(uid)}
+            ${sp.split ? mbxFoldsHtml(sp, m.body) : ''}
+            <div id="mbx-earlier-host">${mbxEarlierHtml(uid)}</div>
             <div class="mbx-acts">
                 <button class="btn-sm mbx-reply" ${chbAttrs('mailboxReply', uid)}>Reply</button>
                 <div class="bhub-act-links mbx-acts-quiet">
@@ -30892,10 +30988,115 @@ async function mailboxOpen(uid) {
             </div>
             <div id="mbx-compose"></div>
         </section>`;
+        mbxEarlierSmart(uid, m);
     } catch (e) {
         if (!stillOpen()) return; // a failure for an email the owner left must not shout over the one they are reading
         pane.innerHTML = `<div class="accounts-empty">${mbxEsc(e.message)}</div>`;
     }
+}
+// The three things folded under their words, each one tap: the quoted message, the signature, and the
+// whole email exactly as it arrived (so nothing is ever lost to the tidy view).
+function mbxFoldsHtml(sp, rawBody) {
+    const chev = (w) => `<button type="button" class="mbx-fchip" data-fold="${w}" aria-expanded="false" aria-controls="mbx-fold-${w}" ${chbAttrs('mbxToggleFold', w)}>`;
+    const fold = (w, txt) => `<div class="mbx-fold" id="mbx-fold-${w}"><div><pre class="mbx-foldtxt">${mbxEsc(txt)}</pre></div></div>`;
+    return `<div class="mbx-fchips">
+            ${sp.quoted ? `${chev('q')}Quoted message${BHUB_CHEV}</button>` : ''}
+            ${sp.sig ? `${chev('s')}Signature${BHUB_CHEV}</button>` : ''}
+            ${chev('o')}Whole email${BHUB_CHEV}</button>
+        </div>${sp.quoted ? fold('q', sp.quoted) : ''}${sp.sig ? fold('s', sp.sig) : ''}${fold('o', rawBody || '')}`;
+}
+// WHAT THEY ARE ANSWERING: the question or fact in our latest email to this address, one line.
+function mbxReplyingTo(m) {
+    try {
+        const addr = String(m.from || '').toLowerCase();
+        const mine = (__mbxSent || []).filter((x) => String(x.to_email || '').toLowerCase() === addr && (!x.sent_at || String(x.sent_at) <= String(m.date || '9999')));
+        const last = mine.sort((a, b) => String(b.sent_at || '').localeCompare(String(a.sent_at || '')))[0];
+        if (!last) return '';
+        const sentences = mbxSplit(last.body).body.split(/(?<=[.!?])\s+/);
+        const pick = sentences.find((x) => /\?/.test(x)) || sentences.find((x) => /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|£/.test(x));
+        return pick ? pick.trim().slice(0, 200) : '';
+    } catch (e) {
+        return '';
+    }
+}
+// EARLIER IN THE CONVERSATION, SORTED BY WHETHER IT MATTERS. Their earlier emails are fetched (the
+// list carries headers only) and our own sent replies are already held; each is scored by the same
+// transparent rules. Important ones are shown with their key facts marked; the rest are tucked into
+// one "Routine" line. Never required: until it lands the plain chain from mbxEarlierHtml stands.
+const __mbxBodyCache = new Map();
+async function mbxEarlierSmart(uid, m) {
+    const host = document.getElementById('mbx-earlier-host');
+    if (!host) return;
+    const t = mbxThreads(__mbxMessages).find((x) => x.msgs.some((y) => String(y.uid) === String(uid)));
+    const theirs = t ? t.msgs.filter((y) => String(y.uid) !== String(uid)).slice(0, 6) : [];
+    const addr = String(m.from || '').toLowerCase();
+    const sentRows = (__mbxSent || []).filter((x) => String(x.to_email || '').toLowerCase() === addr).slice(0, 4);
+    if (!theirs.length && !sentRows.length) return;
+    const stillHere = () => document.getElementById('mbx-earlier-host') === host && __mbxLastOpen && String(__mbxLastOpen.uid) === String(uid);
+    /** @type {any[]} */
+    const items = [];
+    for (const y of theirs) {
+        let body = __mbxBodyCache.get(y.uid);
+        if (body == null) {
+            try {
+                const r = await apiPost('mailbox.php', { action: 'read', uid: y.uid });
+                body = String((r && r.body) || '');
+                __mbxBodyCache.set(y.uid, body);
+            } catch (e) {
+                body = null;
+            }
+            if (!stillHere()) return;
+        }
+        if (body == null) continue;
+        items.push({ key: 'u' + y.uid, uid: y.uid, who: (mbxSender(y.fromRaw, y.from).name || y.from || 'Guest'), when: mbxWhenFull(y.date) || { date: '', time: '' }, date: String(y.date || ''), text: mbxSplit(body).body, own: false });
+    }
+    sentRows.forEach((x) => items.push({ key: 's' + x.id, sentId: x.id, who: 'You', when: { date: x.sent_at ? (mbxWhenFull(x.sent_at) || { date: '' }).date : 'Sent', time: '' }, date: String(x.sent_at || ''), text: mbxSplit(x.body).body, own: true }));
+    items.sort((a, b) => b.date.localeCompare(a.date));
+    const over = mbxImpMap();
+    items.forEach((it) => {
+        it.s = mbxScore(it.text);
+        it.imp = it.key in over ? !!over[it.key] : it.s.important;
+    });
+    if (!items.length) return;
+    const mark = (txt, hits) => {
+        let h = mbxEsc(txt);
+        MBX_SIGNALS.filter((x) => hits.includes(x.k) && x.k !== 'question').forEach((x) => {
+            h = h.replace(new RegExp(x.re.source, 'gi'), (mm) => `<mark class="mbx-mark">${mm}</mark>`);
+        });
+        return h;
+    };
+    const imp = items.filter((x) => x.imp),
+        rou = items.filter((x) => !x.imp);
+    const tagWord = { amount: 'amount', time: 'time', date: 'date', party: 'party', access: 'access', change: 'change', question: 'question', file: 'attachment' };
+    const open = (x) => (x.own ? `${chbAttrs('mailboxOpenSent', x.sentId)}` : `${chbAttrs('mailboxOpen', x.uid)}`);
+    const impHtml = imp.length
+        ? `<details class="mbx-ctx-d mbx-worth" open>
+            <summary class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Worth a look from earlier<small>${imp.length} of ${items.length} earlier email${items.length === 1 ? '' : 's'} hold facts</small></span><span class="mbx-ctx-right"><span class="st-cap is-warn">${imp.length}</span>${BHUB_CHEV}</span></summary>
+            ${imp
+                .map(
+                    (x) => `<div class="mbx-earlyitem">
+                <div class="mbx-earlyh"><b>${mbxEsc(x.who)}</b><span>${mbxEsc(x.when.date)}${x.when.time ? ' · ' + mbxEsc(x.when.time) : ''}</span></div>
+                <p class="mbx-earlytx">${mark(x.text.length > 420 ? x.text.slice(0, 420) + '…' : x.text, x.s.hits)}</p>
+                <div class="mbx-earlytags">${x.s.hits.map((k) => `<span>${tagWord[k]}</span>`).join('')}</div>
+                <div class="mbx-earlyacts"><button type="button" class="bhub-actlink" ${open(x)}>Open</button><button type="button" class="bhub-actlink" ${chbAttrs('mbxMarkImp', x.key, '0')}>Not important</button></div>
+            </div>`,
+                )
+                .join('')}
+        </details>`
+        : `<div class="mbx-ctx-d mbx-worth is-none"><div class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Nothing important earlier<small>${items.length} earlier email${items.length === 1 ? '' : 's'} — all routine</small></span><span class="mbx-ctx-right"><span class="st-cap is-ok"><span class="st-tick" aria-hidden="true">✓</span>0</span></span></div></div>`;
+    const rouHtml = rou.length
+        ? `<details class="mbx-ctx-d mbx-routine">
+            <summary class="mbx-ctx-drow"><span class="mbx-ctx-lbl">Routine<small>${rou.length} tucked away</small></span><span class="mbx-ctx-right">${BHUB_CHEV}</span></summary>
+            ${rou
+                .map(
+                    (x) => `<div class="mbx-routrow"><span class="mbx-routwhen">${mbxEsc(x.when.date)}</span><span class="mbx-routtx">${x.own ? 'You: ' : ''}${mbxEsc(x.text.replace(/\s+/g, ' '))}</span><button type="button" class="bhub-actlink" ${chbAttrs('mbxMarkImp', x.key, '1')}>Important</button></div>`,
+                )
+                .join('')}
+        </details>`
+        : '';
+    // The plain chain stays beneath (every earlier email, newest first, each one tap to read) — the sorting
+    // sits ABOVE it and never replaces it, so no email is reachable only through the heuristic.
+    if (stillHere()) host.innerHTML = impHtml + rouHtml + mbxEarlierHtml(uid);
 }
 function mailboxOpenSent(id) {
     const m = __mbxSent.find((x) => x.id === id);
@@ -30971,11 +31172,15 @@ function mailboxReply(uid) {
     const subj = /^re:/i.test(m.subject || '') ? m.subject : 'Re: ' + (m.subject || '');
     const quoted =
         '\n\nOn ' + (mbxWhen(m.date) || 'an earlier date') + ', ' + (m.fromRaw || m.from || 'they') + ' wrote:\n' +
-        String(m.body || '')
+        // ONLY THEIR NEW WORDS are quoted — never the whole old thread under it.
+        mbxSplit(m.body).body
             .split('\n')
             .map((l) => '> ' + l)
             .join('\n');
     mailboxComposeForm(box, m.from || '', subj, quoted);
+    // The cursor goes ABOVE the quote, where the owner's answer belongs.
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('mbx-text'));
+    if (ta) { ta.focus(); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }
 }
 async function mailboxSend() {
     const to = ((document.getElementById('mbx-to') || {}).value || '').trim();

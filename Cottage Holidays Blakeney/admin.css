@@ -8040,3 +8040,32 @@ body.light-mode .tl-cell:active {
 @keyframes enqOutL { to { opacity: 0; transform: translateX(-24px); } }
 @keyframes enqOutR { to { opacity: 0; transform: translateX(24px); } }
 @media (prefers-reduced-motion: reduce) { .enq-stage { transition: none; } .enq-pane { animation: none !important; } }
+
+/* ---- READING AN EMAIL: their words first -----------------------------------------------------
+   The new message on its own; the quote, the signature and the whole email one tap away; earlier
+   emails sorted into "Worth a look" (facts marked) and a single "Routine" line. */
+.mbx-replying { margin: 12px 0 0; padding: 12px 16px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+.mbx-replying b { color: var(--text-light); font-weight: 600; }
+.mbx-fchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.mbx-fchip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: transparent; color: var(--text-muted); font: 600 var(--fs-sub)/1 var(--font-sans); cursor: pointer; }
+.mbx-fchip .bhub-chev { width: 14px; height: 14px; transition: transform 0.35s var(--out); }
+.mbx-fchip.open .bhub-chev { transform: rotate(180deg); }
+.mbx-fchip.open { color: var(--text-light); }
+.mbx-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--out); }
+.mbx-fold.open { grid-template-rows: 1fr; }
+.mbx-fold > div { overflow: hidden; min-height: 0; }
+.mbx-foldtxt { margin: 12px 0 0; padding: 0 0 0 16px; border-left: 3px solid var(--glass-border); white-space: pre-wrap; word-break: break-word; font: var(--fs-sub)/1.55 var(--font-sans); color: var(--text-muted); max-height: 40vh; overflow-y: auto; }
+#mbx-earlier-host { margin-top: 12px; }
+.mbx-worth.is-none .mbx-ctx-drow { cursor: default; }
+.mbx-earlyitem { padding: 16px 0; border-top: 1px solid var(--glass-border); }
+.mbx-earlyh { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-caption); color: var(--text-muted); margin-bottom: 4px; }
+.mbx-earlyh b { color: var(--text-light); font-size: var(--fs-sub); }
+.mbx-earlytx { margin: 0; font-size: var(--fs-body); line-height: 1.55; white-space: pre-wrap; word-break: break-word; text-wrap: pretty; }
+.mbx-mark { background: color-mix(in srgb, var(--warn) 24%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; }
+.mbx-earlytags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mbx-earlytags span { font-size: var(--fs-micro); font-weight: 600; padding: 2px 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); }
+.mbx-earlyacts { display: flex; gap: 12px; margin-top: 4px; }
+.mbx-routrow { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-top: 1px solid var(--glass-border); font-size: var(--fs-sub); color: var(--text-muted); min-height: 48px; }
+.mbx-routwhen { flex: none; color: var(--text-light); font-weight: 600; }
+.mbx-routtx { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: center; }
+@media (prefers-reduced-motion: reduce) { .mbx-fold, .mbx-fchip .bhub-chev { transition: none; } }
