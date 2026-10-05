@@ -72,10 +72,12 @@ const px = (v) => Math.round(parseFloat(v) || 0);
     const rs = [...document.querySelectorAll('#bookings-list .bk-row')].filter((r) => r.getClientRects().length);
     if (!rs.length) return null;
     const c = getComputedStyle(rs[0]);
-    return { n: rs.length, tl: c.borderTopLeftRadius, sh: c.boxShadow };
+    const lc = getComputedStyle(rs[rs.length - 1]);
+    return { n: rs.length, tl: rs.length > 1 ? getComputedStyle(rs[1]).borderTopLeftRadius : c.borderTopLeftRadius, bl: lc.borderBottomLeftRadius, sh: c.boxShadow };
   });
   ok(rows && rows.n >= 1, `the bookings list renders (${rows && rows.n} row(s))`);
-  ok(rows && rows.tl === '12px', `a booking row is a list CELL, not a sheet (${rows && rows.tl})`);
+  // The run is the body of ONE card (status row above): its foot takes the CARD radius (20), never a sheet's.
+  ok(rows && rows.bl === '20px', `the booking run closes the card at the CARD radius (${rows && rows.bl})`);
   ok(rows && (rows.sh === 'none' || /inset/.test(rows.sh)), `…and casts no shadow (${rows && rows.sh})`);
   await open(page, "(async () => { await openBookingHub('b2'); })()", 1200);
   const r1 = await page.evaluate(() => {
