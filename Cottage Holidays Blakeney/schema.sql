@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     hold_amount        DECIMAL(10,2) NULL,
     hold_authorized_at DATETIME      NULL,
     hold_settled_at    DATETIME      NULL,
+    card_last4         CHAR(4)       NULL,
+    card_brand         VARCHAR(24)   NULL,
     hold_requested_at  DATETIME      NULL,
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_email (email),

@@ -543,6 +543,17 @@ if ($action === 'charge') {
         } catch (\Throwable $e) {
         }
     }
+    // Which card — display only (the deposit-return screens say "Visa ending 4471").
+    // Separate statement so an un-migrated column can never touch the money above.
+    $cardInfo = card_from_payment($payment);
+    if ($damagesDue > 0 && $cardInfo['last4'] !== '') {
+        try {
+            db()
+                ->prepare('UPDATE bookings SET card_last4 = ?, card_brand = ? WHERE id = ?')
+                ->execute([$cardInfo['last4'], $cardInfo['brand'], $bookingId]);
+        } catch (\Throwable $e) {
+        }
+    }
 
     // THE CARD, IF THEY ASKED US TO KEEP IT. Deliberately after the money is
     // taken and the ledger is written, and wrapped so hard it cannot reach the

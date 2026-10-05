@@ -3810,7 +3810,11 @@ function send_deposit_return_email($b)
     // and never promise a card refund's 3-5 working days for money the owner moves.
     $manual = !empty($b['manual']);
     $method = strtolower(trim((string) ($b['method'] ?? '')));
-    $how = $manual ? ($method !== '' ? 'by ' . $method . ', the way you paid' : 'by the method we agreed') : 'to the card you paid with';
+    $last4 = preg_match('/^\d{4}$/', (string) ($b['last4'] ?? '')) ? (string) $b['last4'] : '';
+    $cardName = $last4 !== '' && trim((string) ($b['brand'] ?? '')) !== '' ? trim((string) $b['brand']) : 'card';
+    $how = $manual
+        ? ($method !== '' ? 'by ' . $method . ', the way you paid' : 'by the method we agreed')
+        : ($last4 !== '' ? 'to your ' . $cardName . ' ending ' . $last4 : 'to the card you paid with');
 
     $subject = $retained > 0.001
         ? 'Your deposit: ' . $money($b['amount']) . " returned — {$prop}"

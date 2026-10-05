@@ -16578,7 +16578,7 @@ function renderDepositsDue() {
 function depositRailInfo(b) {
     const m = String((b && b.paymentMethod) || '').trim();
     const card = !bookingOwnerArranged(b);
-    return { card, method: card && /square/i.test(m) ? 'the card they paid with' : card ? m : '', label: m ? m.toLowerCase() : 'recorded by hand' };
+    return { card, method: card ? (chbCardLabel(b) || 'the card they paid with').replace(/^./, (c) => c.toUpperCase()) : '', label: m ? m.toLowerCase() : 'recorded by hand' };
 }
 async function returnDeposit(bookingId) {
     const booking = findBookingById(bookingId);
@@ -16614,6 +16614,17 @@ async function returnDeposit(bookingId) {
     // HOW THE GUEST PAID DECIDES WHO MOVES THE MONEY. Off the card rail the site
     // sends nothing (the server only records a manual return), so the owner is told
     // that before they confirm, and the confirm button is the claim they have done it.
+    // Which card, if we do not already hold it: the server reads Square once and keeps
+    // the answer. Best-effort — no digits just means "the card they paid with".
+    if (!bookingOwnerArranged(booking) && !booking.cardLast4 && booking.dbId) {
+        try {
+            const ci = await apiPost('bookings.php', { action: 'deposit_card', id: booking.dbId });
+            if (ci && /^\d{4}$/.test(ci.last4 || '')) {
+                booking.cardLast4 = ci.last4;
+                booking.cardBrand = ci.brand || '';
+            }
+        } catch (e) {}
+    }
     const rail = depositRailInfo(booking);
     const first = chbSayFirst(booking.name || 'the guest');
     const sure = rail.card

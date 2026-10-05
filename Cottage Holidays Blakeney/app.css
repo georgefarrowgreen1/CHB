@@ -4560,88 +4560,21 @@ a.card {
 /* MONEY COMING BACK (guestDepositTrackerHtml, My Stays): issued → your bank,
    the solid stretch is the days already behind the guest, the dashes what's
    left. The dates are ledger facts; the fill is arithmetic on them. */
-.pay-track {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 13px 14px;
-  margin: 12px 0 4px;
-  text-align: left;
-}
-.pay-track-cap {
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-.pay-track-row {
-  display: flex;
-  align-items: center;
-}
-.pay-tnode {
-  flex: none;
-  width: 92px;
-  text-align: center;
-}
-.pay-td {
-  display: block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  margin: 0 auto 5px;
-  box-sizing: border-box;
-  border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  position: relative;
-}
-.pay-tnode.is-done .pay-td {
-  background: var(--ok);
-  border-color: var(--ok);
-}
-.pay-tnode.is-done .pay-td::after {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 3px;
-  width: 6px;
-  height: 3px;
-  border-left: 2px solid var(--accent-ink);
-  border-bottom: 2px solid var(--accent-ink);
-  transform: rotate(-45deg);
-}
-.pay-tl { display: block; font-size: var(--fs-caption); font-weight: 600; }
-.pay-ts { display: block; font-size: var(--fs-micro); color: var(--text-muted); }
-.pay-tline {
-  flex: 1;
-  height: 3px;
-  border-radius: 2px;
-  margin: 0 4px 24px;
-  position: relative;
-  background: repeating-linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent) 50%, transparent) 0 8px,
-    color-mix(in srgb, var(--accent) 14%, transparent) 8px 16px
-  );
-  background-size: 16px 3px;
-}
-.pay-tfill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.pay-track-day {
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  color: var(--accent-text);
-  text-align: center;
-  margin-top: 6px;
-}
-.pay-track-note {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 4px;
-}
+.dep-track { border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 18px; margin: 12px 0 4px; text-align: left; animation: depIn 0.5s var(--out) both; }
+@keyframes depIn { from { opacity: 0; transform: translateY(8px); } }
+.dep-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dep-h > span:first-child { font-size: var(--fs-sub); color: var(--text-muted); }
+.dep-cp { font-size: var(--fs-caption); font-weight: 600; padding: 4px 10px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); }
+.dep-cp.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+.dep-fig { font-family: var(--font-serif); font-size: var(--fs-display); letter-spacing: -0.02em; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
+.dep-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 18%, transparent); overflow: hidden; }
+.dep-bar b { display: block; height: 100%; border-radius: 3px; background: var(--accent); animation: depFill 1s var(--out) both; }
+.dep-bar.ok b { width: 100%; background: var(--ok); }
+@keyframes depFill { from { width: 0; } }
+.dep-d { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 8px; }
+.dep-f { font-size: var(--fs-sub); color: var(--text-muted); margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--glass-border); text-wrap: pretty; }
+.dep-f b { color: var(--text-light); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .dep-track, .dep-bar b { animation: none; } }
 /* ---- MONEY IN FLIGHT ANIMATES; money at rest is still (the approved motion
    grammar). The "you are here" dot pings; a processing button spins and
    shimmers; success is a green beat on the control BEFORE the done panel;
@@ -4761,9 +4694,6 @@ a.card {
   .pay-done > *:nth-child(5) { animation: payCasc 0.7s var(--spring) 1.45s backwards; }
   .pay-done > *:nth-child(6) { animation: payCasc 0.7s var(--spring) 1.65s backwards; }
   @keyframes payCasc { from { opacity: 0; transform: translateY(8px); } }
-  /* The refund line flows toward the bank — money in flight, My Stays. */
-  .pay-tline { animation: payFlow 0.9s linear infinite; }
-  @keyframes payFlow { to { background-position: 16px 0; } }
 }
 /* ---- THE BOOKING FLOW SPEAKS AND MOVES (the approved demo): the picker's
    "Looks free" capsule, the receipt-carrying Continue buttons, the range wave,
