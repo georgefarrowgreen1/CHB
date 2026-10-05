@@ -8001,3 +8001,7 @@ body.light-mode .tl-cell:active {
 
 /* Toolbar items share one centre line: the sort pill's own 12px bottom margin lifted it above its neighbours. */
 .cal-header-bar > .inbox-sort.seg { margin-bottom: 0; }
+
+/* Every value in a reference row is one spec: body size, ink. The dot (or its absence) carries the state,
+   so "Not recorded" no longer reads as a smaller, greyer kind of text than "Bank / cash". */
+.bhub-kv-val, .bhub-kv-val .bhub-mut { font-size: var(--fs-body); line-height: 1.35; font-weight: 400; color: var(--text-light); }
