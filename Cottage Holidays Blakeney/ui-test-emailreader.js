@@ -86,30 +86,21 @@ const BODIES = {
 
   console.log('§3 earlier emails, sorted by whether they matter');
   const r3 = await page.evaluate(() => ({
-    worth: !!document.querySelector('.mbx-worth'), worthTxt: (document.querySelector('.mbx-worth .mbx-ctx-lbl') || {}).textContent || '',
-    items: document.querySelectorAll('.mbx-worth .mbx-earlyitem').length,
-    marks: [...document.querySelectorAll('.mbx-worth .mbx-mark')].map((m) => m.textContent),
-    tags: [...document.querySelectorAll('.mbx-worth .mbx-earlytags span')].map((t) => t.textContent),
-    routine: (document.querySelector('.mbx-routine .mbx-ctx-lbl') || {}).textContent || '',
-    routineRows: document.querySelectorAll('.mbx-routine .mbx-routrow').length,
-    routineTxt: (document.querySelector('.mbx-routine') || {}).textContent || '',
+    sections: document.querySelectorAll('#mbx-earlier-host .mbx-ctx-d').length,
+    label: (document.querySelector('.mbx-earlier .mbx-ctx-lbl') || {}).textContent || '',
+    rows: document.querySelectorAll('.mbx-earlier .mbx-erow').length,
+    imp: document.querySelectorAll('.mbx-earlier .mbx-erow.is-imp').length,
+    marks: [...document.querySelectorAll('.mbx-earlier .mbx-mark')].map((m) => m.textContent),
+    firstImp: !!document.querySelector('.mbx-earlier .mbx-chain > .mbx-erow:first-child.is-imp'),
+    last: ((document.querySelector('.mbx-earlier .mbx-chain > .mbx-erow:last-child') || {}).textContent || ''),
+    override: !!document.querySelector('[data-act="mbxMarkImp"]'),
   }));
-  ok(r3.worth && /Worth a look from earlier/.test(r3.worthTxt), `a "Worth a look" section appears (${r3.worthTxt.replace(/\s+/g, ' ')})`);
-  ok(r3.items === 2, `two earlier messages hold facts — their first enquiry and our £440 reply (${r3.items})`);
+  ok(r3.sections === 1 && /Earlier in this conversation/.test(r3.label), `ONE earlier section, not three (${r3.sections}: ${r3.label.replace(/\s+/g, ' ')})`);
+  ok(/3 emails · 2 worth a look/.test(r3.label.replace(/\s+/g, ' ')), 'its summary says how many are worth a look');
+  ok(r3.rows === 3 && r3.imp === 2 && r3.firstImp, `three rows, the two with facts first (${r3.rows} / ${r3.imp})`);
   ok(r3.marks.some((m) => /£440/.test(m)) && r3.marks.some((m) => /Sep/.test(m)), `the key facts are marked (${r3.marks.join(', ')})`);
-  ok(r3.tags.includes('amount') && r3.tags.includes('party'), `and each says WHY it was kept (${[...new Set(r3.tags)].join(', ')})`);
-  ok(/Routine/.test(r3.routine) && r3.routineRows === 1 && /Lovely, thanks George/.test(r3.routineTxt), 'the "Lovely, thanks" is tucked into one Routine line');
-  await page.click('.mbx-worth .mbx-earlyitem:first-of-type [data-act="mbxMarkImp"]');
-  await page.waitForTimeout(900);
-  const r3b = await page.evaluate(() => ({ items: document.querySelectorAll('.mbx-worth .mbx-earlyitem').length, rows: document.querySelectorAll('.mbx-routine .mbx-routrow').length, saved: localStorage.getItem('chb-mbx-imp') }));
-  ok(r3b.items === 1 && r3b.rows === 2 && /false/.test(r3b.saved || ''), `"Not important" moves it to Routine and is remembered (${r3b.items} / ${r3b.rows})`);
-  await page.click('.mbx-routine > summary');
-  await page.waitForTimeout(400);
-  await page.click('.mbx-routine .mbx-routrow:first-of-type [data-act="mbxMarkImp"]');
-  await page.waitForTimeout(900);
-  ok(await page.evaluate(() => document.querySelectorAll('.mbx-worth .mbx-earlyitem').length === 2), '"Important" brings one back — the owner can overrule either call');
-
-  ok(await page.evaluate(() => document.querySelectorAll('.mbx-earlier .mbx-chain-row').length === 2), 'the plain chain stays beneath the sorting — every earlier email is still one tap away');
+  ok(/Lovely, thanks George/.test(r3.last), 'the routine "Lovely, thanks" is a one-line row at the end');
+  ok(!r3.override, 'no extra Important / Not important buttons');
 
   console.log('§5 Reply quotes only their new words, cursor on top');
   await page.click('.mbx-reply');

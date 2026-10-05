@@ -2975,11 +2975,12 @@ the raw body, and the importance call forced) and smoke-test's `email split` / `
   earlier emails are fetched (≤6, cached in `__mbxBodyCache`) and our sent replies (≤4) are already held. Each is
   scored by `mbxScore` — transparent signals with weights (amount, time, date, party/dog/allergy, access, change,
   question, attachment; bar 3; a short acknowledgement scores 0 unless it carries a time/amount/change/file).
-  **RULES, NOT A MODEL**: every call is explained by its tags and the facts are marked in the text. Important ones
-  show under "Worth a look from earlier", the rest fold into one "Routine" line. Until the fetch lands the plain
+  **RULES, NOT A MODEL**: every call is explained by its tags and the facts are marked in the text. They sit in ONE
+  "Earlier in this conversation" section (summary "N emails · M worth a look"): emails with facts first, their words
+  with the facts marked, the rest one-line rows; every row opens its email. The Important / Not important override
+  buttons were REMOVED as complexity (`mbxMarkImp` survives, unused). The reader's actions are Reply plus one even
+  row, Mark unread / Delete / Close. Until the fetch lands the plain
   chain stands; a fetch that fails just omits that email.
-- **THE OWNER CAN OVERRULE ANY CALL** (`mbxMarkImp`): "Not important" / "Important" re-sorts at once and is kept in
-  localStorage `chb-mbx-imp` (per message, capped 300) — a per-device convenience, never a record.
 - **Reply quotes only their new words, cursor ABOVE the quote.** NB a textarea drops the first newline of its
   initial text, so the value starts `\nOn …` not `\n\nOn …`; the gate allows either.
 - Budgets raised with the trade named: admin.js +3.3KB, admin.css +0.6KB gz (owner-only, immutable-cached); tsc
