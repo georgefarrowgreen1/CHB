@@ -30981,9 +30981,9 @@ async function mailboxOpen(uid) {
             <div class="mbx-acts">
                 <button class="btn-sm mbx-reply" ${chbAttrs('mailboxReply', uid)}>Reply</button>
                 <div class="mbx-acts-quiet">
-                    <button class="bhub-actlink" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
-                    <button class="bhub-actlink is-danger" ${chbAttrs('mailboxDelete', uid)}>Delete</button>
-                    <button class="bhub-actlink" data-act="mailboxCollapse">Close</button>
+                    <button class="mbx-act" ${chbAttrs('mailboxMarkUnread', uid)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/></svg>Mark unread</button>
+                    <button class="mbx-act is-danger" ${chbAttrs('mailboxDelete', uid)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</button>
+                    <button class="mbx-act" data-act="mailboxCollapse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>Close</button>
                 </div>
             </div>
             <div id="mbx-compose"></div>
