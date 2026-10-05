@@ -2097,6 +2097,29 @@ let approveWill409 = false;
   }));
   ok(k2.rows >= 1 && /Declined/.test(k2.txt), `the one declined in J is listed (${k2.rows} row/s)`);
   ok(k2.restores === k2.rows, 'every row offers Restore — the whole point of the drawer');
+  // THE SWITCH IS ONE CONTROL: its pill travels to the chosen tab, each tab carries its count (as a
+  // data attribute, so the button's text stays the bare word), and a switch slides one pane out as
+  // the other comes in rather than swapping them.
+  const k2pill = await page.evaluate(() => {
+    const seg = document.querySelector('#inbox-list .enq-tabs .inbox-sort.seg');
+    const pill = seg && seg.querySelector(':scope > .chb-pill');
+    const on = seg && seg.querySelector('.is-on');
+    if (!seg || !pill || !on) return null;
+    const sb = seg.getBoundingClientRect(), ob = on.getBoundingClientRect();
+    return { dx: Math.round(parseFloat(pill.style.translate) - (ob.left - sb.left)), w: Math.round(parseFloat(pill.style.width) - ob.width),
+      declN: (seg.querySelector('[data-n]:not(.is-on)') || {}).dataset || null, counts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.getAttribute('data-n')),
+      texts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.textContent.trim()) };
+  });
+  ok(k2pill && Math.abs(k2pill.dx) <= 1 && Math.abs(k2pill.w) <= 1, `the pill sits under the chosen tab (dx ${k2pill && k2pill.dx}, dw ${k2pill && k2pill.w})`);
+  ok(k2pill && k2pill.counts.every((n) => n !== null && /^\d+$/.test(n)) && k2pill.texts.join('|') === 'Waiting|Declined', `each tab carries its count and keeps its bare label (${k2pill && k2pill.counts.join('/')} · ${k2pill && k2pill.texts.join('|')})`);
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Waiting/.test(x.textContent)); b && b.click(); });
+  const k2swap = await page.evaluate(() => new Promise((res) => setTimeout(() => res({ panes: document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length, out: document.querySelectorAll('#inbox-list .enq-pane.enq-out').length, inn: document.querySelectorAll('#inbox-list .enq-pane.enq-in-l').length }), 60)));
+  ok(k2swap.panes === 2 && k2swap.out === 1 && k2swap.inn === 1, `mid-switch one pane leaves as the other arrives (${JSON.stringify(k2swap)})`);
+  await page.waitForTimeout(700);
+  ok(await page.evaluate(() => document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length === 1), 'and the old pane is gone once it has left');
+  ok(await page.evaluate(() => /^Enquiries/.test((document.querySelector('#inbox-folder-enquiries .bo-sec-title') || { textContent: '' }).textContent.trim())), 'the page title stays "Enquiries" on both tabs');
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
+  await page.waitForTimeout(800);
   // RESTORING puts it back in the inbox and takes it out of the drawer.
   await page.evaluate(() => { const b = document.querySelector('#inbox-list .enq-declined-row button'); b && b.click(); });
   await page.waitForTimeout(1200);

@@ -8021,3 +8021,23 @@ body.light-mode .tl-cell:active {
 #glass-dialog.gd-ledger .glass-dialog-rows .ods-qsub { flex: 1 1 auto; text-align: right; font-size: var(--fs-body); font-weight: 500; color: var(--text-light); }
 #glass-dialog.gd-ledger .glass-dialog-btns { flex-direction: column-reverse; gap: 8px; margin-top: 20px; }
 #glass-dialog.gd-ledger .glass-dialog-btns > * { width: 100%; min-height: 48px; justify-content: center; text-align: center; }
+
+/* ---- THE ENQUIRIES SWITCH: one control, one stage ------------------------------
+   The Waiting | Declined pill TRAVELS (chbSeatPill), each tab carries its count, and the list
+   slides in from the side its tab lies on while the old one leaves and the height eases. */
+.enq-tabs .inbox-sort.seg { position: relative; margin-bottom: 16px; }
+.enq-tabs .inbox-sort.seg .inbox-sort-btn { position: relative; z-index: 1; }
+.enq-tabs .chb-pill { background: var(--glass-hover); box-shadow: var(--shadow-soft); border-radius: var(--r-pill); }
+.enq-tabs .inbox-sort.seg.has-pill .inbox-sort-btn.is-on { background: transparent; box-shadow: none; }
+.enq-tabs .inbox-sort-btn[data-n]::after { content: attr(data-n); margin-left: 8px; font-size: var(--fs-caption); font-weight: 600; min-width: 20px; padding: 0 4px; border-radius: var(--r-pill); display: inline-block; text-align: center; line-height: 20px; background: color-mix(in srgb, var(--text-muted) 16%, transparent); }
+.enq-stage { position: relative; overflow: hidden; transition: height 0.45s var(--out); }
+.enq-pane.enq-in-r { animation: enqInR 0.45s var(--out) both; }
+.enq-pane.enq-in-l { animation: enqInL 0.45s var(--out) both; }
+.enq-pane.enq-out { position: absolute; inset: 0 0 auto 0; pointer-events: none; }
+.enq-pane.enq-out-l { animation: enqOutL 0.22s var(--in) both; }
+.enq-pane.enq-out-r { animation: enqOutR 0.22s var(--in) both; }
+@keyframes enqInR { from { opacity: 0; transform: translateX(24px); } }
+@keyframes enqInL { from { opacity: 0; transform: translateX(-24px); } }
+@keyframes enqOutL { to { opacity: 0; transform: translateX(-24px); } }
+@keyframes enqOutR { to { opacity: 0; transform: translateX(24px); } }
+@media (prefers-reduced-motion: reduce) { .enq-stage { transition: none; } .enq-pane { animation: none !important; } }
