@@ -828,8 +828,16 @@ chk('…and its paid-so-far line is labelled as the RENTAL rail',
 chk('a partial deposit return states the retained difference',
     preg_match("/function send_deposit_return_email[\s\S]{0,700}\\\$retained = round\(max\(0, \\\$held - \(float\) \\\$b\['amount'\]\), 2\);/", $mailR) === 1);
 chk('…and a manual return never claims the card rail',
-    preg_match("/function send_deposit_return_email[\s\S]{0,900}!empty\(\\\$b\['manual'\]\) \? 'by the method we agreed' : 'to the card you paid with'/", $mailR) === 1
+    preg_match("/function send_deposit_return_email[\s\S]{0,1300}\\\$manual \? \(\\\$method !== '' \? 'by ' \. \\\$method \. ', the way you paid' : 'by the method we agreed'\) : 'to the card you paid with'/", $mailR) === 1
     && strpos($bkW3, "'manual' => \$status === 'MANUAL',") !== false);
+
+chk('…and a manual return names the method and promises no card timescale',
+    strpos($mailR, "'Shortly' : '3–5 working days'") !== false
+    && strpos($bkW3, "'method' => (string) (\$b['payment_method'] ?? '')") !== false);
+
+chk('the deposit return states the rail BEFORE the confirm, and off-card the button claims the owner sent it',
+    preg_match("/async function returnDeposit[\s\S]{0,3200}depositRailInfo\(booking\)[\s\S]{0,1600}I’ve sent it — record it[\s\S]{0,2200}return_deposit/", $admW) === 1
+    && strpos($admW, 'bookingOwnerArranged(b)') !== false);
 
 echo "\n== The per-booking payment plan (migration-103) ==\n";
 // booking_deposit_amount — the ONE deposit derivation. Pure paths only here (the

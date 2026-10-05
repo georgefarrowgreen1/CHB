@@ -3806,7 +3806,11 @@ function send_deposit_return_email($b)
     $reason = trim((string) ($b['reason'] ?? ''));
     $held = (float) ($b['held'] ?? $b['amount']);
     $retained = round(max(0, $held - (float) $b['amount']), 2);
-    $how = !empty($b['manual']) ? 'by the method we agreed' : 'to the card you paid with';
+    // OFF THE CARD RAIL the owner sends this by hand, the way the guest paid: say THAT,
+    // and never promise a card refund's 3-5 working days for money the owner moves.
+    $manual = !empty($b['manual']);
+    $method = strtolower(trim((string) ($b['method'] ?? '')));
+    $how = $manual ? ($method !== '' ? 'by ' . $method . ', the way you paid' : 'by the method we agreed') : 'to the card you paid with';
 
     $subject = $retained > 0.001
         ? 'Your deposit: ' . $money($b['amount']) . " returned — {$prop}"
@@ -3819,8 +3823,11 @@ function send_deposit_return_email($b)
         " ({$how}).\n" .
         ($retained > 0.001 ? 'Retained: ' . $money($retained) . ' of the ' . $money($held) . " held.\n" : '') .
         ($retained > 0.001 && $reason !== '' ? "\nA note from " . email_host_name() . ": {$reason}\n" : '') .
-        "\nIt usually appears in 3-5 working days, though some banks take a little longer.\n\n" .
-        "WHAT HAPPENS NEXT\n[x] Returned — today\n[ ] It reaches you — 3-5 working days\n\n" .
+        ($manual
+            ? "\nIt should reach you shortly. If it hasn't arrived within a few working days, just reply and let us know.\n\n" .
+                "WHAT HAPPENS NEXT\n[x] Sent — today\n[ ] It reaches you — shortly\n\n"
+            : "\nIt usually appears in 3-5 working days, though some banks take a little longer.\n\n" .
+                "WHAT HAPPENS NEXT\n[x] Returned — today\n[ ] It reaches you — 3-5 working days\n\n") .
         "We hope to welcome you back.\n\nCottage Holidays Blakeney";
 
     $inner =
@@ -3846,11 +3853,11 @@ function send_deposit_return_email($b)
                 ['Returned to you', '<strong>' . $esc($money($b['amount'])) . '</strong>'],
             ]) . email_ownernote(email_host_name(), $reason)
             : '') .
-        email_timeline([['Returned', 'Today', true], ['It reaches you', '3–5 working days', false]]) .
-        email_footnote('Some banks take a little longer.') .
+        email_timeline([[$manual ? 'Sent' : 'Returned', 'Today', true], ['It reaches you', $manual ? 'Shortly' : '3–5 working days', false]]) .
+        email_footnote($manual ? 'If it has not arrived within a few working days, reply to this email.' : 'Some banks take a little longer.') .
         email_p('We hope to welcome you back.<br>Cottage Holidays Blakeney', true);
     $html = email_shell(
-        $money($b['amount']) . ' is on its way back to you — usually 3 to 5 working days',
+        $money($b['amount']) . ($manual ? ' is on its way back to you' : ' is on its way back to you — usually 3 to 5 working days'),
         $inner,
         $accent,
     );
