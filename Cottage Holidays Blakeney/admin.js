@@ -16574,6 +16574,12 @@ function renderDepositsDue() {
                 ${items}`;
 }
 // Return a held damage deposit (full or partial, with a retention reason).
+// Which rail a deposit return travels: the SAME judgement as payment_rail()/bookingOwnerArranged.
+function depositRailInfo(b) {
+    const m = String((b && b.paymentMethod) || '').trim();
+    const card = !bookingOwnerArranged(b);
+    return { card, method: card && /square/i.test(m) ? 'the card they paid with' : card ? m : '', label: m ? m.toLowerCase() : 'recorded by hand' };
+}
 async function returnDeposit(bookingId) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
@@ -16605,8 +16611,34 @@ async function returnDeposit(bookingId) {
         if (r === null) return;
         note = r.trim();
     }
-    if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`, `Return ${gbp(amount)}`)))
-        return;
+    // HOW THE GUEST PAID DECIDES WHO MOVES THE MONEY. Off the card rail the site
+    // sends nothing (the server only records a manual return), so the owner is told
+    // that before they confirm, and the confirm button is the claim they have done it.
+    const rail = depositRailInfo(booking);
+    const first = chbSayFirst(booking.name || 'the guest');
+    const sure = rail.card
+        ? await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`, `Return ${gbp(amount)}`, {
+              title: 'Paid by card',
+              rows: [
+                  { label: 'Refunded to', sub: rail.method || 'The card they paid with' },
+                  { label: 'Arrives', sub: '3–5 working days' },
+                  { label: 'Guest is emailed', sub: 'Yes' },
+              ],
+          })
+        : await glassConfirm(
+              `Not paid by card — ${rail.label}. The site can’t send this money: you return ${gbp(amount)} to ${first} yourself, and this records that you did.`,
+              'I’ve sent it — record it',
+              {
+                  title: `Return ${gbp(amount)} by ${rail.label}`,
+                  cancelLabel: 'Not yet',
+                  rows: [
+                      { label: 'Originally paid by', sub: rail.label },
+                      { label: `Send ${gbp(amount)} to`, sub: booking.name || '' },
+                      { label: 'Guest is emailed', sub: 'Yes — it says it is on its way' },
+                  ],
+              },
+          );
+    if (!sure) return;
     try {
         const r = await chbWithReauth('returning ' + gbp(amount), () =>
             apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note }));
@@ -16622,7 +16654,7 @@ async function returnDeposit(bookingId) {
                     (note ? ' Your reason for keeping the rest is only in that email, so they have not seen it — worth telling them another way.' : ''),
             );
         } else {
-            toast('Deposit return issued.');
+            toast(rail.card ? 'Deposit return issued.' : `Return recorded — ${gbp(amount)} marked as sent by ${rail.label}.`);
         }
         // The rating moment: you've just inspected the cottage, so the hub's
         // re-render opens the Guest book fold while it's fresh. An offer, not

@@ -2152,6 +2152,7 @@ if ($action === 'return_deposit') {
                 'held' => $held,
                 'reason' => $note,
                 'manual' => $status === 'MANUAL',
+                'method' => (string) ($b['payment_method'] ?? ''),
             ]);
         } catch (\Throwable $e) {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
