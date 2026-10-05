@@ -702,7 +702,19 @@ function layoutSentinelRun() {
             window.__reportLayoutIssue(msg);
         };
         const pageOver = document.documentElement.scrollWidth - vw;
-        if (pageOver > 8) report(`Layout: page ${pageOver}px wider than the ${vw}px screen on ${view}`);
+        if (pageOver > 8) {
+            // Name the culprit: "88px wider" alone sent a report nobody could act on.
+            let worst = '', wr = vw;
+            const all = document.querySelectorAll('body *');
+            for (let i = 0; i < all.length; i++) {
+                const el = all[i];
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed' || isClippedOrScrollable(el)) continue;
+                const r = el.getBoundingClientRect().right;
+                if (r > wr + 8) { wr = r; worst = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/)[0] : ''); }
+            }
+            report(`Layout: page ${pageOver}px wider than the ${vw}px screen on ${view}` + (worst ? ` (widest: ${worst} to ${Math.round(wr)}px)` : ''));
+        }
         const els = document.querySelectorAll('.page-view.active *, .modal-overlay.open *');
         let checked = 0;
         for (const el of els) {
@@ -19402,7 +19414,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bhub3rows1005';
+    const BUILD = 'layoutwho1005';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
