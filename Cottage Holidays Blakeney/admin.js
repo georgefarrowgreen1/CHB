@@ -27666,7 +27666,9 @@ async function inboxTab(which) {
     // in and clearing the reading pane. A stale answer still stores its rows
     // (they are simply the declined list) but paints nothing and opens nothing.
     const my = ++__inboxTabStamp;
+    const wasTab = __inboxTab;
     __inboxTab = which === 'declined' ? 'declined' : 'waiting';
+    if (wasTab !== __inboxTab) __enqSwap = __inboxTab === 'declined' ? 1 : -1;
     if (__inboxTab === 'declined' && __declinedEnq === null) {
         renderInbox(); // paint the switch + a loading line before the round trip
         try {
@@ -27783,11 +27785,68 @@ async function restoreDeclinedEnquiry(dbId, name) {
         if (Array.isArray(__declinedEnq)) __declinedEnq = __declinedEnq.filter((x) => String(x.dbId) !== String(dbId));
         await loadData();
         __inboxTab = 'waiting';
+        __enqSwap = -1;
         renderInbox();
         toast(`Enquiry from ${name || 'guest'} restored to the inbox.`);
     } catch (e) {
         glassAlert("Couldn't restore: " + e.message);
     }
+}
+// THE ENQUIRIES SWITCH IS ONE CONTROL AND ONE STAGE, PAINTED IN PLACE. The tab bar is a
+// persistent node (so its pill can TRAVEL between Waiting and Declined — chbSeatPill, the
+// house segmented-control motion) and the list sits in a stage the new pane slides into from
+// the side the tab lies on while the old one slides out and the height eases. Only a tab
+// SWITCH animates (__enqSwap, set by inboxTab): renderInbox also runs on every data refresh,
+// and a transition per refresh would replay on its own.
+let __enqSwap = 0;
+function inboxPaint(list, barHtml, paneHtml) {
+    let bar = /** @type {HTMLElement|null} */ (list.querySelector(':scope > .enq-tabs'));
+    let stage = /** @type {HTMLElement|null} */ (list.querySelector(':scope > .enq-stage'));
+    if (!bar || !stage) {
+        list.innerHTML = '<div class="enq-tabs"></div><div class="enq-stage"><div class="enq-pane"></div></div>';
+        bar = /** @type {HTMLElement} */ (list.querySelector(':scope > .enq-tabs'));
+        stage = /** @type {HTMLElement} */ (list.querySelector(':scope > .enq-stage'));
+    }
+    const seg = bar.querySelector('.inbox-sort.seg');
+    if (!seg) {
+        bar.innerHTML = barHtml;
+    } else {
+        // In place: same buttons, new state — so the pill has something to move.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = barHtml;
+        const fresh = tmp.querySelectorAll('.inbox-sort-btn');
+        seg.querySelectorAll('.inbox-sort-btn').forEach((b, i) => {
+            const f = /** @type {HTMLElement} */ (fresh[i]);
+            if (!f) return;
+            b.className = f.className;
+            ['aria-selected', 'aria-label', 'data-n'].forEach((a) => (f.hasAttribute(a) ? b.setAttribute(a, f.getAttribute(a) || '') : b.removeAttribute(a)));
+        });
+    }
+    const segNow = /** @type {HTMLElement|null} */ (bar.querySelector('.inbox-sort.seg'));
+    const dir = __enqSwap;
+    __enqSwap = 0;
+    const old = /** @type {HTMLElement|null} */ (stage.querySelector(':scope > .enq-pane:not(.enq-out)'));
+    if (dir && old && old.innerHTML && !chbReducedMotion()) {
+        const h0 = stage.getBoundingClientRect().height;
+        stage.style.height = h0 + 'px';
+        const nw = document.createElement('div');
+        nw.className = 'enq-pane ' + (dir > 0 ? 'enq-in-r' : 'enq-in-l');
+        nw.innerHTML = paneHtml;
+        old.classList.add('enq-out', dir > 0 ? 'enq-out-l' : 'enq-out-r');
+        stage.appendChild(nw);
+        stage.style.height = nw.getBoundingClientRect().height + 'px';
+        setTimeout(() => {
+            old.remove();
+            stage.style.height = '';
+            nw.classList.remove('enq-in-r', 'enq-in-l');
+        }, 480);
+    } else {
+        stage.querySelectorAll(':scope > .enq-pane.enq-out').forEach((x) => x.remove());
+        stage.style.height = '';
+        const cur = /** @type {HTMLElement} */ (stage.querySelector(':scope > .enq-pane') || stage.appendChild(Object.assign(document.createElement('div'), { className: 'enq-pane' })));
+        cur.innerHTML = paneHtml;
+    }
+    if (segNow) chbSeatPill(segNow, !segNow.classList.contains('has-pill'));
 }
 function renderInbox() {
     refreshInboxBadge();
@@ -27798,37 +27857,35 @@ function renderInbox() {
     const list = document.getElementById('inbox-list');
     // The switch is ALWAYS rendered — including on inbox zero, which is exactly
     // when someone goes looking for the one they just turned down.
+    // The counts ride a data attribute and paint through ::after, so the button's TEXT stays
+    // the bare word every reader of it already depends on; the accessible name states the count.
+    // Declined is only counted once it has been fetched — an unloaded list claims nothing.
+    const tabN = { waiting: Array.isArray(enquiries) ? enquiries.length : 0, declined: Array.isArray(__declinedEnq) ? __declinedEnq.length : null };
     const tabBar = `<div class="inbox-sort seg" role="group" aria-label="Which enquiries">${[
         ['waiting', 'Waiting'],
         ['declined', 'Declined'],
     ]
         .map(
             ([k, lbl]) =>
-                `<button type="button" class="inbox-sort-btn${__inboxTab === k ? ' is-on' : ''}" role="tab" aria-selected="${__inboxTab === k}" ${chbAttrs('inboxTab', String(k))}>${lbl}</button>`,
+                `<button type="button" class="inbox-sort-btn${__inboxTab === k ? ' is-on' : ''}" role="tab" aria-selected="${__inboxTab === k}"${tabN[k] === null ? '' : ` data-n="${tabN[k]}" aria-label="${lbl}, ${tabN[k]}"`} ${chbAttrs('inboxTab', String(k))}>${lbl}</button>`,
         )
         .join('')}</div>`;
-    // THE HEADING NAMES THE LIST BENEATH IT: "Enquiries" + the WAITING count put a
-    // green 0 above a non-empty declined list (owner's screenshot). The badge is hidden
-    // by CLASS, not emptied — refreshInboxBadge() is in app.js and runs from a dozen
-    // places, so it would write the number back. The TEXT is safe to set here:
-    // renderInbox is the only thing that switches tabs.
+    // ONE TITLE, TWO LISTS: the heading and the fold label stay "Enquiries" on both tabs (they
+    // used to rename themselves to "Declined enquiries", so the page changed identity under the
+    // switch). What the switch shows is said by the tab, its count and the verdict capsule.
     const enqFolder = document.getElementById('inbox-folder-enquiries');
     if (enqFolder) enqFolder.classList.toggle('showing-declined', __inboxTab === 'declined');
     const enqHead = enqFolder ? enqFolder.querySelector('.bo-sec-title') : null;
-    if (enqHead && enqHead.firstChild && enqHead.firstChild.nodeType === 3) {
-        enqHead.firstChild.nodeValue = __inboxTab === 'declined' ? 'Declined enquiries ' : 'Enquiries ';
-    }
-    // Stacked, the landing's FOLD LABEL is the visible heading (the h2 hides
-    // inside the fold) — it follows the same rule: name the list beneath it.
+    if (enqHead && enqHead.firstChild && enqHead.firstChild.nodeType === 3) enqHead.firstChild.nodeValue = 'Enquiries ';
     const ivLbl = document.getElementById('iv-lbl-enquiries');
-    if (ivLbl) ivLbl.textContent = __inboxTab === 'declined' ? 'Declined enquiries' : 'Enquiries';
+    if (ivLbl) ivLbl.textContent = 'Enquiries';
     if (__inboxTab === 'declined') {
-        list.innerHTML = tabBar + declinedInboxHtml();
+        inboxPaint(list, tabBar, declinedInboxHtml());
         return;
     }
 
     if (enquiries.length === 0) {
-        list.innerHTML = tabBar + `<div class="inbox-empty-inline"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Inbox zero — no pending enquiries right now.</div>`;
+        inboxPaint(list, tabBar, `<div class="inbox-empty-inline"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Inbox zero — no pending enquiries right now.</div>`);
         // The docked pane must not keep showing the last (now handled) enquiry.
         __enqHubId = null;
         const ehc = document.getElementById('enquiry-hub-content');
@@ -27854,8 +27911,9 @@ function renderInbox() {
 
     // Compact index rows (same anatomy as the Bookings dashboard) — the whole
     // row opens the enquiry HUB, which owns the detail + every action.
-    list.innerHTML =
-        tabBar +
+    inboxPaint(
+        list,
+        tabBar,
         sortBar +
         sortedEnquiries()
             .map((e) => {
@@ -27904,7 +27962,8 @@ function renderInbox() {
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
                 </button>`;
         })
-        .join('');
+        .join(''),
+    );
     // Wide split: keep the docked pane in sync; open the first enquiry when
     // nothing is selected yet so the workspace never sits with an empty pane.
     // ONLY while the Inbox is the active view — renderInbox() also runs from

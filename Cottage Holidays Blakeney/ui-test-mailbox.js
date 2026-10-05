@@ -526,7 +526,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(dec.btnHit >= 24, `...at a real tap size (${dec.btnHit}px)`);
   ok(dec.msg.length > 4 && dec.msgOneLine, 'the guest\u2019s own words show, on one line');
   ok(dec.lead, 'the drawer explains itself once, above the rows');
-  ok(/^Declined enquiries/.test(dec.heading), `the heading names the list beneath it ("${dec.heading}")`);
+  ok(/^Enquiries/.test(dec.heading) && !/Declined enquiries/.test(dec.heading), `the heading keeps ONE title on both tabs — the switch, its counts and the capsule say which list ("${dec.heading}")`);
   ok(!dec.badgeShown, 'the WAITING count is not shown over the declined list');
   ok(/declined enquir/i.test(dec.subline), `the subline describes this screen ("${dec.subline}")`);
   ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);

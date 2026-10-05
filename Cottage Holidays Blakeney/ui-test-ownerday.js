@@ -345,7 +345,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(/declined/i.test(dec.cap) && !/waiting/i.test(dec.cap), `the capsule counts declines (“${dec.cap}”)`);
     ok(/is-unk/.test(dec.tone) && !dec.warn, 'a decline is a DECISION — muted, no warning triangle');
     ok(/Jem Beighton/.test(dec.sub) && /declined/i.test(dec.sub), `the sub names a DECLINED enquirer (“${dec.sub}”)`);
-    ok(dec.lbl === 'Declined enquiries', `the fold label names the list (“${dec.lbl}”)`);
+    ok(dec.lbl === 'Enquiries', `the fold label keeps one title on both tabs (“${dec.lbl}”)`);
     ok(dec.foldOpen && dec.listShown, 'the drawer opens on the tap that asked for it');
     ok(/Jem Beighton/.test(dec.rows), 'and the declined row is the one in it');
     // Back to Waiting: the verdict returns to the waiting queue's own numbers.
