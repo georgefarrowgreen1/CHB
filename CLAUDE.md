@@ -2079,7 +2079,10 @@ phone-width block), each declaration break-tested.
   The secondary answer (Keep it for damage) sits beside the primary as a pill (`.bhub-next-acts`).
 - **THE PAGE SETTLES IN ONCE PER BOOKING OPENED** (`.bhub-enter`, `__hubDrewId`): a data refresh re-renders
   the hub constantly and must not replay the entrance. Reduced motion is covered by the killswitch.
-- NB the existing disclosure groups already were the "one grouped list"; this pass did not rebuild them.
+- **ONE LIST, NOT SEVEN CARDS (follow-up, "still looks disjointed").** The groups lived in three parents
+  (money in the header, the grid, the guest book inside `#gb-card-host`), so only adjacent siblings joined.
+  The host is `display: contents` with join rules that look THROUGH it, and the money group abuts the grid
+  below it ≤1199px. The earlier claim that the groups "already were one list" was wrong on the phone.
 
 ## Five back-office motions (approved demo, built)
 
