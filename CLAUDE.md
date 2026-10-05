@@ -2956,6 +2956,35 @@ would flip the moment a cottage was renamed in Settings.
   name and a small rating on ONE line still have very different tops, and testing `top`
   reported "wrapped" for every inline case.
 
+## Reading an email: their new words first (built from the approved demo)
+
+**Asked for after a screenshot of a guest's one-line reply sitting above 40 lines of our own quoted email,
+a signature and "Sent from my iPhone".** The Email reader (`mailboxOpen`, admin.js) now shows what they WROTE
+and folds the rest. Gated by **`ui-test-emailreader.js`** (21 checks, break-tested twice: the reader showing
+the raw body, and the importance call forced) and smoke-test's `email split` / `importance` block (12).
+- **`mbxSplit(raw)` is pure and NEVER leaves the reader empty.** It cuts at the first Apple/Gmail "On … wrote:"
+  header (also when wrapped over two lines), an Outlook `From:/Sent:` block, a `-- Original Message --` rule or a
+  run of `>` lines, and peels a trailing "Sent from my iPhone / Get Outlook / `--`" signature off what is left.
+  Three refusals keep it from hiding the message: an email that BEGINS with a header or a quote is shown whole
+  (nothing to isolate), a mid-message "wrote:" is not a header, and if no body survives the whole text is the body.
+  The quote, signature and **Whole email** are each one tap (`.mbx-fchip` → `mbxToggleFold`, a 0fr grid fold), so
+  nothing is ever lost to the tidy view.
+- **"Replying to:"** is the question or time/£ sentence in OUR latest sent email to that address before the
+  message (`mbxReplyingTo`, read from `__mbxSent`) — what a one-word "yes" is answering.
+- **Earlier emails are SORTED by whether they matter** (`mbxEarlierSmart`): the list carries headers only, so their
+  earlier emails are fetched (≤6, cached in `__mbxBodyCache`) and our sent replies (≤4) are already held. Each is
+  scored by `mbxScore` — transparent signals with weights (amount, time, date, party/dog/allergy, access, change,
+  question, attachment; bar 3; a short acknowledgement scores 0 unless it carries a time/amount/change/file).
+  **RULES, NOT A MODEL**: every call is explained by its tags and the facts are marked in the text. Important ones
+  show under "Worth a look from earlier", the rest fold into one "Routine" line. Until the fetch lands the plain
+  chain stands; a fetch that fails just omits that email.
+- **THE OWNER CAN OVERRULE ANY CALL** (`mbxMarkImp`): "Not important" / "Important" re-sorts at once and is kept in
+  localStorage `chb-mbx-imp` (per message, capped 300) — a per-device convenience, never a record.
+- **Reply quotes only their new words, cursor ABOVE the quote.** NB a textarea drops the first newline of its
+  initial text, so the value starts `\nOn …` not `\n\nOn …`; the gate allows either.
+- Budgets raised with the trade named: admin.js +3.3KB, admin.css +0.6KB gz (owner-only, immutable-cached); tsc
+  app budget 707 → 705 (the new code adds none and the typing of `items` removed seven).
+
 ## Declining stops being the end of the conversation
 
 **A guest promised a reply "always by the end of the next day" got silence, and the

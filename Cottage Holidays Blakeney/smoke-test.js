@@ -466,6 +466,32 @@ else {
 // and the journey pipeline all read. The server half is the same shape by
 // construction (booking_amount_due and pay.php both resolve price_override before
 // the pct/balance maths — gated in test-payrail).
+// READING AN EMAIL: THEIR NEW WORDS FIRST. mbxSplit separates what they wrote from the quote, the signature and the
+// footer, and NEVER leaves the reader empty; mbxScore decides which earlier messages hold facts.
+{
+    const evalIn = (src) => vm.runInContext(src, ctx);
+    const sp = (t) => JSON.parse(evalIn(`JSON.stringify(mbxSplit(${JSON.stringify(t)}))`));
+    const iphone = 'Thank you! All sorted :)\nKind regards, Mrs Laura Mtungwazi\n\nSent from my iphone\n\n> On 18 Aug 2026, at 11:07, Cottage Holidays Blakeney\n<info@x.co.uk> wrote:\n>\n> Hi Laura,\n> any questions let me know.\n> George';
+    const a = sp(iphone);
+    check('email split (Apple-style): only their words remain as the body', a.body === 'Thank you! All sorted :)\nKind regards, Mrs Laura Mtungwazi', JSON.stringify(a.body));
+    check('…the quote and the "Sent from" line are kept apart, not lost', /Hi Laura/.test(a.quoted) && !/^>/m.test(a.quoted) && /Sent from my iphone/i.test(a.sig) && a.split === true);
+    const ol = sp('Hi George,\n\nCould we arrive around 1pm?\n\nMarcus\n\nFrom: Cottage Holidays <info@x.co.uk>\nSent: 17 August 2026 15:20\nTo: Marcus\nSubject: Re: Your enquiry\n\nCheck-in is from 3pm.\n\nGet Outlook for iOS');
+    check('email split (Outlook header block): body is theirs, the header block and its text are the quote', /1pm/.test(ol.body) && !/3pm/.test(ol.body) && /3pm/.test(ol.quoted));
+    const plain = sp('Hello,\n\nAre dogs welcome? A friend wrote: "no dogs" on your site.\n\nThanks, Priya');
+    check('email split: an all-new email is returned whole (the word "wrote:" mid-message is not a quote header)', plain.split === false && /Priya/.test(plain.body) && plain.quoted === '');
+    const startsHdr = sp('From: a@b.co\nSent: Monday\nTo: me\nSubject: hi\n\nactual text');
+    check('email split: an email that BEGINS with a header is not cut to nothing', startsHdr.body.length > 0 && /actual text/.test(startsHdr.body));
+    const onlyQuote = sp('> just a quote\n> and more\n> and more');
+    check('email split: never an empty reader — all-quote falls back to the whole text', onlyQuote.body.length > 0 && onlyQuote.split === false);
+    const corp = sp('Cheers, got it. A bakery nearby?\n\n--\nTom Whitlock\nDirector, Whitlock & Sons Ltd\n\nOn Fri, 14 Aug 2026 at 10:02, CHB <i@x.co.uk> wrote:\n> Hello Tom\n> George');
+    check('email split: a "--" signature block is folded away with the quote', corp.body === 'Cheers, got it. A bakery nearby?' && /Director/.test(corp.sig) && corp.split);
+    const sc = (t) => JSON.parse(evalIn(`JSON.stringify(mbxScore(${JSON.stringify(t)}))`));
+    check('importance: money, time, a party and a question all count', sc('£440 all in, check-in from 3pm for 2 adults and a spaniel?').important === true);
+    check('importance: a short acknowledgement scores nothing', sc('Thanks, will do.').n === 0 && sc('Thank you! All sorted :)').important === false);
+    check('importance: an acknowledgement that carries a time or an amount is still important', sc('Thanks — see you around 1pm').important === true && sc('Thanks, £50 sent').important === true);
+    check('importance: a change request is important on its own', sc('We need to cancel the Saturday night').important === true);
+    check('importance: every hit is named (so the UI can say WHY)', sc('around 1pm with the campervan').hits.includes('time') && sc('around 1pm with the campervan').hits.includes('access'));
+}
 // THE RETURNED-DEPOSIT TRACKER FOLLOWS THE RAIL: a card guest gets the due-by bar and
 // the card they paid with (digits when held); off the card rail the site cannot know
 // when it lands, so it says SENT, how, and never prints a card timescale or the word card.
