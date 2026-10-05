@@ -1855,44 +1855,7 @@ body.light-mode .ny-act {
   gap: 12px;
   flex-wrap: wrap;
 }
-/* A guest's name is not an ellipsis: "Left Deposit · Deposit return" needed
-   184px of 153 and painted "Left Deposit · Depos…". Two lines, the clamp the
-   round-eight subs use. And the state is a CAPSULE now, not a 14px dot slot. */
-/* A GUEST'S NAME IS NOT AN ELLIPSIS, and here it is not a clamp either: this is
-   a grid ROW, so it can simply grow. "Left Deposit · Deposit return" needed
-   184px of 153 and painted "Left Deposit · Depos…"; a long real name needed
-   four lines of a three-line clamp. Nothing is worth cutting a name for. */
-#money-feed .feed-who {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  overflow-wrap: anywhere;
-}
-/* The state is a capsule now, not a 14px dot slot. */
-#money-feed .feed-status { text-transform: none; min-width: 0; }
-/* TWO LINES AT EVERY WIDTH. app.css's six-column row wants ~1100px, and the
-   Money sections are one 640px rail now — measured at 1280 inside it, the six
-   tracks squeezed `.feed-who` to 74px while the cottage pill took 146. So this
-   feed wears the phone's own anatomy everywhere: date · guest · amount, then
-   cottage · kind · state beneath. The placement is EXPLICIT because
-   auto-placement would push the amount off row one, and it is scoped to
-   #money-feed because the income arithmetic fold reuses `.feed-row` with its
-   own two-column grid, where a column-4 rule would invent a track.
-   NB `display: block` on the kind out-specifies app.css's ≤640 `display: none`
-   (1,2,0 against 0,2,0); the prop-tag deliberately does NOT, so the phone keeps
-   app.css's long-standing decision to hide the cottage pill there. */
-#money-feed .feed-row { grid-template-columns: auto 1fr auto auto; }
-#money-feed .feed-row .feed-date { grid-column: 1; grid-row: 1; }
-#money-feed .feed-row .feed-who { grid-column: 2 / 4; grid-row: 1; }
-#money-feed .feed-row .feed-amt { grid-column: 4; grid-row: 1; }
-#money-feed .feed-row .prop-tag { grid-column: 1; grid-row: 2; }
-#money-feed .feed-row .feed-kind { display: block; grid-column: 2 / 4; grid-row: 2; }
-#money-feed .feed-row .feed-status { grid-column: 4; grid-row: 2; }
-/* On a phone the cottage pill is hidden, so column one is empty on row two —
-   the kind takes it back rather than wrapping in 148px beside 73px of nothing. */
-@media (max-width: 640px) {
-  #money-feed .feed-row .feed-kind { grid-column: 1 / 4; }
-}
+
 /* Three exports in a wrapping row at 390 lay out 2 + 1, with the third
    ORPHANED on a line of its own beside 240px of nothing. A column: three equal
    rows, each at the 44px floor. They stay OUTSIDE any fold (ui-test-money §3). */
@@ -8160,3 +8123,31 @@ body.owner-mode .money-row .money-actions .btn-sm:first-child { background: var(
 body.owner-mode #asec-payments .accounts-section-title { font-size: var(--fs-headline); margin: 8px 0 4px; }
 body.owner-mode .money-owed { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 0 12px; }
 body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size: var(--fs-sub); }
+
+/* RECENT PAYMENTS: month groups, an In/Out pill per line, pending apart. */
+.pay-dir { display: inline-grid; place-items: center; min-width: 40px; height: 24px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--fs-caption); font-weight: 600; border: 1px solid transparent; }
+.pay-dir.is-in { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.pay-dir.is-out { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.pay-dir.is-wait { background: none; color: var(--text-muted); border: 1px dashed var(--text-muted); }
+.pay-eta { color: var(--text-muted); font-size: var(--fs-caption); white-space: nowrap; }
+.pay-eta b { color: var(--warn-text); font-weight: 600; }
+#money-feed .mf-head { font-size: var(--fs-headline); font-weight: 600; margin: 8px 4px; max-width: 640px; }
+#money-feed .mf-head .is-in { color: var(--ok-text); }
+#money-feed .mf-head .is-out { color: var(--danger-text); }
+#money-feed .mf-head .is-wait { color: var(--warn-text); }
+#money-feed .mf-month { display: flex; justify-content: space-between; align-items: baseline; max-width: 640px; margin: 20px 4px 8px; }
+#money-feed .mf-month em { font-style: normal; font-size: var(--fs-sub); color: var(--text-muted); font-weight: 500; }
+#money-feed .mf-wait { max-width: 640px; margin-top: 12px; }
+#money-feed .mf-wait .mf-whead { display: flex; justify-content: space-between; margin: 0 4px 8px; font-size: var(--fs-caption); color: var(--warn-text); }
+#money-feed .mf-wait .mf-whead em { font-style: normal; color: var(--text-muted); font-weight: 500; }
+#money-feed .feed-list { padding: 0; margin-bottom: 12px; }
+#money-feed .feed-row.mf-row { grid-template-columns: 40px 1fr auto; gap: 12px; padding: 12px 16px; min-height: 64px; }
+#money-feed .mf-main { min-width: 0; display: flex; flex-direction: column; }
+#money-feed .mf-name { font-size: var(--fs-body); font-weight: 600; overflow-wrap: anywhere; }
+#money-feed .mf-sub { font-size: var(--fs-sub); font-weight: 500; color: var(--text-muted); text-wrap: pretty; }
+#money-feed .mf-fig { display: flex; flex-direction: column; align-items: flex-end; text-align: right; font-variant-numeric: tabular-nums; }
+#money-feed .mf-amt { font-size: var(--fs-headline); font-weight: 600; }
+#money-feed .mf-fig small { font-size: var(--fs-caption); font-weight: 500; color: var(--text-muted); }
+#money-feed .mf-fig .st-cap { margin-top: 4px; }
+#money-feed .mf-calm { text-align: center; font-size: var(--fs-sub); color: var(--text-muted); margin: 12px 0; }
+#hub-history .pay-dir, #hub-history .pay-eta { font-size: var(--fs-sub); }

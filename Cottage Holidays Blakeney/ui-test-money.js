@@ -418,6 +418,10 @@ let mailWillFail = false;
       figs: feed.querySelectorAll('.mf-recon .acw-fig').length,
       welled: listEl ? parseFloat(getComputedStyle(listEl).borderRadius) >= 12 && getComputedStyle(listEl).borderStyle !== 'none' : false,
       rows: feed.querySelectorAll('.feed-row').length,
+      pills: Array.from(feed.querySelectorAll('.feed-row')).map((r) => (r.querySelector('.pay-dir') || {}).textContent + ':' + (r.querySelector('.mf-amt') || {}).textContent[0]).join(' '),
+      waitRow: !!feed.querySelector('.mf-wait .pay-dir.is-wait.is-out') && /Back in\s*3–5 days/.test((feed.querySelector('.mf-wait') || {}).textContent || ''),
+      head: (feed.querySelector('.mf-head') || {}).textContent || '',
+      month: !!feed.querySelector('.mf-month'),
     };
     await renderPricingCoach();
     await new Promise((r) => setTimeout(r, 150));
@@ -436,6 +440,10 @@ let mailWillFail = false;
   });
   ok(skin.recent.noStutter && skin.recent.figs === 3 && skin.recent.welled && skin.recent.rows === 2,
     `Recent payments: no repeated heading, three recon figures in a well (${skin.recent.figs}), the feed framed (${skin.recent.rows} rows)`);
+  ok(skin.recent.pills === 'In:+ Out:−' || skin.recent.pills === 'Out:− In:+',
+    `Recent payments: one In/Out pill per line, agreeing with the sign (${skin.recent.pills})`);
+  ok(skin.recent.waitRow && skin.recent.month && /£525\.00 in · £0\.00 returned · £75\.00 on its way/.test(skin.recent.head),
+    `Recent payments: a pending return sits apart as "Back in 3–5 days" and is kept out of the totals (${skin.recent.head})`);
   ok(skin.coach.cap && skin.coach.opp && skin.coach.insight && skin.coach.well && skin.coach.apply,
     'Pricing coach: caption + wells + ✓ opportunity / quiet insight capsules + Apply intact');
 
