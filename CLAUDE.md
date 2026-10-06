@@ -3321,6 +3321,19 @@ the booking bar under it; everything below it shares ONE rail (20px gutter, 1088
   app re-renders can never be stuck at opacity 0.
 - NOT converted: the "Check availability" form section and the guest-quote section further down.
 
+## The hero entrance waits for the reveal (page-load smoothness)
+
+The hero's entrance (word rise, eyebrow, subline, booking bar, photo settle) used to start at CSS parse,
+**behind the opaque `#loading-overlay`**, so it finished unseen (measured: 100% done when the cover lifted)
+and the reveal landed on a busy main thread. It is now HELD (`body:not(.hero-go)` pauses the animations) until
+`hideLoadingOverlay()` has decoded the hero photo (capped 900ms), waited two animation frames (150ms timeout
+fallback: a backgrounded tab never ticks rAF) and then adds `hero-go` and `fade-out` in the same frame. The
+photo's dimming is a flat `::after` layer (`opacity: 1 - --hero-brightness`), NOT `filter: brightness()` on the
+element that is also scaling in `heroDrift` - removing the filter alone took long frames from ~7.5 to ~3.5
+(4x CPU, Chromium). Measured before/after: frames >33ms in 2s after reveal 7.6 -> 3.3, p95 33 -> 19ms. Not
+measured: iOS Safari. One-word headlines now wrap and rise too. The reveal is the single call site
+(`__revealed` guard), so a new reveal path must go through `hideLoadingOverlay`, or the entrance stays held.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

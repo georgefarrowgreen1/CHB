@@ -8195,7 +8195,7 @@ function heroWordsRise() {
     const h = document.querySelector('#hero-headline-panel h1');
     if (!h || h.querySelector('.w')) return;
     const words = (h.textContent || '').trim().split(/\s+/);
-    if (words.length < 2) return;
+    if (words.length < 1) return;
     h.setAttribute('aria-label', words.join(' '));
     h.textContent = '';
     words.forEach((w, i) => {
@@ -8577,14 +8577,54 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+let __revealed = false;
+// Resolve once the hero photo is decoded (capped), so it is never still
+// painting in while the entrance plays.
+function heroPhotoReady() {
+    return new Promise((resolve) => {
+        const t = setTimeout(resolve, 900);
+        const fin = () => {
+            clearTimeout(t);
+            resolve(undefined);
+        };
+        try {
+            const bg = document.querySelector('#hero .hero-bg');
+            const m = bg && /url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(bg).backgroundImage || '');
+            if (!m || /hero\.jpg/.test(m[1])) return fin();
+            const im = new Image();
+            im.src = m[1];
+            im.decode().then(fin, fin);
+        } catch (e) {
+            fin();
+        }
+    });
+}
 function hideLoadingOverlay() {
     clearTimeout(window.__slowLoadTimer);
-    const o = document.getElementById('loading-overlay');
-    if (!o || o.classList.contains('fade-out')) return;
-    o.classList.add('fade-out');
-    setTimeout(() => {
-        if (o.parentNode) o.parentNode.removeChild(o);
-    }, 600);
+    if (__revealed) return;
+    __revealed = true;
+    // The hero entrance is HELD (CSS: body:not(.hero-go)) until now. It used to start at CSS
+    // parse, behind the opaque overlay, so the visitor met it mid-flight while the main thread
+    // was still busy. Fade and entrance now begin in the same frame, once the photo is decoded.
+    const go = () => {
+        document.body.classList.add('hero-go');
+        const o = document.getElementById('loading-overlay');
+        if (!o) return;
+        o.classList.add('fade-out');
+        setTimeout(() => {
+            if (o.parentNode) o.parentNode.removeChild(o);
+        }, 600);
+    };
+    heroPhotoReady().then(() => {
+        let fired = false;
+        const once = () => {
+            if (fired) return;
+            fired = true;
+            go();
+        };
+        requestAnimationFrame(() => requestAnimationFrame(once));
+        setTimeout(once, 150); // a backgrounded tab never ticks rAF
+    });
 }
 // After 10s, if the page still hasn't finished loading, show a "taking longer
 // than usual" message with a Reload button — rather than auto-revealing a
@@ -19583,7 +19623,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'herophoto1';
+    const BUILD = 'loadgate1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
