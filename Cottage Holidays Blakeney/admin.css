@@ -8045,3 +8045,67 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .cmdk-row .cmdk-act { margin-left: auto; flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-size: var(--cmdk-fs-body); font-weight: 600; white-space: nowrap; }
 .cmdk-asks { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 8px; }
 .cmdk-asks .cmdk-chip { min-height: 44px; padding: 0 16px; font-size: var(--cmdk-fs-sub); }
+
+/* ---- MANAGE'S SUMMARY + COTTAGE LIST (the approved prototype). One row says
+   the state; only problems get rows of their own, which unfold under "Needs a
+   look"; the cottages are rows in their group's list. ---- */
+#manage-verdicts { max-width: 640px; }
+.mg-sum {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 16px; margin: 0 0 4px; cursor: pointer; color: var(--text-light); font: inherit;
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg);
+  transition: border-color 400ms var(--out), transform 320ms var(--settle);
+}
+.mg-sum[data-state="warn"] { border-color: color-mix(in srgb, var(--warn) 32%, var(--glass-border)); }
+.mg-mark {
+  position: relative; width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  color: var(--ok-text); background: color-mix(in srgb, var(--ok) 15%, transparent);
+  transition: background 400ms var(--out), color 400ms var(--out);
+}
+.mg-mark svg { position: absolute; width: 18px; height: 18px; }
+.mg-tick path { stroke-dasharray: 24; stroke-dashoffset: 0; transition: stroke-dashoffset 500ms var(--out) 150ms; }
+.mg-bang, .mg-q { opacity: 0; transform: scale(0.6); transition: opacity 250ms var(--out), transform 400ms var(--sheet); }
+.mg-q { position: absolute; font-weight: 700; }
+.mg-sum[data-state="warn"] .mg-mark { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.mg-sum[data-state="unk"] .mg-mark { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
+.mg-sum:not([data-state="ok"]) .mg-tick path { stroke-dashoffset: 24; transition-delay: 0s; transition-duration: 200ms; }
+.mg-sum[data-state="warn"] .mg-bang, .mg-sum[data-state="unk"] .mg-q { opacity: 1; transform: none; }
+.mg-halo { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--ok) 15%, transparent); opacity: 0; }
+.mg-mark.is-cheer .mg-halo { animation: mgHalo 1.1s var(--out); }
+@keyframes mgHalo { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+.mg-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mg-t { font-weight: 600; font-size: var(--fs-body); }
+.mg-s { font-size: var(--fs-sub); color: var(--text-muted); margin-top: 2px; text-wrap: pretty; }
+.mg-sum.is-swap .mg-t, .mg-sum.is-swap .mg-s { animation: mgSwap 360ms var(--out); }
+@keyframes mgSwap { from { opacity: 0; transform: translateY(3px); } }
+/* The problems unfold (the fold discipline: a 0fr grid, ONE child). */
+.mg-fold { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 420ms var(--out), opacity 300ms var(--out), visibility 0s linear 420ms; }
+.mg-fold.is-open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
+.mg-fold > div { overflow: hidden; overflow: clip; overflow-clip-margin: 4px; min-height: 0; }
+.mg-probs { margin-bottom: 4px; }
+.mg-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 400ms var(--out), opacity 250ms var(--out); }
+.mg-wrap > div { overflow: hidden; min-height: 0; }
+.mg-wrap.is-gone { grid-template-rows: 0fr; opacity: 0; }
+.mg-wrap.is-new { animation: mgRowIn 450ms var(--out) both; }
+@keyframes mgRowIn { from { opacity: 0; transform: translateY(-6px); } }
+.mg-wrap + .mg-wrap .settings-row { border-top: 1px solid var(--glass-border); }
+.mg-wrap:first-child .settings-row { border-top: none; }
+.mg-prob { padding-top: 8px; padding-bottom: 8px; cursor: default; }
+.mg-open { flex: 1; min-width: 0; display: flex; align-items: center; min-height: 44px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mg-cap { flex: none; cursor: pointer; font-family: inherit; min-height: 32px; position: relative; }
+.mg-cap::after { content: ""; position: absolute; inset: -6px -2px; }
+.mg-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: mgSpin 0.7s linear infinite; }
+@keyframes mgSpin { to { transform: rotate(1turn); } }
+/* The cottages: rows in the group's list. */
+.mg-cots { display: contents; }
+.mg-fig { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.mg-fig b { display: block; font-weight: 600; }
+.mg-fig small { display: block; font-size: var(--fs-caption); color: var(--text-muted); white-space: nowrap; }
+.mg-mini { display: block; width: 56px; height: 4px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-muted) 18%, transparent); margin: 4px 0 0 auto; overflow: hidden; }
+.mg-mini i { display: block; height: 100%; width: 0; background: var(--info); border-radius: var(--r-pill); transition: width 900ms var(--out); }
+.mg-add { color: var(--info-text); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .mg-fold, .mg-wrap, .mg-mini i, .mg-tick path, .mg-bang, .mg-q, .mg-mark { transition: none; }
+  .mg-wrap.is-new, .mg-mark.is-cheer .mg-halo, .mg-sum.is-swap .mg-t, .mg-sum.is-swap .mg-s { animation: none; }
+  .mg-spin { animation: none; }
+}

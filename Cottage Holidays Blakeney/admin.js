@@ -9821,73 +9821,126 @@ function manageVerdicts() {
     let guestQ = [];
     try { guestQ = slGuestQuestions() || []; } catch (err) {}
     const teachN = misses.length + guestQ.length;
-
-    const stoppedN = (cronStale ? 1 : 0) + trouble.length;
-    const parts = [];
-    if (stoppedN) parts.push(stoppedN === 1 ? 'one automation needs a look' : stoppedN + ' automations need a look');
-    if (modN) parts.push(modN === 1 ? '1 approval waiting' : modN + ' approvals waiting');
-    if (teachN) parts.push(teachN === 1 ? '1 search to teach' : teachN + ' searches to teach');
-    // Scoped to what this pulse measures — "everything is running" sat
-    // beside the health pill's "1 thing needs a look" (the FULL check's
-    // knowledge), two verdicts about one screen disagreeing.
-    // …AND "RUNNING" IS ONLY CLAIMED WHEN IT WAS ASKED. cron and the feeds ride ONE
-    // admin-bootstrap request, so a single dropped one left this saying "Daily jobs
-    // and calendar feeds are running" — measured, at the same moment Today's strip
-    // said the automation looked stopped. There is nothing to warn about because
-    // nothing answered, which is not the same as nothing being wrong.
+    // "RUNNING" IS ONLY CLAIMED WHEN IT WAS ASKED: cron and the feeds ride ONE
+    // bootstrap request, so a dropped one must read as "couldn't check", never
+    // as a clean bill of health.
     const sigOk = chbSignalsFresh();
-    const pulse = parts.length
-        ? parts.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.'
-        : sigOk
-          ? 'Daily jobs and calendar feeds are running.'
-          : "Couldn't check the daily jobs or the calendar feeds just now — open the full system check.";
 
-    // Exceptions — the faults that can cost real money lead; a clean day
-    // renders no red at all.
-    let attn = '';
-    if (cronStale) {
-        attn += bhubFoldGrp('mgcron', 'Daily automation looks stopped', e('last ran ' + cronAgo), stCap('bad', 'stopped'),
-            `<div class="bhub-mut" style="margin-bottom:4px;">The daily jobs send arrival emails, chase payments and keep the calendar healthy — none of that happens while this is stopped.</div>
-             <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Open System check</button></div>`);
+    // ONE ROW PER THING THAT NEEDS THE OWNER (the approved prototype). Each row
+    // opens its page; the capsule is the one-tap fix where there is one.
+    /** @type {Array<{id: string, t: string, s: string, cap: string, tone: string, go: string[], sync?: string}>} */
+    const probs = [];
+    if (cronStale) probs.push({ id: 'cron', t: 'Daily automation looks stopped', s: 'last ran ' + cronAgo, cap: 'Open Status', tone: 'bad', go: ['settingsOpen', 'diagnostics'] });
+    trouble.slice(0, 3).forEach((f) => probs.push({
+        id: 'feed-' + f.pk, t: 'Calendar sync', s: `${f.name} · ${f.failing ? 'failing to sync' : (f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : Math.round(f.ageHours) + ' hours') + ' late'}`,
+        cap: 'Run sync', tone: f.failing ? 'bad' : 'warn', go: ['settingsOpen', 'calendar'], sync: String(f.pk),
+    }));
+    if (mod.rev) probs.push({ id: 'rev', t: 'Reviews to approve', s: mod.rev === 1 ? '1 from a guest' : mod.rev + ' from guests', cap: mod.rev + ' waiting', tone: 'warn', go: ['settingsOpen', 'reviews'] });
+    if (mod.ph) probs.push({ id: 'ph', t: 'Guest photos to approve', s: mod.ph === 1 ? '1 shared photo' : mod.ph + ' shared photos', cap: mod.ph + ' waiting', tone: 'warn', go: ['settingsOpen', 'photos'] });
+    if (mod.exp) probs.push({ id: 'exp', t: 'Things to do to approve', s: mod.exp === 1 ? '1 guest suggestion' : mod.exp + ' guest suggestions', cap: mod.exp + ' waiting', tone: 'warn', go: ['settingsOpen', 'experiences'] });
+    if (teachN) {
+        const q = misses[0] ? String(misses[0].t || '') : guestQ[0] ? String(guestQ[0].q || '') : '';
+        probs.push({ id: 'teach', t: 'Teach your assistant', s: q ? '“' + q.slice(0, 28) + '”' + (teachN > 1 ? ' and ' + (teachN - 1) + ' more' : '') : teachN + ' to teach', cap: 'Teach', tone: 'warn', go: ['settingsOpen', 'search-learning'] });
     }
-    trouble.slice(0, 2).forEach((f, i) => {
-        attn += bhubFoldGrp('mgfeed' + i, `Calendar sync has stalled — ${e(f.name)}`, e(f.ago),
-            stCap(f.failing ? 'bad' : 'warn', f.failing ? 'failing' : f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : Math.round(f.ageHours) + ' hours'),
-            `<div class="bhub-mut" style="margin-bottom:4px;">A stalled feed can double-book you — the calendar stops seeing ${e(f.name)}’s platform stays.</div>
-             <div class="bhub-btn-row bhub-act-links">
-                <button class="bhub-actlink" ${chbAttrs('runSync', String(f.pk))}>Run the sync now</button>
-                <button class="bhub-actlink" ${chbAttrs('settingsOpen', 'calendar')}>Open calendar feeds</button>
-             </div>`);
+
+    const n = probs.length;
+    const fine = [];
+    if (!cronStale && !trouble.length && sigOk) fine.push('jobs and feeds on time');
+    if (!modN) fine.push('nothing to approve');
+    if (!teachN) fine.push('nothing to teach');
+    const cap1 = (t) => t.replace(/^./, (c) => c.toUpperCase());
+    const state = n ? 'warn' : sigOk ? 'ok' : 'unk';
+    const title = n ? (n === 1 ? 'One thing needs a look' : n + ' things need a look')
+        : sigOk ? 'Everything’s running' : 'Couldn’t check just now';
+    const sub = n ? (fine.length ? cap1(fine.join(' · ')) : 'Open Status for the detail')
+        : sigOk ? 'Jobs and feeds on time · nothing to approve · nothing to teach'
+            : 'The daily jobs and calendar feeds didn’t answer — open Status';
+
+    // Built ONCE, then updated in place, so the summary can animate between
+    // states and a problem row can arrive and leave rather than the whole block
+    // being repainted on every refresh.
+    let sum = /** @type {HTMLElement|null} */ (host.querySelector('.mg-sum'));
+    const first = !sum;
+    if (!sum) {
+        host.innerHTML = `<button type="button" class="mg-sum" ${chbAttrs('settingsOpen', 'diagnostics')}>
+            <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
+              <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+              <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
+              <span class="mg-q">?</span>
+            </span>
+            <span class="mg-txt"><span class="mg-t"></span><span class="mg-s"></span></span><span class="settings-row-chev" aria-hidden="true">›</span>
+          </button>
+          <div class="mg-fold"><div><div class="settings-section-label">Needs a look</div><div class="settings-group mg-probs"></div></div></div>`;
+        sum = /** @type {HTMLElement} */ (host.querySelector('.mg-sum'));
+    }
+    const was = sum.dataset.state || '';
+    const tEl = /** @type {HTMLElement} */ (sum.querySelector('.mg-t'));
+    const sEl = /** @type {HTMLElement} */ (sum.querySelector('.mg-s'));
+    // The words change AT ONCE (a reader, or a screen reader, never meets a
+    // stale sentence); only their arrival is animated.
+    const changed = !first && tEl.textContent !== title;
+    tEl.textContent = title;
+    sEl.textContent = sub;
+    if (changed) { sum.classList.remove('is-swap'); void sum.offsetWidth; sum.classList.add('is-swap'); }
+    sum.dataset.state = state;
+    sum.setAttribute('aria-label', title + '. ' + sub + '. Open Status');
+    if (was === 'warn' && state === 'ok') {
+        const mk = sum.querySelector('.mg-mark');
+        if (mk) { mk.classList.remove('is-cheer'); void (/** @type {HTMLElement} */ (mk)).offsetWidth; mk.classList.add('is-cheer'); }
+    }
+
+    const list = /** @type {HTMLElement} */ (host.querySelector('.mg-probs'));
+    const have = new Map(Array.from(list.children).map((w) => [/** @type {HTMLElement} */ (w).dataset.id, /** @type {HTMLElement} */ (w)]));
+    probs.forEach((p) => {
+        const capHtml = p.sync
+            ? `<button type="button" class="st-cap is-${p.tone} mg-cap" data-pk="${e(p.sync)}" ${chbAttrs('mgRunSync', CHB_SELF)}>${e(p.cap)}</button>`
+            : `<button type="button" class="st-cap is-${p.tone} mg-cap" ${chbAttrs(p.go[0], p.go[1])}>${e(p.cap)}</button>`;
+        const inner = `<div class="settings-row mg-prob"><button type="button" class="mg-open" ${chbAttrs(p.go[0], p.go[1])}><span class="settings-row-main"><span class="settings-row-label">${e(p.t)}</span><span class="settings-row-sub">${e(p.s)}</span></span></button>${capHtml}<span class="settings-row-chev" aria-hidden="true">›</span></div>`;
+        let w = have.get(p.id);
+        if (!w || w.classList.contains('is-gone')) {
+            w = document.createElement('div');
+            w.className = 'mg-wrap' + (first ? '' : ' is-new');
+            w.dataset.id = p.id;
+            w.innerHTML = `<div>${inner}</div>`;
+            list.appendChild(w);
+        } else {
+            const c = w.querySelector('.mg-cap');
+            if (!(c && /** @type {HTMLElement} */ (c).dataset.busy)) /** @type {HTMLElement} */ (w.firstElementChild).innerHTML = inner;
+        }
+        have.delete(p.id);
     });
-
-    const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds',
-        stoppedN ? stCap('warn', stoppedN + ' stopped') : sigOk ? stCap('ok', 'All running') : stCap('unk', 'not checked'),
-        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
-         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Full system check</button></div>`);
-    const modGrp = bhubFoldGrp('mgmod', 'To approve', 'guest submissions',
-        modN ? stCap('warn', modN + ' waiting') : stCap('ok', 'Nothing waiting'),
-        `<div class="ks-kv"><span class="ks-k">Reviews</span><span class="ks-v"><small>${mod.rev ? mod.rev + ' waiting' : 'none'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Guest photos</span><span class="ks-v"><small>${mod.ph ? mod.ph + ' waiting' : 'none'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Things to do</span><span class="ks-v"><small>${mod.exp ? mod.exp + ' waiting' : 'none'}</small></span></div>
-         <div class="bhub-btn-row bhub-act-links">
-            ${mod.rev ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'reviews')}>Approve reviews</button>` : ''}
-            ${mod.ph ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'photos')}>Approve photos</button>` : ''}
-            ${mod.exp ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'experiences')}>Approve things to do</button>` : ''}
-            ${!modN ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'reviews')}>Open reviews</button>` : ''}
-         </div>`);
-    const topMiss = misses[0];
-    const learnGrp = bhubFoldGrp('mglearn', 'Your assistant',
-        topMiss ? e('“' + String(topMiss.t || '').slice(0, 24) + '” found nothing') : guestQ[0] ? e('“' + String(guestQ[0].q || '').slice(0, 24) + '” from a guest') : 'teach it once',
-        teachN ? stCap('warn', teachN + ' to teach') : stCap('ok', 'Nothing to teach'),
-        `<div class="ks-kv"><span class="ks-k">Dead-end searches</span><span class="ks-v"><small>${misses.length || 'none'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Guests asked these</span><span class="ks-v"><small>${guestQ.length || 'none'}</small></span></div>
-         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'search-learning')}>Open Search learning</button></div>`);
-
-    host.innerHTML = `<div class="mo-pulse">${e(pulse)}</div>
-        ${attn ? '<span class="bhub-grpcap is-attn">Needs attention</span>' + attn : ''}
-        <span class="bhub-grpcap">Running for you</span>${sysGrp}${modGrp}${learnGrp}
-        <span class="bhub-grpcap">The toolbox</span>`;
+    have.forEach((w) => {
+        if (w.classList.contains('is-gone')) return;
+        w.classList.add('is-gone');
+        setTimeout(() => w.remove(), chbReducedMotion() ? 0 : 420);
+    });
+    const fold = host.querySelector('.mg-fold');
+    if (fold) fold.classList.toggle('is-open', n > 0);
+}
+function chbReducedMotion() {
+    try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
+// Run a stalled feed's sync from its row: the capsule spins, then the fresh
+// health is re-read and the row folds away by itself if the feed is now fine.
+async function mgRunSync(el) {
+    const btn = /** @type {HTMLElement} */ (el);
+    if (!btn || btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    btn.innerHTML = '<span class="mg-spin" aria-hidden="true"></span>Syncing';
+    try {
+        await runSync(btn.dataset.pk || '');
+        const ab = await apiGet('admin-bootstrap.php');
+        if (ab && ab.ok) {
+            /** @type {any} */ (window).__feedStatusPre = Array.isArray(ab.feeds) ? ab.feeds : null;
+            /** @type {any} */ (window).__cronStatusPre = ab.cron || null;
+            /** @type {any} */ (window).__sigAt = Date.now();
+        }
+        btn.className = 'st-cap is-ok mg-cap';
+        btn.textContent = '✓ Synced';
+    } catch (err) {
+        btn.textContent = 'Run sync';
+    }
+    setTimeout(() => { delete btn.dataset.busy; manageVerdicts(); }, 700);
 }
 // Show the full Manage index (all groups) + set the header; called on open and
 // on returning from a drill-down panel. The per-area hiding is gone — the name
@@ -9918,38 +9971,49 @@ function renderCottagesOverview() {
     const el = document.getElementById('cottages-overview');
     if (!el) return;
     const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
-    if (!keys.length) {
-        el.innerHTML = '';
-        return;
-    }
     let occ = {};
     try {
         occ = cottageMonthOccupancy();
     } catch (e) {}
-    const monthName = chbNow().toLocaleDateString('en-GB', { month: 'long' });
-    const card = (k) => {
+    const mon = chbNow().toLocaleDateString('en-GB', { month: 'short' });
+    const HOUSE = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>';
+    // ONE ROW PER COTTAGE, in the group's own list (the approved prototype):
+    // name and price on the left, the month's booked figure on the right with a
+    // thin bar. Tapping opens THAT cottage's page.
+    const row = (k) => {
         const meta = propertyMeta[k] || {};
         const r = propertyRates[k] || defaultRates[k] || {};
-        const pct = (occ[k] && occ[k].pct) || 0;
-        const accent = meta.accent || 'var(--accent)';
-        // Stacked layout: name, then price, then occupancy — nothing sits on one
-        // squeezed row, so a long cottage name can't push the price off the card.
-        // Tap a cottage card → open THAT cottage's editor, not the cottage list.
-        // settingsOpen('accom') shows the section (renderAccomList hides the
-        // detail first), then settingsOpenAccom drills into this cottage.
-        return `<button class="glass-panel area-ov-card" data-act="openAccomThenSec" data-arg="${k}" style="text-align:left;padding:15px 16px;cursor:pointer;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <span style="font-weight:600;line-height:1.25;">${escapeHtml(meta.name || k)}</span>
-                <span class="settings-row-chev" style="flex-shrink:0;">›</span>
-            </div>
-            <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:3px;">from £${Math.round(r.coupleRate || 0)}/night</div>
-            <div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${pct}% booked in ${monthName}</div>
-            <div style="height:6px;border-radius:999px;background:rgba(128,128,128,0.18);margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${accent};border-radius:999px;"></div></div>
+        const pct = Math.max(0, Math.min(100, Math.round((occ[k] && occ[k].pct) || 0)));
+        return `<button type="button" class="settings-row mg-cot" data-act="openAccomThenSec" data-arg="${k}">
+            <span class="settings-row-ic">${HOUSE}</span>
+            <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(meta.name || k)}</span><span class="settings-row-sub">from £${Math.round(r.coupleRate || 0)} a night</span></span>
+            <span class="mg-fig"><b data-count="${pct}">${pct}%</b><small>booked in ${mon}</small><span class="mg-mini" aria-hidden="true"><i data-w="${pct}"></i></span></span>
+            <span class="settings-row-chev" aria-hidden="true">›</span>
         </button>`;
     };
-    // No sub-label — these cottage cards are the lead of the "Your cottages"
-    // section, and each card's "X% booked in <month>" already carries the month.
-    el.innerHTML = `<div class="area-ov-grid">${keys.map(card).join('')}</div>`;
+    const html = keys.map(row).join('');
+    if (el.dataset.sig === html) return; // unchanged → no repaint, no replayed motion
+    el.dataset.sig = html;
+    el.innerHTML = html;
+    // The figures count up and the bars fill when the list arrives.
+    const still = chbReducedMotion();
+    el.querySelectorAll('.mg-mini i').forEach((i) => {
+        const w = /** @type {HTMLElement} */ (i).dataset.w + '%';
+        if (still) { /** @type {HTMLElement} */ (i).style.width = w; return; }
+        requestAnimationFrame(() => requestAnimationFrame(() => { /** @type {HTMLElement} */ (i).style.width = w; }));
+    });
+    if (!still) el.querySelectorAll('[data-count]').forEach((b) => {
+        const to = Number(/** @type {HTMLElement} */ (b).dataset.count) || 0;
+        if (!to) return;
+        const t0 = performance.now();
+        const step = (t) => {
+            const k = Math.min(1, (t - t0) / 900);
+            b.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))) + '%';
+            if (k < 1) requestAnimationFrame(step);
+        };
+        b.textContent = '0%';
+        requestAnimationFrame(step);
+    });
 }
 
 // ---- Inbox: a dedicated back-office screen combining enquiries, guest messages

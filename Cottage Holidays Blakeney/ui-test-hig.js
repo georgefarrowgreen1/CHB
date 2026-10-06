@@ -336,8 +336,10 @@ const NEST = (rootSel) => {
   // The badge beside the plan caption STAYS (an owner's ask, gated both ways in
   // ui-test-hub) — only its own 0.1em track went, so caption and chip read as one.
   // …and the OUTSIDE-container tier is untouched: a section header still shouts.
-  await open(page, "(async () => { await openArea('settings'); })()", 1200);
-  const outside = await page.evaluate("(() => { const el = [...document.querySelectorAll('.settings-section-label, #manage-verdicts .bhub-grpcap')].filter((e) => e.getClientRects().length)[0]; return el ? { tt: getComputedStyle(el).textTransform, t: el.textContent.trim().slice(0, 24) } : null; })()");
+  // (Manage's landing no longer carries an outside caption — its summary is one
+  // row — so the tier is read where it still lives: a settings page's section cap.)
+  await open(page, "(async () => { await openArea('settings'); settingsOpen('follow-ups'); })()", 1200);
+  const outside = await page.evaluate("(() => { const el = [...document.querySelectorAll('#sec-follow-ups .acr-cap')].filter((e) => e.getClientRects().length)[0]; return el ? { tt: getComputedStyle(el).textTransform, t: el.textContent.trim().slice(0, 24) } : null; })()");
   ok(outside && outside.tt === 'uppercase', `the OUTSIDE-container tier still shouts ("${outside && outside.t}")`);
 
   console.log('§2 Payments — row titles in ink, the capsule carries the state');
@@ -351,31 +353,30 @@ const NEST = (rootSel) => {
   ok(pay.lbls.length >= 3, `${pay.lbls.length} answer rows found (vacuity guard)`);
   ok(pay.lbls.every((l) => l.color === pay.ink && !/ok-text/.test(l.style)), `every answer title is body ink, none green (${pay.lbls.map((l) => l.text + '=' + l.color).join('; ')})`);
 
-  console.log('§2 Manage — the calm capsule is the same pill as the others, tinted green');
+  console.log('§2 Manage — calm is said ONCE, by the summary, not by a column of green pills');
   await open(page, "(async () => { await openArea('manage'); })()", 1000);
   const calm = await page.evaluate(() => {
-    const c = document.querySelector('#manage-verdicts .st-cap.is-ok');
-    if (!c) return null;
-    const cs = getComputedStyle(c);
-    const tick = c.querySelector('.st-tick');
+    const sum = document.querySelector('#manage-verdicts .mg-sum');
+    if (!sum) return null;
     const okText = getComputedStyle(document.body).getPropertyValue('--ok-text').trim();
     const probe = document.createElement('span'); probe.style.color = okText; document.body.appendChild(probe); const okRgb = getComputedStyle(probe).color; probe.remove();
-    return { bg: cs.backgroundColor, border: parseFloat(cs.borderTopWidth), tickColor: tick ? getComputedStyle(tick).color : null, okRgb, n: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length };
+    const mk = sum.querySelector('.mg-mark');
+    return { state: sum.dataset.state, mark: mk ? getComputedStyle(mk).color : null, okRgb, pills: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length };
   });
-  ok(calm && calm.n >= 2, `Manage shows ${calm && calm.n} calm capsules (vacuity guard)`);
-  ok(calm && calm.bg !== 'rgba(0, 0, 0, 0)' && calm.bg !== 'transparent' && calm.border >= 1, `the OK capsule is a tinted, bordered pill like warn and unk (${calm && calm.bg}, border ${calm && calm.border})`);
-  ok(calm && calm.tickColor === calm.okRgb, 'and its tick is the ONE green mark');
+  ok(!!calm, 'Manage opens with its one summary row');
+  ok(calm && calm.pills === 0, `no green "all fine" pills on the landing (${calm && calm.pills})`);
+  ok(calm && (calm.state !== 'ok' || calm.mark === calm.okRgb), `and when all is well its mark is the ONE green mark (${calm && calm.state} ${calm && calm.mark})`);
+  await open(page, "(async () => { await openAccounts(); })()", 1200);
+  const grpcapSpec = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-grpcap, #accounts-index .bhub-grpcap')].filter((e) => e.getClientRects().length)[0]; if (!g) return null; const c = getComputedStyle(g); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; });
 
-  // The ONE caption spec, read off the landing before we drill into a section.
-  const grpcapSpec = await page.evaluate(() => { const g = document.querySelector('#manage-verdicts .bhub-grpcap'); if (!g) return null; const c = getComputedStyle(g); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; });
-
+  await open(page, "(async () => { await openArea('manage'); })()", 900);
   console.log('§1c Manage — the well LIFTS, and a field sits in at most two boxes');
   await open(page, "settingsOpen('notify')", 1100);
   const well = await page.evaluate(() => {
     const w = document.querySelector('.settings-sec .accounts-stat');
     if (!w) return null;
     const c = getComputedStyle(w);
-    const grp = getComputedStyle(document.querySelector('#manage-verdicts .bhub-fold-grp') || document.body);
+    const grp = getComputedStyle(document.querySelector('.settings-group') || document.body);
     return { shadow: c.boxShadow, bg: c.backgroundColor, radius: c.borderTopLeftRadius, grpBg: grp.backgroundColor, n: document.querySelectorAll('.settings-sec .accounts-stat').length };
   });
   ok(well && well.n >= 1, `the settings well is on screen (${well && well.n})`);
@@ -420,7 +421,7 @@ const NEST = (rootSel) => {
   ok(st.shadows.every((x) => x === 'none'), `and none of them casts a shadow (${st.shadows[0]})`);
   ok(!!st.capText && st.capTT === 'none' && /^[A-Z][a-z]/.test(st.capText), `the state is the house capsule, sentence case ("${st.capText}")`);
   ok(st.radius === '12px', `a Status row is a list cell (${st.radius})`);
-  ok(st.gt !== null && st.gt === grpcapSpec, `the group header is on the ONE caption spec (${st.gt} vs the landing's ${grpcapSpec})`);
+  ok(st.gt !== null && st.gt === grpcapSpec, `the group header is on the ONE caption spec (${st.gt} vs Payments' group caption ${grpcapSpec})`);
 
   console.log('§5 The phone carries no day strip above Payments/Manage (it was removed)');
   ok(await page.evaluate(() => !document.getElementById('day-spine') || document.getElementById('day-spine').getClientRects().length === 0), 'no day strip is painted at 390');

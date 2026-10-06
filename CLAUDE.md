@@ -1079,6 +1079,21 @@ the click is guarded).
 - The Move-money-out screen itself was deliberately left as-is this pass — it already
   had its answer-first rebuild (see the sweep notes).
 
+## Manage opens with ONE summary row (the approved prototype, built "exactly as the demo")
+
+**Supersedes the pulse + "Running for you" groups below.** `manageVerdicts()` builds `.mg-sum` ONCE and updates it in
+place: a mark (✓ ok / ! warn / ? couldn't check — `chbSignalsFresh`, never claiming health it didn't ask about),
+"Everything's running" or "N things need a look", and a sub naming what IS fine; it opens Status. Problems are
+rows of their own under "Needs a look" (`.mg-fold`, the 0fr discipline): a stopped cron, each stalled feed (its
+capsule is `mgRunSync` — spin, re-read admin-bootstrap, the row folds away when fresh), reviews / photos / things
+to do waiting (`__nyMod`), and searches to teach. Rows are keyed (`.mg-wrap[data-id]`) so they arrive and leave
+animated; the words change at once and only their arrival animates; returning to all-clear redraws the tick with
+a one-shot halo. **No green pills and no shouted captions on the landing.** The cottages are ROWS in the Cottages &
+pricing group (`#cottages-overview` is `display: contents` inside it): name, "from £x a night", the month's booked
+% counting up beside a filling bar, opening that cottage; the old "Cottages" row became **Add a cottage**
+(`addAccommodationPrompt`) — the full cottage list (archived ones included) is still `settingsOpen('accom')`,
+reached from search. Gated by ui-test-manage §1–§2, ui-test-needs-you §10, ui-test-hig §2 (re-aimed).
+
 ## Manage leads with VERDICTS above the untouched toolbox
 
 `manageVerdicts()` (admin.js → `#manage-verdicts`, first child of the settings

@@ -60,53 +60,66 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { await openArea(); });
   await page.waitForTimeout(900);
 
-  console.log('§1 the landing: pulse + exception above the toolbox');
+  console.log('§1 the landing: ONE summary row, problems unfold beneath it');
   const land = await page.evaluate(() => {
     const host = document.getElementById('manage-verdicts');
-    const caps = [...host.querySelectorAll('.bhub-grpcap')].map((c) => c.textContent.trim());
+    const sum = host.querySelector('.mg-sum');
+    const rows = [...host.querySelectorAll('.mg-probs .mg-wrap:not(.is-gone)')];
+    const feed = rows.find((w) => (w.dataset.id || '').startsWith('feed-'));
     return {
-      pulse: (host.querySelector('.mo-pulse') || {}).textContent || '',
-      caps,
-      attnFirst: caps[0] === 'Needs attention',
-      feedRow: /Calendar sync has stalled — Jollyboat/.test(host.textContent),
-      feedCapWarn: !!host.querySelector('[data-grp="mgfeed0"] .st-cap.is-warn .st-wic'),
-      sysSub: (host.querySelector('[data-grp="mgsys"] .bhub-fold-sub') || {}).textContent || '',
-      sysTrouble: /1 in trouble/.test((document.getElementById('bhub-fold-mgsys') || {}).textContent || ''),
-      runSyncInFold: !!host.querySelector('#bhub-fold-mgfeed0 [data-act="runSync"]'),
+      state: sum ? sum.dataset.state : null,
+      title: sum ? (sum.querySelector('.mg-t') || {}).textContent : '',
+      foldOpen: !!host.querySelector('.mg-fold.is-open'),
+      feedRow: !!feed && /Calendar sync/.test(feed.textContent) && /Jollyboat/.test(feed.textContent),
+      feedCap: !!(feed && feed.querySelector('.mg-cap.st-cap.is-warn, .mg-cap.st-cap.is-bad')),
+      runSync: !!(feed && feed.querySelector('[data-act="mgRunSync"][data-pk]')),
+      opensCal: !!(feed && feed.querySelector('.mg-open[data-act="settingsOpen"]')),
+      revRow: rows.some((w) => w.dataset.id === 'rev' && /1 waiting/.test(w.textContent)),
+      noGreenPills: !host.querySelector('.st-cap.is-ok'),
+      noOldCaps: !host.querySelector('.bhub-grpcap'),
       toolboxIntact: !!document.querySelector('#settings-index .settings-group .settings-row[data-arg="reviews"]'),
-      foldsClosed: [...host.querySelectorAll('.bhub-fold')].every((f) => f.hidden),
+      cotRows: document.querySelectorAll('#cottages-overview .settings-row.mg-cot').length,
+      addRow: !!document.querySelector('#settings-index [data-act="addAccommodationPrompt"]'),
     };
   });
-  ok(/automation needs a look/.test(land.pulse), `the pulse states the day's work (${land.pulse})`);
-  ok(land.attnFirst && land.feedRow, 'the stalled feed is the exception, above everything');
-  ok(land.feedCapWarn, 'it wears the warning capsule with the triangle');
-  ok(land.runSyncInFold, 'Run-the-sync is one tap inside the exception fold');
-  ok(land.sysTrouble, 'the System-check fold counts the same trouble (one source, two surfaces)');
+  ok(land.state === 'warn' && /need(s)? a look/.test(land.title || ''), `the summary says how many things need a look (${land.title})`);
+  ok(land.foldOpen, 'the "Needs a look" list unfolds under it');
+  ok(land.feedRow && land.feedCap, 'the stalled feed is a row of its own, wearing a warning capsule');
+  ok(land.runSync, 'Run sync is one tap, on the row itself');
+  ok(land.opensCal, '…and the row opens the calendar feeds page');
+  ok(land.revRow, 'the pending review is its own row, counted (one source: __nyMod)');
+  ok(land.noGreenPills && land.noOldCaps, 'no column of green pills, no shouted captions');
   ok(land.toolboxIntact, 'the toolbox rows below are untouched');
-  ok(land.foldsClosed, 'every verdict starts folded');
+  ok(land.cotRows >= 2 && land.addRow, `the cottages are rows in their group's list (${land.cotRows}), ending in Add a cottage`);
 
-  console.log('§2 the verdicts read the real stores, both ways');
-  const mod = await page.evaluate(() => ({
-    cap: ((document.querySelector('#manage-verdicts [data-grp="mgmod"] .st-cap') || {}).textContent || ''),
-    revRow: /Reviews/.test((document.getElementById('bhub-fold-mgmod') || {}).textContent || '') && /1 waiting/.test((document.getElementById('bhub-fold-mgmod') || {}).textContent || ''),
-  }));
-  ok(/1 waiting/.test(mod.cap), `To approve counts the pending review (${mod.cap.trim()})`);
-  ok(mod.revRow, '…and its fold names which queue holds it');
-  // Fresh feeds → the red section stands down and the pulse relaxes.
+  console.log('§2 the summary follows the real stores, both ways');
   feedsStalled = false;
   const down = await page.evaluate(async () => {
     const ab = await apiGet('admin-bootstrap.php');
-    window.__cronStatusPre = ab.cron; window.__feedStatusPre = ab.feeds;
+    window.__cronStatusPre = ab.cron; window.__feedStatusPre = ab.feeds; window.__sigAt = Date.now();
     manageVerdicts();
+    await new Promise((r) => setTimeout(r, 300));
     const host = document.getElementById('manage-verdicts');
     return {
-      attnGone: ![...host.querySelectorAll('.bhub-grpcap')].some((c) => c.textContent.trim() === 'Needs attention'),
-      sysOk: !!host.querySelector('[data-grp="mgsys"] .st-cap.is-ok .st-tick'),
-      feedsFresh: /all fresh/.test((document.getElementById('bhub-fold-mgsys') || {}).textContent || ''),
+      feedGone: ![...host.querySelectorAll('.mg-wrap:not(.is-gone)')].some((w) => (w.dataset.id || '').startsWith('feed-')),
+      sub: (host.querySelector('.mg-s') || {}).textContent || '',
     };
   });
-  ok(down.attnGone, 'fresh feeds → no red section at all');
-  ok(down.sysOk && down.feedsFresh, 'System check flips to the green ✓ capsule and says the feeds are fresh');
+  ok(down.feedGone, 'fresh feeds → the feed row folds away');
+  ok(/jobs and feeds on time/i.test(down.sub), `…and the summary counts the feeds as fine (${down.sub})`);
+  const allClear = await page.evaluate(async () => {
+    const keep = __nyMod; __nyMod = { rev: 0, ph: 0, exp: 0 };
+    const keepM = window.chbMissList, keepG = window.slGuestQuestions;
+    window.chbMissList = () => []; window.slGuestQuestions = () => [];
+    manageVerdicts();
+    await new Promise((r) => setTimeout(r, 500));
+    const sum = document.querySelector('#manage-verdicts .mg-sum');
+    const out = { state: sum.dataset.state, title: (sum.querySelector('.mg-t') || {}).textContent, fold: !!document.querySelector('#manage-verdicts .mg-fold.is-open') };
+    __nyMod = keep; window.chbMissList = keepM; window.slGuestQuestions = keepG;
+    return out;
+  });
+  ok(allClear.state === 'ok' && /Everything.s running/.test(allClear.title || ''), `nothing left → "Everything's running" (${allClear.title})`);
+  ok(!allClear.fold, '…and the Needs-a-look list folds shut');
   feedsStalled = true;
   await page.evaluate(async () => {
     const ab = await apiGet('admin-bootstrap.php');
