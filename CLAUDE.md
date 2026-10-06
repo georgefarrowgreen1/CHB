@@ -3314,8 +3314,8 @@ owns the words: the dates label becomes "3 nights" ("Dates · 3 nights" ≥901px
 `hbRange` ("16–19 Oct"), guests "N guests" once children are added (the full phrase was cut off at phone width), and
 the steppers DISABLE at their limits — minus at 1 adult / 0 children, plus at `hsPortfolioCaps()` — with `#hb-cap`
 saying why. `.hs-gband` text stays "16+"/"under 16": smoke-test extracts those numbers. The hint under the button
-("Free to ask · pay only once confirmed") states how the enquiry flow already works; and the hint and cap note are
-`div`s, never `p` — the hero's paragraph rule uppercased and spaced them.
+was REMOVED at the owner's ask; the cap note is a `div`, never a `p` — the hero's paragraph rule uppercased and
+spaced it.
 
 ## The scene hero and the one-rail home page (owner-approved demo, built)
 
