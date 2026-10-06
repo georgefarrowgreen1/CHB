@@ -13369,6 +13369,13 @@ header.glass-panel {
 #hero-headline-panel p:last-child{color:rgb(255 255 255 / .92);text-transform:none;letter-spacing:0;font-size:var(--fs-headline);max-width:34ch;line-height:1.45}
 #hero-bar{width:calc(100% - 40px);max-width:1088px;margin:0 auto}
 #hero-headline-panel h1 .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.12em;margin-bottom:-.12em}
+/* HELD until hideLoadingOverlay() adds body.hero-go: the entrance used to run at parse, behind the opaque overlay. */
+body:not(.hero-go) #hero-headline-panel h1 .w>i,body:not(.hero-go) #hero-headline-panel .hero-kicker,body:not(.hero-go) #hero-headline-panel p:last-child,body:not(.hero-go) #hero-bar,body:not(.hero-go) #hero .hero-bg{animation-play-state:paused}
+#hero-headline-panel h1 .w>i,#hero-headline-panel .hero-kicker,#hero-headline-panel p:last-child,#hero-bar{will-change:transform,opacity}
+#loading-overlay{will-change:opacity}
+/* The photo's dimming is a plain black layer, not filter: brightness() on an element that is also scaling (heroDrift) - a filter re-rasterises every frame; a flat overlay composites. Same maths: brightness b == black at alpha 1-b. */
+#hero .hero-bg,html.theme-light-boot #hero .hero-bg,body.light-mode #hero .hero-bg{filter:none}
+#hero .hero-bg::after{content:"";position:absolute;inset:0;background:rgb(0 0 0);opacity:calc(1 - var(--hero-brightness));pointer-events:none}
 #hero-headline-panel h1 .w>i{display:inline-block;font-style:normal;transform:translateY(105%);animation:heroRise .9s var(--out) forwards;animation-delay:calc(.15s + var(--i)*.09s)}
 @keyframes heroRise{to{transform:none}}
 #hero-headline-panel .hero-kicker,#hero-headline-panel p:last-child{opacity:0;transform:translateY(10px);animation:heroFade .8s var(--out) forwards}
