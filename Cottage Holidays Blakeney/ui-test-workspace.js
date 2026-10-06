@@ -229,7 +229,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   for (const theme of ['light', 'dark']) {
     const v = laneInk[theme];
     ok(v && /rgba?\(/.test(v.border) && !/, *0\)$/.test(v.border), `${theme}: …and it is actually inked (${v && v.border})`);
-    ok(v && v.hoverRule, `${theme}: a free cell has a hover tint, so the two-tap control answers the pointer`);
+    ok(v && !v.hoverRule, `${theme}: a free cell carries no hover tint — hover changes no ground, sitewide`);
   }
   const refuse = await page.evaluate(async () => {
     // The FIRST and LAST free cells on the lane: with two stays seeded

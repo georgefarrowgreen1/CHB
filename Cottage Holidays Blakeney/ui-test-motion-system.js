@@ -554,7 +554,8 @@ const EXPS = [
             // wash is retuned.
             const want = await op.evaluate(() => getComputedStyle(document.body).getPropertyValue('--press-ground').trim());
             const norm = (c) => c.replace(/\s+/g, '');
-            check(a.act && norm(a.bg) === norm(want) && b.bg === a.bg, `${label} presses with its GROUND (--press-ground) for the whole hold`, `${rest.bg} → ${a.bg} / ${b.bg}, want ${want}`);
+            // Pressed rows no longer darken (owner-asked, sitewide): the ground holds still.
+            check(a.act && norm(a.bg) === norm(rest.bg) && b.bg === a.bg, `${label} does not darken its ground when pressed`, `${rest.bg} → ${a.bg} / ${b.bg}`);
         }
     };
     // The two the reviewer measured DEAD under a pointer, and the three that had
@@ -593,8 +594,8 @@ const EXPS = [
     })();
     const railWant = (railPress && railPress.want) || '';
     const nrm = (c) => String(c).replace(/\s+/g, '');
-    check(railPress && !railPress.dead && railPress.a.act && nrm(railPress.a.bg) === nrm(railWant) && railPress.b.bg === railPress.a.bg,
-        '.rail-row presses with its GROUND (--press-ground) for the whole hold', railPress && !railPress.dead ? `${railPress.rest.bg} → ${railPress.a.bg} / ${railPress.b.bg}, want ${railWant}` : 'no painted rail row at 1440');
+    check(railPress && !railPress.dead && railPress.a.act && nrm(railPress.a.bg) === nrm(railPress.rest.bg) && railPress.b.bg === railPress.a.bg,
+        '.rail-row does not darken its ground when pressed', railPress && !railPress.dead ? `${railPress.rest.bg} → ${railPress.a.bg} / ${railPress.b.bg}, want ${railWant}` : 'no painted rail row at 1440');
     await railPage.close();
 
     // .card is a GUEST surface, so it is pressed on the public page — this is the

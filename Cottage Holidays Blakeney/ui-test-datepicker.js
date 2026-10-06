@@ -1406,8 +1406,8 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
         `[${theme}] hovering the chosen ${what} does not repaint it (${hoverKeeps.rest[d]} → ${hoverKeeps.after[d]})`,
       );
     ok(
-      hoverKeeps.freeHover !== hoverKeeps.freeRest,
-      `[${theme}] …while an unselected bookable night still answers the pointer (${hoverKeeps.freeRest} → ${hoverKeeps.freeHover})`,
+      hoverKeeps.freeHover === hoverKeeps.freeRest,
+      `[${theme}] …and an unselected bookable night does not darken either — hover changes no ground, sitewide (${hoverKeeps.freeRest} → ${hoverKeeps.freeHover})`,
     );
     await page.evaluate(() => closeDatePicker());
   }
