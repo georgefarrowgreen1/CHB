@@ -325,7 +325,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // ── 6. THE SWITCH ────────────────────────────────────────────────────────
   console.log('6. the switch in Manage → System check');
-  await page.evaluate(async () => { await openArea(); settingsOpen('diagnostics'); });
+  await page.evaluate(async () => { await openArea(); settingsOpen('mac'); });
   await page.waitForTimeout(700);
   const sw = await page.evaluate(() => {
     const el = /** @type {any} */ (document.getElementById('night-shift-toggle'));
@@ -617,7 +617,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const cardOffers = await page.evaluate(() => {
     const d = document.querySelector('details.night-setup');
     if (d) { d.open = false; }
-    const sec = document.getElementById('sec-diagnostics') || document.body;
+    const sec = document.getElementById('sec-mac') || document.body;
     // NOT getClientRects(). This Chromium reports LAYOUT BOXES for the content
     // of a CLOSED <details> while painting nothing (CLAUDE.md records the same
     // trap biting an overlap scanner on the hub's email rows), so a rect test
