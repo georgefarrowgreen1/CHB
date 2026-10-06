@@ -10427,13 +10427,18 @@ body.light-mode .feed-dot-bad {
   margin: 0;
   padding: 0 12px;
   border: 0 !important;
-  background: none;
+  background: transparent !important;
   box-shadow: none;
   font-size: var(--fs-body);
   border-radius: var(--r-sm);
 }
 .footer-newsletter .input-glass:focus {
   outline: none;
+}
+/* The light theme paints every field a white box (!important); here the PILL is the
+   field, so the input inside it stays clear and only one shape shows. */
+body.light-mode .footer-newsletter .input-glass {
+  background-color: transparent !important;
 }
 .footer-newsletter .btn-glass {
   flex: none;
@@ -12978,6 +12983,8 @@ body.light-mode .hero-scroll-cue {
   .hs-field,
   .hs-chip,
   .hs-mode-btn,
+  .ft-msg,
+  .footer-newsletter form,
   .chb-sheet .modal-box {
     corner-shape: superellipse(1.5);
   }
