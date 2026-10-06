@@ -253,6 +253,9 @@ chbAct('routeLink', function (el, event) {
 chbAct('openTerms', function (el, event) {
     if (typeof openTermsModal === 'function') openTermsModal(event);
 });
+chbAct('openPrivacyModal', function (el, event) {
+    openPrivacyModal(event);
+});
 // Terms for a specific cottage: openTermsModal(event, propKey).
 chbAct('openTermsProp', function (el, event) {
     if (typeof openTermsModal === 'function') openTermsModal(event, el.dataset.prop);
@@ -292,15 +295,13 @@ chbAct('detailsSecurity', function () {
     closeGuestDetailsModal();
     if (typeof openGuestSecurityModal === 'function') openGuestSecurityModal();
 });
+// The privacy policy opens OVER the form that linked to it, so the guest
+// comes back to what they were filling in (the terms window's behaviour).
 chbAct('detailsPrivacy', function (el, event) {
-    event.preventDefault();
-    closeGuestDetailsModal();
-    nav('view-privacy');
+    openPrivacyModal(event);
 });
 chbAct('authPrivacy', function (el, event) {
-    event.preventDefault();
-    closeGuestAuthModal();
-    nav('view-privacy');
+    openPrivacyModal(event);
 });
 // Click a target element by id (was `document.getElementById('x').click()`).
 chbAct('clickTarget', function (el) {
@@ -7422,6 +7423,25 @@ function closeTermsModal() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     chbCloseOverlay(m);
 }
+// The privacy policy wears the terms window: same box, head, body and exit.
+function openPrivacyModal(ev) {
+    if (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+    }
+    const m = document.getElementById('privacy-modal');
+    if (!m || m.classList.contains('open')) return;
+    overlayHistPush(); // Back closes this overlay
+    m.classList.add('open');
+    const body = m.querySelector('.terms-modal-body');
+    if (body) body.scrollTop = 0;
+}
+function closePrivacyModal() {
+    const m = document.getElementById('privacy-modal');
+    if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(m);
+}
 
 // The one-line status under the refundable-deposit figure on the invoice. Pure,
 // and the MIRROR of PHP invoice_deposit_status — both driven by
@@ -14295,6 +14315,7 @@ const MODAL_CLOSERS = {
     'guest-security-modal': closeGuestSecurityModal,
     'admin-login-modal': closeAdminLogin,
     'terms-modal': closeTermsModal,
+    'privacy-modal': closePrivacyModal,
     'edit-modal': closeModal,
     // Route Esc to these modals' own close functions so their cleanup runs
     // (e.g. the messages modal stops its live-refresh poll) instead of just
@@ -16683,6 +16704,7 @@ function closeTopOverlay() {
     // ORDER IS TOPMOST-FIRST, because two can be open at once: the terms are
     // opened FROM the enquiry form and now paint above it (#terms-modal, z 2200),
     // so Back must close the terms and leave the form up.
+    if (open('privacy-modal')) { closePrivacyModal(); return true; }
     if (open('terms-modal')) { closeTermsModal(); return true; }
     if (open('enquire-modal')) { closeEnquireModal(); return true; }
     if (open('waitlist-modal')) { closeWaitlistModal(); return true; }
@@ -19685,7 +19707,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'footer2';
+    const BUILD = 'privacy1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

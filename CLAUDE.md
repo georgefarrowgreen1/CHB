@@ -3357,6 +3357,11 @@ crown), the NAP line, the newsletter blurb, Service status (still in Manage → 
 longer hides the sign-up, and its footer pads 48px so the last row clears the Messages pill. Gated by
 ui-test-hig §8 (two groups side by side, cottages in ONE column, 44px rows) + ui-test-reach (sign-up 44px).
 
+**The privacy policy is the terms WINDOW** (`#privacy-modal`, `openPrivacyModal`/`closePrivacyModal`; the
+`view-privacy` page is gone). Same box/head/body classes as `#terms-modal`, z 2200, Escape/Back via
+`MODAL_CLOSERS` + `closeTopOverlay`, and it opens OVER the form that linked to it (sign-in, details, enquiry)
+rather than closing it. Gated by ui-test-topmenu §H (opens, covers the Messages pill, closes) + layout-test.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

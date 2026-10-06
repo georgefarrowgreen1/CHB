@@ -204,30 +204,27 @@ const { boot, ok } = require('./ui-test-lib');
         `…and a ${hostile.long}-character screen name does not shrink the crown (${hostile.before}px → ${hostile.after}px)`);
     check(hostile.clipped, '…because the TITLE takes the squeeze and ellipsises instead');
 
-    // H) The Messages pill stands down on the PRIVACY page — the one view whose
-    //    prose runs full-width to the edge, so the fixed bubble sat on the
-    //    line-ends of text being read (audit screenshot pass). Measured on the
-    //    PAINT (getClientRects — the property is not the pixel), and BOTH ways
-    //    so the fix can never erode into "always hidden".
+    // H) The privacy policy is the terms WINDOW now, not a page: it opens over
+    //    the Messages pill (z 2200 against 1400), so the bubble can never sit on
+    //    the prose — asserted by hit-testing the pill's own centre.
     const fab = await page.evaluate(async () => {
-        const painted = () => {
-            const el = document.getElementById('guest-msg-fab');
-            return !!el && el.getClientRects().length > 0;
-        };
         nav('view-main');
         await new Promise((r) => setTimeout(r, 150));
-        const onHome = painted();
-        nav('view-privacy');
-        await new Promise((r) => setTimeout(r, 150));
-        const onPrivacy = painted();
-        nav('view-main');
-        await new Promise((r) => setTimeout(r, 150));
-        const backHome = painted();
-        return { onHome, onPrivacy, backHome };
+        const pill = document.querySelector('#guest-msg-fab .guest-dock');
+        const r = pill ? pill.getBoundingClientRect() : null;
+        openPrivacyModal();
+        await new Promise((res) => setTimeout(res, 700));
+        const m = document.getElementById('privacy-modal');
+        const hit = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+        const out = { open: !!m && m.classList.contains('open'), covered: !!hit && !!hit.closest('#privacy-modal'), terms: !!m && !!m.querySelector('.terms-modal-box .terms-modal-head h2') };
+        closePrivacyModal();
+        await new Promise((res) => setTimeout(res, 500));
+        out.closed = !m.classList.contains('open');
+        return out;
     });
-    check(fab.onHome, 'the Messages pill paints on the home page');
-    check(!fab.onPrivacy, 'the pill stands down on the privacy policy — the bubble must not sit on reading text');
-    check(fab.backHome, 'and it returns the moment the guest navigates away');
+    check(fab.open && fab.terms, 'the privacy policy opens in the terms window (same box and head)');
+    check(fab.covered, 'the window covers the Messages pill — the bubble never sits on the policy');
+    check(fab.closed, 'and it closes again');
 
     // I) ?open=stay — the guest emails' "Open my booking" button. It used to be
     //    swallowed by the admin-only gate in maybeHandleNotificationOpen, so

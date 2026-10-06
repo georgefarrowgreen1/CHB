@@ -278,8 +278,8 @@ async function waitForServer(url, tries = 40) {
         { key: 'cottage', open: "openProperty('21a')", mustSee: ['#prop-title', '#prop-avail-cal'] },
         { key: 'experiences', open: "nav('view-experiences')", mustSee: ['#exp-grid'] },
         { key: 'cottages-list', open: "nav('view-cottages')", mustSee: ['#cottages .card'] },
-        { key: 'privacy', open: "nav('view-privacy')", mustSee: ['#view-privacy'] },
-        { key: 'enquire-modal', open: "(async () => { openProperty('21a'); await new Promise(r => setTimeout(r, 300)); openEnquireModal(); })()", mustSee: ['#enquire-modal .modal-box'] },
+        { key: 'privacy', open: "openPrivacyModal()", mustSee: ['#privacy-modal .terms-modal-box'] },
+        { key: 'enquire-modal', open: "(async () => { try { closePrivacyModal(); } catch (e) {} openProperty('21a'); await new Promise(r => setTimeout(r, 300)); openEnquireModal(); })()", mustSee: ['#enquire-modal .modal-box'] },
         { key: 'auth-modal', open: "(() => { closeEnquireModal(); openGuestAuthModal(); })()", mustSee: ['#guest-auth-modal .modal-box'] },
         { key: 'chat-open', open: "(() => { closeGuestAuthModal(); try { closeChat(); } catch (e) {} toggleChat(); })()", mustSee: ['#chat-widget .chat-thread'] },
         // The dates control is the TRIGGER, not the inputs: #wl-checkin/#wl-checkout are
