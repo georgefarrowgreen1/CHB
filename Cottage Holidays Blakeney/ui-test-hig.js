@@ -492,16 +492,18 @@ const NEST = (rootSel) => {
   ok((stays.flowBg === 'rgba(0, 0, 0, 0)' || stays.flowBg === 'transparent') && stays.flowBorder === 0, 'the booking-progress pills sit in the card\'s own flow (no well)');
   ok(stays.countBorder === 0, 'the countdown badge keeps its tint and drops its border');
 
-  console.log('§8 The footer at 390 — sentence case, two columns, 44px rows');
+  console.log('§8 The footer at 390 — sentence case, two grouped columns, 44px rows');
   await open(page, "nav('view-main')", 600);
   const foot = await page.evaluate(() => {
-    const nav = document.querySelector('.footer-links');
-    const as = [...nav.querySelectorAll('a')];
-    const lefts = new Set(as.map((a) => Math.round(a.getBoundingClientRect().left)));
-    return { display: getComputedStyle(nav).display, tt: as.map((a) => getComputedStyle(a).textTransform), heights: as.map((a) => Math.round(a.getBoundingClientRect().height)), columns: lefts.size, n: as.length };
+    const as = [...document.querySelectorAll('.site-footer .footer-links a, .site-footer .ft-legal a')];
+    const grp = [...document.querySelectorAll('.site-footer .footer-links a')];
+    const lefts = new Set(grp.map((a) => Math.round(a.getBoundingClientRect().left)));
+    const cott = [...document.querySelectorAll('#footer-cottage-links a')].map((a) => Math.round(a.getBoundingClientRect().left));
+    return { tt: as.map((a) => getComputedStyle(a).textTransform), heights: as.map((a) => Math.round(a.getBoundingClientRect().height)), columns: lefts.size, n: as.length, cottOneCol: cott.length >= 3 && new Set(cott).size === 1 };
   });
   ok(foot.n >= 6, `${foot.n} footer links (vacuity guard)`);
-  ok(foot.display === 'grid' && foot.columns === 2, `two left-aligned columns on a phone (${foot.display}, ${foot.columns} column starts)`);
+  ok(foot.columns === 2, `two left-aligned groups side by side on a phone (${foot.columns} column starts)`);
+  ok(foot.cottOneCol, 'the cottages read down ONE column, never split across two');
   ok(foot.tt.every((x) => x === 'none'), 'every link is sentence case — the header keeps the caps, the sitemap does not');
   ok(foot.heights.every((h) => h >= 44), `every link is a 44px row (min ${Math.min(...foot.heights)})`);
 

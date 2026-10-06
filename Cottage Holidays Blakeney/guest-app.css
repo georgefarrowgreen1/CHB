@@ -591,16 +591,13 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
 body.guest-app:not(.owner-mode) {
   padding-bottom: 40px;
 }
+/* The footer's last row (Terms · Privacy · theme switch) sits on the right edge
+   where the Messages pill floats, so the footer ends clear of the pill. */
+body.guest-app:not(.owner-mode) .site-footer {
+  padding-bottom: 48px;
+}
 body.guest-app:not(.owner-mode).book-bar-open {
   padding-bottom: calc(104px + var(--safe-b));
-}
-
-/* On mobile the footer is pared back to just the dark/light toggle, the
-   "Made by George" credit, and the build number — nothing else. */
-body.guest-app:not(.owner-mode) #footer-newsletter,
-body.guest-app:not(.owner-mode) .footer-nap,
-body.guest-app:not(.owner-mode) .footer-legal {
-  display: none;
 }
 
 /* On mobile, the sign-in / create-account and account screens (Your details,
