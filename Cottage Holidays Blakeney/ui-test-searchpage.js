@@ -644,6 +644,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(chip.empty.scopes === 0, `SCOPE: nothing claims a filter on the empty landing (${chip.empty.scopes} scope bars)`);
   ok(chip.empty.rows > 0, `SCOPE: …and the landing still has its day on it (${chip.empty.rows} rows)`);
   ok(chip.typed.scopes === 1, `SCOPE: the switch appears the moment you type, which is when it applies (${chip.typed.scopes})`);
+  // ---- the landing teaches that it can be asked: four one-tap example questions ----
+  const asks = await page.evaluate(async () => {
+    closeCmdK(); openCmdK();
+    await new Promise((r) => setTimeout(r, 400));
+    const chips = [...document.querySelectorAll('#cmdk .cmdk-asks .cmdk-ask')];
+    const n = chips.length, first = chips[0] ? chips[0].textContent.trim() : '';
+    const h = chips[0] ? chips[0].getBoundingClientRect().height : 0;
+    if (chips[0]) chips[0].click();
+    await new Promise((r) => setTimeout(r, 500));
+    const el = document.getElementById('cmdk-input');
+    return { n, first, h, val: el ? el.value : '', asksGone: !document.querySelector('#cmdk .cmdk-asks'), rows: document.querySelectorAll('#cmdk .cmdk-row').length };
+  });
+  ok(asks.n === 4 && asks.h >= 44, `ASKS: four example questions at the 44px floor on the landing (${asks.n}, ${asks.h}px)`);
+  ok(asks.val === asks.first && asks.asksGone && asks.rows > 0, `ASKS: tapping one asks it — the box holds "${asks.val}", the landing steps aside, answers appear (${asks.rows} rows)`);
 
   ok(dens.jump && dens.n >= 2, `DENSITY: the landing's destinations are chips (${dens.n})`);
   ok(dens.jumpPx > 0 && dens.jumpPx <= 160, `DENSITY: in ~two rows, not five (${dens.jumpPx}px, was 269)`);
