@@ -3278,6 +3278,19 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   hiding at 390px, four sections away from the edit. Delete CSS by matching
   the whole rule, never by slicing to the next brace.
 
+## Hover and press never change a ground (owner-asked, sitewide)
+
+Every `:hover` / `:active` rule in the three stylesheets lost its `background`,
+`background-color`, `background-image` and `filter: brightness()` declarations (a scripted
+sweep: rules whose selectors were ALL hover/active were stripped; mixed lists such as
+`.x:hover, .x:focus-visible` kept the background for the focus selector only — keyboard focus
+and `.is-sel` selection are state, not pointer feedback, so they keep their tint). What remains
+is MOVEMENT (the 4px press scale, lifts) and ink/border changes. Do not add a hover or press
+tint back: touch devices leave `:hover` stuck after a tap, which is the darkened row the owner
+reported on the search landing. Gates re-aimed from "the ground moves" to "the ground holds
+still": ui-test-datepicker §18, ui-test-motion-system §12 (list rows), ui-test-workspace (the
+timeline cell).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
