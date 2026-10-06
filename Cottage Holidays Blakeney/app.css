@@ -13258,36 +13258,76 @@ header.glass-panel {
     padding-right: max(32px, var(--safe-r));
   }
 }
+/* THE HERO BOOKING BAR (approved refined demo): one card with inset parts — the two
+   fields share a soft well, the guest steppers unfold DIRECTLY under the fields (not
+   below the button, which split the control from what it opened), and the button is
+   its own rounded pill. [hidden] stays the switch: it is the collapsed state, not
+   display:none, so the panel unfolds on the house --unfold curve. */
 .hero-bar {
   position: relative;
   z-index: 2;
   width: min(880px, calc(100% - 32px));
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: stretch;
-  overflow: hidden;
+  grid-template-columns: 1fr;
+  padding: 8px;
+  border-radius: var(--r-lg);
   text-align: left;
+  color: var(--text-light);
+}
+.hb-fields {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--text-light) 5%, transparent);
+}
+.hb-fields::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: var(--glass-border);
+  transition: opacity 200ms var(--out);
+}
+.hb-fields:has(.hb-field[aria-expanded="true"])::after {
+  opacity: 0;
 }
 .hb-field {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
   min-height: 60px;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--r-sm);
   background: none;
-  color: var(--text-light);
+  color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-}
-.hb-field + .hb-field {
-  border-left: 1px solid var(--glass-border);
+  transition: transform 320ms var(--settle), background 250ms var(--out), box-shadow 250ms var(--out);
 }
 .hb-field[aria-expanded="true"] {
-  box-shadow: inset 0 -3px 0 var(--accent);
+  background: color-mix(in srgb, var(--text-light) 9%, var(--dark-grey));
+  box-shadow: 0 2px 10px rgb(10 20 30 / 0.12), 0 0 0 1px var(--glass-border);
+}
+body.light-mode .hb-field[aria-expanded="true"] {
+  background: rgb(255 255 255);
+}
+.hb-ic {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-text);
+}
+.hb-tx {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 .hb-label {
   font-size: var(--fs-caption);
@@ -13301,46 +13341,145 @@ header.glass-panel {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.hb-go {
-  grid-column: 1 / -1;
-  width: 100%;
-  min-height: 52px;
-  margin: 0;
-  border-radius: 0;
+.hb-value.is-ph {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.hb-lw {
+  display: none;
+}
+.hb-chev {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: transform 320ms var(--out);
+}
+.hb-field[aria-expanded="true"] .hb-chev {
+  transform: rotate(180deg);
 }
 .hb-pop {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--glass-border);
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 320ms var(--unfold), visibility 0s;
 }
 .hb-pop[hidden] {
-  display: none;
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 320ms var(--unfold), visibility 0s linear 320ms;
+}
+.hb-popin {
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 8px;
+  min-height: 0;
+  padding: 4px 4px 0;
+}
+.hb-popin .hs-guest {
+  padding: 8px 2px;
+  transition: transform 360ms var(--out), opacity 300ms var(--out);
+}
+.hb-popin .hs-guest + .hs-guest {
+  border-top: 1px solid var(--glass-border);
+  transition-delay: 60ms;
+}
+.hb-pop[hidden] .hs-guest {
+  transform: translateY(-6px);
+  opacity: 0;
+}
+.hb-popin .hs-gtype {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.hb-popin .hs-gband {
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.hb-popin .hs-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.hb-cap {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--accent-text);
+  transition: grid-template-rows 300ms var(--unfold);
+}
+.hb-cap.on {
+  grid-template-rows: 1fr;
+}
+.hb-cap > span {
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 2px 4px;
+}
+.hb-go {
+  width: 100%;
+  min-height: 52px;
+  margin: 8px 0 0;
+  border-radius: var(--r-sm) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.hb-go svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.hb-hint {
+  margin: 8px 0 2px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.hb-swap {
+  animation: hbSwap 300ms var(--out);
+}
+@keyframes hbSwap {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
 }
 @media (min-width: 901px) {
   .hero-bar {
-    grid-template-columns: 1.4fr 1fr auto;
+    grid-template-columns: 1fr auto;
+    column-gap: 8px;
+  }
+  .hb-fields {
+    grid-column: 1;
+  }
+  .hb-pop,
+  .hb-hint {
+    grid-column: 1 / -1;
   }
   .hb-go {
-    grid-column: auto;
+    grid-column: 2;
+    grid-row: 1;
     width: auto;
-    padding-inline: 36px;
+    margin: 0;
+    padding-inline: 28px;
+    min-height: 60px;
   }
-}
-@media (hover: hover) {
-  .hb-field:hover .hb-value {
-    color: var(--accent-text);
+  .hb-lw {
+    display: inline;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
   .hb-field:active {
     transform: scale(var(--sc, 0.97));
-    transition: transform 80ms var(--in), filter 80ms var(--in);}
+    transition: transform 80ms var(--in), filter 80ms var(--in);
+  }
 }
-.hb-field {
-  transition: transform 320ms var(--settle), filter 320ms var(--settle);
+@media (prefers-reduced-motion: reduce) {
+  .hb-pop, .hb-pop[hidden], .hb-popin .hs-guest, .hb-cap, .hb-chev { transition: none; }
+  .hb-swap { animation: none; }
 }
 /* The heritage band is the page's one strip now (the four-line trust strip is gone),
    so on a phone its ink stops before the Messages pill like every other centred block. */

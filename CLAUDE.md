@@ -3305,6 +3305,18 @@ strip, and ≤640 its gap is 12px so its ink stops before the Messages pill (ui-
 Deliberately NOT built from the demo: footer regrouping, Messages-pill shrinking, card re-skin (the home cards already
 carried price + availability chips).
 
+**THE BAR WAS REFINED (approved demo, "Build and merge"):** one card with inset parts — the two fields share a soft
+well (`.hb-fields`), the guest panel unfolds DIRECTLY under the fields (it used to open below the button, splitting the
+control from what it opened), and the button is its own rounded pill whose label says what a tap does ("Choose dates"
+until both dates are set, then "Show prices" — it already opened the calendar first). `#hb-pop[hidden]` is the
+COLLAPSED state (a 0fr grid, the fold discipline), so the panel unfolds; a tap outside or Escape closes it. `hbSync`
+owns the words: the dates label becomes "3 nights" ("Dates · 3 nights" ≥901px via `.hb-lw`), the value a compact
+`hbRange` ("16–19 Oct"), guests "N guests" once children are added (the full phrase was cut off at phone width), and
+the steppers DISABLE at their limits — minus at 1 adult / 0 children, plus at `hsPortfolioCaps()` — with `#hb-cap`
+saying why. `.hs-gband` text stays "16+"/"under 16": smoke-test extracts those numbers. The hint under the button
+("Free to ask · pay only once confirmed") states how the enquiry flow already works; and the hint and cap note are
+`div`s, never `p` — the hero's paragraph rule uppercased and spaced them.
+
 ## The scene hero and the one-rail home page (owner-approved demo, built)
 
 **Asked for from a screenshot of the demo ("make it look like this"), then "Build the new layout exactly as
