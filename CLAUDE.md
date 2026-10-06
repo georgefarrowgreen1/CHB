@@ -3311,9 +3311,7 @@ carried price + availability chips).
 it's built in the demo".** The hero is an illustrated coast scene (`.hero-scene`, inline SVG INSIDE
 `.hero-bg`, so home.php's `data-edit-img="hero-bg"` anchor is untouched) behind a left-aligned headline, with
 the booking bar under it; everything below it shares ONE rail (20px gutter, 1088px) and one material.
-- **The scene HIDES the hero photo**: `#hero .hero-bg { background: none !important }`. The owner's uploaded
-  `hero-bg` (and `--hero-img`, which the auth panels still read) is untouched in the content table but no longer
-  painted on the home hero. Say the word to make the scene a fallback that only shows when no photo is set.
+- **The uploaded hero photo LEADS; the scene is the fallback** (follow-up, owner asked): the static markup carries the placeholder `hero.jpg` in the inline style until home.php or applyContentOverrides swaps the real URL in, so `.hero-bg[style*="hero.jpg"]` is the "no photo set" state and only then does `.hero-scene` paint. It was first built to REPLACE the photo; that hid the owner's own upload on the live site.
 - **Default copy changed** ("Three cottages by the Blakeney marshes" / the price-you-pay line). A saved
   `hero-title` / `hero-sub` content value still wins, so a live install may keep its old words under the new look.
 - **`heroWordsRise()`** (app.js, end of `applyContentOverrides`) wraps the headline in `.w > i` spans for the
