@@ -3346,6 +3346,17 @@ element that is also scaling in `heroDrift` - removing the filter alone took lon
 measured: iOS Safari. One-word headlines now wrap and rise too. The reveal is the single call site
 (`__revealed` guard), so a new reveal path must go through `hideLoadingOverlay`, or the entrance stays held.
 
+## The footer, grouped and trimmed (approved demo, built)
+
+The footer was nine equal links read across two columns (the cottages split between them). Now: the name + an
+outlined **Message us** (`toggleChat`), two `nav.footer-links` groups (Cottages, rebuilt by
+`renderFooterCottages`; Explore: Things to do, Guest reviews) under small `.ft-cap` captions, the email sign-up as
+one pill field (no heading; the placeholder names it), and `.ft-base`: Terms · Privacy · the theme switch, with
+"© year · Made by George ♥" on its own line ≤900 and the same row above. Removed at the owner's ask: Home (the
+crown), the NAP line, the newsletter blurb, Service status (still in Manage → System check). The guest shell no
+longer hides the sign-up, and its footer pads 48px so the last row clears the Messages pill. Gated by
+ui-test-hig §8 (two groups side by side, cottages in ONE column, 44px rows) + ui-test-reach (sign-up 44px).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

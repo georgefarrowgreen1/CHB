@@ -2813,18 +2813,6 @@ a.card {
     opacity: 1;
   }
 }
-/* Newsletter footer: tidy spacing + brand-accent focus on the email field */
-.footer-newsletter {
-  margin: 6px auto 20px;
-  max-width: 460px;
-}
-#nl-email {
-  transition: border-color 0.2s var(--fluid-bezier);
-}
-#nl-email:focus {
-  outline: none;
-  border-color: var(--accent) !important;
-}
 /* Things to know */
 .things-grid {
   display: grid;
@@ -10329,68 +10317,207 @@ body.light-mode .feed-dot-bad {
   }
 }
 
-/* --- FOOTER & EDITOR UI --- */
+/* --- FOOTER ---
+   Brand + Message us, two short link groups, the sign-up, one fine-print line.
+   One left edge throughout; the groups sit side by side on a phone and become
+   three columns from 901px. */
 .site-footer {
   margin-top: auto;
-  padding: 14px 20px;
-  text-align: center;
+  padding: 32px 20px 8px;
   border-top: 1px solid var(--glass-border);
+  text-align: left;
 }
-.site-footer > p:first-child {
-  font-size: var(--fs-sub);
-  line-height: 1.45;
-  margin: 0;
-  color: var(--text-muted);
+.site-footer > * {
+  max-width: 1088px;
+  margin-inline: auto;
 }
-.site-footer .footer-controls {
-  margin-top: 2px;
-  margin-bottom: 18px;
-}
-.footer-controls {
+.ft-top {
   display: flex;
-  justify-content: center;
-  gap: 15px;
-  margin-top: 15px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ft-name {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--fs-headline);
+  line-height: 1.25;
+  color: var(--text-light);
+  margin: 0;
+  min-width: 0;
+}
+.ft-msg {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: none;
+  color: var(--accent-text);
+  font: 600 var(--fs-sub) / 1 var(--font-sans);
+  cursor: pointer;
+}
+.ft-msg svg {
+  width: 16px;
+  height: 16px;
+}
+.ft-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 16px;
+  padding: 24px 0 20px;
 }
 .footer-links {
   display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  margin: 2px 0 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
 }
-/* A SITEMAP IS NOT THE BRAND VOICE: nine caps links wrapped to four centred
-   lines at 390. Sentence case, two left-aligned columns on a phone, 44px rows. */
-@media (max-width: 480px) {
-  .footer-links {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    justify-items: start;
-    gap: 0 16px;
-    text-align: left;
-  }
+.ft-cap {
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin: 0 0 4px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .footer-links a {
-  color: var(--text-muted);
+  color: var(--text-light);
   font-size: var(--fs-body);
   text-transform: none;
   letter-spacing: 0;
-  cursor: pointer;
   text-decoration: none;
-  transition: color 0.2s var(--fluid-bezier);
-  /* These are standalone nav links (display:block, one per line), not links
-     inside a sentence, so WCAG 2.2's 24x24 target minimum applies and the
-     inline-link exception doesn't. They measured 20px tall with no padding;
-     the padding both clears the minimum and makes a footer list comfortable
-     to hit with a thumb. */
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0;
+  white-space: nowrap;
+  transition: color 0.2s var(--fluid-bezier);
 }
 .footer-links a:hover,
 .footer-links a:focus-visible {
+  color: var(--accent-text);
+}
+.footer-newsletter {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.footer-newsletter form {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  background: var(--well-bg);
+  padding: 2px;
+  max-width: 420px;
+}
+.footer-newsletter form:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.footer-newsletter .input-glass {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0 !important;
+  background: none;
+  box-shadow: none;
+  font-size: var(--fs-body);
+  border-radius: var(--r-sm);
+}
+.footer-newsletter .input-glass:focus {
+  outline: none;
+}
+.footer-newsletter .btn-glass {
+  flex: none;
+  width: auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--text-light);
+  color: var(--dark-grey);
+  font-size: var(--fs-sub);
+}
+#nl-msg {
+  font-size: var(--fs-caption);
+  margin: 8px 0 0;
+}
+#nl-msg:empty {
+  display: none;
+}
+.ft-base {
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 16px;
+}
+.ft-legal {
+  display: flex;
+  gap: 0 16px;
+  margin-right: auto;
+}
+.ft-legal a {
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  text-transform: none;
+  letter-spacing: 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.ft-legal a:hover,
+.ft-legal a:focus-visible {
   color: var(--text-light);
+}
+.footer-controls {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.footer-meta {
+  order: 3;
+  flex-basis: 100%;
+  margin: 0 0 8px;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.footer-meta .ic {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1px;
+}
+@media (min-width: 901px) {
+  .site-footer {
+    padding: 48px 48px 8px;
+  }
+  .ft-body {
+    grid-template-columns: 1fr 1fr 1.6fr;
+    gap: 40px;
+    padding: 32px 0 28px;
+  }
+  .footer-newsletter {
+    grid-column: auto;
+    padding-top: 20px;
+  }
+  .footer-meta {
+    order: 0;
+    flex-basis: auto;
+    margin: 0 auto 0 0;
+  }
+  .ft-legal {
+    margin-right: 0;
+  }
 }
 
 /* Same-day changeover toasts (lower-right) */
@@ -11082,9 +11209,6 @@ p.lead[data-edit-text] {
   textarea {
     font-size: var(--fs-headline) !important;
   }
-  .footer-controls {
-    flex-wrap: wrap;
-  }
   .section-title {
     margin-bottom: 24px;
   }
@@ -11219,26 +11343,14 @@ body.owner-mode .account-btn {
            via the floating dock and works entirely in the back office. */
 
 body.owner-mode #footer-newsletter,
-body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
   display: none !important;
 }
-/* THE FOOTER'S FINE PRINT, WITH NO SECOND DIMMING. Both were inline styles with an
-   opacity on already-muted ink — the container-opacity trap — so pixel-sampled the
-   NAP line read 2.06:1 light / 3.09:1 dark and the build stamp 2.18:1 / 3.44:1.
-   (.footer-meta is untouched: no opacity, and 5.47:1 measured.) AND THE BUILD ID IS
-   DEVELOPER CHROME — the owner's, not the customer's; nothing but app.js reads
-   #build-stamp, so the element stays and the gate is a display rule. */
-.footer-nap,
+/* The build ID is the owner's developer chrome: no opacity (the container-opacity
+   trap), shown only in owner mode. */
 .footer-build {
   font-size: var(--fs-micro);
   color: var(--text-muted);
-  letter-spacing: 0.2px;
-}
-.footer-nap {
-  margin: 14px 0 4px;
-}
-.footer-build {
   margin: 4px 0 0;
   letter-spacing: normal;
   display: none;
@@ -13082,9 +13194,6 @@ nav ul li a:not(.btn-glass)::before { content: ''; position: absolute; inset: -3
 /* THE FOOTER NEWSLETTER WAS FOUR INLINE STYLES — a 36px field and a 36px button
    at 13px with a 10px radius, none of which the rawRadii / rawType ratchets can
    see. Stated here instead, on the tokens, at the floor. */
-.footer-newsletter form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-width: 420px; margin: 0 auto; }
-.footer-newsletter .input-glass { flex: 1; min-width: 180px; width: auto; min-height: 44px; margin: 0; padding: 12px 16px; font-size: var(--fs-sub); border-radius: var(--r-sm); }
-.footer-newsletter .btn-glass { width: auto; padding: 12px 24px; font-size: var(--fs-sub); }
 /* Sign-in: the password-less route was a 200×16 inline <a> — the ONLY way in for
    a guest who has no password — and the Log in / Create account segments were
    170×40 at 11px, the screen's primary control. */
