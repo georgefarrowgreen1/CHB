@@ -258,7 +258,6 @@
         'view-cottages': 'Cottages',
         'view-experiences': 'Things to do',
         'view-guest-bookings': 'My stays',
-        'view-privacy': 'Privacy',
     };
     function headTitleFor(viewId) {
         if (!viewId || viewId === 'view-main') return ''; // the crown already says Home
