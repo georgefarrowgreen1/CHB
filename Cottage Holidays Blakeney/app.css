@@ -13349,3 +13349,78 @@ header.glass-panel {
     gap: 12px;
   }
 }
+
+/* THE SCENE HERO (approved demo): an illustrated coast scene behind a left-aligned headline,
+   the booking bar below it, and one left rail (20px gutter, 1088px) shared by everything under it. */
+#hero{flex-direction:column;align-items:center;justify-content:flex-end;text-align:left;gap:20px;min-height:min(82vh,640px);padding:calc(96px + var(--safe-t)) 0 72px;border-radius:0 0 var(--r-panel) var(--r-panel);isolation:isolate}
+#hero .hero-bg{background:none!important;filter:none;animation:none;z-index:0}
+#hero .hero-scene{position:absolute;inset:-6% 0 0 0;width:100%;height:112%;will-change:transform}
+#hero::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(10,20,30,.4) 0%,rgba(10,20,30,0) 34%,rgba(10,20,30,.6) 100%)}
+#hero-headline-panel,#hero-bar{position:relative;z-index:3}
+#hero-headline-panel{background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border:0!important;padding:0 20px!important;width:100%;max-width:1128px;color:white;text-align:left}
+#hero-headline-panel::before,#hero-headline-panel::after{display:none!important}
+#hero-headline-panel .hero-kicker{color:white;letter-spacing:.2em;font-size:var(--fs-caption);font-weight:600;margin-bottom:16px}
+#hero-headline-panel h1{color:white;font-weight:400;line-height:1.08;max-width:12ch;text-wrap:balance;margin-bottom:16px}
+#hero-headline-panel p:last-child{color:rgb(255 255 255 / .92);text-transform:none;letter-spacing:0;font-size:var(--fs-headline);max-width:34ch;line-height:1.45}
+#hero-bar{width:calc(100% - 40px);max-width:1088px;margin:0 auto}
+#hero-headline-panel h1 .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.12em;margin-bottom:-.12em}
+#hero-headline-panel h1 .w>i{display:inline-block;font-style:normal;transform:translateY(105%);animation:heroRise .9s var(--out) forwards;animation-delay:calc(.15s + var(--i)*.09s)}
+@keyframes heroRise{to{transform:none}}
+#hero-headline-panel .hero-kicker,#hero-headline-panel p:last-child{opacity:0;transform:translateY(10px);animation:heroFade .8s var(--out) forwards}
+#hero-headline-panel .hero-kicker{animation-delay:.05s}
+#hero-headline-panel p:last-child{animation-delay:.55s}
+#hero-bar{opacity:0;transform:translateY(18px);animation:heroFade .9s var(--out) .75s forwards}
+@keyframes heroFade{to{opacity:1;transform:none}}
+.scn-cloud{animation:scnDrift 90s linear infinite}.scn-cloud.b{animation-duration:130s;animation-delay:-40s}
+@keyframes scnDrift{from{transform:translateX(-240px)}to{transform:translateX(1500px)}}
+.scn-sun{transform-origin:880px 290px;animation:scnGlow 7s ease-in-out infinite alternate}
+@keyframes scnGlow{from{transform:scale(1);opacity:.92}to{transform:scale(1.06);opacity:1}}
+.scn-swell{animation:scnSwell 7s ease-in-out infinite alternate}.scn-swell.b{animation-duration:9s;animation-direction:alternate-reverse}
+@keyframes scnSwell{from{transform:translateX(-14px)}to{transform:translateX(14px)}}
+.scn-boat{animation:scnBob 6s ease-in-out infinite alternate}
+@keyframes scnBob{from{transform:translate(700px,402px) rotate(-1.5deg)}to{transform:translate(706px,398px) rotate(1.5deg)}}
+/* scroll reveals, CSS-only so re-rendered cards can never get stuck hidden */
+@supports (animation-timeline: view()){
+ #home-cottages-grid .card,.home-heritage{animation:homeReveal linear both;animation-timeline:view();animation-range:entry 0% entry 45%}
+ @keyframes homeReveal{from{opacity:0;translate:0 26px}to{opacity:1;translate:none}}
+}
+@media (prefers-reduced-motion:reduce){#hero-headline-panel h1 .w>i,#hero-headline-panel .hero-kicker,#hero-headline-panel p:last-child,#hero-bar{animation:none;opacity:1;transform:none}.scn-cloud,.scn-sun,.scn-swell,.scn-boat{animation:none}.scn-boat{transform:translate(703px,400px)}}
+#hero #hero-headline-panel .hero-kicker,#hero #hero-headline-panel p:last-child{color:white!important;text-shadow:0 1px 14px rgba(10,20,30,.35)}
+#hero #hero-headline-panel h1{font-size:var(--fs-display)!important;max-width:13ch;color:white!important;text-shadow:0 2px 24px rgba(10,20,30,.3)}
+#hero-bar{background:color-mix(in srgb,var(--dark-grey) 94%,transparent)!important;box-shadow:0 18px 44px rgba(10,20,30,.28)}
+/* ---- below the hero: one rail, left-aligned, flat hairline material ---- */
+#view-main .home-heritage,#view-main .home-cottages,#view-main .home-availability,#view-main .home-guestwords{width:calc(100% - 40px);max-width:1088px;margin-inline:auto;text-align:left}
+#view-main .home-heritage{display:flex;justify-content:flex-start;gap:36px;padding:32px 0 8px}
+#view-main .heritage-item{align-items:flex-start;text-align:left}
+#view-main .home-cottages{padding-top:40px}
+#view-main .home-cottages .section-kicker,#view-main .home-cottages .section-title,#view-main .home-availability .section-kicker,#view-main .home-availability .section-title,#view-main .avail-lead,#view-main .home-guestwords .section-kicker{text-align:left!important;margin-inline:0}
+#view-main .home-cottages .section-title{font-size:var(--fs-display);margin-bottom:16px}
+#late-avail{margin:0 0 20px}
+#late-avail .late-avail{box-sizing:border-box;display:flex!important;flex-direction:row!important;align-items:center;text-align:left!important;gap:12px 16px;flex-wrap:wrap;padding:16px!important;border-radius:var(--r-lg)!important;max-width:none!important;width:100%;background:transparent!important;border:1px solid var(--glass-border,rgba(255,255,255,.14))!important;box-shadow:none!important;backdrop-filter:none!important}
+#late-avail .late-avail svg{flex:none}
+#late-avail .btn-sm,#late-avail button{margin-left:auto;flex:none}
+#home-cottages-grid{margin-top:0!important;gap:16px}
+#home-cottages-grid .card{padding:0!important;overflow:hidden;border-radius:var(--r-lg)!important;background:transparent!important;border:1px solid var(--glass-border,rgba(255,255,255,.14))!important;box-shadow:none!important;backdrop-filter:none!important;display:flex;flex-direction:column;text-align:left;transition:transform .5s var(--sheet),border-color .3s var(--out)}
+#home-cottages-grid .card::before,#home-cottages-grid .card::after{display:none!important}
+#home-cottages-grid .card-img-wrap{margin:0;border-radius:0;overflow:hidden}
+#home-cottages-grid .card-img{border-radius:0!important;transition:transform .9s var(--out)}
+@media (hover:hover){#home-cottages-grid .card:hover:not(:active){transform:translateY(-4px)}#home-cottages-grid .card:hover .card-img{transform:scale(1.04)}}
+
+#home-cottages-grid .card>:not(.card-img-wrap){margin-inline:20px}
+#home-cottages-grid .card-title{margin-top:16px;font-size:var(--fs-title)}
+#home-cottages-grid .card-foot{margin-bottom:20px}
+#home-cottages-grid .cott-facts{justify-content:flex-start}
+#view-main .home-availability .hero-content{margin-inline:0;max-width:none}
+#view-main .home-cottages,#view-main .home-availability,#view-main .home-guestwords,#view-main .home-heritage{padding-inline:0!important}
+#late-avail .late-avail span{flex:1 1 180px;min-width:0}
+#late-avail{display:block!important;width:100%}#late-avail .late-avail{width:100%!important;flex-wrap:nowrap!important}@media(max-width:480px){#late-avail .late-avail{flex-wrap:wrap!important}#late-avail .late-avail span{flex-basis:calc(100% - 40px)}}
+#view-main .home-cottages>#late-avail,#view-main .home-cottages>#home-cottages-grid,#view-main .home-cottages>#welcome-back{align-self:stretch;width:100%;box-sizing:border-box}#view-main .home-cottages .section-kicker,#view-main .home-cottages .section-title{align-self:flex-start}
+#view-main #late-avail{max-width:none!important;margin:0 0 20px!important}
+#hero #hero-headline-panel h1{text-shadow:none!important}#hero::after{background:linear-gradient(180deg,rgba(10,20,30,.4) 0%,rgba(10,20,30,.12) 40%,rgba(10,20,30,.62) 100%)}
+@media (min-width:641px){#hero #hero-headline-panel h1{font-size:4.5rem!important}}
+/* Phone: the floating Messages pill owns the bottom-right, so these two keep their ink left of it
+   (ui-test-reach) — the rows are left-aligned on the rail now, so the inset goes on the right edge. */
+@media (max-width: 640px) {
+  #view-main #late-avail { max-width: calc(100% - 56px) !important; }
+  #view-main .home-guestwords { padding-right: 60px !important; }
+}

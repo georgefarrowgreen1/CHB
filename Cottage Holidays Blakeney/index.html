@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=347">
+    <link rel="stylesheet" href="app.css?v=348">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -305,11 +305,11 @@
         </div>
 
         <section class="hero" id="hero">
-            <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
+            <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"><svg class="hero-scene" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="scn-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8FB0C4"/><stop offset=".55" stop-color="#F0D9C2"/><stop offset="1" stop-color="#F2C9A6"/></linearGradient><linearGradient id="scn-sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6E9CA6"/><stop offset="1" stop-color="#3A6A76"/></linearGradient></defs><rect width="1200" height="620" fill="url(#scn-sky)"/><g class="scn-cloud" opacity=".55"><ellipse cx="180" cy="130" rx="110" ry="22" fill="#fff"/><ellipse cx="250" cy="116" rx="70" ry="18" fill="#fff"/></g><g class="scn-cloud b" opacity=".4"><ellipse cx="520" cy="190" rx="130" ry="20" fill="#fff"/><ellipse cx="590" cy="176" rx="80" ry="16" fill="#fff"/></g><circle class="scn-sun" cx="880" cy="290" r="70" fill="#FBE7C6"/><rect y="330" width="1200" height="130" fill="url(#scn-sea)"/><g class="scn-swell" opacity=".5"><path d="M-20 360 q60 -8 120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0" stroke="#fff" stroke-width="2" fill="none"/></g><g class="scn-swell b" opacity=".35"><path d="M-20 392 q80 -9 160 0 t160 0 t160 0 t160 0 t160 0 t160 0 t160 0 t160 0" stroke="#fff" stroke-width="2" fill="none"/></g><g class="scn-boat"><path d="M0 40 L20 0 L40 40Z" fill="#2B3F4C"/><path d="M20 4 V40" stroke="#F3E8D8" stroke-width="3"/><path d="M-6 42 h52 l-8 12 h-36z" fill="#8E4B3A"/></g><path d="M0 450 C180 420 320 470 520 445 S900 410 1200 450 V620 H0Z" fill="#D9BC8F"/><path d="M0 505 C240 475 420 525 640 500 S1000 475 1200 510 V620 H0Z" fill="#C4A173"/></svg></div>
             <div class="hero-content glass-panel" id="hero-headline-panel">
                 <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Book direct with the owner</p>
-                <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
-                <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
+                <h1 data-edit-text="hero-title">Three cottages by the Blakeney marshes</h1>
+                <p data-edit-text="hero-sub">Family-run holiday cottages in North Norfolk. The price you see is the price you pay.</p>
             </div>
             <!-- THE BOOKING BAR: dates, guests and one button on the first screen. It
                  drives the SAME heroSearch state and runHeroSearch() as the full form
@@ -2052,7 +2052,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1047"></script>
+    <script defer src="app.js?v=1048"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

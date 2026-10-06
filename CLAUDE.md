@@ -3305,6 +3305,24 @@ strip, and ≤640 its gap is 12px so its ink stops before the Messages pill (ui-
 Deliberately NOT built from the demo: footer regrouping, Messages-pill shrinking, card re-skin (the home cards already
 carried price + availability chips).
 
+## The scene hero and the one-rail home page (owner-approved demo, built)
+
+**Asked for from a screenshot of the demo ("make it look like this"), then "Build the new layout exactly as
+it's built in the demo".** The hero is an illustrated coast scene (`.hero-scene`, inline SVG INSIDE
+`.hero-bg`, so home.php's `data-edit-img="hero-bg"` anchor is untouched) behind a left-aligned headline, with
+the booking bar under it; everything below it shares ONE rail (20px gutter, 1088px) and one material.
+- **The scene HIDES the hero photo**: `#hero .hero-bg { background: none !important }`. The owner's uploaded
+  `hero-bg` (and `--hero-img`, which the auth panels still read) is untouched in the content table but no longer
+  painted on the home hero. Say the word to make the scene a fallback that only shows when no photo is set.
+- **Default copy changed** ("Three cottages by the Blakeney marshes" / the price-you-pay line). A saved
+  `hero-title` / `hero-sub` content value still wins, so a live install may keep its old words under the new look.
+- **`heroWordsRise()`** (app.js, end of `applyContentOverrides`) wraps the headline in `.w > i` spans for the
+  rise; idempotent, and a headline that never gets wrapped is simply plain visible text, never hidden.
+- Cards, the late-availability row, the heritage strip and the section headings were re-skinned to the same
+  hairline, left-aligned, flat vocabulary. Card reveals use `animation-timeline: view()` (CSS-only) so a card the
+  app re-renders can never be stuck at opacity 0.
+- NOT converted: the "Check availability" form section and the guest-quote section further down.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
