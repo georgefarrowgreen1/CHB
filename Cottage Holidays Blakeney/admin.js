@@ -17562,7 +17562,7 @@ function mfPaint() {
     const info = list.map((p) => {
         const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
         const sMeta = paymentStatusMeta(p.kind, p.status);
-        return { p, isReturn, sMeta, wait: payIsWait(p.kind, p.status), gross: Math.abs(parseFloat(p.amount) || 0), fee: p.fee != null && p.fee !== '' ? Math.abs(parseFloat(p.fee) || 0) : null };
+        return { p, isReturn, sMeta, wait: payIsWait(p.kind, p.status, p.created_at), gross: Math.abs(parseFloat(p.amount) || 0), fee: p.fee != null && p.fee !== '' ? Math.abs(parseFloat(p.fee) || 0) : null };
     });
     let grossIn = 0, feeSum = 0, feeKnown = 0, totIn = 0, totOut = 0, totWait = 0;
     info.forEach((x) => {
