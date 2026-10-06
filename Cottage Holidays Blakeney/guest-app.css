@@ -214,9 +214,7 @@ body.guest-app:not(.owner-mode) header.header-condensed .logo::before {
    rule's 320ms --settle brings it back. */
 body.guest-app:not(.owner-mode) header .logo:active {
   transform: scale(var(--sc, 0.97));
-  filter: brightness(0.94);
-  transition: transform 80ms var(--in), filter 80ms var(--in);
-}
+  transition: transform 80ms var(--in), filter 80ms var(--in);}
 
 /* ---- Press feel ----------------------------------------------------------
    iOS answers a touch INSTANTLY (fast scale down) and releases with a spring.
@@ -301,9 +299,6 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
   }
 }
 @media (hover: hover) {
-  body.guest-app:not(.owner-mode) #guest-book-cta:hover {
-    filter: brightness(1.05);
-  }
 }
 body.guest-app:not(.owner-mode) #guest-book-cta:active {
   transform: scale(0.96);
@@ -354,9 +349,6 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
    sticky :hover, leaving the tint (and the label below) stuck until the next
    tap elsewhere. :focus-visible below keeps keyboard access unconditional. */
 @media (hover: hover) {
-  .guest-dock-btn:hover {
-    background: rgba(255, 255, 255, 0.16);
-  }
 }
 .guest-dock-btn:focus-visible {
   background: rgba(255, 255, 255, 0.16);
@@ -793,9 +785,7 @@ body.light-mode.guest-app:not(.owner-mode) .guest-dock {
 /* Icons become ink-slate on the white dock (were white on dark). */
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn {
   color: var(--text-light);
-}
-body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:hover,
-body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:focus-visible {
+}body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:focus-visible{
   background: rgba(28, 46, 58, 0.08);
 }
 /* Selection pill switches from white (invisible on a white dock) to the

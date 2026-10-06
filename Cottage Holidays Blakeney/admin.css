@@ -326,9 +326,7 @@ body.light-mode {
     transform 320ms var(--settle),
     filter 320ms var(--settle);
 }@media (hover: hover) {.area-ov-card:hover {
-    background: var(--glass-hover);
-    transform: translateY(-2px);
-  }}
+    transform: translateY(-2px);}}
 /* A queue of deposits is a LIST, not a stack of islands: the cell radius and no
    drop shadow (they keep their 12px of air — each row carries two buttons, so
    they are action cards rather than one-line cells). NB `body.light-mode
@@ -523,9 +521,7 @@ body.light-mode {
 @media (hover: hover) {
   .bk-row:hover, body.light-mode .bk-row:hover {
     transform: none;
-    box-shadow: var(--bk-ring, none);
-    background: var(--glass-hover);
-  }
+    box-shadow: var(--bk-ring, none);}
 }.bk-row:active {
   transform: scale(0.995);
 }.bk-row:hover .bk-row-arrow {
@@ -639,10 +635,6 @@ body.light-mode .tl-cell.is-mstart {
 }body.light-mode .tl-day,
 body.light-mode .tl-cell {
   border-color: rgba(27, 42, 52, 0.04);
-}
-/* (0,3,0), so it outranked the day cell's press ground — the same trap. */
-body.light-mode .tl-cell:hover:not(:active) {
-  background: rgba(27, 42, 52, 0.06);
 }/* Stay length riding a wide-enough bar ("Bob · 3n"). */
 .tl-bar .tl-n {
   font-style: normal;
@@ -678,13 +670,8 @@ body.light-mode .tl-cell:hover:not(:active) {
   border-radius: 50%;
   background: var(--accent);
   transform: translate(-50%, 0); /* inside the first lane: the line starts below the header row */
-}
-.tl-cell:hover:not(:active) {
-  background: rgba(255, 255, 255, 0.06);
 }.tl-bar:hover:not(:active) {
-  transform: translateY(-1px);
-  filter: brightness(1.07);
-}.tl-label-dot {
+  transform: translateY(-1px);}.tl-label-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -707,7 +694,6 @@ body.light-mode .tl-cell:hover:not(:active) {
   font-weight: 700;
 }
 @media (hover: hover) {
-  .btn-sm.btn-accent:hover { filter: brightness(1.06); }
 }
 /* READY FOR YOU — the overnight queue's card on Today. The ROWS are the house
    fold group (.bhub-fold-grp, shared with the hub and the Manage verdicts), so
@@ -763,14 +749,6 @@ body.light-mode .tl-cell:hover:not(:active) {
     transform 320ms var(--settle),
     background 200ms var(--out),
     box-shadow 200ms var(--out);
-}
-/* THE HOVER MUST YIELD TO THE PRESS (see also the (1,2,0) rule further down).
-   Measured on a real held mouse press: the row computed matrix(1,…) for the
-   whole hold with :active true, because the hover's `transform: none` outranks
-   it. `:not(:active)` is the fix that keeps both true — the .card lesson,
-   same PR. */
-.ny-row:hover:not(:active) {
-  background: var(--glass-hover);
 }
 /* A LIST ROW PRESSES WITH ITS GROUND, not with a scale — see the press block at
    the foot of this file. The hand-written `scale(0.99)` that stood here was off
@@ -949,8 +927,6 @@ body.light-mode .ny-act {
   font-size: var(--fs-body);
   border-radius: var(--r-sm);
   cursor: pointer;
-}.bhub-menu button:hover {
-  background: var(--glass-hover);
 }.bhub-menu .bhub-menu-danger {
   color: var(--danger-text);
 }
@@ -1112,9 +1088,7 @@ body.light-mode .ny-act {
 /* `:not(:active)` — this is (0,3,0) and outranked `.tl-bar:active`, so a held
    bar kept its 1px lift instead of pressing (measured). */
 .tl-bar:not(.tl-ext):hover:not(:active) {
-  transform: translateY(-1px);
-  filter: brightness(1.08);
-}.tl-bar.tl-ext {
+  transform: translateY(-1px);}.tl-bar.tl-ext {
   /* Neutral grey stripes so the block reads on BOTH themes (white-on-white
      was invisible in light mode). */
   background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.14), rgba(128, 128, 128, 0.14) 6px, rgba(128, 128, 128, 0.26) 6px, rgba(128, 128, 128, 0.26) 12px);
@@ -1298,9 +1272,6 @@ body.light-mode .ny-act {
   font-weight: 600;
   cursor: pointer;
 }
-.mbx-reply:hover {
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
-}
 .mbx-acts-quiet {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1326,7 +1297,6 @@ body.light-mode .ny-act {
   cursor: pointer;
 }
 .mbx-act:first-child { border-left: 0; }
-.mbx-act:hover { background: color-mix(in srgb, var(--text-light) 6%, transparent); }
 .mbx-act svg { width: 20px; height: 20px; }
 .mbx-act.is-danger { color: var(--danger-text); }
 .mbx-atts {
@@ -1346,8 +1316,6 @@ body.light-mode .ny-act {
   font-size: var(--fs-sub);
   text-decoration: none;
   transition: background 0.2s var(--fluid-bezier);
-}.mbx-att:hover {
-  background: var(--glass-hover);
 }
 /* ONE ARRIVAL PER NAVIGATION. These were unscoped, so a hub that arrived with
    its own PAGE rose twice — chbPageIn on the view (app.css) and then bhubIn on
@@ -1723,8 +1691,6 @@ body.light-mode .ny-act {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}.bhub-stay-row:hover {
-  background: var(--glass-hover);
 }@media (max-width: 899px) {.bhub-grid {
     grid-template-columns: 1fr;
   }.bhub-hist-row {
@@ -1935,9 +1901,6 @@ body.owner-mode header .admin-dock-btn:not(.current) {
   color: var(--text-light);
 }
 @media (hover: hover) {
-  body.owner-mode header .admin-dock-btn:not(.current):hover {
-    background: color-mix(in srgb, var(--text-light) 10%, transparent);
-  }
 }
 body.owner-mode header .admin-dock-btn:focus-visible {
   background: color-mix(in srgb, var(--text-light) 12%, transparent);
@@ -2285,12 +2248,12 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-clear .ic {
   width: 14px;
   height: 14px;
-}
-.cmdk-clear:hover,
-.cmdk-clear:focus-visible {
+}.cmdk-clear:focus-visible{
   background: var(--glass-hover);
   color: var(--text-light);
 }
+.cmdk-clear:hover{
+  color: var(--text-light);}
 /* The knot never hides — it IS the AI status. The ✕ clear sits on the RIGHT
    (after the input, before help) and simply appears once there's text. */
 .cmdk-search.has-text .cmdk-clear {
@@ -2329,12 +2292,12 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-help-btn .ic {
   width: 17px;
   height: 17px;
-}
-.cmdk-help-btn:hover,
-.cmdk-help-btn:focus-visible {
+}.cmdk-help-btn:focus-visible{
   background: var(--glass-hover);
   color: var(--text-light);
 }
+.cmdk-help-btn:hover{
+  color: var(--text-light);}
 .cmdk-search input {
   flex: 1;
   min-width: 0;
@@ -2494,9 +2457,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
   cursor: pointer;
   color: var(--text-light);
   transition: background 0.14s var(--fluid-bezier), box-shadow 0.14s var(--fluid-bezier);
-}
-.cmdk-row:hover {
-  background: var(--glass-hover);
 }
 /* SELECTION MUST OUTRANK HOVER, and in light mode it did not. --cmdk-sel was a
    translucent tint over the panel while hover paints --glass-hover, a 92% white:
@@ -2708,9 +2668,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   text-align: left;
   cursor: pointer;
   transition: background 0.15s var(--fluid-bezier);
-}
-.cmdk-deep-cta:hover,
-.cmdk-deep-cta:focus-visible {
+}.cmdk-deep-cta:focus-visible{
   background: var(--btn-hover);
 }
 .cmdk-deep-cta-ic {
@@ -2896,14 +2854,16 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--text-light);
   cursor: pointer;
   transition: background 0.15s var(--fluid-bezier), border-color 0.15s var(--fluid-bezier), transform 0.12s var(--fluid-bezier), box-shadow 0.15s var(--fluid-bezier);
-}
-.cmdk-ex:hover,
-.cmdk-ex:focus-visible {
+}.cmdk-ex:focus-visible{
   background: var(--cmdk-tile);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 50%, transparent);
   outline: none;
 }
+.cmdk-ex:hover{
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 50%, transparent);
+  outline: none;}
 .cmdk-ex:active {
   transform: scale(0.96);
 }
@@ -2959,12 +2919,12 @@ body.light-mode .cmdk-editor-input {
   font-size: var(--cmdk-fs-row);
   cursor: pointer;
   transition: filter 0.14s var(--fluid-bezier);
-}
-.cmdk-editor-save:hover,
-.cmdk-editor-save:focus-visible {
+}.cmdk-editor-save:focus-visible{
   filter: brightness(1.06);
   outline: none;
 }
+.cmdk-editor-save:hover{
+  outline: none;}
 .cmdk-editor-msg {
   font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
@@ -3023,9 +2983,6 @@ body.light-mode .cmdk-editor-input {
   border-radius: var(--r-sm);
   cursor: pointer;
   color: var(--accent-text);
-}
-.cmdk-qa-row:hover {
-  background: var(--glass-hover);
 }
 .cmdk-qa-ic .ic {
   width: 17px;
@@ -3115,9 +3072,6 @@ body.light-mode .cmdk-editor-input {
   font-weight: 600;
   font-size: var(--fs-sub);
   cursor: pointer;
-}
-.coach-tip-btn:hover {
-  filter: brightness(1.06);
 }
 /* Guided WALKTHROUGH overlay: sits ABOVE modals (so it can spotlight a field
    inside the Add-Booking box) and is click-THROUGH — only the tip is interactive,
@@ -3514,9 +3468,7 @@ body.light-mode .cmdk-editor-input {
 }
 .modal-suggest-row:last-child {
   border-bottom: 0;
-}
-.modal-suggest-row:hover,
-.modal-suggest-row:focus-visible {
+}.modal-suggest-row:focus-visible{
   background: var(--glass-hover);
 }
 .modal-suggest-nm {
@@ -3592,18 +3544,12 @@ body.light-mode .cmdk-editor-input {
 .cmdk-chip-ic .ic {
   width: 13px;
   height: 13px;
-}
-/* FOCUS IS NOT HOVER. These pairs used to end in `outline: none`, which killed the
-   global `button:focus-visible` ring — measured with real Tab presses, #cmdk-clear,
-   #cmdk-help and every chip computed `outline: 0px none` while #cmdk-close 16px away
-   in the same row got its 2px accent ring, and a 4px strip sampled just outside each
-   control changed by 0 of 128px. All that was left was the hover tint, the weakest
-   signal in the panel. The tint stays on hover; focus keeps the ring it inherits. */
-.cmdk-chip:hover,
-.cmdk-chip:focus-visible {
+}.cmdk-chip:focus-visible{
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--glass-hover));
 }
+.cmdk-chip:hover{
+  border-color: var(--accent);}
 
 /* DARKSTAR ONLINE — the semantic model has finished loading. The logo knots
    show the quiet purple "AI ready" tint (see [data-mstate="ready"] above); on
@@ -4229,9 +4175,7 @@ body.light-mode .cmdk-search input {
 }
 @media (hover: hover) {
   .cmdk-close-btn:hover {
-    background: var(--glass-hover);
-    color: var(--text-light);
-  }
+    color: var(--text-light);}
 }
 .cmdk-close-btn:focus-visible {
   outline: 2px solid var(--accent);
@@ -4379,14 +4323,6 @@ body.cmdk-open {
    the day brief moved an invisible selection. */
 .cmdk-board .cmdk-row:not(.is-sel):not(:hover) {
   background: none;
-}
-/* A board's ground IS --glass-hover, so the ordinary row hover (also --glass-hover)
-   had nowhere to go on top of it: measured 1/255 in light, i.e. hovering a board
-   row did nothing. It has to move AWAY from the board's surface, and the accent
-   tint is the one direction with room in both themes. Same family as selection at
-   half strength (7% vs 13%) — one idea at two volumes. */
-.cmdk-board .cmdk-row:hover {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 @media (max-width: 479px) {
   .cmdk-boards {
@@ -4769,9 +4705,6 @@ body.cmdk-open {
 .cmdk-sys:not(:disabled) {
   cursor: pointer;
 }
-.cmdk-sys:not(:disabled):hover {
-  background: var(--glass-hover);
-}
 .cmdk-sys-dot {
   width: 7px;
   height: 7px;
@@ -4971,19 +4904,14 @@ body.cmdk-open {
     background: var(--accent);
     border-color: transparent;
     color: var(--accent-ink);
-  }
-  /* APPROVE KEEPS ITS OWN COLOUR — it is the one next action with a meaning of
-     its own, and .btn-approve carries only a --booked-border plus a hover that
-     turns --ok. A (0,2,0) accent fill above would have left the border rule
-     dead and the hover intact, so Approve read accent and flipped green under
-     the pointer. Filled --ok in BOTH states instead. The ink is --accent-ink,
-     not white: white on --ok measures 2.78:1, this pair 6.65. */
-  .bhub-next .bhub-next-btn.btn-approve,
-  .bhub-next .bhub-next-btn.btn-approve:hover {
+  }.bhub-next .bhub-next-btn.btn-approve{
     background: var(--ok);
     border-color: transparent;
     color: var(--accent-ink);
   }
+.bhub-next .bhub-next-btn.btn-approve:hover{
+    border-color: transparent;
+    color: var(--accent-ink);}
 }
 
 
@@ -5251,7 +5179,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   text-align: left;
   cursor: pointer;
 }
-@media (hover: hover) { .bhub-fold-row:hover { background: var(--glass-hover); } }
+@media (hover: hover) { }
 .bhub-fold-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
 .bhub-fold-sub { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; }
 .bhub-fold-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -5423,7 +5351,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acr-lbl small em { font-style: normal; color: var(--accent-text); font-weight: 600; }
 .acr-step { display: flex; align-items: center; flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 3px; }
 .acr-step button { width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--accent-text); font-size: var(--fs-title); line-height: 1; cursor: pointer; }
-.acr-step button:active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .acr-val { display: flex; align-items: baseline; justify-content: center; gap: 1px; min-width: 54px; }
 .acr-val input { width: 46px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline); text-align: center; appearance: textfield; -moz-appearance: textfield; }
 .acr-val input::-webkit-outer-spin-button, .acr-val input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -6411,7 +6338,6 @@ body.offline-snap .ods-mark {
 #etpl-panel { margin: 8px 0 2px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 10px; }
 .etpl-q { width: 100%; margin-bottom: 6px; min-height: 44px; }
 .etpl-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 9px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
-.etpl-row:hover:not([disabled]) { background: var(--glass-hover); }
 .etpl-row[disabled] { cursor: not-allowed; }
 .etpl-row[disabled] .etpl-row-name { color: var(--text-muted); }
 .etpl-row-name { display: block; font-weight: 600; font-size: var(--fs-body); }
@@ -6432,7 +6358,6 @@ body.offline-snap .ods-mark {
 .etpl-chip-x { width: 26px; height: 26px; border-radius: 50%; background: none; border: 1px solid currentColor; color: inherit; display: grid; place-items: center; font-size: var(--fs-sub); line-height: 1; cursor: pointer; padding: 0; }
 .etpl-pick { margin: 8px 0 0; border-top: 1px solid var(--glass-border); padding-top: 8px; }
 .etpl-pick-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 8px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
-.etpl-pick-row:hover { background: var(--glass-hover); }
 .etpl-pick-name { display: block; font-weight: 600; font-size: var(--fs-body); }
 .etpl-pick-sub { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
 .etpl-offcap { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 8px 2px 3px; }
@@ -6542,7 +6467,6 @@ body.offline-snap .ods-mark {
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter)}
 .ac-more{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--glass-border);
   background:none;color:var(--text-muted);font-size: var(--fs-sub);cursor:pointer;flex:0 0 auto}
-.ac-more:hover{background:var(--btn-hover)}
 .mc-pres{display:inline-flex;align-items:center;gap:6px;font-size: var(--fs-micro);font-weight:600;color:var(--text-muted)}
 /* In the page's bar the presence is the ONE line of text, so it steps up —
    contextual, because renderMacChat rebuilds the node and a class would be
@@ -6563,7 +6487,6 @@ body.offline-snap .ods-mark {
   border:1px solid var(--glass-border);background:color-mix(in srgb,var(--text-light) 4%,transparent);
   color:var(--text-muted);border-radius:999px;padding:8px 14px;font:600 var(--fs-micro) var(--font-sans);
   cursor:pointer;min-height:34px}
-.mc-rail-chip:hover{background:var(--btn-hover)}
 .mc-rail-chip.is-cur{background:var(--text-light);color:var(--dark-grey);border-color:transparent}
 /* THE LAST STARTER CLEARS THE COMPOSER. The composer FLOATS (fixed) above the
    safe area, and the log's 2px of bottom padding put the third starter question
@@ -6590,7 +6513,7 @@ body.offline-snap .ods-mark {
   font-size:var(--cmdk-fs-sub);font-weight:600;letter-spacing:0.01em;
   cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;
   min-height:44px;transition:border-color 0.2s var(--fluid-bezier),background 0.2s var(--fluid-bezier)}
-.mc-schip:hover{border-color:var(--accent);background:var(--btn-hover)}
+.mc-schip:hover{border-color:var(--accent);}
 .mc-go{color:var(--accent-text);font-weight:700}
 /* THE CONVERSATION READS AT BODY SIZE. Both halves of the thread were 13px
    while the composer beside them is 15, the act cards are 15 and the guest
@@ -6652,7 +6575,6 @@ body.offline-snap .ods-mark {
   min-height:32px;padding:0 12px;cursor:pointer;flex:0 0 auto;
   background:color-mix(in srgb,var(--accent) 9%,transparent);color:var(--text-light);
   font:700 var(--fs-micro) var(--font-sans)}
-.mc-day-go:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 .mc-day-note{margin-top:8px;font-size: var(--fs-micro);color:var(--text-muted)}
 /* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
 .mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:var(--r-lg);
@@ -6665,7 +6587,7 @@ body.offline-snap .ods-mark {
   background:var(--accent);color:var(--accent-ink);font:700 var(--fs-caption) var(--font-sans)}
 .mc-act-no{border:1px solid var(--glass-border);border-radius:999px;padding:0 14px;min-height:38px;
   cursor:pointer;background:none;color:var(--text-muted);font:600 var(--fs-caption) var(--font-sans)}
-.mc-act-no:hover{color:var(--text-light);background:var(--btn-hover)}
+.mc-act-no:hover{color:var(--text-light);}
 .mc-act-note{margin-top:8px;font-size: var(--fs-micro);color:var(--text-muted)}
 .mc-act.is-done{background:color-mix(in srgb,var(--ok) 10%,transparent);font-size: var(--fs-caption);font-weight:600;color:var(--text-light)}
 .mc-act.is-off{background:none;font-size: var(--fs-caption);color:var(--text-muted)}
@@ -6673,7 +6595,6 @@ body.offline-snap .ods-mark {
 .mc-act-next{display:block;margin-top:8px;border:1px solid var(--glass-border);border-radius:999px;
   padding:6px 12px;min-height:32px;background:none;color:var(--accent-text);
   font:600 var(--fs-micro) var(--font-sans);cursor:pointer}
-.mc-act-next:hover{background:var(--btn-hover)}
 /* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
 .ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
   max-width:720px;margin:0 auto;display:none;align-items:center;gap:8px;
@@ -6693,7 +6614,7 @@ body.offline-snap .ods-mark {
 .ac-composer{flex-wrap:wrap}
 .ac-clip{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
   margin-left:-12px;background:none;color:var(--text-muted);display:grid;place-items:center}
-.ac-clip:hover{color:var(--text-light);background:var(--btn-hover)}
+.ac-clip:hover{color:var(--text-light);}
 .ac-clip svg{width:17px;height:17px}
 .ac-pend{flex:1 1 100%;padding:2px 2px 6px}
 .ac-pend[hidden]{display:none}
@@ -6726,7 +6647,6 @@ body.offline-snap .ods-mark {
 .ac-sheet-card button{display:block;width:100%;border:0;background:none;color:var(--text-light);
   font:600 var(--fs-body) var(--font-sans);padding:15px 18px;text-align:center;cursor:pointer;
   border-bottom:1px solid var(--glass-border);min-height:44px}
-.ac-sheet-card button:hover{background:var(--btn-hover)}
 .ac-sheet-card button.ac-quiet{color:var(--text-muted);font-weight:500}
 .ac-sheet-card button:last-child{border-bottom:0}
 @media (prefers-reduced-motion: reduce){
@@ -6801,7 +6721,6 @@ body.offline-snap .ods-mark {
 .spine-duty.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent); }
 .spine-duty.is-more { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
 @media (hover: hover) {
-  .spine-duty:hover { filter: brightness(1.06); }
 }
 .spine-dot {
   width: 7px;
@@ -7074,9 +6993,6 @@ body.rail-on.admin-screen main.container {
   height: 15px;
   flex: 0 0 auto;
 }
-.rail-ask:hover {
-  background: var(--btn-hover);
-}
 .rail-kbd {
   margin-left: auto;
   font-size: var(--fs-micro);
@@ -7106,9 +7022,6 @@ body.rail-on.admin-screen main.container {
   height: 15px;
   flex: 0 0 auto;
   display: inline-flex;
-}
-.rail-theme:hover {
-  background: var(--btn-hover);
 }
 /* ---- THE FOLD (1200–1439, body.rail-fold): the prototype's own icon rail.
    Labels, counts, brand words and the kbd hint go; a hot count survives as a
@@ -7252,9 +7165,6 @@ body.rail-on.admin-screen .ac-hd {
   height: 19px;
   flex: 0 0 auto;
   color: var(--text-muted);
-}
-.rail-row:hover {
-  background: var(--btn-hover);
 }
 /* The current mark GLIDES — the dock's pill turned vertical, so the two navs
    share one motion vocabulary. Travel on translate (a combined transform
@@ -7732,16 +7642,12 @@ select.acw-pill { min-height: 44px; }
   .mc-day-go:active,
   .ac-more:active {
     transform: scale(var(--sc, 0.97));
-    filter: brightness(0.94);
-    transition: transform 80ms var(--in), filter 80ms var(--in);
-  }
+    transition: transform 80ms var(--in), filter 80ms var(--in);}
   /* The bar keeps its 1px hover lift as the thing it composes with — a press
      that dropped the lift would read as the bar jumping down, not compressing. */
   .tl-bar:active {
     transform: scale(var(--sc, 0.97));
-    filter: brightness(0.94);
-    transition: transform 80ms var(--in), filter 80ms var(--in);
-  }
+    transition: transform 80ms var(--in), filter 80ms var(--in);}
 }
 /* THE RELEASE is the base rule's transition, so anything without one gets one. */
 .inbox-sort-btn,
@@ -7770,14 +7676,7 @@ body.owner-mode .logo.logo-assist,
    held Saturday keeps its weekend fill — measured, the ground moved 0.06 → 0.055
    under a finger, which is no change at all. */
 body.light-mode .tl-cell:active {
-  background: var(--press-ground);
-  transition: background 80ms var(--in);
-}
-/* A selected search row is already tinted, so its press has to go one step
-   further than its own ground or the touch says nothing. */
-.cmdk-row.is-sel:active {
-  background: color-mix(in srgb, var(--text-light) 10%, var(--cmdk-sel));
-}
+  transition: background 80ms var(--in);}
 
 /* APPEAR — the drill-in arrives. Measured before: settingsOpen / accountsOpen /
    inboxFolder all ran ZERO animations (a display swap, one frame) while the way
@@ -7876,8 +7775,7 @@ body.light-mode .tl-cell:active {
    name; the when-line carries one state capsule; the page settles in once per booking opened. */
 .bhub-next-acts { display: flex; gap: 12px; align-items: stretch; margin-top: 12px; }
 .bhub-next-acts .bhub-next-btn { flex: 1.4 1 0; min-height: 48px; padding: 0 20px; border-radius: var(--r-pill); background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; font-size: var(--fs-body); }
-.bhub-next-acts .bhub-next-alt { flex: 1 1 0; display: grid; place-items: center; min-height: 48px; margin: 0; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); background: var(--glass-bg); color: var(--text-light); font-weight: 600; font-size: var(--fs-body); text-align: center; }
-.bhub-next-acts .bhub-next-btn.btn-approve, .bhub-next-acts .bhub-next-btn.btn-approve:hover { background: var(--ok); }
+.bhub-next-acts .bhub-next-alt { flex: 1 1 0; display: grid; place-items: center; min-height: 48px; margin: 0; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); background: var(--glass-bg); color: var(--text-light); font-weight: 600; font-size: var(--fs-body); text-align: center; }.bhub-next-acts .bhub-next-btn.btn-approve{ background: var(--ok); }
 .bhub-state { display: inline-block; padding: 2px 10px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-muted) 16%, transparent); color: var(--text-muted); font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; }
 .bhub-state.is-soon { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info-text); }
 .bhub-state.is-now { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-text); }
@@ -8051,7 +7949,6 @@ body.light-mode .tl-cell:active {
 .mo-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .mo-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 76px; padding: 8px 4px; border: 1px solid var(--glass-border); border-radius: var(--r-sm); background: none; color: var(--text-light); font: 600 var(--fs-caption)/1.25 var(--font-sans); text-align: center; cursor: pointer; }
 .mo-tool .ic { width: 22px; height: 22px; color: var(--accent-text); }
-.mo-tool:hover { background: color-mix(in srgb, var(--text-light) 6%, transparent); }
 
 /* ---- TYPE BY ROLE (owner-asked, approved demo). One family everywhere; size follows the job a line does.
    Headline sentence 17 · section caption 12 · row sub-line 13 · row figure 17 · buttons 15. Row titles (15), capsules (12),
