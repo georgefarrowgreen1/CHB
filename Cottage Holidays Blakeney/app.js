@@ -8189,6 +8189,27 @@ const CHB_SEP_BIND = '.prop-subtitle';
 function chbBindSeps(t) {
     return String(t == null ? '' : t).replace(/ ([·•]) /g, ' $1\u00a0');
 }
+// The hero headline rises word by word (CSS .w > i). Idempotent: it only wraps a headline
+// that has no word spans yet, so a content override (textContent) is re-wrapped and nothing else is.
+function heroWordsRise() {
+    const h = document.querySelector('#hero-headline-panel h1');
+    if (!h || h.querySelector('.w')) return;
+    const words = (h.textContent || '').trim().split(/\s+/);
+    if (words.length < 2) return;
+    h.setAttribute('aria-label', words.join(' '));
+    h.textContent = '';
+    words.forEach((w, i) => {
+        if (i) h.appendChild(document.createTextNode(' '));
+        const o = document.createElement('span');
+        o.className = 'w';
+        o.setAttribute('aria-hidden', 'true');
+        o.style.setProperty('--i', String(i));
+        const n = document.createElement('i');
+        n.textContent = w;
+        o.appendChild(n);
+        h.appendChild(o);
+    });
+}
 function applyContentOverrides(root) {
     root.querySelectorAll('[data-edit-text]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-text')];
@@ -8221,6 +8242,7 @@ function applyContentOverrides(root) {
                 `url('${h.replace(/['"\\)]/g, '')}')`,
             );
     } catch (e) {}
+    heroWordsRise();
 }
 
 // ---- Live background refresh ----
@@ -19561,7 +19583,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'homebar4';
+    const BUILD = 'scenehero1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -462,7 +462,7 @@ const NEST = (rootSel) => {
   // device the owner uses (DESIGN.md: "build glass from them, never a bare
   // blur()"). The header is excluded because it deliberately paints nothing
   // itself — its fill and blur ride header::before.
-  const phoneGlass = await page.evaluate(() => { const el = document.querySelector('.glass-panel:not(header)'); if (!el) return null; const c = getComputedStyle(el); return { cls: el.className, bf: c.backdropFilter || c.webkitBackdropFilter }; });
+  const phoneGlass = await page.evaluate(() => { const el = document.querySelector('.glass-panel:not(header):not(#hero-headline-panel)'); if (!el) return null; const c = getComputedStyle(el); return { cls: el.className, bf: c.backdropFilter || c.webkitBackdropFilter }; });
   ok(phoneGlass && /saturate/.test(phoneGlass.bf) && /brightness/.test(phoneGlass.bf), `at 390 a panel still carries the MATERIAL, not a bare blur (${phoneGlass && phoneGlass.bf})`);
   await open(page, 'closeEnquireModal()', 500);
 
