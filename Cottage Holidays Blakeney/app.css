@@ -13551,12 +13551,6 @@ body.light-mode .hb-field[aria-expanded="true"] {
   width: 18px;
   height: 18px;
 }
-.hb-hint {
-  margin: 8px 0 2px;
-  text-align: center;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
 .hb-swap {
   animation: hbSwap 300ms var(--out);
 }
@@ -13572,8 +13566,7 @@ body.light-mode .hb-field[aria-expanded="true"] {
   .hb-fields {
     grid-column: 1;
   }
-  .hb-pop,
-  .hb-hint {
+  .hb-pop {
     grid-column: 1 / -1;
   }
   .hb-go {
