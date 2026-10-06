@@ -4374,7 +4374,7 @@ body.cmdk-open {
   font-size: var(--cmdk-fs-sub);
 }
 .cmdk-board > .cmdk-row:first-of-type .cmdk-row-label {
-  font-size: var(--cmdk-fs-hero);
+  font-size: var(--cmdk-fs-lead);
   line-height: 1.25;
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
@@ -8151,3 +8151,11 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 #money-feed .mf-fig .st-cap { margin-top: 4px; }
 #money-feed .mf-calm { text-align: center; font-size: var(--fs-sub); color: var(--text-muted); margin: 12px 0; }
 #hub-history .pay-dir, #hub-history .pay-eta { font-size: var(--fs-sub); }
+
+/* The landing's compact rows: the duty's action word is the row's button, and the
+   example questions are one-tap chips. */
+.cmdk-row .cmdk-act { margin-left: auto; flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-size: var(--cmdk-fs-body); font-weight: 600; white-space: nowrap; }
+.cmdk-asks { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; }
+.cmdk-asks .cmdk-chip { min-height: 44px; padding: 0 16px; font-size: var(--cmdk-fs-body); }
+.cmdk-asks .cmdk-chip::before { content: "\201C"; color: var(--accent-text); margin-right: 2px; }
+.cmdk-asks .cmdk-chip::after { content: "\201D"; color: var(--accent-text); margin-left: 2px; }
