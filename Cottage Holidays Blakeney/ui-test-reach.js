@@ -280,7 +280,7 @@ const reachOk = (name, list, floor, axis) => {
     // prose, which is what the audit measured; standing the pill down here (the
     // alternative) was refused because Home is where a hesitant visitor most
     // wants the chat. The known exception is stated in §1b below.
-    fabOk(await sweepFab(page, 'home 390 · the centred blocks', '#late-avail, .home-guestwords, .home-trust, .avail-lead'));
+    fabOk(await sweepFab(page, 'home 390 · the centred blocks', '#late-avail, .home-guestwords, .home-heritage, .avail-lead'));
     // AND THE INVARIANT BEHIND IT, because the sweep alone is fixture-luck: a
     // block only registers a hit if it happens to pass through the pill's band,
     // and in this harness the late-availability card sits above it for the whole
@@ -291,7 +291,7 @@ const reachOk = (name, list, floor, axis) => {
       const fab = document.getElementById('guest-msg-fab');
       const left = fab.getBoundingClientRect().left;
       const out = [];
-      for (const sel of ['#late-avail', '.home-guestwords', '.home-trust', '.avail-lead']) {
+      for (const sel of ['#late-avail', '.home-guestwords', '.home-heritage', '.avail-lead']) {
         const el = document.querySelector(sel);
         if (!el || !el.getClientRects().length) continue;
         let max = 0;

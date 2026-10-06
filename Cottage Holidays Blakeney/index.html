@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=343">
+    <link rel="stylesheet" href="app.css?v=347">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -310,9 +310,27 @@
                 <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Book direct with the owner</p>
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
-                <button type="button" class="btn-glass btn-accent hero-cta" data-act="scrollToAvailability">Check availability</button>
             </div>
-            <button type="button" class="hero-scroll-cue" data-act="scrollToAvailability" aria-label="Scroll down to check availability"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+            <!-- THE BOOKING BAR: dates, guests and one button on the first screen. It
+                 drives the SAME heroSearch state and runHeroSearch() as the full form
+                 lower down (which stays for flexible dates); #hb-* only mirror it. -->
+            <div class="hero-bar glass-panel" id="hero-bar" role="group" aria-label="Find a cottage">
+                <button type="button" class="hb-field" id="hb-dates-btn" data-act="openHeroDatePicker"><span class="hb-label">Dates</span><span class="hb-value" id="hb-dates">Add your dates</span></button>
+                <button type="button" class="hb-field" id="hb-guests-btn" data-act="heroBarGuests" aria-expanded="false" aria-controls="hb-pop"><span class="hb-label">Guests</span><span class="hb-value" id="hb-guests">2 adults</span></button>
+                <button type="button" class="btn-glass btn-accent hero-cta hb-go" data-act="heroBarGo">Show prices</button>
+                <div class="hb-pop" id="hb-pop" hidden>
+                    <div class="hs-guest"><span class="hs-gtype">Adults <span class="hs-gband">16+</span></span>
+                        <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">&minus;</button>
+                        <span class="hs-count" id="hb-adults">2</span>
+                        <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
+                    </div>
+                    <div class="hs-guest"><span class="hs-gtype">Children <span class="hs-gband">under 16</span></span>
+                        <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="-1" aria-label="Fewer children">&minus;</button>
+                        <span class="hs-count" id="hb-children">0</span>
+                        <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="1" aria-label="More children">+</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Heritage band: the numbers that earn trust, in display serif. The cottage
@@ -321,16 +339,6 @@
             <div class="heritage-item"><span class="heritage-num">1983</span><span class="heritage-label">Family founded</span></div>
             <div class="heritage-item"><span class="heritage-num" id="heritage-count">3</span><span class="heritage-label">Cottages in Blakeney</span></div>
             <div class="heritage-item" id="heritage-rating-item" style="display:none;"><span class="heritage-num" id="heritage-rating"></span><span class="heritage-label">Guest rating</span></div>
-        </section>
-
-        <!-- TRUST STRIP — factual reassurance points (ordered just under the hero). -->
-        <section class="home-trust reveal" id="home-trust" aria-label="Why book with us">
-            <div class="trust-strip glass-panel">
-                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg> In the heart of Blakeney, North Norfolk</div>
-                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.2L20 9l-4 3.6L17 18l-5-2.8L7 18l1-5.4L4 9l5.8-.8z"/></svg> Boutique self-catering</div>
-                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 12 22l-9-9V3h10z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Book direct with the owner</div>
-                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg> Personally hosted by the owner</div>
-            </div>
         </section>
 
         <!-- OUR COTTAGES (homepage) — simplified cards, above the availability search.
@@ -2044,7 +2052,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1043"></script>
+    <script defer src="app.js?v=1047"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
