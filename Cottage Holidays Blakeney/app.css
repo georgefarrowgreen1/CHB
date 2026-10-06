@@ -13223,3 +13223,124 @@ header.glass-panel {
 .hero-scroll-cue {
   transition: transform 320ms var(--settle), filter 320ms var(--settle);
 }
+
+/* ---- THE HERO BOOKING BAR (owner-approved demo, built) ----
+   The first screen now carries the question the page exists to answer: dates,
+   guests, one button. The headline panel above it is compact (no CTA of its own — the
+   bar's button is the CTA, and keeps .hero-cta) so the photo has room, and the hero is
+   a column: panel, then bar. The bar mirrors heroSearch (hbSync), it owns no state. */
+.hero {
+  flex-direction: column;
+  gap: 16px;
+}
+#hero-headline-panel {
+  padding: 24px 32px;
+  max-width: 680px;
+}
+#hero-headline-panel h1 {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  margin-bottom: 8px;
+}
+#hero-headline-panel .hero-kicker {
+  margin-bottom: 8px;
+}
+#hero-headline-panel p:last-child {
+  margin-bottom: 0;
+}
+@supports (padding: max(0px)) {
+  #hero-headline-panel {
+    padding-left: max(32px, var(--safe-l));
+    padding-right: max(32px, var(--safe-r));
+  }
+}
+.hero-bar {
+  position: relative;
+  z-index: 2;
+  width: min(880px, calc(100% - 32px));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  overflow: hidden;
+  text-align: left;
+}
+.hb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-light);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hb-field + .hb-field {
+  border-left: 1px solid var(--glass-border);
+}
+.hb-field[aria-expanded="true"] {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.hb-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.hb-value {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hb-go {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 52px;
+  margin: 0;
+  border-radius: 0;
+}
+.hb-pop {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--glass-border);
+}
+.hb-pop[hidden] {
+  display: none;
+}
+@media (min-width: 901px) {
+  .hero-bar {
+    grid-template-columns: 1.4fr 1fr auto;
+  }
+  .hb-go {
+    grid-column: auto;
+    width: auto;
+    padding-inline: 36px;
+  }
+}
+@media (hover: hover) {
+  .hb-field:hover .hb-value {
+    color: var(--accent-text);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hb-field:active {
+    transform: scale(var(--sc, 0.97));
+    transition: transform 80ms var(--in), filter 80ms var(--in);}
+}
+.hb-field {
+  transition: transform 320ms var(--settle), filter 320ms var(--settle);
+}
+/* The heritage band is the page's one strip now (the four-line trust strip is gone),
+   so on a phone its ink stops before the Messages pill like every other centred block. */
+@media (max-width: 640px) {
+  .home-heritage {
+    gap: 12px;
+  }
+}

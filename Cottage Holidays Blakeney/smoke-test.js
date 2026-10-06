@@ -411,8 +411,9 @@ else {
         !!wlNotice && wlNotice === cliNotice &&
         /if \(\$ci && \$ci <= date\('Y-m-d'\)\) \{\s*json_out\(\['error' => 'Online bookings need at least a day’s notice/.test(wlSrc));
     // Both pickers the guest decides at — the hero search and the enquiry form.
-    check(`both guest pickers band their children (${kidBands.length} found)`, kidBands.length === 2);
-    check(`…and their adults (${adultBands.length} found)`, adultBands.length === 2);
+    // The hero search form, the hero booking bar's guests popover and the enquiry form.
+    check(`all three guest pickers band their children (${kidBands.length} found)`, kidBands.length === 3);
+    check(`…and their adults (${adultBands.length} found)`, adultBands.length === 3);
     check('the register states the age it collects from', regAge === 16);
     check('every one of them means the SAME age',
         cua != null && regAge != null && kidBands.length > 0 && adultBands.length > 0 &&

@@ -3291,6 +3291,20 @@ reported on the search landing. Gates re-aimed from "the ground moves" to "the g
 still": ui-test-datepicker §18, ui-test-motion-system §12 (list rows), ui-test-workspace (the
 timeline cell).
 
+## The hero booking bar (owner-approved demo, built)
+
+The guest home page's first screen carries the question it exists to answer: **Dates · Guests · Show prices**
+(`#hero-bar`, under a compact headline panel). It owns NO state — `hbSync()` mirrors `heroSearch` into
+`#hb-dates` / `#hb-guests`, the dates button is the existing `openHeroDatePicker`, the guests popover reuses
+`hsAdjust` (so the hero form and the bar can never disagree), and `heroBarGo()` opens the calendar when dates are
+missing, else runs the same `runHeroSearch()` whose results `showHeroResults()` presents. The full form lower down
+stays (flexible dates, ±days). The button keeps `.hero-cta`. The scroll cue and the hero's own CTA are gone, and the
+four-line trust strip (`#home-trust`) was removed: the heritage band (founded / cottages / live rating) is the one
+strip, and ≤640 its gap is 12px so its ink stops before the Messages pill (ui-test-reach asserts it, now on
+`.home-heritage`). The guest-picker band check in smoke-test counts THREE pickers (form, bar popover, enquiry).
+Deliberately NOT built from the demo: footer regrouping, Messages-pill shrinking, card re-skin (the home cards already
+carried price + availability chips).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

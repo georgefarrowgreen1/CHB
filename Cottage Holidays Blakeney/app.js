@@ -15330,6 +15330,7 @@ function dpDone() {
                     : heroSearch.checkin
                       ? `${dpPretty(heroSearch.checkin)} — pick check-out`
                       : 'Add your dates';
+        hbSync();
         closeDatePicker();
         return;
     }
@@ -15402,6 +15403,52 @@ function hsAdjust(field, delta) {
     }
     chbRoll(document.getElementById('hs-adults'), heroSearch.adults);
     chbRoll(document.getElementById('hs-children'), heroSearch.children);
+    chbRoll(document.getElementById('hb-adults'), heroSearch.adults);
+    chbRoll(document.getElementById('hb-children'), heroSearch.children);
+    hbSync();
+}
+// THE HERO BOOKING BAR mirrors heroSearch (it owns no state of its own): the dates
+// and guests it shows are always the full form's, so the two can never disagree.
+function hbSync() {
+    const d = document.getElementById('hb-dates');
+    if (d)
+        d.textContent =
+            heroSearch.checkin && heroSearch.checkout
+                ? `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)}`
+                : heroSearch.checkin
+                  ? `${dpPretty(heroSearch.checkin)} — pick check-out`
+                  : 'Add your dates';
+    const g = document.getElementById('hb-guests');
+    if (g) {
+        const a = heroSearch.adults,
+            c = heroSearch.children;
+        g.textContent = `${a} adult${a === 1 ? '' : 's'}${c ? `, ${c} child${c === 1 ? '' : 'ren'}` : ''}`;
+    }
+    const ba = document.getElementById('hb-adults');
+    if (ba && ba.textContent !== String(heroSearch.adults) && !ba.querySelector('.in'))
+        ba.textContent = String(heroSearch.adults);
+    const bc = document.getElementById('hb-children');
+    if (bc && bc.textContent !== String(heroSearch.children) && !bc.querySelector('.in'))
+        bc.textContent = String(heroSearch.children);
+}
+function heroBarGuests() {
+    const pop = document.getElementById('hb-pop');
+    const btn = document.getElementById('hb-guests-btn');
+    if (!pop) return;
+    pop.hidden = !pop.hidden;
+    if (btn) btn.setAttribute('aria-expanded', pop.hidden ? 'false' : 'true');
+}
+// "Show prices": no dates yet → open the calendar (the one thing missing), else run
+// the same exact-dates search as the full form and let it present its results.
+function heroBarGo() {
+    const pop = document.getElementById('hb-pop');
+    if (pop && !pop.hidden) heroBarGuests();
+    if (!(heroSearch.checkin && heroSearch.checkout)) {
+        openHeroDatePicker();
+        return;
+    }
+    hsSetMode('exact');
+    return runHeroSearch();
 }
 // Remember the visitor's last search so it survives a reload / return visit.
 function hsPersist() {
@@ -15467,6 +15514,7 @@ function hsRestore() {
         disp.innerText = heroSearch.checkout
             ? `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)}`
             : `${dpPretty(heroSearch.checkin)} — pick check-out`;
+    hbSync();
     // The hero search no longer has a per-cottage filter (the dropdown was removed),
     // so any saved cottage selection is normalised back to "any" — restoring a stale
     // (possibly archived) key would otherwise silently filter every search to zero.
@@ -19513,7 +19561,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'nohover1';
+    const BUILD = 'homebar3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
