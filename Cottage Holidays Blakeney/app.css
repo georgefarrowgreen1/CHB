@@ -13238,8 +13238,13 @@ header.glass-panel {
   max-width: 680px;
 }
 #hero-headline-panel h1 {
-  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-size: var(--fs-display);
   margin-bottom: 8px;
+}
+@media (min-width: 641px) {
+  #hero-headline-panel h1 {
+    font-size: var(--fs-hero);
+  }
 }
 #hero-headline-panel .hero-kicker {
   margin-bottom: 8px;
