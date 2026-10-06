@@ -400,23 +400,17 @@
                  from the SAME stores the pills read (__cronStatusPre, the
                  bootstrap feeds payload, __nyMod, chbMissList). -->
             <div id="manage-verdicts"></div>
-            <!-- One Manage index: cottages first (with each cottage's key numbers),
-                 then marketing, then account/system — the section labels are the
-                 grouping now that the three dock areas are one page. -->
-            <!-- One Manage index, simplified to FIVE purpose-led groups, top-down
-                 by how central each is to running the business:
-                   1. Cottages & pricing   (cottages, seasonal rates, pricing, calendar)
-                   2. Bookings & policies   (payments, cancellation, terms)
-                   3. Your website          (home page, things to do, reviews, photos)
-                   4. Guests & marketing    (accounts, newsletter, waitlist, analytics,
-                                             follow-ups + chat automation — all guest comms)
-                   5. Account & system      (profile, notifications, security, appearance,
-                                             layout, integrations, activity log, search
-                                             learning, status, test copy)
-                 The section labels ARE the grouping; each row is settingsOpen('<id>').
-                 settingsFilter() hides empty groups/labels on search, so regrouping
-                 needs no JS change. (Pricing now sits with the other rate controls;
-                 the old standalone Messages + System groups folded into 4 and 5.) -->
+            <!-- One Manage index in SEVEN groups, each answering one question, ordered
+                 by how often it is used:
+                   Cottages & pricing      what you let and what it costs
+                   Bookings & payments     how guests pay and what they agree to
+                   Guests                  the people: accounts, the waitlist, and what
+                                           they send in for approval (reviews, photos)
+                   Messages & automation   everything that writes to a guest for you
+                   Website & marketing     what the public site says and who sees it
+                   Your account            you: profile, alerts, sign-in, display
+                   System & tools          is it running, what happened, maintenance
+                 The labels ARE the grouping; settingsFilter() hides empty groups on search. -->
             <div class="settings-section-label">Cottages &amp; pricing</div>
             <div id="cottages-overview" class="area-overview"></div>
             <div class="settings-group">
@@ -428,21 +422,16 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Seasonal rates — all cottages</span><span class="settings-row-sub">Summer &amp; holiday pricing for every cottage in one grid</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" data-act="settingsOpen" data-arg="calendar">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb, Vrbo &amp; Booking.com</span></span><span class="settings-row-chev">›</span>
-                </button>
                 <button class="settings-row" data-kw="pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity" data-act="settingsOpen" data-arg="pricing">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12V7a1 1 0 0 0-1-1h-7L3 15l6 6 9-9z"/><circle cx="15.5" cy="9.5" r="1.2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Pricing</span><span class="settings-row-sub">Gap offers &amp; demand-based price ideas</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="ai chat mac model ask assistant remote phone llm talk" data-act="openAiChat">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">AI chat</span><span class="settings-row-sub">Talk to the model on your Mac, from anywhere</span></span><span class="settings-row-chev">›</span>
+                <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" data-act="settingsOpen" data-arg="calendar">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb, Vrbo &amp; Booking.com</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
-
-            <div class="settings-section-label">Bookings &amp; policies</div>
+            <div class="settings-section-label">Bookings &amp; payments</div>
             <div class="settings-group">
                 <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" data-act="settingsOpen" data-arg="payments">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
@@ -457,16 +446,15 @@
                     <span class="settings-row-main"><span class="settings-row-label">Booking terms &amp; conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
-
-            <div class="settings-section-label">Your website</div>
+            <div class="settings-section-label">Guests</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" data-act="settingsOpen" data-arg="content">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
+                <button class="settings-row" data-kw="users accounts password reset lookup email login" data-act="settingsOpen" data-arg="guests">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Things to do <span id="exp-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Local places and activities &amp; guest suggestions</span></span><span class="settings-row-chev">›</span>
+                <button class="settings-row" data-kw="notify me sold out alerts demand" data-act="settingsOpen" data-arg="waitlist">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
@@ -477,33 +465,8 @@
                     <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
-
-            <div class="settings-section-label">Guests &amp; marketing</div>
+            <div class="settings-section-label">Messages &amp; automation</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="users accounts password reset lookup email login" data-act="settingsOpen" data-arg="guests">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="mailing list email broadcast subscribers signup marketing" data-act="settingsOpen" data-arg="newsletter">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="notify me sold out alerts demand" data-act="settingsOpen" data-arg="waitlist">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="stats visits traffic referrers pages searches" data-act="settingsOpen" data-arg="analytics">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Visits, referrers &amp; popular pages</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="chat instant answers quick questions auto reply faq bot automation" data-act="settingsOpen" data-arg="chat-answers">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/><path d="M9 10h6M9 13h4"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Instant chat answers</span><span class="settings-row-sub">Auto-answers to the chat's quick-question chips</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="away auto reply out of office acknowledge message automation" data-act="settingsOpen" data-arg="chat-away">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Away auto-reply</span><span class="settings-row-sub">Auto-acknowledge a guest when you're not around</span></span><span class="settings-row-chev">›</span>
-                </button>
                 <button class="settings-row" data-kw="saved replies templates email canned reply library snippets compose buttons" data-act="settingsOpen" data-arg="replies">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Saved replies</span><span class="settings-row-sub">Reply templates &amp; the buttons they carry</span></span><span class="settings-row-chev">›</span>
@@ -516,9 +479,39 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Text messages</span><span class="settings-row-sub">Balance reminders &amp; arrival info by SMS</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="away auto reply out of office acknowledge message automation" data-act="settingsOpen" data-arg="chat-away">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Away auto-reply</span><span class="settings-row-sub">Auto-acknowledge a guest when you're not around</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="chat instant answers quick questions auto reply faq bot automation" data-act="settingsOpen" data-arg="chat-answers">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/><path d="M9 10h6M9 13h4"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Instant chat answers</span><span class="settings-row-sub">Ready answers to the chat's quick-question buttons</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="ai chat mac model ask assistant remote phone llm talk" data-act="openAiChat">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">AI chat</span><span class="settings-row-sub">Ask the assistant on your Mac, from your phone</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
-
-            <div class="settings-section-label">Account &amp; system</div>
+            <div class="settings-section-label">Website &amp; marketing</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" data-act="settingsOpen" data-arg="content">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Things to do <span id="exp-pending-badge" class="count-badge" style="display:none;margin-left:6px;"></span></span><span class="settings-row-sub">Local places and activities &amp; guest suggestions</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="mailing list email broadcast subscribers signup marketing" data-act="settingsOpen" data-arg="newsletter">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="stats visits traffic referrers pages searches" data-act="settingsOpen" data-arg="analytics">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Visits, referrers &amp; popular pages</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-section-label">Your account</div>
             <div class="settings-group">
                 <button class="settings-row" data-kw="bio about phone contact host profile picture" data-act="settingsOpen" data-arg="host">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
@@ -538,30 +531,32 @@
                 </button>
                 <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" data-act="toggleBackofficeMode">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong>. Search-first collapses the dock to Today · Inbox · Search.</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong></span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="api keys tide times connected services integrations" data-act="settingsOpen" data-arg="apis">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
+            </div>
+            <div class="settings-section-label">System &amp; tools</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" data-act="settingsOpen" data-arg="diagnostics">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">Is everything running? Backups, updates &amp; tools</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="activity log audit history events changes actions recent" data-act="nav" data-view="view-activity-log">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="api keys tide times connected services integrations" data-act="settingsOpen" data-arg="apis">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" data-kw="search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand" data-act="settingsOpen" data-arg="search-learning">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Search learning</span><span class="settings-row-sub">Teach the assistant &amp; see what it's learned</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" data-act="settingsOpen" data-arg="diagnostics">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button id="staging-link-row" class="settings-row" data-kw="staging sandbox practice preview test copy" data-act="openStagingSite">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
-            <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
             <div class="settings-group" id="testcentre-row" style="display:none;">
                 <button class="settings-row" data-kw="staging sandbox preview sample data" data-act="settingsOpen" data-arg="testcentre">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>

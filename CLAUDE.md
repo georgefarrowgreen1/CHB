@@ -3362,6 +3362,18 @@ ui-test-hig §8 (two groups side by side, cottages in ONE column, 44px rows) + u
 `MODAL_CLOSERS` + `closeTopOverlay`, and it opens OVER the form that linked to it (sign-in, details, enquiry)
 rather than closing it. Gated by ui-test-topmenu §H (opens, covers the Messages pill, closes) + layout-test.
 
+## The Manage index is seven groups (owner-asked "reorder and recategorise")
+
+`#settings-index` in admin-views.html, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
+Calendar sync) · **Bookings & payments** (Payments, Cancellation policy, Booking terms) · **Guests** (Guest
+accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
+automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
+**Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) · **Your account** (Profile,
+Notifications, Security, Appearance, Back-office layout) · **System & tools** (Status, Activity log, Integrations,
+Search learning, Test copy, Test centre), then Log out. Rows, ids and acts are unchanged — only order, groups and
+four subtitles moved, so deep links and search are untouched. AI chat used to sit under pricing; "Guests &
+marketing" was nine unrelated rows and "Account & system" mixed your settings with maintenance.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
