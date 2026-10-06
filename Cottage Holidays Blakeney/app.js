@@ -15472,26 +15472,73 @@ function hsAdjust(field, delta) {
 // THE HERO BOOKING BAR mirrors heroSearch (it owns no state of its own): the dates
 // and guests it shows are always the full form's, so the two can never disagree.
 function hbSync() {
+    const ci = heroSearch.checkin,
+        co = heroSearch.checkout;
+    const both = !!(ci && co);
     const d = document.getElementById('hb-dates');
-    if (d)
-        d.textContent =
-            heroSearch.checkin && heroSearch.checkout
-                ? `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)}`
-                : heroSearch.checkin
-                  ? `${dpPretty(heroSearch.checkin)} — pick check-out`
-                  : 'Add your dates';
+    if (d) {
+        const v = both ? hbRange(ci, co) : ci ? `${dpPretty(ci)} — pick check-out` : 'Add dates';
+        hbSet(d, v);
+        d.classList.toggle('is-ph', !ci);
+    }
+    const dl = document.getElementById('hb-dates-lbl');
+    if (dl) {
+        const n = both ? Math.round((Date.parse(co + 'T12:00:00Z') - Date.parse(ci + 'T12:00:00Z')) / 86400000) : 0;
+        // "3 nights" on a phone, "Dates · 3 nights" where there is room (.hb-lw shows ≥901px).
+        const html = n > 0 ? `<span class="hb-lw">Dates · </span>${n} night${n === 1 ? '' : 's'}` : 'Dates';
+        if (dl.innerHTML !== html) dl.innerHTML = html;
+    }
     const g = document.getElementById('hb-guests');
     if (g) {
         const a = heroSearch.adults,
             c = heroSearch.children;
-        g.textContent = `${a} adult${a === 1 ? '' : 's'}${c ? `, ${c} child${c === 1 ? '' : 'ren'}` : ''}`;
+        // With children the full phrase is cut off in a phone-width field; the counts are one tap away.
+        hbSet(g, c ? `${a + c} guests` : `${a} adult${a === 1 ? '' : 's'}`);
     }
+    const go = document.getElementById('hb-go-lbl');
+    if (go) hbSet(go, both ? 'Show prices' : 'Choose dates');
     const ba = document.getElementById('hb-adults');
     if (ba && ba.textContent !== String(heroSearch.adults) && !ba.querySelector('.in'))
         ba.textContent = String(heroSearch.adults);
     const bc = document.getElementById('hb-children');
     if (bc && bc.textContent !== String(heroSearch.children) && !bc.querySelector('.in'))
         bc.textContent = String(heroSearch.children);
+    // The steppers say where they stop: minus at 1 adult / 0 children, plus at the largest
+    // cottage's own limits (hsAdjust's caps), with one line saying why.
+    const caps = hsPortfolioCaps();
+    const a = heroSearch.adults,
+        c = heroSearch.children;
+    const lim = {
+        'adults:-1': a <= 1,
+        'adults:1': a >= Math.min(caps.adults, caps.total - c),
+        'children:-1': c <= 0,
+        'children:1': c >= Math.min(caps.children, caps.total - a),
+    };
+    document.querySelectorAll('#hb-pop .hs-step').forEach((btn) => {
+        const k = btn.getAttribute('data-arg') + ':' + btn.getAttribute('data-arg2');
+        if (k in lim) /** @type {HTMLButtonElement} */ (btn).disabled = lim[k];
+    });
+    const cap = document.getElementById('hb-cap');
+    if (cap) cap.classList.toggle('on', a + c >= caps.total);
+}
+// "16–19 Oct", "30 Oct – 2 Nov", or with years when the stay crosses one.
+function hbRange(ci, co) {
+    const p = (iso) => new Date(iso + 'T12:00:00Z');
+    const A = p(ci),
+        B = p(co);
+    const mo = (x) => x.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+    if (A.getUTCFullYear() !== B.getUTCFullYear())
+        return `${A.getUTCDate()} ${mo(A)} ${A.getUTCFullYear()} – ${B.getUTCDate()} ${mo(B)} ${B.getUTCFullYear()}`;
+    if (A.getUTCMonth() === B.getUTCMonth()) return `${A.getUTCDate()}–${B.getUTCDate()} ${mo(B)}`;
+    return `${A.getUTCDate()} ${mo(A)} – ${B.getUTCDate()} ${mo(B)}`;
+}
+// Write a value and let it cross-fade, only when it actually changed.
+function hbSet(el, text) {
+    if (el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove('hb-swap');
+    void el.offsetWidth;
+    el.classList.add('hb-swap');
 }
 function heroBarGuests() {
     const pop = document.getElementById('hb-pop');
@@ -15499,7 +15546,22 @@ function heroBarGuests() {
     if (!pop) return;
     pop.hidden = !pop.hidden;
     if (btn) btn.setAttribute('aria-expanded', pop.hidden ? 'false' : 'true');
+    if (!pop.hidden) hbSync();
 }
+// A tap anywhere else, or Escape, closes the guest panel.
+document.addEventListener('click', (e) => {
+    const pop = document.getElementById('hb-pop');
+    const t = e.target;
+    if (pop && !pop.hidden && t instanceof Element && !t.closest('#hero-bar')) heroBarGuests();
+});
+document.addEventListener('keydown', (e) => {
+    const pop = document.getElementById('hb-pop');
+    if (e.key === 'Escape' && pop && !pop.hidden) {
+        heroBarGuests();
+        const btn = document.getElementById('hb-guests-btn');
+        if (btn) btn.focus();
+    }
+});
 // "Show prices": no dates yet → open the calendar (the one thing missing), else run
 // the same exact-dates search as the full form and let it present its results.
 function heroBarGo() {
@@ -19623,7 +19685,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'lateavail1';
+    const BUILD = 'herobar2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
