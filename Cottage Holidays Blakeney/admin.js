@@ -8181,7 +8181,7 @@ function cmdkBriefBuild() {
     try { duties = chbDuties(); } catch (e) { chbSwallow(e, 'brief-duties'); }
     duties.slice(0, 4).forEach((d, i) => items.push({
         type: 'answer', scope: d.scope, id: 'brief-duty-' + i, board: d.board,
-        label: d.label, sub: d.sub, run: d.run,
+        label: d.label, sub: d.sub, run: d.run, actLabel: d.act || '',
     }));
     // Money owed but NOT yet due keeps its place without shouting: one quiet line
     // rather than being folded into a headline figure that then disagreed with Today.
@@ -8411,7 +8411,11 @@ function cmdkRowHtml(it, i, top) {
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
     // Optional STATUS CAPSULE on the right rail (stCap — the Inbox/Money/
     // keysafe capsules). Additive: a row without `stcap` is byte-identical.
-    const cap = it.stcap ? `<span class="cmdk-stcap">${stCap(it.stcap.tone, escapeHtml(String(it.stcap.text)))}</span>` : '';
+    const cap = (it.stcap ? `<span class="cmdk-stcap">${stCap(it.stcap.tone, escapeHtml(String(it.stcap.text)))}</span>` : '') +
+        // The duty's own action word ("Return £50") as the row's button — the row still
+        // runs the duty (the hub, where the money rules and the step-up live); the pill
+        // only says what the tap will do.
+        (it.actLabel ? `<span class="cmdk-act">${escapeHtml(String(it.actLabel))}</span>` : '');
     const row = `<button type="button" tabindex="-1" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>${cap}
@@ -8719,6 +8723,24 @@ function cmdkHeroHtml(it, i) {
                 </span>
             </button>` + cmdkRowExtrasHtml(it, i);
 }
+// Questions the assistant answers well, as one-tap examples — typing is the
+// hard part on a phone, and a landing that only lists facts never teaches
+// that it can be asked anything. The month is today's, so it never goes stale.
+function cmdkAsksHtml() {
+    const month = chbNow().toLocaleString('en-GB', { month: 'long' }).toLowerCase();
+    const qs = ['who owes me money', 'tides today', 'arrivals this week', `how is ${month}`];
+    return `<div class="cmdk-group-label">Ask in your own words</div><div class="cmdk-asks">${qs
+        .map((q) => `<button type="button" class="cmdk-chip cmdk-ask" ${chbAttrs('cmdkAsk', q)}>${escapeHtml(q)}</button>`)
+        .join('')}</div>`;
+}
+function cmdkAsk(q) {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input'));
+    if (el) {
+        el.value = String(q || '');
+        el.focus();
+    }
+    cmdkSearch(String(q || ''));
+}
 const CMDK_BOARDS = [
     { key: 'today', label: 'Today' },
     { key: 'money', label: 'Money' },
@@ -8802,6 +8824,7 @@ function cmdkRenderInner() {
             // The greeting is SPOKEN, not a caption — the sentence-case pulse line
             // the Manage and Money landings open with (§20 finds it by its words).
             (B ? `<div class="cmdk-pulse">${escapeHtml(cmdkDayLine())}</div>${briefHtml}` : '') +
+            (B || S || P ? cmdkAsksHtml() : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
             // The landing's own dead end. It used to print the raw scope key
