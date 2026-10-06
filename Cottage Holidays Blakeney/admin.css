@@ -2683,15 +2683,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--text-muted);
   padding: 11px 12px 3px;
 }
-/* The landing's greeting is SPOKEN, not a caption — the same sentence-case pulse
-   line the Manage and Money landings open with. Body step, so §16b holds. */
-.cmdk-pulse {
-  font-size: var(--cmdk-fs-body);
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  color: var(--text-light);
-  padding: 10px 12px 2px;
-}
 /* ---- Deep Search ("search everything": full grouped/counted results) ---- */
 .cmdk-deep-cta {
   display: flex;

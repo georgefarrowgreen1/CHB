@@ -1798,9 +1798,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await until(() => document.querySelectorAll('#cmdk .cmdk-group-label').length > 1);
     await new Promise((r) => setTimeout(r, 250));
     const box = document.getElementById('cmdk-results');
-    // The greeting is a spoken .cmdk-pulse line now, not a caption — the heads
-    // list takes both so the "day leads" ordering check keeps reading it.
-    const heads = [...box.querySelectorAll('.cmdk-pulse, .cmdk-group-label')].map((e) => e.textContent.trim());
+    // The day leads through the boards' own captions (there is no greeting line any more).
+    const heads = [...box.querySelectorAll('.cmdk-board-cap, .cmdk-group-label')].map((e) => e.textContent.trim());
     const rows = [...box.querySelectorAll('[role="option"]')].map((e) => ({
       idx: +(e.id || '').replace('cmdk-opt-', ''),
       top: e.getBoundingClientRect().top,
@@ -1816,12 +1815,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   if (landing && !(landing.monotonic && landing.visual)) console.log('  [dbg] landing rows:', JSON.stringify(landing.rows, null, 1));
-  const gi = landing ? landing.heads.findIndex((h) => /morning|afternoon|evening|night/i.test(h)) : -1;
+  const DAYCAP = /^(Today|Money|Waiting on you|This month|Running for you)$/;
+  const gi = landing ? landing.heads.findIndex((h) => DAYCAP.test(h)) : -1;
   const mi = landing ? landing.heads.indexOf('Most used') : -1;
   ok(!!landing && landing.brief > 0 && landing.freq > 0,
     `LANDING: both groups are present to order (${landing && landing.brief} day rows, ${landing && landing.freq} most-used)`);
   ok(gi >= 0 && mi >= 0 && gi < mi,
-    `LANDING: the day's greeting leads, above "Most used" (${landing && JSON.stringify(landing.heads)})`);
+    `LANDING: the day's boards lead, above "Most used" (no greeting line any more) (${landing && JSON.stringify(landing.heads)})`);
   ok(!!landing && landing.monotonic && landing.visual,
     `LANDING: …and the row indices still rise down the screen, so arrows follow the eye (${landing && landing.n} rows)`);
 
@@ -1932,7 +1932,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const tile1 = await page.evaluate(async () => {
     const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
     await new Promise((r) => setTimeout(r, 350));
-    const heads = [...document.querySelectorAll('#cmdk .cmdk-pulse, #cmdk .cmdk-group-label')].map((e) => e.textContent.trim());
+    const heads = [...document.querySelectorAll('#cmdk .cmdk-board-cap, #cmdk .cmdk-group-label')].map((e) => e.textContent.trim());
     const at = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
     // The row RENDERED under the Pinned heading must BE the pin. An array/slice
     // desync (reordering the concat without moving the slice bases) keeps the
@@ -1950,7 +1950,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!tile1 && /£400\.00/.test(tile1.label || ''), `PIN: the landing renders the pinned answer (${tile1 && tile1.label})`);
   ok(!!tile1 && /^pin-/.test(tile1.underHeading || ''),
     `PIN: the row under the Pinned heading IS the pin — slices and array agree (${tile1 && tile1.underHeading})`);
-  const gi2 = tile1.heads.findIndex((h) => /morning|afternoon|evening|night/i.test(h));
+  const gi2 = tile1.heads.findIndex((h) => /^(Today|Money|Waiting on you|This month|Running for you)$/.test(h));
   const pi2 = tile1.heads.indexOf('Pinned');
   ok(pi2 >= 0 && gi2 > pi2, `PIN: Pinned sits between Suggested and the day (${JSON.stringify(tile1.heads)})`);
   const tile2 = await page.evaluate(async () => {

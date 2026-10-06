@@ -8823,7 +8823,9 @@ function cmdkRenderInner() {
             (P ? `<div class="cmdk-group-label">Pinned</div>${pinHtml}` : '') +
             // The greeting is SPOKEN, not a caption — the sentence-case pulse line
             // the Manage and Money landings open with (§20 finds it by its words).
-            (B ? `<div class="cmdk-pulse">${escapeHtml(cmdkDayLine())}</div>${briefHtml}` : '') +
+            // No greeting line: the boards' own captions say what each fact is, and the
+            // sentence (cmdkDayLine) still opens the spine and the chat.
+            (B ? briefHtml : '') +
             (B || S || P ? cmdkAsksHtml() : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
