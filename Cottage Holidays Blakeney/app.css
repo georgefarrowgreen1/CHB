@@ -13437,6 +13437,10 @@ body:not(.hero-go) #hero-headline-panel h1 .w>i,body:not(.hero-go) #hero-headlin
 /* Phone: the floating Messages pill owns the bottom-right, so these two keep their ink left of it
    (ui-test-reach) — the rows are left-aligned on the rail now, so the inset goes on the right edge. */
 @media (max-width: 640px) {
-  #view-main #late-avail { max-width: calc(100% - 56px) !important; }
+  #view-main #late-avail { max-width: none !important; }
+  #view-main #late-avail .late-avail { flex-direction: column !important; align-items: stretch; flex-wrap: nowrap !important; }
+  #view-main #late-avail .late-avail svg { display: none; }
+  #view-main #late-avail .late-avail span { flex: none; padding-right: 56px; }
+  #view-main #late-avail .btn-sm, #view-main #late-avail button { margin-left: 0; width: 100%; min-height: 48px; justify-content: center; text-align: center; }
   #view-main .home-guestwords { padding-right: 60px !important; }
 }
