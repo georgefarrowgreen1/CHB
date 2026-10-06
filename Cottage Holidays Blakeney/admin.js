@@ -295,8 +295,8 @@ function cmdkRegistry() {
         { id: 'experiences', label: 'Things to do', sub: 'Local places and activities', kw: 'things to do activities experiences', sec: 'experiences' },
         { id: 'reviews', label: 'Reviews', sub: 'Approve & import', kw: 'google review testimonial star', sec: 'reviews' },
         { id: 'photos', label: 'Guest photos', sub: 'Approve shared photos', kw: 'photo wall gallery', sec: 'photos' },
-        { id: 'chat-answers', label: 'Instant chat answers', sub: 'Auto-answers to chat chips', kw: 'automation faq quick reply bot', sec: 'chat-answers' },
-        { id: 'chat-away', label: 'Away auto-reply', sub: 'Out-of-hours acknowledgement', kw: 'automation away office hours', sec: 'chat-away' },
+        { id: 'chat-away', label: 'Guest chat', sub: 'Away reply & instant answers', kw: 'automation away office hours faq quick reply bot instant answers chips', sec: 'chat-away' },
+        { id: 'mac', label: 'Mac assistant', sub: 'Overnight work & connecting your Mac', kw: 'mac overnight night shift app pair connect assistant ready for you', sec: 'mac' },
         { id: 'follow-ups', label: 'Follow-up emails', sub: 'Enquiry & guest nudges', kw: 'automation nudge reminder anniversary', sec: 'follow-ups' },
         { id: 'guests', label: 'Guest accounts', sub: 'Look up & reset a guest', kw: 'account password reset user', sec: 'guests' },
         { id: 'newsletter', label: 'Newsletter', sub: 'Mailing list & broadcasts', kw: 'email marketing subscribers broadcast', sec: 'newsletter' },
@@ -307,7 +307,8 @@ function cmdkRegistry() {
         { id: 'security', label: 'Security', sub: 'Password & quick sign-in', kw: 'password passkey 2fa face id fingerprint', sec: 'security' },
         { id: 'sms', label: 'Text messages', sub: 'Balance reminders & arrival info by SMS', kw: 'sms text message twilio mobile phone number send texts balance reminder arrival', sec: 'sms' },
         { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
-        { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check backup diagnostics updates migrations database storage', sec: 'diagnostics' },
+        { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check diagnostics updates migrations database storage', sec: 'diagnostics' },
+        { id: 'backups', label: 'Backups', sub: 'Back up, download & the emailed copy', kw: 'backup back up download export database passphrase restore', sec: 'backups' },
         { id: 'search-learning', label: 'Search learning', sub: "Teach the assistant & see what it's learned", kw: 'search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand', sec: 'search-learning' },
         { id: 'replies', label: 'Saved replies', sub: 'Reply templates & the buttons they carry', kw: 'saved replies templates email canned reply library snippets compose', sec: 'replies' },
     ];
@@ -327,7 +328,7 @@ function cmdkRegGo(e) {
 // empty palette's "Jump to" list (untagged screens show only under "All").
 const CMDK_SCREEN_SCOPE = {
     today: 'bookings', bookings: 'bookings', calendar: 'bookings', seasongrid: 'bookings', accom: 'bookings',
-    inbox: 'inbox', messages: 'inbox', email: 'inbox', 'follow-ups': 'inbox', 'chat-answers': 'inbox', 'chat-away': 'inbox',
+    inbox: 'inbox', messages: 'inbox', email: 'inbox', 'follow-ups': 'inbox', 'chat-answers': 'inbox', 'chat-away': 'inbox', mac: 'settings', backups: 'settings',
     'payments-area': 'money', payments: 'money', cancel: 'money',
     guests: 'guests', reviews: 'guests', photos: 'guests', newsletter: 'guests', waitlist: 'guests',
 };
@@ -381,7 +382,7 @@ function cmdkActions(q) {
         A('calendar', 'Connect a calendar', 'Airbnb, Vrbo & Booking.com sync', 'ical airbnb vrbo booking com channel sync import export feed calendar link connect', /(connect|link|set ?up|add|sync|import).{0,14}(airbnb|vrbo|booking\.?com|ical|channel|calendar|feed)/, toManage('calendar')),
         A('payset', 'Payment settings', 'Square & deposit policy', 'square card deposit payout stripe money settings takings', /(payment|square|deposit|payout).{0,12}(setting|policy|setup|config)/, toManage('payments')),
         A('cancel', 'Cancellation policy', 'Refund terms', 'cancel refund policy terms', /(cancel|refund).{0,10}(policy|terms)/, toManage('cancel')),
-        A('backup', 'Back up your data', 'Download a database backup', 'backup back up download export database save copy', /back ?up|download.{0,10}backup|export.{0,10}(data|database|everything)/, toManage('diagnostics')),
+        A('backup', 'Back up your data', 'Download a database backup', 'backup back up download export database save copy', /back ?up|download.{0,10}backup|export.{0,10}(data|database|everything)/, toManage('backups')),
         A('system', 'System check & updates', 'Health, migrations & status', 'status health migration update system check diagnostics upgrade', /\b(run|do|system)\b.{0,10}\b(check(?!.{0,2}(in|out)\b)|migration|update|diagnostic)|health check|check.{0,8}system/, toManage('diagnostics')),
         A('security', 'Change your sign-in', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint sign in login security change reset', /(change|reset|update|set).{0,14}(password|sign.?in|log ?in|passkey|security)/, toManage('security')),
         A('notify', 'Notifications', 'Phone alerts', 'notification push alert phone owner', /(edit|change|manage|set|turn).{0,12}notification|push alert/, toManage('notify')),
@@ -391,7 +392,7 @@ function cmdkActions(q) {
         A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
         A('guests', 'Guest accounts', 'Look up or reset a guest', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
         A('away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'away auto reply out of office automation holiday', /(set|edit|turn on|enable).{0,12}(away|auto.?reply|out of office)/, toManage('chat-away')),
-        A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-answers')),
+        A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-away')),
         A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
         A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
         // ---- One-tap "do it" actions (parity: everything you can do in the UI) ----
@@ -5270,7 +5271,7 @@ function cmdkIntent(q) {
             A('sdsr-open', 'Open Status', 'Health, insights & updates', toMng('diagnostics')),
             ny ? A('sdsr-ny', `${ny} thing${ny === 1 ? '' : 's'} need you`, 'The Today needs-you strip', () => { closeCmdK(); tryAccessBackOffice(); }) : null,
             A('sdsr-act', 'Activity log', 'Every change & action', () => { closeCmdK(); nav('view-activity-log'); }),
-            A('sdsr-bak', 'Back up your data', 'Download a database backup', toMng('diagnostics')),
+            A('sdsr-bak', 'Back up your data', 'Download a database backup', toMng('backups')),
         ].filter(Boolean));
     }
     if (/^\s*(the\s+)?(messages?|chats?|guest (chat|message)s?|inbox chats?)\s*$/.test(q)) {
@@ -5279,7 +5280,7 @@ function cmdkIntent(q) {
         return [head].concat([
             A('gdsr-open', 'Open Messages', 'Guest chat folder', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); }),
             A('gdsr-away', 'Away auto-reply', 'Out-of-hours acknowledgement', toMng('chat-away')),
-            A('gdsr-ans', 'Instant chat answers', 'Auto-answers to chat chips', toMng('chat-answers')),
+            A('gdsr-ans', 'Instant chat answers', 'Auto-answers to chat chips', toMng('chat-away')),
         ]);
     }
 
@@ -12264,8 +12265,10 @@ const SETTINGS_TITLES = {
     apis: 'Integrations',
     diagnostics: 'Status',
     testcentre: 'Test centre',
-    'chat-answers': 'Instant chat answers',
-    'chat-away': 'Away auto-reply',
+    'chat-answers': 'Guest chat',
+    'chat-away': 'Guest chat',
+    backups: 'Backups',
+    mac: 'Mac assistant',
     'follow-ups': 'Follow-up emails',
     'search-learning': 'Search learning',
     pricing: 'Pricing',
@@ -12350,6 +12353,9 @@ function settingsShowIndex() {
     chbScroll(window, { top: 0 });
 }
 function settingsOpen(section) {
+    // Instant chat answers and Away auto-reply are ONE page now (Guest chat);
+    // old links, history and recents land on it.
+    if (section === 'chat-answers') section = 'chat-away';
     // The email client moved from Manage into the Inbox (comms dashboard) —
     // redirect old links, saved history entries and recents to its new home.
     if (section === 'mailbox') {
@@ -12401,6 +12407,7 @@ function settingsOpen(section) {
 // ⌘K Tier-2 sheet can render the SAME section into the palette (search-first
 // "edit here") without duplicating the per-section render dispatch.
 function settingsRenderSection(section) {
+    if (section === 'chat-answers') section = 'chat-away';
     if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
@@ -12410,9 +12417,16 @@ function settingsRenderSection(section) {
     else if (section === 'newsletter') loadNewsletter();
     else if (section === 'guests') loadGuestList();
     else if (section === 'experiences') loadExperiencesAdmin();
-    else if (section === 'content') loadContentEditor();
-    else if (section === 'chat-answers') renderChatAnswersEditor();
-    else if (section === 'chat-away') renderChatAwayEditor();
+    else if (section === 'content') {
+        loadContentEditor();
+        renderHeroOptCard();
+    }
+    else if (section === 'chat-away') {
+        renderChatAwayEditor();
+        renderChatAnswersEditor();
+    }
+    else if (section === 'backups') renderBackups();
+    else if (section === 'mac') renderMacSettings();
     else if (section === 'follow-ups') hydrateFollowUpToggles();
     else if (section === 'diagnostics') loadDiagnostics();
     else if (section === 'testcentre') renderTestCentreList();
@@ -12463,7 +12477,7 @@ function mcMd(t) {
 }
 function mcPresenceHtml(st) {
     if (!st || !st.on) {
-        return `<span class="mc-pres is-off">Switched off in Manage → System check</span>`;
+        return `<span class="mc-pres is-off">Switched off in Manage → Mac assistant</span>`;
     }
     const p = st.presence || {};
     if (p.listening) {
@@ -20049,7 +20063,7 @@ function chbDutiesAll() {
                 sub: 'Overnight work is on, but nothing has arrived since then — the Mac may be off, asleep, or no longer connected',
                 act: 'Check it', go: chbAttrs('openArea'),
                 board: 'today', scope: 'settings',
-                run: () => { closeCmdK(); openArea(); settingsOpen('diagnostics'); },
+                run: () => { closeCmdK(); openArea(); settingsOpen('mac'); },
             });
         }
     } catch (e) {}
@@ -24324,7 +24338,7 @@ async function loadNewsletter() {
                     <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div class="acw-cap" style="margin-bottom:0;">Unsubscribed</div></div>
                 </div>${list}</div>`;
 }
-// ---- System check (Manage → System check) ----
+// ---- Status (Manage → Status) ----
 // Apply any pending database migrations from the UI (calls migrate.php with
 // the admin session) — so new tables/columns go live without phpMyAdmin.
 // Generate WebP companions for EXISTING uploaded photos (new uploads already
@@ -24588,9 +24602,13 @@ async function loadDiagnostics() {
         html += `<details class="help-disclosure status-ok-wall"><summary>${oks.length} check${oks.length === 1 ? '' : 's'} passing ✓</summary><div class="status-ok-body">${okBody}</div></details>`;
     }
     body.innerHTML = html;
-    // Backups: run/download the weekly database dump (also emailed Mondays).
-    body.innerHTML += `
-                <div class="status-group-title status-maint-title">Maintenance</div>
+}
+// Manage → Backups. Its own page (it was a card at the foot of Status, where an
+// owner looking for "back up" had to know to look under a health check).
+function renderBackups() {
+    const body = document.getElementById('backups-body');
+    if (!body) return;
+    body.innerHTML = `
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Backups</div>
                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
@@ -24617,7 +24635,16 @@ async function loadDiagnostics() {
                         <span id="backup-pass-state" style="font-size:var(--fs-sub);color:var(--text-muted);"></span>
                     </div>
                 </div>
-                <!-- OVERNIGHT WORK. Off by default, and off is byte-for-byte the
+`;
+    refreshBackupStatus();
+    refreshBackupPassState();
+}
+// Manage → Mac assistant: the overnight-work switch, the app and pairing. It
+// sits beside AI chat, the other half of the same Mac.
+function renderMacSettings() {
+    const body = document.getElementById('mac-body');
+    if (!body) return;
+    body.innerHTML = `                <!-- OVERNIGHT WORK. Off by default, and off is byte-for-byte the
                      back office as it was: no card on Today, and nightshift.php
                      REFUSES to store anything, so a producer left running into a
                      switched-off queue is told rather than filling a table nobody
@@ -24650,17 +24677,21 @@ async function loadDiagnostics() {
                         <div id="night-key-row" style="font-size:var(--fs-sub);color:var(--text-muted);"></div>
                     </details>
                 </div>
-                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
-                    <div class="label">Hero image</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
-                    <div id="hero-opt-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
-                    <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
-                </div>`;
-    refreshBackupStatus();
-    refreshBackupPassState();
+`;
     refreshNightShiftState();
     refreshNightAppGet();
     refreshNightKeyRow();
+}
+// The hero-photo optimiser lives on Home page & menu, where the hero is replaced.
+function renderHeroOptCard() {
+    const host = document.getElementById('hero-opt-host');
+    if (!host) return;
+    host.innerHTML = `                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div class="label">Hero image</div>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can replace it any time under Images above).</p>
+                    <div id="hero-opt-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
+                    <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
+                </div>`;
     refreshHeroStatus();
 }
 // The overnight-queue switch. adminPrivateContent FIRST — an internal key is

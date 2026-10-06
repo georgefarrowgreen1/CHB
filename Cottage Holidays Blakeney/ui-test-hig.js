@@ -321,7 +321,10 @@ const NEST = (rootSel) => {
   await open(page, "settingsOpen('seasongrid')", 1200);
   await grabCaps(['#sg-count']);
   await open(page, "settingsOpen('diagnostics')", 1300);
-  await grabCaps(['.status-okcat-title', '.night-setup > summary']);
+  await grabCaps(['.status-okcat-title']);
+  // The overnight-work card moved to its own page (Manage → Mac assistant).
+  await open(page, "settingsOpen('mac')", 900);
+  await grabCaps(['.night-setup > summary']);
   await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [{ who: 'you', text: 'block jollyboat', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } }] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
   await grabCaps(['.mc-act-t']);
   await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);

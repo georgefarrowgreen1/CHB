@@ -565,8 +565,8 @@ produces anything — with no producer the feature is invisible, which is the po
   Off is byte-for-byte today's back office: no card, no request at boot, and
   **ingest is REFUSED with a sentence** rather than stored for later — a machine
   working every night into a table nobody will look at is the failure that refusal
-  exists to prevent. The switch is in Manage → System check beside the backup
-  passphrase (machine-facing settings live together) and shows the address to post
+  exists to prevent. The switch is in Manage → Mac assistant (it lived in System check beside the
+  backup passphrase until the Manage reorganisation) and shows the address to post
   to, derived from `window.location` so a staging install is never told to post at
   production. It never shows the secret.
 - **THREE RULES, each with a precedent already in the app.** *It never sends*: an
@@ -3373,6 +3373,15 @@ Notifications, Security, Appearance, Back-office layout) · **System & tools** (
 Search learning, Test copy, Test centre), then Log out. Rows, ids and acts are unchanged — only order, groups and
 four subtitles moved, so deep links and search are untouched. AI chat used to sit under pricing; "Guests &
 marketing" was nine unrelated rows and "Account & system" mixed your settings with maintenance.
+**And inside them** (second pass): **Status** is health only now — its Maintenance cards moved to where they
+belong: **Backups** (`sec-backups`, `renderBackups`, System & tools), **Mac assistant** (`sec-mac`,
+`renderMacSettings`: the overnight-work switch, app download and pairing, beside AI chat) and the hero-photo
+optimiser onto **Home page & menu** (`#hero-opt-host`, `renderHeroOptCard`). **Away auto-reply + Instant chat
+answers are ONE page, "Guest chat"** (`sec-chat-away` hosts both editors; `settingsOpen('chat-answers')` and
+`settingsRenderSection('chat-answers')` alias to it, so old links and recents land). "Email me this week's
+analytics now" sits on Analytics. Search routes (`toManage('backups')`, `toMng('chat-away')`, the night-quiet
+duty → `mac`) follow; search-test asserts every route targets a registered section. ui-test-nightshift and
+ui-test-hig open `settingsOpen('mac')` for the overnight card.
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
