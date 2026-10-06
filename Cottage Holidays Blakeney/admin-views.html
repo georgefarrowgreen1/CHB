@@ -412,11 +412,11 @@
                    System & tools          is it running, what happened, maintenance
                  The labels ARE the grouping; settingsFilter() hides empty groups on search. -->
             <div class="settings-section-label">Cottages &amp; pricing</div>
-            <div id="cottages-overview" class="area-overview"></div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" data-act="settingsOpen" data-arg="accom">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Cottages</span><span class="settings-row-sub">Each cottage's rates, fees, rules, photos &amp; text — add or remove a cottage</span></span><span class="settings-row-chev">›</span>
+                <div id="cottages-overview" class="area-overview mg-cots"></div>
+                <button class="settings-row" data-kw="cottages rates prices fees nightly rules occupancy photos text add remove restore accommodation property min nights" data-act="addAccommodationPrompt">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label mg-add">Add a cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="seasons summer winter holiday peak pricing grid rates all cottages" data-act="settingsOpen" data-arg="seasongrid">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
