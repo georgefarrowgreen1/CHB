@@ -12430,11 +12430,6 @@ body.has-staging-banner header {
   margin-top: 38px;
 }
 
-/* The My-Stays "Account & settings" button is the desktop entry to the account
-   screen; on the mobile shell the dock's Account tab handles it, so hide it there. */
-body.guest-app:not(.owner-mode) #acct-settings-btn {
-  display: none;
-}
 
 /* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
    mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
@@ -14145,4 +14140,213 @@ div.ga-row {
   .ga-land {
     animation: none;
   }
+}
+
+/* ---- Stays inside the You page (approved demo): the stay that matters now as
+   one card with its one action and four shortcuts, the rest as rows. ---- */
+.ga-hello {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.ga-hello-t {
+  flex: 1;
+  min-width: 0;
+}
+.ga-hello .ga-lead {
+  margin-bottom: 0;
+}
+.ga-caprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.ga-seeall {
+  min-height: 44px;
+  text-decoration: none;
+  font-size: var(--fs-sub);
+}
+.ga-staycard {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.ga-lead-ph {
+  height: 120px;
+  margin: 0;
+}
+.ga-badge {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  --badge-ink: #fff; /* white on a dark scrim over the photo, in both themes */
+  background: rgba(18, 19, 22, 0.72);
+  color: var(--badge-ink);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.ga-badge.is-now {
+  background: rgba(120, 70, 0, 0.92);
+}
+.ga-lead-b {
+  padding: 16px 16px 4px;
+}
+.ga-lead-n {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-light);
+}
+.ga-lead-w {
+  margin: 4px 0 0;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.ga-ask {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: var(--well-bg);
+}
+.ga-ask-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ga-ask-t b {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.ga-ask-t span {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.ga-ask.is-ok b {
+  color: var(--ok-text);
+}
+.ga-code {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  letter-spacing: 0.18em;
+}
+.ga-ask-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 20px;
+}
+.ga-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 12px 8px 8px;
+}
+.ga-quick.is-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ga-q {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 60px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-light);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+.ga-q .ic {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-text);
+}
+.ga-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ga-lead-wait {
+  padding: 24px 16px;
+  display: grid;
+  gap: 12px;
+}
+.ga-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border-radius: var(--r-sm);
+}
+.ga-pill {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.ga-pill.is-warn {
+  color: var(--warn-text);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.ga-pill.is-ok {
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+}
+.ga-empty {
+  text-align: center;
+  padding: 24px 16px 20px;
+}
+.ga-empty p {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  margin: 0 auto 16px;
+  max-width: 32ch;
+}
+.ga-empty-t {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.gb-back {
+  margin-bottom: 4px;
+}
+.gd-pip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--dark-grey);
+  pointer-events: none;
 }

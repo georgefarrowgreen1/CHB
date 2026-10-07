@@ -3586,6 +3586,30 @@ section".** The "Your details" and "Account & security" pop-ups are GONE (markup
   Budgets: app.js +4.4KB, app.css +1.4KB gz raw (comments stripped at deploy); index.html
   fell ~1KB.
 
+## Stays inside the You page (approved demo, built)
+
+My stays and Account are ONE place now: the dock has three buttons (Things to do, Cottages,
+**You**) and the You page (`view-guest-account`, `renderGuestAccount`) reads: a hello line that
+says where the guest is ("4 days until Jollyboat"), the LEAD stay card, other stays as rows,
+then the account settings.
+- **The lead stay** (`gaStaysSplit`): the stay in progress, else the soonest upcoming, else the most recent
+  past. It is a photo card with ONE ask: Pay (via `openPayView` with its pay token), the door
+  code once it has been released, or Book again for a past stay. Below that are four shortcuts
+  (Directions / House rules / Amenities / Message; a past stay gets Invoice / Review / Message),
+  then "Everything about this stay".
+- **The money is the stay page's own**: `gaStayMoney` reads `displayGrand` + `guestPayCta`, so
+  the two pages cannot quote different figures. The stays come from the same `my-bookings.php`
+  (`gaStaysLoad`, cached in `__gaStays`, reset on logout). The page has four non-stay states:
+  loading, failed (Try again), unproven (confirm your email) and empty (Find dates).
+- **The full stay page is unchanged** (`view-guest-bookings`, every gate on it intact). It opens
+  from You (`gaOpenStays` / `gaOpenStay`, which lands on the right pane and opens the past fold)
+  and carries one "‹ You" back link; the dock keeps You marked while it is up.
+- **The amber pip on You** (`guestDockNeedsSync`, a child `.gd-pip`, because the dock's
+  `::before`/`::after` are already taken) shows while the guest is staying or has money due.
+  `guestDockAvatarSync` re-applies it, since its innerHTML rewrite removes the dot.
+- Gated by ui-test-guestaccount §9. ui-test-yourstay's header-pill check is re-aimed to "You".
+  Budgets: app.js +3.5KB, app.css +0.5KB gz.
+
 ## A guest's profile photo (approved demo, built)
 
 Tap the circle on the Account page (or "Add a photo" on Your details) → a sheet (Take a photo /
