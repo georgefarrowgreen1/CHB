@@ -14815,9 +14815,9 @@ const CAL_IC = (() => {
     const i = (d) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
     return {
         sync: i('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'),
-        copy: i('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'),
-        add: i('<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>'),
-        edit: i('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+        copy: i('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>'),
+        add: i('<path d="M12 4v16M4 12h16"/>'),
+        edit: i('<path d="M4 20h4L20 8l-4-4L4 16z"/><path d="M14 6l4 4"/>'),
     };
 })();
 function calPlat(src) {
@@ -14930,10 +14930,10 @@ function calFoldHtml(k) {
         + (fixOpen ? calLinkFormHtml(k) : '')
         + (formOpen ? calLinkFormHtml(k) : '')
         + `<div class="mo-tools cal-tools">
-            <button class="mo-tool" ${chbAttrs('runSync', String(k))}>${__calBusy[k] === 'run' ? '<span class="mg-spin cal-tspin" aria-hidden="true"></span>Syncing' : CAL_IC.sync + 'Sync now'}</button>
-            ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="mo-tool" ${chbAttrs('calCopyLink', String(k))}>${CAL_IC.copy}Copy link</button>` : ''}
-            ${canAdd && !formOpen ? `<button class="mo-tool" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>${CAL_IC.add}Add platform</button>` : ''}
-            <button class="mo-tool" ${chbAttrs('settingsOpenCalendar', String(k))}>${CAL_IC.edit}Edit links</button>
+            <button class="mo-tool" ${chbAttrs('runSync', String(k))}>${__calBusy[k] === 'run' ? '<span class="mg-spin cal-tspin" aria-hidden="true"></span><span>Syncing</span>' : CAL_IC.sync + '<span>Sync now</span>'}</button>
+            ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="mo-tool" ${chbAttrs('calCopyLink', String(k))}>${CAL_IC.copy}<span>Copy link</span></button>` : ''}
+            ${canAdd && !formOpen ? `<button class="mo-tool" aria-label="Link a platform" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>${CAL_IC.add}<span>Add new</span></button>` : ''}
+            <button class="mo-tool" ${chbAttrs('settingsOpenCalendar', String(k))}>${CAL_IC.edit}<span>Edit links</span></button>
           </div>`;
 }
 function renderCalendarList() {
