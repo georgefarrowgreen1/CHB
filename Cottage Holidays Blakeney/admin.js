@@ -14782,6 +14782,11 @@ function occStep(id, delta, min) {
     if (el) el.value = String(Math.max(parseInt(min, 10) || 0, (parseInt(el.value, 10) || 0) + (parseInt(delta, 10) || 0)));
 }
 function settingsOpenAccomSec(k, sec) {
+    // A deep link from ANOTHER section (Pricing's "Extra guests") must open the
+    // cottage pages first, or the editor is built into a hidden section and the
+    // tap appears to do nothing.
+    const host = document.getElementById('sec-accom');
+    if (!host || !host.getClientRects().length) settingsOpen('accom');
     settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
     const key = 'ac-' + k + '-' + sec;
