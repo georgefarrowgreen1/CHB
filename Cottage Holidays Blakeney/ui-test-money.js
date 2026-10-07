@@ -1577,9 +1577,11 @@ let mailWillFail = false;
   const vis = () => page.evaluate(() => {
     const on = (el) => !!el && el.getClientRects().length > 0;
     const sel = document.getElementById('sq-location');
-    const save = document.querySelector('[data-act="saveSquareLocation"]');
+    // The control on screen is the site's own row button; the select only holds
+    // the value (a native <select> opened the phone's menu, not the site's).
+    const pick = document.getElementById('sq-loc-pick');
     return {
-      shown: on(sel) && on(save),
+      shown: on(pick),
       opts: sel ? [...(/** @type {HTMLSelectElement} */ (sel)).options].map((o) => o.textContent.trim()) : [],
     };
   });
@@ -1588,6 +1590,28 @@ let mailWillFail = false;
   ok(pick.opts.some((t) => /Online CHB/.test(t)) && pick.opts.some((t) => /The Shop/.test(t)),
     `…listing every location (${pick.opts.join(' | ')})`);
   ok(pick.opts.some((t) => /main location/i.test(t)), '…plus the unset option, which is what Square does today');
+  // THE PICKER IS THE SITE'S: tapping the row opens a sheet in the house style
+  // (never the phone's native menu), and choosing a location there saves it.
+  const sheet = await page.evaluate(async () => {
+    document.getElementById('sq-loc-pick').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const ov = document.getElementById('sq-loc-modal');
+    const opts = [...document.querySelectorAll('#sql-list .sql-opt')].map((b) => b.textContent.trim());
+    const native = !!document.querySelector('#sq-loc-card select:not([hidden])');
+    return { open: !!ov && ov.classList.contains('open'), opts, native };
+  });
+  ok(sheet.open && !sheet.native, 'tapping Location opens the site\'s own sheet, not a native menu');
+  ok(sheet.opts.some((t) => /The Shop/.test(t)) && sheet.opts.some((t) => /Main location/.test(t)), `…listing every location (${sheet.opts.join(' | ')})`);
+  const before = posts.length;
+  sqLocation = 'L2'; // what the server answers once the save has landed
+  await page.evaluate(async () => {
+    const b = [...document.querySelectorAll('#sql-list .sql-opt')].find((x) => /The Shop/.test(x.textContent));
+    b.click();
+    await new Promise((r) => setTimeout(r, 600));
+  });
+  const tapped = await page.evaluate(() => ({ closed: !document.getElementById('sq-loc-modal').classList.contains('open'), cur: (document.getElementById('sq-loc-cur') || {}).textContent }));
+  ok(posts.slice(before).some((p) => JSON.stringify(p).includes('square-location') && JSON.stringify(p).includes('L2')), 'choosing a location in the sheet saves it');
+  ok(tapped.closed && /The Shop/.test(tapped.cur), `…closes the sheet and the row shows the choice (${tapped.cur})`);
 
   // …AND WITH NOTHING TO CHOOSE BETWEEN, IT IS NOT THERE AT ALL. One location
   // cannot be the wrong one, so a picker would be a question with one answer —

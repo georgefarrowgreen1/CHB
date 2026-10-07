@@ -18934,7 +18934,62 @@ function renderSquareLocation(d) {
     const cur = (d && d.location) || '';
     sel.innerHTML = '<option value="">Square’s main location (not chosen)</option>'
         + all.map((x) => `<option value="${escapeHtml(x.id)}"${x.id === cur ? ' selected' : ''}>${escapeHtml(x.name)}${x.status === 'INACTIVE' ? ' (inactive)' : ''}</option>`).join('');
+    sqLocShowCurrent();
 }
+// THE LOCATION PICKER IS THE SITE'S, NOT THE PHONE'S. A native <select> opens the
+// operating system's own menu (grey, blurred, a different typeface) in the middle
+// of the back office. The row shows the current choice; tapping it opens a sheet
+// in the house style listing every location, and choosing one SAVES it — the same
+// save-as-it-changes rule the rest of this page follows.
+function sqLocShowCurrent() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    const cur = document.getElementById('sq-loc-cur');
+    if (!sel || !cur) return;
+    const o = sel.options[sel.selectedIndex];
+    cur.textContent = o && o.value ? o.textContent : 'Main location';
+}
+function sqLocOpen() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    if (!sel) return;
+    let ov = document.getElementById('sq-loc-modal');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'sq-loc-modal';
+        ov.className = 'modal-overlay rvq-overlay';
+        ov.innerHTML = `<div class="modal-box rvq-box sql-box" role="dialog" aria-modal="true" aria-labelledby="sql-title">
+                <div class="rvq-head"><h2 id="sql-title">Square location</h2>
+                    <button type="button" class="rvq-close" aria-label="Close" data-act="sqLocClose"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+                <div class="acr-well rv-well sql-list" id="sql-list" role="listbox" aria-labelledby="sql-title"></div>
+            </div>`;
+        ov.addEventListener('click', (e) => { if (e.target === ov) sqLocClose(); });
+        document.body.appendChild(ov);
+    }
+    const list = document.getElementById('sql-list');
+    if (list)
+        list.innerHTML = [...sel.options]
+            .map((o) => {
+                const on = o.value === sel.value;
+                const label = o.value ? o.textContent : 'Main location (Square’s default)';
+                return `<button type="button" class="sql-opt${on ? ' is-on' : ''}" role="option" aria-selected="${on}" ${chbAttrs('sqLocPick', o.value)}><span>${escapeHtml(label || '')}</span>${on ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</button>`;
+            })
+            .join('');
+    ov.classList.add('open');
+    const first = /** @type {HTMLElement|null} */ (ov.querySelector('.sql-opt.is-on') || ov.querySelector('.sql-opt'));
+    if (first) first.focus();
+}
+function sqLocClose() {
+    const ov = document.getElementById('sq-loc-modal');
+    if (ov && ov.classList.contains('open')) chbCloseOverlay(ov);
+}
+async function sqLocPick(v) {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    sqLocClose();
+    if (!sel || sel.value === v) return;
+    sel.value = v;
+    sqLocShowCurrent();
+    await saveSquareLocation();
+}
+
 function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
     if (st) st.innerHTML = squareAdminEnabled ? stCap('ok', 'Connected') : stCap('unk', 'Not set up');

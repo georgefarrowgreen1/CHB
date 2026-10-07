@@ -990,8 +990,12 @@
                                  nothing, so a multi-location seller would get a confident
                                  answer about the wrong shop). renderSquareLocation(). -->
                             <div class="pay-row pay-stack" id="sq-loc-card" hidden>
-                                <label class="pay-lbl" for="sq-location">Location</label>
-                                <div class="pay-locline"><select id="sq-location" class="input-glass field-sm"></select><button type="button" class="pay-btn" data-act="saveSquareLocation">Save</button></div>
+                                <div class="pay-locline"><span class="pay-lbl" id="sq-loc-lbl">Location</span>
+                                    <!-- The site's own picker, not the phone's: a row that opens a
+                                         sheet of locations; choosing one saves it. The select holds
+                                         the value only (saveSquareLocation reads it). -->
+                                    <button type="button" class="pay-pick" id="sq-loc-pick" aria-labelledby="sq-loc-lbl sq-loc-cur" aria-haspopup="dialog" data-act="sqLocOpen"><span id="sq-loc-cur"></span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+                                    <select id="sq-location" hidden tabindex="-1" aria-hidden="true"></select></div>
                                 <p id="sq-loc-msg" class="pay-note"></p>
                             </div>
                         </div>
