@@ -3756,6 +3756,7 @@ function renderGuestAccount(dir) {
         html =
             `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead" id="ga-hello-s">${escapeHtml(gaHelloLine())}</p></div>${gaAvaBtn(false)}</div>` +
             `<div id="ga-stays">${gaStaysHtml()}</div>` +
+            `<div id="ga-todo">${gaTodoHtml()}</div>` +
             gaGroup(
                 [
                     gaRow({ ic: 'user', t: 'Your details', s: 'Photo, phone and address', act: chbAttrs('gaGo', 'details'), chev: true }),
@@ -3809,6 +3810,7 @@ async function gaStaysLoad(force) {
     const hs = document.getElementById('ga-hello-s');
     if (hs) hs.textContent = gaHelloLine();
     guestDockNeedsSync();
+    gaTodoPaint();
 }
 function gaStaysSplit() {
     const st = __gaStays && __gaStays !== 'err' ? __gaStays : null;
@@ -3982,6 +3984,97 @@ function guestDockNeedsSync() {
         } else if (!needs && dot) dot.remove();
         b.setAttribute('aria-label', needs ? 'You — something needs you' : 'You');
     });
+}
+
+// THINGS TO DO LIVE ON THE YOU PAGE (approved demo). A row of cards between the
+// stays and the settings, only for a guest who has booked (the server refuses
+// anyone else). Its caption follows the stay: "Plan your trip" before it,
+// "Near <cottage>" during it, when the boat trips come first with the next high
+// water — the tide feed the site already has. "See all" opens the full list.
+let __gaTodoTried = false;
+// __experiences is declared far below; reading it before that line runs is a TDZ throw.
+function gaExps() {
+    try {
+        return __experiences || [];
+    } catch (e) {
+        return [];
+    }
+}
+function gaTodoOrder() {
+    const sp = gaStaysSplit();
+    const list = gaExps().slice();
+    if (sp && sp.kind === 'now') {
+        const boat = (x) => /boat|wildlife/i.test(x.category || '');
+        return list.filter(boat).concat(list.filter((x) => !boat(x)));
+    }
+    return list;
+}
+function gaTodoHtml() {
+    if (!chbHasBooked()) return '';
+    if (!gaExps().length) {
+        if (!__gaTodoTried) gaTodoLoad();
+        return '';
+    }
+    const sp = gaStaysSplit();
+    const cap = sp && sp.kind === 'now' ? 'Near ' + gaStayName(sp.lead) : sp && sp.kind === 'up' ? 'Plan your trip' : 'Things to do';
+    const cards = gaTodoOrder()
+        .slice(0, 5)
+        .map((x) => {
+            const art = x.image
+                ? `<img class="ga-tart" src="${escapeHtml(x.image)}" alt="" loading="lazy" decoding="async">`
+                : expPlaceholder(x).replace('class="card-img exp-noimg"', 'class="ga-tart exp-noimg"');
+            return `<button type="button" class="ga-tcard" ${chbAttrs('gaOpenTodo', x.id)}>${art}${x.category ? `<span class="ga-tcat">${escapeHtml(x.category)}</span>` : ''}<span class="ga-tb"><span class="ga-tn">${escapeHtml(x.title)}</span>${x.distance ? `<span class="ga-td">${escapeHtml(x.distance)}</span>` : ''}</span></button>`;
+        })
+        .join('');
+    return `<div class="ga-caprow"><h2 class="ga-cap">${escapeHtml(cap)}</h2><button type="button" class="ga-link ga-seeall" data-act="gaOpenTodo">See all</button></div>` +
+        `<div id="ga-tide"></div><div class="ga-tdo">${cards}</div>`;
+}
+function gaTodoPaint() {
+    const host = document.getElementById('ga-todo');
+    if (!host) return;
+    host.innerHTML = gaTodoHtml();
+    gaTideTip();
+}
+async function gaTodoLoad() {
+    __gaTodoTried = true;
+    try {
+        const res = await apiGet('experiences.php');
+        __experiences = (res && res.experiences) || [];
+    } catch (e) {
+        return; // refused or offline: the section simply isn't there
+    }
+    gaTodoPaint();
+}
+// The next high water, while they are staying — never a departure time we don't have.
+async function gaTideTip() {
+    const sp = gaStaysSplit();
+    const el = document.getElementById('ga-tide');
+    if (!el || !sp || sp.kind !== 'now' || !gaExps().some((x) => /boat/i.test(x.category || ''))) return;
+    try {
+        await loadTideData();
+    } catch (e) {
+        return;
+    }
+    const d = __tideData;
+    if (!d || !d.ok || !Array.isArray(d.extremes)) return;
+    const now = Date.now();
+    const hi = d.extremes
+        .map((e) => ({ t: new Date(e.time).getTime(), type: e.type }))
+        .filter((e) => /high/i.test(e.type) && e.t >= now && ukDateOfInstant(e.t) === todayDashed())
+        .sort((a, z) => a.t - z.t)[0];
+    if (!hi || !document.getElementById('ga-tide')) return;
+    el.innerHTML = `<div class="ga-tip"><b>Boat trips go out with the tide.</b> High water today is at ${escapeHtml(ukClockHm(hi.t))}.</div>`;
+}
+async function gaOpenTodo(id) {
+    nav('view-experiences');
+    if (id == null) return;
+    for (let i = 0; i < 30 && !document.querySelector(`#exp-grid [data-exp-id="${Number(id)}"]`); i++) await new Promise((r) => setTimeout(r, 100));
+    const row = document.querySelector(`#exp-grid [data-exp-id="${Number(id)}"]`);
+    if (!row) return;
+    expRowOpen(row, true);
+    try {
+        row.scrollIntoView({ block: 'start', behavior: chbReducedMotion() ? 'auto' : 'smooth' });
+    } catch (e) {}
 }
 
 // THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask). body.has-booked
@@ -20422,6 +20515,13 @@ function expRenderCards() {
     // photo (or have none) get a distinct category illustration instead — so the
     // page never shows the same picture two or three times in a row.
     const seen = {};
+    if (!grid.dataset.rows) {
+        grid.dataset.rows = '1';
+        grid.addEventListener('click', (e) => {
+            const t = e.target instanceof Element ? e.target.closest('.exp-rowbtn') : null;
+            if (t && t.parentElement) expRowOpen(t.parentElement);
+        });
+    }
     grid.innerHTML = list
         .map((x) => {
             const dup = x.image && seen[x.image];
@@ -20483,9 +20583,21 @@ function expCardHtml(x, usePlaceholder) {
         link || phone || directions
             ? `<div class="exp-actions">${link}${phone}${directions}</div>`
             : '';
-    return `<div class="card glass-panel exp-card">${img}${cat}<div class="card-title">${escapeHtml(x.title)}</div>${dist}<p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div>`;
+    // A ROW, not a screen-sized card (approved demo): picture, name and distance;
+    // tapping it unfolds the words and the actions in place.
+    const thumb = img.replace('class="card-img ', 'class="card-img exp-thumb ').replace('width="400" height="260"', 'width="112" height="112"');
+    return `<div class="exp-card exp-row" data-exp-id="${Number(x.id) || 0}"><button type="button" class="exp-rowbtn" aria-expanded="false">${thumb}<span class="exp-rowtx"><span class="card-title">${escapeHtml(x.title)}</span>${dist}</span>${GA_CHEV}</button><div class="exp-fold" hidden><div class="exp-foldin">${cat}<p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div></div></div>`;
 }
 
+function expRowOpen(row, open) {
+    const btn = row.querySelector('.exp-rowbtn');
+    const fold = row.querySelector('.exp-fold');
+    if (!btn || !fold) return;
+    const on = open == null ? fold.hidden : !!open;
+    fold.hidden = !on;
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    row.classList.toggle('is-open', on);
+}
 // ---- Guest: suggest an experience ----
 function openExperienceSuggest() {
     if (!currentGuest) {
@@ -20713,7 +20825,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'tdbooked1';
+    const BUILD = 'youtodo1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

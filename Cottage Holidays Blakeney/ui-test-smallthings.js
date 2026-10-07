@@ -182,7 +182,7 @@ function stub(page, mode, mine) {
   }, [sel, sides]);
   page = await open('guest', UPCOMING);
   const gd = await slop(page, '#guest-tabbar .guest-dock-btn, header .guest-dock-btn');
-  ok(gd.n >= 3 && gd.allFour === gd.n, `the guest dock's ${gd.n} buttons (${gd.sizes}) answer a tap 3px outside their drawn edge (${gd.allFour}/${gd.n})`);
+  ok(gd.n >= 2 && gd.allFour === gd.n, `the guest dock's ${gd.n} buttons (${gd.sizes}) answer a tap 3px outside their drawn edge (${gd.allFour}/${gd.n})`);
   const hero = await page.evaluate(() => [...document.querySelectorAll('.hs-mode-btn, .hs-chip')].filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().height)));
   ok(hero.length >= 4 && hero.every((h) => h >= 44), `the hero's mode switch and ± chips stand at 44 (${[...new Set(hero)].join('/')})`);
   await page.evaluate(() => openProperty('jollyboat'));

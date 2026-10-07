@@ -3610,6 +3610,29 @@ then the account settings.
 - Gated by ui-test-guestaccount §9. ui-test-yourstay's header-pill check is re-aimed to "You".
   Budgets: app.js +3.5KB, app.css +0.5KB gz.
 
+## Things to do live on the You page (approved demo, built)
+
+The guest menu is **Cottages · You**. Things to do left the dock and is a section of the
+You page, between the stays and the account settings. It is still booked-guests-only (see
+the next section).
+- **`#ga-todo`** (`gaTodoHtml` / `gaTodoPaint` / `gaTodoLoad`, app.js) is a row of up to five
+  `.ga-tcard`s you swipe sideways. The caption follows the stay (`gaStaysSplit`):
+  "Plan your trip" before arrival, "Near <cottage>" during the stay, and "Things to do"
+  otherwise. During a stay the boat and wildlife trips come first, and `gaTideTip` names
+  today's next high water from the tide feed the site already has. It never invents a
+  departure time. It renders nothing for a guest who hasn't booked, and repaints when
+  `gaStaysLoad` lands. `__experiences` is declared far below, so `gaExps()` guards the TDZ.
+- **The full page is ROWS** (`expCardHtml` → `.exp-row`: thumb, name, distance; a tap
+  unfolds the words and the actions in place via `expRowOpen`, a 0fr grid fold).
+  `.exp-card` stays on each row for the gates. A card on You opens the list with its row
+  unfolded (`gaOpenTodo(id)`). The page leads with a "‹ You" back link (`.exp-back`).
+  The dock's You tab marks `view-experiences`.
+- The desktop header and footer links stay (booked guests only).
+- Gates: ui-test-guestaccount §10 (the section, its caption and order, its placement,
+  the menu, the card → unfolded row, the back link). ui-test-motion, ui-test-topmenu
+  and ui-test-smallthings were re-aimed to a two-button dock. Budgets: app.js +1.6KB,
+  app.css +0.7KB gz.
+
 ## Things to do are for guests who have booked (owner's ask)
 
 Anonymous visitors, crawlers, and signed-in guests with no booking get no Things to do.

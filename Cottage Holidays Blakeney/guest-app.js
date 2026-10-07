@@ -23,18 +23,6 @@
     // separate floating button).
     var DOCK = [
         {
-            key: 'experiences',
-            // ONLY FOR GUESTS WHO HAVE BOOKED (owner's ask): app.css hides this
-            // button until body.has-booked (chbBookedSync), and experiences.php
-            // refuses anyone else. Label matches the nav + footer.
-            label: 'Things to do',
-            views: ['view-experiences'],
-            icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
-            go: function () {
-                if (window.nav) window.nav('view-experiences');
-            },
-        },
-        {
             key: 'cottages',
             label: 'Cottages',
             views: ['view-cottages', 'view-21a'],
@@ -55,8 +43,8 @@
         {
             key: 'account',
             label: 'You',
-            // My stays opens FROM You (approved demo), so it marks You too.
-            views: ['view-guest-account', 'view-guest-bookings'],
+            // My stays and Things to do open FROM You (approved demos), so they mark You too.
+            views: ['view-guest-account', 'view-guest-bookings', 'view-experiences'],
             icon: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
             go: function () {
                 if (window.guestAccountTab) window.guestAccountTab();
