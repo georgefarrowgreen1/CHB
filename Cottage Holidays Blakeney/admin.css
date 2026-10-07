@@ -8434,3 +8434,33 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rv-well > .pr-rule + .pr-rule, .rv-well > .pr-rule + .rv-go, .rv-well > .rv-go + .rv-go, .pr-limits > .pr-rule, .rv-well > .pr-rule + .pr-limits { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .pr-limits.is-off { opacity: 0.5; }
 .rv-go .pay-val { margin-left: auto; }
+/* The pricing coach, folded into Pricing: guest-search ideas (loading in place,
+   never blocking the page) and what guests searched for, week by week. */
+@keyframes prSpin { to { transform: rotate(360deg); } }
+.pr-loading { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 16px 20px; font-size: var(--fs-sub); color: var(--text-muted); }
+.pr-spin { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); border-top-color: var(--accent); animation: prSpin 0.8s linear infinite; }
+.pr-note { margin: 12px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); }
+.pr-scard { margin-top: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; animation: chbSettle 280ms var(--out); }
+.pr-shead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pr-stitle { font-size: var(--fs-body); font-weight: 600; }
+.pr-swhy { margin: 0; font-size: var(--fs-sub); line-height: 1.5; color: var(--text-muted); }
+.pr-sapply { align-self: stretch; margin-top: 4px; }
+.pr-radar { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+.pr-rnums { display: flex; gap: 24px; margin-bottom: 4px; }
+.pr-rnums span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sub); color: var(--text-muted); }
+.pr-rnums b { font-size: var(--fs-title); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.pr-rnums .is-miss b { color: var(--warn-text); }
+.pr-rrow { display: grid; grid-template-columns: 80px minmax(0, 1fr) 64px; align-items: center; gap: 12px; min-height: 36px; padding: 0; border: 0; background: none; color: var(--text-light); font: inherit; font-size: var(--fs-sub); text-align: left; cursor: pointer; }
+.pr-rrow:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.pr-rlab { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pr-rbar { position: relative; height: 10px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 6%, transparent); overflow: hidden; }
+.pr-rbar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--r-pill); background: var(--accent); }
+.pr-rbar span.is-miss { background: var(--warn); }
+.pr-rnum { text-align: right; font-variant-numeric: tabular-nums; }
+.pr-rnum .is-miss { color: var(--warn-text); }
+.pr-rkey { display: flex; gap: 16px; margin-top: 4px; font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-rkey span { display: inline-flex; align-items: center; gap: 8px; }
+.pr-rkey i { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
+.pr-rkey i.is-miss { background: var(--warn); }
+.pr-calm[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .pr-spin { animation: none; } }

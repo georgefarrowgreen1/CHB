@@ -404,7 +404,7 @@ function cmdkActions(q) {
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /\b(income|tax|vat|revenues?|takings|earnings|accounts?|figures)\b.{0,10}(total|report|year|summary|view|show)?|\bview\b.{0,8}\b(income|accounts|tax)\b/, () => cmdkOpenAccounts('income')),
         A('sweep', 'Move money out', 'What you can transfer without leaving the account short', 'move money out transfer withdraw sweep safe balance take out bank account how much can i deposits owed back clawback', /(move|transfer|withdraw|take|sweep|pull).{0,14}(money|funds|cash|out|across|over)|how much.{0,16}(can i|safe|move|transfer|withdraw|take out)|safe to (move|transfer|withdraw|take)|(leave|keep).{0,12}in the account/, () => cmdkOpenAccounts('sweep')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
-        A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
+        A('pricingcoach', 'Pricing', 'Your prices, ideas and what guests search for', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => { closeCmdK(); openPricingCoach(); }),
         A('theme',
             isLight ? 'Switch to dark mode' : 'Switch to light mode',
             'Change the app appearance',
@@ -546,7 +546,7 @@ async function cmdkPricingMerge() {
             label: s.title, sub: String(s.detail || '').slice(0, 140),
             run: s.apply && s.apply.field === 'weekendPct'
                 ? () => { closeCmdK(); applyPricingSuggestion(s.prop_key, s.apply.field, s.apply.value, s.id); }
-                : () => { closeCmdK(); openAccounts(); accountsOpen('pricingcoach'); },
+                : () => { closeCmdK(); openPricingCoach(); },
         }))
         .filter((r) => !have.has('answer:' + r.id));
     if (!rows.length) return;
@@ -1249,9 +1249,9 @@ function cmdkCommand(q, today) {
     // by the generic "Change prices & rates" action.
     if (CHB_PRICE_Q.test(q)) {
         const rows = [{
-            type: 'answer', id: 'price-coach', label: 'Pricing coach — demand signals & suggestions',
+            type: 'answer', id: 'price-coach', label: 'Pricing — your prices, ideas and what guests search for',
             sub: 'Guest searches, unmet demand, weekend uplift ideas',
-            run: () => { closeCmdK(); openAccounts(); accountsOpen('pricingcoach'); },
+            run: () => { closeCmdK(); openPricingCoach(); },
         }];
         try {
             chbGapScan().slice(0, 3).forEach((g) => {
@@ -5746,7 +5746,7 @@ function helpTopics() {
             related: ['take-payment'] },
         { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
             kw: 'pricing coach suggest suggestion advice demand optimise increase revenue rate ideas smart',
-            steps: ['Open Payments and find the Pricing coach.', 'It suggests rate tweaks from your own bookings & demand — nothing changes until you tap Apply.'],
+            steps: ['Open Manage → Pricing.', 'Ideas come from your own bookings and what guests search for — nothing changes until you tap Apply.'],
             showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
             related: ['change-prices', 'seasonal-rates'] },
         { id: 'weekend-pricing', title: 'Charge more on weekends', cat: 'Money',
@@ -13958,72 +13958,6 @@ function renderSearchLearning() {
 }
 
 // ---- Money → Pricing coach (data-driven suggestions; apply is opt-in) ----
-async function renderPricingCoach() {
-    const wrap = document.getElementById('pricingcoach-body');
-    if (!wrap) return;
-    wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Analysing your bookings &amp; demand…</p>`;
-    let d;
-    try {
-        d = await apiGet('pricing-suggest.php?action=suggest');
-    } catch (e) {
-        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load suggestions${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
-        return;
-    }
-    const sugg = Array.isArray(d.suggestions) ? d.suggestions : [];
-    const sig = d.signals || {};
-    // The pulse leads (the landing anatomy): what the ideas are drawn from.
-    const intro = `<p class="mo-pulse" style="margin:2px 0 10px;">Ideas from your own bookings &amp; demand — nothing changes until you tap <strong>Apply</strong>.</p>`;
-    const since = sig.searches60
-        ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
-        : '';
-    // Demand radar strip: the weeks guests actually searched for, with the
-    // unmet portion flagged in amber — a glance at where interest lands.
-    const radarWeeks = (sig.searchWeeks || [])
-        .filter((w) => w.count > 0)
-        .slice(0, 6)
-        .sort((a, b) => (a.week || '').localeCompare(b.week || ''));
-    const radar = radarWeeks.length
-        ? `
-                <div class="acr-cap">Demand radar</div>
-                <div class="acr-capsub">The weeks guests searched for.</div>
-                <div class="acr-well pc-well" style="max-width:640px;margin:0 0 16px;">
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;">${radarWeeks
-                        .map((w) => {
-                            const wc = new Date(
-                                String(w.week).replace(' ', 'T'),
-                            ).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-                            const unmet = w.missed > 0;
-                            return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-caption);padding:6px 12px;border-radius:var(--r-pill);background:rgba(0,0,0,0.18);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'color-mix(in srgb, var(--text-light) 9%, transparent)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
-                        })
-                        .join('')}</div>
-                </div>`
-        : '';
-    if (!sugg.length) {
-        wrap.innerHTML =
-            intro +
-            since +
-            radar +
-            `<div class="acr-well pc-well" style="max-width:640px;"><p style="font-size:var(--fs-body);color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
-        return;
-    }
-    // The verdict capsule vocabulary the rest of the back office wears —
-    // an OPPORTUNITY is a green verdict, an insight the quiet grey one.
-    const badge = (op) => (op ? stCap('ok', 'opportunity') : stCap('unk', 'insight'));
-    const card = (s) => {
-        const op = s.severity === 'opportunity';
-        const applyBtn = s.apply
-            ? `<button class="btn-sm btn-edit" ${chbAttrs('applyPricingSuggestion', String(s.prop_key), String(s.apply.field), Number(s.apply.value), String(s.id))}>Apply${s.apply.field === 'weekendPct' ? ' — set ' + Number(s.apply.value) + '% weekend' : ''}</button>`
-            : '';
-        return `<div class="acr-well pc-well" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
-                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
-                        <strong style="font-size:var(--fs-body);">${escapeHtml(s.title)}</strong>${badge(op)}
-                    </div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 0;line-height:1.5;">${escapeHtml(s.detail)}</p>
-                    ${applyBtn ? `<div class="acw-acts" style="margin-top:12px;">${applyBtn}</div>` : ''}
-                </div>`;
-    };
-    wrap.innerHTML = intro + since + radar + sugg.map(card).join('');
-}
 async function applyPricingSuggestion(propKey, field, value, id) {
     if (field !== 'weekendPct' || !propKey) return;
     const prevPct = parseFloat((propertyRates[propKey] || {}).weekendPct) || 0;
@@ -14039,6 +13973,7 @@ async function applyPricingSuggestion(propKey, field, value, id) {
         try {
             toast('Weekend pricing updated.');
         } catch (e) {}
+        try { renderPricing(); } catch (e) {}
     } catch (e) {
         glassAlert("Couldn't apply: " + e.message);
     }
@@ -15364,7 +15299,6 @@ const ACCOUNTS_TITLES = {
     income: 'Income & tax',
     expenses: 'Expenses',
     sweep: 'Move money out',
-    pricingcoach: 'Pricing coach',
 };
 function expensesForYear(startYear) {
     return allExpenses.filter((x) => taxYearStartOf(x.date) === startYear);
@@ -15383,6 +15317,9 @@ function accountsShowIndex() {
     chbScroll(window, { top: 0 });
 }
 function accountsOpen(section) {
+    // The pricing coach moved INTO Manage → Pricing; old links, saved history and
+    // recents land there.
+    if (section === 'pricingcoach') { openPricingCoach(); return; }
     adminHistPush('view-accounts', section);
     // Remember the SECTION, not just the Payments index — an owner deep in Income &
     // tax should come back to it, not to the list of links.
@@ -15415,8 +15352,6 @@ function accountsOpen(section) {
             renderExpenses();
         } else if (section === 'sweep') {
             renderSweep();
-        } else if (section === 'pricingcoach') {
-            renderPricingCoach();
         }
     } catch (e) {}
     chbScroll(window, { top: 0 });
@@ -20253,12 +20188,12 @@ function nyGapOffer(pk, iso) {
         .catch((e) => glassAlert("Couldn't save: " + e.message));
 }
 function nyOfferRates() { Promise.resolve(openArea()).then(() => settingsOpen('seasongrid')); }
-function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
+function nyPacingReview() { openPricingCoach(); }
 // ---- Manage → Pricing: demand-based price ideas on their own page ----------
 // The gap offers + pacing flag that used to sit in the Today "Worth a look" strip
 // now live here, alongside a link to the full pricing coach. Same one-tap apply,
 // same validated write path — just off the operations screen and into Manage.
-function openPricingCoach() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
+function openPricingCoach() { Promise.resolve(openArea()).then(() => settingsOpen('pricing')); }
 // ---- Manage → Pricing: standard and smart pricing on ONE page (approved demo) ----
 // The page answers one question per cottage: what will a guest pay on each night,
 // and should it be different? The calendar shows the real nightly price — the same
@@ -20351,7 +20286,9 @@ function renderPricing() {
     // Title capsule: how many ideas wait, or nothing at all.
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-pricing');
-    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = items.length ? stCap('warn', `${items.length} idea${items.length === 1 ? '' : 's'}`) : '';
+    const nIdeas = items.length + prSearchCount(pk);
+    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = nIdeas ? stCap('warn', `${nIdeas} idea${nIdeas === 1 ? '' : 's'}`) : '';
+    prLoadSearch();
     // The calendar: this week's Monday → six weeks.
     const t = new Date(today + 'T12:00:00Z');
     const start = chbIsoShift(today, -((t.getUTCDay() + 6) % 7));
@@ -20417,9 +20354,10 @@ function renderPricing() {
                     <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
                     <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
                 </button>`).join('')}</div>`
-            : `<div class="acr-well pr-calm"><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
-            <div class="acr-well rv-well pr-more"><button type="button" class="rv-go" data-act="openPricingCoach"><span class="rv-go-txt"><span class="rv-name">Ideas from guest searches</span></span>${chev}</button></div>
+            : prSearchCount(pk) ? '' : `<div class="acr-well pr-calm" id="pr-calm"${__prSugg ? '' : ' hidden'}><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
+            <div id="pr-search-ideas">${prSearchIdeasHtml(pk)}</div>
         </section>
+        ${prRadarHtml()}
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
             <div class="acr-well rv-well">
@@ -20442,6 +20380,80 @@ function renderPricing() {
             </div>
         </section>
     </div>`;
+}
+// ---- The pricing coach, folded in: ideas and demand from guest searches ----
+// pricing-suggest.php reads guest searches and unmet demand. It is fetched once
+// and cached for five minutes, so re-renders (every stepper tap) never re-ask, and
+// the rest of the page never waits on it: until it lands, one quiet loading row.
+let __prSugg = null; // { at, d } | { at, err }
+let __prSuggLoading = false;
+function prLoadSearch(force) {
+    if (__prSuggLoading) return;
+    if (!force && __prSugg && Date.now() - __prSugg.at < 5 * 60e3) return;
+    __prSuggLoading = true;
+    apiGet('pricing-suggest.php?action=suggest')
+        .then((d) => { __prSugg = { at: Date.now(), d: d || {} }; })
+        .catch((e) => { __prSugg = { at: Date.now(), err: (e && e.message) || 'unavailable' }; })
+        .then(() => {
+            __prSuggLoading = false;
+            const sec = document.getElementById('sec-pricing');
+            if (sec && sec.style.display !== 'none') renderPricing();
+        });
+}
+function prSearchList(pk) {
+    const d = __prSugg && __prSugg.d;
+    const all = d && Array.isArray(d.suggestions) ? d.suggestions : [];
+    return all.filter((x) => !x.prop_key || x.prop_key === pk);
+}
+function prSearchCount(pk) { return prSearchList(pk).length; }
+function prSearchIdeasHtml(pk) {
+    if (!__prSugg) return `<div class="acr-well pr-loading" role="status"><span class="pr-spin" aria-hidden="true"></span>Checking what guests have been searching for…</div>`;
+    if (__prSugg.err) return `<p class="pr-note">Couldn’t check guest searches just now.</p>`;
+    return prSearchList(pk)
+        .map((x) => {
+            const op = x.severity === 'opportunity';
+            const can = x.apply && x.apply.field === 'weekendPct';
+            return `<div class="acr-well pr-scard" id="psug-${escapeHtml(x.id)}">
+                <div class="pr-shead"><span class="pr-stitle">${escapeHtml(x.title)}</span>${op ? stCap('ok', 'Opportunity') : stCap('unk', 'Insight')}</div>
+                <p class="pr-swhy">${escapeHtml(x.detail)}</p>
+                ${can ? `<button type="button" class="pay-btn pr-sapply" ${chbAttrs('applyPricingSuggestion', String(x.prop_key), String(x.apply.field), Number(x.apply.value), String(x.id))}>Set weekends to ${Number(x.apply.value)}%</button>` : ''}
+            </div>`;
+        })
+        .join('');
+}
+function prRadarHtml() {
+    const sig = (__prSugg && __prSugg.d && __prSugg.d.signals) || null;
+    if (!sig) return '';
+    const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
+    if (!sig.searches60 && !weeks.length) return '';
+    const max = Math.max(1, ...weeks.map((w) => w.count));
+    return `<section class="rv-sec">
+        <h3 class="acr-cap">What guests searched for · last 60 days</h3>
+        <div class="acr-well pr-radar">
+            <div class="pr-rnums"><span><b>${sig.searches60 || 0}</b>search${sig.searches60 === 1 ? '' : 'es'}</span>${sig.noResult60 ? `<span class="is-miss"><b>${sig.noResult60}</b>found nothing free</span>` : ''}</div>
+            ${weeks.map((w) => {
+                const iso = String(w.week || '').slice(0, 10);
+                const lbl = iso ? 'w/c ' + new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '';
+                return `<button type="button" class="pr-rrow" ${chbAttrs('prRadarWeek', iso)} aria-label="${escapeHtml(lbl)}: ${w.count} search${w.count === 1 ? '' : 'es'}${w.missed ? ', ' + w.missed + ' found nothing free' : ''}">
+                    <span class="pr-rlab">${escapeHtml(lbl)}</span>
+                    <span class="pr-rbar"><span style="width:${Math.round((w.count / max) * 100)}%"></span>${w.missed ? `<span class="is-miss" style="width:${Math.round((w.missed / max) * 100)}%"></span>` : ''}</span>
+                    <span class="pr-rnum">${w.count}${w.missed ? ` <span class="is-miss">· ${w.missed}</span>` : ''}</span>
+                </button>`;
+            }).join('')}
+            <div class="pr-rkey"><span><i></i>searched</span><span><i class="is-miss"></i>nothing free</span></div>
+        </div>
+    </section>`;
+}
+// A searched week → that week on the calendar (its first free night, if any).
+function prRadarWeek(iso) {
+    if (!iso) return;
+    const today = todayDashed();
+    let d = iso < today ? today : iso;
+    for (let i = 0; i < 7 && prTakenBy(__prCot, d); i++) d = chbIsoShift(d, 1);
+    __prSel = d;
+    renderPricing();
+    const cal = document.querySelector('#pricing-body .pr-cal');
+    if (cal) chbScroll(cal, { block: 'nearest' });
 }
 function prCottage(k) { __prCot = k; __prSel = null; renderPricing(); }
 function prPick(iso) { __prSel = __prSel === iso ? null : iso; renderPricing(); }
@@ -25915,7 +25927,7 @@ function tcPageFeatures() {
         ],
         [
             'Pricing Coach',
-            'Money → Pricing coach: suggestions appear from the seeded bookings, Airbnb/Vrbo blocks and searches (turn-on-weekend, orphan nights, unmet demand, quiet period).',
+            'Manage → Pricing: suggestions appear from the seeded bookings, Airbnb/Vrbo blocks and searches (turn-on-weekend, orphan nights, unmet demand, quiet period).',
         ],
         [
             'Cross-channel calendar',
@@ -25959,7 +25971,7 @@ async function tcSeedFeatures(btn) {
         if (msg) {
             if (r.ok) {
                 msg.style.color = 'var(--ok-text)';
-                msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Money → Pricing coach</strong> for the suggestions.`;
+                msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Manage → Pricing</strong> for the suggestions.`;
             } else {
                 msg.style.color = 'var(--danger)';
                 msg.textContent = r.error || 'Seeding failed.';
