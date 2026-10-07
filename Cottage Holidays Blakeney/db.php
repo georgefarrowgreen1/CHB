@@ -297,6 +297,94 @@ function deposit_evidence_store($bookingId, $dataUri)
     }
 }
 
+// ---- A GUEST'S PROFILE PHOTO. Seen only by that guest and by the owner, so it is
+// served through avatar.php (auth-checked), never by its path: the directory carries
+// its own deny-all .htaccess and every file a random name. The client crops to a
+// square and sends a JPEG data URI; GD re-encodes it to 256px when present, which
+// also drops any EXIF (a phone photo's location). Every refusal returns '' and the
+// helpers never throw — a photo is never worth a failed request.
+const AVATAR_DIR = 'uploads/avatars';
+function avatar_dir()
+{
+    $dir = __DIR__ . '/' . AVATAR_DIR;
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+        return '';
+    }
+    if (!is_file($dir . '/.htaccess')) {
+        @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
+    }
+    return $dir;
+}
+function avatar_name_ok($name)
+{
+    return is_string($name) && preg_match('/^[a-f0-9]{32}\.jpg$/', $name) === 1;
+}
+function avatar_store($dataUri)
+{
+    try {
+        if (!is_string($dataUri) || strncmp($dataUri, 'data:image/jpeg;base64,', 23) !== 0) {
+            return '';
+        }
+        $raw = base64_decode(substr($dataUri, 23), true);
+        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 600 * 1024 || substr($raw, 0, 2) !== "\xFF\xD8") {
+            return '';
+        }
+        if (function_exists('imagecreatefromstring')) {
+            $im = @imagecreatefromstring($raw);
+            if (!$im) {
+                return '';
+            }
+            $w = imagesx($im);
+            $h = imagesy($im);
+            $side = min($w, $h);
+            $out = imagecreatetruecolor(256, 256);
+            imagecopyresampled($out, $im, 0, 0, (int) (($w - $side) / 2), (int) (($h - $side) / 2), 256, 256, $side, $side);
+            ob_start();
+            imagejpeg($out, null, 85);
+            $raw = (string) ob_get_clean();
+            if ($raw === '') {
+                return '';
+            }
+        }
+        $dir = avatar_dir();
+        if ($dir === '') {
+            return '';
+        }
+        $name = bin2hex(random_bytes(16)) . '.jpg';
+        if (@file_put_contents($dir . '/' . $name, $raw) === false) {
+            return '';
+        }
+        return $name;
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+function avatar_delete($name)
+{
+    if (avatar_name_ok($name)) {
+        @unlink(__DIR__ . '/' . AVATAR_DIR . '/' . $name);
+    }
+}
+// The guest's stored photo name, or '' (no photo, or the column not migrated yet).
+function guest_avatar_name($gid)
+{
+    try {
+        $q = db()->prepare('SELECT avatar FROM guests WHERE id = ?');
+        $q->execute([(int) $gid]);
+        $n = (string) $q->fetchColumn();
+        return avatar_name_ok($n) ? $n : '';
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+// What the client is told: a short VERSION of the photo (so a changed photo busts
+// the browser cache), or '' — never the stored name.
+function guest_avatar_v($gid)
+{
+    $n = guest_avatar_name($gid);
+    return $n === '' ? '' : substr($n, 0, 10);
+}
+
 // A photo attached to an AI-chat message — the deposit-evidence contract
 // applied to the chat: JPEG data URIs only (the client re-encodes), magic
 // bytes checked, 2MB cap, random name so nothing in uploads/ is guessable.

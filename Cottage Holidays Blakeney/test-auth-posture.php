@@ -104,6 +104,7 @@ $REGISTRY = [
     // ---- Serve both roles ------------------------------------------------
     'experiences.php' => ['admin', [$GUEST]], // GET public, guest suggest, admin moderate
     'my-bookings.php' => ['guest', [$ADMIN]], // guest's own stays; admin path powers the account preview
+    'avatar.php' => ['guest', [$ADMIN]], // a guest's own profile photo; the owner reads it by ?email=
     'guest-checkout.php' => ['guest'], // the "we've left" tap — one guest-scoped write, its own door (my-bookings stays read-only)
     'photos.php' => ['admin', [$GUEST]],
     'push.php' => ['admin', [$GUEST, $CRON]],

@@ -4809,6 +4809,35 @@ $r = http($admin, 'POST', '/activity-log.php', ['action' => 'list', 'category' =
 it_check('§47 rows carry their id and plain title', isset($r['json']['events'][0]['id']) && array_key_exists('action', $r['json']['events'][0] ?? []), $r['raw']);
 $rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§47%'");
 
+echo "\n== §48 A guest's profile photo: their own, seen by them and the owner only ==\n";
+$avIm = imagecreatetruecolor(400, 300);
+imagefilledrectangle($avIm, 0, 0, 399, 299, imagecolorallocate($avIm, 80, 110, 100));
+ob_start();
+imagejpeg($avIm, null, 90);
+$avData = 'data:image/jpeg;base64,' . base64_encode((string) ob_get_clean());
+$r = http($noJar, 'POST', '/auth.php', ['action' => 'guest_avatar_set', 'data' => $avData]);
+it_check('§48 a signed-out caller cannot set one', $r['code'] === 401, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_avatar_set', 'data' => 'data:image/png;base64,iVBORw0KGgo=']);
+it_check('§48 a non-JPEG is refused in words', $r['code'] === 400 && strpos($r['raw'], 'photo') !== false, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_avatar_set', 'data' => $avData]);
+$avV = (string) ($r['json']['avatar'] ?? '');
+it_check('§48 the guest sets their own photo and is told only a version', ($r['json']['ok'] ?? false) === true && preg_match('/^[a-f0-9]{10}$/', $avV) === 1, $r['raw']);
+$avName = (string) $rootDb->query("SELECT avatar FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn();
+it_check('§48 the stored file is the re-encoded 256px square', $avName !== '' && is_file($work . '/uploads/avatars/' . $avName) && (getimagesize($work . '/uploads/avatars/' . $avName)[0] ?? 0) === 256, $avName);
+it_check('§48 the folder denies direct access', is_file($work . '/uploads/avatars/.htaccess'), '');
+$r = http($rsJar, 'GET', '/avatar.php?v=' . $avV);
+it_check('§48 the guest is served their own photo', $r['code'] === 200 && substr($r['raw'], 0, 2) === "\xFF\xD8", (string) $r['code']);
+$r = http($noJar, 'GET', '/avatar.php');
+it_check('§48 nobody else is', $r['code'] === 401, (string) $r['code']);
+$r = http($admin, 'GET', '/avatar.php?email=ks%40gmail.com');
+it_check('§48 the owner reads it by the guest\'s email', $r['code'] === 200 && substr($r['raw'], 0, 2) === "\xFF\xD8", (string) $r['code']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§48 the session reports the version', ($r['json']['guest']['avatar'] ?? '') === $avV, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_avatar_remove']);
+it_check('§48 removing it deletes the file', ($r['json']['ok'] ?? false) === true && !is_file($work . '/uploads/avatars/' . $avName), $r['raw']);
+$r = http($rsJar, 'GET', '/avatar.php');
+it_check('§48 and then there is nothing to serve', $r['code'] === 404, (string) $r['code']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

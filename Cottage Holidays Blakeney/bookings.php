@@ -464,6 +464,26 @@ function bookings_admin_payload()
         unset($bk);
     } catch (\Throwable $e) {
     }
+    // The guest's own profile photo, as a VERSION only (the stored name never
+    // leaves the server); the hub reads the picture through avatar.php?email=.
+    try {
+        $av = [];
+        foreach (db()->query('SELECT email, avatar FROM guests WHERE avatar IS NOT NULL') as $r) {
+            if (avatar_name_ok($r['avatar'])) {
+                $av[strtolower((string) $r['email'])] = substr((string) $r['avatar'], 0, 10);
+            }
+        }
+        if ($av) {
+            foreach ($rows as &$bk) {
+                $k = strtolower((string) ($bk['email'] ?? ''));
+                if ($k !== '' && isset($av[$k])) {
+                    $bk['guest_avatar'] = $av[$k];
+                }
+            }
+            unset($bk);
+        }
+    } catch (\Throwable $e) {
+    }
     return ['bookings' => $rows];
 }
 

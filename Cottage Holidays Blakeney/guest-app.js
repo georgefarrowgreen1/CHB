@@ -112,6 +112,10 @@
         DOCK.forEach(function (t) {
             dock.appendChild(makeDockBtn(t));
         });
+        // A signed-in guest's profile photo replaces the Account outline.
+        try {
+            if (window.guestDockAvatarSync) window.guestDockAvatarSync();
+        } catch (e) {}
 
         wrap.appendChild(dock);
         // Contextual primary CTA that lives in the menu pill on cottage pages, so

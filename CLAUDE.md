@@ -3586,6 +3586,26 @@ section".** The "Your details" and "Account & security" pop-ups are GONE (markup
   Budgets: app.js +4.4KB, app.css +1.4KB gz raw (comments stripped at deploy); index.html
   fell ~1KB.
 
+## A guest's profile photo (approved demo, built)
+
+Tap the circle on the Account page (or "Add a photo" on Your details) → a sheet (Take a photo /
+Choose from library / Remove) → a cropper (drag, slider/wheel/pinch zoom, a 280px circle — what is
+inside is what is saved). Shown on the Account page, on the guest dock's Account button
+(`guestDockAvatarSync`) and beside the guest's name on the owner's booking page (`.bhub-ava`).
+- **Private to the guest and the owner.** Files live in `uploads/avatars/` (deny-all `.htaccess`,
+  random 32-hex names) and are served ONLY by **`avatar.php`**: `require_guest` → your own,
+  `require_admin` + `?email=` → the owner's read. The client is told a 10-char VERSION
+  (`guests.avatar`, migration-131, never the name), which every URL carries as `?v=`.
+- **`avatar_store`** (db.php) takes a JPEG data URI (magic bytes, ≤600KB) and GD re-encodes it to a
+  256px square, which also drops EXIF (a phone photo's location). Every refusal returns `''`.
+  `guest_avatar_set` / `guest_avatar_remove` (auth.php) act on the SESSION's guest only; replacing
+  or removing deletes the old file, and deleting the account deletes the photo.
+- The version rides `guest_status` / `guest_update_profile`; other login paths fetch it once
+  (`guestAvatarEnsure`). The owner's payload carries `guest_avatar` per booking (by email).
+- Gated by ui-test-guestaccount §8 (sheet, Escape, a real drag, the post shape with no email, the
+  page + dock, remove; the dock sync break-tested) and test-integration §48 (refusals, the 256px
+  re-encode, the deny-all folder, served to the guest and owner only, removal deletes the file).
+
 ## The Key safes page: a status line, a to-do, one list (approved "simpler" demo)
 
 `renderKeysafe` / `keysafeView` (admin.js, `.ks-*` in admin.css). Three rounds, owner-led

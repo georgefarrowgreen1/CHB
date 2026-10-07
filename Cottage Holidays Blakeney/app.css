@@ -13937,3 +13937,212 @@ div.ga-row {
     animation: none;
   }
 }
+
+/* ---- The profile photo (approved demo): a circle with a camera badge, a sheet
+   to choose, and a cropper that saves exactly what sits in the circle. ---- */
+.ga-prof {
+  gap: 16px;
+}
+.ga-profbtn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ga-avabtn {
+  position: relative;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.ga-avabtn.is-big,
+.ga-ava.is-big {
+  width: 104px;
+  height: 104px;
+}
+.ga-ava.is-big {
+  font-size: var(--fs-display);
+}
+.ga-ava {
+  overflow: hidden;
+}
+.ga-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ga-cam {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--dark-grey);
+}
+.ga-avabtn.is-big .ga-cam {
+  width: 32px;
+  height: 32px;
+}
+.ga-cam svg {
+  width: 14px;
+  height: 14px;
+}
+.ga-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px 12px;
+  margin-bottom: 12px;
+}
+.ga-photolink {
+  min-height: 44px;
+  text-decoration: none;
+}
+.ga-land {
+  animation: gaLand 0.5s var(--fluid-bezier);
+}
+@keyframes gaLand {
+  from { transform: scale(0.86); opacity: 0.4; }
+}
+.ga-sheetbox {
+  max-width: 440px;
+}
+.ga-sheet-t {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  text-align: center;
+  margin: 0 0 4px;
+}
+.ga-sheet-s {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--fs-sub);
+  margin: 0 0 16px;
+}
+.ga-sheet-cancel {
+  width: 100%;
+  margin-top: 12px;
+}
+.ga-crop {
+  position: fixed;
+  inset: 0;
+  z-index: 6200;
+  display: none;
+  flex-direction: column;
+  /* Always dark, whatever the theme — a photo is judged against black. */
+  --crop-bg: #0d0e10;
+  --crop-ink: #f4f5f7;
+  --crop-sub: #c9cdd2;
+  --crop-accent: #e2b08a; /* the rose-gold as words on black: 9.4:1 */
+  background: var(--crop-bg);
+  color: var(--crop-ink);
+}
+.ga-crop.open {
+  display: flex;
+}
+.ga-crop-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(12px + var(--safe-t)) 12px 8px;
+}
+.ga-crop-top b {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.ga-crop-top button {
+  min-height: 44px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.ga-crop-top .is-done {
+  color: var(--crop-accent);
+  font-weight: 600;
+}
+.ga-crop-stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+.ga-crop-stage img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transform-origin: center;
+}
+.ga-crop-stage::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 999px rgba(13, 14, 16, 0.62);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+.ga-crop-foot {
+  padding: 16px 24px calc(24px + var(--safe-b));
+  text-align: center;
+  font-size: var(--fs-sub);
+  color: var(--crop-sub);
+}
+.ga-crop-foot p {
+  margin: 8px 0 0;
+}
+.ga-zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ga-zoom input {
+  flex: 1;
+  accent-color: var(--crop-accent);
+  min-height: 44px;
+}
+.guest-dock-btn.has-photo .gd-ava {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ga-land {
+    animation: none;
+  }
+}
