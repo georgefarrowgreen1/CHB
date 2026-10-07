@@ -243,6 +243,11 @@ let mailWillFail = false;
   // the deposits group from it.
   const backChk = await page.evaluate(async () => {
     const real = window.apiGet;
+    // This check is about the SERVER's (card) liability payload; the fixture's own
+    // cash-rail deposit (counted beside it since round 4) is set aside here and
+    // gated on its own below.
+    const cashRows = []; Object.keys(dbBookings).forEach((k) => dbBookings[k].forEach((b) => { if ((b.holdStatus || 'none') === 'none') { cashRows.push(b); b.holdStatus = 'returned'; } }));
+    setTimeout(() => cashRows.forEach((b) => { b.holdStatus = 'none'; }), 1500);
     const items = [
       { name: 'Sarah Pemberton', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
       { name: 'Dan Rowe', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
@@ -276,6 +281,8 @@ let mailWillFail = false;
     const real = window.apiGet;
     const keep = dbBookings['21a'].slice();
     dbBookings['21a'] = dbBookings['21a'].filter((x) => x.name !== 'Owes Money');
+    const cashRows = []; Object.keys(dbBookings).forEach((k) => dbBookings[k].forEach((b) => { if ((b.holdStatus || 'none') === 'none') { cashRows.push(b); b.holdStatus = 'returned'; } }));
+    setTimeout(() => cashRows.forEach((b) => { b.holdStatus = 'none'; }), 1500);
     window.apiGet = async (u) => (/accounts\.php/.test(u) ? { total: 0, deposit_liability: { items: [], net: 0, payouts: null } } : real(u));
     renderMoneyOverview();
     await new Promise((r) => setTimeout(r, 900));
@@ -291,6 +298,19 @@ let mailWillFail = false;
     return out;
   });
   ok(/Nobody owes you anything and no deposits are held/.test(calmChk.h), `the headline says everything is clear in one sentence (${calmChk.h})`);
+  // A CASH deposit is held too (round 4): the ring fence is Square money only, so the
+  // landing used to say "no deposits are held" over one Today was asking to return.
+  await page.waitForTimeout(1600);
+  const cashChk = await page.evaluate(async () => {
+    const real = window.apiGet;
+    window.apiGet = async (u) => (/accounts\.php/.test(u) ? { total: 0, deposit_liability: { items: [], net: 0, payouts: null } } : real(u));
+    renderMoneyOverview();
+    await new Promise((r) => setTimeout(r, 900));
+    window.apiGet = real;
+    return { rows: (document.getElementById('mo-back-rows') || {}).textContent || '', head: (document.getElementById('mo-headline') || {}).textContent || '' };
+  });
+  ok(/Cash Deposit/.test(cashChk.rows) && /paid by bank transfer/.test(cashChk.rows), `a cash-held deposit is in To give back, labelled (${cashChk.rows.slice(0, 80)})`);
+  ok(/of deposits is held/.test(cashChk.head), `…and the headline no longer says none is held (${cashChk.head})`);
   ok(calmChk.shown && /nothing to collect/i.test(calmChk.calm) && /no deposits to give back/i.test(calmChk.calm), `…and one calm line replaces two rows (${calmChk.calm})`);
   ok(!calmChk.grps.includes('mocollect') && !calmChk.grps.includes('moback'), `…with neither calm group rendered (${calmChk.grps.join(',')})`);
 
@@ -614,6 +634,13 @@ let mailWillFail = false;
   // PARTIAL return that email is the only place the guest ever learns why the rest was
   // kept, so with SMTP down the money moved, the owner believed they had been told, and
   // the reason existed nowhere. Driven through the real dialogs with a real failure.
+  // THE FIRST RETURN RE-READ THE BOOKING (round 4): the hub used to go on saying
+  // "still held" with Return on offer. It now reads the server's 'returned' state —
+  // so to drive a SECOND return the fixture's deposit is put back first.
+  const after1 = await page.evaluate(() => { const b = findBookingById('b3'); return b ? b.holdStatus : '(none)'; });
+  ok(after1 === 'returned', `after a return the booking is re-read, not left saying "held" (${after1})`);
+  { const r3 = rows.find((x) => x.id === 3); if (r3) r3.hold_status = 'charged'; }
+  await page.evaluate(() => loadData());
   mailWillFail = true;
   const ret2 = page.evaluate(() => returnDeposit('b3'));
   await page.waitForTimeout(700);

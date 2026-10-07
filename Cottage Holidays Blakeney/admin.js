@@ -17515,7 +17515,7 @@ function moAsyncFill() {
                     Object.keys(dbBookings).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
                         if ((b.holdStatus || 'none') !== 'none') return;
                         const h = damageHeld(pk, b);
-                        if (h.held > 0.005) cashItems.push({ name: b.name, net: h.held, check_in: b.checkIn, check_out: b.checkOut, cash: true });
+                        if (h.held > 0.005) cashItems.push({ name: b.name, net: h.held, check_in: b.checkIn, check_out: b.checkOut, cash: (b.paymentMethod || 'by hand').toLowerCase() });
                     }));
                 } catch (e) {}
                 const items = (L.items || []).concat(cashItems);
@@ -17525,7 +17525,7 @@ function moAsyncFill() {
                 __moCalmState.back = !items.length;
                 if (items.length) {
                     const today2 = todayDashed();
-                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return') + (it.cash ? ' · paid in cash' : '');
+                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return') + (it.cash ? ' · paid ' + (/^by /.test(it.cash) ? it.cash : 'by ' + it.cash) : '');
                     // `it.net` — the liability items carry outstanding/awaiting/rental/fee/gross/feeBack/net and NO `amount`.
                     slot.innerHTML = bhubFoldGrp('moback', 'To give back', 'deposits still held',
                         `<span class="bhub-payline-fig" id="mo-back-fig">${gbp(backNet)}</span>`,
