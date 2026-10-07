@@ -50,17 +50,27 @@ try {
     }
 } catch (\Throwable $e) {
 }
-try {
-    $st = db()->prepare(
-        'SELECT prop_key, check_in, check_out FROM ical_blocks WHERE check_out >= ? AND check_in <= ? ORDER BY check_in',
-    );
-    $st->execute([$today, $horizon]);
-    foreach ($st->fetchAll() as $b) {
-        $bkByProp[$b['prop_key']][] = $b;
-        $hasExternal = true;
+// Imported entries split into STAYS (a platform guest) and HOLDS (the owner's
+// block or a host's "Not available") — psug_is_stay. A hold is availability, not
+// a booking: it counts towards neither occupancy nor demand.
+$heldByProp = [];
+foreach (['SELECT prop_key, check_in, check_out, source, kind FROM ical_blocks WHERE check_out >= ? AND check_in <= ? ORDER BY check_in',
+          'SELECT prop_key, check_in, check_out, source FROM ical_blocks WHERE check_out >= ? AND check_in <= ? ORDER BY check_in'] as $sql) {
+    try {
+        $st = db()->prepare($sql);
+        $st->execute([$today, $horizon]);
+        foreach ($st->fetchAll() as $b) {
+            if (psug_is_stay($b)) {
+                $bkByProp[$b['prop_key']][] = $b;
+                $hasExternal = true;
+            } else {
+                $heldByProp[$b['prop_key']][] = $b;
+            }
+        }
+        break; // the first shape that answers wins (the kind column is migration-124)
+    } catch (\Throwable $e) {
+        /* no kind column yet, or no ical_blocks at all on older installs */
     }
-} catch (\Throwable $e) {
-    /* ical_blocks not present on older installs */
 }
 
 function is_booked_date($bookings, $date)
@@ -71,19 +81,6 @@ function is_booked_date($bookings, $date)
         }
     }
     return false;
-}
-// DISTINCT booked nights within [start, end) — counts each day at most once, so
-// overlapping ranges from the two sources (direct + Airbnb/Vrbo) never double-count.
-function booked_days_in($bookings, $start, $end)
-{
-    $n = 0;
-    $days = (int) round((strtotime($end) - strtotime($start)) / 86400);
-    for ($i = 0; $i < $days; $i++) {
-        if (is_booked_date($bookings, date('Y-m-d', strtotime($start . " +$i days")))) {
-            $n++;
-        }
-    }
-    return $n;
 }
 // Merge overlapping/adjacent reservation intervals (across both sources) so gap
 // detection sees one continuous calendar rather than two interleaved feeds.
@@ -153,11 +150,14 @@ foreach ($props as $p) {
     }
 
     // 90-day + 30-day occupancy (direct bookings + Airbnb/Vrbo, distinct days).
+    // Held nights leave the denominator: they were never for sale.
+    $held = $heldByProp[$k] ?? [];
     $win90 = date('Y-m-d', strtotime('+90 days'));
     $win30 = date('Y-m-d', strtotime('+30 days'));
-    $booked30 = booked_days_in($bk, $today, $win30);
-    $occ90 = (int) round((booked_days_in($bk, $today, $win90) / 90) * 100);
-    $occ30 = (int) round(($booked30 / 30) * 100);
+    [$booked30, $sell30] = psug_occupancy($bk, $held, $today, $win30);
+    [$booked90, $sell90] = psug_occupancy($bk, $held, $today, $win90);
+    $occ90 = $sell90 > 0 ? (int) round(($booked90 / $sell90) * 100) : 0;
+    $occ30 = $sell30 > 0 ? (int) round(($booked30 / $sell30) * 100) : 0;
     $chan = $hasExternal ? ' (direct + Airbnb/Vrbo)' : '';
 
     // Weekend nights in the next 90 days: total / free / booked.
@@ -167,6 +167,9 @@ foreach ($props as $p) {
         $d = date('Y-m-d', strtotime("+$i days"));
         if (!in_array((int) date('w', strtotime($d)), $weekendDays, true)) {
             continue;
+        }
+        if (is_booked_date($held, $d) && !is_booked_date($bk, $d)) {
+            continue; // held back, not for sale
         }
         $wkTotal++;
         if (!is_booked_date($bk, $d)) {
@@ -219,7 +222,7 @@ foreach ($props as $p) {
     }
 
     // 3) Quiet next 30 days — flag for a last-minute push (Phase 2 will automate it).
-    if ($occ30 < 40 && $booked30 < 30) {
+    if ($sell30 >= 7 && $occ30 < 40 && $booked30 < 30) {
         $suggestions[] = [
             'id' => 'quiet30-' . $k,
             'prop_key' => $k,
@@ -239,7 +242,7 @@ foreach ($props as $p) {
     // 4) Orphan gaps: 1–2 night gaps between reservations (across BOTH channels)
     // that your minimum stay may be leaving empty. Merge first so interleaved
     // direct + Airbnb/Vrbo ranges read as one calendar.
-    $orphans = psug_future_orphans(merge_intervals($bk), $psugToday);
+    $orphans = psug_future_orphans(merge_intervals($bk), $psugToday, $held);
     if ($orphans > 0) {
         $suggestions[] = [
             'id' => 'orphan-' . $k,

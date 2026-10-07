@@ -72,19 +72,88 @@ function psug_unmet_weeks_card(array $weeks, int $min = 3): ?array
     ];
 }
 
-// Gaps of 1–2 nights between stays that START today or later.
-function psug_future_orphans(array $merged, string $today): int
+// Gaps of 1–2 nights between stays that START today or later. $holds, when
+// given, removes gaps a hold touches (psug_gaps_without_holds).
+function psug_future_orphans(array $merged, string $today, array $holds = []): int
 {
     $n = 0;
+    $gaps = [];
     for ($i = 0; $i < count($merged) - 1; $i++) {
-        $from = $merged[$i][1];
+        $gaps[] = [$merged[$i][1], $merged[$i + 1][0]];
+    }
+    if ($holds) {
+        $gaps = psug_gaps_without_holds($merged, $holds);
+    }
+    foreach ($gaps as [$from, $to]) {
         if ($from < $today) {
             continue;
         }
-        $gap = (int) round((strtotime($merged[$i + 1][0]) - strtotime($from)) / 86400);
+        $gap = (int) round((strtotime($to) - strtotime($from)) / 86400);
         if ($gap >= 1 && $gap <= 2) {
             $n += $gap;
         }
     }
     return $n;
+}
+
+// AN IMPORTED ENTRY IS A STAY OR A HOLD, NOT BOTH. A platform guest's stay is a
+// booking; the owner's own block and a host's "Not available" hold
+// (kind 'blocked', migration-124) are availability. Counting a hold as a booking
+// made a held-back week read as sold out (weekends "70% booked → raise it") and a
+// held month as busy. The client's isOtaBlock is the same rule.
+function psug_is_stay(array $row): bool
+{
+    $src = (string) ($row['source'] ?? '');
+    return $src !== 'owner' && (string) ($row['kind'] ?? '') !== 'blocked';
+}
+
+// Booked share of the nights that were actually FOR SALE in [start, end): held
+// nights leave the denominator rather than counting as unsold. Returns
+// [booked, sellable], both distinct-night counts.
+function psug_occupancy(array $stays, array $holds, string $start, string $end): array
+{
+    $inAny = function (array $rows, string $d): bool {
+        foreach ($rows as $r) {
+            if ($d >= $r['check_in'] && $d < $r['check_out']) {
+                return true;
+            }
+        }
+        return false;
+    };
+    $booked = 0;
+    $sellable = 0;
+    for ($d = $start; $d < $end; $d = date('Y-m-d', strtotime($d . ' 12:00:00 +1 day'))) {
+        if ($inAny($stays, $d)) {
+            $booked++;
+            $sellable++;
+        } elseif (!$inAny($holds, $d)) {
+            $sellable++;
+        }
+    }
+    return [$booked, $sellable];
+}
+
+// Gaps between STAYS, minus any a hold touches: a night the owner held back is
+// deliberate, never an orphan to discount.
+function psug_gaps_without_holds(array $merged, array $holds): array
+{
+    $out = [];
+    for ($i = 0; $i < count($merged) - 1; $i++) {
+        $a = $merged[$i][1];
+        $b = $merged[$i + 1][0];
+        if ($b <= $a) {
+            continue;
+        }
+        $held = false;
+        foreach ($holds as $h) {
+            if ($h['check_in'] < $b && $h['check_out'] > $a) {
+                $held = true;
+                break;
+            }
+        }
+        if (!$held) {
+            $out[] = [$a, $b];
+        }
+    }
+    return $out;
 }

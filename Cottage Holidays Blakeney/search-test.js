@@ -2145,6 +2145,28 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         // window and rises when nights are booked.
         vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=[{id:800,checkIn:'${sYr + 1}-09-02',checkOut:'${sYr + 1}-09-05',adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}];`, ctx);
         check('B: pace reads the window occupancy — 0 when empty, full when booked', ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-01`, 3) === 0 && ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-09-02`, 3) === 1, `empty ${ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-01`, 3)} booked ${ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-09-02`, 3)}`);
+        // HOLDS ARE NOT BOOKINGS: a host's "Not available" hold and the owner's own block
+        // are neither booked nor for sale — a platform STAY still counts.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBlocks.jollyboat=[{checkIn:'${sYr + 1}-10-01',checkOut:'${sYr + 1}-10-04',source:'airbnb',kind:'blocked'},{checkIn:'${sYr + 1}-10-04',checkOut:'${sYr + 1}-10-06',source:'owner'},{checkIn:'${sYr + 1}-10-06',checkOut:'${sYr + 1}-10-08',source:'airbnb',kind:'reserved'}];`, ctx);
+        const hOcc = ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-01`, 5);
+        const sOcc = ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-06`, 2);
+        const mixOcc = ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-04`, 6);
+        check('B: a host hold and an owner block never read as booked', hOcc === 0, `held window ${hOcc}`);
+        check('B: an Airbnb STAY still reads as booked', sOcc === 1, `stay window ${sOcc}`);
+        check('B: held nights leave the denominator (2 stay nights of 4 for sale)', Math.abs(mixOcc - 0.5) < 1e-9, `mixed ${mixOcc}`);
+        // …and a held month must not read as a QUIET month: holding back most of
+        // February must not drag its seasonal score below an un-held twin.
+        const seedM = (holdFeb) => {
+            const r = [];
+            for (const y of [sYr - 1, sYr - 2]) for (const m of ['02', '03']) for (const d of [3, 10]) r.push({ id: r.length + 1, checkIn: `${y}-${m}-${String(d).padStart(2, '0')}`, checkOut: `${y}-${m}-${String(d + 3).padStart(2, '0')}`, adults: 2, children: 0, agreedPrice: { total: 450, perNight: 150, nights: 3 } });
+            ctx.__seedH = r;
+            ctx.__seedHB = holdFeb ? [sYr - 1, sYr - 2].map((y) => ({ checkIn: `${y}-02-14`, checkOut: `${y}-02-28`, source: 'owner' })) : [];
+            vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedH;dbBlocks.jollyboat=__seedHB;', ctx);
+            const MM = ctx.chbPriceModel();
+            return MM.seasonal(`${sYr}-02-10`) - MM.seasonal(`${sYr}-03-10`);
+        };
+        const plainGap = seedM(false), heldGap = seedM(true);
+        check('a held-back February reads busier per sellable night, never quieter', heldGap > plainGap + 0.01, `feb−mar plain ${plainGap.toFixed(3)} held ${heldGap.toFixed(3)}`);
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
     } else fail('chbSmartPrice / chbPriceModel missing from the bundle');
 

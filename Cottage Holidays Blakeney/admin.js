@@ -19827,7 +19827,7 @@ function chbPriceModelSig() {
         }));
     } catch (e) {}
     try {
-        Object.keys(dbBlocks || {}).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { sig += (bl.checkIn || '') + (bl.checkOut || '') + (bl.source || '') + '|'; }));
+        Object.keys(dbBlocks || {}).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { sig += (bl.checkIn || '') + (bl.checkOut || '') + (bl.source || '') + (bl.kind || '') + '|'; }));
     } catch (e) {}
     // Pending enquiries feed the forward-demand signal (A), so a change in them must
     // rebuild the model too.
@@ -19893,6 +19893,22 @@ function chbPriceModel() {
     if (minD && maxD) {
         let d = new Date(minD);
         for (let i = 0; d <= maxD && i < 4000; d = new Date(d.getTime() + dayMs), i++) availByMonth[d.getMonth()] += cottages * recW(d.getTime());
+        // A held night (the owner's block, a host's "Not available") was never for
+        // sale: take it out of the denominator, or a held-back month reads as a
+        // quiet one and the model discounts it.
+        try {
+            Object.keys(dbBlocks || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
+                if (!bl || !bl.checkIn || !bl.checkOut || isOtaBlock(bl)) return;
+                let h = new Date(bl.checkIn + 'T00:00:00');
+                const he = new Date(bl.checkOut + 'T00:00:00');
+                for (let i = 0; h < he && i < 400; h = new Date(h.getTime() + dayMs), i++) {
+                    if (h < minD || h > maxD) continue;
+                    const hi = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+                    if ((dbBookings[pk] || []).some((b) => b.checkIn <= hi && hi < b.checkOut)) continue;
+                    availByMonth[h.getMonth()] = Math.max(0, availByMonth[h.getMonth()] - recW(h.getTime()));
+                }
+            }));
+        } catch (e) {}
     }
     const totalOcc = occByMonth.reduce((a, b) => a + b, 0);
     const totalAvail = availByMonth.reduce((a, b) => a + b, 0);
@@ -19975,15 +19991,24 @@ function chbPriceModel() {
 // Current booked share (0..1) of a specific window for a cottage — bookings + OTA
 // blocks. Used by the pace-vs-pickup check (B) to see if a period is filling behind
 // or ahead of its usual pace.
+// Booked share of the nights that are FOR SALE: a stay (direct or a platform
+// guest) is a booking; the owner's block and a host's "Not available" hold are
+// neither booked nor for sale, so they leave the denominator. (cmdkBookClash
+// answers availability and counted every hold as a booking, so a held week read
+// as selling fast and firmed the price.)
 function chbWindowOccupancy(pk, fromIso, nights) {
     try {
-        let booked = 0;
+        let booked = 0, sellable = 0;
         const n = Math.max(1, nights || 1);
+        const stays = (dbBookings[pk] || []).filter((b) => b.checkIn && b.checkOut)
+            .concat((((dbBlocks || {})[pk]) || []).filter((bl) => isOtaBlock(bl)));
+        const holds = (((dbBlocks || {})[pk]) || []).filter((bl) => bl && bl.checkIn && bl.checkOut && !isOtaBlock(bl));
         for (let i = 0; i < n; i++) {
-            const dayIso = chbIsoShift(fromIso, i);
-            if (cmdkBookClash(pk, dayIso, chbIsoShift(dayIso, 1), null)) booked++;
+            const d = chbIsoShift(fromIso, i);
+            if (stays.some((x) => x.checkIn <= d && d < x.checkOut)) { booked++; sellable++; }
+            else if (!holds.some((x) => x.checkIn <= d && d < x.checkOut)) sellable++;
         }
-        return n > 0 ? booked / n : 0;
+        return sellable > 0 ? booked / sellable : 0;
     } catch (e) { return 0; }
 }
 // Recommended nightly rate for a stay. Returns {rate, pct (vs current, −=discount),
