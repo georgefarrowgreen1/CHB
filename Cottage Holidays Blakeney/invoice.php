@@ -463,7 +463,12 @@ $grand = round($total + $damages, 2);
 // the card ledger ahead of the reconciled column, an invoice reading the column
 // understated Paid and overstated Balance due — on a document the guest opens. The
 // email, the pay screen and the charge were unified; this was the fourth site.
-$paid = round(booking_paid_so_far($b) + ($depositCharged ? $damages : 0), 2);
+// A deposit KEPT on the cash rail is already inside deposit_paid (cash has no
+// hold_* record to add from), so adding it again made "£800 of £750".
+$cashRail = empty($b['hold_payment_id']) && in_array($holdStatus, ['kept', 'none', 'returned', 'released'], true);
+$paid = round(booking_paid_so_far($b) + ($depositCharged && !$cashRail ? $damages : 0), 2);
+// The receipts list (below) states what came IN, before any of it went back.
+$paidReceived = $paid;
 // A CASH deposit that has gone back is still inside deposit_paid (the cash rail
 // has no ledger row to net it out), so "£310 of £260 received" printed once it
 // was returned. Money given back is not money received: cap at the total.
@@ -555,7 +560,7 @@ foreach ($payments as $pr) {
         $creditsShown += (float) $pr['amount'];
     }
 }
-$unlisted = round($paid - $creditsShown, 2);
+$unlisted = round($paidReceived - $creditsShown, 2);
 if ($unlisted > 0.005) {
     $method = trim((string) ($b['payment_method'] ?? ''));
     $payments[] = [

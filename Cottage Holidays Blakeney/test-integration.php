@@ -4695,6 +4695,26 @@ it_check('§44 a part return WITH a reason settles the deposit (kept) and books 
 //     cash that paid the stay (it dropped it once ANY ledger row existed).
 $inv44 = http($noJar, 'GET', '/invoice.php?b=' . $p44 . '&token=' . substr(hash_hmac('sha256', 'invoice:' . $p44, $SECRET), 0, 32));
 it_check('§44 the invoice lists the cash receipt beside the deposit return', $inv44['code'] === 200 && preg_match('/Received[^<]{0,40}cash/i', $inv44['raw']) === 1, substr(strip_tags($inv44['raw']), 0, 300));
+// (e) A correction DOWN shrinks the manual rows (a £700 typed by mistake must
+//     not stay on the ledger, the invoice or a later cancellation's income).
+$e44In = $ukPlus(130); $e44Out = $ukPlus(133);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status) VALUES ('$propKey','Typo Cash','typo44@gmail.com','$e44In','$e44Out',2,0,'unpaid',0,700,700,0,3,50,'none')");
+$e44 = (int) $rootDb->lastInsertId();
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Cash']);
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'unpaid']);
+$left44 = (float) $rootDb->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = $e44 AND kind = 'manual'")->fetchColumn();
+it_check('§44 setting a cash booking back to Unpaid removes its manual receipt rows', abs($left44) < 0.005, (string) $left44);
+// (f) A CARD payment typed in by hand writes no manual twin (the card row is booked elsewhere).
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Card (terminal)']);
+$card44 = (int) $rootDb->query("SELECT COUNT(*) FROM payments WHERE booking_id = $e44 AND kind = 'manual'")->fetchColumn();
+it_check('§44 a card payment recorded by hand writes no manual ledger twin', $card44 === 0, (string) $card44);
+// (g) The cash cancel cap is the RENTAL received — the deposit is owed back on its own.
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Cash', 'deposit_collected' => 1]);
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $e44, 'refund_amount' => 750]);
+it_check('§44 a cash refund cannot include the deposit (capped at the £700 rental)', $r['code'] === 400 && strpos($r['raw'], '700.00') !== false, $r['raw']);
+$rootDb->exec("DELETE FROM payments WHERE booking_id = $e44");
+$rootDb->exec("DELETE FROM bookings WHERE id = $e44");
 $rootDb->exec("DELETE FROM payments WHERE booking_id IN ($c44, $p44)");
 $rootDb->exec("DELETE FROM bookings WHERE id = $p44");
 

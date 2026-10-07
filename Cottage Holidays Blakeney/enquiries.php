@@ -90,9 +90,15 @@ function enq_real_date($d): bool
 }
 
 /** '' when every field fits its column, else a sentence naming the field. */
-function enq_length_problem(array $in): string
+function enq_length_problem(array $in, bool $adminEdit = false): string
 {
     $caps = ['name' => [160, 'Your name'], 'email' => [190, 'Your email address'], 'phone' => [60, 'Your phone number'], 'postcode' => [12, 'Your postcode'], 'message' => [5000, 'Your message'], 'address' => [500, 'Your address']];
+    // An owner EDIT re-saves what is already stored: the TEXT columns (message,
+    // address) hold whatever an older enquiry carried, so only the real column
+    // limits apply there — a long old message must not make the edit fail.
+    if ($adminEdit) {
+        unset($caps['message'], $caps['address']);
+    }
     foreach ($caps as $k => [$max, $label]) {
         if (mb_strlen(trim((string) ($in[$k] ?? ''))) > $max) {
             return $label . ' is too long — please keep it under ' . $max . ' characters.';
@@ -215,7 +221,7 @@ if ($action === 'submit') {
     }
     // Field lengths match the columns (schema.sql), refused in words rather
     // than a strict-mode insert error that loses the whole enquiry.
-    $lenProblem = enq_length_problem($in);
+    $lenProblem = enq_length_problem($in, $isAdminEdit);
     if ($lenProblem !== '') {
         json_out(['error' => $lenProblem], 400);
     }
@@ -449,7 +455,8 @@ if ($action === 'submit') {
     // acknowledgement when they originally enquired, and the owner doesn't
     // need an email about an enquiry they just edited themselves.
     if ($isAdminEdit) {
-        json_out(op_finish($opTok, ['ok' => true, 'account_exists' => $accountExists]));
+        // The new id lets the edit carry the agreed terms across (set_terms).
+        json_out(op_finish($opTok, ['ok' => true, 'id' => $enqId, 'account_exists' => $accountExists]));
     }
     require_once __DIR__ . '/mailer.php';
     $ackName = $name;

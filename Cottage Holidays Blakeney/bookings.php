@@ -1122,7 +1122,35 @@ if ($action === 'set_payment') {
         $rentalCap = (float) $total;
     }
     $newRental = round(min($dep, $rentalCap), 2) - round(min($prevDep, $rentalCap), 2);
-    if ($newRental > 0.005 && $date) {
+    // A CARD payment typed in by hand is not a cash fact: the webhook or
+    // record_square_payment books the real card row, and a manual twin would
+    // count it twice. Its money still reaches the books through deposit_paid.
+    $isCardEntry = payment_rail(array_merge($b, ['payment_method' => $method])) === 'card';
+    if ($newRental < -0.005) {
+        // A CORRECTION DOWN (or back to Unpaid) shrinks the newest manual rows by
+        // the same amount, so the ledger, the invoice and a later cancellation's
+        // retained income never keep money that was recorded by mistake.
+        $toRemove = round(-$newRental, 2);
+        try {
+            $mq = db()->prepare("SELECT id, amount FROM payments WHERE booking_id = ? AND kind = 'manual' ORDER BY created_at DESC, id DESC");
+            $mq->execute([$id]);
+            foreach ($mq->fetchAll() as $mr) {
+                if ($toRemove <= 0.005) {
+                    break;
+                }
+                $amt = round((float) $mr['amount'], 2);
+                if ($amt <= $toRemove + 0.005) {
+                    db()->prepare('DELETE FROM payments WHERE id = ?')->execute([(int) $mr['id']]);
+                    $toRemove = round($toRemove - $amt, 2);
+                } else {
+                    db()->prepare('UPDATE payments SET amount = ? WHERE id = ?')->execute([round($amt - $toRemove, 2), (int) $mr['id']]);
+                    $toRemove = 0.0;
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    if ($newRental > 0.005 && $date && !$isCardEntry) {
         try {
             $mid = 'manual-' . bin2hex(random_bytes(8));
             insert_payment_row($id, $mid, 'manual', round($newRental, 2), 'MANUAL', $b['name'] ?? '', $b['prop_key'] ?? '', $method !== '' ? $method : '');
@@ -2217,7 +2245,12 @@ if ($action === 'cancel') {
             // Off the card rail the money was paid in cash or by transfer and the
             // card ledger is empty — capping there refused every refund on a cash
             // booking ("Only £0.00 is still refundable"). Cap at what was paid.
-            $cancelCap = payment_rail($b) === 'card' ? booking_ledger_net($id) : booking_paid_so_far($b);
+            // The refundable deposit on that rail is not part of this figure: it
+            // is reported as owed back on its own (depositOwed below), so capping
+            // at everything paid let the same £50 be refunded AND owed.
+            $cancelCap = payment_rail($b) === 'card'
+                ? booking_ledger_net($id)
+                : round(min(booking_paid_so_far($b), max(0.0, booking_rental_price($b)) ?: booking_paid_so_far($b)), 2);
         } catch (\Throwable $e) {
             $cancelCap = null; // ledger unreadable — leave it to Square, as before
         }

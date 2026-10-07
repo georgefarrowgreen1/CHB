@@ -12236,7 +12236,9 @@ function hubActivityHtml(bundle, bookingId) {
         html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(p.created_at || ''))}</span><span class="bhub-hist-what">${hubLedgerRowHtml(p, bookingId, true)}</span></div>`,
     }));
     const evs = (bundle.events || [])
-        .filter((e) => e.action !== 'payment.card')
+        // A hand-recorded receipt is a dated 'manual' ledger row now (migration-129),
+        // so its "Payment recorded" log line is the same fact said twice.
+        .filter((e) => e.action !== 'payment.card' && !(e.action === 'payment.recorded' && (bundle.payments || []).some((p) => p.kind === 'manual')))
         .map((e) => {
             const exp = (e.body || e.subject)
                 ? `<details class="bhub-feed-mail"><summary>Show email</summary><div class="bhub-feed-mailbody">${e.subject ? `<strong>${escapeHtml(e.subject)}</strong><br>` : ''}${escapeHtml(e.body || '').replace(/\n/g, '<br>')}</div></details>`
@@ -16874,7 +16876,9 @@ async function cancelBooking(bookingId) {
     }[pt.tier];
     const prefill = pt.tier === 'full' ? received : pt.tier === 'none' ? 0 : Math.round(received / 2 / 5) * 5;
     const vals = await glassForm(
-        verdict + '\n\nThis frees the dates and emails the guest. The refundable damage deposit is returned automatically.',
+        verdict + '\n\nThis frees the dates and emails the guest. ' + (depositRailInfo(booking).card
+            ? 'The refundable damage deposit is returned automatically.'
+            : 'A deposit paid ' + (booking.paymentMethod ? 'by ' + depositRailInfo(booking).label : 'by hand') + ' is yours to hand back — it is listed to return, not refunded here.'),
         [
             {
                 id: 'refund',
@@ -17747,7 +17751,7 @@ function mfPaint() {
     });
     let grossIn = 0, feeSum = 0, feeKnown = 0, totIn = 0, totOut = 0, totWait = 0;
     info.forEach((x) => {
-        if (!x.isReturn) {
+        if (!x.isReturn && x.p.kind !== 'manual') { // card reconciliation: cash is not a card figure
             grossIn += x.gross;
             if (x.fee != null) { feeSum += x.fee; feeKnown++; }
         }

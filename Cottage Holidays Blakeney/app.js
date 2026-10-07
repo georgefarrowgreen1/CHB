@@ -558,6 +558,9 @@ function chbRunAct(el, name, event) {
             try {
                 el.disabled = false;
                 el.removeAttribute('aria-busy');
+                // The memo is for an overlay THIS press opened; once the work is
+                // done it must not adopt an unrelated later overlay.
+                if (__chbPressed && __chbPressed.el === el) setTimeout(() => { if (__chbPressed && __chbPressed.el === el) __chbPressed = null; }, 0);
             } catch (e) {}
         };
         try {
@@ -14649,7 +14652,15 @@ document.addEventListener('keydown', (e) => {
                 restore();
                 // A button the dispatcher disabled is unfocusable until its work
                 // settles; try again once it is free.
-                if (document.activeElement !== tt) setTimeout(restore, 400);
+                // …but only if focus is STILL lost then: the closer's own handler may
+                // have placed it deliberately (✨ Draft focuses the message box), and
+                // another overlay may have opened in the meantime.
+                if (document.activeElement !== tt) setTimeout(() => {
+                    const a2 = document.activeElement;
+                    const lost = !a2 || a2 === document.body || el.contains(a2);
+                    const otherOpen = Array.from(document.querySelectorAll(SEL)).some((o) => o !== el && isOpen(o));
+                    if (lost && !otherOpen) restore();
+                }, 400);
             } else {
                 // No opener: keep focus inside whatever overlay is still open.
                 const still = Array.from(document.querySelectorAll(SEL)).filter((o) => o !== el && isOpen(o));
@@ -19333,8 +19344,9 @@ async function saveModal() {
         const enq = enquiries.find((e) => e.id === id);
         if (!enq) return;
         try {
-            // Re-submit replaces the enquiry: decline the old, submit the new.
-            await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
+            // Re-submit replaces the enquiry: submit the new FIRST, then decline the
+            // old — the other order left the enquiry declined whenever the
+            // resubmit was refused (a clash, a validation sentence).
             const resub = {
                 action: 'submit',
                 prop_key: propKey,
@@ -19361,8 +19373,19 @@ async function saveModal() {
             // The resubmit is an INSERT — the deterministic id dedupes a hand
             // retry (the re-decline ahead of it is idempotent either way).
             resub.op_id = chbOpFor(['enq-edit', enq.dbId, resub]);
-            await apiPost('enquiries.php', resub);
+            const made = await apiPost('enquiries.php', resub);
             chbOpBump();
+            await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
+            // THE AGREED TERMS TRAVEL WITH THE EDIT (migration-128): the new row
+            // started blank, so approval fell back to the standard price.
+            const newId = made && Number(made.id);
+            if (newId && (enq.priceOverride || enq.planPct || enq.planDue)) {
+                try {
+                    await apiPost('enquiries.php', { action: 'set_terms', id: newId, price_override: enq.priceOverride ? String(enq.priceOverride) : '', plan_pct: enq.planPct ? String(enq.planPct) : '', plan_due: enq.planDue || '' });
+                } catch (e2) {
+                    toast('Enquiry updated — but the agreed price/plan could not be carried over; set it again on the enquiry.', 'error');
+                }
+            }
             await loadData();
             closeModal();
             renderInbox();
