@@ -4778,6 +4778,32 @@ $r = http($anon46, 'GET', '/content.php');
 it_check('§46 the sent count is never public', strpos($r['raw'], 'mail-sent-days') === false, '');
 $rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§46%'");
 
+echo "\n== §47 Activity log: the week, what needs a look, and Seen it ==\n";
+$rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§47%'");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'activity-seen'");
+$rootDb->exec("INSERT INTO activity_log (category, action, summary, severity, actor) VALUES ('email','email.gaveup','§47 gave up','warn','test'), ('system','csp.violation','§47 blocked','warn','test')");
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'summary']);
+$s47 = $r['json'] ?? [];
+$techs47 = fn($needs) => array_column((array) $needs, 'tech');
+$need47 = array_values(array_filter($s47['needs'] ?? [], fn($n) => ($n['tech'] ?? '') === '§47 gave up'));
+it_check('§47 the summary carries seven days ending today', count($s47['days'] ?? []) === 7 && ($s47['days'][6]['date'] ?? '') === date('Y-m-d'), $r['raw']);
+it_check('§47 an email that gave up needs a look; a blocked script does not', count($need47) === 1 && !in_array('§47 blocked', $techs47($s47['needs'] ?? []), true), $r['raw']);
+$ids47 = $need47[0]['ids'] ?? [];
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'seen', 'ids' => $ids47]);
+it_check('§47 Seen it is stored', ($r['json']['ok'] ?? false) === true && count($ids47) > 0, $r['raw']);
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'summary']);
+it_check('§47 …and a seen warning no longer needs a look', !in_array('§47 gave up', $techs47($r['json']['needs'] ?? []), true), $r['raw']);
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'seen', 'ids' => []]);
+it_check('§47 marking nothing is refused in words', $r['code'] === 400, $r['raw']);
+$anon47 = [];
+$r = http($anon47, 'POST', '/activity-log.php', ['action' => 'summary']);
+it_check('§47 a visitor cannot read the summary', $r['code'] === 401, $r['raw']);
+$r = http($anon47, 'GET', '/content.php');
+it_check('§47 what the owner has seen is never public', strpos($r['raw'], 'activity-seen') === false, '');
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'list', 'category' => 'all', 'q' => '§47', 'limit' => 50]);
+it_check('§47 rows carry their id and plain title', isset($r['json']['events'][0]['id']) && array_key_exists('action', $r['json']['events'][0] ?? []), $r['raw']);
+$rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§47%'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

@@ -13,6 +13,26 @@ require_admin();
 
 $in = body();
 $action = $in['action'] ?? 'list';
+
+// The owner's "Seen it" record: activity_log ids, newest kept (internal key).
+function activity_seen_ids()
+{
+    $v = content_json('activity-seen', []);
+    return is_array($v) ? array_values(array_filter(array_map('intval', $v))) : [];
+}
+
+if ($action === 'summary') {
+    json_out(['ok' => true] + activity_summary(date('Y-m-d'), activity_seen_ids()));
+}
+if ($action === 'seen') {
+    $ids = array_values(array_filter(array_map('intval', (array) ($in['ids'] ?? []))));
+    if (!$ids) {
+        json_out(['error' => 'Nothing to mark as seen.'], 400);
+    }
+    $all = array_values(array_unique(array_merge(activity_seen_ids(), $ids)));
+    content_set_scalar('activity-seen', array_slice($all, -400));
+    json_out(['ok' => true, 'seen' => count($ids)]);
+}
 if ($action !== 'list') {
     json_out(['error' => 'Unknown action'], 400);
 }

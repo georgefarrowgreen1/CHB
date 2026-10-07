@@ -3532,6 +3532,24 @@ switched-off footnote, the subtitle under the title, and the ring's orbit/glow.
   icon-only badges with spoken states, the script pin, Check again reloading) and
   layout-test's /status scene (selectors re-aimed).
 
+## The Activity log is a week, a to-do and a story (approved demo, built)
+
+Manage → Activity log (`#act-log-app`, built once by `alShell()` in admin.js; `.al-*` in admin.css).
+- **Server**: `activity-log.php` gains `summary` (`activity_summary($today, $seen)` in activity-lib.php — seven
+  days of counts/warnings and the NEEDS list: warnings `status_warn_kind` judges as needing the owner, unseen,
+  grouped by action+title, max 6) and `seen` {ids} (internal key **`activity-seen`**, last 400 ids). `list` is
+  unchanged except rows now carry `id`/`action`/`entity`/`entity_id` and, for known warnings, a plain `nice`
+  title + `verdict` — one judgement shared with the Status page.
+- **Client**: a week card (bars + "needs a look" capsule; tap a day to filter), the Needs-a-look card (Seen it →
+  POST seen, row leaves), a pill search (250ms debounce, server `q`), five ICON tabs (All/Bookings/Money/Messages/
+  System via `AL_GROUP`) with count badges and a sliding pill (`--al-i`), the log grouped by day with consecutive
+  same-action rows collapsed ×N, each row expanding to facts, the raw code and "Open the booking". "Show older
+  activity" grows the page by `ACT_LOG_LIMIT` (150) to `ACT_LOG_MAX` (500); past that it says to search. Live: a
+  quiet refresh every 30s while the view is up marks arrivals.
+- The shell is built ONCE and its parts repainted, so typing in search never loses focus.
+- Gates: ui-test-activitylog.js, test-integration §47 (summary judgement, seen excludes, 400 on empty, owner-only,
+  never public), smoke §13 (re-aimed to the new cap sentence), ui-test-reach (the tabs fit at 390, 44px each).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

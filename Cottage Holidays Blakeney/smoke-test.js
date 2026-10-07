@@ -2228,9 +2228,9 @@ console.log('\n§13 The activity log declares its own cap');
     check('...no bare 250 left in the log renderer', !/limit: 250/.test(adm));
     check(
         '...a full page SAYS it is capped, and names the remedy already on screen',
-        /events\.length >= ACT_LOG_LIMIT/.test(adm) &&
-            /Showing the \$\{ACT_LOG_LIMIT\} most recent/.test(adm) &&
-            /search or filter above/.test(adm),
+        /fresh\.length >= st\.limit/.test(adm) &&
+            /Show older activity/.test(adm) &&
+            /Showing the \$\{st\.limit\} most recent — search to reach older activity/.test(adm),
     );
 }
 
