@@ -446,6 +446,7 @@ function smtp_send(
         $res = smtp_transmit($fp = $open['fp'], $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders);
         smtp_quit($fp);
         if ($res['ok']) {
+            mail_sent_tally(1);
             email_outbox_kick(); // a proven-working link is the moment to retry queued mail
             return ['ok' => true, 'error' => ''];
         }
@@ -541,7 +542,28 @@ function smtp_send_batch($messages)
     if ($fp !== null) {
         smtp_quit($fp);
     }
+    mail_sent_tally(count(array_filter($results, fn($r) => !empty($r['ok']))));
     return $results;
+}
+
+// Status → Email's seven-day trace: emails that actually left, counted per day
+// in the internal key 'mail-sent-days' (14 days kept). Best-effort — a counter
+// must never cost a send, so every failure is swallowed.
+function mail_sent_tally($n)
+{
+    if ($n < 1 || !function_exists('content_json') || !function_exists('content_set_scalar')) {
+        return;
+    }
+    try {
+        $m = content_json('mail-sent-days', []);
+        $m = is_array($m) ? $m : [];
+        $d = date('Y-m-d');
+        $m[$d] = (int) ($m[$d] ?? 0) + (int) $n;
+        ksort($m);
+        $m = array_slice($m, -14, null, true);
+        content_set_scalar('mail-sent-days', $m);
+    } catch (\Throwable $e) {
+    }
 }
 
 // Everyone who should receive owner/admin activity notifications: the primary

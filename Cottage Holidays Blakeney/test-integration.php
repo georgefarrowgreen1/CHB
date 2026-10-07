@@ -4757,6 +4757,27 @@ $r = http($admin, 'POST', '/auth.php', ['action' => 'guest_crm']);
 $g45 = $r['json']['guests'][0] ?? [];
 it_check('§45 the guest list says when each guest was last invited back', array_key_exists('invited_at', $g45), $r['raw']);
 
+echo "\n== §46 Status: the week judged, the vitals traced ==\n";
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.violation','email.gaveup') AND summary LIKE '§46%'");
+$rootDb->exec("INSERT INTO activity_log (category, action, summary, severity, actor) VALUES ('system','csp.violation','§46 blocked','warn','test'), ('system','csp.violation','§46 blocked','warn','test'), ('email','email.gaveup','§46 gave up','warn','test')");
+$rootDb->prepare("REPLACE INTO content (item_key, item_value) VALUES ('mail-sent-days', ?)")->execute([json_encode(json_encode([date('Y-m-d') => 7]))]);
+$r = http($admin, 'POST', '/diagnostics.php', ['action' => 'run']);
+$in46 = $r['json']['insights'] ?? [];
+$wk = $in46['week'] ?? [];
+$csp = array_values(array_filter($wk['groups'] ?? [], fn($g) => $g['action'] === 'csp.violation'))[0] ?? [];
+$gave = array_values(array_filter($wk['groups'] ?? [], fn($g) => $g['action'] === 'email.gaveup'))[0] ?? [];
+it_check('§46 the week has seven days ending today', count($wk['days'] ?? []) === 7 && ($wk['days'][6]['date'] ?? '') === date('Y-m-d'), $r['raw']);
+it_check('§46 warnings are grouped and judged — a blocked script needs nothing', ($csp['n'] ?? 0) >= 2 && ($csp['needs'] ?? true) === false, json_encode($csp));
+it_check('§46 …and an email that gave up needs the owner, and leads', ($gave['needs'] ?? false) === true && ($wk['groups'][0]['needs'] ?? false) === true, json_encode($wk['groups'] ?? []));
+it_check('§46 the daily jobs and calendars carry a seven-day trace', count($in46['automation']['days'] ?? []) === 7 && count($in46['ical']['days'] ?? []) === 7, $r['raw']);
+it_check('§46 email counts what left, per day', ($in46['email']['sent7d'] ?? 0) >= 7 && count($in46['email']['days'] ?? []) === 7, json_encode($in46['email'] ?? null));
+it_check('§46 every calendar feed is listed', is_array($in46['ical']['list'] ?? null), $r['raw']);
+it_check('§46 the newest backup and the storage growth are reported', array_key_exists('backup', $in46) && array_key_exists('grew30d', $in46['storage'] ?? []), $r['raw']);
+$anon46 = [];
+$r = http($anon46, 'GET', '/content.php');
+it_check('§46 the sent count is never public', strpos($r['raw'], 'mail-sent-days') === false, '');
+$rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§46%'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

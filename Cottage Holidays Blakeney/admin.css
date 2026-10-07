@@ -3176,253 +3176,159 @@ body.light-mode .cmdk-editor-input {
   padding: 8px 12px 4px;
 }
 /* ============================================================
-   Status page (Manage → Status): verdict-first health readout.
-   Verdict hero → attention items → optional extras → collapsed
-   wall of passing checks → maintenance. Owner-only.
+   Status page (Manage → Status), the approved redesign: a health
+   ring, four vitals with a seven-day trace, the week's warnings
+   judged in plain words, every check grouped by system, storage,
+   and the switched-off extras. Owner-only. Motion stands down
+   under reduced motion (the killswitch + the reveal's own check).
    ============================================================ */
-.status-hero {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  max-width: 640px;
-  padding: 20px 22px;
-  margin: 0 0 20px;
-  border-radius: var(--r-lg);
-}
-.status-hero-mark {
-  /* A 28px symbol beside the title, not a 46px slab — Apple's checkmark.circle
-     is a mark, not a badge. */
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin-top: 6px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-body);
-  font-weight: 700;
-  /* White failed on all three fills (sampled dark: ok 2.78, warn 1.73 — the "!"
-     did not resolve — danger 2.99). --accent-ink measures 6.71 / 9.65 / 6.24,
-     and these fill tokens are theme-invariant so one ink serves both. NB the
-     warn fill was --warn-TEXT, which IS retuned per theme, so no single ink
-     could clear both on it. A disc is a FILL; it takes --warn. */
-  color: var(--accent-ink);
-  line-height: 1;
-}
-.status-hero.is-ok .status-hero-mark { background: var(--ok); }
-.status-hero.is-warn .status-hero-mark { background: var(--warn); }
-.status-hero.is-danger .status-hero-mark { background: var(--danger); }
-.status-hero-text { min-width: 0; flex: 1; }
-.status-hero-title {
-  font-family: var(--font-serif);
-  font-size: var(--fs-title);
-  line-height: 1.15;
-  color: var(--text-light);
-}
-.status-hero-sub {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-.status-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 13px;
-}
-.status-count {
-  font-size: var(--fs-caption);
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-}
-.status-count.ok { color: var(--ok-text); }
-.status-count.warn { color: var(--warn-text); }
-.status-count.danger { color: var(--danger-text); }
-.status-count.optional { color: var(--text-muted); }
-.status-hero-meta {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 12px;
-}
-.status-rerun {
-  /* A tinted TEXT BUTTON at the 44px floor — iOS never underlines, and the
-     outlined pill beside it is the other button grammar this card had. */
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 4px;
-  background: none;
-  border: none;
-  color: var(--accent-text);
-  font-weight: 600;
-  text-decoration: none;
-  text-underline-offset: 2px;
-  cursor: pointer;
-  font: inherit;
-  padding: 0 2px;
-}
-.status-group { max-width: 640px; margin: 0 0 20px; }
-/* A section header OUTSIDE the card keeps its tracked caps — the ONE caption
-   tier the HIG pass deliberately kept — but on .bhub-grpcap's spec (11px/600/
-   0.08em), not a second one 12px/700/0.96px a screen away from it. */
-.status-group-title {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin: 0 0 10px;
-}
-.status-group-note {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  margin: -2px 0 12px;
-  line-height: 1.45;
-}
-/* STATE IS SAID ONCE. A row said it THREE times — a 3px amber rail, a 9px dot
-   and an uppercase chip, the same colour on one 76px row — the exact rail the
-   HIG pass had already taken off .ny-row. The capsule is the statement; the
-   rail keeps its 3px of GEOMETRY and loses its colour (ROUND EIGHT: a
-   `border-left: 0` would shift every row's content). */
-.status-item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 16px;
-  margin-bottom: 8px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-left: 3px solid transparent;
-  border-radius: var(--r-sm);
-  box-shadow: none;
-}
-.status-item.is-optional { opacity: 0.92; }
-/* The dot survives for the two rows where it is the ONLY mark — the insight
-   rows and the all-clear list, neither of which carries a capsule. */
-.status-item-dot {
-  flex-shrink: 0;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  margin-top: 6px;
-}
-.status-item-body { min-width: 0; flex: 1; }
-.status-item-head {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-.status-item-label {
-  font-size: var(--fs-body);
-  font-weight: 600;
-  color: var(--text-light);
-}
-/* .status-item-chip is GONE — the state rides the house stCap() capsule now,
-   sentence case, the same one Manage and the hubs already use. */
-.status-item-detail {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  line-height: 1.45;
-  margin-top: 3px;
-}
-.status-item-hint {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  opacity: 0.85;
-  line-height: 1.4;
-  margin-top: 5px;
-}
-.status-item-hint::before { content: '\2192\00a0'; }
-.status-item-actions { margin-top: 11px; }
-.status-ok-wall { max-width: 640px; margin-bottom: 20px; }
-.status-ok-body { padding-top: 6px; }
-.status-okcat { margin-bottom: 16px; }
-.status-okcat:last-child { margin-bottom: 4px; }
-.status-okcat-title {
-  font-size: var(--fs-sub);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-  color: var(--text-muted);
-  opacity: 0.8;
-  margin-bottom: 9px;
-}
-.status-okrow {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin-bottom: 9px;
-}
-.status-okrow-label {
-  font-size: var(--fs-sub);
-  font-weight: 500;
-  color: var(--text-light);
-}
-.status-maint-title { margin-top: 26px; }
+#diagnostics-body { display: flex; flex-direction: column; gap: 20px; max-width: 640px; }
+.sp-sec { display: flex; flex-direction: column; gap: 8px; }
+.sp-cap { margin: 0; padding: 0 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.sp-capnote { font-weight: 500; opacity: 0.8; }
+.sp-card { border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); }
+@keyframes spRise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes spGrow { from { transform: scaleY(0); } }
+@keyframes spFill { from { transform: scaleX(0); } }
+@keyframes spPop { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes spDraw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+@keyframes spBreathe { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0.1; transform: scale(1.25); } }
+@keyframes spSweep { to { transform: rotate(270deg); } }
 
-/* Status page — the "Fix safe issues" action + the Insights vital-signs list. */
-.status-hero-actions {
-  margin-top: 12px;
-}
-.status-insights {
-  display: flex;
-  flex-direction: column;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-}
-.status-insight {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 13px 16px;
-}
-.status-insight + .status-insight {
-  border-top: 1px solid var(--glass-border);
-}
-.status-insight .status-item-dot {
-  margin-top: 6px;
-}
-.status-insight-body {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px 16px;
-  flex-wrap: wrap;
-}
-.status-insight-label {
-  font-size: var(--fs-body);
-  font-weight: 600;
-  color: var(--text-light);
-  flex-shrink: 0;
-}
-.status-insight-value {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  text-align: right;
-}
-.status-insight.is-warn .status-insight-value {
-  color: var(--warn-text);
-}
-.status-insight-act {
-  background: none;
-  border: none;
-  color: var(--text-light);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  font: inherit;
-  font-size: var(--fs-caption);
-  cursor: pointer;
-  padding: 0;
-  margin-left: 6px;
-  white-space: nowrap;
+/* ---- the hero: the ring IS the verdict ---- */
+.sp-hero { --sp-tone: var(--ok); --sp-ink: var(--ok-text); position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: var(--r-lg); border: 1px solid color-mix(in srgb, var(--sp-tone) 24%, transparent); background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--sp-tone) 14%, transparent), var(--glass-bg) 60%); animation: spRise 500ms var(--out) both; }
+.sp-hero.is-warn { --sp-tone: var(--warn); --sp-ink: var(--warn-text); }
+.sp-hero.is-bad { --sp-tone: var(--danger); --sp-ink: var(--danger-text); }
+.sp-hero-top { display: flex; align-items: center; gap: 16px; }
+.sp-ring { position: relative; flex: none; width: 76px; height: 76px; color: var(--sp-ink); }
+.sp-ring > svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.sp-glow { position: absolute; inset: 6px; border-radius: 50%; background: color-mix(in srgb, var(--sp-tone) 25%, transparent); animation: spBreathe 3.2s ease-in-out infinite; }
+.sp-track { fill: none; stroke: color-mix(in srgb, var(--text-light) 8%, transparent); stroke-width: 6; }
+.sp-arc { fill: none; stroke: var(--sp-tone); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 214; transition: stroke-dashoffset 260ms var(--out); }
+.sp-hero.is-checking .sp-arc { stroke-dashoffset: 160 !important; transform-origin: 38px 38px; animation: chbSpin 1s linear infinite; }
+.sp-hero.is-checking .sp-glow { animation: none; opacity: 0; }
+.sp-rmid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.sp-pct { display: none; font-size: var(--fs-headline); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-light); }
+.sp-hero.is-revealing .sp-pct { display: inline; }
+.sp-hero.is-revealing .sp-rmark, .sp-hero.is-checking .sp-rmid { display: none; }
+.sp-rmark { animation: spPop 420ms var(--out) 120ms both; }
+svg.sp-rmark path { stroke-dasharray: 30; animation: spDraw 380ms var(--out) 320ms both; }
+.sp-rglyph { font-size: var(--fs-title); font-weight: 700; line-height: 1; }
+.sp-htext { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sp-htitle { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; color: var(--text-light); }
+.sp-hsub { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
+.sp-hfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
+.sp-checked { font-size: var(--fs-sub); color: var(--text-muted); }
+.sp-again { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; }
+.sp-again.is-busy svg { animation: chbSpin 0.9s linear infinite; }
+
+/* ---- the vitals ---- */
+.sp-vitals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 641px) { .sp-vitals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.sp-vital { --sp-tone: var(--ok); display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); min-width: 0; animation: spRise 420ms var(--out) both; }
+.sp-vital.is-warn { --sp-tone: var(--warn); }
+.sp-vcap { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.sp-vdot { width: 8px; height: 8px; border-radius: 50%; background: var(--sp-tone); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sp-tone) 15%, transparent); }
+.sp-vbig { font-size: var(--fs-headline); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-light); overflow-wrap: anywhere; }
+.sp-vsmall { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.35; }
+.sp-vbars { display: flex; align-items: flex-end; gap: 4px; height: 22px; margin-top: 4px; }
+.sp-vbar { flex: 1 1 0; border-radius: 2px; background: color-mix(in srgb, var(--sp-tone) 35%, transparent); transform-origin: bottom; animation: spGrow 500ms var(--out) both; }
+.sp-vbar.is-now { background: var(--sp-tone); }
+
+/* ---- this week ---- */
+.sp-weekcard { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sp-whead { display: flex; align-items: center; gap: 12px; }
+.sp-wmark { flex: none; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok-text); font-weight: 700; font-size: var(--fs-headline); }
+.sp-wmark.is-warn { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn-text); }
+.sp-wtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sp-wtitle { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.sp-wsub { font-size: var(--fs-sub); color: var(--text-muted); }
+.sp-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; height: 92px; }
+.sp-day { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; padding: 0; border: none; background: none; color: var(--text-muted); cursor: pointer; font-family: var(--font-sans); }
+.sp-day.is-on { color: var(--accent-text); }
+.sp-dn { font-size: var(--fs-micro); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sp-day.is-zero .sp-dn { visibility: hidden; }
+.sp-dbar { width: 100%; min-height: 4px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 55%, transparent); transform-origin: bottom; animation: spGrow 600ms var(--out) both; transition: background 200ms var(--out); }
+.sp-day.is-zero .sp-dbar { background: color-mix(in srgb, var(--text-light) 10%, transparent); }
+.sp-day.is-dim .sp-dbar { background: color-mix(in srgb, var(--text-light) 12%, transparent); }
+.sp-day.is-on .sp-dbar { background: var(--accent); }
+.sp-dl { font-size: var(--fs-micro); font-weight: 600; }
+.sp-issues { display: flex; flex-direction: column; }
+.sp-issue { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--glass-border); animation: spRise 300ms var(--out) both; }
+.sp-issue.sp-none { font-size: var(--fs-sub); color: var(--text-muted); }
+.sp-cnt { flex: none; min-width: 36px; height: 24px; padding: 0 8px; box-sizing: border-box; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 7%, transparent); color: var(--text-light); font-size: var(--fs-caption); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.sp-itext { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sp-ititle { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.sp-iverd { font-size: var(--fs-caption); color: var(--ok-text); line-height: 1.4; }
+.sp-iverd.is-needs { color: var(--warn-text); }
+.sp-link { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: none; background: none; color: var(--accent-text); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; }
+
+/* ---- needs a look ---- */
+.sp-need { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); animation: spRise 360ms var(--out) both; }
+.sp-nhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.sp-nlabel { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.sp-ndetail { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
+.sp-nhint { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.4; }
+.sp-nhint::before { content: '\2192\00a0'; }
+.sp-fix { align-self: flex-start; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: none; color: var(--text-light); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; }
+
+/* ---- everything checked ---- */
+.sp-syslist { overflow: hidden; }
+.sp-sys + .sp-sys { border-top: 1px solid var(--glass-border); }
+.sp-syshead { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border: none; background: none; color: var(--text-light); text-align: left; cursor: pointer; font-family: var(--font-sans); }
+.sp-sysic, .sp-offic { flex: none; width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
+.sp-systext { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sp-sysname { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.sp-syssub { font-size: var(--fs-caption); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-bslot { flex: none; display: inline-flex; }
+.sp-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 28px; padding: 0 12px; box-sizing: border-box; border-radius: var(--r-pill); font-size: var(--fs-caption); font-weight: 700; font-variant-numeric: tabular-nums; animation: spPop 300ms var(--out) both; }
+.sp-badge.is-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+.sp-badge.is-warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn-text); }
+.sp-badge.is-bad { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger-text); }
+.sp-badge.is-wait { background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); animation: none; }
+.sp-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: chbSpin 0.8s linear infinite; }
+.sp-chev { flex: none; color: var(--text-muted); transition: transform 220ms var(--out); }
+.sp-sys.is-open .sp-chev { transform: rotate(90deg); }
+.sp-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--unfold); }
+.sp-fold[hidden] { display: grid; grid-template-rows: 0fr; visibility: hidden; }
+.sp-foldin { overflow: hidden; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 0 64px; }
+.sp-sys.is-open .sp-foldin { padding-bottom: 12px; }
+.sp-item { display: flex; align-items: center; gap: 12px; min-height: 36px; animation: spRise 260ms var(--out) both; }
+.sp-item.sp-none { font-size: var(--fs-sub); color: var(--text-muted); }
+.sp-iic { flex: none; width: 14px; text-align: center; font-size: var(--fs-caption); font-weight: 700; }
+.sp-iic.is-ok { color: var(--ok-text); }
+.sp-iic.is-warn { color: var(--warn-text); }
+.sp-iic.is-bad { color: var(--danger-text); }
+.sp-ilabel { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); color: var(--text-light); }
+.sp-inote { flex: none; max-width: 45%; font-size: var(--fs-caption); color: var(--text-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- storage ---- */
+.sp-store { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sp-stot { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.sp-sbig { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-light); }
+.sp-ssub { font-size: var(--fs-sub); color: var(--text-muted); }
+.sp-sbar { display: flex; height: 10px; border-radius: var(--r-pill); overflow: hidden; background: color-mix(in srgb, var(--text-light) 6%, transparent); }
+.sp-sup, .sp-sdb { transform-origin: left; animation: spFill 900ms var(--out) 200ms both; }
+.sp-sup { background: var(--accent); }
+.sp-sdb { background: var(--info); animation-delay: 300ms; }
+.sp-slegend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--fs-caption); color: var(--text-muted); }
+.sp-slegend span { display: inline-flex; align-items: center; gap: 8px; }
+.sp-sk { width: 8px; height: 8px; border-radius: 2px; }
+.sp-sk.is-up { background: var(--accent); }
+.sp-sk.is-db { background: var(--info); }
+
+/* ---- switched off ---- */
+.sp-off { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--r-lg); border: 1px dashed color-mix(in srgb, var(--text-light) 16%, transparent); }
+.sp-offic { background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); }
+.sp-offsub { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.35; }
+.sp-on { flex: none; min-height: 44px; padding: 0 4px; border: none; background: none; color: var(--accent-text); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; white-space: nowrap; }
+.sp-err { font-size: var(--fs-sub); color: var(--danger-text); }
+/* The killswitch keeps an inline animation-delay, so a `both` fill would hold
+   the bars at scaleY(0) through it — the page simply lands, finished. The
+   checking spinner stays: it says work is happening. */
+@media (prefers-reduced-motion: reduce) {
+  #diagnostics-body [class^="sp-"], #diagnostics-body [class*=" sp-"], #diagnostics-body svg.sp-rmark path { animation: none !important; transition: none !important; }
+  #diagnostics-body .sp-hero.is-checking .sp-arc, #diagnostics-body .sp-spin, #diagnostics-body .sp-again.is-busy svg { animation: chbSpin 1s linear infinite !important; }
 }
 
 /* Guest typeahead in Add Booking — a dropdown of past guests under the name
@@ -7964,7 +7870,7 @@ body.light-mode .tl-cell:active {
    Headline sentence 17 · section caption 12 · row sub-line 13 · row figure 17 · buttons 15. Row titles (15), capsules (12),
    notes (13), page titles (28) and chat (15) were already right. Supersedes the Payments "one size" block. ---- */
 body.owner-mode .mo-headline { font-size: var(--fs-headline); line-height: 1.35; font-weight: 600; }
-body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title, body.owner-mode .status-group-title { font-size: var(--fs-caption); }
+body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title { font-size: var(--fs-caption); }
 body.owner-mode .bhub-fold-sub, body.owner-mode .settings-row-sub, body.owner-mode .ny-sub, body.owner-mode .bhub-kv-sub { font-size: var(--fs-sub); }
 body.owner-mode .bhub-payline-fig, body.owner-mode .bhub-sum-val { font-size: var(--fs-headline); }
 body.owner-mode .btn-sm, body.owner-mode .bhub-actlink, body.owner-mode .mo-tool { font-size: var(--fs-body); }

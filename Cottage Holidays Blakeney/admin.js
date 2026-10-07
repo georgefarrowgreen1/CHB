@@ -26058,188 +26058,398 @@ async function runMigrations() {
     }
 }
 
+// Manage → Status (the approved redesign). ONE run of diagnostics.php feeds a
+// health ring, four vitals with a seven-day trace, the week's warnings said in
+// plain words with a verdict (status-lib.php), every check grouped by the system
+// it belongs to, storage and the switched-off extras. "Check again" REVEALS the
+// real results — the ring and the badges tick through what the server answered;
+// nothing moves while the request is out except an honest spinner.
+let __sp = { r: null, busy: false, day: null, open: null, at: '', tick: 0 };
+const SP_RING = 214; // 2πr for r = 34
+const SP_TICK = '<path d="M5 12.5l4.5 4.5L19 7.5"></path>';
+const SP_IC = {
+    pay: 'M3 7h18v10H3z M3 10h18',
+    mail: 'M4 6h16v12H4z M4 7l8 6 8-6',
+    cal: 'M4 5h16v15H4z M4 10h16 M8 3v4 M16 3v4',
+    auto: 'M12 7v5l3 2 M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18',
+    site: 'M3 5h18v12H3z M8 21h8 M12 17v4',
+    tide: 'M3 15c3 0 3-2 6-2s3 2 6 2 3-2 6-2 M3 19c3 0 3-2 6-2s3 2 6 2 3-2 6-2 M12 3v8',
+    star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
+    bell: 'M6 16V11a6 6 0 1 1 12 0v5l2 2H4z M10 20h4',
+    off: 'M12 3v9 M6.3 6.3a8 8 0 1 0 11.4 0',
+};
+const spSvg = (d, s = 17, w = 2) =>
+    `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg>`;
+function spStill() {
+    try {
+        return chbReducedMotion();
+    } catch (e) {
+        return false;
+    }
+}
+function spHm(d) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function spDate(s) {
+    if (!s) return null;
+    const d = new Date(String(s).replace(' ', 'T'));
+    return isNaN(d.getTime()) ? null : d;
+}
+function spAgo(s) {
+    const d = spDate(s);
+    if (!d) return 'never';
+    const m = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+    if (m < 2) return 'just now';
+    if (m < 60) return m + ' min ago';
+    const h = Math.round(m / 60);
+    if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    const dd = Math.round(h / 24);
+    return dd === 1 ? 'yesterday' : dd + ' days ago';
+}
+// "Ran 11:34" today, "Sun 03:00" this week, the date after that.
+function spWhen(s) {
+    const d = spDate(s);
+    if (!d) return '';
+    const days = Math.floor((new Date(chbNow().toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
+    if (days <= 0) return spHm(d);
+    if (days < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' }) + ' ' + spHm(d);
+    return fmtDate(String(s).slice(0, 10));
+}
+function spMB(b) {
+    return !b ? '0 KB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+}
+// A check's detail as the short note on the right of its row; the whole
+// sentence rides the title.
+function spNote(c) {
+    if (c.status === 'fail') return 'needs fixing';
+    if (c.status === 'warn') return 'worth a look';
+    const t = String(c.detail || '').replace(/\.$/, '').trim();
+    return t && t.length <= 26 ? t : 'ok';
+}
+// A curated in-app destination for the optional integrations, so a fix is one tap.
+function spRoute(label) {
+    return /Square/i.test(label) ? { arg: 'payments', t: 'Set up card payments', ic: SP_IC.pay }
+        : /Google review/i.test(label) ? { arg: 'reviews', t: 'Add the review link', ic: SP_IC.star }
+        : /Tide data/i.test(label) ? { arg: 'apis', t: 'Add a tide key', ic: SP_IC.tide }
+        : /Web push/i.test(label) ? { arg: 'notify', t: 'Open notifications', ic: SP_IC.bell }
+        : /Automatic payment updates/i.test(label) ? { arg: 'payments', t: 'Connect updates', ic: SP_IC.pay }
+        : null;
+}
+// The checks grouped by the system they belong to. Calendars are the FEEDS
+// themselves (diagnostics' ical.list), one row per cottage and platform.
+function spSystems(r) {
+    const checks = (r.checks || []).filter((c) => c.status !== 'optional');
+    const ins = r.insights || {};
+    const of = (cats) => checks.filter((c) => cats.includes(c.category));
+    const known = ['Payments', 'Data', 'Email', 'Notifications', 'Automation'];
+    const row = (c) => ({ label: c.label, note: spNote(c), title: c.detail || '', st: c.status });
+    const sys = [];
+    const pay = of(['Payments', 'Data']);
+    const sq = pay.find((c) => /Square/i.test(c.label));
+    const wh = pay.find((c) => /payment updates/i.test(c.label));
+    sys.push({ k: 'pay', name: 'Payments', icon: SP_IC.pay, items: pay.map(row),
+        sub: sq ? (sq.status === 'ok' ? 'Square connected' + (wh ? (wh.status === 'ok' ? ' · updates live' : ' · updates not connected') : '') : 'Card payments are off') : 'Prices and payments' });
+    const mail = of(['Email', 'Notifications']);
+    const smtp = mail.find((c) => /SMTP/i.test(c.label));
+    const sent = ins.email && ins.email.sent7d != null ? ins.email.sent7d : null;
+    sys.push({ k: 'mail', name: 'Email', icon: SP_IC.mail, items: mail.map(row),
+        sub: smtp && smtp.status !== 'ok' ? 'Sending is off' : 'Sending' + (sent != null ? ` · ${sent} this week` : '') });
+    const ic = ins.ical || {};
+    const feeds = Array.isArray(ic.list) ? ic.list : [];
+    sys.push({ k: 'cal', name: 'Calendars', icon: SP_IC.cal,
+        items: feeds.map((f) => ({ label: `${f.cottage} · ${otaSourceName(f.source)}`, note: f.ok === false ? 'failing' : f.ok == null ? 'not yet synced' : spAgo(f.at), title: '', st: f.ok === false ? 'warn' : 'ok' })),
+        sub: feeds.length ? `${feeds.length} feed${feeds.length === 1 ? '' : 's'} across ${ic.cottages || 1} cottage${(ic.cottages || 1) === 1 ? '' : 's'}` : 'No platform calendars linked' });
+    const auto = of(['Automation']);
+    const a = ins.automation || {};
+    sys.push({ k: 'auto', name: 'Automation', icon: SP_IC.auto, items: auto.map(row),
+        sub: a.lastRun ? `${a.jobs || 0} daily jobs · ran ${spWhen(a.lastRun)}` : 'Daily jobs' });
+    const site = checks.filter((c) => !known.includes(c.category));
+    sys.push({ k: 'site', name: 'Website & data', icon: SP_IC.site, items: site.map(row), sub: 'Database, migrations, security' });
+    return sys.filter((s) => s.items.length || s.k === 'cal').map((s) => {
+        const bad = s.items.filter((i) => i.st === 'fail').length;
+        const warn = s.items.filter((i) => i.st === 'warn').length;
+        if (bad + warn) s.sub = `${bad + warn} need${bad + warn === 1 ? 's' : ''} a look`;
+        s.tone = bad ? 'bad' : warn ? 'warn' : 'ok';
+        return s;
+    });
+}
+function spBadge(s, state) {
+    if (state === 'wait') return '<span class="sp-badge is-wait">…</span>';
+    if (state === 'run') return '<span class="sp-badge is-wait"><span class="sp-spin" aria-hidden="true"></span></span>';
+    const n = s.items.length;
+    const m = s.tone === 'ok' ? '✓' : s.tone === 'warn' ? '!' : '✕';
+    return `<span class="sp-badge is-${s.tone}">${m} ${n}</span>`;
+}
+function spItemIc(st) {
+    return st === 'ok' ? `<svg class="sp-iic is-ok" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SP_TICK}</svg>`
+        : `<span class="sp-iic is-${st === 'fail' ? 'bad' : 'warn'}" aria-hidden="true">${st === 'fail' ? '✕' : '!'}</span>`;
+}
+// The vitals: four tiles, each a figure and a seven-day trace.
+function spVitals(r) {
+    const ins = r.insights || {};
+    const out = [];
+    const a = ins.automation;
+    if (a) {
+        const dz = a.lastRun ? (Date.now() - (spDate(a.lastRun) || new Date(0)).getTime()) / 86400000 : 99;
+        out.push({ cap: 'Daily jobs', big: a.lastRun ? 'Ran ' + spWhen(a.lastRun) : 'Never run yet',
+            small: `${a.jobs || 0} jobs` + (a.recentFails ? ` · ${a.recentFails} failed` : ''), data: a.days, tone: dz >= 2 || a.recentFails ? 'warn' : 'ok' });
+    }
+    const c = ins.ical;
+    if (c) {
+        const list = Array.isArray(c.list) ? c.list : [];
+        const failing = list.filter((f) => f.ok === false).length;
+        out.push({ cap: 'Calendars', big: !c.feeds ? 'Not linked' : c.lastImport ? 'Synced ' + spAgo(c.lastImport) : 'Not synced yet',
+            small: !c.feeds ? 'No platform calendars' : `${c.feeds} feed${c.feeds === 1 ? '' : 's'}` + (c.cottages ? ` · ${c.cottages} cottage${c.cottages === 1 ? '' : 's'}` : '') + (failing ? ` · ${failing} failing` : ''),
+            data: c.days, tone: failing || c.recentErrors ? 'warn' : 'ok' });
+    }
+    const e = ins.email;
+    if (e) {
+        const f = e.fails7d || 0;
+        out.push({ cap: 'Email', big: r.mail_ready === false ? 'Off' : (e.sent7d != null ? e.sent7d + ' sent' : 'Sending'),
+            small: `this week · ${f} failed`, data: e.days, tone: f || r.mail_ready === false ? 'warn' : 'ok' });
+    }
+    const b = ins.backup;
+    if (b) {
+        out.push({ cap: 'Backups', big: b.at ? spWhen(b.at) : 'None yet',
+            small: b.at ? (b.encrypted ? 'encrypted' : 'kept on the server') + ' · ' + spMB(b.bytes) : 'runs each Monday', data: b.days,
+            tone: !b.at || (Date.now() - (spDate(b.at) || new Date(0)).getTime()) / 86400000 > 8 ? 'warn' : 'ok' });
+    }
+    return out;
+}
+function spVitalHtml(v, i) {
+    const data = Array.isArray(v.data) && v.data.length === 7 ? v.data : [0, 0, 0, 0, 0, 0, 0];
+    const mx = Math.max(...data) || 1;
+    const bars = data.map((n, j) => `<span class="sp-vbar${j === 6 ? ' is-now' : ''}" style="height:${Math.max(3, Math.round((n / mx) * 22))}px;animation-delay:${400 + j * 40}ms"></span>`).join('');
+    return `<div class="sp-vital is-${v.tone}" style="animation-delay:${80 + i * 60}ms">
+        <span class="sp-vcap"><span>${escapeHtml(v.cap)}</span><span class="sp-vdot" aria-hidden="true"></span></span>
+        <span class="sp-vbig">${escapeHtml(v.big)}</span>
+        <span class="sp-vsmall">${escapeHtml(v.small)}</span>
+        <span class="sp-vbars" aria-hidden="true">${bars}</span>
+    </div>`;
+}
+// THIS WEEK — the warnings, grouped and judged. Tapping a day narrows the list.
+function spWeekHtml() {
+    const w = (__sp.r && __sp.r.insights && __sp.r.insights.week) || null;
+    if (!w) return '';
+    const day = __sp.day;
+    const days = w.days || [];
+    const mx = Math.max(1, ...days.map((d) => d.n));
+    const total = day == null ? w.total : (days[day] || { n: 0 }).n;
+    const groups = (w.groups || [])
+        .map((g) => ({ ...g, k: day == null ? g.n : g.byDay[day] || 0 }))
+        .filter((g) => g.k > 0)
+        .sort((x, y) => Number(y.needs) - Number(x.needs) || y.k - x.k);
+    const needs = groups.filter((g) => g.needs).reduce((n, g) => n + g.k, 0);
+    const when = day == null ? ' this week' : ' on ' + (days[day] || {}).label;
+    const title = total ? `${total} warning${total === 1 ? '' : 's'}${when}` : `No warnings${when}`;
+    const sub = !total ? (day == null ? 'A quiet week' : 'A quiet day') : needs ? `${needs} need${needs === 1 ? 's' : ''} you — the rest sorted themselves out` : 'None need you';
+    const bars = days.map((d, ix) => {
+        const on = day === ix;
+        return `<button type="button" class="sp-day${on ? ' is-on' : ''}${day != null && !on ? ' is-dim' : ''}${d.n ? '' : ' is-zero'}" ${chbAttrs('spPickDay', ix)} aria-pressed="${on}" aria-label="${escapeHtml(d.label)}: ${d.n} warning${d.n === 1 ? '' : 's'}">
+            <span class="sp-dn">${d.n}</span><span class="sp-dbar" style="height:${Math.max(6, Math.round((d.n / mx) * 56))}px;animation-delay:${300 + ix * 50}ms"></span><span class="sp-dl">${escapeHtml(d.label)}</span></button>`;
+    }).join('');
+    const list = groups.length
+        ? groups.map((g, k) => `<div class="sp-issue" style="animation-delay:${k * 60}ms"><span class="sp-cnt">×${g.k}</span><span class="sp-itext"><span class="sp-ititle">${escapeHtml(g.title)}</span><span class="sp-iverd${g.needs ? ' is-needs' : ''}">${escapeHtml(g.verdict)}</span></span></div>`).join('')
+        : `<div class="sp-issue sp-none">${day == null ? 'Nothing logged this week.' : 'Nothing logged that day.'}</div>`;
+    return `<section class="sp-sec" id="sp-week">
+        <h2 class="sp-cap"><span>This week</span><span class="sp-capnote">${day == null ? 'tap a day' : escapeHtml((days[day] || {}).label || '') + ' · tap again for all'}</span></h2>
+        <div class="sp-card sp-weekcard">
+            <div class="sp-whead"><span class="sp-wmark${needs ? ' is-warn' : ''}" aria-hidden="true">${needs ? '!' : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${SP_TICK}</svg>`}</span>
+                <span class="sp-wtext"><span class="sp-wtitle">${escapeHtml(title)}</span><span class="sp-wsub">${escapeHtml(sub)}</span></span></div>
+            <div class="sp-days">${bars}</div>
+            <div class="sp-issues">${list}</div>
+            <button type="button" class="sp-link" data-act="nav" data-view="view-activity-log">Open the activity log ›</button>
+        </div>
+    </section>`;
+}
+chbAct('spPickDay', function (el, ev, ix) {
+    const i = Number(ix);
+    __sp.day = __sp.day === i ? null : i;
+    const host = document.getElementById('sp-week');
+    if (host) host.outerHTML = spWeekHtml();
+});
+chbAct('spToggle', function (el, ev, k) {
+    __sp.open = __sp.open === k ? null : k;
+    document.querySelectorAll('#diagnostics-body .sp-sys').forEach((row) => {
+        const on = row.getAttribute('data-k') === __sp.open;
+        row.classList.toggle('is-open', on);
+        const b = row.querySelector('.sp-syshead');
+        if (b) b.setAttribute('aria-expanded', String(on));
+        const f = row.querySelector('.sp-fold');
+        if (f) /** @type {HTMLElement} */ (f).hidden = !on;
+    });
+});
+function spHtml(r, reveal) {
+    const checks = r.checks || [];
+    const fails = checks.filter((c) => c.status === 'fail');
+    const warns = checks.filter((c) => c.status === 'warn');
+    const optionals = checks.filter((c) => c.status === 'optional');
+    const counted = checks.filter((c) => c.status !== 'optional');
+    const passed = counted.filter((c) => c.status === 'ok').length;
+    const tone = fails.length ? 'bad' : warns.length ? 'warn' : 'ok';
+    const systems = spSystems(r);
+    const ins = r.insights || {};
+    const frac = counted.length ? passed / counted.length : 1;
+    const off = reveal ? SP_RING : Math.round(SP_RING - SP_RING * frac);
+    const title = reveal ? 'Checking…' : spHeroTitle(r);
+    const sub = reveal ? `0 of ${counted.length} checks` : spHeroSub(r);
+    const mark = tone === 'ok'
+        ? `<svg class="sp-rmark" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>`
+        : `<span class="sp-rmark sp-rglyph" aria-hidden="true">${tone === 'warn' ? '!' : '✕'}</span>`;
+    let h = `<section class="sp-hero is-${tone}${reveal ? ' is-revealing' : ''}" id="sp-hero">
+        <div class="sp-hero-top">
+            <span class="sp-ring"><span class="sp-glow" aria-hidden="true"></span>
+                <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="34" class="sp-track"></circle><circle cx="38" cy="38" r="34" class="sp-arc" id="sp-arc" style="stroke-dashoffset:${off}"></circle></svg>
+                <span class="sp-rmid"><span class="sp-pct" id="sp-pct">0%</span>${mark}</span></span>
+            <span class="sp-htext"><span class="sp-htitle" id="sp-htitle" aria-live="polite">${escapeHtml(title)}</span><span class="sp-hsub" id="sp-hsub">${escapeHtml(sub)}</span></span>
+        </div>
+        <div class="sp-hfoot"><span class="sp-checked" id="sp-checked">${reveal ? 'Running every check now' : 'Checked ' + escapeHtml(__sp.at)}</span>
+            <button type="button" class="sp-again" id="sp-again" data-act="loadDiagnostics"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 5v6h-6"></path></svg><span>Check again</span></button></div>
+    </section>`;
+    if (fails.length + warns.length) {
+        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Needs a look</span></h2>${fails.concat(warns).map((c) => {
+            const route = spRoute(c.label);
+            return `<div class="sp-need is-${c.status === 'fail' ? 'bad' : 'warn'}">
+                <div class="sp-nhead"><span class="sp-nlabel">${escapeHtml(c.label)}</span>${stCap(c.status === 'fail' ? 'bad' : 'warn', c.status === 'fail' ? 'Needs fixing' : 'Worth a look')}</div>
+                <div class="sp-ndetail">${escapeHtml(c.detail || '')}</div>
+                ${c.hint ? `<div class="sp-nhint">${escapeHtml(c.hint)}</div>` : ''}
+                ${route ? `<button type="button" class="sp-link" data-act="settingsOpen" data-arg="${route.arg}">${escapeHtml(route.t)} ›</button>` : ''}
+            </div>`;
+        }).join('')}<button type="button" class="sp-fix" ${chbAttrs('runSelfRepair', CHB_SELF)} title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></section>`;
+    }
+    const vit = spVitals(r);
+    if (vit.length) h += `<section class="sp-vitals">${vit.map(spVitalHtml).join('')}</section>`;
+    h += spWeekHtml();
+    if (systems.length) {
+        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Everything checked</span><span class="sp-capnote">${counted.length} check${counted.length === 1 ? '' : 's'}</span></h2><div class="sp-card sp-syslist">${systems.map((s) => {
+            const open = __sp.open === s.k;
+            return `<div class="sp-sys${open ? ' is-open' : ''}" data-k="${s.k}">
+                <button type="button" class="sp-syshead" ${chbAttrs('spToggle', s.k)} aria-expanded="${open}">
+                    <span class="sp-sysic">${spSvg(s.icon)}</span>
+                    <span class="sp-systext"><span class="sp-sysname">${escapeHtml(s.name)}</span><span class="sp-syssub">${escapeHtml(s.sub)}</span></span>
+                    <span class="sp-bslot" data-sp-badge="${s.k}">${spBadge(s, reveal ? 'wait' : 'done')}</span>
+                    <svg class="sp-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                </button>
+                <div class="sp-fold"${open ? '' : ' hidden'}><div class="sp-foldin">${s.items.length ? s.items.map((it, j) => `<div class="sp-item" style="animation-delay:${j * 40}ms"${it.title ? ` title="${escapeHtml(it.title)}"` : ''}>${spItemIc(it.st)}<span class="sp-ilabel">${escapeHtml(it.label)}</span><span class="sp-inote">${escapeHtml(it.note)}</span></div>`).join('') : '<div class="sp-item sp-none">Nothing linked yet — add a platform in Calendar sync.</div>'}</div></div>
+            </div>`;
+        }).join('')}</div></section>`;
+    }
+    const st = ins.storage;
+    if (st) {
+        const tot = (st.uploadsBytes || 0) + (st.dbBytes || 0);
+        const up = tot ? ((st.uploadsBytes || 0) / tot) * 100 : 0;
+        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Storage</span></h2><div class="sp-card sp-store">
+            <span class="sp-stot"><span class="sp-sbig">${spMB(tot)}</span><span class="sp-ssub">used${st.grew30d != null ? ' · grew ' + spMB(st.grew30d) + ' this month' : ''}</span></span>
+            <span class="sp-sbar" aria-hidden="true"><span class="sp-sup" style="width:${up.toFixed(1)}%"></span><span class="sp-sdb" style="width:${(100 - up).toFixed(1)}%"></span></span>
+            <span class="sp-slegend"><span><i class="sp-sk is-up"></i>Photos &amp; uploads ${spMB(st.uploadsBytes)}</span><span><i class="sp-sk is-db"></i>Database ${spMB(st.dbBytes)}</span></span>
+        </div></section>`;
+    }
+    if (optionals.length) {
+        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Switched off</span></h2>${optionals.map((c) => {
+            const route = spRoute(c.label);
+            return `<div class="sp-off"><span class="sp-offic">${spSvg(route ? route.ic : SP_IC.off)}</span><span class="sp-systext"><span class="sp-sysname">${escapeHtml(c.label.replace(/\s*\([^)]*\)$/, ''))}</span><span class="sp-offsub">${escapeHtml(String(c.detail || '').replace(/\s*\(optional\)\.?/i, '.'))}</span></span>${route ? `<button type="button" class="sp-on" data-act="settingsOpen" data-arg="${route.arg}" aria-label="${escapeHtml(route.t)}">Turn on ›</button>` : ''}</div>`;
+        }).join('')}</section>`;
+    }
+    return h;
+}
+function spHeroTitle(r) {
+    const checks = r.checks || [];
+    const f = checks.filter((c) => c.status === 'fail').length;
+    const w = checks.filter((c) => c.status === 'warn').length;
+    return f ? `${f} issue${f === 1 ? '' : 's'} need${f === 1 ? 's' : ''} you` : w ? `${w} thing${w === 1 ? '' : 's'} worth a look` : 'All systems running';
+}
+function spHeroSub(r) {
+    const counted = (r.checks || []).filter((c) => c.status !== 'optional');
+    const passed = counted.filter((c) => c.status === 'ok').length;
+    return passed === counted.length ? `${passed} checks passed. Nothing needs you.` : `${passed} of ${counted.length} checks passed — the rest are below.`;
+}
+// The reveal: the ring and the system badges tick through the real answer.
+function spReveal(r) {
+    const stamp = ++__sp.tick;
+    const counted = (r.checks || []).filter((c) => c.status !== 'optional');
+    const passed = counted.filter((c) => c.status === 'ok').length;
+    const frac = counted.length ? passed / counted.length : 1;
+    const systems = spSystems(r);
+    const N = Math.max(1, systems.reduce((n, s) => n + Math.max(1, s.items.length), 0));
+    const gap = Math.max(16, Math.min(70, Math.round(1100 / N)));
+    let step = 0;
+    const paint = () => {
+        if (stamp !== __sp.tick) return;
+        const arc = document.getElementById('sp-arc');
+        const pct = document.getElementById('sp-pct');
+        const sub = document.getElementById('sp-hsub');
+        if (!arc) return;
+        arc.style.strokeDashoffset = String(Math.round(SP_RING - SP_RING * frac * (step / N)));
+        if (pct) pct.textContent = Math.round(frac * (step / N) * 100) + '%';
+        if (sub) sub.textContent = `${Math.round((counted.length * step) / N)} of ${counted.length} checks`;
+        let from = 0;
+        systems.forEach((s) => {
+            const to = from + Math.max(1, s.items.length);
+            const slot = document.querySelector(`[data-sp-badge="${s.k}"]`);
+            const state = step >= to ? 'done' : step > from ? 'run' : 'wait';
+            if (slot && slot.getAttribute('data-st') !== state) {
+                slot.setAttribute('data-st', state);
+                slot.innerHTML = spBadge(s, state);
+            }
+            from = to;
+        });
+        if (step >= N) {
+            const hero = document.getElementById('sp-hero');
+            if (hero) hero.classList.remove('is-revealing');
+            const t = document.getElementById('sp-htitle');
+            if (t) t.textContent = spHeroTitle(r);
+            if (sub) sub.textContent = spHeroSub(r);
+            const ch = document.getElementById('sp-checked');
+            if (ch) ch.textContent = 'Checked ' + __sp.at;
+            return;
+        }
+        step++;
+        setTimeout(paint, gap);
+    };
+    setTimeout(paint, 200);
+}
 async function loadDiagnostics() {
     const body = document.getElementById('diagnostics-body');
     const msg = document.getElementById('diag-msg');
     if (msg) msg.textContent = '';
-    if (!body) return;
-    body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Running checks…</p>`;
+    if (!body || __sp.busy) return;
+    __sp.busy = true;
+    __sp.tick++;
+    // Already showing a result: the hero turns to "checking" in place, the rest
+    // of the page stays readable until the new answer lands.
+    const hero = document.getElementById('sp-hero');
+    if (hero && __sp.r) {
+        hero.classList.add('is-checking');
+        const t = document.getElementById('sp-htitle');
+        if (t) t.textContent = 'Checking…';
+        const s = document.getElementById('sp-hsub');
+        if (s) s.textContent = 'Running every check now';
+        const a = document.getElementById('sp-again');
+        if (a) { a.classList.add('is-busy'); const l = a.querySelector('span'); if (l) l.textContent = 'Checking'; }
+        document.querySelectorAll('#diagnostics-body [data-sp-badge]').forEach((el) => (el.innerHTML = '<span class="sp-badge is-wait">…</span>'));
+    } else {
+        body.innerHTML = `<section class="sp-hero is-checking" id="sp-hero"><div class="sp-hero-top"><span class="sp-ring"><svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="34" class="sp-track"></circle><circle cx="38" cy="38" r="34" class="sp-arc" style="stroke-dashoffset:${SP_RING}"></circle></svg></span><span class="sp-htext"><span class="sp-htitle" aria-live="polite">Checking…</span><span class="sp-hsub">Running every check now</span></span></div></section>`;
+    }
     let r;
     try {
         r = await apiPost('diagnostics.php', { action: 'run' });
     } catch (e) {
-        body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger-text);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
+        __sp.busy = false;
+        if (__sp.r) {
+            toast("Couldn't run the checks just now — showing the last result.", 'error');
+            body.innerHTML = spHtml(__sp.r, false);
+        } else {
+            body.innerHTML = `<p class="sp-err">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
+        }
         return;
     }
-    const checks = r.checks || [];
-    // 'optional' = a switched-off optional feature (informational, never a
-    // problem); 'warn' = an actionable warning; 'fail' = a hard failure.
-    const dotColor = (st) => (st === 'ok' ? 'var(--ok)' : st === 'fail' ? 'var(--danger)' : 'var(--warn-text)');
-    const word = (st) => (st === 'ok' ? 'OK' : st === 'optional' ? 'Optional' : st === 'fail' ? 'Action needed' : 'Needs a look');
-    const fails = checks.filter((c) => c.status === 'fail');
-    const warns = checks.filter((c) => c.status === 'warn');
-    const optionals = checks.filter((c) => c.status === 'optional');
-    const oks = checks.filter((c) => c.status === 'ok');
-    const attention = fails.concat(warns); // hard failures lead, then warnings
-    // ---- Overall verdict (the one-glance answer) ----
-    // ONE SENTENCE for the healthy state, in the house voice, and the sub says
-    // WHAT was checked and WHEN rather than restating it. ('All systems
-    // operational' is a hosting status page, not a person.)
-    const tone = fails.length ? 'danger' : warns.length ? 'warn' : 'ok';
-    const now = chbNow();
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const title = fails.length
-        ? `${fails.length} issue${fails.length === 1 ? '' : 's'} need${fails.length === 1 ? 's' : ''} your attention`
-        : warns.length
-          ? `${warns.length} thing${warns.length === 1 ? '' : 's'} worth a look`
-          : 'Everything’s running.';
-    const sub = fails.length
-        ? 'Something core needs fixing — the details are below.'
-        : warns.length
-          ? "Nothing's broken, but these could use a moment."
-          : 'Daily jobs, calendar feeds, backups and mail — all checked.';
-    const mark = tone === 'ok' ? '✓' : tone === 'warn' ? '!' : '✕';
-    const chip = (n, cls, label) => (n > 0 ? `<span class="status-count ${cls}">${n} ${label}</span>` : '');
-    let html = `
-        <div class="status-hero is-${tone} glass-panel">
-            <div class="status-hero-mark" aria-hidden="true">${mark}</div>
-            <div class="status-hero-text">
-                <div class="status-hero-title">${escapeHtml(title)}</div>
-                <div class="status-hero-sub">${escapeHtml(sub)}</div>
-                <div class="status-counts">
-                    ${chip(oks.length, 'ok', 'OK')}
-                    ${chip(warns.length, 'warn', 'to look at')}
-                    ${chip(fails.length, 'danger', 'to fix')}
-                    ${chip(optionals.length, 'optional', 'optional off')}
-                </div>
-                <div class="status-hero-meta">Checked ${hhmm} · <button type="button" class="status-rerun" data-act="loadDiagnostics">Re-run</button></div>
-                <div class="status-hero-actions"><button type="button" class="btn-sm btn-edit" ${chbAttrs('runSelfRepair', CHB_SELF)} title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></div>
-            </div>
-        </div>`;
-    // A curated in-app destination for the optional integrations, so a fix is one tap.
-    const routeFor = (label) =>
-        /Square/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="payments"', t: 'Set up card payments' }
-        : /Google review/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="reviews"', t: 'Add the review link' }
-        : /Tide data/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="apis"', t: 'Add a tide key' }
-        : /Web push/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="notify"', t: 'Open notifications' }
-        : null;
-    const item = (c) => {
-        const route = c.status === 'optional' || c.status === 'warn' ? routeFor(c.label) : null;
-        // STATE IS SAID ONCE — the house capsule, sentence case. It used to be a
-        // coloured 3px rail AND a 9px dot AND an uppercase chip, three amber
-        // statements on one 76px row; the rail keeps its geometry and loses its
-        // colour (admin.css), the dot is gone, the capsule is the statement.
-        const capTone = c.status === 'fail' ? 'bad' : c.status === 'warn' ? 'warn' : c.status === 'ok' ? 'ok' : 'unk';
-        return `
-        <div class="status-item is-${c.status}">
-            <div class="status-item-body">
-                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span>${stCap(capTone, escapeHtml(word(c.status)))}</div>
-                <div class="status-item-detail">${escapeHtml(c.detail || '')}</div>
-                ${c.hint ? `<div class="status-item-hint">${escapeHtml(c.hint)}</div>` : ''}
-                ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" ${route.fn}>${route.t}</button></div>` : ''}
-            </div>
-        </div>`;
-    };
-    if (attention.length) {
-        html += `<div class="status-group"><div class="status-group-title">Needs attention</div>${attention.map(item).join('')}</div>`;
-    }
-    // ---- Insights: operational vital signs (diagnostics.php `insights`). Each row
-    // stays muted (green) unless it's actually telling you something (amber).
-    const ins = r.insights || {};
-    const fmtMB = (b) => (!b ? '0 KB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
-    const sinceDays = (s) => {
-        if (!s) return null;
-        const d = new Date(String(s).replace(' ', 'T'));
-        return isNaN(d) ? null : Math.floor((Date.now() - d.getTime()) / 86400000);
-    };
-    const whenLabel = (s) => {
-        if (!s) return 'never';
-        const d = new Date(String(s).replace(' ', 'T'));
-        if (isNaN(d)) return String(s);
-        const days = sinceDays(s);
-        const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        return days <= 0 ? 'today ' + t : days === 1 ? 'yesterday' : days < 8 ? days + ' days ago' : fmtDate(String(s).slice(0, 10));
-    };
-    const insRows = [];
-    if (ins.issues) {
-        const w = ins.issues.warn7d || 0;
-        const dz = sinceDays(ins.issues.lastWarnEver);
-        insRows.push({
-            tone: w > 0 ? 'warn' : 'ok',
-            label: 'Recent issues',
-            value: w > 0 ? `${w} warning${w === 1 ? '' : 's'} in the last 7 days` : dz != null ? `None in ${Math.max(dz, 7)} days` : 'None logged',
-            act: w > 0 || dz != null ? { fn: 'data-act="nav" data-view="view-activity-log"', t: 'View log' } : null,
-        });
-    }
-    if (ins.automation) {
-        const a = ins.automation;
-        const dz = sinceDays(a.lastRun);
-        const stale = !a.lastRun || (dz != null && dz >= 2);
-        insRows.push({
-            tone: stale || a.recentFails > 0 ? 'warn' : 'ok',
-            label: 'Daily automation',
-            value: !a.lastRun
-                ? 'Never run yet'
-                : `Ran ${whenLabel(a.lastRun)} · ${a.jobs} daily jobs${a.recentFails > 0 ? ` · ${a.recentFails} recent failure${a.recentFails === 1 ? '' : 's'}` : ''}`,
-        });
-    }
-    if (ins.ical) {
-        const c = ins.ical;
-        insRows.push({
-            tone: c.recentErrors > 0 ? 'warn' : 'ok',
-            label: 'Calendar sync',
-            value: !c.feeds
-                ? 'No external feeds connected'
-                : `${c.feeds} feed${c.feeds === 1 ? '' : 's'} · ${c.blocks} imported date${c.blocks === 1 ? '' : 's'}${c.lastImport ? ' · ' + whenLabel(c.lastImport) : ''}${c.recentErrors > 0 ? ` · ${c.recentErrors} error${c.recentErrors === 1 ? '' : 's'}` : ''}`,
-        });
-    }
-    if (ins.storage) {
-        insRows.push({
-            tone: 'ok',
-            label: 'Storage',
-            value: `Database ${fmtMB(ins.storage.dbBytes)} · Photos & uploads ${fmtMB(ins.storage.uploadsBytes)}`,
-        });
-    }
-    if (ins.email) {
-        const f = ins.email.fails7d || 0;
-        insRows.push({
-            tone: f > 0 ? 'warn' : 'ok',
-            label: 'Email delivery',
-            value: f > 0 ? `${f} failed to send in the last 7 days` : 'No send failures',
-            act: f > 0 ? { fn: 'data-act="nav" data-view="view-activity-log"', t: 'View log' } : null,
-        });
-    }
-    if (insRows.length) {
-        html += `<div class="status-group"><div class="status-group-title">Insights</div><div class="status-insights">${insRows
-            .map(
-                (x) =>
-                    `<div class="status-insight is-${x.tone}"><span class="status-item-dot" style="background:${dotColor(x.tone)};"></span><div class="status-insight-body"><span class="status-insight-label">${escapeHtml(x.label)}</span><span class="status-insight-value">${escapeHtml(x.value)}${x.act ? ` <button type="button" class="status-insight-act" ${x.act.fn}>${x.act.t}</button>` : ''}</span></div></div>`,
-            )
-            .join('')}</div></div>`;
-    }
-    if (optionals.length) {
-        html += `<div class="status-group"><div class="status-group-title">Optional extras — switched off</div><p class="status-group-note">These are turned off. Switch on any you'd like; none of them are a problem left as they are.</p>${optionals.map(item).join('')}</div>`;
-    }
-    // The reassuring wall of passing checks, grouped by area, collapsed by default
-    // so problems (above) lead and the page stays short.
-    if (oks.length) {
-        const okCats = [];
-        oks.forEach((c) => {
-            if (!okCats.includes(c.category)) okCats.push(c.category);
-        });
-        const okBody = okCats
-            .map(
-                (cat) => `<div class="status-okcat"><div class="status-okcat-title">${escapeHtml(cat)}</div>${oks
-                    .filter((c) => c.category === cat)
-                    .map(
-                        (c) => `<div class="status-okrow"><span class="status-item-dot" style="background:var(--ok);"></span><div><div class="status-okrow-label">${escapeHtml(c.label)}</div><div class="status-item-detail">${escapeHtml(c.detail || '')}</div></div></div>`,
-                    )
-                    .join('')}</div>`,
-            )
-            .join('');
-        html += `<details class="help-disclosure status-ok-wall"><summary>${oks.length} check${oks.length === 1 ? '' : 's'} passing ✓</summary><div class="status-ok-body">${okBody}</div></details>`;
-    }
-    body.innerHTML = html;
+    __sp.busy = false;
+    __sp.r = r;
+    __sp.day = null;
+    __sp.at = spHm(chbNow());
+    const still = spStill();
+    body.innerHTML = spHtml(r, !still);
+    if (!still) spReveal(r);
 }
 // Manage → Backups. Its own page (it was a card at the foot of Status, where an
 // owner looking for "back up" had to know to look under a health check).

@@ -321,7 +321,7 @@ const NEST = (rootSel) => {
   await open(page, "settingsOpen('seasongrid')", 1200);
   await grabCaps(['#sg-count']);
   await open(page, "settingsOpen('diagnostics')", 1300);
-  await grabCaps(['.status-okcat-title']);
+  await grabCaps(['#diagnostics-body .sp-cap']);
   // The overnight-work card moved to its own page (Manage → Mac assistant).
   await open(page, "settingsOpen('mac')", 900);
   await grabCaps(['.night-setup > summary']);
@@ -397,31 +397,25 @@ const NEST = (rootSel) => {
 
   console.log('§2 Status — the state is said ONCE');
   await open(page, "settingsOpen('diagnostics')", 1700);
+  await page.waitForFunction(() => { const h = document.getElementById('sp-hero'); return h && !h.classList.contains('is-revealing') && !h.classList.contains('is-checking'); }, null, { timeout: 8000 });
   const st = await page.evaluate(() => {
-    const items = [...document.querySelectorAll('.status-item')];
+    const items = [...document.querySelectorAll('.sp-need')];
     const cs = items.map((i) => getComputedStyle(i));
     const cap = items[0] ? items[0].querySelector('.st-cap') : null;
-    const gt = document.querySelector('.status-group-title');
-    const spec = (el) => { const c = getComputedStyle(el); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; };
     return {
       n: items.length,
-      rails: cs.map((c) => c.borderLeftColor),
-      railW: cs.map((c) => parseFloat(c.borderLeftWidth)),
       shadows: cs.map((c) => c.boxShadow),
-      dots: items.reduce((n2, i) => n2 + i.querySelectorAll('.status-item-dot').length, 0),
+      caps: items.map((i) => i.querySelectorAll('.st-cap').length),
       capText: cap ? cap.textContent.trim() : null,
       capTT: cap ? getComputedStyle(cap).textTransform : null,
       radius: cs[0] ? cs[0].borderTopLeftRadius : null,
-      gt: gt ? spec(gt) : null,
     };
   });
   ok(st.n >= 2, `${st.n} Status rows need the owner (vacuity guard)`);
-  ok(st.railW.every((v) => v >= 3) && st.rails.every((c) => /rgba\(.*,\s*0\)|transparent/.test(c)), `the rail keeps its 3px and loses its colour (${st.railW[0]}px ${st.rails[0]})`);
-  ok(st.dots === 0, `no row repeats itself with a dot (${st.dots} found)`);
+  ok(st.caps.every((c) => c === 1), `each says its state ONCE, as one capsule (${st.caps.join(',')})`);
   ok(st.shadows.every((x) => x === 'none'), `and none of them casts a shadow (${st.shadows[0]})`);
   ok(!!st.capText && st.capTT === 'none' && /^[A-Z][a-z]/.test(st.capText), `the state is the house capsule, sentence case ("${st.capText}")`);
-  ok(st.radius === '12px', `a Status row is a list cell (${st.radius})`);
-  ok(st.gt !== null && st.gt === grpcapSpec, `the group header is on the ONE caption spec (${st.gt} vs Payments' group caption ${grpcapSpec})`);
+  ok(st.radius === '20px', `a Status card wears the card radius (${st.radius})`);
 
   console.log('§5 The phone carries no day strip above Payments/Manage (it was removed)');
   ok(await page.evaluate(() => !document.getElementById('day-spine') || document.getElementById('day-spine').getClientRects().length === 0), 'no day strip is painted at 390');
