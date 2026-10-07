@@ -14782,6 +14782,11 @@ function occStep(id, delta, min) {
     if (el) el.value = String(Math.max(parseInt(min, 10) || 0, (parseInt(el.value, 10) || 0) + (parseInt(delta, 10) || 0)));
 }
 function settingsOpenAccomSec(k, sec) {
+    // A deep link from ANOTHER section (Pricing's "Extra guests") must open the
+    // cottage pages first, or the editor is built into a hidden section and the
+    // tap appears to do nothing.
+    const host = document.getElementById('sec-accom');
+    if (!host || !host.getClientRects().length) settingsOpen('accom');
     settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
     const key = 'ac-' + k + '-' + sec;
@@ -17502,11 +17507,15 @@ function moAsyncFill() {
             // the age that makes it an exception (payouts checked, charge old).
             const holder = document.getElementById('mo-attn-async');
             if (holder && P && P.known > 0 && P.items && (P.items.unknown || []).length) {
-                const unk = P.items.unknown || [];
-                const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
-                const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
                 const win = Number(P.lookback) || 90;
-                if (oldDays > 7) {
+                const ageOf = (it) => { const dsrc = it.paid_on || it.created_at; return dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0; };
+                // A charge older than Square's payout window can never be matched,
+                // so it stops being a thing to look at (owner-asked) — it still
+                // sits in Move money out's "Square hasn't said" group.
+                const unk = (P.items.unknown || []).filter((it) => ageOf(it) < win);
+                const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
+                const oldDays = unk.reduce((m, it) => Math.max(m, ageOf(it)), 0);
+                if (unk.length && oldDays > 7) {
                     __moHead.unk = unk.length;
                     // The sub is a nowrap right-rail caption beside a capsule —
                     // measured at 390 it had 197px for 66 characters and painted
@@ -20424,7 +20433,8 @@ function prSearchIdeasHtml(pk) {
 function prRadarHtml() {
     const sig = (__prSugg && __prSugg.d && __prSugg.d.signals) || null;
     if (!sig) return '';
-    const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
+    const mon = ukShiftDays(todayDashed(), -((new Date(todayDashed() + 'T12:00:00Z').getUTCDay() + 6) % 7));
+    const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0 && String(w.week || '').slice(0, 10) >= mon).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
     if (!sig.searches60 && !weeks.length) return '';
     const max = Math.max(1, ...weeks.map((w) => w.count));
     return `<section class="rv-sec">

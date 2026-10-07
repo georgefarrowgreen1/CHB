@@ -1152,6 +1152,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(pz.floorOffer === pz.floorWant, `a "never below" limit lifts the gap offer to it (£${pz.floorOffer})`);
   ok(pz.caps >= 4, 'the page wears the section captions');
 
+  // Pricing's "Extra guests" row deep-links into the cottage's rates editor — it used
+  // to build that editor into the hidden cottage section and leave Pricing on screen.
+  const xg = await page.evaluate(async () => {
+    settingsOpen('pricing');
+    await new Promise((r) => setTimeout(r, 300));
+    const row = [...document.querySelectorAll('#pricing-body button.rv-go')].find((b) => /Extra guests/.test(b.textContent));
+    if (row) row.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const vis = (id) => { const e = document.getElementById(id); return !!(e && e.getClientRects().length); };
+    const fold = document.querySelector('#accom-detail [id^="bhub-fold-ac-"][id$="-rates"]');
+    return { row: !!row, pricing: vis('sec-pricing'), accom: vis('accom-detail'), fold: !!fold && !fold.hidden };
+  });
+  ok(xg.row && !xg.pricing && xg.accom && xg.fold, `"Extra guests" opens the cottage's rates editor on screen (${JSON.stringify(xg)})`);
+
   console.log('§9 the analytics VISITS trend is a GRAPH — bars PAINT, a dense axis thins');
   // The bars are measured, not asserted from markup: the old composer set each
   // bar's height as a PERCENTAGE of an auto-height flex column, which resolves
