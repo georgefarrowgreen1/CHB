@@ -1706,7 +1706,7 @@ if (typeof ctx.chbSeasonSplice === 'function') {
 
     // Suggestions: gap offer at 15% off the season rate + the coach lead.
     const sugg = ctx.cmdkIntent('should i change my prices') || [];
-    check('pricing question leads with the coach route', sugg[0] && /Pricing coach/.test(sugg[0].label), sugg[0] && sugg[0].label);
+    check('pricing question leads with the Pricing page route', sugg[0] && /^Pricing/.test(sugg[0].label), sugg[0] && sugg[0].label);
     const gapRow = sugg.find((r) => /gap on Jollyboat/.test(r.label || ''));
     check('gap offer suggests a shallow discount (~15% off the £140 season rate) with the dates', (() => {
         if (!gapRow) return false;

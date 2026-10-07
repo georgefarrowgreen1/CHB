@@ -410,7 +410,18 @@ let mailWillFail = false;
   await page.evaluate(() => accountsShowIndex());
   await page.waitForTimeout(250);
   await secCheck('expenses', /boiler service|expense/i, 'Expenses (seeded row listed)');
-  await secCheck('pricingcoach', /pricing|suggestion|coach|demand|not enough/i, 'Pricing coach');
+  // The pricing coach moved into Manage → Pricing: no tool for it here, and its
+  // old route lands on the Pricing page.
+  const coachMoved = await page.evaluate(async () => {
+    const noTool = !/Pricing coach/.test((document.getElementById('accounts-index') || {}).textContent || '');
+    accountsOpen('pricingcoach');
+    await new Promise((r) => setTimeout(r, 500));
+    const sec = document.getElementById('sec-pricing');
+    return { noTool, landed: !!sec && sec.style.display !== 'none' && document.getElementById('view-settings').classList.contains('active') };
+  });
+  ok(coachMoved.noTool && coachMoved.landed, `the Pricing coach button is gone from Payments, and its old route opens Manage → Pricing (${JSON.stringify(coachMoved)})`);
+  await page.evaluate(() => openAccounts());
+  await page.waitForTimeout(300);
 
   console.log('recent payments + pricing coach wear the unified anatomy (owner-asked)');
   const recentDay = d(-1);
@@ -447,19 +458,25 @@ let mailWillFail = false;
       head: (feed.querySelector('.mf-head') || {}).textContent || '',
       month: !!feed.querySelector('.mf-month'),
     };
-    await renderPricingCoach();
-    await new Promise((r) => setTimeout(r, 150));
-    const pc = document.getElementById('pricingcoach-body');
-    const w = pc.querySelector('.pc-well');
+    await openArea();
+    settingsOpen('pricing');
+    prCottage('21a');
+    prLoadSearch(true);
+    await new Promise((r) => setTimeout(r, 400));
+    const pc = document.getElementById('pricing-body');
+    const w = pc.querySelector('.pr-scard');
     const coach = {
-      cap: !!pc.querySelector('.acr-cap'),
-      opp: !!pc.querySelector('.pc-well .st-cap.is-ok .st-tick'),
-      insight: !!pc.querySelector('.pc-well .st-cap.is-unk'),
+      cap: [...pc.querySelectorAll('.acr-cap')].some((c) => /searched for/.test(c.textContent)),
+      opp: !!pc.querySelector('.pr-scard .st-cap.is-ok .st-tick'),
+      insight: !!pc.querySelector('.pr-scard .st-cap.is-unk'),
       well: w ? getComputedStyle(w).borderStyle !== 'none' : false,
-      apply: !!pc.querySelector('.pc-well [data-act="applyPricingSuggestion"]'),
+      apply: !!pc.querySelector('.pr-scard [data-act="applyPricingSuggestion"]'),
+      radar: pc.querySelectorAll('.pr-radar .pr-rrow').length === 1 && /3/.test((pc.querySelector('.pr-rnums') || {}).textContent || ''),
+      loading: !pc.querySelector('.pr-loading'),
     };
     window.apiPost = realPost;
     window.apiGet = realGet;
+    await openAccounts(); // back to Payments for the sections that follow
     return { recent, coach };
   });
   ok(skin.recent.noStutter && skin.recent.figs === 3 && skin.recent.welled && skin.recent.rows === 3,
@@ -468,8 +485,8 @@ let mailWillFail = false;
     `Recent payments: one In/Out pill per line, agreeing with the sign (${skin.recent.pills})`);
   ok(skin.recent.waitRow && skin.recent.month && /£525\.00 in · £75\.00 returned · £75\.00 on its way/.test(skin.recent.head),
     `Recent payments: a pending return sits apart as "Back in 3–5 days" and is kept out of the totals (${skin.recent.head})`);
-  ok(skin.coach.cap && skin.coach.opp && skin.coach.insight && skin.coach.well && skin.coach.apply,
-    'Pricing coach: caption + wells + ✓ opportunity / quiet insight capsules + Apply intact');
+  ok(skin.coach.cap && skin.coach.opp && skin.coach.insight && skin.coach.well && skin.coach.apply && skin.coach.radar && skin.coach.loading,
+    `the coach's ideas, capsules, Apply and search weeks now live on Manage → Pricing (${JSON.stringify(skin.coach)})`);
 
   // ---- 4. actions ----
   console.log('4. money actions');
