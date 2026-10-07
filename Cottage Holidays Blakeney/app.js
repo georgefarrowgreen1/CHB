@@ -10177,7 +10177,10 @@ function guestFlowHtml(propKey, b, payToken) {
     // hub learned the same — capIdx/capLbl).
     let askLbl = at >= 0 ? (ASK[stages[at].key] || stages[at].glabel) : '';
     if (at >= 0 && stages[at].key === 'deposit' && !flow.gt.fullyPaid) {
-        try { if (guestPayCta(b, flow.gt).word === 'balance') askLbl = 'Payment in full'; } catch (e) {}
+        // Only the SERVER'S stage says so (booking_next_payment); with no
+        // nextPayment guestPayCta falls back to "balance" for every booking.
+        const np = b && b.nextPayment;
+        if (np && np.kind === 'balance' && !(Number(flow.gt.paid) > 0.005)) askLbl = 'Payment in full';
     }
     const cap = at < 0 ? 'Every step done' : `Next · ${at + 1} of ${stages.length} · ${askLbl}`;
     const steps = `<div class="bkflow-cap"${at >= 0 && stages[at].now ? ' data-staying="1"' : ''}>${escapeHtml(cap)}</div>`;
