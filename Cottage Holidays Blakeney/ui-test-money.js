@@ -314,6 +314,27 @@ let mailWillFail = false;
   ok(calmChk.shown && /nothing to collect/i.test(calmChk.calm) && /no deposits to give back/i.test(calmChk.calm), `…and one calm line replaces two rows (${calmChk.calm})`);
   ok(!calmChk.grps.includes('mocollect') && !calmChk.grps.includes('moback'), `…with neither calm group rendered (${calmChk.grps.join(',')})`);
 
+  // 2b-ii. "Square hasn't said" stands down past the payout window (owner-asked): a
+  // charge older than the window can never be matched, so it is not a thing to look at.
+  const unkChk = await page.evaluate(async (ages) => {
+    const real = window.apiGet;
+    const out = [];
+    for (const age of ages) {
+      const paid = ukShiftDays(todayDashed(), -age);
+      const payouts = { known: 3, lookback: 60, items: { unknown: [{ name: 'Old Charge', kind: 'balance', paid_on: paid, amount: 774.57, movable: 774.57 }], landed: [], onWay: [] } };
+      window.apiGet = async (u) => (/accounts\.php/.test(u) ? { total: 0, deposit_liability: { items: [], net: 0, payouts } } : real(u));
+      renderMoneyOverview();
+      await new Promise((r) => setTimeout(r, 900));
+      const h = document.getElementById('mo-attn-async');
+      out.push(!!(h && h.querySelector('[data-grp="mounk"], #bhub-fold-mounk')) || /Square hasn.t said/.test((h || {}).textContent || ''));
+    }
+    window.apiGet = real;
+    renderMoneyOverview();
+    return out;
+  }, [20, 70]);
+  ok(unkChk[0], 'a 20-day-old charge Square has not reported still needs attention');
+  ok(!unkChk[1], 'a 70-day-old charge (past the 60-day window) no longer needs attention');
+
   // 2c. chase-everyone-due appears only at TWO+ chaseable owers — under two,
   // the bulk action is the row's own action wearing a worse label.
   const bulkChk = await page.evaluate(([ci, co]) => {
