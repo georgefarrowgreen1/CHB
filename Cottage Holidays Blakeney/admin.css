@@ -3323,11 +3323,38 @@ svg.sp-rmark path { stroke-dasharray: 30; animation: spDraw 380ms var(--out) 320
 .sp-offsub { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.35; }
 .sp-on { flex: none; min-height: 44px; padding: 0 4px; border: none; background: none; color: var(--accent-text); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; white-space: nowrap; }
 .sp-err { font-size: var(--fs-sub); color: var(--danger-text); }
+
+/* ---- tools (the approved demo): grouped rows, each reporting its own result ---- */
+.sp-tools, .sp-pubsec { max-width: 640px; margin-top: 20px; }
+.sp-tsum { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-light); cursor: pointer; list-style: none; }
+.sp-tsum::-webkit-details-marker { display: none; }
+.sp-tools[open] .sp-tsum .sp-chev { transform: rotate(90deg); }
+.sp-tbody { display: flex; flex-direction: column; gap: 20px; padding-top: 20px; animation: spRise 300ms var(--out) both; }
+.sp-tlist { overflow: hidden; }
+.sp-tool + .sp-tool { border-top: 1px solid var(--glass-border); }
+.sp-tbtn { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border: none; background: none; color: var(--text-light); text-align: left; cursor: pointer; font-family: var(--font-sans); }
+.sp-tbtn[disabled] { opacity: 1; cursor: progress; }
+.sp-tsub { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.4; text-wrap: pretty; }
+.sp-tend { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 28px; }
+.sp-tverb { font-size: var(--fs-body); font-weight: 600; color: var(--accent-text); }
+.sp-tend .sp-spin, .sp-tmark { display: none; }
+.sp-tool.is-busy .sp-tverb, .sp-tool.is-done .sp-tverb { display: none; }
+.sp-tool.is-busy .sp-spin { display: inline-block; color: var(--accent-text); }
+.sp-tool.is-done .sp-tmark { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--ok) 15%, transparent); animation: spPop 380ms var(--out) both; position: relative; }
+.sp-tool.is-done .sp-tmark::after { content: ''; position: absolute; left: 10px; top: 6px; width: 6px; height: 12px; border: solid var(--ok-text); border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.sp-tool.is-bad .sp-tverb { color: var(--danger-text); }
+.sp-tres { margin: -4px 16px 12px 64px; padding: 8px 12px; border-radius: var(--r-sm); font-size: var(--fs-sub); line-height: 1.45; overflow-wrap: anywhere; animation: spRise 280ms var(--out) both; }
+.sp-tres.is-ok { background: color-mix(in srgb, var(--ok) 10%, transparent); color: var(--ok-text); }
+.sp-tres.is-bad { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger-text); }
+.sp-tres .sp-tline { margin-top: 4px; }
+.sp-tnote { margin: 0; padding: 0 4px; font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.5; }
+.sp-publink { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; color: var(--text-light); text-decoration: none; }
 /* The killswitch keeps an inline animation-delay, so a `both` fill would hold
    the bars at scaleY(0) through it — the page simply lands, finished. The
    checking spinner stays: it says work is happening. */
 @media (prefers-reduced-motion: reduce) {
-  #diagnostics-body [class^="sp-"], #diagnostics-body [class*=" sp-"], #diagnostics-body svg.sp-rmark path { animation: none !important; transition: none !important; }
+  #diagnostics-body [class^="sp-"], #diagnostics-body [class*=" sp-"], #diagnostics-body svg.sp-rmark path, .sp-tbody, .sp-tres, .sp-tmark { animation: none !important; transition: none !important; }
+  .sp-tool.is-busy .sp-spin { animation: chbSpin 1s linear infinite !important; }
   #diagnostics-body .sp-hero.is-checking .sp-arc, #diagnostics-body .sp-spin, #diagnostics-body .sp-again.is-busy svg { animation: chbSpin 1s linear infinite !important; }
 }
 
