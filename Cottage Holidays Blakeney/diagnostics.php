@@ -510,7 +510,7 @@ try {
             $feeds += count($arr);
         }
     }
-    $b = db()->query('SELECT COUNT(*) c, MAX(created_at) m FROM ical_blocks')->fetch();
+    $b = db()->query('SELECT COUNT(*) c, MAX(updated_at) m FROM ical_blocks')->fetch();
     $ie = db()
         ->query("SELECT COUNT(*) c FROM activity_log WHERE action LIKE 'ical%fail%' AND created_at >= (NOW() - INTERVAL 3 DAY)")
         ->fetch();
@@ -550,6 +550,103 @@ try {
         ->query("SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE action = 'email.fail' AND created_at >= (NOW() - INTERVAL 7 DAY)")
         ->fetch();
     $insights['email'] = ['fails7d' => (int) ($ef['c'] ?? 0), 'lastFail' => $ef['m'] ?? null];
+} catch (\Throwable $e) {
+}
+
+// 6) THE STATUS PAGE'S OWN READS (the approved redesign): the week's warnings
+//    grouped with a verdict, a seven-day trace per vital, every calendar feed, the
+//    newest backup and how much the uploads grew. Each is guarded on its own.
+require_once __DIR__ . '/status-lib.php';
+$today7 = date('Y-m-d');
+try {
+    $wr = db()->query("SELECT action, summary, DATE(created_at) day FROM activity_log WHERE severity = 'warn' AND created_at >= (CURDATE() - INTERVAL 6 DAY)")->fetchAll(PDO::FETCH_ASSOC);
+    $insights['week'] = status_week($wr, $today7);
+} catch (\Throwable $e) {
+}
+try {
+    $cr = db()->query("SELECT created_at FROM activity_log WHERE action = 'cron.run' AND created_at >= (CURDATE() - INTERVAL 6 DAY)")->fetchAll(PDO::FETCH_COLUMN);
+    if (isset($insights['automation'])) {
+        $insights['automation']['days'] = status_daily($cr, $today7);
+    }
+    $is = db()->query("SELECT created_at FROM activity_log WHERE action = 'ical.sync' AND created_at >= (CURDATE() - INTERVAL 6 DAY)")->fetchAll(PDO::FETCH_COLUMN);
+    if (isset($insights['ical'])) {
+        $insights['ical']['days'] = status_daily($is, $today7);
+    }
+} catch (\Throwable $e) {
+}
+try {
+    $sentDays = content_json('mail-sent-days', []);
+    $sentDays = is_array($sentDays) ? $sentDays : [];
+    $sd = [];
+    $base7 = strtotime($today7 . ' 12:00:00 UTC');
+    for ($i = 6; $i >= 0; $i--) {
+        $sd[] = (int) ($sentDays[gmdate('Y-m-d', $base7 - $i * 86400)] ?? 0);
+    }
+    $insights['email'] = array_merge($insights['email'] ?? [], ['sent7d' => array_sum($sd), 'days' => $sd]);
+} catch (\Throwable $e) {
+}
+try {
+    $feedsOut = [];
+    $cotSet = [];
+    $propsList = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($propsList as $pk) {
+        $fr = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $fr->execute(['ical-feeds-' . $pk]);
+        $fv = $fr->fetchColumn();
+        $fl = $fv === false ? [] : json_decode(decrypt_value((string) $fv), true);
+        $stat = content_json('ical-status-' . $pk, []);
+        $src = is_array($stat) && is_array($stat['sources'] ?? null) ? $stat['sources'] : [];
+        foreach (is_array($fl) ? $fl : [] as $f) {
+            if (empty($f['url'])) {
+                continue;
+            }
+            $s0 = $src[$f['source']] ?? null;
+            $feedsOut[] = [
+                'cottage' => prop_display($pk)['name'] ?: $pk,
+                'source' => (string) $f['source'],
+                'ok' => $s0 ? (bool) $s0['ok'] : null,
+                'at' => $s0['at'] ?? null,
+                'okAt' => $s0['ok_at'] ?? null,
+                'events' => (int) ($s0['events'] ?? 0),
+            ];
+            $cotSet[$pk] = true;
+        }
+    }
+    if (isset($insights['ical'])) {
+        $insights['ical']['list'] = $feedsOut;
+        $insights['ical']['cottages'] = count($cotSet);
+    }
+} catch (\Throwable $e) {
+}
+try {
+    $bdir = __DIR__ . '/backups';
+    $bf = glob($bdir . '/chb-backup-*.sql.gz') ?: [];
+    usort($bf, fn($x, $y) => filemtime($y) <=> filemtime($x));
+    $passSet = (defined('BACKUP_PASSPHRASE') && strlen((string) BACKUP_PASSPHRASE) >= 12) || strlen((string) content_value('backup-passphrase')) > 0;
+    $insights['backup'] = [
+        'at' => $bf ? date('Y-m-d H:i:s', filemtime($bf[0])) : null,
+        'bytes' => $bf ? filesize($bf[0]) : 0,
+        'encrypted' => $passSet,
+        'days' => status_daily(array_map(fn($f) => date('Y-m-d', filemtime($f)), $bf), $today7),
+    ];
+} catch (\Throwable $e) {
+}
+try {
+    if (isset($insights['storage']) && is_dir(__DIR__ . '/uploads')) {
+        $grew = 0;
+        $cut = time() - 30 * 86400;
+        $n = 0;
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__ . '/uploads', FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $f) {
+            if ($f->isFile() && $f->getMTime() >= $cut) {
+                $grew += $f->getSize();
+            }
+            if (++$n > 20000) {
+                break;
+            }
+        }
+        $insights['storage']['grew30d'] = $grew;
+    }
 } catch (\Throwable $e) {
 }
 

@@ -678,13 +678,13 @@
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
                 <span id="diag-msg" style="font-size:var(--fs-sub);"></span>
                 <div id="migrate-result" style="display:none;font-size:var(--fs-sub);margin-bottom:16px;"></div>
-                <!-- Verdict-first status read-out (loadDiagnostics builds the hero,
-                     the attention/optional groups, the collapsed pass list, then
-                     the Maintenance cards). "Re-run" lives in the hero. -->
+                <!-- The Status page (loadDiagnostics): the health ring, vitals, this
+                     week, every check by system, storage, switched-off extras. -->
                 <div id="diagnostics-body"></div>
                 <details class="help-disclosure" style="margin-top:18px;max-width:640px;">
                     <summary>More tools</summary>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                        <button class="btn-sm btn-edit" data-act="runSelfRepair" data-pass="self">Fix safe issues</button>
                         <button class="btn-sm btn-edit" data-act="runMigrations">Install updates</button>
                         <button class="btn-sm btn-edit" data-act="backfillWebp">Optimise photos for faster loading</button>
                         <button class="btn-sm btn-edit" data-act="sendTestEmail">Send test email</button>

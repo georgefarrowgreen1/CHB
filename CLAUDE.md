@@ -3480,6 +3480,30 @@ analytics now" sits on Analytics. Search routes (`toManage('backups')`, `toMng('
 duty → `mac`) follow; search-test asserts every route targets a registered section. ui-test-nightshift and
 ui-test-hig open `settingsOpen('mac')` for the overnight card.
 
+## The Status page (approved demo, built "exactly like the demo")
+
+Manage → Status is one run of `diagnostics.php` drawn as: a HEALTH RING (fraction of
+non-optional checks passed, tone ok/warn/bad), four VITALS each with a seven-day trace
+(daily jobs, calendars, email sent, backups), THIS WEEK (warnings grouped and judged),
+EVERYTHING CHECKED (every check in exactly one system — Payments ← Payments+Data,
+Email ← Email+Notifications, Calendars ← the feeds themselves, Automation, Website &
+data ← the rest), STORAGE (split bar + 30-day growth) and SWITCHED OFF (optional
+checks, each routing to the page that turns it on). Client: `loadDiagnostics` /
+`spHtml` / `spSystems` / `spVitals` / `spWeekHtml` / `spReveal` in admin.js, `.sp-*`
+in admin.css. Gated by **ui-test-status.js**, **test-status.php** and test-integration §46.
+- **THE WARNING VERDICTS ARE `status-lib.php`** (pure, `status_warn_kind`/`status_week`):
+  a mapped action is said in plain words with whether it needs the owner; an UNKNOWN one
+  shows its own summary and COUNTS AS NEEDING THE OWNER — never waved through.
+- **"Check again" never invents progress.** While the request is out the ring spins
+  indeterminately; the ring sweep, the percentage and the per-system badges tick only
+  once the real answer has landed (a reveal of results, not a fake load bar).
+  Reduced motion lands on the verdict at once — and needs its OWN block, because the
+  app killswitch leaves inline `animation-delay`s in place and a `both` fill would hold
+  every bar at `scaleY(0)` through them.
+- **Email's trace is `mail-sent-days`** (internal key, `mail_sent_tally()` in mailer.php
+  on every successful send, single and batch; 14 days kept; best-effort, never costs a send).
+- "Fix safe issues" sits under Needs a look and, always, in More tools.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

@@ -98,15 +98,15 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   ok(sweep.every((f) => f && f.fs >= 16), `…at 16px or more, so iOS does not zoom on focus (${sweep.map((f) => f && f.fs).join('/')})`);
   ok(sweep.every((f) => f && f.r === '12px'), `…with the cell radius (${sweep.map((f) => f && f.r).join('/')})`);
 
-  console.log('§5 System check — a 28px mark, a text button, no stripe');
+  console.log('§5 System check — the card radius, a pill at the floor, no stripe');
   await open(page, "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", 1200);
   const sys = await page.evaluate(() => {
-    const mark = document.querySelector('.status-hero-mark');
-    const rerun = document.querySelector('.status-rerun');
-    return { mark: mark ? Math.round(mark.getBoundingClientRect().width) : null, rerunUnderline: rerun ? getComputedStyle(rerun).textDecorationLine : null, rerunH: rerun ? Math.round(rerun.getBoundingClientRect().height) : null };
+    const hero = document.getElementById('sp-hero');
+    const again = document.getElementById('sp-again');
+    return { r: hero ? getComputedStyle(hero).borderTopLeftRadius : null, againR: again ? getComputedStyle(again).borderTopLeftRadius : null, againH: again ? Math.round(again.getBoundingClientRect().height) : null };
   });
-  ok(sys.mark !== null && sys.mark <= 30, `the verdict mark is a 28px symbol, not a 46px disc (${sys.mark}px)`);
-  ok(sys.rerunUnderline === 'none' && sys.rerunH >= 44, `Re-run is a text button at the floor, not an underlined link (${sys.rerunUnderline}, ${sys.rerunH}px)`);
+  ok(sys.r === '20px', `the verdict card wears the card radius (${sys.r})`);
+  ok(sys.againR === '999px' && sys.againH >= 44, `Check again is a pill at the floor (${sys.againR}, ${sys.againH}px)`);
   await open(page, "(async () => { await openAccounts(); accountsOpen('income'); })()", 1200);
   const inc = await page.evaluate(() => { const el = document.querySelector('.accounts-stat.headline'); return el ? { stripe: parseFloat(getComputedStyle(el).borderLeftWidth), r: getComputedStyle(el).borderTopLeftRadius } : null; });
   // The card's own hairline (1px) is not a stripe; the stripe was 4px of --ok.

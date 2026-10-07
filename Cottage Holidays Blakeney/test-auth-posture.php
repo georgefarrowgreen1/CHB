@@ -179,6 +179,7 @@ $REGISTRY = [
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
+    'status-lib.php' => ['lib', [], 'status_week()/status_warn_kind() — the Status page\'s pure judgements'],
     'db.php' => ['lib', [], 'the bootstrap every endpoint includes (defines the auth helpers themselves)'],
     'enquiry-actions.php' => ['lib', [], 'shared approve/decline logic'],
     'image-save.php' => ['lib', [], 'save_uploaded_image() shared by upload.php + photos.php'],
