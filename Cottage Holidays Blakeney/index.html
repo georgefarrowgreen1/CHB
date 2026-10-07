@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=65">
+    <link rel="stylesheet" href="guest-app.css?v=66">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=361">
+    <link rel="stylesheet" href="app.css?v=362">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1224,18 +1224,24 @@
                 <h1 class="section-title" style="margin-bottom: 5px;">My stays</h1>
                 <p class="lead" style="text-align: left; margin: 0;" id="guest-welcome">Your stays with Cottage Holidays Blakeney.</p>
             </div>
-            <!-- On the mobile shell the dock's Account button opens the account section;
-                 on desktop (no dock) this header button is the way in. Hidden on the
-                 mobile shell via CSS so it isn't duplicated there. Grouped with the
-                 call button so the two sit together, not at opposite ends. -->
+            <!-- Desktop has no dock, so this is its way to the Account page; the mobile
+                 shell hides it (the dock's Account button is the same place). Calling
+                 us lives on the Account page under Help. -->
             <div class="guest-head-actions">
-                <button id="acct-settings-btn" class="btn-sm btn-edit" data-act="openGuestDetailsModal" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
-                <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to discuss</a>
+                <button id="acct-settings-btn" class="btn-sm btn-edit" data-act="openGuestAccount" title="Account"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account</button>
             </div>
         </div>
+        <div class="gb-seg" id="gb-seg" role="tablist" aria-label="Which stays" hidden></div>
         <div id="guest-bookings-list">
             <!-- JS injects the guest's bookings here -->
         </div>
+    </main>
+
+    <!-- ================= GUEST ACCOUNT (one page, sub-pages in place) ================= -->
+    <!-- Replaced the "Your details" and "Account & security" pop-ups: one list of
+         rows, each opening its own page with a back link (renderGuestAccount). -->
+    <main id="view-guest-account" class="page-view container guest-account-view">
+        <div id="guest-account-body"></div>
     </main>
 
     <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
@@ -1383,85 +1389,6 @@
             <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
             <div class="enq-modal-msg" id="wl-msg" role="alert"></div>
             <button class="btn-glass btn-accent" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
-        </div>
-    </div>
-
-    <!-- ================= YOUR DETAILS (floating window) ================= -->
-    <div id="guest-details-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Your details" data-act="backdropClose" data-close="closeGuestDetailsModal">
-        <div class="modal-box glass-panel auth-split">
-            <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
-            <aside class="auth-brand" aria-hidden="true">
-                <img class="auth-brand-logo" src="logo.svg" alt="Cottage Holidays Blakeney">
-                <div class="auth-brand-copy">
-                    <h2>Your account</h2>
-                    <p>Keep your contact details current — we use them for your bookings and to reach you about your stay.</p>
-                </div>
-            </aside>
-            <div class="auth-form-col">
-            <div class="auth-close-row">
-                <button class="reviews-modal-close" data-act="closeGuestDetailsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
-            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 6px;">Your details</h2>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:16px;">Keep your contact details up to date — we use these for your bookings. Your bookings are linked to your email, so to change your email please contact us.</p>
-            <label class="modal-label">Email</label>
-            <input type="email" class="input-glass input-locked" id="profile-email" readonly title="To change your email, contact us.">
-            <label class="modal-label">Phone</label>
-            <input type="tel" class="input-glass" id="profile-phone" placeholder="Contact number">
-            <label class="modal-label">UK address</label>
-            <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
-            <label class="modal-label" for="profile-postcode">Postcode</label>
-            <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
-            <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="detailsPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
-            <div id="profile-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
-            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger-text);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Sign out</button>
-            </div>
-            </div><!-- /.auth-form-col -->
-        </div>
-    </div>
-
-    <!-- ================= ACCOUNT & SECURITY (floating window) ================= -->
-    <div id="guest-security-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign-in &amp; security" data-act="backdropClose" data-close="closeGuestSecurityModal">
-        <div class="modal-box glass-panel auth-split">
-            <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
-            <aside class="auth-brand" aria-hidden="true">
-                <img class="auth-brand-logo" src="logo.svg" alt="Cottage Holidays Blakeney">
-                <div class="auth-brand-copy">
-                    <h2>Account &amp; security</h2>
-                    <p>Your password, passkeys and data in one place. Add Face ID or Touch ID for a faster, password-free sign-in next time.</p>
-                </div>
-            </aside>
-            <div class="auth-form-col">
-            <div class="auth-close-row">
-                <button class="reviews-modal-close" data-act="closeGuestSecurityModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
-            <h2 class="section-title" style="font-size:var(--fs-title);margin:0 0 18px;">Account &amp; security</h2>
-
-            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 6px;">Change password</h3>
-            <label class="modal-label">Current password</label>
-            <input type="password" class="input-glass" id="pw-current" autocomplete="current-password" placeholder="Your current password">
-            <label class="modal-label">New password</label>
-            <input type="password" class="input-glass" id="pw-new" autocomplete="new-password" placeholder="At least 8 characters">
-            <label class="modal-label">Confirm new password</label>
-            <input type="password" class="input-glass" id="pw-confirm" autocomplete="new-password" placeholder="Re-type the new password">
-            <div id="pw-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:13px;" data-act="changeGuestPassword">Update password</button>
-
-            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;">Passkeys</h3>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Sign in with Face ID, Touch ID or your device PIN — no password to remember. Your password still works as a backup.</p>
-            <button class="btn-sm btn-edit" data-act="addPasskey">Add a passkey</button>
-            <div id="passkey-list" style="margin-top:14px;"></div>
-
-            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;">Your data</h3>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Download a copy of everything we hold about you — your account, bookings, payments, enquiries, messages and more — as a JSON file.</p>
-            <button class="btn-sm btn-edit" data-act="exportGuestData" data-pass="self">Download my data</button>
-
-            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;color:var(--danger-text);">Delete my account</h3>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
-            <button class="btn-sm btn-decline" data-act="deleteGuestAccount">Delete my account</button>
-            </div><!-- /.auth-form-col -->
         </div>
     </div>
 
@@ -2057,11 +1984,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1097"></script>
+    <script defer src="app.js?v=1098"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=31"></script>
+    <script defer src="guest-app.js?v=32"></script>
 
 </body>
 </html>

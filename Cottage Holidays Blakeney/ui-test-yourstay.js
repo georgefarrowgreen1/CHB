@@ -887,11 +887,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const emptyNew = await openPage({ name: 'New Visitor', email: 'nv@x.co' }, []);
   const newSay = await emptyNew.evaluate(() => (document.querySelector('.guest-empty') || {}).textContent || '');
   await emptyNew.close();
-  ok(/No Bookings Yet/i.test(newSay), `a genuinely new visitor still gets the welcome (${newSay.replace(/\s+/g, ' ').slice(0, 40)})`);
+  ok(/Nothing booked yet/i.test(newSay), `a genuinely new visitor still gets the welcome (${newSay.replace(/\s+/g, ' ').slice(0, 40)})`);
   const emptyBack = await openPage({ name: 'Been Before', email: 'bb@x.co' }, [], { completed: 2 });
   const backSay = await emptyBack.evaluate(() => (document.querySelector('.guest-empty') || {}).textContent || '');
   await emptyBack.close();
-  ok(!/No Bookings Yet/i.test(backSay) && /Nothing booked/i.test(backSay),
+  ok(!/Nothing booked yet/i.test(backSay) && /Nothing booked at the moment/i.test(backSay),
     `a returning guest is not told they have never booked (${backSay.replace(/\s+/g, ' ').slice(0, 60)})`);
   ok(/reply to your confirmation email/i.test(backSay),
     '…and is given a way to ask about a stay they expected to see');
@@ -987,31 +987,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(hrv.shut, 'Close shuts it');
   await hrPage.close();
 
+  // The header carries ONE pill now — Account (the desktop's way in). Calling us
+  // moved to the Account page's Help group, where the other ways to reach us are.
   const pillPage = await openPage({ name: 'Pill Guest', email: 'pill@x.co' }, []);
   await pillPage.setViewportSize({ width: 1280, height: 900 });
   await pillPage.waitForTimeout(200);
-  const pill = await pillPage.evaluate(() => {
-    const out = [];
-    for (const w of [1024, 1280, 1440]) {
-      const b = document.getElementById('acct-settings-btn');
-      const a = document.getElementById('acct-call-btn');
-      if (!b || !a) return null;
-      const rb = b.getBoundingClientRect(), ra = a.getBoundingClientRect();
-      const ib = b.querySelector('svg').getBoundingClientRect(), ia = a.querySelector('svg').getBoundingClientRect();
-      out.push({
-        w,
-        boxTop: +(ra.top - rb.top).toFixed(1),
-        boxH: +(ra.height - rb.height).toFixed(1),
-        // the inked content, not just the pill: this is what was 3px out
-        icon: +(ia.top - ib.top).toFixed(1),
-      });
-    }
-    return out;
-  });
-  ok(!!pill && pill.every((r) => Math.abs(r.boxTop) < 0.6 && Math.abs(r.boxH) < 0.6),
-    `both pills are the same box on one line (${pill && JSON.stringify(pill.map((r) => r.boxTop))})`);
-  ok(!!pill && pill.every((r) => Math.abs(r.icon) < 0.6),
-    `…and their icons sit at the same height inside — the reported 3px lift (${pill && JSON.stringify(pill.map((r) => r.icon))})`);
+  const pill = await pillPage.evaluate(() => ({
+    acct: !!document.getElementById('acct-settings-btn'),
+    call: !!document.getElementById('acct-call-btn'),
+    label: ((document.getElementById('acct-settings-btn') || {}).textContent || '').trim(),
+  }));
+  ok(pill.acct && !pill.call && pill.label === 'Account', `the My stays header has one Account pill (${pill.label})`);
   await pillPage.close();
 
   // 34) THE CHECK-OUT TAP. The button exists on the LAST MORNING only (clock

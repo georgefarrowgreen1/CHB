@@ -606,9 +606,7 @@ body.guest-app:not(.owner-mode).book-bar-open {
    usable (tapping another tab leaves them via nav()). They adapt to the screen:
    the form is a fluid-width column that centres vertically when it fits and
    scrolls when it doesn't, full-width on small phones and capped on larger ones. */
-body.guest-app:not(.owner-mode) #guest-auth-modal,
-body.guest-app:not(.owner-mode) #guest-details-modal,
-body.guest-app:not(.owner-mode) #guest-security-modal {
+body.guest-app:not(.owner-mode) #guest-auth-modal {
   z-index: 1390;
   background: var(--dark-grey);
   -webkit-backdrop-filter: none;
@@ -623,9 +621,7 @@ body.guest-app:not(.owner-mode) #guest-security-modal {
      visible and tappable over the top of these full-page screens. */
   padding: calc(100px + var(--safe-t)) clamp(16px, 5vw, 32px) 0;
 }
-body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box,
-body.guest-app:not(.owner-mode) #guest-details-modal .modal-box,
-body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
+body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box {
   width: 100%;
   max-height: none;
   min-height: 0;
@@ -751,7 +747,7 @@ body.guest-app:not(.owner-mode):has(#view-experiences.page-view.active) #guest-m
 /* And over the account sheets: at 390 the pill (z 1400) floats above the sign-in
    sheet (z 1390) and covers the word "for" in its last line — the ONE line that
    names the password-less route. */
-body.guest-app:not(.owner-mode):has(#guest-auth-modal.open, #guest-details-modal.open, #guest-security-modal.open) #guest-msg-fab {
+body.guest-app:not(.owner-mode):has(#guest-auth-modal.open) #guest-msg-fab {
   display: none;
 }
 /* HIT REGION to 44 for the 38px (34 condensed) dock buttons; ::after is the hover label. */

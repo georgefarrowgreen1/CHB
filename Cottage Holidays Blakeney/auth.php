@@ -936,8 +936,19 @@ switch ($action) {
     // single-use, 30-minute link (the magic-link token) that opens a "choose a new
     // password" step. One per minute per guest, so a few quick taps send one email.
     case 'guest_send_reset':
-        require_admin();
-        $email = strtolower(clean($in['email'] ?? ''));
+        // The OWNER may send one to any guest; a signed-in GUEST may send one only to
+        // their OWN address (Account → Sign-in & security). The body's email is
+        // ignored for a guest — it goes to the inbox that already proves the account.
+        $selfReset = empty($_SESSION['admin_id']);
+        if ($selfReset) {
+            require_guest();
+            $sq = db()->prepare('SELECT email FROM guests WHERE id = ?');
+            $sq->execute([(int) $_SESSION['guest_id']]);
+            $email = strtolower((string) $sq->fetchColumn());
+        } else {
+            require_admin();
+            $email = strtolower(clean($in['email'] ?? ''));
+        }
         if ($email === '') {
             json_out(['error' => 'Guest email is required'], 400);
         }
@@ -962,7 +973,7 @@ switch ($action) {
         if (empty($r['ok'])) {
             json_out(['error' => $r['error'] ?? 'Could not send the email'], 500);
         }
-        log_activity('account', 'guest.reset_link', 'Password reset link emailed to a guest', ['entity' => 'guest', 'entity_id' => (string) (int) $g['id']]);
+        log_activity('account', 'guest.reset_link', $selfReset ? 'A guest asked for a password reset link to their own email' : 'Password reset link emailed to a guest', ['actor' => $selfReset ? 'guest' : 'owner', 'entity' => 'guest', 'entity_id' => (string) (int) $g['id']]);
         json_out(['ok' => true, 'until' => date('H:i', $ts + 1800)]);
 
     // Guest CRM: aggregate BOOKINGS (everyone who actually stayed, account or not)

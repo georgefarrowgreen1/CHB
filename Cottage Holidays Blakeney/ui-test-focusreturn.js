@@ -101,7 +101,7 @@ const { boot } = require('./ui-test-lib');
     // F) THE ACCOUNT PAGES ARE ONE GROUND (reported from an iPhone): the transparent
     //    box kept .glass-panel's backdrop blur, which iOS painted as a brighter
     //    rectangle fading at its edges over a page of the same colour.
-    const grounds = await page.evaluate(() => ['guest-security-modal', 'guest-details-modal', 'guest-auth-modal'].map((id) => {
+    const grounds = await page.evaluate(() => ['guest-auth-modal'].map((id) => {
         const m = document.getElementById(id); if (!m) return id + ':missing';
         m.classList.add('open');
         const c = getComputedStyle(m.querySelector('.modal-box'));

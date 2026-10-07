@@ -47,8 +47,6 @@ const OVERLAYS = [
     ['photo-upload-modal', "openPhotoUpload('jollyboat');", 'closePhotoUpload()', '.modal-box'],
     ['welcome-modal', "await openWelcomeBook('jollyboat');", 'closeWelcomeModal()', '.modal-box'],
     ['exp-suggest-modal', 'openExperienceSuggest();', 'closeExperienceSuggest()', '.modal-box'],
-    ['guest-details-modal', 'openGuestDetailsModal();', 'closeGuestDetailsModal()', '.modal-box'],
-    ['guest-security-modal', 'openGuestSecurityModal();', 'closeGuestSecurityModal()', '.modal-box'],
     ['guest-auth-modal', 'openGuestAuthModal();', 'closeGuestAuthModal()', '.modal-box'],
     ['chat-widget', 'toggleChat();', 'closeChat()', '.chat-widget-head'],
     ['date-picker', "openProperty('21a'); await pause(300); openEnquireModal(); await pause(200); openDatePicker();", 'closeDatePicker(); closeEnquireModal();', '.datepicker-card'],

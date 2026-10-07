@@ -302,14 +302,6 @@ chbAct('chatForStay', function (el, event, propKey) {
     if (typeof toggleChat === 'function') toggleChat();
 });
 // Small bespoke compound closers from the guest-account modals.
-chbAct('detailsLogout', function () {
-    closeGuestDetailsModal();
-    if (typeof guestLogout === 'function') guestLogout();
-});
-chbAct('detailsSecurity', function () {
-    closeGuestDetailsModal();
-    if (typeof openGuestSecurityModal === 'function') openGuestSecurityModal();
-});
 // The privacy policy opens OVER the form that linked to it, so the guest
 // comes back to what they were filling in (the terms window's behaviour).
 chbAct('detailsPrivacy', function (el, event) {
@@ -2378,12 +2370,6 @@ function nav(viewId, anchorId = null) {
         closeGuestAuthModal();
     } catch (e) {}
     try {
-        closeGuestDetailsModal();
-    } catch (e) {}
-    try {
-        closeGuestSecurityModal();
-    } catch (e) {}
-    try {
         closeChat();
     } catch (e) {}
 
@@ -3624,155 +3610,258 @@ function renderStayedBefore() {
     }
     el.innerHTML = html;
 }
-// Populate the account "Your details" panel from the logged-in guest.
-function fillGuestProfile() {
-    if (!currentGuest) return;
-    const e = document.getElementById('profile-email');
-    const p = document.getElementById('profile-phone');
-    const a = document.getElementById('profile-address');
-    const pc = document.getElementById('profile-postcode');
-    if (e) e.value = currentGuest.email || '';
-    if (p) p.value = currentGuest.phone || '';
-    if (a) a.value = currentGuest.address || '';
-    if (pc) pc.value = currentGuest.postcode || '';
+// ===================================================================
+//  THE GUEST ACCOUNT PAGE (approved demo): ONE page of rows replacing the
+//  "Your details" and "Account & security" pop-ups — profile, Settings
+//  (sign-in & security), Help, Privacy, Sign out. Each row opens its own page
+//  in place with a back link (__gaSub). Details read as FACTS and are edited one
+//  at a time; the password is a row, not three empty boxes on arrival.
+// ===================================================================
+let __gaSub = ''; // '' | 'details' | 'security' | 'privacy'
+let __gaPasskeys = null; // null = not asked yet; [] = none
+const GA_IC = {
+    key: '<circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6 4 20M7 17l2 2M5 19l2 2"/>',
+    chat: '<path d="M4 5h16v11H8l-4 4z"/>',
+    phone: '<path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/>',
+    doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6z"/>',
+    out: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',
+    dl: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    bin: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/>',
+    face: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 10v1M15 10v1M12 10v3h-1M9.5 16a3.5 3.5 0 0 0 5 0"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+};
+const gaSvg = (k) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GA_IC[k]}</svg>`;
+const GA_CHEV = '<svg class="ga-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+// One row: a <button> (or an <a> when `href`), icon tile, label + sub, an
+// optional right-hand value, and a chevron only when it OPENS something.
+function gaRow(o) {
+    const inner =
+        (o.ic ? `<span class="ga-ic${o.danger ? ' is-danger' : ''}">${gaSvg(o.ic)}</span>` : '') +
+        `<span class="ga-lb"><span class="ga-t">${escapeHtml(o.t)}</span>${o.s ? `<span class="ga-s">${escapeHtml(o.s)}</span>` : ''}</span>` +
+        (o.v ? `<span class="ga-v">${o.v}</span>` : '') +
+        (o.chev ? GA_CHEV : '');
+    const cls = 'ga-row' + (o.danger ? ' is-danger' : '');
+    if (o.href) return `<a class="${cls}" href="${escapeHtml(o.href)}">${inner}</a>`;
+    if (o.static) return `<div class="${cls}">${inner}</div>`;
+    return `<button type="button" class="${cls}" ${o.act}>${inner}</button>`;
 }
-// Save the guest's phone + address (email is not editable here).
-async function saveGuestProfile() {
-    const phone = (document.getElementById('profile-phone').value || '').trim();
-    const address = (document.getElementById('profile-address').value || '').trim();
-    const postcode = (document.getElementById('profile-postcode').value || '').trim();
-    const msg = document.getElementById('profile-msg');
-    const show = (t, ok) => {
-        if (msg) {
-            msg.textContent = t;
-            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
-            // tokens and measured 2.33-2.74:1 as words on the light ground.
-            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
-            // also the shape a11y-test S1b discovers - so these lines are measured
-            // on every run instead of by luck.
-            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
-            msg.style.display = 'block';
-        }
+const gaGroup = (rows, cap) => (cap ? `<h2 class="ga-cap">${escapeHtml(cap)}</h2>` : '') + `<div class="ga-group">${rows.join('')}</div>`;
+// The configured number only — the CONTACT_PHONE_* fallbacks are placeholders,
+// and a "Call us" row dialling a made-up number is worse than no row.
+function gaPhone() {
+    const cfg = (siteContent && siteContent['contact-phone']) || {};
+    const dial = String(cfg.dial || '').replace(/\s+/g, '');
+    return dial ? { dial, display: cfg.display || dial } : null;
+}
+function openGuestAccount(sub) {
+    if (!currentGuest) {
+        openGuestArea();
+        return;
+    }
+    __gaSub = typeof sub === 'string' ? sub : '';
+    nav('view-guest-account');
+    renderGuestAccount();
+    try {
+        window.scrollTo(0, 0);
+    } catch (e) {}
+}
+window.openGuestAccount = openGuestAccount;
+function gaGo(sub) {
+    __gaSub = sub || '';
+    renderGuestAccount(sub ? 'fwd' : 'back');
+    try {
+        window.scrollTo(0, 0);
+    } catch (e) {}
+    if (sub === 'security' && __gaPasskeys === null) loadPasskeys();
+}
+function renderGuestAccount(dir) {
+    const host = document.getElementById('guest-account-body');
+    if (!host) return;
+    if (!currentGuest) {
+        host.innerHTML = '';
+        return;
+    }
+    const g = currentGuest;
+    const back = `<button type="button" class="ga-back" ${chbAttrs('gaGo', '')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Account</button>`;
+    let html = '';
+    if (__gaSub === 'details') {
+        const none = 'Not added yet';
+        html =
+            back +
+            `<h1 class="section-title ga-h1">Your details</h1><p class="ga-lead">Used for your bookings and to reach you about your stay.</p>` +
+            gaGroup([
+                gaRow({ t: 'Email', s: g.email || '', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true }),
+                gaRow({ t: 'Phone', s: g.phone || none, act: chbAttrs('gaEdit', 'phone'), chev: true }),
+                gaRow({ t: 'Address', s: g.address || none, act: chbAttrs('gaEdit', 'address'), chev: true }),
+                gaRow({ t: 'Postcode', s: g.postcode || none, act: chbAttrs('gaEdit', 'postcode'), chev: true }),
+            ]) +
+            `<p class="ga-note">Your bookings are linked to your email, so to change it, <button type="button" class="ga-link" data-act="toggleChat">message us</button>. We only use these to manage your bookings — see our <button type="button" class="ga-link" data-act="detailsPrivacy">privacy policy</button>.</p>`;
+    } else if (__gaSub === 'security') {
+        const keys = __gaPasskeys;
+        const pkRows = (keys || []).map((k) =>
+            gaRow({
+                ic: 'face',
+                t: k.label || 'Passkey',
+                s: 'Added ' + fmtDate(String(k.created_at || '').split(' ')[0]),
+                v: `<span class="ga-vbtn">Remove</span>`,
+                act: chbAttrs('deletePasskey', k.id),
+            }),
+        );
+        if (passkeysSupported())
+            pkRows.push(gaRow({ ic: 'face', t: keys && keys.length ? 'Add another passkey' : 'Add a passkey', s: 'Sign in with Face ID, Touch ID or your device PIN. Your password still works.', act: 'data-act="addPasskey"' }));
+        else if (!pkRows.length) pkRows.push(gaRow({ ic: 'face', t: 'Passkeys', s: "This device or browser doesn't support passkeys.", static: true }));
+        html =
+            back +
+            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">How you get into your account.</p>` +
+            gaGroup(
+                [
+                    gaRow({ ic: 'key', t: 'Change password', act: 'data-act="gaPassword"', chev: true }),
+                    gaRow({ ic: 'mail', t: 'Email me a reset link', s: "If you've forgotten your password", act: 'data-act="gaResetLink"' }),
+                ],
+                'Password',
+            ) +
+            gaGroup(keys === null ? [gaRow({ ic: 'face', t: 'Passkeys', s: 'Checking…', static: true })] : pkRows, 'Passkeys');
+    } else if (__gaSub === 'privacy') {
+        html =
+            back +
+            `<h1 class="section-title ga-h1">Privacy &amp; your data</h1><p class="ga-lead">Everything we hold about you, and what you can do with it.</p>` +
+            gaGroup([
+                gaRow({ ic: 'dl', t: 'Download my data', s: 'Your account, bookings, payments and messages in one file', act: 'data-act="exportGuestData" data-pass="self"' }),
+                gaRow({ ic: 'doc', t: 'Privacy policy', act: 'data-act="detailsPrivacy"', chev: true }),
+            ]) +
+            gaGroup([gaRow({ ic: 'bin', t: 'Delete my account', s: "This can't be undone", act: 'data-act="deleteGuestAccount"', danger: true })], 'Delete') +
+            `<p class="ga-note">Past bookings are kept as financial records the law requires, but your name and contact details are removed from them.</p>`;
+    } else {
+        const ph = gaPhone();
+        const ini = String(g.name || '?').trim().charAt(0).toUpperCase() || '?';
+        html =
+            `<h1 class="section-title ga-h1">Account</h1>` +
+            `<div class="ga-group"><button type="button" class="ga-row ga-prof" ${chbAttrs('gaGo', 'details')}><span class="ga-ava" aria-hidden="true">${escapeHtml(ini)}</span><span class="ga-lb"><span class="ga-t ga-name">${escapeHtml(g.name || '')}</span><span class="ga-s">${escapeHtml(g.email || '')}</span></span>${GA_CHEV}</button></div>` +
+            gaGroup(
+                [
+                    gaRow({ ic: 'key', t: 'Sign-in & security', s: 'Password and passkeys', act: chbAttrs('gaGo', 'security'), chev: true }),
+                ],
+                'Settings',
+            ) +
+            gaGroup(
+                [
+                    gaRow({ ic: 'chat', t: 'Message us', s: 'We usually reply the same day', act: 'data-act="toggleChat"' }),
+                    ph ? gaRow({ ic: 'phone', t: 'Call us', s: ph.display, href: 'tel:' + ph.dial }) : '',
+                    gaRow({ ic: 'doc', t: 'Booking terms', act: 'data-act="gaTerms"', chev: true }),
+                ].filter(Boolean),
+                'Help',
+            ) +
+            gaGroup([gaRow({ ic: 'shield', t: 'Privacy & your data', s: 'Download or delete', act: chbAttrs('gaGo', 'privacy'), chev: true })], 'Privacy') +
+            `<div class="ga-group ga-signout">${gaRow({ ic: 'out', t: 'Sign out', act: 'data-act="gaSignOut"' })}</div>`;
+    }
+    host.innerHTML = `<div class="ga-page${dir === 'fwd' ? ' ga-in' : dir === 'back' ? ' ga-in-back' : ''}">${html}</div>`;
+}
+// Edit ONE fact. The server saves the three together and refuses a missing
+// address or a bad postcode, so a guest who has never given an address is
+// asked for all three at once rather than meeting that refusal.
+async function gaEdit(field) {
+    const g = currentGuest || {};
+    const full = !g.address || !isUkPostcode(g.postcode || '');
+    const F = {
+        phone: { id: 'phone', label: 'Phone', type: 'tel', value: g.phone || '', autocomplete: 'tel' },
+        address: { id: 'address', label: 'UK address', type: 'textarea', rows: 2, def: g.address || '', placeholder: 'House name/number, street, town' },
+        postcode: { id: 'postcode', label: 'Postcode', type: 'text', value: g.postcode || '', autocomplete: 'postal-code', placeholder: 'e.g. NR25 7AB' },
     };
-    if (!address) {
-        show('Please enter your UK address.', false);
-        return;
-    }
-    if (!isUkPostcode(postcode)) {
-        show('Please enter a valid UK postcode. Outside the UK? Message us and we can help.', false);
-        return;
-    }
-    try {
-        const res = await apiPost('auth.php', {
-            action: 'guest_update_profile',
-            phone,
-            address,
-            postcode,
+    const fields = full ? [F.phone, F.address, F.postcode] : [F[field]];
+    const titles = { phone: 'Your phone', address: 'Your address', postcode: 'Your postcode' };
+    let msg = full ? 'We need your UK address and postcode for your bookings.' : '';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: full ? 'Your details' : titles[field], okLabel: 'Save' });
+        if (!v) return;
+        const next = {
+            phone: String(v.phone != null ? v.phone : g.phone || '').trim(),
+            address: String(v.address != null ? v.address : g.address || '').trim(),
+            postcode: String(v.postcode != null ? v.postcode : g.postcode || '').trim(),
+        };
+        fields.forEach((f) => {
+            if (f.type === 'textarea') f.def = next[f.id];
+            else f.value = next[f.id];
         });
-        currentGuest = res.guest || currentGuest;
-        show('Saved.', true);
-    } catch (e) {
-        show("Couldn't save: " + e.message, false);
-    }
-}
-
-// "Your details" floating window (liquid-glass modal) from the account pill.
-function openGuestDetailsModal() {
-    fillGuestProfile();
-    try {
-        loadPasskeys();
-    } catch (e) {} // populate the passkey list (works from any entry point, incl. desktop)
-    const msg = document.getElementById('profile-msg');
-    if (msg) msg.style.display = 'none';
-    const m = document.getElementById('guest-details-modal');
-    if (m) {
-        overlayHistPush(); // Back closes this overlay
-        m.classList.remove('closing');
-        m.classList.add('open');
-    }
-    try {
-        if (window.setGuestDockOverlay) window.setGuestDockOverlay('account');
-    } catch (e) {}
-}
-function closeGuestDetailsModal() {
-    const m = document.getElementById('guest-details-modal');
-    if (!m || !m.classList.contains('open')) return;
-    overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
-    chbCloseOverlay(m);
-    try {
-        if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
-    } catch (e) {}
-}
-
-// "Account & Security" floating window: password, passkeys, delete account.
-function openGuestSecurityModal() {
-    ['pw-current', 'pw-new', 'pw-confirm'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    const msg = document.getElementById('pw-msg');
-    if (msg) msg.style.display = 'none';
-    loadPasskeys();
-    const m = document.getElementById('guest-security-modal');
-    if (m) {
-        overlayHistPush(); // Back closes this overlay
-        m.classList.remove('closing');
-        m.classList.add('open');
-    }
-    try {
-        if (window.setGuestDockOverlay) window.setGuestDockOverlay('account');
-    } catch (e) {}
-}
-function closeGuestSecurityModal() {
-    const m = document.getElementById('guest-security-modal');
-    if (!m || !m.classList.contains('open')) return;
-    overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
-    chbCloseOverlay(m);
-    try {
-        if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
-    } catch (e) {}
-}
-async function changeGuestPassword() {
-    const cur = document.getElementById('pw-current').value;
-    const nw = document.getElementById('pw-new').value;
-    const cf = document.getElementById('pw-confirm').value;
-    const msg = document.getElementById('pw-msg');
-    const show = (t, ok) => {
-        if (msg) {
-            msg.textContent = t;
-            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
-            // tokens and measured 2.33-2.74:1 as words on the light ground.
-            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
-            // also the shape a11y-test S1b discovers - so these lines are measured
-            // on every run instead of by luck.
-            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
-            msg.style.display = 'block';
+        if (!next.address) msg = 'Please enter your UK address.';
+        else if (!isUkPostcode(next.postcode)) msg = 'Please enter a valid UK postcode. Outside the UK? Message us and we can help.';
+        else {
+            try {
+                const res = await apiPost('auth.php', { action: 'guest_update_profile', phone: next.phone, address: next.address, postcode: next.postcode });
+                currentGuest = res.guest || Object.assign({}, g, next);
+                renderGuestAccount();
+                toast('Saved');
+                return;
+            } catch (e) {
+                msg = "Couldn't save: " + (e.message || e);
+            }
         }
-    };
-    // The current password may be BLANK: an account whose unconfirmed password was
-    // cleared at email confirmation has none, and the server accepts that case only.
-    if (!nw) {
-        show('Please fill in your new password (and your current one, if you have one).', false);
-        return;
-    }
-    if (nw.length < 8) {
-        show('Your new password must be at least 8 characters.', false);
-        return;
-    }
-    if (nw !== cf) {
-        show('The new passwords do not match.', false);
-        return;
-    }
-    try {
-        await apiPost('auth.php', { action: 'guest_change_password', current: cur, next: nw });
-        show('Password updated.', true);
-        ['pw-current', 'pw-new', 'pw-confirm'].forEach((id) => {
-            document.getElementById(id).value = '';
-        });
-    } catch (e) {
-        show(e.message, false);
     }
 }
+async function gaPassword() {
+    const fields = [
+        { id: 'current', label: 'Current password', type: 'password', autocomplete: 'current-password', placeholder: 'Leave blank if you sign in by email link' },
+        { id: 'next', label: 'New password', type: 'password', autocomplete: 'new-password', placeholder: 'At least 8 characters' },
+        { id: 'confirm', label: 'Confirm new password', type: 'password', autocomplete: 'new-password' },
+    ];
+    let msg = '';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Change password', okLabel: 'Update password' });
+        if (!v) return;
+        // A retry keeps what was typed — the guest fixes one box, not three.
+        fields.forEach((f) => { f.value = v[f.id] || ''; });
+        if (!v.next || v.next.length < 8) msg = 'Your new password must be at least 8 characters.';
+        else if (v.next !== v.confirm) msg = 'The new passwords do not match.';
+        else {
+            try {
+                await apiPost('auth.php', { action: 'guest_change_password', current: v.current || '', next: v.next });
+                toast('Password updated — your other devices have been signed out');
+                return;
+            } catch (e) {
+                msg = String(e.message || e);
+            }
+        }
+    }
+}
+async function gaResetLink() {
+    try {
+        await apiPost('auth.php', { action: 'guest_send_reset' });
+        toast(`We've emailed a reset link to ${(currentGuest && currentGuest.email) || 'you'}. It works for 30 minutes.`);
+    } catch (e) {
+        if (e && e.code === 'already_sent') toast(e.message);
+        else glassAlert("Couldn't send the link: " + (e.message || e));
+    }
+}
+async function gaSignOut() {
+    if (!(await glassConfirm('Your stays stay safe — sign back in any time with your email.', 'Sign out', { title: 'Sign out?' }))) return;
+    await guestLogout();
+}
+// The terms for the cottage the guest is actually going to (their soonest
+// upcoming stay), else the general terms.
+function gaTerms() {
+    const today = todayDashed();
+    const next = (guestBookingsCache || []).find((x) => x.booking && x.booking.checkOut >= today);
+    openTermsModal(null, next ? next.propKey : undefined);
+}
+// Account tab of the guest app shell (guest-app.js): a signed-in guest gets
+// the Account page (always its first page); a signed-out visitor gets sign-in.
+async function openGuestArea() {
+    await restoreGuestSession();
+    if (currentGuest) {
+        closeGuestAuthModal();
+        nav('view-guest-bookings');
+        await renderGuestBookings();
+    } else {
+        switchGuestTab('login');
+        openGuestAuthModal();
+    }
+}
+function guestAccountTab() {
+    if (currentGuest) openGuestAccount('');
+    else openGuestArea();
+}
+window.guestAccountTab = guestAccountTab;
 
 // GDPR: guest downloads everything we hold about them as a JSON file.
 async function exportGuestData(btn) {
@@ -3807,6 +3896,8 @@ async function deleteGuestAccount() {
     try {
         await apiPost('auth.php', { action: 'guest_delete_account' });
         currentGuest = null;
+        __gaSub = '';
+        renderGuestAccount();
         setGuestUI();
         nav('view-main');
         toast('Your account and personal data have been deleted.');
@@ -3815,24 +3906,6 @@ async function deleteGuestAccount() {
     }
 }
 
-async function openGuestArea() {
-    await restoreGuestSession();
-    if (currentGuest) {
-        closeGuestAuthModal();
-        nav('view-guest-bookings');
-        await renderGuestBookings();
-    } else {
-        switchGuestTab('login');
-        openGuestAuthModal();
-    }
-}
-// Account tab of the guest app shell (guest-app.js): a signed-in guest gets
-// their details/security; a signed-out visitor gets the sign-in screen.
-function guestAccountTab() {
-    if (currentGuest) openGuestDetailsModal();
-    else openGuestArea();
-}
-window.guestAccountTab = guestAccountTab;
 
 // Customer login/register floating window (liquid-glass modal).
 function openGuestAuthModal() {
@@ -4238,29 +4311,13 @@ async function passkeyLogin() {
 }
 
 async function loadPasskeys() {
-    const box = document.getElementById('passkey-list');
-    if (!box) return;
     try {
         const res = await apiPost('passkeys.php', { action: 'list' });
-        const keys = res.passkeys || [];
-        if (keys.length === 0) {
-            box.innerHTML =
-                '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No passkeys yet.</p>';
-            return;
-        }
-        box.innerHTML = keys
-            .map(
-                (
-                    k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
-                    <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
-                    <button class="btn-sm btn-decline" ${chbAttrs('deletePasskey', k.id)}>Remove</button>
-                </div>`,
-            )
-            .join('');
+        __gaPasskeys = res.passkeys || [];
     } catch (e) {
-        box.innerHTML = '';
+        __gaPasskeys = __gaPasskeys || [];
     }
+    if (__gaSub === 'security') renderGuestAccount();
 }
 async function deletePasskey(id) {
     if (!(await glassConfirm('Remove this passkey?', 'Remove the passkey', { danger: true }))) return;
@@ -4295,6 +4352,10 @@ async function guestLogout() {
     guestBookingsCache = [];
     myGuestReviews = {};
     __wbStays = null;
+    __gaSub = '';
+    __gaPasskeys = null;
+    const ga = document.getElementById('guest-account-body');
+    if (ga) ga.innerHTML = '';
     const gl = document.getElementById('guest-bookings-list');
     if (gl) gl.innerHTML = '';
     const ct = document.getElementById('chat-thread');
@@ -4409,6 +4470,54 @@ function guestDepositTrackerHtml(b) {
     const lbl = chbCardLabel(b);
     return `<div class="dep-track">${head({ t: 'On its way' })}<div class="dep-bar"><b style="width:${pct}%"></b></div><div class="dep-d"><span>Refunded ${fmtDate(issued)}</span><span>Due by ${fmtDate(byIso)}</span></div><div class="dep-f">Returning to <b>${escapeHtml(lbl || 'the card you paid with')}</b> · day ${dayN} of 3–5 working days. Nothing is needed from you.</div></div>`;
 }
+// ---- My stays: the Upcoming | Past switch, the photo header and the empty
+// state's cottage cards (the approved account & stays demo).
+let __gbSeg = 'up';
+function gbSegRender(upN, pastN, nowToo) {
+    const el = document.getElementById('gb-seg');
+    if (!el) return;
+    if (!upN || !pastN) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const b = (v, label, n) =>
+        `<button type="button" role="tab" aria-selected="${__gbSeg === v}" class="gb-seg-b${__gbSeg === v ? ' is-on' : ''}" ${chbAttrs('gbSeg', v)}>${label}<span class="gb-seg-n">${n}</span></button>`;
+    el.innerHTML = b('up', nowToo ? 'Now &amp; upcoming' : 'Upcoming', upN) + b('past', 'Past', pastN);
+    el.hidden = false;
+}
+function gbSeg(v) {
+    __gbSeg = v === 'past' ? 'past' : 'up';
+    const up = document.getElementById('gb-pane-up');
+    const past = document.getElementById('gb-pane-past');
+    if (up) up.hidden = __gbSeg === 'past';
+    if (past) past.hidden = __gbSeg !== 'past';
+    document.querySelectorAll('#gb-seg .gb-seg-b').forEach((x, i) => {
+        const on = (i === 0) === (__gbSeg === 'up');
+        x.classList.toggle('is-on', on);
+        x.setAttribute('aria-selected', String(on));
+    });
+}
+// The cottage's first gallery photo as the card's header — the cottage's own
+// colour stands in when there is no photo.
+function gbPhotoHtml(propKey) {
+    const img = (propertyContent[propKey] && propertyContent[propKey].images && propertyContent[propKey].images[0]) || '';
+    const safe = String(img).replace(/["'()\\\s<>]/g, (c) => encodeURIComponent(c));
+    return `<div class="gb2-photo" style="--gbp:var(--prop-${escapeHtml(propKey)}, var(--accent));${img ? `background-image:url('${escapeHtml(safe)}'), var(--gbp-grad);` : ''}" aria-hidden="true"></div>`;
+}
+function gbCottagePicksHtml() {
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : Object.keys(propertyMeta || {});
+    if (!keys.length) return '';
+    const cards = keys
+        .map((k) => {
+            const name = (propertyMeta[k] && propertyMeta[k].name) || k;
+            const rate = propertyRates[k] && propertyRates[k].coupleRate;
+            const slug = COTTAGE_SLUGS[k] || k;
+            return `<a class="gb-pick" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${escapeHtml(k)}">${gbPhotoHtml(k).replace('gb2-photo', 'gb-pick-ph')}<span class="gb-pick-n">${escapeHtml(name)}</span>${rate ? `<span class="gb-pick-p">from ${gbp(rate)}</span>` : ''}</a>`;
+        })
+        .join('');
+    return `<h3 class="gb-hdr">Our cottages</h3><div class="gb-picks">${cards}</div>`;
+}
 async function renderGuestBookings() {
     const list = document.getElementById('guest-bookings-list');
     const welcome = document.getElementById('guest-welcome');
@@ -4423,8 +4532,6 @@ async function renderGuestBookings() {
     // only on a COLD list — a refresh keeps the last good cards until replaced.
     if (welcome) welcome.innerText = `Finding your stays, ${firstName}…`;
     if (list && !list.querySelector('.gb2, .guest-empty, .guest-booking')) list.innerHTML = CHB_SK_CARD.repeat(2);
-    loadPasskeys();
-    fillGuestProfile();
 
     // Fetch this guest's own bookings + pending enquiries (incl. property address)
     let rows = [],
@@ -4513,6 +4620,7 @@ async function renderGuestBookings() {
             </div>`
         : '';
     if (mine.length === 0 && pendingMine.length === 0 && unproven) {
+        gbSegRender(0, 0);
         list.innerHTML = confirmCard;
         return;
     }
@@ -4520,15 +4628,20 @@ async function renderGuestBookings() {
         // A GUEST WHO HAS STAYED HERE IS NOT A NEW VISITOR. Cancelling DELETEs the
         // booking row (dates_clash and waitlist_notify_freed depend on it going), so a
         // guest whose only stay was cancelled — possibly with a refund in flight — was
-        // told "No Bookings Yet … once you book one of our cottages, it will appear
-        // here" by their own account. The server's completed-stays count is the one
-        // fact available here.
+        // told they had never booked by their own account. The server's
+        // completed-stays count is the one fact available here.
+        // THE EMPTY STATE HELPS YOU START (approved demo): one short card and the
+        // cottages themselves, rather than a large empty box.
         const returning = completedStays > 0;
-        list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No bookings yet'}</p>
-                    <p style="font-size:var(--fs-body);">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
-                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse the cottages'}</button>
-                </div>`;
+        gbSegRender(0, 0);
+        if (welcome) welcome.innerText = returning ? `Welcome back, ${firstName}.` : `Welcome, ${firstName}.`;
+        list.innerHTML = `<div class="glass-panel guest-empty gb-empty">
+                    <span class="gb-empty-mark" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+                    <h2 class="gb-empty-t">${returning ? 'Nothing booked at the moment' : 'Nothing booked yet'}</h2>
+                    <p class="gb-empty-s">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'When you book a cottage, your dates, payments and arrival details live here.'}</p>
+                    <button class="btn-glass btn-accent gb-empty-go" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Find dates'}</button>
+                </div>${gbCottagePicksHtml()}
+                <p class="gb-help">Questions before you book? <button type="button" class="ga-link" data-act="toggleChat">Message us</button></p>`;
         return;
     }
 
@@ -4699,6 +4812,7 @@ async function renderGuestBookings() {
         const __card = `
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
+                    ${gbPhotoHtml(propKey)}
                     <!-- STATE SAID ONCE: the .gb2-band twelve pixels above already
                          carries the cottage colour and the badge carries the stage,
                          so the legend swatch that sat here said the cottage twice.
@@ -4798,7 +4912,7 @@ async function renderGuestBookings() {
         }
     });
     const gHdr = (t) =>
-        `<h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
+        `<h3 class="gb-hdr">${t}</h3>`;
     // Each section's cards sit in their own .gb-grid so the desktop two-up
     // layout works per section (an odd last card spans the full row).
     const gGrid = (cards) => `<div class="gb-grid">${cards.join('')}</div>`;
@@ -4813,22 +4927,34 @@ async function renderGuestBookings() {
                <div id="gb2-pastfold" hidden><div class="gb2-foldin">${gGrid(pastCards.slice(1))}</div></div>`
             : '')
         : '';
-    // No stays at all: a clear next step instead of an empty page.
-    const emptyState =
-        !hubCards.length && !pendingHtml && !currentCards.length && !upcomingCards.length && !pastCards.length
-            ? `<div class="glass-panel" style="text-align:center;padding:34px 22px;">
-                    <p style="margin:0 0 16px;color:var(--text-muted);">No stays yet — your bookings and enquiries will appear here.</p>
-                    <button class="btn-glass" data-act="nav" data-view="view-cottages">Browse the cottages</button>
-               </div>`
-            : '';
-    list.innerHTML =
-        confirmCard +
+    const upHtml =
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (currentCards.length ? gHdr('Staying now') + gGrid(currentCards) : '') +
-        (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '') +
-        pastHtml +
-        emptyState;
+        (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '');
+    // UPCOMING | PAST (approved demo): the two halves of the list are two panes
+    // under one switch, shown only when BOTH have something — a switch with one
+    // side empty is a control that offers nothing. The choice survives refreshes.
+    const upN = pendingMine.length + currentCards.length + upcomingCards.length;
+    const pastN = pastCards.length;
+    const both = !!upHtml && !!pastHtml;
+    if (!both) __gbSeg = upHtml ? 'up' : 'past';
+    gbSegRender(both ? upN : 0, both ? pastN : 0, currentCards.length > 0);
+    list.innerHTML =
+        confirmCard +
+        `<div id="gb-pane-up" class="gb-pane"${__gbSeg === 'past' && both ? ' hidden' : ''}>${upHtml}</div>` +
+        `<div id="gb-pane-past" class="gb-pane"${__gbSeg !== 'past' && both ? ' hidden' : ''}>${pastHtml}</div>`;
+    // The welcome line answers "where am I with this?" in one breath.
+    if (welcome) {
+        const nowStay = mine.find((x) => x.booking.checkIn <= todayStr && !hasCheckedOut(x.booking));
+        const nextStay = mine.find((x) => x.booking.checkIn > todayStr);
+        const nm = (x) => (propertyMeta[x.propKey] && propertyMeta[x.propKey].name) || x.propName || x.propKey;
+        if (nowStay) welcome.innerText = `Welcome back, ${firstName} — enjoy ${nm(nowStay)}.`;
+        else if (nextStay) {
+            const dd = nightsBetween(todayStr, nextStay.booking.checkIn);
+            welcome.innerText = `Welcome back, ${firstName} — ${dd === 1 ? '1 day' : dd + ' days'} until ${nm(nextStay)}.`;
+        }
+    }
 
     // Fill any in-stay tide cards (mid-stay guests) and the pre-arrival
     // weather strip — both async, both absent on failure rather than wrong.
@@ -14535,8 +14661,6 @@ document.addEventListener('click', (e) => {
 //      its own keys, and the reviews/faq/details modals are handled above.)
 const MODAL_CLOSERS = {
     'guest-auth-modal': closeGuestAuthModal,
-    'guest-details-modal': closeGuestDetailsModal,
-    'guest-security-modal': closeGuestSecurityModal,
     'admin-login-modal': closeAdminLogin,
     'terms-modal': closeTermsModal,
     'privacy-modal': closePrivacyModal,
@@ -17034,8 +17158,6 @@ function closeTopOverlay() {
     if (open('lightbox')) { closeLightbox(); return true; }
     if (open('photo-upload-modal')) { closePhotoUpload(); return true; }
     if (open('exp-suggest-modal')) { closeExperienceSuggest(); return true; }
-    if (open('guest-security-modal')) { closeGuestSecurityModal(); return true; }
-    if (open('guest-details-modal')) { closeGuestDetailsModal(); return true; }
     if (open('welcome-modal')) { closeWelcomeModal(); return true; }
     if (open('faq-modal')) { closeFaqModal(); return true; }
     if (open('amenities-modal')) { closeAmenitiesModal(); return true; }
@@ -20061,7 +20183,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'keysafe2610c';
+    const BUILD = 'gacct100720';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

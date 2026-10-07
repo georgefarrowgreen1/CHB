@@ -4725,7 +4725,7 @@ it_check('§45 the owner can no longer set a guest password', $r['code'] === 400
 $r = http($admin, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'nobody-here@gmail.com']);
 it_check('§45 a reset link for an address with no account is refused in words', $r['code'] === 404 && strpos($r['raw'], 'no account') !== false, $r['raw']);
 $r = http($noJar, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'ks@gmail.com']);
-it_check('§45 only the owner can send one', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+it_check('§45 a signed-out caller cannot send one', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
 // MAIL_ENABLED is off here, so the send itself answers 500 — and logs nothing,
 // which is what keeps the one-a-minute guard from refusing a send that never went.
 $r = http($admin, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'ks@gmail.com']);
@@ -4750,6 +4750,11 @@ $r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_change_password', 'cu
 it_check('§45 …the guest chooses it themselves, no old password needed', ($r['json']['ok'] ?? false) === true, $r['raw']);
 $h45 = (string) $rootDb->query("SELECT password_hash FROM guests WHERE id = $rsId")->fetchColumn();
 it_check('§45 …and it is THEIR password that is stored', password_verify('freshpass42', $h45), '');
+// A SIGNED-IN GUEST may ask for a reset link — only ever to their OWN address: the
+// body's email is ignored, so naming a stranger reaches the guest's own account
+// (the mailer is off here, hence 500 — a 404 would mean the stranger was looked up).
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'nobody-here@gmail.com']);
+it_check('§45 a guest\'s own reset link goes to their own address, whatever the body says', $r['code'] === 500, $r['raw']);
 $r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'againpass77']);
 it_check('§45 one reset per link: a second blank-current change is refused', $r['code'] === 403, $r['raw']);
 // The CRM carries when a guest was last invited back, so the page remembers it.
