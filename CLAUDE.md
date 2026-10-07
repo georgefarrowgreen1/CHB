@@ -3502,7 +3502,15 @@ in admin.css. Gated by **ui-test-status.js**, **test-status.php** and test-integ
   every bar at `scaleY(0)` through them.
 - **Email's trace is `mail-sent-days`** (internal key, `mail_sent_tally()` in mailer.php
   on every successful send, single and batch; 14 days kept; best-effort, never costs a send).
-- "Fix safe issues" sits under Needs a look and, always, in More tools.
+- "Fix safe issues" sits under Needs a look and, always, in Tools.
+- **TOOLS are grouped rows that report under themselves** (approved demo): "Keep it
+  healthy" (Fix safe issues / Install updates / Optimise photos) and "Email checks"
+  (test email / every template / this week's digest / reply-by-email), each `.sp-tool`
+  with a one-line sub saying what it does and a verb on the right that turns spinner →
+  ✓ (or red). The tool functions find their row from the button
+  (`spToolOf`/`spToolBusy`/`spToolSay`) and fall back to their old toast/slot when
+  called from anywhere else (search, Needs a look, Analytics' weekly button) — so
+  never set `btn.textContent` inside a row. Gated by ui-test-status §7.
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav

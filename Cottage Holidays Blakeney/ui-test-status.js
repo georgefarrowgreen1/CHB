@@ -50,6 +50,13 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (url.includes('diagnostics.php')) {
+      let b = {}; try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+      if (b.action === 'test_email') return json({ ok: true, to: 'owner@example.com' });
+    }
+    if (url.includes('migrate.php')) return json({ ok: true, migrations: [{ file: 'migration-130.sql', status: 'already applied' }, { file: 'migration-131.sql', status: 'already applied' }] });
+    if (url.includes('email-samples.php')) return json({ ok: true, sent: 38, to: 'owner@example.com', results: [] });
+    if (url.includes('webp-backfill.php')) return json({ ok: false, error: 'GD is not installed on the host.' });
     if (url.includes('diagnostics.php')) { runs.n++; return json({ ok: true, summary: {}, checks: page.__checks || checks, mail_ready: true, insights: INS }); }
     if (route.request().method() === 'POST') {
       let b = {}; try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
@@ -149,6 +156,34 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
     await page.click('.sp-off .sp-on');
     await page.waitForTimeout(400);
     ok(await page.evaluate(() => { const s = document.getElementById('sec-apis'); return !!s && s.style.display !== 'none'; }), 'Turn on opens the page that switches it on');
+    await page.close();
+
+    console.log('§7 tools — grouped rows, each reporting its own result');
+    ({ page } = await open(t.browser, t.base, { checks: CHECKS_OK }));
+    await page.click('.sp-tsum');
+    const t1 = await page.evaluate(() => ({ caps: [...document.querySelectorAll('.sp-tbody .sp-cap')].map((e) => e.textContent.trim()), rows: [...document.querySelectorAll('.sp-tool')].map((r) => r.getAttribute('data-tool')), subs: [...document.querySelectorAll('.sp-tool .sp-tsub')].every((e) => e.textContent.trim().length > 10), h: Math.min(...[...document.querySelectorAll('.sp-tbtn')].map((b) => b.getBoundingClientRect().height)) }));
+    ok(t1.caps.join('|') === 'Keep it healthy|Email checks', `two groups (${t1.caps.join(', ')})`);
+    ok(t1.rows.join() === 'fix,mig,webp,test,samples,digest,reply', `seven tools in order (${t1.rows.join()})`);
+    ok(t1.subs, 'every tool says what it does');
+    ok(t1.h >= 44, `every row is a 44px target (${t1.h})`);
+    await page.click('.sp-tool[data-tool="test"] .sp-tbtn');
+    await page.waitForFunction(() => document.querySelector('.sp-tool[data-tool="test"]').classList.contains('is-done'), null, { timeout: 5000 });
+    const t2 = await page.evaluate(() => { const r = document.querySelector('.sp-tool[data-tool="test"]'); const res = r.querySelector('.sp-tres'); return { text: res.textContent, hidden: res.hidden, below: res.getBoundingClientRect().top >= r.querySelector('.sp-tbtn').getBoundingClientRect().bottom - 8, label: r.querySelector('.sp-sysname').textContent, other: document.querySelector('.sp-tool[data-tool="mig"] .sp-tres').hidden }; });
+    ok(!t2.hidden && /owner@example\.com/.test(t2.text), `the result lands under its own row ("${t2.text}")`);
+    ok(t2.below && t2.label === 'Send a test email', 'beneath the row, which keeps its name');
+    ok(t2.other, "and no other row's result opens");
+    await page.click('.sp-tool[data-tool="mig"] .sp-tbtn');
+    await page.waitForFunction(() => document.querySelector('.sp-tool[data-tool="mig"]').classList.contains('is-done'), null, { timeout: 5000 });
+    ok(/Already up to date — 2 updates applied/.test(await page.evaluate(() => document.querySelector('.sp-tool[data-tool="mig"] .sp-tres').textContent)), 'Install updates says it is up to date');
+    await page.click('.sp-tool[data-tool="webp"] .sp-tbtn');
+    await page.waitForFunction(() => document.querySelector('.sp-tool[data-tool="webp"]').classList.contains('is-bad'), null, { timeout: 5000 });
+    ok(/GD is not installed/.test(await page.evaluate(() => document.querySelector('.sp-tool[data-tool="webp"] .sp-tres').textContent)), "a refusal is said in the server's words, on its row");
+    await page.click('.sp-tool[data-tool="samples"] .sp-tbtn');
+    await page.waitForSelector('#glass-dialog.open, #glass-dialog[open], .glass-dialog.open', { timeout: 3000 }).catch(() => {});
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#glass-dialog button')].find((x) => /cancel/i.test(x.textContent)); if (b) b.click(); });
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => { const r = document.querySelector('.sp-tool[data-tool="samples"]'); return !r.classList.contains('is-busy') && r.querySelector('.sp-tres').hidden; }), 'backing out of the samples confirm sends nothing and says nothing');
+    if (shots) await page.screenshot({ path: shots + '/tools.png', fullPage: true });
     await page.close();
 
     console.log('§6 wide');

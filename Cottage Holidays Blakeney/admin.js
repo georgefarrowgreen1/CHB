@@ -18912,17 +18912,23 @@ function renderNotifySettings() {
 // Read-only check of the zero-setup reply-by-email: does the mailbox
 // connect, and what did the newest replies do? Nothing is delivered.
 async function diagnoseReplyEmail(btn) {
-    const box = document.getElementById('reply-diag');
-    if (btn) {
+    const row = spToolOf(btn);
+    const box = row ? row.querySelector('.sp-tres') : document.getElementById('reply-diag');
+    if (!box) return;
+    spToolBusy(row);
+    let tone = true;
+    if (btn && !row) {
         btn.disabled = true;
         btn.textContent = 'Checking…';
     }
     try {
         const d = await apiGet('mailbox-read.php?debug=1');
         if (!d.enabled) {
+            tone = false;
             box.innerHTML = `<span style="color:var(--warn-text);">Reply-by-email isn't on yet — set up SMTP email first (or you've set REPLY_INBOX for the webhook route).</span>`;
         } else {
             const st = d.selftest || {};
+            tone = !!st.ok;
             const head = st.ok
                 ? `<span style="color:var(--ok-text);">Mailbox connected — reads ${escapeHtml(d.reply_to || '')} via ${escapeHtml(d.host || '')}.</span>`
                 : `<span style="color:var(--danger-text);">Couldn't read the mailbox: ${escapeHtml(st.reason || 'unknown')} (${escapeHtml(d.host || '')}). Enable POP3 for the mailbox, or set MAIL_POP_HOST.</span>`;
@@ -18947,9 +18953,11 @@ async function diagnoseReplyEmail(btn) {
             box.innerHTML = head + `<div style="margin-top:8px;">${rows}</div>`;
         }
     } catch (e) {
+        tone = false;
         box.innerHTML = `<span style="color:var(--danger-text);">Check failed: ${escapeHtml(e.message || 'error')}</span>`;
     } finally {
-        if (btn) {
+        if (row) spToolSay(row, tone, box.innerHTML);
+        if (btn && !row) {
             btn.disabled = false;
             btn.textContent = 'Check reply-by-email';
         }
@@ -25981,7 +25989,52 @@ async function loadNewsletter() {
 // the admin session) — so new tables/columns go live without phpMyAdmin.
 // Generate WebP companions for EXISTING uploaded photos (new uploads already
 // get one). Safe to re-run; processes in batches, so click again if more remain.
-async function backfillWebp() {
+// Status → Tools: each row reports its OWN result underneath (the approved demo).
+// A tool reached from anywhere else (search, Needs a look) has no row, so these
+// return null/false and the caller keeps its old toast.
+function spToolOf(btn) {
+    return btn && btn.closest ? btn.closest('.sp-tool') : null;
+}
+function spToolBusy(row) {
+    if (!row) return;
+    row.classList.remove('is-done', 'is-bad');
+    row.classList.add('is-busy');
+    const res = row.querySelector('.sp-tres');
+    if (res) res.hidden = true;
+}
+function spToolIdle(row) {
+    if (row) row.classList.remove('is-busy');
+}
+// html is PRE-ESCAPED by the caller.
+function spToolSay(row, ok, html) {
+    if (!row) return false;
+    row.classList.remove('is-busy', 'is-done', 'is-bad');
+    row.classList.add(ok ? 'is-done' : 'is-bad');
+    const res = row.querySelector('.sp-tres');
+    if (res) {
+        res.className = 'sp-tres ' + (ok ? 'is-ok' : 'is-bad');
+        res.innerHTML = html;
+        res.hidden = false;
+    }
+    return true;
+}
+async function backfillWebp(btn) {
+    const row = spToolOf(btn);
+    if (row) {
+        spToolBusy(row);
+        try {
+            const r = await apiPost('webp-backfill.php', {});
+            if (!r.ok) {
+                spToolSay(row, false, escapeHtml(r.error || "Couldn't optimise photos."));
+                return;
+            }
+            const more = r.remaining > 0 ? ` ${r.remaining} more to go — tap again to continue.` : '';
+            spToolSay(row, true, escapeHtml(`Optimised ${r.created} photo${r.created === 1 ? '' : 's'} (${r.skipped} already done${r.failed ? `, ${r.failed} skipped` : ''}). Originals kept.${more}`));
+        } catch (e) {
+            spToolSay(row, false, escapeHtml('Could not run: ' + (e.message || 'error')));
+        }
+        return;
+    }
     const msg = document.getElementById('diag-msg');
     if (msg) {
         msg.style.color = '';
@@ -26008,9 +26061,11 @@ async function backfillWebp() {
     }
 }
 
-async function runMigrations() {
-    const out = document.getElementById('migrate-result');
-    const msg = document.getElementById('diag-msg');
+async function runMigrations(btn) {
+    const row = spToolOf(btn);
+    const out = row ? null : document.getElementById('migrate-result');
+    const msg = row ? null : document.getElementById('diag-msg');
+    spToolBusy(row);
     if (msg) {
         msg.style.color = '';
         msg.textContent = 'Installing updates…';
@@ -26028,6 +26083,18 @@ async function runMigrations() {
         const data = await r.json().catch(() => ({}));
         const list = (data && data.migrations) || [];
         const changed = list.filter((m) => /^(applied|re-applied|baselined)/i.test(m.status || ''));
+        if (row) {
+            const bad = list.filter((m) => (m.status || '').toLowerCase() === 'error');
+            spToolSay(
+                row,
+                !!data.ok,
+                !data.ok
+                    ? "Some updates didn't install:" + bad.map((m) => `<div class="sp-tline">${escapeHtml(m.file || '')}${m.error ? ': ' + escapeHtml(m.error) : ''}</div>`).join('')
+                    : changed.length
+                      ? `Installed ${changed.length} update${changed.length === 1 ? '' : 's'}.`
+                      : `Already up to date — ${list.length} update${list.length === 1 ? '' : 's'} applied, none waiting.`,
+            );
+        }
         if (msg) {
             msg.style.color = data.ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = !data.ok
@@ -26051,6 +26118,7 @@ async function runMigrations() {
             refreshExpPendingBadge();
         } catch (e) {}
     } catch (e) {
+        if (row) spToolSay(row, false, escapeHtml('Could not install updates: ' + (e.message || 'error')));
         if (msg) {
             msg.style.color = 'var(--danger)';
             msg.textContent = 'Could not install updates: ' + (e.message || 'error');
@@ -26835,7 +26903,9 @@ chbAct('saveNightShift', async function (el) {
 // things (orphaned payments) without touching them. It never changes code or
 // bookings. Reports what it did, then refreshes the Status read-out.
 async function runSelfRepair(btn) {
-    if (btn) {
+    const row = spToolOf(btn);
+    spToolBusy(row);
+    if (btn && !row) {
         btn.disabled = true;
         btn.textContent = 'Fixing…';
     }
@@ -26843,7 +26913,16 @@ async function runSelfRepair(btn) {
         const r = await apiPost('self-repair.php', {});
         const fixed = r.fixed || [],
             flagged = r.flagged || [];
-        if (!fixed.length && !flagged.length) {
+        if (row) {
+            spToolSay(
+                row,
+                true,
+                !fixed.length && !flagged.length
+                    ? 'All clear — nothing needed fixing.'
+                    : (fixed.length ? `Fixed ${fixed.length}: ${escapeHtml(fixed.join('; '))}.` : 'Nothing to fix.') +
+                          (flagged.length ? ` Flagged ${flagged.length} for you to look at in the activity log.` : ' Nothing flagged.'),
+            );
+        } else if (!fixed.length && !flagged.length) {
             toast('All clear — nothing needed fixing.');
         } else {
             const bits = [];
@@ -26853,6 +26932,10 @@ async function runSelfRepair(btn) {
         }
         loadDiagnostics(); // re-run the checks so the page reflects the repair
     } catch (e) {
+        if (row) {
+            spToolSay(row, false, escapeHtml(e.message || "Couldn't run the fixer just now."));
+            return;
+        }
         toast(e.message || "Couldn't run the fixer just now.", 'error');
         if (btn) {
             btn.disabled = false;
@@ -27020,10 +27103,14 @@ async function runBackupNow(btn) {
     }
     refreshBackupStatus();
 }
-async function sendTestEmail() {
+async function sendTestEmail(btn) {
+    const row = spToolOf(btn);
     const msg = document.getElementById('diag-msg');
     const show = (t, ok) => {
-        if (msg) {
+        if (row) {
+            if (t === 'Sending…') spToolBusy(row);
+            else spToolSay(row, ok, escapeHtml(t));
+        } else if (msg) {
             msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
@@ -27031,7 +27118,7 @@ async function sendTestEmail() {
     show('Sending…', true);
     try {
         const r = await apiPost('diagnostics.php', { action: 'test_email' });
-        if (r.ok) show('Sent ✓ — check ' + (r.to || 'your owner inbox') + '.', true);
+        if (r.ok) show((row ? 'Sent to ' : 'Sent ✓ — check ') + (r.to || 'your owner inbox') + (row ? ' — check your inbox (and spam).' : '.'), true);
         else show(r.error || "Couldn't send.", false);
     } catch (e) {
         show(e.message || "Couldn't send.", false);
@@ -29482,6 +29569,18 @@ async function sendWeeklyEmailNow(which, btn) {
     if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`, 'Send it to me'))) {
         return;
     }
+    const row = spToolOf(btn);
+    if (row) {
+        spToolBusy(row);
+        try {
+            const r = await apiPost(spec.file + '?force=1', {});
+            if (!r || !r.ok) throw new Error((r && r.error) || 'Sending failed');
+            spToolSay(row, true, `Sent your ${escapeHtml(spec.label)} — check your inbox.`);
+        } catch (e) {
+            spToolSay(row, false, `Couldn't send it: ${escapeHtml(e.message)}`);
+        }
+        return;
+    }
     const was = btn ? btn.textContent : '';
     if (btn) {
         btn.disabled = true;
@@ -29524,14 +29623,23 @@ async function sendSampleEmails(btn) {
         ))
     )
         return;
-    if (btn) {
+    const row = spToolOf(btn);
+    spToolBusy(row);
+    if (btn && !row) {
         btn.disabled = true;
         btn.textContent = 'Sending…';
     }
-    const out = document.getElementById('diag-samples');
+    const out = row ? null : document.getElementById('diag-samples');
     try {
         const r = await apiPost('email-samples.php', { action: 'send', which: 'all' });
         if (!r.ok) throw new Error(r.error || 'Sending failed');
+        const fails = (r.results || []).filter((x) => !x.ok);
+        spToolSay(
+            row,
+            !fails.length,
+            `Sent ${r.sent} sample${r.sent === 1 ? '' : 's'} to ${escapeHtml(r.to)}. Subjects start with [SAMPLE].` +
+                fails.map((x) => `<div class="sp-tline">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`).join(''),
+        );
         if (out)
             out.innerHTML =
                 `<div style="margin:10px 0 4px;color:var(--ok-text);">Sent ${r.sent} sample${r.sent === 1 ? '' : 's'} to ${escapeHtml(r.to)} — check your inbox (subjects start with [SAMPLE]).</div>` +
@@ -29543,10 +29651,11 @@ async function sendSampleEmails(btn) {
                     )
                     .join('');
     } catch (e) {
+        spToolSay(row, false, `Couldn't send samples: ${escapeHtml(e.message)}`);
         if (out)
             out.innerHTML = `<div style="color:var(--danger-text);margin:10px 0 4px;">Couldn't send samples: ${escapeHtml(e.message)}</div>`;
     } finally {
-        if (btn) {
+        if (btn && !row) {
             btn.disabled = false;
             btn.textContent = 'Email me samples';
         }
