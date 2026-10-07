@@ -14825,7 +14825,9 @@ function calHoursSince(at) {
 }
 function calAgo(h) {
     if (h == null) return '';
-    return h >= 48 ? Math.round(h / 24) + ' days' : h >= 1.5 ? Math.round(h) + ' hours' : h >= 1 / 60 ? Math.max(1, Math.round(h * 60)) + ' min' : 'moments';
+    if (h >= 48) return Math.round(h / 24) + ' days';
+    if (h >= 1) { const n = Math.round(h); return n + (n === 1 ? ' hour' : ' hours'); }
+    return h >= 1 / 60 ? Math.max(1, Math.round(h * 60)) + ' min' : 'a moment';
 }
 // One cottage's platforms: [{source, url, s}] for every LINKED feed.
 function calSources(k) {
@@ -14866,7 +14868,9 @@ function calSubHtml(k, v) {
         : '';
     if (v.tone === 'none') return 'link Airbnb, Booking.com or Vrbo';
     if (v.linked === null) return 'add an Airbnb or Booking.com link';
-    const when = v.age == null ? '' : 'last imported ' + calAgo(v.age) + ' ago';
+    // The capsule already says how fresh it is; the sub only repeats the age when
+    // that age is the problem.
+    const when = v.age == null || (chips && v.tone === 'ok') ? '' : 'last imported ' + calAgo(v.age) + ' ago';
     return chips + (chips && when ? '<span class="cal-sep">·</span>' : '') + escapeHtml(when);
 }
 function calProblems() {
@@ -14893,7 +14897,7 @@ function calLinkFormHtml(k, fixSource) {
         <div class="cal-hint${state}" id="cal-link-hint">${escapeHtml(!L.url ? p.where : valid ? 'Looks like a calendar link' : 'That doesn’t look like a calendar link — it should start https:// and end in .ics')}</div>
         <div class="cal-form-acts">
           <button type="button" class="btn-sm btn-accent cal-go" id="cal-link-go" ${valid && !L.busy ? '' : 'disabled'} ${chbAttrs('calLinkSave')}>${L.busy ? 'Connecting…' : L.mode === 'fix' ? 'Save new link' : 'Connect ' + escapeHtml(p.name)}</button>
-          <button type="button" class="bhub-actlink" ${chbAttrs('calLinkCancel')}>Cancel</button>
+          <button type="button" class="cal-txt" ${chbAttrs('calLinkCancel')}>Cancel</button>
         </div>
       </div>`;
 }
@@ -14907,7 +14911,7 @@ function calFoldHtml(k) {
             : (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's') + ' · synced ' + agoLabel(s.at);
         return `<div class="cal-prow"><span class="cal-tile" style="background:${p.c};color:#fff" aria-hidden="true">${escapeHtml(p.l)}</span>
             <span class="cal-pmain"><b>${escapeHtml(p.name)}</b><small class="${s && s.ok === false ? 'is-bad' : ''}">${escapeHtml(line)}</small></span>
-            <button type="button" class="bhub-actlink" ${chbAttrs('calLinkOpen', String(k), String(x.source), 'fix')}>Replace link</button></div>`;
+            <button type="button" class="cal-txt" aria-label="Replace the ${escapeHtml(p.name)} link" ${chbAttrs('calLinkOpen', String(k), String(x.source), 'fix')}>Replace</button></div>`;
     }).join('');
     const canAdd = !srcs || Object.keys(CAL_PLAT).some((s2) => !(srcs || []).some((x) => x.source === s2));
     const formOpen = __calLink && __calLink.pk === k && __calLink.mode === 'add';
@@ -14983,7 +14987,7 @@ function calListHtml() {
             <p>${escapeHtml(body)}</p>
             ${fixing ? calLinkFormHtml(x.k, x.source) : `<div class="cal-prob-acts">
               <button type="button" class="btn-sm btn-accent" ${chbAttrs('calLinkOpen', String(x.k), String(x.source), 'fix')}>Paste a new link</button>
-              <button type="button" class="bhub-actlink" ${chbAttrs('runSync', String(x.k))}>Try again</button></div>`}
+              <button type="button" class="cal-txt" ${chbAttrs('runSync', String(x.k))}>Try again</button></div>`}
           </div>`;
     }).join('') + `<div class="bhub-grpcap">Cottages</div>` : '';
     const rows = vs.map(({ k, v }) => bhubFoldGrp('cal-' + k,
@@ -15216,7 +15220,7 @@ const SYNC_SOURCES = [
 // "3h" → "3h ago", but "Yesterday"/"now"/"3 Jun" read fine bare.
 function agoLabel(at) {
     const t = relTime(at);
-    return /^\d+[mh]$/.test(t) ? t + ' ago' : t;
+    return /^\d+([mh]| min| hours?)$/.test(t) ? t + ' ago' : t;
 }
 // One line of feed health under each import input, from the server-side
 // status snapshot (written on every sync, cron or manual).

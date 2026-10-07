@@ -8553,4 +8553,14 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .cal-form-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cal-go:disabled { opacity: 0.5; cursor: default; }
 #calendar-list > .bhub-grpcap { max-width: 640px; margin-left: auto; margin-right: auto; }
-@media (max-width: 479px) { .cal-sum { flex-wrap: wrap; } .cal-sum .cal-all { margin-left: 48px; } }
+.cal-txt {
+  flex: none; min-height: 44px; padding: 0 4px; border: 0; background: none; cursor: pointer;
+  font: 600 var(--fs-sub) var(--font-sans); color: var(--accent-text); white-space: nowrap;
+}
+.cal-txt:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cal-pmain small { overflow-wrap: anywhere; }
+@media (max-width: 639px) {
+  .cal-sum { flex-wrap: wrap; }
+  .cal-sum .mg-txt { flex-basis: calc(100% - 48px); }
+  .cal-sum .cal-all { flex-basis: 100%; justify-content: center; min-height: 44px; }
+}
