@@ -408,10 +408,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         `…and a never-loaded cache says so, with a retry ("${kept.said}")`);
     // And the field itself: it must show what was kept, not an empty box.
     const shown = await page.evaluate(() => {
-        const el = document.getElementById('bacs-details');
-        return el ? String(el.value || '') : '<<no field>>';
+        const v = (id) => { const el = document.getElementById(id); return el ? String(el.value || '') : '<<no field>>'; };
+        return [v('bank-name'), v('bank-sort'), v('bank-acc')].join(' | ');
     });
-    ok(shown === 'Barclays · 20-00-00 · 12345678', `the bank-details field shows the kept value, not a blank (${JSON.stringify(shown)})`);
+    ok(shown === 'Barclays | 20-00-00 | 12345678', `the bank-details fields show the kept value, not blanks (${JSON.stringify(shown)})`);
 
     // ---- 10. THE GUEST SIDE: a dropped fetch must not DELETE the page ----
     // Things to do is the one guest page where breaking the keep-last-good rule

@@ -930,70 +930,72 @@
             </div>
 
             <!-- Payments -->
+            <!-- PAYMENTS (approved demo): the title's capsule says whether cards are
+                 on; four wells — when guests pay, monthly payments, bank transfer,
+                 Square — each a set of rows. The deposit and the monthly cut-off SAVE
+                 AS THEY CHANGE (a "Saved ✓" beside the caption); the bank details are
+                 three checked fields with an explicit Save, shown only once edited. -->
             <div class="settings-sec" id="sec-payments" style="display:none;">
-                <div class="accounts-stat" style="max-width:640px;">
-                    <div class="label">Card payments status</div>
-                    <p id="sq-settings-status" style="font-size:var(--fs-body);margin:8px 0 4px;">Checking…</p>
-                    <div class="acr-row" style="padding-left:0;padding-right:0;">
-                        <span class="acr-lbl">Deposit to request<small>of the total, asked on approval</small></span>
-                        <span class="acr-step"><button type="button" data-act="occStep" data-args='["sq-deposit-pct","-1","1"]' aria-label="Deposit percent — less">−</button><span class="acr-val"><input type="number" id="sq-deposit-pct" min="1" max="100" step="1" aria-label="Deposit percent"><span class="acr-unit">%</span></span><button type="button" data-act="occStep" data-args='["sq-deposit-pct","1","1"]' aria-label="Deposit percent — more">+</button></span>
-                    </div>
-                    <div class="acw-acts" style="padding-left:0;border-top:0;"><button class="btn-sm btn-edit" data-act="saveDepositPct">Save</button></div>
-                    <details class="help-disclosure">
-                        <summary>How payment reminders work</summary>
-                        <p style="font-size:var(--fs-sub);color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
-                        <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
-                    </details>
-                </div>
-                <!-- The floor under the monthly offer — the ladder is rendered by
-                     renderInstalFloor/apFloorLadderHtml (admin.js). -->
-                <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
-                    <div class="label">Monthly payments</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 10px;">Guests paying a deposit can be offered the rest in monthly instalments. Plans already shrink as the stay approaches — each payment needs a month of room. This sets your floor beneath that; a plan a guest has already agreed keeps running whatever you choose.</p>
-                    <label class="modal-label" for="instal-floor">Only offer monthly payments when the balance is due…</label>
-                    <select id="instal-floor" class="input-glass" style="max-width:340px;" data-act-change="instalFloorPreview">
-                        <option value="">Whenever a plan fits — no minimum</option>
-                        <option value="2">At least 2 months away</option>
-                        <option value="3">At least 3 months away</option>
-                        <option value="4">At least 4 months away</option>
-                    </select>
-                    <!-- ONE SAVE VOCABULARY on this page: the deposit well's Save is a
-                         quiet .acw-acts text action and these two were outlined pills —
-                         three per-well saves, two looks, in one scroll. -->
-                    <div class="acw-acts" style="padding-left:0;border-top:0;"><button class="btn-sm btn-edit" data-act="saveInstalFloor">Save</button></div>
-                    <div id="instal-ladder" style="margin-top:14px;"></div>
-                </div>
-                <!-- WHICH SQUARE LOCATION THIS SITE IS. Square scopes payouts and bank
-                     accounts per location and silently answers for the seller's MAIN one
-                     when you don't say, so a seller with more than one gets a confident,
-                     complete-looking answer about the wrong shop. Only rendered when
-                     there IS a choice to make. -->
-                <div class="accounts-stat" style="max-width:640px;margin-top:14px;" id="sq-loc-card" hidden>
-                    <div class="label">Which Square location is this site?</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 10px;">Your Square account has more than one location. The money screens read payouts and bank accounts for the one you pick here — leave it unset and Square answers for your main location, which may not be this business.</p>
-                    <label for="sq-location" class="sr-only">Square location</label>
-                    <select id="sq-location" class="input-glass field-sm" style="margin:0;min-width:200px;"></select>
-                    <div class="acw-acts" style="padding-left:0;border-top:0;"><button class="btn-sm btn-edit" data-act="saveSquareLocation">Save</button></div>
-                    <p id="sq-loc-msg" style="font-size:var(--fs-sub);color:var(--text-muted);margin:10px 0 0;"></p>
-                </div>
-                <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
-                    <div class="label">Bank transfer details</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">Used when you chase a guest who paid in cash or by transfer — they get these details instead of a card link. Guests who paid by card carry on getting the card link.</p>
-                    <label class="modal-label" for="bacs-details">Account name, sort code and account number</label>
-                    <textarea class="input-glass" id="bacs-details" rows="4" placeholder="Cottage Holidays Blakeney&#10;Sort code: 00-00-00&#10;Account: 12345678"></textarea>
-                    <div class="acw-acts" style="padding-left:0;border-top:0;"><button class="btn-sm btn-edit" data-act="saveBacsDetails">Save</button></div>
-                    <p id="bacs-details-warn" style="font-size:var(--fs-sub);color:var(--warn-text);margin:12px 0 0;display:none;">Nothing saved yet — until you add these, a cash-paying guest is asked to reply for your bank details.</p>
-                </div>
-                <div class="accounts-stat" id="sq-webhook-card" style="max-width:640px;margin-top:14px;">
-                    <div class="label">Automatic payment updates</div>
-                    <p id="sq-webhook-status" aria-live="polite" style="font-size:var(--fs-body);margin:8px 0 4px;">Checking…</p>
-                    <div style="margin-top:12px;">
-                        <button class="btn-sm btn-edit" id="sq-webhook-connect" data-act="connectSquareWebhook" data-pass="self" style="display:none;">Connect</button>
-                    </div>
-                    <details class="help-disclosure">
-                        <summary>What this does</summary>
-                        <p style="font-size:var(--fs-sub);color:var(--text-light);margin-top:8px;line-height:1.6;">When connected, Square tells your site the moment a payment settles or a refund completes — so card <strong>fees</strong>, the <strong>net payout</strong> and <strong>refund statuses</strong> fill in automatically, instead of only when you open Payments. One tap sets it up; there's nothing to paste.</p>
-                    </details>
+                <div class="rv-page pay-page">
+                    <section class="rv-sec">
+                        <div class="pay-caprow"><h3 class="acr-cap">When guests pay</h3><span class="pay-saved" id="pay-dep-saved" aria-live="polite"></span></div>
+                        <div class="acr-well rv-well">
+                            <div class="pay-row">
+                                <span class="pay-lbl" id="sq-deposit-lbl">Deposit on approval</span>
+                                <span class="acr-step"><button type="button" data-act="depStep" data-arg="-1" aria-label="Deposit percent — less">−</button><span class="acr-val"><input type="number" id="sq-deposit-pct" min="1" max="100" step="1" aria-labelledby="sq-deposit-lbl" data-act-change="saveDepositPct"><span class="acr-unit">%</span></span><button type="button" data-act="depStep" data-arg="1" aria-label="Deposit percent — more">+</button></span>
+                            </div>
+                            <div class="pay-row"><span class="pay-lbl">Balance asked for</span><span class="pay-val">30 days before</span></div>
+                            <div class="pay-row"><span class="pay-lbl">Booked closer than that</span><span class="pay-val">Pays in full</span></div>
+                        </div>
+                    </section>
+                    <section class="rv-sec">
+                        <div class="pay-caprow"><h3 class="acr-cap">Monthly payments</h3><span class="pay-saved" id="pay-floor-saved" aria-live="polite"></span></div>
+                        <div class="acr-well rv-well">
+                            <div class="pay-row pay-stack">
+                                <span class="pay-lbl" id="instal-floor-lbl">Offer them when the balance is due</span>
+                                <div class="pay-seg" id="instal-floor" role="group" aria-labelledby="instal-floor-lbl">
+                                    <button type="button" data-v="0" data-act="pickInstalFloor" data-arg="0" aria-pressed="false">Any time</button>
+                                    <button type="button" data-v="2" data-act="pickInstalFloor" data-arg="2" aria-pressed="false">2 mo+</button>
+                                    <button type="button" data-v="3" data-act="pickInstalFloor" data-arg="3" aria-pressed="false">3 mo+</button>
+                                    <button type="button" data-v="4" data-act="pickInstalFloor" data-arg="4" aria-pressed="false">4 mo+</button>
+                                </div>
+                            </div>
+                            <div id="instal-ladder"></div>
+                        </div>
+                    </section>
+                    <section class="rv-sec">
+                        <div class="pay-caprow"><h3 class="acr-cap">Bank transfer</h3><span id="bacs-cap"></span></div>
+                        <div class="acr-well rv-well" id="bacs-well">
+                            <div class="pay-row"><label class="pay-lbl pay-flbl" for="bank-name">Name</label><input class="pay-in" id="bank-name" autocomplete="off" spellcheck="false" maxlength="60" placeholder="Cottage Holidays Blakeney" data-act-input="bacsEdit"></div>
+                            <div class="pay-row"><label class="pay-lbl pay-flbl" for="bank-sort">Sort code</label><input class="pay-in pay-num" id="bank-sort" inputmode="numeric" autocomplete="off" placeholder="00-00-00" data-act-input="bacsEdit"><span class="pay-bad" id="bank-sort-bad" hidden aria-hidden="true"></span></div>
+                            <div class="pay-row"><label class="pay-lbl pay-flbl" for="bank-acc">Account no.</label><input class="pay-in pay-num" id="bank-acc" inputmode="numeric" autocomplete="off" placeholder="12345678" data-act-input="bacsEdit"><span class="pay-bad" id="bank-acc-bad" hidden aria-hidden="true"></span></div>
+                            <p class="pay-problem" id="bacs-problem" role="status" hidden></p>
+                            <div class="pay-acts" id="bacs-acts" hidden>
+                                <button type="button" class="pay-btn2" data-act="bacsCancel">Cancel</button>
+                                <button type="button" class="pay-btn" id="bacs-save" data-act="saveBacsDetails">Save</button>
+                            </div>
+                        </div>
+                        <div class="pay-preview" id="bacs-preview" hidden>
+                            <h4 class="acr-cap">What guests see in the email</h4>
+                            <div class="pay-pvcard"><div class="pay-pvhead">Pay by bank transfer</div><div class="pay-pvbody" id="bacs-preview-body"></div></div>
+                        </div>
+                    </section>
+                    <section class="rv-sec">
+                        <h3 class="acr-cap">Square</h3>
+                        <div class="acr-well rv-well">
+                            <div class="pay-row"><span class="pay-lbl">Card payments</span><span id="sq-settings-status"></span></div>
+                            <div class="pay-row" id="sq-webhook-card"><span class="pay-lbl">Automatic updates</span><span id="sq-webhook-status" aria-live="polite"></span><button type="button" class="pay-btn" id="sq-webhook-connect" data-act="connectSquareWebhook" data-pass="self" style="display:none;">Connect</button></div>
+                            <!-- WHICH SQUARE LOCATION THIS SITE IS — only when there IS a
+                                 choice (Square answers for the MAIN location when asked
+                                 nothing, so a multi-location seller would get a confident
+                                 answer about the wrong shop). renderSquareLocation(). -->
+                            <div class="pay-row pay-stack" id="sq-loc-card" hidden>
+                                <label class="pay-lbl" for="sq-location">Location</label>
+                                <div class="pay-locline"><select id="sq-location" class="input-glass field-sm"></select><button type="button" class="pay-btn" data-act="saveSquareLocation">Save</button></div>
+                                <p id="sq-loc-msg" class="pay-note"></p>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
 
