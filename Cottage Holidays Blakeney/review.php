@@ -21,7 +21,6 @@ $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 // ---- Resolve the cottage from the slug (best-effort) ----
 $propKey = '';
 $name = '';
-$subtitle = '';
 $accent = '#8FB3C7';
 $heroImg = '';
 $found = false;
@@ -61,7 +60,6 @@ try {
                 return is_string($d) ? $d : (is_scalar($d) ? (string) $d : '');
             };
             $name = trim($cv($propKey . '-title') ?: (string) ($p['name'] ?: $propKey));
-            $subtitle = trim($cv($propKey . '-subtitle'));
             // Make a stored asset path safe to use from /review/<slug>: absolute
             // URLs pass through; anything else becomes ROOT-relative ("/uploads/…")
             // so it resolves against the site root, not the /review/ path.
@@ -158,14 +156,8 @@ if (!$found) {
   .hero::after { content:""; position:absolute; inset:0; z-index:1;
                  background:linear-gradient(180deg, rgba(16,28,36,0) 26%, rgba(16,28,36,.18) 52%, rgba(16,28,36,.66) 100%); }
   .hero .htxt { position:relative; z-index:2; width:100%; padding:24px 26px 22px; text-align:center; }
-  .hero .eyebrow { font-family:var(--sans); font-size:10.5px; font-weight:600; letter-spacing:2.8px;
-                   text-transform:uppercase; color:rgba(255,255,255,.9); margin:0 0 9px;
-                   text-shadow:0 1px 10px rgba(0,0,0,.45); }
-  .hero .eyebrow::before, .hero .eyebrow::after { content:"—"; opacity:.5; margin:0 8px; }
   .hero h1 { margin:0; font-family:var(--serif); font-weight:700; color:#fff; font-size:29px;
              line-height:1.16; text-shadow:0 2px 20px rgba(0,0,0,.55); }
-  .hero .hsub { margin:10px 0 0; font-family:var(--sans); font-size:13.5px; font-weight:500;
-                color:rgba(255,255,255,.94); text-shadow:0 1px 10px rgba(0,0,0,.45); }
   @keyframes kenburns { from { transform:scale(1.001); } to { transform:scale(1.1); } }
   /* Centred, boutique layout: headings, copy, labels, stars and buttons all
      centre-aligned; the input fields keep their text left for legibility. */
@@ -255,10 +247,10 @@ if (!$found) {
     <div class="hero">
 <?php if ($heroImg !== ''): ?>      <div class="hero-img" style="background-image:url('<?= $esc($heroImg) ?>')"></div>
 <?php endif; ?>      <div class="htxt">
-        <div class="eyebrow">North Norfolk Coast</div>
+        <!-- Just the question: the guest has already stayed, so the region and the
+             cottage's sleeps/bedrooms line are not news (owner-asked). -->
         <h1>How was <?= $esc($name) ?>?</h1>
-<?php if ($subtitle !== ''): ?>        <div class="hsub"><?= $esc($subtitle) ?></div>
-<?php endif; ?>      </div>
+      </div>
     </div>
     <div class="body">
       <p class="lede">Thanks for staying with us. A quick review helps other guests —
