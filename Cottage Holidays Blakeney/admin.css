@@ -8132,7 +8132,7 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
   .exp-row > .feed-who { grid-area: who; white-space: normal; overflow: visible; text-overflow: clip; }
   .exp-row > :nth-child(3) { grid-area: rc; }
   .exp-row > .feed-amt { grid-area: amt; }
-  .exp-row > .exp-acts { grid-area: acts; gap: 4px; }
+  .exp-row > .exp-acts { grid-area: acts; gap: 12px; }
   .exp-row .feed-del { min-width: 44px; min-height: 44px; }
 }
 
