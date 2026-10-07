@@ -23275,120 +23275,115 @@ function renderKeysafe() {
     }
     const e = escapeHtml;
     const today = todayDashed();
-    // The fold anatomy (the approved demo): each cottage is ONE verdict row —
-    // ✓ Code on the safe / △ rotate now / honest grey — with the code, who
-    // it's for, the guest-visibility line, Rotate and the history folded
-    // under it. A safe whose next arrival is inside the rotation window is
-    // an EXCEPTION: its whole group hoists into Needs attention (never
-    // repeated below). Every keeper rule is untouched — presentation only.
-    const groups = Object.keys(__keysafe).map((pk) => {
+    // THE OVERHAUL (owner-asked: "easier to understand and use"). Each safe is
+    // one OPEN card that answers the three questions in reading order: what is
+    // on the dial now (the code, as tiles), who is next and when they see it,
+    // and — in one plain sentence — what, if anything, to do, with the one
+    // button that does it. Nothing hides behind a fold: three safes fit on a
+    // phone, and the code is the thing the owner opens the page to read.
+    // Every keeper rule is unchanged — keysafeDue still decides the state.
+    const who = (n) => (n.ota ? 'the ' + n.name : chbSayFirst(n.name || 'the next guest'));
+    const cards = Object.keys(__keysafe).map((pk) => {
         const rec = __keysafe[pk] || {};
-        // Switched off: HIDDEN from this page entirely (owner-asked — no
-        // off-card, no footnote). The way back on is the Settings checkbox.
+        // Switched off: HIDDEN from this page entirely (owner-asked). The way
+        // back on is the Settings switch.
         if (rec.enabled === false) return null;
-        // The TIME-AWARE verdict (keysafeDue — the same derivation the duty
-        // reads): only 'due' is the alarm that hoists; an unrotated safe
-        // whose guest is still IN residence is scheduled for changeover.
         const d0 = keysafeDue(pk, rec);
         const next = d0.next;
-        const nextMine = d0.state === 'ok';
+        const st = d0.state;
+        const nextMine = st === 'ok';
+        const due = st === 'due';
         // NEEDS = what the Today duty raises ('due' red, 'later' amber), so the
-        // page's count, its Needs-attention hoist and the rail badge all agree.
-        // `due` stays the RED half for the capsule's tone.
-        const due = d0.state === 'due';
-        const needs = due || d0.state === 'later';
+        // page's count and the rail badge agree.
+        const needs = due || st === 'later';
         const forGuest = (() => {
-            if ((rec.forStay || '').charAt(0) === 'o') return 'a platform guest';
+            const h0 = (rec.history || [])[0];
+            if ((rec.forStay || '').charAt(0) === 'o') return (h0 && h0.forStay === rec.forStay && h0.guest) || 'a platform guest';
             if (!rec.forBooking) return '';
             const all = ((dbBookings || {})[pk] || []).find((b) => Number(b.dbId) === Number(rec.forBooking));
             if (all) return all.name || '';
-            const h = (rec.history || [])[0];
-            return h && Number(h.forBooking) === Number(rec.forBooking) ? h.guest || '' : '';
+            return h0 && Number(h0.forBooking) === Number(rec.forBooking) ? h0.guest || '' : '';
         })();
         const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
-        // The verdict — and the sub tells the story: who's coming, and whose
-        // code is on the dial.
-        // ONE CASE. Four of the seven capsules were lowercase ("rotate now",
-        // "rotate at changeover", "not recorded yet") against "✓ Code on the
-        // safe" — the same tier, on the same page, disagreeing about case.
-        const cap = !rec.code && !needs
-            ? stCap('unk', 'Not recorded yet')
-            : !next
-              ? stCap('unk', 'No upcoming booking')
-              : nextMine
-                ? stCap('ok', 'Code on the safe')
-                : due
-                  ? d0.dep
-                    ? stCap('warn', 'Rotate after ' + d0.dep.out)
-                    : stCap('bad', 'Rotate now')
-                  : d0.state === 'inres'
-                    ? stCap('warn', 'Rotate at changeover')
-                    : stCap('warn', 'New code needed');
-        // The sub tells the TIMED story: an in-residence guest names the day
-        // the rotation becomes possible; an arrival names the day it's needed.
-        const whenTxt = next
-            ? d0.state === 'inres' || next.checkIn < today
-                ? 'in residence until ' + fmtDate(next.checkOut)
-                : next.checkIn === today
-                  ? 'arrives today'
-                  : 'arrives ' + fmtDate(next.checkIn)
+        const cap = !next
+            ? (rec.code ? stCap('ok', 'Ready') : stCap('unk', 'Not recorded yet'))
+            : nextMine
+              ? stCap('ok', 'Code on the safe')
+              : due
+                ? d0.dep ? stCap('warn', 'Rotate after ' + d0.dep.out) : stCap('bad', 'Rotate now')
+                : st === 'inres'
+                  ? stCap('warn', 'Rotate at changeover')
+                  : stCap('warn', 'New code needed');
+        // WHAT TO DO, said once, as a sentence — the one place the card says
+        // what the owner should do next.
+        const say = !next
+            ? rec.code
+                ? 'No one is booked in, so there is nothing to do. When the next booking comes in, this page will tell you.'
+                : 'No code recorded yet — tell the keeper what is on the safe now and it takes over from there.'
+            : nextMine
+              ? 'All set. This code is ' + (next.ota ? 'for ' + who(next) : who(next) + '’s') + '.'
+              : st === 'inres'
+                ? (next.name || 'Your guest') + ' is in residence until ' + fmtDate(next.checkOut) + ' — rotate once they’ve gone.'
+                : due && d0.dep
+                  ? 'Rotate after ' + d0.dep.name + ' leaves at ' + d0.dep.out + ', ready for ' + who(next) + '.'
+                  : (forGuest && rec.code ? 'The safe still has ' + (forGuest === 'a platform guest' ? 'a platform guest' : chbSayFirst(forGuest)) + '’s code — no code set for ' + who(next) + ' yet. ' : 'No code set for ' + who(next) + ' yet. ')
+                    + (due ? 'Set a new one now.' : 'Set a new one before ' + fmtDate(next.checkIn) + '.');
+        const sayTone = due && !d0.dep ? 'is-bad' : needs || st === 'inres' ? 'is-warn' : 'is-ok';
+        const digits = rec.code
+            ? '<span class="ks-code" role="img" aria-label="Code ' + e(rec.code.split('').join(' ')) + '">' + rec.code.split('').map((c) => '<span class="ks-dig">' + e(c) + '</span>').join('') + '</span>'
+            : '<span class="ks-nocode">No code recorded</span>';
+        const meta = rec.code && rec.setAt ? 'set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : '') : '';
+        const staying = st === 'inres' || next && next.checkIn < today;
+        const nextRow = next
+            ? '<div class="ks-next"><span class="ks-next-k">' + (staying ? 'Staying now' : 'Next guest') + '</span>'
+                + '<span class="ks-next-v"><b>' + e(next.name || 'Next guest') + '</b> · '
+                + e(staying ? 'until ' + fmtDate(next.checkOut) : next.checkIn === today ? 'arrives today' : 'arrives ' + fmtDate(next.checkIn)) + '</span>'
+                + '<small class="ks-next-see">'
+                + (next.ota
+                    ? 'Platform guests don’t see this site — share it in your ' + e(next.name.replace(' guest', '')) + ' message thread.'
+                    : nextMine
+                        ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'They see it on their booking page now.' : 'They see it on their booking page from ' + e(revealFrom) + '.')
+                        : 'They can’t see a code yet — it appears only after you confirm the safe is set.')
+                + '</small></div>'
+            : '<div class="ks-next"><span class="ks-next-k">Next guest</span><span class="ks-next-v">No one booked yet</span></div>';
+        const primary = needs || !rec.code;
+        const btnTxt = !rec.code && !next ? 'Record the code' : primary ? (next ? 'Set a new code for ' + (next.ota ? 'them' : chbSayFirst(next.name || 'them')) : 'Set a new code') : 'Change the code';
+        const hist = (rec.history || []).length
+            ? '<details class="ks-hist"><summary>Past codes <span class="ks-hist-n">' + rec.history.length + '</span></summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'
+                + rec.history.map((h) => '<tr><td><span class="ks-code-sm">' + e(h.code) + '</span></td><td>' + e(h.guest || ((h.forStay || '').charAt(0) === 'o' ? 'Platform guest' : '—')) + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
+                + '</table><p class="ks-note">Stored encrypted. A record of which code was live and when, if entry is ever disputed.</p></details>'
             : '';
-        const sub = next
-            ? e((next.name || 'Next guest') + ' · ' + whenTxt)
-                + (nextMine ? ''
-                    : d0.state === 'inres' ? e(' · rotate once they’ve gone')
-                    : d0.dep ? e(' · rotate after ' + d0.dep.name + ' leaves at ' + d0.dep.out)
-                    : forGuest ? e(' · code is still ' + forGuest + '’s') : ' · no code set for them')
-            : rec.setAt
-              ? e('last set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : ''))
-              : 'rotate it once and the keeper takes over';
-        // ks-prose when there is NO CODE: the value is then a SENTENCE ("not
-        // recorded yet — rotate it once and the keeper takes over"), and a
-        // sentence right-aligned beside a two-line label is the exact shape the
-        // row below was already fixed for. With a code the value is a FIGURE and
-        // keeps the two-column row.
-        const fold =
-            '<div class="ks-kv' + (rec.code ? '' : ' ks-prose') + '"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
-            + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span>'
-                : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
-            + (next
-                // ks-prose: this value is a SENTENCE, and a sentence right-aligned
-                // beside a wrapping label reads as broken (owner screenshot: "They /
-                // see it" split over two lines against ragged right-aligned prose).
-                // The row stacks — label above, prose below, both left-aligned.
-                ? '<div class="ks-kv ks-prose"><span class="ks-k">' + (next.checkIn <= today ? 'They see it' : e((next.name || 'They').split(' ')[0]) + ' sees it') + '</span><span class="ks-v"><small>'
-                    + (next.ota
-                        // A platform guest has no account here, so the reveal
-                        // cannot reach them — the platform's own thread can.
-                        ? 'share it in your ' + e(next.name.replace(' guest', '')) + ' message thread — platform guests don’t see this site'
-                        : nextMine
-                            ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
-                            : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
-                : '<div class="ks-kv ks-prose"><span class="ks-k">Anyone sees it</span><span class="ks-v"><small>no — with no booking, the reveal stays closed</small></span></div>')
-            + '<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ' + chbAttrs('keysafeRotate', String(pk)) + '>Rotate the code</button></div>'
-            + ((rec.history || []).length
-                ? '<details class="ks-hist"><summary>Who had which code</summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'
-                    + rec.history.map((h) => '<tr><td><span class="ks-code">' + e(h.code) + '</span></td><td>' + e(h.guest || ((h.forStay || '').charAt(0) === 'o' ? 'Platform guest' : '—')) + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
-                    + '</table><p class="ks-note">Stored encrypted, like your private cottage notes. The log says which code was live and when it changed — your record if entry is ever disputed.</p></details>'
-                : '');
-        const key = 'ks-' + pk;
-        const open = __bhubOpenFolds.has(key);
-        const html = '<section class="bhub-card glass-panel bhub-fold-grp ks-card" data-grp="' + e(key) + '">'
-            + '<button type="button" class="bhub-fold-row" ' + chbAttrs('bhubFoldToggle', key) + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="bhub-fold-' + e(key) + '">'
-            + '<span class="bhub-fold-lbl"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span><small class="bhub-fold-sub">' + sub + '</small></span>'
-            + '<span class="bhub-fold-right">' + cap + BHUB_CHEV + '</span></button>'
-            + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '><div class="bhub-foldin">' + fold + '</div></div></section>';
-        return { due: needs, html };
+        const html = '<section class="ks-card glass-panel' + (needs ? ' is-attn' : '') + '" data-pk="' + e(pk) + '">'
+            + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>' + cap + '</div>'
+            + '<div class="ks-dial"><span class="ks-dial-k">On the safe</span>' + digits + (meta ? '<small class="ks-dial-meta">' + e(meta) + '</small>' : '') + '</div>'
+            + nextRow
+            + '<p class="ks-say ' + sayTone + '">' + e(say) + '</p>'
+            + '<button type="button" class="ks-rotate' + (primary ? ' is-primary' : '') + '" ' + chbAttrs('keysafeRotate', String(pk)) + '>' + e(btnTxt) + '</button>'
+            + hist + '</section>';
+        return { needs, due, name: rec.name || (propertyMeta[pk] || {}).name || pk, next, html };
     }).filter(Boolean);
-    const dueN = groups.filter((g) => g.due).length;
-    const pulse = groups.length
-        ? `<div class="mo-pulse">${dueN ? (dueN === 1 ? 'One safe needs a new code.' : dueN + ' safes need a new code.') : 'Nothing to rotate — every safe with a guest coming is set.'}</div>`
-        : '';
-    host.innerHTML = groups.length
-        ? pulse
-            + (dueN ? '<span class="bhub-grpcap is-attn">Needs attention</span>' + groups.filter((g) => g.due).map((g) => g.html).join('') : '')
-            + `<span class="bhub-grpcap">The safes</span>` + (groups.filter((g) => !g.due).map((g) => g.html).join('') || '<p class="ks-note" style="margin:4px 2px;">Every safe is above, waiting on a new code.</p>')
-        : '<p class="lead" style="text-align:left;">No cottages yet.</p>';
+    if (!cards.length) {
+        host.innerHTML = '<p class="lead" style="text-align:left;">No key safes switched on. Turn one on in Manage → the cottage → Private notes.</p>';
+        return;
+    }
+    // Needing action first; the rest keep the cottage order.
+    const order = cards.filter((c) => c.needs).concat(cards.filter((c) => !c.needs));
+    const dueN = cards.filter((c) => c.needs).length;
+    const anyRed = cards.some((c) => c.due);
+    const soonest = cards.filter((c) => c.next && c.next.checkIn >= today).sort((a, z) => a.next.checkIn.localeCompare(z.next.checkIn))[0];
+    const sumTitle = dueN ? (dueN === 1 ? 'One safe needs a new code' : dueN + ' safes need a new code') : 'Every safe is ready';
+    const sumSub = dueN
+        ? cards.filter((c) => c.needs).map((c) => c.name).join(' · ')
+        : soonest ? 'Next arrival: ' + (soonest.next.name || 'a guest') + ' · ' + soonest.name + ' · ' + fmtDate(soonest.next.checkIn) : 'No guests booked in yet';
+    const sum = '<div class="ks-sum mo-pulse ' + (dueN ? (anyRed ? 'is-bad' : 'is-warn') : 'is-ok') + '" role="status">'
+        + '<span class="ks-sum-mark" aria-hidden="true">' + (dueN ? '!' : '✓') + '</span>'
+        + '<span class="ks-sum-txt"><b>' + e(sumTitle) + '</b><small>' + e(sumSub) + '</small></span></div>';
+    const how = '<details class="ks-how"><summary>How the keeper works</summary><ol>'
+        + '<li><b>A guest leaves.</b> The page asks for a new code once they’ve gone.</li>'
+        + '<li><b>You set the safe.</b> Use the code it suggests or your own, then tap “I’ve set the safe”.</li>'
+        + '<li><b>The next guest sees it</b> on their booking page ' + __keysafeDays + ' days before they arrive. It is never emailed.</li>'
+        + '</ol></details>';
+    host.innerHTML = sum + order.map((c) => c.html).join('') + how;
 }
 // The guest-side reveal window, mirrored for DISPLAY only (my-bookings.php
 // owns the real gate) — from revealDays before check-in through check-out.
@@ -23437,12 +23432,19 @@ async function keysafeRotate(pk) {
         .concat(Object.keys(__keysafe || {}).map((k) => ((__keysafe || {})[k] || {}).code));
     const gen = keysafeGen(exclude);
     const nm = (propertyMeta[pk] || {}).name || pk;
+    const td = todayDashed();
+    const when = next && !next.ota
+        ? (next.checkIn <= td || keysafeRevealOpen(next, td) ? ' straight away' : ' from ' + fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)))
+        : '';
     const vals = await glassForm(
-        next
-            ? `${next.name || 'The next guest'} ${next.checkIn <= todayDashed() ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — they see this code on their booking page only after you confirm.`
-            : 'No upcoming booking — the new code is recorded for the cottage.',
-        [{ id: 'code', label: 'New 4-digit code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
-        { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
+        'Turn the safe’s dial to this code (or type your own), then tap “I’ve set the safe”. '
+            + (next
+                ? next.ota
+                    ? `Then share it with your ${next.name} in the platform’s messages — platform guests don’t see this site.`
+                    : `${chbSayFirst(next.name || 'The next guest')} sees it on their booking page${when} — only once you’ve confirmed.`
+                : 'Nobody is booked in, so it is recorded for the cottage.'),
+        [{ id: 'code', label: 'New code', def: gen, inputmode: 'numeric', pattern: '[0-9]*', maxlength: 4, autocomplete: 'off', hint: 'Four digits — not a run like 1234 or a repeat like 7777.' }],
+        { title: `New code for ${nm}`, okLabel: 'I’ve set the safe' },
     );
     if (!vals) return; // backed out: nothing recorded, nothing shown to anyone
     const code = String(vals.code || '').trim();

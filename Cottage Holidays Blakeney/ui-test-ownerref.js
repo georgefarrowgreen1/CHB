@@ -77,7 +77,7 @@ const LOST = (sel) => {
 const READ_SELS = [
     '.bhub-fold-sub', '.bhub-kv-label', '.bhub-kv-sub',
     '.mo-pulse', '.bk-row-dates', '.bk-row-name', '.feed-who',
-    '.cmdk-turn-a', '.ks-kv .ks-v', '.acr-cap', '.mf-name', '.mf-sub',
+    '.cmdk-turn-a', '.ks-say', '.ks-next-see', '.ks-dial-meta', '.acr-cap', '.mf-name', '.mf-sub',
 ].join(', ');
 
 (async () => {
@@ -351,6 +351,9 @@ const READ_SELS = [
         const grab = () => {
             for (const s of document.querySelectorAll('summary')) {
                 if (!s.getClientRects().length) continue;
+                // The Status page's Tools disclosure is a CARD ROW (approved
+                // demo) carrying its own BHUB_CHEV svg, not a text disclosure.
+                if (s.classList.contains('sp-tsum')) continue;
                 const cs = getComputedStyle(s);
                 const af = getComputedStyle(s, '::after');
                 seen.push({
@@ -378,9 +381,15 @@ const READ_SELS = [
         accountsOpen('sweep');
         await new Promise((r) => setTimeout(r, 800));
         grab();
+        await openKeysafe();
+        await new Promise((r) => setTimeout(r, 600));
+        grab();
         return seen;
     });
-    ok(sums.length >= 4, `(vacuity guard) ${sums.length} summaries reachable on Manage + Move money out`);
+    // The floor moved 4 → 2 with a consolidation: the Status page's old text
+    // disclosures became the Tools card (excluded above). Named, so two
+    // unrelated summaries cannot satisfy it.
+    ok(sums.length >= 2 && sums.some((s) => /How the keeper works/.test(s.t)), `(vacuity guard) ${sums.length} summaries reachable on Manage + Move money out + Key safes`);
     const short = sums.filter((s) => s.h < 44);
     ok(short.length === 0, `every one of them meets the 44px floor${short.length ? ' — ' + short.map((s) => `“${s.t}” ${s.h}px`).join('; ') : ''}`);
     const marked = sums.filter((s) => s.display === 'list-item' || s.marker !== 'none');

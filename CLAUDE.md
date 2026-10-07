@@ -3550,6 +3550,23 @@ Manage → Activity log (`#act-log-app`, built once by `alShell()` in admin.js; 
 - Gates: ui-test-activitylog.js, test-integration §47 (summary judgement, seen excludes, 400 on empty, owner-only,
   never public), smoke §13 (re-aimed to the new cap sentence), ui-test-reach (the tabs fit at 390, 44px each).
 
+## The Key safes page, overhauled (owner-asked: "easier to understand and use")
+
+`renderKeysafe` (admin.js, `.ks-*` in admin.css). The fold rows are gone: a summary card
+(`.ks-sum` — "One safe needs a new code" naming the cottages, or "Every safe is ready" with
+the next arrival), then ONE OPEN CARD per safe, needing-action first, answering in reading
+order: the code ON THE SAFE as four tiles (`.ks-code` > `.ks-dig`, spoken digit by digit via
+`aria-label`), the next guest and when they see it (`.ks-next`), what to do in one sentence
+(`.ks-say`, tinted red/amber only when there is something to do), and ONE button
+(`.ks-rotate` — filled "Set a new code for Marcus" when needed, quiet "Change the code"
+otherwise). "Past codes" and "How the keeper works" are disclosures in the house vocabulary
+(joined to the ONE DISCLOSURE VOCABULARY rule). With no booking the capsule says "Ready", not
+"No upcoming booking" (which read like a button). The rotate dialog is written as steps. Every
+keeper rule is unchanged — `keysafeDue` still decides the state. Gated by ui-test-keysafe §2b
+(re-aimed: summary, order, tiles, no folds, one primary button) and ui-test-ownerref (reading
+selectors re-aimed; §5 excludes the Status Tools card row, and its vacuity floor moved 4 → 2,
+naming the keeper's own disclosure).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
