@@ -426,6 +426,22 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4d-i. Seasonal rates that ended over a year ago -------------------------
+// The editor stops SHOWING a season the day after its last night (the owner asked
+// for ended seasons to go). The rows stay a year first because the pricing
+// assistant reads the season price that applied to each past booking when it
+// learns what the owner achieves; deleting them at once would make a July booking
+// look far above the usual rate and nudge every suggestion up. A booking's own
+// price is snapshotted on the booking, so nothing a guest was charged moves.
+try {
+    $n = db()->exec('DELETE FROM rate_seasons WHERE end_date < DATE_SUB(CURDATE(), INTERVAL 365 DAY)');
+    if ($n) {
+        $fixed[] = 'seasons:' . $n;
+        log_activity('rates', 'selfrepair.seasons', 'Self-repair: cleared ' . $n . ' seasonal rate' . ($n === 1 ? '' : 's') . ' that ended over a year ago', ['actor' => $actor, 'entity' => 'selfrepair']);
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 4d-ii. The overnight queue: retire what has run out of time ------------
 // The DEADLINE is what stops this queue becoming a pile the owner learns to
 // scroll past, so it has to be enforced by something that runs whether or not
