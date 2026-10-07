@@ -1237,6 +1237,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const trip1 = (document.querySelector('#pricing-body .pr-tripv') || {}).textContent;
     await wait(800);
     out.costs = { trip0, trip1, saved: posts.some((x) => x.key === 'pricing-changeover' && x.value && x.value.drive === 75), sum: !!document.getElementById('pr-sum') };
+    // The switch: off stops counting the drive (stored, not lost), and the trip-based ideas stand down.
+    const sw2 = document.getElementById('pr-costs-on');
+    sw2.checked = false;
+    sw2.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(80);
+    out.off = {
+      saved: posts.some((x) => x.key === 'pricing-changeover' && x.value && x.value.on === false && x.value.drive === 75),
+      shows: (document.querySelector('#pricing-body .pr-tripv') || {}).textContent,
+      dimmed: !!document.querySelector('#pricing-body .pr-limits.is-off'),
+      trip: prCosts().trip,
+      ideas: prProfitIdeas('jollyboat').map((x) => x.id),
+    };
+    const sw3 = document.getElementById('pr-costs-on');
+    sw3.checked = true;
+    sw3.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(80);
+    out.backOn = prCosts().trip === 113 && prProfitIdeas('jollyboat').some((x) => x.id === 'share');
     prCloseCosts();
     window.apiPost = realPost;
     window.apiGet = realGet;
@@ -1256,6 +1273,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/staying on/i.test(pp.offer.subj) && /10% off/.test(pp.offer.body), `"Write to Sarah" opens the composer with the offer (${pp.offer.subj})`);
   ok(pp.costs.sum && pp.costs.trip0 === '£103' && pp.costs.trip1 === '£113' && pp.costs.saved, `the Changeovers page: £103 → £113 when the drive grows, and it saves (${JSON.stringify(pp.costs)})`);
   ok(pp.costsRow, 'the Changeovers page is reached from Settings at the foot of Pricing');
+  ok(pp.off.saved && pp.off.shows === 'Off' && pp.off.dimmed && pp.off.trip === 0, `changeover costs switch off: saved, shown Off, figures kept but not counted (${JSON.stringify(pp.off)})`);
+  ok(!pp.off.ids && !pp.off.ideas.includes('share') && !pp.off.ideas.includes('shortfee'), `…and the drive-based ideas stand down (${pp.off.ideas.join(',')})`);
+  ok(pp.backOn, 'switching back on restores the stored figures and the ideas');
   ok(pp.holdNoTrip, 'an Airbnb stay is a changeover; an Airbnb "Not available" hold is not');
 
   // Pricing's "Extra guests" row deep-links into the cottage's rates editor — it used
