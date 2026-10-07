@@ -65,6 +65,7 @@
         {
             key: 'account',
             label: 'Account',
+            views: ['view-guest-account'],
             icon: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
             go: function () {
                 if (window.guestAccountTab) window.guestAccountTab();
@@ -258,6 +259,7 @@
         'view-cottages': 'Cottages',
         'view-experiences': 'Things to do',
         'view-guest-bookings': 'My stays',
+        'view-guest-account': 'Account',
     };
     function headTitleFor(viewId) {
         if (!viewId || viewId === 'view-main') return ''; // the crown already says Home

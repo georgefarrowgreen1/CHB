@@ -3550,6 +3550,42 @@ Manage → Activity log (`#act-log-app`, built once by `alShell()` in admin.js; 
 - Gates: ui-test-activitylog.js, test-integration §47 (summary judgement, seen excludes, 400 on empty, owner-only,
   never public), smoke §13 (re-aimed to the new cap sentence), ui-test-reach (the tabs fit at 390, 44px each).
 
+## The guest's Account page and My stays (approved demo, built)
+
+**Asked for from three screenshots: "completely overhaul the customer account and stays
+section".** The "Your details" and "Account & security" pop-ups are GONE (markup, CSS,
+`openGuestDetailsModal`/`openGuestSecurityModal`, their MODAL_CLOSERS and Back entries).
+- **Account is a PAGE** (`view-guest-account`, `renderGuestAccount` / `openGuestAccount(sub)`
+  / `gaGo(sub)` in app.js, `.ga-*` in app.css): profile row → Your details; Settings
+  (Sign-in & security); Help (Message us, Call us, Booking terms); Privacy & your data;
+  Sign out. Sub-pages render IN PLACE with a "‹ Account" back link (`__gaSub`). The dock's
+  Account tab (`guestAccountTab`) always lands on the first page; desktop reaches it from
+  the My stays header's one Account pill (`#acct-settings-btn`).
+- **Details are FACTS, edited one at a time** (`gaEdit` → glassForm → the same
+  `guest_update_profile`). The server saves phone + address + postcode TOGETHER and refuses a
+  missing address or bad postcode, so a guest with no address yet is asked for all three at
+  once. The email is a locked row, never an input.
+- **The password is two rows** (`gaPassword` — a glassForm that stays open on a mismatch and
+  says why; `gaResetLink`). **`guest_send_reset` now also serves a signed-in GUEST**, to their
+  OWN address only — the body's email is ignored for a guest (test-integration §45).
+  Passkeys are rows (`__gaPasskeys`, filled by `loadPasskeys`).
+- **Call us exists only when `contact-phone` is configured** — the CONTACT_PHONE_* fallbacks
+  are placeholders, and a row dialling them is worse than none.
+- **Sign out and Delete ask first**; backing out sends nothing.
+- **My stays**: `#gb-seg` is an Upcoming | Past switch (`gbSeg`, `__gbSeg`) shown ONLY when
+  both sides have stays; the panes are `#gb-pane-up` / `#gb-pane-past` (hidden, so textContent
+  gates still read both). Each stay card has a photo header (`gbPhotoHtml`: first gallery
+  image over a cottage-colour gradient). The empty state is one short card ("Nothing booked
+  yet" / "Nothing booked at the moment" for a returning guest) plus the cottages as cards
+  (`gbCottagePicksHtml`). The welcome line says where the guest is ("— 12 days until
+  Jollyboat"). "Call to discuss" left the header for Account → Help.
+- **Deliberately not built from the demo**: a Notifications page — arrival emails are
+  transactional and the newsletter has no signed-in toggle yet.
+- Gated by **ui-test-guestaccount.js**; ui-test-guest-modals / overlays / focusreturn /
+  yourstay re-aimed (the pop-ups are gone; one header pill; the new empty-state words).
+  Budgets: app.js +4.4KB, app.css +1.4KB gz raw (comments stripped at deploy); index.html
+  fell ~1KB.
+
 ## The Key safes page: a status line, a to-do, one list (approved "simpler" demo)
 
 `renderKeysafe` / `keysafeView` (admin.js, `.ks-*` in admin.css). Three rounds, owner-led

@@ -12439,9 +12439,7 @@ body.guest-app:not(.owner-mode) #acct-settings-btn {
 /* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
    mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
    guard means these rules only cover the wide/desktop layout. Admin is excluded. */
-body:not(.guest-app):not(.owner-mode) #guest-auth-modal,
-body:not(.guest-app):not(.owner-mode) #guest-details-modal,
-body:not(.guest-app):not(.owner-mode) #guest-security-modal {
+body:not(.guest-app):not(.owner-mode) #guest-auth-modal {
   z-index: 1390;
   background: var(--dark-grey);
   -webkit-backdrop-filter: none;
@@ -13602,4 +13600,340 @@ body.owner-mode .site-footer .ft-msg{display:none}
   #view-main #late-avail .late-avail span { flex: none; padding-right: 56px; }
   #view-main #late-avail .btn-sm, #view-main #late-avail button { margin-left: 0; width: 100%; min-height: 48px; justify-content: center; text-align: center; }
   #view-main .home-guestwords { padding-right: 60px !important; }
+}
+
+/* ============================================================
+   THE GUEST ACCOUNT PAGE + MY STAYS (approved demo). Account is ONE
+   page of grouped rows (one material: the card ground, a hairline
+   between rows, one radius); each row opens its own page with a back
+   link. My stays gains an Upcoming | Past switch, a photo header on
+   each stay card and an empty state that shows the cottages.
+   ============================================================ */
+#guest-account-body {
+  max-width: 560px;
+  margin: 0 auto;
+}
+.ga-page {
+  padding-bottom: 32px;
+}
+.ga-in {
+  animation: gaIn 0.32s var(--fluid-bezier) both;
+}
+.ga-in-back {
+  animation: gaInBack 0.32s var(--fluid-bezier) both;
+}
+@keyframes gaIn {
+  from { opacity: 0; transform: translateX(16px); }
+}
+@keyframes gaInBack {
+  from { opacity: 0; transform: translateX(-16px); }
+}
+.ga-h1 {
+  text-align: left;
+  margin: 4px 0 4px;
+}
+.ga-lead {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  margin: 0 0 16px;
+  text-wrap: pretty;
+}
+.ga-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  margin: 0 0 0 -4px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  cursor: pointer;
+}
+.ga-back svg {
+  width: 20px;
+  height: 20px;
+}
+.ga-cap {
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 24px 4px 8px;
+  text-align: left;
+}
+.ga-group {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.ga-group + .ga-group {
+  margin-top: 12px;
+}
+.ga-signout {
+  margin-top: 24px;
+}
+.ga-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 16px;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  border-radius: 0;
+  color: var(--text-light);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+div.ga-row {
+  cursor: default;
+}
+.ga-row:first-child {
+  border-top: 0;
+}
+.ga-ic {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  background: var(--well-bg);
+  color: var(--accent-text);
+}
+.ga-ic .ic {
+  width: 18px;
+  height: 18px;
+}
+.ga-ic.is-danger,
+.ga-row.is-danger .ga-t {
+  color: var(--danger-text);
+}
+.ga-lb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ga-t {
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+.ga-s {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.ga-v {
+  flex: 0 0 auto;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.ga-vbtn {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+.ga-lock .ic {
+  width: 16px;
+  height: 16px;
+}
+.ga-chev {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+.ga-prof {
+  min-height: 80px;
+  gap: 16px;
+}
+.ga-ava {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+}
+.ga-name {
+  font-size: var(--fs-headline);
+  font-weight: 600;
+}
+.ga-note {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  margin: 12px 4px 0;
+  text-wrap: pretty;
+}
+.ga-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ---- My stays ---- */
+.gb-seg {
+  display: flex;
+  padding: 4px;
+  margin: 0 0 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+}
+.gb-seg[hidden] {
+  display: none;
+}
+.gb-seg-b {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.gb-seg-b.is-on {
+  background: var(--well-bg);
+  color: var(--text-light);
+}
+.gb-seg-n {
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+.gb-hdr {
+  font-family: var(--font-serif);
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  margin: 20px 2px 12px;
+  color: var(--text-light);
+}
+.gb-pane > .gb-hdr:first-child {
+  margin-top: 4px;
+}
+/* Under the switch the Past pane's own heading says what the tab just said. */
+.gb-seg:not([hidden]) ~ #guest-bookings-list #gb-pane-past > .gb-hdr:first-child {
+  display: none;
+}
+/* The card's photo header: flush to the card's edges, its own cottage colour
+   underneath while (or if) there is no photo. */
+.gb2-photo,
+.gb-pick-ph {
+  --gbp-grad: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--gbp, var(--accent)) 55%, var(--dark-grey)),
+    color-mix(in srgb, var(--gbp, var(--accent)) 18%, var(--dark-grey))
+  );
+  background-color: var(--dark-grey);
+  background-image: var(--gbp-grad);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.gb2-photo {
+  height: 128px;
+  margin: -24px -24px 16px;
+}
+.gb-empty {
+  text-align: center;
+  padding: 32px 20px 24px;
+}
+.gb-empty-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+}
+.gb-empty-mark .ic {
+  width: 28px;
+  height: 28px;
+}
+.gb-empty-t {
+  color: var(--text-light);
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.gb-empty-s {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  max-width: 32ch;
+  margin: 0 auto 20px;
+  text-wrap: pretty;
+}
+.gb-empty-go {
+  width: 100%;
+  max-width: 320px;
+}
+.gb-picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+.gb-pick {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-light);
+  text-decoration: none;
+}
+.gb-pick-ph {
+  height: 72px;
+}
+.gb-pick-n {
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  padding: 8px 8px 0;
+}
+.gb-pick-p {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  padding: 2px 8px 8px;
+}
+.gb-help {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: var(--fs-sub);
+  margin: 20px 0 0;
+}
+.gb-help .ga-link {
+  min-height: 44px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ga-in,
+  .ga-in-back {
+    animation: none;
+  }
 }
