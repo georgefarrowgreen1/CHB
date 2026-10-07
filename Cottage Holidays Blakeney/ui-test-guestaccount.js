@@ -7,6 +7,8 @@
 //   §5 Call us exists only when a number is configured
 //   §6 My stays: Upcoming | Past only when both sides have stays; switching hides a pane
 //   §7 the empty state shows the cottages; the stay card has a photo header
+//   §9 stays inside You: the lead card + its one action, rows, the full stay
+//      page and the way back, the three-button dock with its amber dot
 //   §8 the profile photo: sheet → cropper → the REAL post shape → shown on the
 //      page and in the dock; remove brings the initial back
 const { bootBrowser } = require('./ui-test-lib');
@@ -67,18 +69,18 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         const rows = [...v.querySelectorAll('.ga-row')];
         return {
             active: v.classList.contains('active'),
-            name: (v.querySelector('.ga-name') || {}).textContent || '',
+            name: (v.querySelector('.ga-hello .ga-h1') || {}).textContent || '',
             labels: rows.map((r) => (r.querySelector('.ga-t') || {}).textContent || ''),
             short: rows.filter((r) => r.getBoundingClientRect().height < 44).length,
             dockCur: (document.querySelector('.guest-dock-btn.current') || {}).dataset ? document.querySelector('.guest-dock-btn.current').dataset.tab : '',
         };
     });
-    ok(root.active && root.name === 'Gwen Rowe', `the Account tab opens the page, led by the guest's name (${root.name})`);
-    ok(['Sign-in & security', 'Message us', 'Booking terms', 'Privacy & your data', 'Sign out'].every((l) => root.labels.includes(l)),
+    ok(root.active && root.name === 'Hi, Gwen', `the You tab opens the page, greeting the guest (${root.name})`);
+    ok(['Your details', 'Sign-in & security', 'Message us', 'Booking terms', 'Privacy & your data', 'Sign out'].every((l) => root.labels.includes(l)),
         `one list: settings, help, privacy, sign out (${root.labels.join(' · ')})`);
     ok(root.short === 0, 'every row reaches the 44px floor');
     ok(root.dockCur === 'account', `the dock marks Account as current (${root.dockCur})`);
-    await page.click('.ga-prof');
+    await page.click('#guest-account-body .ga-row:has(.ga-t:text-is("Your details"))');
     await page.waitForTimeout(350);
     const det = await page.evaluate(() => ({
         h: (document.querySelector('#guest-account-body .ga-h1') || {}).textContent || '',
@@ -86,11 +88,11 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         emailIsStatic: !document.querySelector('#guest-account-body div.ga-row').matches('button'),
         inputs: document.querySelectorAll('#guest-account-body input, #guest-account-body textarea').length,
     }));
-    ok(det.h === 'Your details' && det.email === 'gwen@example.com', 'the profile row opens Your details');
+    ok(det.h === 'Your details' && det.email === 'gwen@example.com', 'the Your details row opens it');
     ok(det.emailIsStatic && det.inputs === 0, 'details read as FACTS — no form fields on arrival, and the email is not a control');
-    await page.click('.ga-back');
+    await page.click('#guest-account-body .ga-back');
     await page.waitForTimeout(350);
-    ok(await page.evaluate(() => /^Account$/.test(document.querySelector('#guest-account-body .ga-h1').textContent)), 'the back link returns to Account');
+    ok(await page.evaluate(() => /^Hi, Gwen$/.test(document.querySelector('#guest-account-body .ga-h1').textContent)), 'the back link returns to You');
 
     // §2
     console.log('§2 edit one fact');
@@ -258,6 +260,59 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         dockImg: !!document.querySelector('.guest-dock-btn[data-tab="account"] img'),
     }));
     ok(posts.some((p) => p.body.action === 'guest_avatar_remove') && gone.ini === 'G' && !gone.dockImg, 'Remove posts once and the initial and the outline come back');
+    await page.close();
+
+    // §9
+    console.log('§9 stays inside You');
+    ({ page } = await open([
+        mk('jollyboat', d(12), d(15), { id: 701, payment: 'unpaid', pay_token: 'tok701' }),
+        mk('21a', d(-30), d(-27), { id: 702, payment: 'paid', deposit_paid: 400 }),
+        mk('jollyboat', d(-90), d(-87), { id: 703, payment: 'paid', deposit_paid: 400 }),
+    ]));
+    await page.evaluate(() => guestAccountTab());
+    await page.waitForFunction(() => !!document.querySelector('#ga-stays .ga-staycard .ga-lead-n'));
+    const you = await page.evaluate(() => {
+        const card = document.querySelector('#ga-stays .ga-staycard');
+        const pay = card.querySelector('[data-act="openPayView"]');
+        return {
+            cap: (document.querySelector('#ga-stays .ga-cap') || {}).textContent || '',
+            name: card.querySelector('.ga-lead-n').textContent,
+            badge: (card.querySelector('.ga-badge') || {}).textContent || '',
+            payArgs: pay ? pay.getAttribute('data-args') : '',
+            quick: [...card.querySelectorAll('.ga-q span')].map((e) => e.textContent),
+            rows: [...document.querySelectorAll('#ga-stays .ga-stayrow .ga-t')].map((e) => e.textContent),
+            hello: document.getElementById('ga-hello-s').textContent,
+            order: (() => { const a = document.getElementById('ga-stays'); const b = [...document.querySelectorAll('#guest-account-body .ga-t')].find((e) => e.textContent === 'Your details'); return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)); })(),
+            dockTabs: [...document.querySelectorAll('.guest-dock-btn')].map((b) => b.dataset.tab).filter(Boolean),
+            pip: !!document.querySelector('.guest-dock-btn[data-tab="account"] .gd-pip'),
+        };
+    });
+    ok(you.cap === 'Your next stay' && you.name === 'Jollyboat' && /12 days to go/.test(you.badge), `the next stay leads, counting down (${you.cap} · ${you.name} · ${you.badge})`);
+    ok(/tok701/.test(you.payArgs), `its one action is Pay, through the stay's own pay link (${you.payArgs})`);
+    ok(you.quick.join('|') === 'Directions|House rules|Amenities|Message', `four shortcuts under it (${you.quick.join(' · ')})`);
+    ok(you.rows.length === 2 && you.rows.every((r) => /21A|Jollyboat/.test(r)), `the other stays are rows (${you.rows.join(' · ')})`);
+    ok(/12 days until Jollyboat/.test(you.hello), `the greeting says where they are (${you.hello})`);
+    ok(you.order, 'stays come first, the account settings after');
+    ok(!you.dockTabs.includes('stays') && you.dockTabs.includes('account'), `My stays has left the menu — You is where it lives (${[...new Set(you.dockTabs)].join(', ')})`);
+    ok(you.pip, 'the You button carries a dot while money is due');
+    await page.click('#ga-stays .ga-open');
+    await page.waitForFunction(() => document.getElementById('view-guest-bookings').classList.contains('active') && !!document.getElementById('gb2-fold-b701'));
+    await page.waitForTimeout(700);
+    const opened = await page.evaluate(() => {
+        const card = document.querySelector('.my-stay-hub') || document.getElementById('gb2-fold-b701').closest('.gb2');
+        const r = card.getBoundingClientRect();
+        return { inView: r.top < innerHeight && r.bottom > 0, back: (document.getElementById('acct-settings-btn') || {}).textContent || '', dockCur: (document.querySelector('.guest-dock-btn.current') || { dataset: {} }).dataset.tab };
+    });
+    ok(opened.inView, '"Everything about this stay" opens the full stay page on that stay\'s hub');
+    ok(/You/.test(opened.back) && opened.dockCur === 'account', `which leads with "‹ You" and keeps You marked in the menu (${opened.back.trim()} · ${opened.dockCur})`);
+    await page.click('#acct-settings-btn');
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.getElementById('view-guest-account').classList.contains('active')), 'the back link returns to You');
+    await page.waitForFunction(() => !!document.querySelector('#ga-stays .ga-stayrow'));
+    await page.click('#ga-stays .ga-stayrow:last-of-type');
+    await page.waitForFunction(() => document.getElementById('view-guest-bookings').classList.contains('active'));
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.getElementById('gb-pane-past') && !document.getElementById('gb-pane-past').hidden), 'a past row opens the stay page on Past');
     await page.close();
 
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST ACCOUNT CHECKS PASSED');

@@ -987,8 +987,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(hrv.shut, 'Close shuts it');
   await hrPage.close();
 
-  // The header carries ONE pill now — Account (the desktop's way in). Calling us
-  // moved to the Account page's Help group, where the other ways to reach us are.
+  // The stay page opens FROM You now, so it carries ONE control: "‹ You". Calling us
+  // lives on the You page's Help group, where the other ways to reach us are.
   const pillPage = await openPage({ name: 'Pill Guest', email: 'pill@x.co' }, []);
   await pillPage.setViewportSize({ width: 1280, height: 900 });
   await pillPage.waitForTimeout(200);
@@ -997,7 +997,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     call: !!document.getElementById('acct-call-btn'),
     label: ((document.getElementById('acct-settings-btn') || {}).textContent || '').trim(),
   }));
-  ok(pill.acct && !pill.call && pill.label === 'Account', `the My stays header has one Account pill (${pill.label})`);
+  ok(pill.acct && !pill.call && pill.label === 'You', `the stay page leads with one way back to You (${pill.label})`);
   await pillPage.close();
 
   // 34) THE CHECK-OUT TAP. The button exists on the LAST MORNING only (clock

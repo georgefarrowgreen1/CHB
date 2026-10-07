@@ -3485,6 +3485,8 @@ function setGuestUI() {
     try {
         guestDockAvatarSync();
         guestAvatarEnsure();
+        if (currentGuest) gaStaysLoad();
+        else guestDockNeedsSync();
     } catch (e) {}
     // Returning guest? Load their stays (once) and paint the welcome-back
     // nudge + "stayed here before" notes; clears them on logout.
@@ -3638,6 +3640,11 @@ const GA_IC = {
     face: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 10v1M15 10v1M12 10v3h-1M9.5 16a3.5 3.5 0 0 0 5 0"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     cam: '<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/>',
+    user: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
+    pin: '<path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/>',
+    rules: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>',
+    sofa: '<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M3 12a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v5H3z"/>',
+    star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
     img: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
 };
 const gaSvg = (k) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GA_IC[k]}</svg>`;
@@ -3693,7 +3700,7 @@ function renderGuestAccount(dir) {
     }
     const g = currentGuest;
     guestAvatarEnsure();
-    const back = `<button type="button" class="ga-back" ${chbAttrs('gaGo', '')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Account</button>`;
+    const back = `<button type="button" class="ga-back" ${chbAttrs('gaGo', '')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>You</button>`;
     let html = '';
     if (__gaSub === 'details') {
         const none = 'Not added yet';
@@ -3745,14 +3752,16 @@ function renderGuestAccount(dir) {
             `<p class="ga-note">Past bookings are kept as financial records the law requires, but your name and contact details are removed from them.</p>`;
     } else {
         const ph = gaPhone();
+        const first = String(g.name || '').trim().split(/\s+/)[0];
         html =
-            `<h1 class="section-title ga-h1">Account</h1>` +
-            `<div class="ga-group"><div class="ga-row ga-prof">${gaAvaBtn(false)}<button type="button" class="ga-profbtn" ${chbAttrs('gaGo', 'details')}><span class="ga-lb"><span class="ga-t ga-name">${escapeHtml(g.name || '')}</span><span class="ga-s">${escapeHtml(g.email || '')}</span></span>${GA_CHEV}</button></div></div>` +
+            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead" id="ga-hello-s">${escapeHtml(gaHelloLine())}</p></div>${gaAvaBtn(false)}</div>` +
+            `<div id="ga-stays">${gaStaysHtml()}</div>` +
             gaGroup(
                 [
+                    gaRow({ ic: 'user', t: 'Your details', s: 'Photo, phone and address', act: chbAttrs('gaGo', 'details'), chev: true }),
                     gaRow({ ic: 'key', t: 'Sign-in & security', s: 'Password and passkeys', act: chbAttrs('gaGo', 'security'), chev: true }),
                 ],
-                'Settings',
+                'Account',
             ) +
             gaGroup(
                 [
@@ -3767,6 +3776,213 @@ function renderGuestAccount(dir) {
     }
     host.innerHTML = `<div class="ga-page${dir === 'fwd' ? ' ga-in' : dir === 'back' ? ' ga-in-back' : ''}">${html}</div>`;
 }
+// ---- STAYS INSIDE THE ACCOUNT (approved "You" demo). The You page leads with
+// the stay that matters now — staying now, else the next one, else the last —
+// as one card carrying the ONE thing to do (pay, the door code, book again) and
+// four shortcuts; every other stay is a row. Opening a stay goes to the full
+// stay page (view-guest-bookings, unchanged) scrolled to that stay, with a
+// "‹ You" link back. Figures come from the derivations the stay cards use
+// (displayGrand + guestPayCta), so the two pages cannot quote different money.
+let __gaStays = null; // null = not asked; {rows, unproven} once loaded; 'err'
+let __gaStaysBusy = false;
+async function gaStaysLoad(force) {
+    if (!currentGuest || isAuthenticated || ACCT_PREVIEW) return;
+    if (__gaStaysBusy || (__gaStays && __gaStays !== 'err' && !force)) return;
+    __gaStaysBusy = true;
+    try {
+        const res = await apiGet('my-bookings.php');
+        __gaStays = {
+            unproven: !!res.unproven,
+            rows: (res.bookings || []).map((row) => ({
+                propKey: row.prop_key,
+                b: mapBookingFromApi(row),
+                payToken: row.pay_token || '',
+                propName: row.property_name || '',
+            })),
+        };
+    } catch (e) {
+        if (!__gaStays) __gaStays = 'err';
+    }
+    __gaStaysBusy = false;
+    const host = document.getElementById('ga-stays');
+    if (host) host.innerHTML = gaStaysHtml();
+    const hs = document.getElementById('ga-hello-s');
+    if (hs) hs.textContent = gaHelloLine();
+    guestDockNeedsSync();
+}
+function gaStaysSplit() {
+    const st = __gaStays && __gaStays !== 'err' ? __gaStays : null;
+    if (!st) return null;
+    const today = todayDashed();
+    const rows = st.rows.slice();
+    const now = rows.filter((x) => x.b.checkIn <= today && !hasCheckedOut(x.b));
+    const up = rows.filter((x) => x.b.checkIn > today).sort((a, z) => (a.b.checkIn < z.b.checkIn ? -1 : 1));
+    const past = rows.filter((x) => hasCheckedOut(x.b)).sort((a, z) => (a.b.checkOut > z.b.checkOut ? -1 : 1));
+    const lead = now[0] || up[0] || past[0] || null;
+    const kind = !lead ? '' : now.includes(lead) ? 'now' : up.includes(lead) ? 'up' : 'past';
+    return { lead, kind, up: up.filter((x) => x !== lead).concat(now.filter((x) => x !== lead)), past: past.filter((x) => x !== lead), unproven: st.unproven };
+}
+function gaStayName(x) {
+    return (propertyMeta[x.propKey] && propertyMeta[x.propKey].name) || x.propName || x.propKey;
+}
+function gaStayMoney(x) {
+    const b = x.b;
+    const p = b.agreedPrice || priceBreakdown(x.propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    const gt = displayGrand(p, paymentSummary(x.propKey, b), b.holdStatus, b);
+    const payable = !gt.fullyPaid && !!x.payToken && !bookingOwnerArranged(b);
+    return { gt, payable, cta: payable ? guestPayCta(b, gt) : null };
+}
+function gaHelloLine() {
+    const sp = gaStaysSplit();
+    if (!sp) return __gaStays === 'err' ? 'Welcome back.' : 'Your stays and your account, in one place.';
+    if (!sp.lead) return 'Welcome.';
+    if (sp.kind === 'now') return 'Enjoy ' + gaStayName(sp.lead) + '.';
+    if (sp.kind === 'up') {
+        const d = nightsBetween(todayDashed(), sp.lead.b.checkIn);
+        return d <= 1 ? gaStayName(sp.lead) + ' tomorrow.' : d + ' days until ' + gaStayName(sp.lead) + '.';
+    }
+    return 'Welcome back.';
+}
+function gaTile(ic, t, act) {
+    return `<button type="button" class="ga-q" ${act}>${gaSvg(ic)}<span>${escapeHtml(t)}</span></button>`;
+}
+function gaLeadHtml(x, kind) {
+    const b = x.b;
+    const name = gaStayName(x);
+    const pk = String(x.propKey);
+    const today = todayDashed();
+    let badge = '';
+    let when = '';
+    let ask = '';
+    let quick = '';
+    if (kind === 'up') {
+        const d = nightsBetween(today, b.checkIn);
+        badge = d <= 1 ? 'Tomorrow' : d + ' days to go';
+        const n = nightsBetween(b.checkIn, b.checkOut);
+        when = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)} · ${n} night${n === 1 ? '' : 's'}`;
+        const m = gaStayMoney(x);
+        ask = m.payable
+            ? `<div class="ga-ask"><div class="ga-ask-t"><b>${gbp(m.cta.amount)} ${escapeHtml(m.cta.word)}</b><span>${escapeHtml(m.cta.word === 'deposit' ? 'Confirms your booking' : 'Due' + (balanceDueBySuffix(b.balanceDueBy) || ' now'))}</span></div><button type="button" class="btn-glass btn-accent ga-ask-btn" ${chbAttrs('openPayView', String(x.payToken), b.dbId)}>Pay</button></div>`
+            : `<div class="ga-ask is-ok"><div class="ga-ask-t"><b>${m.gt.fullyPaid ? 'Paid in full ✓' : 'All arranged ✓'}</b><span>Arrival details arrive a week before.</span></div></div>`;
+    } else if (kind === 'now') {
+        const left = Math.max(0, nightsBetween(today, b.checkOut));
+        badge = left === 0 ? 'Checkout today' : 'Staying now · ' + left + ' night' + (left === 1 ? '' : 's') + ' left';
+        when = `Check-out ${dpSpoken(b.checkOut)} by ${b.checkOutTime || '10:00'}`;
+        ask = b.doorCode
+            ? `<div class="ga-ask"><div class="ga-ask-t"><span>Your door code</span><b class="ga-code">${escapeHtml(b.doorCode)}</b></div><button type="button" class="btn-glass ga-ask-btn" ${chbAttrs('guestCopyCode', String(b.doorCode), CHB_SELF)}>Copy</button></div>`
+            : '';
+    } else {
+        when = `Stayed ${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
+        ask = propertyMeta[x.propKey]
+            ? `<div class="ga-ask"><div class="ga-ask-t"><b>Fancy ${escapeHtml(name)} again?</b><span>Check the dates that are free.</span></div><button type="button" class="btn-glass btn-accent ga-ask-btn" ${chbAttrs('rebookCottage', pk)}>Book again</button></div>`
+            : '';
+    }
+    quick =
+        kind === 'past'
+            ? gaTile('doc', 'Invoice', chbAttrs('downloadInvoice', String(b.id))) + gaTile('star', 'Review', chbAttrs('gaOpenStay', String(b.id))) + gaTile('chat', 'Message', `data-act="chatForStay" data-arg="${escapeHtml(pk)}"`)
+            : gaTile('pin', 'Directions', chbAttrs('openCottageDirections', pk)) +
+              gaTile('rules', 'House rules', chbAttrs('openHouseRulesModal', pk)) +
+              gaTile('sofa', 'Amenities', chbAttrs('openAmenitiesModal', pk)) +
+              gaTile('chat', 'Message', `data-act="chatForStay" data-arg="${escapeHtml(pk)}"`);
+    return `<article class="ga-staycard">
+        ${gbPhotoHtml(x.propKey).replace('gb2-photo', 'gb2-photo ga-lead-ph')}${badge ? `<span class="ga-badge${kind === 'now' ? ' is-now' : ''}">${escapeHtml(badge)}</span>` : ''}
+        <div class="ga-lead-b"><h2 class="ga-lead-n">${escapeHtml(name)}</h2><p class="ga-lead-w">${escapeHtml(when)}</p>${ask}</div>
+        <div class="ga-quick${kind === 'past' ? ' is-3' : ''}">${quick}</div>
+        <button type="button" class="ga-open" ${chbAttrs('gaOpenStay', String(b.id))}>Everything about this stay ${GA_CHEV}</button>
+    </article>`;
+}
+function gaStayRow(x, kind) {
+    const b = x.b;
+    let pill = '';
+    if (kind === 'up') {
+        const m = gaStayMoney(x);
+        pill = m.payable
+            ? `<span class="ga-pill is-warn">${gbp(m.cta.amount)} due</span>`
+            : m.gt.fullyPaid
+              ? '<span class="ga-pill is-ok">Paid</span>'
+              : '';
+    }
+    const when = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
+    return `<button type="button" class="ga-row ga-stayrow" ${chbAttrs('gaOpenStay', String(b.id))}>${gbPhotoHtml(x.propKey).replace('gb2-photo', 'gb2-photo ga-thumb')}<span class="ga-lb"><span class="ga-t">${escapeHtml(gaStayName(x))}</span><span class="ga-s">${escapeHtml(when)}</span></span>${pill}${GA_CHEV}</button>`;
+}
+function gaStaysHtml() {
+    if (__gaStays === null) {
+        gaStaysLoad();
+        return `<div class="ga-staycard ga-lead-wait" aria-busy="true"><div class="sk sk-line"></div><div class="sk sk-line"></div><span class="sr-only">Finding your stays…</span></div>`;
+    }
+    if (__gaStays === 'err')
+        return `<div class="ga-group ga-empty"><p>We couldn't load your stays just now.</p><button type="button" class="btn-glass" data-act="gaStaysRetry">Try again</button></div>`;
+    const sp = gaStaysSplit();
+    if (!sp) return '';
+    if (sp.unproven && !sp.lead)
+        return `<div class="ga-group ga-empty"><h2 class="ga-empty-t">Confirm your email to see your stays</h2><p>We sent a link to <strong>${escapeHtml((currentGuest && currentGuest.email) || '')}</strong>. Open it and your bookings appear here.</p><button type="button" class="btn-glass" data-act="guestResendConfirm" data-pass="self">Send the link again</button></div>`;
+    if (!sp.lead)
+        return `<div class="ga-group ga-empty"><h2 class="ga-empty-t">Nothing booked yet</h2><p>When you book a cottage, your dates, payments and arrival details live here.</p><button type="button" class="btn-glass btn-accent" data-act="nav" data-view="view-cottages">Find dates</button></div>`;
+    const cap = sp.kind === 'now' ? 'Your stay' : sp.kind === 'up' ? 'Your next stay' : 'Your last stay';
+    let h = `<h2 class="ga-cap">${cap}</h2>` + gaLeadHtml(sp.lead, sp.kind);
+    if (sp.up.length) h += `<h2 class="ga-cap">Coming up</h2><div class="ga-group">${sp.up.map((x) => gaStayRow(x, 'up')).join('')}</div>`;
+    if (sp.past.length)
+        h += `<div class="ga-caprow"><h2 class="ga-cap">Past stays</h2><button type="button" class="ga-link ga-seeall" ${chbAttrs('gaOpenStays', 'past')}>See all</button></div><div class="ga-group">${sp.past.slice(0, 2).map((x) => gaStayRow(x, 'past')).join('')}</div>`;
+    return h;
+}
+function gaStaysRetry() {
+    __gaStays = null;
+    const host = document.getElementById('ga-stays');
+    if (host) host.innerHTML = gaStaysHtml();
+}
+// The full stay page, scrolled to one stay (or opened on a side of the switch).
+async function gaOpenStays(seg) {
+    nav('view-guest-bookings');
+    await renderGuestBookings();
+    if (seg === 'past' || seg === 'up') gbSeg(seg);
+    try {
+        window.scrollTo(0, 0);
+    } catch (e) {}
+}
+async function gaOpenStay(id) {
+    nav('view-guest-bookings');
+    await renderGuestBookings();
+    const fold = document.getElementById('gb2-fold-' + id);
+    const card = fold ? fold.closest('.gb2') : null;
+    if (!card) return;
+    // The stay that matters now has its hub at the top of the page — that IS the
+    // stay's page, so land there rather than on its card further down.
+    const sp = gaStaysSplit();
+    if (sp && sp.lead && String(sp.lead.b.id) === String(id) && sp.kind !== 'past' && document.querySelector('.my-stay-hub')) {
+        gbSeg('up');
+        try {
+            window.scrollTo(0, 0);
+        } catch (e) {}
+        return;
+    }
+    gbSeg(card.closest('#gb-pane-past') ? 'past' : 'up');
+    const pf = /** @type {HTMLElement|null} */ (card.closest('#gb2-pastfold'));
+    if (pf && pf.hidden) {
+        const btn = /** @type {HTMLElement|null} */ (document.querySelector('.gb2-pastbtn'));
+        if (btn) gb2PastToggle(btn);
+    }
+    try {
+        card.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    } catch (e) {}
+}
+// The dock's You button wears an amber dot when something needs the guest:
+// a stay in progress, or money the pay screen is ready to take.
+function guestDockNeedsSync() {
+    const sp = currentGuest && !isAuthenticated ? gaStaysSplit() : null;
+    const needs = !!(sp && sp.lead && (sp.kind === 'now' || (sp.kind === 'up' && gaStayMoney(sp.lead).payable)));
+    document.querySelectorAll('.guest-dock-btn[data-tab="account"]').forEach((b) => {
+        b.classList.toggle('has-pip', needs);
+        let dot = b.querySelector('.gd-pip');
+        if (needs && !dot) {
+            dot = document.createElement('i');
+            dot.className = 'gd-pip';
+            dot.setAttribute('aria-hidden', 'true');
+            b.appendChild(dot);
+        } else if (!needs && dot) dot.remove();
+        b.setAttribute('aria-label', needs ? 'You — something needs you' : 'You');
+    });
+}
+
 // ---- THE PROFILE PHOTO (approved demo). Tap the circle → a sheet (take /
 // choose / remove) → position it in a circle → saved as a square JPEG the server
 // re-encodes to 256px. Shown only to the guest and the owner (avatar.php checks
@@ -3796,6 +4012,7 @@ function guestDockAvatarSync() {
         btn.classList.toggle('has-photo', !!url);
         btn.innerHTML = url ? `<img class="gd-ava" src="${url}" alt="">` : btn.dataset.glyph || '';
     });
+    guestDockNeedsSync(); // the rewrite took the dot with it
 }
 window.guestDockAvatarSync = guestDockAvatarSync;
 // A login path that did not carry the photo version asks once; nothing waits on it.
@@ -4639,6 +4856,7 @@ async function guestLogout() {
     __gaSub = '';
     __gaPasskeys = null;
     __gaAvaAsked = false;
+    __gaStays = null;
     const ga = document.getElementById('guest-account-body');
     if (ga) ga.innerHTML = '';
     const gl = document.getElementById('guest-bookings-list');
@@ -20471,7 +20689,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'gphoto100721';
+    const BUILD = 'youpage1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
