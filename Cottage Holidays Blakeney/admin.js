@@ -14810,6 +14810,16 @@ const CAL_PLAT = {
     bookingcom: { name: 'Booking.com', l: 'B', c: '#1f4f95', where: 'In Booking.com: Rates & availability › Sync calendars' },
     vrbo: { name: 'Vrbo', l: 'V', c: '#1d5ea8', where: 'In Vrbo: Calendar › Import/export › Export' },
 };
+// The fold's four actions wear the Money landing's tool-button vocabulary (.mo-tool).
+const CAL_IC = (() => {
+    const i = (d) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    return {
+        sync: i('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'),
+        copy: i('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'),
+        add: i('<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>'),
+        edit: i('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+    };
+})();
 function calPlat(src) {
     return CAL_PLAT[src] || { name: String(src || 'Calendar'), l: String(src || '?').charAt(0).toUpperCase(), c: '#6b6357', where: '' };
 }
@@ -14919,11 +14929,11 @@ function calFoldHtml(k) {
     return (rows ? `<div class="cal-plist">${rows}</div>` : '')
         + (fixOpen ? calLinkFormHtml(k) : '')
         + (formOpen ? calLinkFormHtml(k) : '')
-        + `<div class="bhub-btn-row bhub-act-links">
-            <button class="bhub-actlink" ${chbAttrs('runSync', String(k))}>Sync now</button>
-            ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="bhub-actlink" ${chbAttrs('calCopyLink', String(k))}>Copy your link</button>` : ''}
-            ${canAdd && !formOpen ? `<button class="bhub-actlink" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>+ Link a platform</button>` : ''}
-            <button class="bhub-actlink" ${chbAttrs('settingsOpenCalendar', String(k))}>Edit feed links</button>
+        + `<div class="mo-tools cal-tools">
+            <button class="mo-tool" ${chbAttrs('runSync', String(k))}>${__calBusy[k] === 'run' ? '<span class="mg-spin cal-tspin" aria-hidden="true"></span>Syncing' : CAL_IC.sync + 'Sync now'}</button>
+            ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="mo-tool" ${chbAttrs('calCopyLink', String(k))}>${CAL_IC.copy}Copy link</button>` : ''}
+            ${canAdd && !formOpen ? `<button class="mo-tool" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>${CAL_IC.add}Add platform</button>` : ''}
+            <button class="mo-tool" ${chbAttrs('settingsOpenCalendar', String(k))}>${CAL_IC.edit}Edit links</button>
           </div>`;
 }
 function renderCalendarList() {
