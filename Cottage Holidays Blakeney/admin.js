@@ -26494,85 +26494,179 @@ function reviewCleanPaste(raw) {
 function rviRows() {
     const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('rvi-text'));
     const have = new Set((Array.isArray(siteContent.reviews) ? siteContent.reviews : []).map((r) => reviewTextKey(r && r.text)));
-    return reviewCleanPaste(ta ? ta.value : '').map((r, i) => ({
-        ...r,
-        i,
-        stars: __rvi.stars[i] || r.stars,
-        dupe: have.has(reviewTextKey(r.text)),
-        dropped: !!__rvi.dropped[i],
-    }));
+    // Choices (stars, left out, open) are keyed by the REVIEW, never its position —
+    // a different paste must not inherit "left out" from whatever sat at row 1.
+    return reviewCleanPaste(ta ? ta.value : '').map((r, i) => {
+        const key = r.name + '\u0001' + r.text;
+        return { ...r, i, key, stars: __rvi.stars[key] || r.stars, dupe: have.has(reviewTextKey(r.text)), dropped: !!__rvi.dropped[key] };
+    });
 }
-function rviRender() {
-    const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : Object.keys(propertyMeta);
-    if (__rvi.prop && !keys.includes(__rvi.prop)) __rvi.prop = '';
-    const all = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
-    const nm = (k) => (propertyMeta[k] || {}).name || k;
-    const sofar = document.getElementById('rvi-sofar');
-    if (sofar) {
-        const per = keys.map((k) => `${nm(k)} ${all.filter((r) => r && r.prop === k).length}`).join(' · ');
-        sofar.textContent = "Select everything on your host dashboard's reviews page, copy, and paste it here — dates, host replies and buttons included. We keep the guest, the stars and what they wrote." + (keys.length ? ` Already on the site: ${per}.` : '');
-    }
-    const chip = (on, act, arg, inner) =>
-        `<button type="button" class="rvi-chip${on ? ' is-on' : ''}" aria-pressed="${on}" ${chbAttrs(act, arg)}>${inner}</button>`;
-    const pe = document.getElementById('rvi-props');
-    if (pe)
-        pe.innerHTML = keys
-            .map((k) => chip(__rvi.prop === k, 'rviPick', k, `<span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(nm(k))}`))
+// MOTION (in keeping with the site's twelve behaviours): the chips toggle IN
+// PLACE so the selection pill TRAVELS (chbSeatPill); a review ARRIVES once, when
+// its text first appears in the read-back (typing never replays the list); the
+// removed-lines panel UNFOLDS on the fold's 0fr grid; a tapped star BOWS
+// (revBowTap); a left-out row fades; the button's words SETTLE when they change.
+let __rviSeen = new Set();
+function rviNm(k) {
+    return (propertyMeta[k] || {}).name || k;
+}
+function rviKeys() {
+    return typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : Object.keys(propertyMeta);
+}
+function rviChips(host, items, cur, act) {
+    if (!host) return;
+    const sig = items.map((x) => x.v).join('|');
+    if (host.dataset.sig !== sig) {
+        host.dataset.sig = sig;
+        host.innerHTML = items
+            .map((x) => `<button type="button" class="rvi-chip" data-v="${escapeHtml(x.v)}" aria-pressed="false" ${chbAttrs(act, x.v)}>${x.html}</button>`)
             .join('');
-    const se = document.getElementById('rvi-srcs');
-    if (se) se.innerHTML = RVI_SOURCES.map((s) => chip(__rvi.src === s, 'rviSource', s, escapeHtml(s))).join('');
-    const rows = rviRows();
-    const adding = rows.filter((r) => !r.dupe && !r.dropped);
-    const fe = document.getElementById('rvi-found');
-    if (fe) {
-        if (!rows.length) fe.innerHTML = '';
-        else {
-            const clutter = rows.reduce((n, r) => n + r.removed.length, 0);
-            const cap = `Found ${rows.length} review${rows.length === 1 ? '' : 's'}${adding.length !== rows.length ? ` · ${adding.length} to add` : ''}`;
-            fe.innerHTML = `<section class="rv-sec">
-                <div class="rvi-foundhead"><h3 class="acr-cap">${cap}</h3>${clutter ? stCap('ok', `${clutter} bit${clutter === 1 ? '' : 's'} of clutter removed`) : ''}</div>
-                <div class="acr-well rv-well">${rows
-                    .map((r) => {
-                        const kinds = [...new Set(r.removed.map((x) => x.why))];
-                        const open = !!__rvi.open[r.i];
-                        const st = '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars);
-                        return `<div class="rvi-row${r.dropped || r.dupe ? ' is-out' : ''}">
-                            <div class="rv-go-txt">
-                                <div class="rv-qhead"><span class="rv-name">${escapeHtml(r.name)}</span>
-                                    <button type="button" class="rvi-stars" aria-label="${r.stars} stars — tap to change" ${chbAttrs('rviStars', r.i)}>${st}</button>
-                                    ${r.dupe ? stCap('unk', 'Already imported — skipped') : ''}</div>
-                                <p class="rvi-text">${escapeHtml(r.text)}</p>
-                                ${kinds.length ? `<button type="button" class="rvi-why" aria-expanded="${open}" ${chbAttrs('rviWhy', r.i)}>Removed: ${escapeHtml(kinds.slice(0, 3).join(', '))}${kinds.length > 3 ? ' +' + (kinds.length - 3) : ''} · <span>${open ? 'Hide' : 'See'}</span></button>` : ''}
-                                ${open ? `<div class="rvi-removed">${r.removed.map((x) => `<div><span>${escapeHtml(x.why)}</span><s>${escapeHtml(x.line)}</s></div>`).join('')}</div>` : ''}
-                            </div>
-                            ${r.dupe ? '' : `<button type="button" class="rvi-drop" aria-label="${r.dropped ? 'Put back' : 'Leave out'} the review from ${escapeHtml(r.name)}" ${chbAttrs('rviDrop', r.i)}>${r.dropped ? '↺' : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</button>`}
-                        </div>`;
-                    })
-                    .join('')}</div>
-                <p class="acr-capsub rvi-hint">Tap the stars to change a rating · ✕ leaves one out.</p>
-            </section>`;
-        }
     }
+    host.querySelectorAll('.rvi-chip').forEach((b) => {
+        const on = /** @type {HTMLElement} */ (b).dataset.v === cur;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
+    try { chbSeatPill(host); } catch (e) {}
+}
+function rviRowHtml(r, arrive, delay) {
+    const kinds = [...new Set(r.removed.map((x) => x.why))];
+    const st = '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars);
+    return `<div class="rvi-row${r.dropped || r.dupe ? ' is-out' : ''}${arrive ? ' is-in' : ''}" data-i="${r.i}"${arrive ? ` style="--rvd:${delay}ms"` : ''}>
+        <div class="rv-go-txt">
+            <div class="rv-qhead"><span class="rv-name">${escapeHtml(r.name)}</span>
+                <button type="button" class="rvi-stars" aria-label="${r.stars} stars — tap to change" ${chbAttrs('rviStars', r.i)}>${st}</button>
+                ${r.dupe ? stCap('unk', 'Already imported — skipped') : ''}</div>
+            <p class="rvi-text">${escapeHtml(r.text)}</p>
+            ${kinds.length ? `<button type="button" class="rvi-why" aria-expanded="false" aria-controls="rvi-rm-${r.i}" ${chbAttrs('rviWhy', r.i)}>Removed: ${escapeHtml(kinds.slice(0, 3).join(', '))}${kinds.length > 3 ? ' +' + (kinds.length - 3) : ''} · <span>See</span></button>
+            <div class="rvi-fold" id="rvi-rm-${r.i}" hidden><div class="rvi-removed">${r.removed.map((x) => `<div><span>${escapeHtml(x.why)}</span><s>${escapeHtml(x.line)}</s></div>`).join('')}</div></div>` : ''}
+        </div>
+        ${r.dupe ? '' : `<button type="button" class="rvi-drop" aria-label="Leave out the review from ${escapeHtml(r.name)}" ${chbAttrs('rviDrop', r.i)}>${RVI_IC_X}</button>`}
+    </div>`;
+}
+const RVI_IC_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+// The parts of the read-back that are COUNTS (caption, button) — recomputed and
+// written in place on every change; the button's words settle when they move.
+function rviCounts(rows) {
+    const adding = rows.filter((r) => !r.dupe && !r.dropped);
+    const cap = document.getElementById('rvi-found-cap');
+    if (cap) cap.textContent = `Found ${rows.length} review${rows.length === 1 ? '' : 's'}${adding.length !== rows.length ? ` · ${adding.length} to add` : ''}`;
     const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('rvi-add'));
     if (btn) {
         const n = adding.length;
+        const label = !__rvi.prop ? 'Choose a cottage first' : !n ? (rows.length ? 'Nothing new to add' : 'Paste some reviews') : `Add ${n} review${n === 1 ? '' : 's'} to ${rviNm(__rvi.prop)}`;
         btn.disabled = !__rvi.prop || !n;
-        btn.textContent = !__rvi.prop ? 'Choose a cottage first' : !n ? (rows.length ? 'Nothing new to add' : 'Paste some reviews') : `Add ${n} review${n === 1 ? '' : 's'} to ${nm(__rvi.prop)}`;
+        if (btn.textContent !== label) {
+            const first = !btn.dataset.painted;
+            btn.textContent = label;
+            btn.dataset.painted = '1';
+            if (!first) {
+                btn.classList.remove('is-settle');
+                void btn.offsetWidth;
+                btn.classList.add('is-settle');
+            }
+        }
     }
+}
+function rviRender() {
+    const keys = rviKeys();
+    if (__rvi.prop && !keys.includes(__rvi.prop)) __rvi.prop = '';
+    const all = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
+    const sofar = document.getElementById('rvi-sofar');
+    if (sofar) {
+        const per = keys.map((k) => `${rviNm(k)} ${all.filter((r) => r && r.prop === k).length}`).join(' · ');
+        sofar.textContent = "Select everything on your host dashboard's reviews page, copy, and paste it here — dates, host replies and buttons included. We keep the guest, the stars and what they wrote." + (keys.length ? ` Already on the site: ${per}.` : '');
+    }
+    rviChips(document.getElementById('rvi-props'), keys.map((k) => ({ v: k, html: `<span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(rviNm(k))}` })), __rvi.prop, 'rviPick');
+    rviChips(document.getElementById('rvi-srcs'), RVI_SOURCES.map((x) => ({ v: x, html: escapeHtml(x) })), __rvi.src, 'rviSource');
+    const rows = rviRows();
+    const fe = document.getElementById('rvi-found');
+    if (fe) {
+        // Rebuilt only when what was READ changes (a paste, an edit, an add) —
+        // a star, a ✕ or a "See" is a change made in place below.
+        const sig = rows.map((r) => r.name + '\u0001' + r.text + '\u0001' + r.dupe).join('\u0002');
+        if (fe.dataset.sig !== sig) {
+            fe.dataset.sig = sig;
+            if (!rows.length) fe.innerHTML = '';
+            else {
+                const clutter = rows.reduce((n, r) => n + r.removed.length, 0);
+                const firstPaint = !fe.querySelector('.rvi-row');
+                let step = 0;
+                fe.innerHTML = `<section class="rv-sec">
+                    <div class="rvi-foundhead"><h3 class="acr-cap" id="rvi-found-cap"></h3>${clutter ? `<span class="rvi-clutter${firstPaint ? ' is-in' : ''}">${stCap('ok', `${clutter} bit${clutter === 1 ? '' : 's'} of clutter removed`)}</span>` : ''}</div>
+                    <div class="acr-well rv-well">${rows
+                        .map((r) => {
+                            const key = r.name + '\u0001' + r.text;
+                            const arrive = !__rviSeen.has(key);
+                            return rviRowHtml(r, arrive, arrive ? Math.min(step++, 8) * 60 : 0);
+                        })
+                        .join('')}</div>
+                    <p class="acr-capsub rvi-hint">Tap the stars to change a rating · ✕ leaves one out.</p>
+                </section>`;
+            }
+            __rviSeen = new Set(rows.map((r) => r.name + '\u0001' + r.text));
+        }
+    }
+    rviCounts(rows);
 }
 function rviReset() {
     __rvi = { prop: __rvi.prop, src: __rvi.src, dropped: {}, stars: {}, open: {} };
 }
 function rviPick(k) { __rvi.prop = k; rviRender(); }
 function rviSource(s) { __rvi.src = s; rviRender(); }
+function rviRowEl(i) {
+    return document.querySelector(`#rvi-found .rvi-row[data-i="${+i}"]`);
+}
+function rviKeyAt(i) {
+    const r = rviRows().find((x) => x.i === +i);
+    return r ? r.key : '';
+}
 function rviStars(i) {
     const cur = rviRows().find((r) => r.i === +i);
-    const s = cur ? cur.stars : 5;
-    __rvi.stars[i] = s <= 1 ? 5 : s - 1;
-    rviRender();
+    if (!cur) return;
+    const s = cur.stars;
+    const next = s <= 1 ? 5 : s - 1;
+    __rvi.stars[cur.key] = next;
+    const b = /** @type {HTMLElement|null} */ (document.querySelector(`#rvi-found .rvi-row[data-i="${+i}"] .rvi-stars`));
+    if (b) {
+        b.textContent = '★'.repeat(next) + '☆'.repeat(5 - next);
+        b.setAttribute('aria-label', `${next} stars — tap to change`);
+        b.classList.remove('is-bow');
+        void b.offsetWidth;
+        b.classList.add('is-bow');
+    }
 }
-function rviDrop(i) { __rvi.dropped[i] = !__rvi.dropped[i]; rviRender(); }
-function rviWhy(i) { __rvi.open[i] = !__rvi.open[i]; rviRender(); }
+function rviDrop(i) {
+    const k = rviKeyAt(i);
+    __rvi.dropped[k] = !__rvi.dropped[k];
+    const row = rviRowEl(i);
+    if (row) {
+        const out = !!__rvi.dropped[k];
+        row.classList.toggle('is-out', out);
+        const b = row.querySelector('.rvi-drop');
+        const nm = (row.querySelector('.rv-name') || {}).textContent || '';
+        if (b) {
+            b.innerHTML = out ? '↺' : RVI_IC_X;
+            b.setAttribute('aria-label', `${out ? 'Put back' : 'Leave out'} the review from ${nm}`);
+        }
+    }
+    rviCounts(rviRows());
+}
+function rviWhy(i) {
+    const k = rviKeyAt(i);
+    __rvi.open[k] = !__rvi.open[k];
+    const row = rviRowEl(i);
+    if (!row) return;
+    const open = !!__rvi.open[k];
+    const f = row.querySelector('.rvi-fold');
+    if (f) /** @type {HTMLElement} */ (f).hidden = !open;
+    const b = row.querySelector('.rvi-why');
+    if (b) {
+        b.setAttribute('aria-expanded', String(open));
+        const sp = b.querySelector('span');
+        if (sp) sp.textContent = open ? 'Hide' : 'See';
+    }
+}
 async function rviAdd() {
     const prop = __rvi.prop;
     if (!prop) return;
@@ -26589,6 +26683,14 @@ async function rviAdd() {
     }
     siteContent.reviews = next;
     try { renderReviews(); } catch (e) {}
+    // The read-back LEAVES before it is cleared: the batch went somewhere.
+    const fe = document.getElementById('rvi-found');
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (fe && fe.firstElementChild && !reduce) {
+        fe.classList.add('is-leaving');
+        await new Promise((r) => setTimeout(r, 220));
+    }
+    if (fe) fe.classList.remove('is-leaving');
     const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('rvi-text'));
     if (ta) ta.value = '';
     rviReset();
