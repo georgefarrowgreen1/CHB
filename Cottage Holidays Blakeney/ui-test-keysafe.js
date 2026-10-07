@@ -87,41 +87,59 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('§2 the page states the record');
   const body = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
   ok(/9265/.test(body), 'the current code is stated');
-  ok(/Hannah Whitlock/.test(body) || /for Hannah/.test(body), '…and who the safe is set for');
-  ok(/Marcus Ellery/.test(body), 'the next guest is named');
-  ok(/The safe still has Hannah’s code — no code set for Marcus yet/.test(body), '…and the plain sentence says what is wrong: Hannah’s code, none for Marcus');
-  ok(/They can’t see a code yet — it appears only after you confirm/.test(body), 'and the guest-visibility line says the reveal waits on the confirm');
-  ok(/Priya Raman/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body .ks-hist'); dt.open = true; return dt.textContent; })), 'the history names who had which code');
+  ok(/21A Westgate still has Hannah’s code/.test(body), '…and the to-do says whose code is still on the safe');
+  ok(/Marcus Ellery arrives/.test(body), 'the next guest is named');
+  ok(/sees the new code on their booking page once you confirm/.test(body), 'and the reveal waits on the confirm');
 
-  console.log('§2b the overhaul anatomy — summary, then one open card per safe');
+  console.log('§2b the simpler anatomy — status line, to-do, one list, a sheet');
   const anat = await page.evaluate(() => {
     const host = document.getElementById('keysafe-body');
-    const first = host.querySelector('.ks-card');
-    const vis = (el) => !!(el && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+    const todo = host.querySelector('.ks-todo');
+    const rows = [...host.querySelectorAll('.ks-list .ks-row')];
+    const r21 = rows.find((r) => r.dataset.pk === '21a');
     return {
-      sum: (host.querySelector('.ks-sum') || {}).textContent || '',
-      sumBad: !!host.querySelector('.ks-sum.is-bad'),
-      firstIs21a: !!(first && /21A/.test(first.querySelector('.ks-head').textContent)),
-      firstBad: !!(first && first.querySelector('.st-cap.is-bad .st-wic')),
-      // THE CODE IS ON SHOW — the thing the page is opened to read never
-      // hides behind a tap. Four tiles, painted.
-      tiles: first ? [...first.querySelectorAll('.ks-code .ks-dig')].filter(vis).map((t) => t.textContent).join('') : '',
-      codeName: first ? (first.querySelector('.ks-code') || {}).getAttribute('aria-label') : '',
-      noFold: !host.querySelector('.bhub-fold'),
-      sayBad: !!(first && first.querySelector('.ks-say.is-bad')),
-      primary: !!(first && first.querySelector('.ks-rotate.is-primary')),
-      primaryTxt: first ? (first.querySelector('.ks-rotate') || {}).textContent : '',
-      btn44: first ? first.querySelector('.ks-rotate').getBoundingClientRect().height >= 44 : false,
-      howSteps: host.querySelectorAll('.ks-how li').length,
+      status: (host.querySelector('.ks-status') || {}).textContent || '',
+      statusBad: !!host.querySelector('.ks-status.is-bad'),
+      firstChild: host.firstElementChild && host.firstElementChild.classList.contains('ks-status'),
+      todoIs21a: !!(todo && todo.dataset.pk === '21a' && todo.classList.contains('is-bad')),
+      todoBtn: todo ? todo.querySelector('.ks-rotate.is-primary').textContent : '',
+      btn44: todo ? todo.querySelector('.ks-rotate').getBoundingClientRect().height >= 44 : false,
+      rows: rows.length,
+      safes: Object.keys(__keysafe).filter((k) => (__keysafe[k] || {}).enabled !== false).length,
+      row44: rows.every((r) => r.getBoundingClientRect().height >= 44),
+      r21code: r21 ? r21.querySelector('.ks-row-code').textContent : '',
+      r21sub: r21 ? r21.querySelector('.ks-row-sub').textContent : '',
+      r21bad: !!(r21 && r21.querySelector('.ks-row-sub.is-bad')),
+      r21name: r21 ? r21.getAttribute('aria-label') : '',
+      noCards: !host.querySelector('.ks-card, .bhub-fold, details'),
+      info: !!document.querySelector('#view-keysafe .ks-info[data-act="keysafeHow"]'),
     };
   });
-  ok(/(One safe needs|2 safes need) a new code/.test(anat.sum) && /21A Westgate/.test(anat.sum) && anat.sumBad, `the summary states the day's work, in red (${anat.sum})`);
-  ok(anat.firstIs21a && anat.firstBad, 'the safe that needs a code comes first, wearing the red capsule');
-  ok(anat.tiles === '9265' && anat.codeName === 'Code 9 2 6 5', `the code is on show as four tiles, spoken digit by digit (${anat.tiles})`);
-  ok(anat.noFold, 'nothing folds — every card is open');
-  ok(anat.sayBad, 'the what-to-do sentence carries the red tone');
-  ok(anat.primary && /Set a new code for Marcus/.test(anat.primaryTxt) && anat.btn44, `ONE primary button, named for the guest (${anat.primaryTxt})`);
-  ok(anat.howSteps === 3, 'how the keeper works is explained in three steps');
+  ok(anat.firstChild && /safes? needs? a new code/.test(anat.status) && anat.statusBad, `ONE status line leads, in red (${anat.status})`);
+  ok(anat.todoIs21a && /Set a new code for Marcus/.test(anat.todoBtn) && anat.btn44, `the to-do card names the work and carries the one button (${anat.todoBtn})`);
+  ok(anat.rows === anat.safes && anat.rows >= 2 && anat.row44, `every safe is a row of ONE list (${anat.rows})`);
+  ok(anat.r21code === '9265' && /Still Hannah’s code · Marcus arrives/.test(anat.r21sub) && anat.r21bad, `the row: code on the right, one red line (${anat.r21sub})`);
+  ok(/code 9 2 6 5/i.test(anat.r21name), '…and it is spoken digit by digit');
+  ok(anat.noCards, 'no cards, folds or disclosures on the page itself');
+  ok(anat.info, 'how it works sits behind the ⓘ by the title');
+  // The sheet behind a row: tiles, facts, Change code, history.
+  await page.locator('.ks-row[data-pk="21a"]').click();
+  await page.waitForTimeout(500);
+  const sh = await page.evaluate(() => {
+    const el = document.getElementById('ks-sheet');
+    return { open: !!(el && el.classList.contains('open')), tiles: el ? [...el.querySelectorAll('.ks-dig')].map((t) => t.textContent).join('') : '', text: el ? el.textContent : '' };
+  });
+  ok(sh.open && sh.tiles === '9265', 'tapping the row opens its sheet with the code as tiles');
+  ok(/Hannah Whitlock/.test(sh.text) && /Priya Raman/.test(sh.text), '…who it was set for, and the past codes');
+  ok(/Nothing yet — the code appears only after you confirm/.test(sh.text), '…and when the guest sees it');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => !document.getElementById('ks-sheet').classList.contains('open')), 'Escape closes the sheet');
+  await page.locator('#view-keysafe .ks-info').click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.querySelectorAll('#ks-sheet .ks-how-list li').length === 3), 'the ⓘ explains the keeper in three steps');
+  await page.evaluate(() => keysafeSheetClose());
+  await page.waitForTimeout(400);
 
   if (process.env.CHB_SHOTS) {
     await page.setViewportSize({ width: 390, height: 1400 });
@@ -135,7 +153,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.setViewportSize({ width: 1280, height: 950 });
   }
   console.log('§3 the rotate flow');
-  await page.locator('.ks-card', { hasText: '21A' }).locator('.ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate').click();
   await page.waitForTimeout(400);
   const pre = await page.evaluate(() => (document.getElementById('gdf-code') || {}).value || '');
   ok(/^\d{4}$/.test(pre), 'a fresh 4-digit code is filled in (' + pre + ')');
@@ -149,19 +167,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(300);
   // The real rotation: overtype a chosen code, confirm.
-  await page.locator('.ks-card', { hasText: '21A' }).locator('.ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate').click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '4826'; });
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(900);
   ok(confirms.length === 1 && confirms[0].code === '4826' && confirms[0].booking_id === 2, 'the confirm posts the code FOR the next booking');
   ok(typeof confirms[0].op_id === 'string' && confirms[0].op_id.length > 6, '…stamped with an op_id (the offline replay contract)');
-  const body2 = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
-  ok(/4826/.test(body2) && /Set for Marcus Ellery/.test(body2), 'the card flips: 4826, set for Marcus');
-  ok(/They see it (on their booking page now|from )/.test(body2), '…and says when Marcus sees it');
-  ok(await page.evaluate(() => { const c = document.querySelector('.ks-card[data-pk="21a"]'); return !!c && c.classList.contains('is-calm') && !c.classList.contains('is-attn') && !c.querySelector('.ks-rotate.is-primary') && !c.querySelector('.st-cap') && /Change code/.test(c.querySelector('.ks-rotate').textContent) && c.querySelectorAll('.ks-code.is-sm .ks-dig').length === 4; }),
-    'once set, the card collapses to one calm block: the code, one line, a quiet Change code — no badge, no big button');
-  ok(/Hannah Whitlock/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body .ks-hist'); dt.open = true; return dt.textContent; })), 'the superseded code joined the history under Hannah’s name');
+  const r21 = await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="21a"]'); return { code: r.querySelector('.ks-row-code').textContent, sub: r.querySelector('.ks-row-sub').textContent, calm: !r.querySelector('.ks-row-sub.is-bad, .ks-row-sub.is-warn'), todo: !!document.querySelector('.ks-todo[data-pk="21a"]') }; });
+  ok(r21.code === '4826' && /Marcus · sees it (now|from )/.test(r21.sub) && r21.calm, `the row flips: 4826, and when Marcus sees it (${r21.sub})`);
+  ok(!r21.todo, 'and its to-do card is gone');
+  await page.locator('.ks-row[data-pk="21a"]').click();
+  await page.waitForTimeout(500);
+  ok(await page.evaluate(() => { const el = document.getElementById('ks-sheet'); return /Hannah Whitlock/.test(el.querySelector('.ks-table').textContent) && /Change code/.test(el.querySelector('.ks-rotate').textContent) && !el.querySelector('.ks-rotate.is-primary'); }),
+    'the superseded code joined the history under Hannah’s name, and Change code is now the quiet button');
+  await page.evaluate(() => keysafeSheetClose());
+  await page.waitForTimeout(400);
 
   console.log('§4 the rotation duty on Needs-you');
   // Reset the record to "still Hannah's" and reload the mirror: the duty fires.
@@ -195,19 +216,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     dbBlocks.scratch = [];
     __keysafe.scratch = { code: '5917', setAt: '', forBooking: 999, forStay: 'b:999', enabled: true, history: [], name: 'Scratch Cottage' };
     renderKeysafe();
-    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
+    const row = document.querySelector('.ks-row[data-pk="scratch"]');
     return {
       state: keysafeDue('scratch', __keysafe.scratch).state,
       duty: chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label)).length,
-      capWarn: !!(card && card.querySelector('.st-cap.is-warn')),
-      capTxt: card ? (card.querySelector('.st-cap') || {}).textContent || '' : '',
-      sub: card ? (card.querySelector('.ks-say') || {}).textContent || '' : '',
+      capWarn: !!(row && row.querySelector('.ks-row-sub.is-warn')) && !document.querySelector('.ks-todo[data-pk="scratch"]'),
+      sub: row ? (row.querySelector('.ks-row-sub') || {}).textContent || '' : '',
       until: fmtDate(sh(2)),
     };
   });
   ok(t1.state === 'inres' && t1.duty === 0, `a guest in residence mints NO rotation duty — never rotate under a mid-stay guest (${t1.state}, ${t1.duty})`);
-  ok(t1.capWarn && /rotate at changeover/i.test(t1.capTxt), `the page schedules it instead — "${t1.capTxt}" in amber, not the red alarm`);
-  ok(t1.sub.includes('in residence until ' + t1.until) && /rotate once they’ve gone/.test(t1.sub), `and the sub names the day the rotation becomes possible (${t1.sub.slice(0, 70)})`);
+  ok(t1.capWarn, 'the page schedules it instead — an amber row line, no to-do card');
+  ok(t1.sub.includes('staying until ' + t1.until) && /change it after/.test(t1.sub), `and the row names the day the rotation becomes possible (${t1.sub.slice(0, 70)})`);
   // CHANGEOVER MORNING: the leaver drops out at checkout, so the ask fires
   // exactly when it can be done — named for the INCOMING guest, red because
   // their reveal window is open.
@@ -263,9 +283,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.ukNowMinutes = () => 7 * 60 + 37; // the screenshot's clock
     const at737 = duty();
     renderKeysafe();
-    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
-    const cap737 = card ? (card.querySelector('.st-cap') || {}).textContent || '' : '';
-    const capWarn = !!(card && card.querySelector('.st-cap.is-warn'));
+    const card = document.querySelector('.ks-todo[data-pk="scratch"]');
+    const cap737 = card ? (card.querySelector('.ks-todo-h') || {}).textContent || '' : '';
+    const capWarn = !!card && !card.classList.contains('is-bad');
     const sub737 = card ? (card.querySelector('.ks-say') || {}).textContent || '' : '';
     window.ukNowMinutes = () => 10 * 60 + 1; // they're out
     const at1001 = duty();
@@ -281,7 +301,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(t5.at737.sev === 'warn' && /Morning Leaver leaves at 10:00 — rotate once they’ve gone/.test(t5.at737.sub),
     `07:37 on changeover day: amber, and the sub says when it becomes possible (${(t5.at737.sub || '').slice(0, 62)})`);
-  ok(t5.capWarn && /rotate after 10:00/i.test(t5.cap737), `the page capsule names the hour too (${t5.cap737})`);
+  ok(t5.capWarn && /needs a new code after 10:00/i.test(t5.cap737), `the to-do is amber and names the hour (${t5.cap737})`);
   ok(/rotate after Morning Leaver leaves at 10:00/i.test(t5.sub737), `…and its sub names who's still in (${t5.sub737.slice(0, 68)})`);
   ok(t5.at1001.sev === 'danger' && /arrives today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
   ok(t5.ota.sev === 'warn' && /leaves at 10:00/.test(t5.ota.sub), `an OTA departure defaults to the house 10:00 (${t5.ota.sev})`);
@@ -304,8 +324,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.ukNowMinutes = () => 15 * 60 + 30; // 15:30 — they're in
     const after = { state: keysafeDue('scratch', __keysafe.scratch).state, duty: duty() };
     renderKeysafe();
-    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
-    const sub = card ? (card.querySelector('.ks-say') || {}).textContent || '' : '';
+    const row = document.querySelector('.ks-row[data-pk="scratch"]');
+    const sub = row ? (row.querySelector('.ks-row-sub') || {}).textContent || '' : '';
     window.ukNowMinutes = real;
     delete dbBookings.scratch; delete dbBlocks.scratch; delete __keysafe.scratch;
     renderKeysafe();
@@ -315,7 +335,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `14:00 on arrival day: the changeover window — red rotate (${t6.before.state})`);
   ok(t6.after.state === 'inres' && !t6.after.duty,
     `15:30: they're behind the door — no duty, scheduled instead (${t6.after.state})`);
-  ok(t6.sub.includes('in residence until ' + t6.until) && /rotate once they’ve gone/.test(t6.sub),
+  ok(t6.sub.includes('staying until ' + t6.until) && /change it after/.test(t6.sub),
     `and the page treats them as in residence (${t6.sub.slice(0, 66)})`);
 
   console.log('§5 the offline shape');
@@ -357,8 +377,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const otaDuty = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label))[0] || null);
   ok(!!otaDuty && otaDuty.sev === 'danger', 'the rotation duty fires for the platform stay (red — they arrive tomorrow)');
   confirms.length = 0;
-  const jbCard = page.locator('.ks-card', { hasText: 'Jollyboat' });
-  await jbCard.locator('.ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="jollyboat"] .ks-rotate').click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '6183'; });
   await page.locator('#glass-dialog-ok').click();
@@ -367,8 +386,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the confirm identifies the stay by ref, not a booking id (${confirms[0] && confirms[0].stay_ref})`);
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label)).length) === 0,
     'and once the safe is set for them, the duty is gone');
-  ok(await page.evaluate(() => { const c = [...document.querySelectorAll('.ks-card')].find((x) => /Jollyboat/.test(x.textContent)); return !!(c && c.classList.contains('is-calm') && /Set for Airbnb guest/.test(c.textContent)); }),
-    'the card flips — the platform stay collapses to the same calm block a direct one does');
+  ok(await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="jollyboat"]'); return !!r && /Airbnb guest · share it in Airbnb/.test(r.textContent) && !r.querySelector('.is-warn, .is-bad') && !document.querySelector('.ks-todo[data-pk="jollyboat"]'); }),
+    'the row flips calm — the platform stay reads like a direct one, and its to-do is gone');
   if (process.env.CHB_SHOTS) {
     await page.setViewportSize({ width: 390, height: 1100 });
     await page.evaluate(() => { document.body.classList.remove('light-mode'); renderKeysafe(); window.scrollTo(0, 0); });
