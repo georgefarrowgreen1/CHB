@@ -3405,6 +3405,29 @@ ui-test-hig §8 (two groups side by side, cottages in ONE column, 44px rows) + u
 `MODAL_CLOSERS` + `closeTopOverlay`, and it opens OVER the form that linked to it (sign-in, details, enquiry)
 rather than closing it. Gated by ui-test-topmenu §H (opens, covers the Messages pill, closes) + layout-test.
 
+## Calendar sync is a status page, not a form (approved demo, built)
+
+Manage → Calendar sync (`renderCalendarList`, admin.js) opens with ONE summary row
+(`.mg-sum` anatomy: "All calendars up to date" / "N calendars aren't syncing", "3 of 4
+cottages linked · newest 2m ago") and a **Sync all** pill that walks the cottages ONE
+AT A TIME (`calSyncAll`, each row's capsule spins then ticks). Each FAILING platform
+gets a "Needs a look" card above the list. The card states what the cottage still has
+("Still using the 4 Airbnb stays from Mon"), from the last-good `events`/`ok_at` that
+`ical_record_status` already keeps. It offers **Paste a new link**, which replaces ONLY
+that platform's URL, keeps the others and syncs at once, and **Try again**. Each cottage
+is still a `bhubFoldGrp('cal-<k>')`:
+- the sub carries a chip per linked platform with its own dot;
+- the fold lists each platform ("6 stays · synced 3m ago") with Replace link;
+- below that are Sync now, Copy your link, + Link a platform (offering only platforms not
+  yet linked, with live link validation: `calLinkOk`), and the old Edit feed links editor.
+
+The explanation copy is gone. The data comes from ONE request, `ical-import.php overview`,
+which is the 'list' reads looped over live cottages. Until it lands the bootstrap's
+`__feedStatusPre` paints the verdicts, so nothing waits on it. A cottage absent from a
+loaded overview reads "not linked". Typing in the link field updates the hint and button
+IN PLACE (`calLinkInput`), and the list never repaints over a focused field. Gated by
+ui-test-manage §3b; the keep-other-links save and the overview read were break-tested.
+
 ## The Manage index is seven groups (owner-asked "reorder and recategorise")
 
 `#settings-index` in admin-views.html, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
