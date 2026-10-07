@@ -68,10 +68,13 @@ function activity_business_events($per = 12)
                 ->fetchAll()
             as $r
         ) {
-            $kind =
-                $r['kind'] === 'refund'
-                    ? 'Refund issued'
-                    : ($r['kind'] === 'balance' ? 'Balance paid' : 'Deposit paid');
+            $kind = [
+                'refund' => 'Refund issued',
+                'balance' => 'Balance paid',
+                'manual' => 'Payment recorded (cash / transfer)',
+                'damages' => 'Deposit kept',
+                'damages_return' => 'Deposit returned',
+            ][(string) $r['kind']] ?? 'Deposit paid';
             $push(
                 'payment',
                 $kind . ($r['name'] ? ' — ' . $r['name'] : ''),

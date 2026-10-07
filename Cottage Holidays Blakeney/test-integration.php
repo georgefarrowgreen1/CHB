@@ -4655,6 +4655,69 @@ if ($b43) {
     $rootDb->exec("DELETE FROM bookings WHERE id = $b43");
 }
 
+// ── §44 round-4 audit: cash and bank money is a dated ledger fact ──
+// (a) Each manual receipt is its own dated row, so a cash deposit in one tax
+//     year and a transfer in the next land in their own years (one cumulative
+//     figure with one date put the whole stay in the later year).
+$c44In = $ukPlus(120); $c44Out = $ukPlus(124);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status) VALUES ('$propKey','Cash Split','cash44@gmail.com','$c44In','$c44Out',2,0,'unpaid',0,600,600,0,4,75,'none')");
+$c44 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $c44, 'payment' => 'deposit', 'deposit' => 200, 'payment_date' => '2026-03-30', 'payment_method' => 'Cash']);
+it_check('§44 (fixture) a £200 cash deposit records', $r['code'] === 200, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $c44, 'payment' => 'paid', 'payment_date' => '2026-04-10', 'payment_method' => 'Bank transfer']);
+$m44 = $rootDb->query("SELECT DATE(created_at) d, amount FROM payments WHERE booking_id = $c44 AND kind = 'manual' ORDER BY created_at")->fetchAll(PDO::FETCH_ASSOC);
+it_check('§44 each manual receipt is its own dated ledger row (£200 on 30/03, £400 on 10/04)', count($m44) === 2
+    && $m44[0]['d'] === '2026-03-30' && abs((float) $m44[0]['amount'] - 200) < 0.005
+    && $m44[1]['d'] === '2026-04-10' && abs((float) $m44[1]['amount'] - 400) < 0.005, json_encode($m44));
+$inYr = function ($year, $bid) use ($acctGet) {
+    return array_sum(array_map(fn($p) => (float) $p['income_part'], array_filter($acctGet($year)['json']['payments'] ?? [], fn($p) => (int) $p['id'] === $bid)));
+};
+it_check('§44 the March cash deposit stays in 2025/26 (£200)', abs($inYr(2025, $c44) - 200.0) < 0.005, (string) $inYr(2025, $c44));
+it_check('§44 …the April transfer is 2026/27 (£400), not the whole stay', abs($inYr(2026, $c44) - 400.0) < 0.005, (string) $inYr(2026, $c44));
+// (b) A cash booking can be cancelled WITH a refund (the cap read the empty card
+//     ledger and refused every one), and the money kept stays on the books.
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $c44, 'refund_amount' => 100, 'reason' => 'Plans changed']);
+it_check('§44 a cash booking cancels with a £100 refund (no "Only £0.00 is refundable")', $r['code'] === 200 && ($r['json']['ok'] ?? false) === true, $r['raw']);
+$kept44 = $inYr(2025, $c44) + $inYr(2026, $c44);
+it_check('§44 …and the £500 kept stays income after the hard delete', abs($kept44 - 500.0) < 0.005, (string) $kept44);
+// (c) A PART deposit return with a reason settles the rest as kept: no duty
+//     left open, the remainder booked once as kept income.
+$p44In = $ukPlus(-6); $p44Out = $ukPlus(-3);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status, payment_method, payment_date) VALUES ('$propKey','Part Keep','part44@gmail.com','$p44In','$p44Out',2,0,'paid',375,300,300,0,3,75,'none','Cash','$p44In')");
+$p44 = (int) $rootDb->lastInsertId();
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $p44, 'amount' => 50, 'note' => 'Broken lamp']);
+$hs44 = (string) $rootDb->query("SELECT hold_status FROM bookings WHERE id = $p44")->fetchColumn();
+$keptRow44 = (float) $rootDb->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = $p44 AND kind = 'damages' AND square_payment_id LIKE 'kept-%'")->fetchColumn();
+it_check('§44 a part return WITH a reason settles the deposit (kept) and books the £25 rest once', $r['code'] === 200 && $hs44 === 'kept' && abs($keptRow44 - 25.0) < 0.005, $r['raw'] . ' hs=' . $hs44 . ' kept=' . $keptRow44);
+// (d) The invoice for a cash booking with a deposit-return row still lists the
+//     cash that paid the stay (it dropped it once ANY ledger row existed).
+$inv44 = http($noJar, 'GET', '/invoice.php?b=' . $p44 . '&token=' . substr(hash_hmac('sha256', 'invoice:' . $p44, $SECRET), 0, 32));
+it_check('§44 the invoice lists the cash receipt beside the deposit return', $inv44['code'] === 200 && preg_match('/Received[^<]{0,40}cash/i', $inv44['raw']) === 1, substr(strip_tags($inv44['raw']), 0, 300));
+// (e) A correction DOWN shrinks the manual rows (a £700 typed by mistake must
+//     not stay on the ledger, the invoice or a later cancellation's income).
+$e44In = $ukPlus(130); $e44Out = $ukPlus(133);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status) VALUES ('$propKey','Typo Cash','typo44@gmail.com','$e44In','$e44Out',2,0,'unpaid',0,700,700,0,3,50,'none')");
+$e44 = (int) $rootDb->lastInsertId();
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Cash']);
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'unpaid']);
+$left44 = (float) $rootDb->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = $e44 AND kind = 'manual'")->fetchColumn();
+it_check('§44 setting a cash booking back to Unpaid removes its manual receipt rows', abs($left44) < 0.005, (string) $left44);
+// (f) A CARD payment typed in by hand writes no manual twin (the card row is booked elsewhere).
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Card (terminal)']);
+$card44 = (int) $rootDb->query("SELECT COUNT(*) FROM payments WHERE booking_id = $e44 AND kind = 'manual'")->fetchColumn();
+it_check('§44 a card payment recorded by hand writes no manual ledger twin', $card44 === 0, (string) $card44);
+// (g) The cash cancel cap is the RENTAL received — the deposit is owed back on its own.
+http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $e44, 'payment' => 'paid', 'payment_date' => $ukToday, 'payment_method' => 'Cash', 'deposit_collected' => 1]);
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $e44, 'refund_amount' => 750]);
+it_check('§44 a cash refund cannot include the deposit (capped at the £700 rental)', $r['code'] === 400 && strpos($r['raw'], '700.00') !== false, $r['raw']);
+$rootDb->exec("DELETE FROM payments WHERE booking_id = $e44");
+$rootDb->exec("DELETE FROM bookings WHERE id = $e44");
+$rootDb->exec("DELETE FROM payments WHERE booking_id IN ($c44, $p44)");
+$rootDb->exec("DELETE FROM bookings WHERE id = $p44");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

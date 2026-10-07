@@ -307,6 +307,12 @@ if ($action === 'authorize') {
     json_out(['ok' => true, 'held' => $holdAmount]);
 }
 
+// What a link that has nothing left to take says. A DEPOSIT link with the deposit
+// in hand is not "paid in full" — a guest retrying after a lost reply read that
+// about a stay with the balance still to come.
+$nothingDueMsg = $kind === 'deposit'
+    ? 'Your deposit is already paid — thank you. The balance has its own payment request, nearer the time.'
+    : 'This booking is already paid in full.';
 if ($action === 'charge') {
     $sourceId = clean($in['source_id'] ?? '');
     if ($sourceId === '') {
@@ -317,7 +323,7 @@ if ($action === 'charge') {
     // $amountDue at 0 while the deposit is still uncollected — a rental-only
     // gate here made that deposit permanently unchargeable online.
     if ($amountDue + $damagesDue <= 0) {
-        json_out(['error' => 'This booking is already paid in full.'], 409);
+        json_out(['error' => $nothingDueMsg, 'code' => 'nothing_due'], 409);
     }
 
     if (!book_lock($b['prop_key'])) {
@@ -348,7 +354,7 @@ if ($action === 'charge') {
     $chargeTotal = round($amountDue + $damagesDue, 2);
     if ($chargeTotal <= 0) {
         book_unlock($b['prop_key']);
-        json_out(['error' => 'This booking is already paid in full.'], 409);
+        json_out(['error' => $nothingDueMsg, 'code' => 'nothing_due'], 409);
     }
 
     // THE FIGURE THE GUEST READ MUST BE THE FIGURE THAT LEAVES THEIR CARD. The
@@ -417,7 +423,7 @@ if ($action === 'charge') {
     }
     if ($chargeTotal <= 0) {
         book_unlock($b['prop_key']);
-        json_out(['error' => 'This booking is already paid in full.'], 409);
+        json_out(['error' => $nothingDueMsg, 'code' => 'nothing_due'], 409);
     }
 
     // THE ARRANGEMENT IS SNAPSHOTTED *BEFORE* THE MONEY MOVES, and this ordering is

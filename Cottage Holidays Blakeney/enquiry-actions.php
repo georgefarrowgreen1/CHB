@@ -112,7 +112,10 @@ function enquiry_confirmation_preview($id, $priceOverride = null)
             'damages_deposit' => $p['damagesDeposit'] ?? 0,
             'payment' => 'unpaid',
             'ref' => $ref,
-            'defer_owner' => true, // guest copy only for the preview
+            // The preview renders the GUEST copy only. defer_owner still queued the
+            // owner's "New booking" email to send after the response, so every
+            // preview (even of an approval then cancelled) emailed the owner.
+            'skip_owner' => true,
         ]);
     } catch (\Throwable $ex) {
         // fall through to the empty-capture handling below
@@ -313,39 +316,11 @@ function enquiry_approve($id, $priceOverride = null, $plan = [])
     $emailResult = null;
     try {
         require_once __DIR__ . '/mailer.php';
-        $newId = (int) $bookingId;
-        $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $newId), -6), 6, '0', STR_PAD_LEFT);
-        $emailResult = send_booking_emails([
-            'name' => $e['name'],
-            'email' => $e['email'],
-            'phone' => $e['phone'] ?? '',
-            'prop_key' => $e['prop_key'],
-            'prop_name' => $rate['name'] ?? $e['prop_key'],
-            'address' => $rate['address'] ?? '',
-            'check_in' => $e['check_in'],
-            'check_out' => $e['check_out'],
-            'check_in_time' => $e['check_in_time'] ?? '15:00',
-            'check_out_time' => $e['check_out_time'] ?? '10:00',
-            'nights' => $p['nights'],
-            'per_night' => $p['perNight'],
-            'nightly' => $p['nightly'],
-            'tx_pct' => $p['transactionPct'],
-            'tx_fee' => $p['txFee'],
-            'adults' => $e['adults'],
-            'children' => $e['children'],
-            'total' => $agreedTotal,
-            'damages_deposit' => $p['damagesDeposit'] ?? 0,
-            'payment' => 'unpaid',
-            'ref' => $ref,
-            // See bookings.php's note: the pay link and the owner copy's hub link
-            // both need this. NB the PREVIEW call earlier in this file deliberately
-            // omits it — no booking exists yet there, and signing a token for a
-            // guessed id would be worse than a preview without the button.
-            'id' => (int) $bookingId,
-            // The approval page reports the GUEST result; the owner copy goes
-            // out after the response instead of blocking the confirmation page.
-            'defer_owner' => true,
-        ]);
+        require_once __DIR__ . '/booking-confirm-lib.php';
+        // THE confirmation (booking-confirm-lib.php) — the plan's balance date,
+        // the invoice link and the guest-register link ride it. This route used
+        // to compose its own payload without them. Owner copy deferred.
+        $emailResult = send_booking_confirmation((int) $bookingId, false, true);
     } catch (\Throwable $ex) {
         $emailResult = ['error' => 'Mail step skipped: ' . $ex->getMessage()];
     }

@@ -753,6 +753,20 @@ const ids = [...markup.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).filter(id => 
 const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
 check('no duplicate element ids' + (dupes.length ? ' (dupes: ' + [...new Set(dupes)].join(', ') + ')' : ''), dupes.length === 0);
 
+// 6b-ii. No element repeats an attribute. The parser keeps the FIRST copy and
+// silently drops the rest, so a repeated data-arg hands one handler another's
+// arguments (the postcode field ran its no-debounce blur lookup per keystroke).
+const dupAttrTags = [];
+for (const src of [html, adminViews]) {
+    for (const m of src.matchAll(/<([a-zA-Z][\w-]*)\s([^<>]*?)\/?>/g)) {
+        const names = [...m[2].matchAll(/(?:^|\s)([a-zA-Z_:][\w:.-]*)\s*=/g)].map((x) => x[1].toLowerCase());
+        const seen = new Set();
+        const dup = names.filter((n) => (seen.has(n) ? true : (seen.add(n), false)));
+        if (dup.length && !m[2].includes('${')) dupAttrTags.push(m[1] + '[' + dup.join(',') + ']');
+    }
+}
+check('no element repeats an attribute' + (dupAttrTags.length ? ' (' + dupAttrTags.slice(0, 5).join('; ') + ')' : ''), dupAttrTags.length === 0);
+
 // 6c. Build stamp present and well-formed.
 check('build stamp present (const BUILD = \'xxxxxxxx\')', /const BUILD = '[a-z0-9]{6,}';/.test(appScript));
 
@@ -1865,6 +1879,7 @@ if (typeof get('paymentStatusLabel') === 'function') {
     check('refund PENDING → Completed', psl('refund', 'PENDING') === 'Completed');
     check('deposit-return PENDING → Completed', psl('damages_return', 'PENDING') === 'Completed');
     check('manually-returned deposit → Completed', psl('damages_return', 'MANUAL') === 'Completed');
+    check('a receipt recorded by hand → Completed (not an amber Manual)', psl('manual', 'MANUAL') === 'Completed');
     check('refund FAILED → Failed', psl('refund', 'FAILED') === 'Failed');
     check('refund REJECTED → Failed', psl('refund', 'REJECTED') === 'Failed');
     check('card-in balance keeps Square status', psl('balance', 'COMPLETED') === 'COMPLETED');

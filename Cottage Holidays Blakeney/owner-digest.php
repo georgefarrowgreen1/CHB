@@ -72,14 +72,15 @@ $received = 0.0;
 try {
     $r = db()
         ->query(
-            "SELECT ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0)
+            "SELECT ROUND(COALESCE(SUM(CASE WHEN (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')) OR (kind = 'manual' AND UPPER(status) = 'MANUAL') THEN amount ELSE 0 END),0)
                        - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) v
                  FROM payments WHERE created_at >= (NOW() - INTERVAL 7 DAY)",
         )
         ->fetch();
     $received = (float) ($r['v'] ?? 0);
-    // Cash and bank bookings leave no ledger row, so the cumulative figure is their
-    // only record. Counted for bookings with NO ledger rows at all, so a card
+    // Cash and bank receipts are dated 'manual' ledger rows since migration-129
+    // (counted above); bookings recorded BEFORE it have no receipt row, so the
+    // cumulative figure is their only record. Counted for bookings with NO ledger rows at all, so a card
     // booking is never counted twice. NB one hand-recorded booking paid across two
     // different weeks still reports its whole total in the later week — there is no
     // per-payment history to split, and inventing one would be worse than saying so.
@@ -87,7 +88,7 @@ try {
         ->query(
             "SELECT COALESCE(SUM(b.deposit_paid),0) v FROM bookings b
                      WHERE b.payment_date >= (CURDATE() - INTERVAL 7 DAY)
-                       AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id)",
+                       AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.kind IN ('deposit','balance','manual'))",
         )
         ->fetch();
     $received += (float) ($r2['v'] ?? 0);

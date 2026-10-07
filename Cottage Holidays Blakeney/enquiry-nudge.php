@@ -130,7 +130,9 @@ try {
 foreach ($drafts as $d) {
     try {
         // They enquired (same email, after the draft appeared)? Nothing to rescue.
-        $q = db()->prepare('SELECT 1 FROM enquiries WHERE email = ? AND created_at >= ? LIMIT 1');
+        // Any enquiry from this address around the draft counts — a draft row can
+        // land just AFTER the enquiry (a late client sync), so order is no guide.
+        $q = db()->prepare('SELECT 1 FROM enquiries WHERE email = ? AND created_at >= (? - INTERVAL 7 DAY) LIMIT 1');
         $q->execute([$d['email'], $d['created_at']]);
         if ($q->fetchColumn()) {
             db()->prepare('DELETE FROM enquiry_drafts WHERE id = ?')->execute([(int) $d['id']]);

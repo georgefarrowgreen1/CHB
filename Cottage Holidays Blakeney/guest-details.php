@@ -107,9 +107,9 @@ function render_guest_form_html($d)
         return '<fieldset class="guest" data-row>' .
             '<div class="gnum">Guest ' . ($i + 1) . '</div>' .
             '<label>Full name<input type="text" name="name[]" value="' . $e($g['name'] ?? '') . '" maxlength="120" autocomplete="off" required></label>' .
-            '<label class="natlabel">Nationality <span class="hint">— tap to choose or type to search</span></label>' .
+            '<label class="natlabel" id="natl-' . $i . '" for="nat-' . $i . '">Nationality <span class="hint">— tap to choose or type to search</span></label>' .
             '<div class="natwrap">' .
-            '<input class="nat" type="text" name="nationality[]" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" placeholder="Start typing a nationality…" autocomplete="off" autocapitalize="words" role="combobox" aria-autocomplete="list" aria-expanded="false" required>' .
+            '<input class="nat" id="nat-' . $i . '" aria-labelledby="natl-' . $i . '" type="text" name="nationality[]" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" placeholder="Start typing a nationality…" autocomplete="off" autocapitalize="words" role="combobox" aria-autocomplete="list" aria-expanded="false" required>' .
             '<div class="natpop" hidden></div>' .
             '</div>' .
             '<div class="foreign" style="' . $extraStyle . '">' .
@@ -138,19 +138,19 @@ function render_guest_form_html($d)
         '.top{padding:26px 32px 6px;border-top:5px solid ' . $accent . ';text-align:center;}' .
         '.crown{display:block;margin:0 auto 10px;width:64px;height:auto;}' .
         '.brand{font-family:Georgia,\'Times New Roman\',serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#1b2a34;}' .
-        '.sub{color:#8a8378;font-size:13px;margin-top:2px;}' .
-        '.tag{color:' . $accent . ';font-size:11px;letter-spacing:4px;font-weight:700;margin-top:10px;}' .
+        '.sub{color:#655D50;font-size:13px;margin-top:2px;}' .
+        '.tag{color:#8A5A2B;font-size:11px;letter-spacing:4px;font-weight:700;margin-top:10px;}' .
         '.body{padding:8px 32px 32px;}' .
         '.intro{font-size:14px;color:#57524A;line-height:1.6;margin:14px 0 6px;}' .
         '.count{font-size:13px;color:#1b2a34;background:#faf6ec;border:1px solid #ece4d3;border-radius:12px;padding:10px 14px;line-height:1.5;margin:10px 0 6px;}' .
-        '.meta{font-size:13px;color:#8a8378;margin:0 0 12px;}' .
+        '.meta{font-size:13px;color:#655D50;margin:0 0 12px;}' .
         '.note{border-radius:12px;padding:12px 14px;font-size:14px;margin:12px 0;line-height:1.5;}' .
         '.note.ok{background:#eaf5ec;border:1px solid #bfe0c6;color:#256b39;}' .
         '.note.err{background:#fbeceb;border:1px solid #f0c9c6;color:#a23b30;}' .
         'fieldset.guest{border:1px solid #ece4d3;border-radius:14px;padding:14px 16px 4px;margin:14px 0;position:relative;background:#fdfbf6;}' .
-        '.gnum{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:' . $accent . ';margin-bottom:2px;}' .
-        'label{display:block;font-size:12px;color:#8a8378;font-weight:600;margin:8px 0 12px;}' .
-        '.hint{font-weight:400;color:#b0a892;font-size:11px;}' .
+        '.gnum{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:#8A5A2B;margin-bottom:2px;}' .
+        'label{display:block;font-size:12px;color:#655D50;font-weight:600;margin:8px 0 12px;}' .
+        '.hint{font-weight:400;color:#655D50;font-size:11px;}' .
         'input[type=text]{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid #ddd4c2;border-radius:10px;font-size:16px;font-family:inherit;color:#1b2a34;background:#fff;}' .
         'input[type=text]:focus{outline:none;border-color:' . $accent . ';}' .
         '.natwrap{position:relative;margin-top:5px;}' .
@@ -161,11 +161,11 @@ function render_guest_form_html($d)
         '.natopt{padding:12px 14px;font-size:16px;color:#1b2a34;cursor:pointer;border-bottom:1px solid #f3ede1;}' .
         '.natopt:last-child{border-bottom:0;}' .
         '.natopt.active,.natopt:hover{background:#faf6ec;}' .
-        '.natnone{padding:12px 14px;font-size:14px;color:#8a8378;}' .
+        '.natnone{padding:12px 14px;font-size:14px;color:#655D50;}' .
         '.foreign{border-top:1px dashed #ece4d3;margin-top:4px;padding-top:6px;}' .
         '.actions{margin:18px 0 4px;}' .
-        '.btn{display:inline-block;width:100%;background:' . $accent . ';color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 26px;border:0;border-radius:999px;cursor:pointer;}' .
-        '.foot{text-align:center;color:#8a8378;font-size:12px;padding:22px 32px 30px;line-height:1.6;}' .
+        '.btn{display:inline-block;width:100%;background:#8A5A2B;color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 26px;border:0;border-radius:999px;cursor:pointer;}' .
+        '.foot{text-align:center;color:#655D50;font-size:12px;padding:22px 32px 30px;line-height:1.6;}' .
         '</style></head><body>' .
         '<div class="sheet">' .
         '<div class="top"><img class="crown" src="logo.svg" alt="" width="64" height="38"><div class="brand">Cottage Holidays Blakeney</div><div class="sub">North Norfolk Coastal Retreats</div><div class="tag">GUEST DETAILS</div></div>' .

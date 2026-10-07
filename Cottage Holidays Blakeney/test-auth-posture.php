@@ -85,6 +85,7 @@ $REGISTRY = [
     'enquiry-nudge.php' => ['admin', [$CRON]],
     'ical-import.php' => ['admin', [$CRON]],
     'ical-lib.php' => ['lib', [], 'URL/response/parse judgement for the platform-calendar sync'],
+    'booking-confirm-lib.php' => ['lib', [], 'the one booking confirmation, shared by bookings.php and enquiry approval (404s direct)'],
     'waitlist-lib.php' => ['lib', [], 'who a freed range should be told about — split out so it can be tested without the router'],
     'mailbox-read.php' => ['admin', [$CRON]],
     'migrate.php' => ['admin', [$CRON]],
