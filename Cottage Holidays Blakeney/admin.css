@@ -8150,8 +8150,8 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 /* Round-3 audit. The Add-expense form's inline `flex: 1 1 160px` became a 160px
    HEIGHT once the phone layout turned the form into a column (a 110px hole under
    Note). One task's button is a button, not a 1086px bar, on wide screens. Below
-   480px a selected record's quick actions take one column, or "Record a payment"
-   truncates at 360/375. */
+   480px a selected record's quick-action labels may take two lines, or "Record a
+   payment" truncates at 360/375 (the two-per-line density is gated). */
 @media (max-width: 639px) { .exp-add-form > div { flex: none !important; } }
 @media (min-width: 901px) { #needs-you.ny-solo .ny-act { flex: 0 1 auto; min-width: 240px; max-width: 360px; padding: 0 24px; } }
-@media (max-width: 479px) { .cmdk-qa { grid-template-columns: 1fr; } }
+@media (max-width: 479px) { .cmdk-qa-lbl { white-space: normal; text-overflow: clip; line-height: 1.2; } }
