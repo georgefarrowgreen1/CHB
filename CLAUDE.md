@@ -3560,7 +3560,13 @@ order: the code ON THE SAFE as four tiles (`.ks-code` > `.ks-dig`, spoken digit 
 (`.ks-say`, tinted red/amber only when there is something to do), and ONE button
 (`.ks-rotate` — filled "Set a new code for Marcus" when needed, quiet "Change the code"
 otherwise). "Past codes" and "How the keeper works" are disclosures in the house vocabulary
-(joined to the ONE DISCLOSURE VOCABULARY rule). With no booking the capsule says "Ready", not
+(joined to the ONE DISCLOSURE VOCABULARY rule). **CALM CARDS ARE ONE BLOCK** (owner follow-up, "can this be simplified?"):
+a safe with nothing to do (`!needs && rec.code` — ok / none / in residence) renders `.ks-card.is-calm`:
+the tag with small code tiles beside it (`.ks-code.is-sm`), one line of facts ("Set for Marcus, arriving
+08/10. They see it from 06/10." / "Set 24/08 for a platform guest. No one booked next."), and a quiet
+"Change code" link beside "Past codes". No capsule, no big button: the summary card already says all is
+well. An in-residence safe keeps its amber "Rotate at changeover" capsule. The full card is only for a safe
+that needs a code. With no booking the capsule says "Ready", not
 "No upcoming booking" (which read like a button). The rotate dialog is written as steps. Every
 keeper rule is unchanged — `keysafeDue` still decides the state. Gated by ui-test-keysafe §2b
 (re-aimed: summary, order, tiles, no folds, one primary button) and ui-test-ownerref (reading
