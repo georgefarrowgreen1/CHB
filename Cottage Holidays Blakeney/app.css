@@ -7397,14 +7397,14 @@ body.owner-mode .chat-widget {
   font-size: 0.9em;
 }
 /* Always-on automation health pill (dashboard) — green healthy / amber quiet. */
-/* Manage header: the automation-health pill sits to the RIGHT of the title
-   (top-aligned with "Manage"), instead of stacked below the subtitle. */
+/* Manage header: the automation-health pill sits to the RIGHT of the title,
+   centred on the title's line (owner-asked: "perfectly in line"). */
 .dashboard-header.settings-head {
   /* flex-direction:row (explicit) beats the ≤640px .dashboard-header column
      rule by specificity, so the pill stays RIGHT of the title on mobile too. */
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -7413,15 +7413,13 @@ body.owner-mode .chat-widget {
   width: auto; /* override the mobile > div:first-child { width:100% } */
   flex: 1 1 auto;
 }
-/* The pill group on the right — both health pills, stacked & right-aligned,
-   top-aligned with the "Manage" title. */
+/* The pill group on the right — both health pills, stacked & right-aligned. */
 .settings-head-pills {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
   flex-shrink: 0;
-  margin-top: 6px; /* nudge onto the title's cap height */
 }
 .settings-head-pills .cron-pill {
   margin: 0; /* drop the old stacked-below bottom gap */
