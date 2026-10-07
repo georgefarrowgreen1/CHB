@@ -1047,7 +1047,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {
       if (body.action === 'chat_thread') { return { ok: true, on: true, convo: 1, convos: [], memory: [], msgs: [], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
-      if (body.action === 'chat_send') { throw Object.assign(new Error('Overnight work is switched off in Manage → System check — the switch that connects your Mac.'), { status: 409 }); }
+      if (body.action === 'chat_send') { throw Object.assign(new Error('Overnight work is switched off in Manage → Mac assistant — the switch that connects your Mac.'), { status: 409 }); }
       return { ok: true };
     };
     return renderMacChat();

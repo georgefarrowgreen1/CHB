@@ -170,7 +170,7 @@ function enquiry_approve($id, $priceOverride = null, $plan = [])
     // get_rate() happily returns archived cottages — the public form rejects
     // them, so approval must too (restore the cottage first).
     if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
-        return ['error' => 'That cottage has been removed from the site — restore it (Manage → Preferences) before approving.', 'code' => 400];
+        return ['error' => 'That cottage has been removed from the site — restore it (Manage → Removed cottages) before approving.', 'code' => 400];
     }
     // THE PLAN IS PARSED BEFORE THE LOCK. payment_plan_parse answers a bad plan
     // with json_out(), which EXITS — so parsing it after book_lock() would leave

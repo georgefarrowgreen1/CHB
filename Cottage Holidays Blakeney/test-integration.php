@@ -1690,6 +1690,60 @@ $gj2 = [];
 $r = http($gj2, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Fresh Guest', 'email' => 'fresh-guest@gmail.com',
     'password' => 'longenough1', 'address' => '2 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
 it_check('a brand-new email still signs straight in', ($r['json']['ok'] ?? false) === true && empty($r['json']['verify']) && !empty($r['json']['guest']), $r['raw']);
+// ── REGISTERING IS NOT OWNING, EVEN FOR A BRAND-NEW ADDRESS (migration-127) ──
+// The account signs in but is UNPROVEN: a booking made against that address
+// later must not land in a squatter's My Stays.
+$squatEmail = 'squat-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$sqA = []; // the squatter's browser
+$r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squat Ter', 'email' => $squatEmail,
+    'password' => 'squatpass1', 'address' => '3 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+it_check('§19b a fresh registration signs in', !empty($r['json']['guest']), $r['raw']);
+it_check('…but is NOT stamped proven', $rootDb->query("SELECT email_verified_at FROM guests WHERE email = " . $rootDb->quote($squatEmail))->fetchColumn() === null, '');
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, notes) VALUES ('$propKey','Real Owner'," . $rootDb->quote($squatEmail) . ",'2031-03-02','2031-03-05',2,0,'paid',300,300,300,0,3,'OWNER-PRIVATE-NOTE')");
+$sqBid = (int) $rootDb->lastInsertId();
+$r = http($sqA, 'GET', '/my-bookings.php');
+it_check('…and a booking made later against that address is NOT shown to it', $r['code'] === 200 && ($r['json']['unproven'] ?? false) === true
+    && empty($r['json']['bookings']) && strpos($r['raw'], 'Real Owner') === false, $r['raw']);
+$r = http($sqA, 'POST', '/welcome.php', ['action' => 'get', 'prop' => $propKey]);
+it_check('…nor any stay-scoped endpoint (welcome book refuses it in words)', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
+$r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+it_check('…and its data export carries no bookings', ($r['json']['ok'] ?? false) === true && empty($r['json']['data']['bookings']), $r['raw']);
+// The rightful owner proves the address from THEIR browser: the squatter's password
+// is cleared, its session revoked, and the stay is theirs alone.
+$sqGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = " . $rootDb->quote($squatEmail))->fetchColumn();
+$sqEpoch0 = (int) $rootDb->query("SELECT auth_epoch FROM guests WHERE id = $sqGid")->fetchColumn();
+$sqB = []; // the owner's browser
+$sts = time();
+$stok = substr(hash_hmac('sha256', 'login:' . $sqGid . ':' . $sts, $SECRET), 0, 32);
+$r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $sqGid, 'ts' => $sts, 'token' => $stok]);
+it_check('§19b confirming from another browser signs in and says the password was reset', ($r['json']['ok'] ?? false) === true && ($r['json']['reset'] ?? false) === true, $r['raw']);
+it_check('…clears the unproven password and bumps the epoch', (string) $rootDb->query("SELECT password_hash FROM guests WHERE id = $sqGid")->fetchColumn() === ''
+    && (int) $rootDb->query("SELECT auth_epoch FROM guests WHERE id = $sqGid")->fetchColumn() === $sqEpoch0 + 1, '');
+$r = http($sqA, 'GET', '/my-bookings.php');
+it_check('…the squatter\'s live session is signed out', $r['code'] === 401, $r['raw']);
+$r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => $squatEmail, 'password' => 'squatpass1']);
+it_check('…and the password it chose no longer works', $r['code'] === 401, $r['raw']);
+$r = http($sqB, 'GET', '/my-bookings.php');
+it_check('…while the owner now sees their stay', $r['code'] === 200 && empty($r['json']['unproven']) && strpos($r['raw'], 'Real Owner') !== false, $r['raw']);
+$r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+it_check('§19b the export carries the stay but never the owner\'s private note', ($r['json']['ok'] ?? false) === true
+    && count($r['json']['data']['bookings'] ?? []) >= 1 && strpos($r['raw'], 'OWNER-PRIVATE-NOTE') === false, '');
+$r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'ownerpass2']);
+it_check('§19b with no password left, a new one is set without a current one', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => 'wrongpass', 'next' => 'ownerpass3']);
+it_check('…but once set, the current one is required again', $r['code'] === 403, $r['raw']);
+$rootDb->exec("DELETE FROM bookings WHERE id = $sqBid");
+// The SAME browser that registered keeps its password on confirming (the ordinary
+// guest who reads their email on the device they signed up with).
+$keepEmail = 'keep-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$kp = [];
+http($kp, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keep Me', 'email' => $keepEmail,
+    'password' => 'keeppass12', 'address' => '4 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$kpGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = " . $rootDb->quote($keepEmail))->fetchColumn();
+$kts = time();
+$r = http($kp, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $kpGid, 'ts' => $kts, 'token' => substr(hash_hmac('sha256', 'login:' . $kpGid . ':' . $kts, $SECRET), 0, 32)]);
+it_check('§19b confirming in the browser that registered keeps the password', ($r['json']['reset'] ?? true) === false
+    && (string) $rootDb->query("SELECT password_hash FROM guests WHERE id = $kpGid")->fetchColumn() !== '', $r['raw']);
 // The guest arrival-window write was REMOVED with its feature, so my-bookings
 // is read-only to guests again. Asserted as an absence THROUGH THE ENDPOINT:
 // a live route would answer 200/400/404 on its own terms, and any POST now
@@ -4026,7 +4080,9 @@ http($coJar, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id'
 $anon = [];
 $r = http($anon, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-anon-000001']);
 it_check('§30 no session → 401', $r['code'] === 401, $r['raw']);
-// Another guest's session cannot tap someone else's stay.
+// Another guest's session cannot tap someone else's stay. (A CONFIRMED other
+// guest — an unconfirmed one is refused one step earlier, at the email proof.)
+$rootDb->exec("UPDATE guests SET email_verified_at = NOW() WHERE email = 'fresh-guest@gmail.com'");
 $r = http($gj2, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-wrong-000001']);
 it_check('§30 someone else\'s booking → 404, nothing recorded', $r['code'] === 404
     && $rootDb->query("SELECT guest_checked_out_at FROM bookings WHERE id = $coId")->fetchColumn() === null, $r['raw']);
@@ -4037,6 +4093,14 @@ it_check('§30 before the last morning → 409, the button hasn\'t unlocked',
 $r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coPastId, 'op_id' => 'gco-late-0000001']);
 it_check('§30 after the stay → 409, already ended', $r['code'] === 409
     && strpos((string) ($r['json']['error'] ?? ''), 'already ended') !== false, $r['raw']);
+// THE LEDGER IS NOT A POISON PILL: the tap's op id is guessable by design
+// (gco-<booking>-<date>), so a stranger pre-stores a SUCCESS under it on another
+// endpoint. Scoped to caller + endpoint, the guest's real tap must still record.
+$poison = [];
+$rootDb->exec('DELETE FROM login_attempts');
+$r = http($poison, 'POST', '/messages.php', ['action' => 'send', 'token' => bin2hex(random_bytes(16)), 'body' => 'hello',
+    'name' => 'Pois Oner', 'email' => 'poison@example.com', 'op_id' => 'gco-' . $coId . '-' . $coToday]);
+it_check('§30 (fixture) a stranger stores a success under the guest\'s op id', ($r['json']['ok'] ?? false) === true, $r['raw']);
 // The real tap: recorded, timestamped, and the owner told once (the activity
 // row is written in the same breath as alert_owner).
 $r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-' . $coId . '-' . $coToday]);
@@ -4489,6 +4553,14 @@ it_check('§40 a stay already asked for a review is not thanked after the fact (
     ($r['json']['thankyou_attempted'] ?? -1) === 0, $r['raw']);
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'thankyou-email', 'value' => '']);
 $rootDb->exec("DELETE FROM bookings WHERE id = $ty40");
+
+// ── §41 a backup is RUN only by a POST (or the cron) — a GET is a link anyone can plant ──
+foreach (['run', 'run_files', 'verify', ''] as $ba) {
+    $r = http($admin, 'GET', '/backup.php' . ($ba !== '' ? '?action=' . $ba : ''));
+    it_check('§41 GET backup.php' . ($ba !== '' ? '?action=' . $ba : '') . ' is refused (405), nothing runs', $r['code'] === 405, $r['raw']);
+}
+$r = http($admin, 'POST', '/backup.php', ['action' => 'status']);
+it_check('§41 …while the status read still answers', $r['code'] === 200, $r['raw']);
 
 echo "\n== Summary ==\n";
 if ($fail) {

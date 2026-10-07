@@ -683,7 +683,7 @@ function makeApi(deps) {
 
         async testSite() {
             if (!secrets.state().set) {
-                return { ok: false, state: 'auth', say: 'Not connected yet. Use the code from Manage \u2192 System check \u2192 Connect a Mac.' };
+                return { ok: false, state: 'auth', say: 'Not connected yet. Use the code from Manage \u2192 Mac assistant \u2192 Connect a Mac.' };
             }
             const t = await siteFor().test();
             return { ok: t.state === 'on', state: t.state, say: t.say };

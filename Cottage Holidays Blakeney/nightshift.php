@@ -186,7 +186,7 @@ function ownerchat_file_ask(array $msg, $convoIn)
         ownerchat_adopt();
         $stored = ownerchat_append($msg, $cv); // one sanitiser owns the shape, img/file included
     } catch (\Throwable $e) {
-        json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+        json_out(['error' => 'The chat needs its migration — install the updates (Manage → Status → More tools → Install updates).', 'code' => 'night_no_table'], 503);
     }
     if ($stored === null) {
         json_out(['error' => 'Type a message first.'], 400);
@@ -762,7 +762,7 @@ route_actions([
     'ask' => function ($in) {
         require_admin();
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $kind = (string) ($in['kind'] ?? '');
         $entityId = (int) ($in['id'] ?? 0);
@@ -966,7 +966,7 @@ route_actions([
     'chat_send' => function ($in) {
         require_admin();
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check — the switch that connects your Mac.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant — the switch that connects your Mac.', 'code' => 'night_off'], 409);
         }
         $text = mb_substr(trim((string) ($in['text'] ?? '')), 0, NIGHT_OWNERCHAT_TEXT_MAX);
         if ($text === '') {
@@ -1253,7 +1253,7 @@ route_actions([
         rate_limit('night-partial', 120, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'ask_partial');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $id = (int) ($in['id'] ?? 0);
         $text = mb_substr((string) ($in['text'] ?? ''), 0, NIGHT_OWNERCHAT_TEXT_MAX + NIGHT_OWNERCHAT_THINK_MAX);
@@ -1282,7 +1282,7 @@ route_actions([
         rate_limit('night-file', 60, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'chat_file', $in['build'] ?? '');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $ref = $in['ref'] ?? '';
         if (!night_chat_ref_ok($ref)) {
@@ -1315,7 +1315,7 @@ route_actions([
             $dev = 'mac';
         }
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $one = night_handoff_one([
             'dev' => $dev,
@@ -1355,7 +1355,7 @@ route_actions([
         rate_limit('night-say', 30, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'chat_say', $in['build'] ?? '');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $text = mb_substr(trim((string) ($in['text'] ?? '')), 0, NIGHT_OWNERCHAT_TEXT_MAX);
         if ($text === '') {
@@ -1374,7 +1374,7 @@ route_actions([
                 json_out(['error' => 'There is no such conversation to continue.'], 404);
             }
         } catch (\Throwable $e) {
-            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+            json_out(['error' => 'The chat needs its migration — install the updates (Manage → Status → More tools → Install updates).', 'code' => 'night_no_table'], 503);
         }
         $out = ownerchat_file_ask(['who' => 'you', 'text' => $text, 'at' => date('H:i')], $cv);
         json_out(['ok' => true, 'id' => $out['id'], 'convo' => $out['convo']]);
@@ -1392,7 +1392,7 @@ route_actions([
         rate_limit('night-import', 20, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'chat_import', $in['build'] ?? '');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $ref = strtolower(trim((string) ($in['ref'] ?? '')));
         $msgs = is_array($in['msgs'] ?? null) ? $in['msgs'] : [];
@@ -1428,7 +1428,7 @@ route_actions([
             }
             content_set_scalar('mac-chat-imports', json_encode($map));
         } catch (\Throwable $e) {
-            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+            json_out(['error' => 'The chat needs its migration — install the updates (Manage → Status → More tools → Install updates).', 'code' => 'night_no_table'], 503);
         }
         json_out(['ok' => true, 'convo' => $convo]);
     },
@@ -1448,7 +1448,7 @@ route_actions([
         rate_limit('night-mirror', 60, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'chat_mirror', $in['build'] ?? '');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         $convos = [];
         $msgs = [];
@@ -1461,7 +1461,7 @@ route_actions([
             }
             $msgs = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $convo);
         } catch (\Throwable $e) {
-            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+            json_out(['error' => 'The chat needs its migration — install the updates (Manage → Status → More tools → Install updates).', 'code' => 'night_no_table'], 503);
         }
         json_out(['ok' => true, 'convo' => $convo, 'convos' => $convos, 'msgs' => $msgs]);
     },
@@ -1485,7 +1485,7 @@ route_actions([
         rate_limit('night-asks', 30, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'asks', $in['build'] ?? '');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         require_once __DIR__ . '/pricing.php';
         night_asks_sweep();
@@ -1697,7 +1697,7 @@ route_actions([
         rate_limit('night-answer', 20, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'answer');
         if (!night_enabled()) {
-            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+            json_out(['error' => 'Overnight work is switched off in Manage → Mac assistant.', 'code' => 'night_off'], 409);
         }
         night_asks_sweep();
         $id = (int) ($in['id'] ?? 0);
@@ -1822,7 +1822,7 @@ route_actions([
         // door open behind a queue nothing can be posted to.
         if (!night_enabled()) {
             json_out([
-                'error' => 'Overnight work is switched off in Manage → System check.',
+                'error' => 'Overnight work is switched off in Manage → Mac assistant.',
                 'code' => 'night_off',
             ], 409);
         }
@@ -2043,7 +2043,7 @@ route_actions([
         night_require_key((string) ($in['secret'] ?? ''), 'chat_tool', $in['build'] ?? '');
         if (!night_enabled()) {
             json_out([
-                'error' => 'Overnight work is switched off in Manage → System check.',
+                'error' => 'Overnight work is switched off in Manage → Mac assistant.',
                 'code' => 'night_off',
             ], 409);
         }
@@ -2268,7 +2268,7 @@ route_actions([
         night_require_key((string) ($in['secret'] ?? ''), 'POST');
         if (!night_enabled()) {
             json_out([
-                'error' => 'Overnight work is switched off in Manage → System check. Nothing was stored.',
+                'error' => 'Overnight work is switched off in Manage → Mac assistant. Nothing was stored.',
                 'code' => 'night_off',
             ], 409);
         }

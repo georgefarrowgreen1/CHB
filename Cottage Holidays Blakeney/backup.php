@@ -26,6 +26,14 @@ require_once __DIR__ . '/db.php';
 $in = body();
 $action = $_GET['action'] ?? ($in['action'] ?? '');
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+// ONLY THE DOWNLOADS ARE READS. require_admin() enforces CSRF on a POST, so a
+// signed-in owner's browser could be made to RUN a backup (and email it) by a
+// link on another site — a GET carries the session cookie under SameSite=Lax.
+// Everything that does work must arrive as a POST, unless it is the cron.
+$readOnly = in_array($action, ['download', 'download_files', 'status'], true);
+if (!$isCron && !$readOnly && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    json_out(['error' => 'This action needs a POST.'], 405);
+}
 
 $dir = __DIR__ . '/backups';
 
@@ -421,7 +429,7 @@ try {
                 . ' — then unzip as usual. Keep the passphrase somewhere other than this inbox.';
         } else {
             $encNote = 'No copy is attached: ' . $why
-                . ' The backup is safe on the server — set a passphrase in Manage → System check to have it emailed to you encrypted,'
+                . ' The backup is safe on the server — set a passphrase in Manage → Backups to have it emailed to you encrypted,'
                 . ' or download it from there whenever you like.';
         }
         // Composed by backup_report_body() in mailer.php — previewable, and the render

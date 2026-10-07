@@ -340,8 +340,8 @@ if ($action === 'submit') {
             $postcode,
             $checkIn,
             $checkOut,
-            clean($in['check_in_time'] ?? '15:00'),
-            clean($in['check_out_time'] ?? '10:00'),
+            clean_time($in['check_in_time'] ?? '15:00', '15:00'),
+            clean_time($in['check_out_time'] ?? '10:00', '10:00'),
             $adultsN,
             $childrenN,
             clean($in['message'] ?? ''),
@@ -352,6 +352,9 @@ if ($action === 'submit') {
             $noDogsAt,
         ]);
     $enqId = (int) db()->lastInsertId();
+    // Remembered in THIS browser: an account registered here that has not yet
+    // confirmed its email may still see the enquiry it just sent (my-bookings).
+    $_SESSION['enq_ids'] = array_slice(array_merge($_SESSION['enq_ids'] ?? [], [$enqId]), -20);
     // A real enquiry supersedes any abandoned-draft rescue for this email.
     try {
         $draftEmail = strtolower(clean($in['email'] ?? ''));
@@ -405,8 +408,8 @@ if ($action === 'submit') {
         'prop_key' => $propKey,
         'check_in' => $checkIn,
         'check_out' => $checkOut,
-        'check_in_time' => clean($in['check_in_time'] ?? '15:00'),
-        'check_out_time' => clean($in['check_out_time'] ?? '10:00'),
+        'check_in_time' => clean_time($in['check_in_time'] ?? '15:00', '15:00'),
+        'check_out_time' => clean_time($in['check_out_time'] ?? '10:00', '10:00'),
         'adults' => $adultsN,
         'children' => $childrenN,
         'message' => clean($in['message'] ?? ''),

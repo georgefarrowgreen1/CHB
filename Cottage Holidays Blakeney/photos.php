@@ -40,7 +40,7 @@ if ($action === '') {
 
 // ---- Guest: submit a photo (multipart/form-data) ------------------------
 if ($action === 'submit') {
-    require_guest();
+    require_guest_proven(); // ownership is matched by email — confirmed accounts only
     require_once __DIR__ . '/image-save.php';
     $guestId = (int) $_SESSION['guest_id'];
 

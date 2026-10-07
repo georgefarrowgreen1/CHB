@@ -325,4 +325,27 @@ $guest = $g->fetch();
 if (!$guest) {
     json_out(['bookings' => []]);
 }
+// AN UNCONFIRMED ACCOUNT SEES NO STAYS. Bookings are matched by email, and
+// registering an email is not owning it — the stays (money, arrival details, the
+// door code) belong to whoever opens the link sent to that inbox. Until then the
+// account sees only the enquiries THIS browser sent, and the client offers to
+// re-send the link.
+if (!guest_email_proven((int) $_SESSION['guest_id'])) {
+    $ids = array_values(array_filter(array_map('intval', (array) ($_SESSION['enq_ids'] ?? []))));
+    $enq = [];
+    if ($ids) {
+        try {
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $q = db()->prepare(
+                "SELECT e.*, p.name AS property_name, p.address AS property_address
+                 FROM enquiries e JOIN properties p ON p.prop_key = e.prop_key
+                 WHERE e.id IN ($ph) AND e.email = ? AND e.declined_at IS NULL ORDER BY e.check_in ASC",
+            );
+            $q->execute(array_merge($ids, [(string) $guest['email']]));
+            $enq = $q->fetchAll();
+        } catch (\Throwable $e) {
+        }
+    }
+    json_out(['bookings' => [], 'enquiries' => $enq, 'completed_stays' => 0, 'unproven' => true, 'guest' => ['email' => (string) $guest['email']]]);
+}
 json_out(my_bookings_payload((string) $guest['email'], false));

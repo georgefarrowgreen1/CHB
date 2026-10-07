@@ -1304,7 +1304,7 @@ function night_tool_coast($dayIso, $tides, $wx, array $arrivals)
             . ($highs && $lows ? ' · ' : '') . ($lows ? 'low ' . implode(' and ', $lows) : ''));
     } else {
         $out['tide_note'] = is_array($tides) && ($tides['reason'] ?? '') === 'no_key'
-            ? 'No tide key is set (Manage → System check), so tide times are not available.'
+            ? 'No tide key is set (Manage → Integrations), so tide times are not available.'
             : 'Tide times are not available for that day.';
     }
     $day = null;

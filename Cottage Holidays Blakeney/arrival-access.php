@@ -10,7 +10,7 @@
 //  cottage you've booked are not sensitive, so no proximity / payment gate.
 // ============================================================
 require_once __DIR__ . '/db.php';
-require_guest();
+require_guest_proven(); // stays are matched by email — confirmed accounts only
 
 $in = body();
 $propKey = clean($in['prop_key'] ?? '');

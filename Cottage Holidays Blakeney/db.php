@@ -202,6 +202,16 @@ function op_claim(array $in)
     if ($id === '' || !preg_match('/^[a-z0-9][a-z0-9-]{7,46}$/i', $id)) {
         return '';
     }
+    // THE LEDGER KEY IS THE CALLER'S, NOT JUST THE CLIENT'S ID. Keyed on op_id
+    // alone, anyone could pre-store a response under an id another caller would
+    // later send — and some ids are guessable by design (the check-out tap's is
+    // gco-<booking>-<date>), so a stranger could make a guest's real tap "replay"
+    // a success that never happened. Scoped to who is asking and which endpoint,
+    // hashed to fit the column (VARCHAR 48).
+    $who = !empty($_SESSION['admin_id']) ? 'a:' . (int) $_SESSION['admin_id']
+        : (!empty($_SESSION['guest_id']) ? 'g:' . (int) $_SESSION['guest_id']
+        : 's:' . (session_id() !== '' ? session_id() : 'none'));
+    $id = 'k' . substr(hash('sha256', $who . '|' . basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) . '|' . $id), 0, 46);
     try {
         $s = db()->prepare('SELECT GET_LOCK(?, 15)');
         $s->execute(['chb_op_' . $id]);
@@ -444,12 +454,81 @@ function require_admin()
         }
     }
 }
+// A GUEST SESSION CAN BE REVOKED (migration-127). Proving an address on an account
+// whose password nobody had proven bumps guests.auth_epoch; a session carrying an
+// older epoch is signed out here, on its next request. Checked once per request,
+// lazily (only guest requests pay the lookup), and an un-migrated column changes
+// nothing — the pre-migration behaviour.
+function guest_session_check(): void
+{
+    static $done = false;
+    if ($done || empty($_SESSION['guest_id'])) {
+        return;
+    }
+    $done = true;
+    try {
+        $q = db()->prepare('SELECT auth_epoch FROM guests WHERE id = ?');
+        $q->execute([(int) $_SESSION['guest_id']]);
+        $epoch = $q->fetchColumn();
+        if ($epoch === false || (int) $epoch !== (int) ($_SESSION['guest_epoch'] ?? 0)) {
+            unset($_SESSION['guest_id'], $_SESSION['guest_epoch']); // gone, or revoked
+        }
+    } catch (\Throwable $e) {
+        // un-migrated: no epoch to compare
+    }
+}
+// Stamp a freshly signed-in guest session with the account's current epoch.
+function guest_session_begin(int $gid): void
+{
+    $_SESSION['guest_id'] = $gid;
+    $_SESSION['guest_epoch'] = 0;
+    try {
+        $q = db()->prepare('SELECT auth_epoch FROM guests WHERE id = ?');
+        $q->execute([$gid]);
+        $_SESSION['guest_epoch'] = (int) $q->fetchColumn();
+    } catch (\Throwable $e) {
+    }
+}
+// HAS THIS ACCOUNT PROVEN ITS ADDRESS? Every guest endpoint that matches BOOKINGS
+// by email asks this first: registering an email is not owning it, and the stays
+// (dates, money, arrival details, the door code) belong to whoever owns the inbox.
+// Un-migrated (no column) → true, the pre-migration behaviour.
+function guest_email_proven(int $gid): bool
+{
+    try {
+        $q = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
+        $q->execute([$gid]);
+        $v = $q->fetchColumn();
+        return $v !== false && $v !== null;
+    } catch (\Throwable $e) {
+        return true;
+    }
+}
+function require_guest_proven(): void
+{
+    require_guest();
+    if (!guest_email_proven((int) $_SESSION['guest_id'])) {
+        json_out(['error' => "Please confirm your email first — open the sign-in link we sent you, and your stays will appear.", 'code' => 'email_unproven'], 403);
+    }
+}
+// An arrival/departure time is HH:MM or the default. Free text from a form ends up
+// in emails, the .ics and every screen — vetted once, at the write.
+function clean_time($v, string $dflt): string
+{
+    $v = trim((string) $v);
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/', $v, $m)) {
+        return str_pad($m[1], 2, '0', STR_PAD_LEFT) . ':' . $m[2];
+    }
+    return $dflt;
+}
 function current_guest_id()
 {
+    guest_session_check();
     return $_SESSION['guest_id'] ?? null;
 }
 function require_guest()
 {
+    guest_session_check();
     if (empty($_SESSION['guest_id'])) {
         json_out(['error' => 'Please log in'], 401);
     }

@@ -41,11 +41,13 @@ CREATE TABLE IF NOT EXISTS guests (
     postcode      VARCHAR(12)   NULL,
     password_hash VARCHAR(255)  NOT NULL,             -- bcrypt via password_hash()
     -- Proof the address is really theirs (migration-111). Only the magic link can
-    -- set it, because the link is emailed TO that address. NULL = registered against
-    -- an email that already had bookings and not yet confirmed: password sign-in is
-    -- refused until then, or anyone who guessed a guest's email would inherit their
-    -- stay. A brand-new address has nothing to claim and is stamped at registration.
+    -- set it, because the link is emailed TO that address. NULL = not yet confirmed:
+    -- the account can sign in but sees NO stays (my-bookings and every endpoint that
+    -- matches bookings by email refuse it), and password sign-in is refused outright
+    -- while bookings exist for the address. Confirming from a browser that did not
+    -- register clears the unproven password and bumps auth_epoch (migration-127).
     email_verified_at DATETIME  NULL,
+    auth_epoch        INT       NOT NULL DEFAULT 0,
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

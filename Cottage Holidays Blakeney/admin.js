@@ -1612,7 +1612,9 @@ function cmdkBookingActions(b, pk) {
         const watchBal = chbWatchBalanceAction(b, pk, ps);
         if (watchBal) acts.push(watchBal);
     }
-    if ((b.holdStatus || 'none') === 'charged') {
+    // Only once they have LEFT — the duty's own rule; before then there is
+    // nothing to give back yet.
+    if ((b.holdStatus || 'none') === 'charged' && (hasCheckedOut(b) || b.guestCheckedOutAt)) {
         acts.push({ key: 'deposit', label: 'Return deposit', icon: cmdkActIcon('undo'), run: () => { closeCmdK(); returnDeposit(b.id); } });
     }
     acts.push({ key: 'cal', label: 'Show on calendar', icon: cmdkActIcon('cal'), run: () => cmdkShowOnCalendar(b.id) });
@@ -5731,7 +5733,7 @@ function helpTopics() {
             related: ['run-updates'] },
         { id: 'run-updates', title: 'Run updates / migrations', cat: 'System',
             kw: 'update updates migration migrate upgrade new features run system version',
-            steps: ['Open Manage → Status.', 'Tap “Run migrations” to apply any pending database updates safely.'],
+            steps: ['Open Manage → Status.', 'Open “More tools” and tap “Install updates” to apply any pending database updates safely.'],
             doIt: { label: 'Open Status', run: sec('diagnostics') } },
         { id: 'notifications', title: 'Get phone alerts for new bookings', cat: 'System',
             kw: 'notification notifications push alert phone new booking message enable turn on notify',
@@ -5784,7 +5786,7 @@ function helpTopics() {
             related: ['arrival-details'] },
         { id: 'website-content', title: 'Edit the homepage text & hero image', cat: 'Marketing',
             kw: 'website content homepage home page hero image banner headline text nav wording global site',
-            steps: ['Open Manage → Website content.', 'Edit the homepage headline, intro and hero image, plus shared nav text.'],
+            steps: ['Open Manage → Home page & menu.', 'Edit the homepage headline, intro and hero image, plus shared nav text.'],
             doIt: { label: 'Open Website content', run: sec('content') },
             related: ['host-profile'] },
         { id: 'host-profile', title: 'Edit your host bio & photo', cat: 'Marketing',
@@ -7492,7 +7494,7 @@ function cmdkRevealGuest(email) {
     const key = (email || '').trim().toLowerCase();
     if (!key) return;
     cmdkPoll(() => {
-        const rows = document.querySelectorAll('#guest-admin-list tr[data-gemail]');
+        const rows = document.querySelectorAll('#guest-admin-list [data-gemail]'); // person-rows are divs now, not <tr>
         for (let i = 0; i < rows.length; i++) {
             if ((rows[i].getAttribute('data-gemail') || '').toLowerCase() === key) return rows[i];
         }
@@ -8180,10 +8182,18 @@ function cmdkBriefBuild() {
     // is what renderNeedsYou's heading already keys off.
     let duties = [];
     try { duties = chbDuties(); } catch (e) { chbSwallow(e, 'brief-duties'); }
-    duties.slice(0, 4).forEach((d, i) => items.push({
+    // FOUR SHOWN, THE REST COUNTED. Cutting at four dropped a due balance off the
+    // landing, and the quiet "more owed, none due yet" line below it then implied
+    // nothing was due at all. With more than four, the fourth slot says how many.
+    const shownD = duties.length > 4 ? duties.slice(0, 3) : duties;
+    shownD.forEach((d, i) => items.push({
         type: 'answer', scope: d.scope, id: 'brief-duty-' + i, board: d.board,
         label: d.label, sub: d.sub, run: d.run, actLabel: d.act || '',
     }));
+    if (duties.length > 4) {
+        const more = duties.length - 3;
+        items.push({ type: 'answer', scope: 'bookings', id: 'brief-duty-more', board: 'today', label: `${more} more things need you`, sub: duties.slice(3, 6).map((d) => d.label).join(' · '), run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    }
     // Money owed but NOT yet due keeps its place without shouting: one quiet line
     // rather than being folded into a headline figure that then disagreed with Today.
     try {
@@ -9447,7 +9457,9 @@ function cmdkOpenSection(sec, label) {
 // pk — rather than dumping the owner on the cottages index, ask which one first
 // (auto-picking when there's only a single cottage).
 function cmdkPickCottage(sec) {
-    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    // EVERY live cottage, private ones included — a private cottage still takes
+    // bookings, and this list is the owner's only door to its page from the landing.
+    const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     if (keys.length <= 1) {
         cmdkOpenAccomSec(keys[0] || '', sec, true);
         return;
@@ -9928,13 +9940,14 @@ async function mgRunSync(el) {
     btn.dataset.busy = '1';
     btn.innerHTML = '<span class="mg-spin" aria-hidden="true"></span>Syncing';
     try {
-        await runSync(btn.dataset.pk || '');
+        const worked = await runSync(btn.dataset.pk || '');
         const ab = await apiGet('admin-bootstrap.php');
         if (ab && ab.ok) {
             /** @type {any} */ (window).__feedStatusPre = Array.isArray(ab.feeds) ? ab.feeds : null;
             /** @type {any} */ (window).__cronStatusPre = ab.cron || null;
             /** @type {any} */ (window).__sigAt = Date.now();
         }
+        if (!worked) throw new Error('sync failed');
         btn.className = 'st-cap is-ok mg-cap';
         btn.textContent = '✓ Synced';
     } catch (err) {
@@ -9970,7 +9983,9 @@ function applyAreaFilter() {
 function renderCottagesOverview() {
     const el = document.getElementById('cottages-overview');
     if (!el) return;
-    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    // EVERY live cottage, private ones included — a private cottage still takes
+    // bookings, and this list is the owner's only door to its page from the landing.
+    const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     let occ = {};
     try {
         occ = cottageMonthOccupancy();
@@ -9986,12 +10001,21 @@ function renderCottagesOverview() {
         const pct = Math.max(0, Math.min(100, Math.round((occ[k] && occ[k].pct) || 0)));
         return `<button type="button" class="settings-row mg-cot" data-act="openAccomThenSec" data-arg="${k}">
             <span class="settings-row-ic">${HOUSE}</span>
-            <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(meta.name || k)}</span><span class="settings-row-sub">from £${Math.round(r.coupleRate || 0)} a night</span></span>
+            <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(meta.name || k)}</span><span class="settings-row-sub">${meta.unlisted ? 'Private · ' : ''}from £${Math.round(r.coupleRate || 0)} a night</span></span>
             <span class="mg-fig"><b data-count="${pct}">${pct}%</b><small>booked in ${mon}</small><span class="mg-mini" aria-hidden="true"><i data-w="${pct}"></i></span></span>
             <span class="settings-row-chev" aria-hidden="true">›</span>
         </button>`;
     };
-    const html = keys.map(row).join('');
+    // Removed cottages are kept (their history keys off them) and can be restored —
+    // from the full list, which this row is the way to.
+    const gone = (propertyList || []).filter((p) => p.archived).length;
+    const html = keys.map(row).join('') + (gone
+        ? `<button type="button" class="settings-row mg-cot-gone" data-act="settingsOpen" data-arg="accom">
+            <span class="settings-row-ic">${HOUSE}</span>
+            <span class="settings-row-main"><span class="settings-row-label">Removed cottages</span><span class="settings-row-sub">${gone} kept with their history · restore from here</span></span>
+            <span class="settings-row-chev" aria-hidden="true">›</span>
+        </button>`
+        : '');
     if (el.dataset.sig === html) return; // unchanged → no repaint, no replayed motion
     el.dataset.sig = html;
     el.innerHTML = html;
@@ -10419,7 +10443,7 @@ function bookingsSetSearch(v) {
 // that leaves you looking at the same list must not flicker it.
 let __bkListSubject = null;
 function bkListSwapped(list) {
-    const now = __bookingsFilter + ' ' + __bookingsSearch;
+    const now = __bookingsFilter + '\u0000' + __bookingsSearch;
     const was = __bkListSubject;
     __bkListSubject = now;
     if (was === null || was === now) return; // first paint, or a plain refresh
@@ -10923,6 +10947,13 @@ async function openBookingHub(bookingId, quiet) {
     const prev = document.querySelector('.page-view.active');
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
+    // A NEW booking opens CLOSED: the fold set is one shared memory, so opening
+    // Guest on one stay used to leave the next stay's Guest open too. Only the
+    // booking hub's own groups are forgotten — other pages keep theirs. A rating
+    // offer queued for THIS booking (the deposit decision) is added after.
+    if (String(__hubBookingId) !== String(bookingId)) {
+        ['money', 'guest', 'history', 'intel', 'rating', 'note', 'emails', 'activity', 'register'].forEach((k) => __bhubOpenFolds.delete(k));
+    }
     __hubBookingId = bookingId;
     try { chbStampRecent('booking', bookingId, b && b.name); } catch (e) {} // cross-page memory
     const content = document.getElementById('booking-hub-content');
@@ -11151,8 +11182,10 @@ function hubAskAmount(b, ps, gt, kind) {
 }
 function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const today = todayDashed();
-    const past = (b.checkOut || '') <= today;
-    const inStay = !past && (b.checkIn || '') <= today;
+    // TIME-AWARE, like the duties: at 09:30 on checkout day the guest is still in
+    // the cottage (10:00 out), and a 15:00 arrival hasn't arrived at 09:30.
+    const past = hasCheckedOut(b);
+    const inStay = !past && hasCheckedIn(b);
     // The unified flow engine (app.js) is the single source of truth for the
     // stages — now including the Guest-details collection step alongside payments.
     // Admin refines the deposit-back done-state with its richer damage ledger.
@@ -11251,7 +11284,9 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             // duplication disease.
             regAsk: true,
         };
-    } else if (!past && !b.preArrivalSent && b.email) {
+    } else if (!past && !inStay && !b.preArrivalSent && b.email && nightsBetween(today, b.checkIn) <= 14) {
+        // Only while it is still ARRIVAL info: mid-stay it is too late, and two
+        // months out it is not yet a job (the daily run sends it a week before).
         next = {
             text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',
             onclick: chbAttrs('sendArrivalInfo', String(b.id)),
@@ -11662,7 +11697,7 @@ function hubStateCap(b, past) {
     let t = '', tone = '';
     const today = todayDashed();
     if (past) t = 'Past stay';
-    else if (b.checkIn <= today) { t = 'Staying now'; tone = ' is-now'; }
+    else if (hasCheckedIn(b)) { t = 'Staying now'; tone = ' is-now'; }
     else {
         const n = nightsBetween(today, b.checkIn);
         t = n <= 0 ? 'Arrives today' : n === 1 ? 'Arrives tomorrow' : 'Arrives in ' + n + ' days';
@@ -11697,7 +11732,7 @@ function renderBookingHub() {
     // control. The server enforces it; this hides the offer.
     const refundBlocked = rentalRefundBlocked(propKey, b);
     const today = todayDashed();
-    const past = (b.checkOut || '') <= today;
+    const past = hasCheckedOut(b);
     // Once the guest has arrived (checked in) the booking is committed: you can
     // still edit its details, but not MOVE it (dates/cottage) or Cancel & refund.
     const arrived = (b.checkIn || '') <= today;
@@ -12343,8 +12378,14 @@ const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
 function openStagingSite() {
     window.open(STAGING_URL, '_blank', 'noopener');
 }
-function adminHistPush(view, section, path) {
+function adminHistPush(view, section, path, tries) {
     if (__histReplay) return;
+    // A sheet that just closed has a history.back() IN FLIGHT (overlayHistConsume).
+    // Pushing now would be undone by that back landing on top of it, so wait for it.
+    if (typeof __overlayClosing !== 'undefined' && __overlayClosing && (tries || 0) < 10) {
+        setTimeout(() => adminHistPush(view, section, path, (tries || 0) + 1), 40);
+        return;
+    }
     try {
         // Record the full location — view, section, active dock area and any
         // deep drill-down path — so hardware/browser Back can replay it level
@@ -14400,7 +14441,10 @@ async function addAccommodationPrompt() {
         });
         await loadRates();
         await renderAccomList();
-        if (res && res.prop_key) settingsOpenAccom(res.prop_key); // drop straight into "fill in"
+        try { renderCottagesOverview(); } catch (e) {}
+        // The landing's "Add a cottage" sits OUTSIDE #sec-accom, so open that section
+        // first — settingsOpenAccom only fills its (hidden) detail pane.
+        if (res && res.prop_key) { settingsOpen('accom'); settingsOpenAccom(res.prop_key); } // drop straight into "fill in"
         toast(
             unlisted
                 ? `Added private cottage "${name}" — book it from the calendar or Add booking.`
@@ -15018,7 +15062,7 @@ async function loadCalendarSyncProp(key) {
     try {
         data = await apiPost('ical-import.php', { action: 'list', prop: key });
     } catch (e) {
-        box.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
+        box.innerHTML = `<p style="color:var(--danger-text);">${escapeHtml(e.message)}</p>`;
         return;
     }
     box.innerHTML = calendarPropBoxHtml(key, label, data);
@@ -15038,7 +15082,7 @@ async function loadCalendarSync() {
         try {
             data = await apiPost('ical-import.php', { action: 'list', prop: key });
         } catch (e) {
-            html += `<p style="color:var(--danger);">${escapeHtml(label)}: ${escapeHtml(e.message)}</p>`;
+            html += `<p style="color:var(--danger-text);">${escapeHtml(label)}: ${escapeHtml(e.message)}</p>`;
             continue;
         }
         html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:var(--fs-headline);margin-bottom:10px;">${escapeHtml(label)}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
@@ -15089,8 +15133,11 @@ async function runSync(key) {
         )
             loadCalendarSyncProp(key);
         else loadCalendarSync();
+        // A source that FAILED is not a sync that worked — say so to the caller too.
+        return !(res.result && Array.isArray(res.result) && res.result.some((r) => !r.ok));
     } catch (e) {
         glassAlert('Sync failed: ' + e.message);
+        return false;
     }
 }
 
@@ -15106,7 +15153,7 @@ async function loadGuestList() {
     try {
         res = await apiPost('auth.php', { action: 'guest_crm' });
     } catch (e) {
-        box.innerHTML = `<p style="color:var(--danger);font-size:var(--fs-sub);">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
+        box.innerHTML = `<p style="color:var(--danger-text);font-size:var(--fs-sub);">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
         return;
     }
     const guests = res.guests || [];
@@ -15991,7 +16038,7 @@ async function renderSweep(refetch) {
     const answer = `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Transfer out</div>
             ${hasBal && short > 0
-                ? `<p style="margin:6px 0 0;color:var(--danger);font-size:var(--fs-body);"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
+                ? `<p style="margin:6px 0 0;color:var(--danger-text);font-size:var(--fs-body);"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
                 : transferOut === null
                   ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">${movedItems.length
                         ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
@@ -16631,9 +16678,9 @@ function renderDepositsDue() {
     Object.keys(dbBookings).forEach((propKey) => {
         (dbBookings[propKey] || []).forEach((b) => {
             const dh = damageHeld(propKey, b);
-            // <= today: a stay that ended TODAY is ready to handle here too (this
-            // queue is the one place deposits are returned or kept).
-            if (dh.held > 0 && (b.checkOut || '') <= today) rows.push({ propKey, b, dh });
+            // A stay that ended TODAY joins once the checkout HOUR has passed —
+            // the same moment Today's duty asks (hasCheckedOut), so the two agree.
+            if (dh.held > 0 && (hasCheckedOut(b) || b.guestCheckedOutAt)) rows.push({ propKey, b, dh });
         });
     });
     if (!rows.length) {
@@ -17329,7 +17376,7 @@ function renderMoneyOverview() {
                 <div class="mo-pulse">${pulse}</div>
                 ${attn}
                 <div class="mo-calm" id="mo-calm" hidden></div>
-                <span class="bhub-grpcap">The answers</span>
+                <span class="bhub-grpcap">Your money</span>
                 ${collectGrp}${moveGrp}${backGrp}${booksGrp}${recentGrp}${trendsGrp}`;
     moHeadline();
     // The fleet's live arrangements ride the same repaint (display-only
@@ -18369,7 +18416,7 @@ async function diagnoseReplyEmail(btn) {
             const st = d.selftest || {};
             const head = st.ok
                 ? `<span style="color:var(--ok-text);">Mailbox connected — reads ${escapeHtml(d.reply_to || '')} via ${escapeHtml(d.host || '')}.</span>`
-                : `<span style="color:var(--danger);">Couldn't read the mailbox: ${escapeHtml(st.reason || 'unknown')} (${escapeHtml(d.host || '')}). Enable POP3 for the mailbox, or set MAIL_POP_HOST.</span>`;
+                : `<span style="color:var(--danger-text);">Couldn't read the mailbox: ${escapeHtml(st.reason || 'unknown')} (${escapeHtml(d.host || '')}). Enable POP3 for the mailbox, or set MAIL_POP_HOST.</span>`;
             const msgs = (d.preview && d.preview.messages) || [];
             const rmap = {
                 delivered: '✓ would post to the guest',
@@ -18391,7 +18438,7 @@ async function diagnoseReplyEmail(btn) {
             box.innerHTML = head + `<div style="margin-top:8px;">${rows}</div>`;
         }
     } catch (e) {
-        box.innerHTML = `<span style="color:var(--danger);">Check failed: ${escapeHtml(e.message || 'error')}</span>`;
+        box.innerHTML = `<span style="color:var(--danger-text);">Check failed: ${escapeHtml(e.message || 'error')}</span>`;
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -18407,7 +18454,7 @@ async function loadNotifyEmails() {
     try {
         d = await apiPost('notify-recipients.php', { action: 'list' });
     } catch (e) {
-        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger);">Couldn't load the list.</p>`;
+        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger-text);">Couldn't load the list.</p>`;
         return;
     }
     renderNotifyEmails(d.primary, d.extras || []);
@@ -18518,12 +18565,19 @@ async function logoutStaff() {
     __odsDepCache = [];
     try { chbSecForget(); } catch (e) {}
     setAuthUI();
-    glassAlert('You have been securely logged out.');
     nav('view-main');
     // AFTER the nav, for the reason forceAdminLogout documents: nav() remembers where
     // it went, so a forget before it is overwritten a line later.
     try {
         chbNavForget();
+    } catch (e) {}
+    // THE PAGE STILL HOLDS THE BACK OFFICE — every booking, guest name and phone
+    // number in memory, and the rendered screens in hidden views. Signing out of a
+    // shared device must leave none of it, so once the owner has read the message
+    // the page starts again from nothing.
+    await glassAlert('You have been securely logged out.');
+    try {
+        location.replace(location.pathname);
     } catch (e) {}
 }
 
@@ -19459,14 +19513,14 @@ function holdControls(b) {
     if (st === 'returned')
         return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok-text);">${gbp(amt)} refunded</span></span></div>`;
     if (st === 'kept')
-        return `<div class="money-deposit"><span>Damage deposit: <strong style="color:var(--danger);">${gbp(amt)} kept</strong> for damage</span></div>`;
+        return `<div class="money-deposit"><span>Damage deposit: <strong style="color:var(--danger-text);">${gbp(amt)} kept</strong> for damage</span></div>`;
     // Legacy card-hold model — kept working for any in-flight authorised holds.
     if (st === 'authorized')
         return `<div class="money-deposit"><span>Damage hold: <strong>${gbp(amt)} held</strong></span>
                 <button class="btn-sm btn-edit" ${chbAttrs('releaseHold', String(b.id))}>Release</button>
                 <button class="btn-sm btn-edit" ${chbAttrs('captureHold', String(b.id))}>Capture (damage)</button></div>`;
     if (st === 'captured')
-        return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger);">${gbp(amt)} captured</strong> for damage</span></div>`;
+        return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger-text);">${gbp(amt)} captured</strong> for damage</span></div>`;
     if (st === 'released')
         return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok-text);">released</span></span></div>`;
     if (st === 'expired')
@@ -20125,7 +20179,7 @@ function chbDutiesAll() {
                 sev: 'warn', ic: 'alert',
                 label: 'The Mac has sent nothing for ' + quiet + ' nights',
                 sub: 'Overnight work is on, but nothing has arrived since then — the Mac may be off, asleep, or no longer connected',
-                act: 'Check it', go: chbAttrs('openArea'),
+                act: 'Check it', go: chbAttrs('navSettingsSection', 'mac'),
                 board: 'today', scope: 'settings',
                 run: () => { closeCmdK(); openArea(); settingsOpen('mac'); },
             });
@@ -20407,7 +20461,7 @@ function chbDutiesAll() {
         if (n > 0) {
             out.push({
                 kind: 'approve', sev: 'ok', ic: 'approve',
-                label: n === 1 ? `A ${noun} to approve` : `${n} ${noun}s to approve`,
+                label: n === 1 ? `${/^[aeiou]/i.test(noun) ? 'An' : 'A'} ${noun} to approve` : `${n} ${noun}s to approve`,
                 sub: 'Guests see it once you approve',
                 act: 'Approve', go: `data-act="navSettingsSection" data-arg="${section}"`,
                 board: 'waiting', scope: 'inbox',
@@ -21453,7 +21507,7 @@ function chbSnapRowsFromStores() {
                 const keep = bl.checkOut === today || (bl.checkIn >= today && bl.checkIn < dayAfter)
                     || (bl.checkIn < today && bl.checkOut > today);
                 if (!keep) return;
-                const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
+                const src = otaSourceName(bl.source, 'Platform');
                 rows.push({
                     pk, cot: (propertyMeta[pk] || {}).name || pk, dbId: 0, ota: true,
                     nm: src + ' guest', ph: '', ci: bl.checkIn, co: bl.checkOut,
@@ -21579,7 +21633,7 @@ function keysafeNextBooking(pk) {
     ((dbBlocks || {})[pk] || []).forEach((bl) => {
         if (!isOtaBlock(bl) || bl.checkOut <= today) return;
         if (!best || bl.checkIn < best.checkIn) {
-            const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
+            const src = otaSourceName(bl.source, 'Platform');
             best = { dbId: 0, name: src + ' guest', checkIn: bl.checkIn, checkOut: bl.checkOut, inAt: '15:00', ota: true, ref: 'o:' + bl.checkIn };
         }
     });
@@ -21602,7 +21656,7 @@ function keysafeDeparting(pk) {
     });
     if (!dep) ((dbBlocks || {})[pk] || []).forEach((bl) => {
         if (!dep && isOtaBlock(bl) && bl.checkOut === today) {
-            const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
+            const src = otaSourceName(bl.source, 'Platform');
             dep = { name: src + ' guest', out: '10:00' };
         }
     });
@@ -21672,7 +21726,11 @@ function renderKeysafe() {
         const d0 = keysafeDue(pk, rec);
         const next = d0.next;
         const nextMine = d0.state === 'ok';
+        // NEEDS = what the Today duty raises ('due' red, 'later' amber), so the
+        // page's count, its Needs-attention hoist and the rail badge all agree.
+        // `due` stays the RED half for the capsule's tone.
         const due = d0.state === 'due';
+        const needs = due || d0.state === 'later';
         const forGuest = (() => {
             if ((rec.forStay || '').charAt(0) === 'o') return 'a platform guest';
             if (!rec.forBooking) return '';
@@ -21687,7 +21745,7 @@ function renderKeysafe() {
         // ONE CASE. Four of the seven capsules were lowercase ("rotate now",
         // "rotate at changeover", "not recorded yet") against "✓ Code on the
         // safe" — the same tier, on the same page, disagreeing about case.
-        const cap = !rec.code
+        const cap = !rec.code && !needs
             ? stCap('unk', 'Not recorded yet')
             : !next
               ? stCap('unk', 'No upcoming booking')
@@ -21754,7 +21812,7 @@ function renderKeysafe() {
             + '<span class="bhub-fold-lbl"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span><small class="bhub-fold-sub">' + sub + '</small></span>'
             + '<span class="bhub-fold-right">' + cap + BHUB_CHEV + '</span></button>'
             + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '><div class="bhub-foldin">' + fold + '</div></div></section>';
-        return { due, html };
+        return { due: needs, html };
     }).filter(Boolean);
     const dueN = groups.filter((g) => g.due).length;
     const pulse = groups.length
@@ -24494,7 +24552,7 @@ async function loadDiagnostics() {
     try {
         r = await apiPost('diagnostics.php', { action: 'run' });
     } catch (e) {
-        body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
+        body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger-text);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
         return;
     }
     const checks = r.checks || [];
@@ -25083,7 +25141,7 @@ async function refreshHeroStatus() {
     try {
         const r = await apiPost('optimize-hero.php', { action: 'status' });
         if (!r.hero) {
-            el.textContent = 'No uploaded hero found — upload one in Website content.';
+            el.textContent = 'No uploaded hero found — upload one in Manage → Home page & menu.';
             return;
         }
         const kb = Math.round(r.hero.bytes / 1024);
@@ -25375,7 +25433,7 @@ async function tcSeedStage(btn) {
         const r = await apiPost('testcentre.php', { action: 'seed_stage' });
         if (msg) {
             if (r.ok) {
-                msg.style.color = '#7FD68A';
+                msg.style.color = 'var(--ok-text)';
                 const skipped = r.skipped
                     ? ` (${r.skipped} stay${r.skipped === 1 ? '' : 's'} skipped — those dates are already taken)`
                     : '';
@@ -25459,7 +25517,7 @@ async function tcSeedFeatures(btn) {
         const r = await apiPost('testcentre.php', { action: 'seed_features' });
         if (msg) {
             if (r.ok) {
-                msg.style.color = '#7FD68A';
+                msg.style.color = 'var(--ok-text)';
                 msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Money → Pricing coach</strong> for the suggestions.`;
             } else {
                 msg.style.color = 'var(--danger)';
@@ -25580,7 +25638,7 @@ async function tcRenderBooking() {
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
     } catch (e) {
-        detail.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message || '')}</p>`;
+        detail.innerHTML = `<p style="color:var(--danger-text);">${escapeHtml(e.message || '')}</p>`;
         return;
     }
     tcOwnerEmail = data.owner_email || '';
@@ -25588,7 +25646,7 @@ async function tcRenderBooking() {
     const bk = data.bookings || [];
     const intro = `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
     const sqNote = tcSquare.production
-        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch it to test mode on the server to try things safely.</div>`
+        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger-text);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch it to test mode on the server to try things safely.</div>`
         : tcSquare.enabled
           ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
           : `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
@@ -25617,7 +25675,7 @@ async function tcRenderBooking() {
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'pre_arrival', CHB_SELF)}>Pre-arrival email</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'balance_reminder', CHB_SELF)}>Balance reminder</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'review', CHB_SELF)}>Review request</button>
-                        <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteBooking', b.id)}>Delete</button>
+                        <button class="btn-sm btn-edit" style="color:var(--danger-text);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteBooking', b.id)}>Delete</button>
                     </div></div>`;
         })
         .join('');
@@ -25866,7 +25924,7 @@ async function tcRenderData() {
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
     } catch (e) {
-        detail.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message || '')}</p>`;
+        detail.innerHTML = `<p style="color:var(--danger-text);">${escapeHtml(e.message || '')}</p>`;
         return;
     }
     const bk = data.bookings || [],
@@ -25885,7 +25943,7 @@ async function tcRenderData() {
             return `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'booking', b.id)}>Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger-text);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'booking', b.id)}>Remove</button>
                 </div>`;
         })
         .join('');
@@ -25894,7 +25952,7 @@ async function tcRenderData() {
             (e) => `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(e.check_in) || '')} → ${escapeHtml(fmtDate(e.check_out) || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'enquiry', e.id)}>Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger-text);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'enquiry', e.id)}>Remove</button>
                 </div>`,
         )
         .join('');
@@ -25902,7 +25960,7 @@ async function tcRenderData() {
         ? `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Test guest account</span><span class="settings-row-sub">${escapeHtml(guest.email || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'guest', guest.id)}>Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger-text);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'guest', guest.id)}>Remove</button>
                 </div>`
         : '';
     const total = bk.length + enq.length + (showGuest ? 1 : 0);
@@ -25911,7 +25969,7 @@ async function tcRenderData() {
                 ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
                 ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
                 ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:var(--danger);" data-act="tcPurgeData">Remove all test data</button></div>`;
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:var(--danger-text);" data-act="tcPurgeData">Remove all test data</button></div>`;
 }
 async function tcDeleteData(type, id) {
     try {
@@ -26025,7 +26083,9 @@ function renderReviewLinks() {
     const wrap = document.getElementById('review-links');
     if (!wrap) return;
     const origin = typeof SITE_ORIGIN === 'string' ? SITE_ORIGIN : location.origin;
-    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    // EVERY live cottage, private ones included — a private cottage still takes
+    // bookings, and this list is the owner's only door to its page from the landing.
+    const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     if (!keys.length) {
         wrap.innerHTML = '';
         return;
@@ -26078,6 +26138,13 @@ async function copyReviewLink(key) {
 // Approve to publish on the site; privately rate the guest (hidden from them) to
 // steer whether they get the book-direct follow-up next year.
 const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct' };
+// A platform's NAME as people write it — capitalising the raw source key printed
+// "Bookingcom" on the timeline, the key-safe page and the offline sheet.
+function otaSourceName(src, fallback) {
+    if (!src) return fallback || 'Platform';
+    const k = String(src).toLowerCase();
+    return LEAD_SOURCE_LABEL[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+}
 function leadStatusPill(s) {
     if (s === 'approved') return '<span style="color:var(--ok-text);font-weight:600;">Published</span>';
     if (s === 'declined') return '<span style="color:var(--text-muted);">Hidden</span>';
@@ -26828,12 +26895,12 @@ async function checkSystemHealth() {
         pill.innerHTML = `<span class="cron-pill-dot"></span>${fail} system issue${fail === 1 ? '' : 's'} — tap to check`;
     } else if (warn > 0) {
         pill.className = 'cron-pill warn';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>${warn} thing${warn === 1 ? '' : 's'} need${warn === 1 ? 's' : ''} a look`;
+        pill.innerHTML = `<span class="cron-pill-dot"></span>Status: ${warn} warning${warn === 1 ? '' : 's'}`; // NOT the summary's words — a different list
     } else {
         // No failures and no actionable warnings (optional/off features don't
         // count) → the calm green "all clear" state.
         pill.className = 'cron-pill ok';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>Everything’s running`;
+        pill.innerHTML = `<span class="cron-pill-dot"></span>Status: all clear`;
     }
     pill.style.display = '';
 }
@@ -27029,7 +27096,16 @@ async function sendWeeklyEmailNow(which, btn) {
         btn.disabled = true;
         btn.textContent = 'Sending…';
     }
-    const out = document.getElementById('diag-samples');
+    // The message lands BESIDE the button that was tapped (each page has its own
+    // slot) — #diag-samples lives on Status, so from Analytics it reported nowhere.
+    let out = btn && btn.parentElement ? btn.parentElement.querySelector('.wk-send-msg') : null;
+    if (!out && btn && btn.parentElement) {
+        out = document.createElement('div');
+        out.className = 'wk-send-msg';
+        out.setAttribute('role', 'status');
+        btn.parentElement.appendChild(out);
+    }
+    if (!out) out = document.getElementById('diag-samples');
     try {
         // ?force=1 in the query ($_GET); POST so require_admin() checks the CSRF token.
         const r = await apiPost(spec.file + '?force=1', {});
@@ -27040,7 +27116,7 @@ async function sendWeeklyEmailNow(which, btn) {
         }
     } catch (e) {
         if (out) {
-            out.innerHTML = `<div style="color:var(--danger);margin:10px 0 4px;">Couldn't send it: ${escapeHtml(e.message)}</div>`;
+            out.innerHTML = `<div style="color:var(--danger-text);margin:10px 0 4px;">Couldn't send it: ${escapeHtml(e.message)}</div>`;
         }
     } finally {
         if (btn) {
@@ -27072,12 +27148,12 @@ async function sendSampleEmails(btn) {
                     .filter((x) => !x.ok)
                     .map(
                         (x) =>
-                            `<div style="color:var(--danger);font-size:var(--fs-sub);">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`,
+                            `<div style="color:var(--danger-text);font-size:var(--fs-sub);">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`,
                     )
                     .join('');
     } catch (e) {
         if (out)
-            out.innerHTML = `<div style="color:var(--danger);margin:10px 0 4px;">Couldn't send samples: ${escapeHtml(e.message)}</div>`;
+            out.innerHTML = `<div style="color:var(--danger-text);margin:10px 0 4px;">Couldn't send samples: ${escapeHtml(e.message)}</div>`;
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -27612,7 +27688,7 @@ function renderCalendar() {
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(bl.checkIn, bl.checkOut);
-                const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
+                const src = otaSourceName(bl.source, 'External');
                 // AN OWNER BLOCK IS THE ONE BLOCK A HUMAN CAN RETRACT, so it is the one
                 // that gets a control. Imported OTA bars stay display-only — the sync
                 // owns their lifecycle and a deleted import simply returns on the next
@@ -28615,7 +28691,7 @@ function renderEnquiryHub() {
         const wins = enquiryFreeNearby(e);
         stateCard = `<div class="bhub-next is-gone"><span class="bhub-next-cap">The dates have gone</span><span class="bhub-next-text">${who} while this enquiry waited. Suggest new dates, or decline with a note${wins.length ? ' — ' + wins.map(escapeHtml).join(' and ') + (wins.length === 1 ? ' is' : ' are') + ' free' : ''}.</span></div>`;
     } else {
-        stateCard = `<div class="bhub-next is-ready"><span class="bhub-next-cap">Ready to approve · dates free</span><span class="bhub-next-text">Approving books ${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))} in, emails the confirmation${e.email ? ' and ' + apprAsk() : ''}.</span><button class="btn-glass bhub-next-btn btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button></div>`;
+        stateCard = `<div class="bhub-next is-ready"><span class="bhub-next-cap">Ready to approve · dates free</span><span class="bhub-next-text">Approving confirms ${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))}, emails the confirmation${e.email ? ' and ' + apprAsk() : ''}.</span><button class="btn-glass bhub-next-btn btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button></div>`;
     }
     // ---- Needs attention (clash only): the blocker as a red row, its routes
     // folded under — open the booking that has the dates, or move this one. ----
@@ -28670,7 +28746,9 @@ function renderEnquiryHub() {
     const quoteSub = askFig != null && !inWindow
         ? `${gbp(askFig)} deposit on approval, balance by ${fmtDate(bookingPlanDueDate(ePlan) || ukShiftDays(e.checkIn, -(paymentTerms.balanceDays || 30)))}`
         : askFig != null
-          ? 'the full amount is due on approval'
+          // The card's figure includes the refundable deposit; say so, or the
+          // quote (rental) and the ask (rental + deposit) read as two prices.
+          ? `${gbp(askFig)} due on approval${dmg > 0 ? ' (incl. ' + gbp(dmg) + ' refundable deposit)' : ''}`
           : '';
     const quoteGrp = bhubFoldGrp('equote',
         `<span class="bhub-payline-label">Quote${e.priceOverride != null ? '' : ' · site price'}</span>`,
@@ -29480,12 +29558,14 @@ function openEnquiryEmail(enqId) {
         msg.classList.remove('show');
     }
     const m = document.getElementById('enq-email-modal');
+    if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
     if (m) m.classList.add('open');
     emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
 }
 function closeEnquiryEmailModal() {
     const m = document.getElementById('enq-email-modal');
+    if (m && m.classList.contains('open')) overlayHistConsume();
     if (m) m.classList.remove('open');
     backToComposeEdit(); // reset to the compose view for next time
     __composeTarget = null;
@@ -29915,6 +29995,7 @@ function openBookingEmail(bookingId) {
         msg.classList.remove('show');
     }
     const m = document.getElementById('enq-email-modal');
+    if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
     if (m) m.classList.add('open');
     emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
@@ -30331,7 +30412,7 @@ async function loadExperiencesAdmin() {
         const r = await apiPost('experiences.php', { action: 'list_admin' });
         rows = r.experiences || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="color:var(--danger);font-size:var(--fs-body);">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
+        wrap.innerHTML = `<p style="color:var(--danger-text);font-size:var(--fs-body);">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
         return;
     }
     __expAdmin = rows;
@@ -31302,7 +31383,7 @@ function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
                 <button class="btn-glass btn-accent cal-add-btn" id="mbx-send-btn" data-act="mailboxSend">Send</button>
                 <button class="btn-glass cal-add-btn" data-act="renderMailboxList">Cancel</button>
             </div>
-            <p id="mbx-msg" role="alert" style="font-size:var(--fs-sub);color:var(--danger);margin:8px 0 0;"></p>
+            <p id="mbx-msg" role="alert" style="font-size:var(--fs-sub);color:var(--danger-text);margin:8px 0 0;"></p>
         </div>`;
     const focusEl = document.getElementById(presetTo ? 'mbx-text' : 'mbx-to');
     if (focusEl) focusEl.focus();
@@ -31425,3 +31506,6 @@ try {
     });
 } catch (e) {}
 window.__ADMIN_LOADED = true;
+// The Appearance row ships saying "light" and setThemeLabel ran before the views
+// were injected — so a dark back office said "currently light". Say it now.
+try { setThemeLabel(); } catch (e) {}

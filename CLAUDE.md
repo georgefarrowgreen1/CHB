@@ -565,8 +565,7 @@ produces anything — with no producer the feature is invisible, which is the po
   Off is byte-for-byte today's back office: no card, no request at boot, and
   **ingest is REFUSED with a sentence** rather than stored for later — a machine
   working every night into a table nobody will look at is the failure that refusal
-  exists to prevent. The switch is in Manage → Mac assistant (it lived in System check beside the
-  backup passphrase until the Manage reorganisation) and shows the address to post
+  exists to prevent. The switch is in Manage → Mac assistant and shows the address to post
   to, derived from `window.location` so a staging install is never told to post at
   production. It never shows the secret.
 - **THREE RULES, each with a precedent already in the app.** *It never sends*: an
@@ -7996,6 +7995,70 @@ a ratchet — asserting comments and braces balance in all three stylesheets, wi
 comments stripped BEFORE the braces are counted (a `{` inside prose otherwise
 reads as a rule and the check cries wolf on correct code). Break-tested against
 both real shapes: the half-closed comment and the eaten `@media` opener.
+
+## The round-1 full-site audit (security + regressions + UX)
+
+Five parallel lenses (server security, client security, the Manage regressions,
+guest UX in a browser, owner UX in a browser). What it set:
+- **REGISTERING AN EMAIL IS NEVER OWNING IT — now for EVERY address, not only
+  ones with bookings today** (migration-127 `guests.auth_epoch`). Two holes:
+  a PRE-HIJACK (register a guest's email while they have bookings; the account
+  sat unverified with the attacker's password, and the victim's own later
+  magic-link click stamped it verified — the attacker's password then worked)
+  and a SQUAT (register an address with nothing behind it yet; it was stamped
+  verified at once, so a booking made later against it landed in the squatter's
+  My Stays, door code included). Now: no account is verified at registration;
+  an unproven account signs in but `my-bookings.php` returns `unproven: true`
+  with no stays (only enquiries THIS browser sent, `$_SESSION['enq_ids']`), and
+  every endpoint that matches bookings by email calls
+  **`require_guest_proven()`** (arrival-access, guest-checkout, photos submit,
+  reviews submit, welcome) — test-auth-posture accepts it as the guest marker.
+  `guest_login` refuses an unproven account only while bookings exist for it.
+  **Confirming from a browser that did not register** (`$_SESSION['reg_gid']`)
+  clears the unproven password (`''` — `guest_change_password` then accepts a
+  blank current one), deletes its passkeys and bumps `auth_epoch`, which signs
+  out every earlier session on its next request (`guest_session_check`, called
+  from `require_guest`/`current_guest_id` and the top of auth.php/push.php;
+  sessions are minted by `guest_session_begin`). The client shows "Confirm your
+  email to see your stays" with a re-send, and a reset says so. Export carries
+  bookings only for a proven account and never `notes` / card handles; delete
+  only touches email-matched records when proven. Gated by test-integration
+  §19b (break-tested on the my-bookings gate and the consume reset).
+- **THE OP LEDGER KEY IS THE CALLER'S** (`op_claim`): `k` + sha256(actor |
+  endpoint | op_id). Keyed on op_id alone a stranger could pre-store a success
+  under a guessable id (the check-out tap's `gco-<id>-<date>`) on another
+  endpoint and the guest's real tap "replayed" it. §30 reproduces the poisoning
+  when the scoping is removed. An in-flight retry across the deploy re-runs
+  once (old keys no longer match) — accepted.
+- **backup.php does work only on a POST or the cron** (§41): require_admin()
+  checks CSRF on POST only, so a planted GET link ran (and emailed) a backup.
+- **The data-act global fallback refuses platform built-ins** (native code)
+  and the request primitives by name (`chbActAllowed`).
+- **Times are vetted once**: `chbTime()` at the row mappers, `clean_time()` at
+  the writes — free text from a form reached unescaped templates.
+- **Owner logout reloads the page** (memory + hidden views held the whole back
+  office); guest logout clears the chat token, the enquiry draft and the
+  rendered stays.
+- **Back closes the owner's sheets too** (edit form, floating thread, email
+  composer push overlay history); `adminHistPush` waits for an in-flight
+  overlay `history.back()`. **Escape answers the HIGHEST z-index** open
+  overlay (the privacy window over the enquiry sheet sits earlier in the DOM),
+  and closes the chat.
+- Smaller, each measured: the date picker's grid is `minmax(0,1fr)` and drops
+  the 1:1 cell below 480px (the Sunday column was clipped 25px at 360);
+  picking dates clears step one's own refusal; `.btn-edit:hover` no longer
+  sets the label to the page ground (invisible text on hover/after a tap);
+  inline `color:var(--danger|--ok)` ink → the `-text` tokens; the hub's state
+  capsule, Past-stay test, deposit queue and search "Return deposit" are
+  time-aware (`hasCheckedIn`/`hasCheckedOut`); a new booking opens with its
+  folds closed; "Bookingcom" → `otaSourceName()`; the rail is 236px (17px
+  labels were cut at 220) with the wide composure clamped on-screen; the
+  key-safe page counts what the duty counts (due + later); the search brief
+  shows three duties plus "N more" rather than dropping the rest; the
+  Manage summary and the Status pill no longer use the same words for
+  different lists; a literal NUL byte in admin.js (grep read it as binary) is
+  the escape sequence again; stale "Manage → System check / Preferences /
+  Website content" directions now name the real pages, Mac app included.
 
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**

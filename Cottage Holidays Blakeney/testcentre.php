@@ -238,7 +238,7 @@ if ($action === 'seed_features') {
     } catch (\Throwable $e) {
     }
     if (!$keys) {
-        json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Manage → System check).']);
+        json_out(['ok' => false, 'error' => 'No cottages found — install the updates first (Manage → Status → More tools → Install updates).']);
     }
     $k0 = $keys[0];
     $k1 = $keys[1] ?? $keys[0];
@@ -422,7 +422,7 @@ if ($action === 'seed_stage') {
     } catch (\Throwable $e) {
     }
     if (!$props) {
-        json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Manage → System check).']);
+        json_out(['ok' => false, 'error' => 'No cottages found — install the updates first (Manage → Status → More tools → Install updates).']);
     }
     $P = fn($i) => $props[$i % count($props)];
     $owner = defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL ? OWNER_NOTIFY_EMAIL : '';

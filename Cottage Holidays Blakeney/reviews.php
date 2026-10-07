@@ -72,7 +72,7 @@ $in = body();
 $action = $in['action'] ?? '';
 
 if ($action === 'submit') {
-    require_guest();
+    require_guest_proven(); // ownership is matched by email — confirmed accounts only
     $propKey = clean($in['prop_key'] ?? '');
     $stars = (int) ($in['stars'] ?? 0);
     $text = trim((string) ($in['text'] ?? ''));

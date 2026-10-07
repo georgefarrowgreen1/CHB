@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=357">
+    <link rel="stylesheet" href="app.css?v=358">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1253,7 +1253,7 @@
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:var(--fs-title);">Messages</h3>
                 <div class="msg-head-acts">
                     <button class="btn-sm btn-edit" id="msg-archive-btn" data-act="archiveCurrentThread">Archive</button>
-                    <button class="btn-sm" id="msg-delete-btn" data-act="deleteCurrentThread" style="color:var(--danger);">Delete</button>
+                    <button class="btn-sm" id="msg-delete-btn" data-act="deleteCurrentThread" style="color:var(--danger-text);">Delete</button>
                     <button class="reviews-modal-close" data-act="closeMessagesModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
             </div>
@@ -1422,7 +1422,7 @@
             <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Sign out</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger-text);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Sign out</button>
             </div>
             </div><!-- /.auth-form-col -->
         </div>
@@ -1464,7 +1464,7 @@
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Download a copy of everything we hold about you — your account, bookings, payments, enquiries, messages and more — as a JSON file.</p>
             <button class="btn-sm btn-edit" data-act="exportGuestData" data-pass="self">Download my data</button>
 
-            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;color:var(--danger);">Delete my account</h3>
+            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;color:var(--danger-text);">Delete my account</h3>
             <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
             <button class="btn-sm btn-decline" data-act="deleteGuestAccount">Delete my account</button>
             </div><!-- /.auth-form-col -->
@@ -1667,7 +1667,7 @@
                 <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" data-act="submitAdmin2fa">Verify &amp; sign in</button>
             </div>
 
-            <div id="admin-login-error" role="alert" style="color:var(--danger);font-size:var(--fs-sub);margin:12px 0 0;display:none;"></div>
+            <div id="admin-login-error" role="alert" style="color:var(--danger-text);font-size:var(--fs-sub);margin:12px 0 0;display:none;"></div>
         </div>
     </div>
 
@@ -1914,7 +1914,7 @@
             <label class="modal-label sr-only" for="modal-notes">Staff notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
-            <div id="modal-error" style="color: var(--danger); font-size:var(--fs-sub); margin-bottom: 15px; display: none;"></div>
+            <div id="modal-error" style="color:var(--danger-text); font-size:var(--fs-sub); margin-bottom: 15px; display: none;"></div>
             </div>
 
             <!-- Docked: the live total and Save never leave the screen. The
@@ -1971,7 +1971,7 @@
             <input type="number" min="0" step="0.01" inputmode="decimal" class="input-glass" id="newprop-override" placeholder="Leave blank to use the calculated price">
             <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: -12px 0 4px;">Set a custom total for this booking only.</p>
 
-            <div id="newprop-error" style="color: var(--danger); font-size:var(--fs-sub); margin: 12px 0 0; display: none;"></div>
+            <div id="newprop-error" style="color:var(--danger-text); font-size:var(--fs-sub); margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
                 <button class="btn-glass" style="flex: 1;" data-act="customSetupNext">Review booking →</button>
@@ -1999,7 +1999,7 @@
                 </select>
             </div>
 
-            <div id="overview-error" style="color: var(--danger); font-size:var(--fs-sub); margin: 12px 0 0; display: none;"></div>
+            <div id="overview-error" style="color:var(--danger-text); font-size:var(--fs-sub); margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
                 <button class="btn-glass" style="flex: 1;" data-act="confirmCustomBooking">Confirm booking</button>
@@ -2063,7 +2063,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1060"></script>
+    <script defer src="app.js?v=1061"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
