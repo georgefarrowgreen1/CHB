@@ -102,7 +102,7 @@ $REGISTRY = [
     'welcome.php' => ['guest'],
 
     // ---- Serve both roles ------------------------------------------------
-    'experiences.php' => ['admin', [$GUEST]], // GET public, guest suggest, admin moderate
+    'experiences.php' => ['admin', [$GUEST]], // list: booked guests + owner only (viewer_has_booked), guest suggest, admin moderate
     'my-bookings.php' => ['guest', [$ADMIN]], // guest's own stays; admin path powers the account preview
     'avatar.php' => ['guest', [$ADMIN]], // a guest's own profile photo; the owner reads it by ?email=
     'guest-checkout.php' => ['guest'], // the "we've left" tap — one guest-scoped write, its own door (my-bookings stays read-only)
@@ -162,7 +162,7 @@ $REGISTRY = [
     // ---- Public HTML routes (SEO / infrastructure pages) -------------------
     'blocked.php' => ['page', [], 'the request-firewall block page'],
     'cottage.php' => ['page', [], '/cottages/<slug> server-rendered for crawlers'],
-    'experiences-page.php' => ['page', [], '/experiences server-rendered for crawlers'],
+    'experiences-page.php' => ['page', [], '/experiences shell (no list, noindex — booked guests only)'],
     'hero-shell.php' => ['page', [], 'hero-image shell used by the SEO routes'],
     'shell-etag.php' => ['page', [], 'conditional-GET ending shared by the three SSR shell routes'],
     'home.php' => ['page', [], '/ server-rendered for crawlers'],

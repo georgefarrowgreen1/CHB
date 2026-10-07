@@ -4859,6 +4859,35 @@ it_check('§48 removing it deletes the file', ($r['json']['ok'] ?? false) === tr
 $r = http($rsJar, 'GET', '/avatar.php');
 it_check('§48 and then there is nothing to serve', $r['code'] === 404, (string) $r['code']);
 
+echo "\n== §49 Things to do are for guests who have booked ==\n";
+$rootDb->exec("INSERT INTO experiences (title, body, status) VALUES ('§49 Seal trip', 'Out to the Point.', 'published')");
+$r = http($noJar, 'GET', '/experiences.php');
+it_check('§49 a visitor is refused, in words, with the code the page reads', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'stays_only' && strpos($r['raw'], '§49') === false, $r['raw']);
+$r = http($noJar, 'POST', '/experiences.php', ['action' => 'list']);
+it_check('§49 …through the POST door too', $r['code'] === 403 && strpos($r['raw'], '§49') === false, $r['raw']);
+$r = http($admin, 'GET', '/experiences.php');
+it_check('§49 the owner sees the list', $r['code'] === 200 && strpos($r['raw'], '§49 Seal trip') !== false, substr($r['raw'], 0, 120));
+$nbJar = [];
+$r = http($nbJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Not Booked', 'email' => 'notbooked49@gmail.com', 'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$rootDb->exec("UPDATE guests SET email_verified_at = NOW() WHERE email = 'notbooked49@gmail.com'");
+$r = http($nbJar, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'notbooked49@gmail.com', 'password' => 'longenough1']);
+it_check('§49 (the guest is signed in, so the next refusal is about bookings)', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($nbJar, 'GET', '/experiences.php');
+it_check('§49 a signed-in guest who has never booked is refused', $r['code'] === 403 && strpos($r['raw'], '§49') === false, $r['raw']);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Not Booked','notbooked49@gmail.com','2024-03-01','2024-03-04',2,0,'paid',300,300,300,0,3)");
+$r = http($nbJar, 'GET', '/experiences.php');
+it_check('§49 …and sees it once a booking (even a past one) is theirs', $r['code'] === 200 && strpos($r['raw'], '§49 Seal trip') !== false, $r['raw']);
+$rootDb->exec("UPDATE guests SET email_verified_at = NULL WHERE email = 'notbooked49@gmail.com'");
+$r = http($nbJar, 'GET', '/experiences.php');
+it_check('§49 an account that has not proven its address is refused even with a booking', $r['code'] === 403, $r['raw']);
+$r = http($noJar, 'GET', '/experiences-page.php');
+it_check('§49 /experiences no longer renders the list for crawlers', $r['code'] === 200 && strpos($r['raw'], '§49 Seal trip') === false, (string) $r['code']);
+$r = http($noJar, 'GET', '/sitemap.php');
+it_check('§49 …and the sitemap no longer lists it', strpos($r['raw'], '/experiences<') === false, '');
+$rootDb->exec("DELETE FROM experiences WHERE title LIKE '§49%'");
+$rootDb->exec("DELETE FROM bookings WHERE email = 'notbooked49@gmail.com'");
+$rootDb->exec("DELETE FROM guests WHERE email = 'notbooked49@gmail.com'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

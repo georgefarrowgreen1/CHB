@@ -14350,3 +14350,13 @@ div.ga-row {
   box-shadow: 0 0 0 2px var(--dark-grey);
   pointer-events: none;
 }
+
+/* THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask). Every way in is
+   hidden until my-bookings says this guest has a stay (body.has-booked, set by
+   chbBookedSync) or the owner is signed in; experiences.php refuses anyone else,
+   and the page then shows only #exp-locked. */
+body:not(.has-booked):not(.owner-mode) a[data-view="view-experiences"],
+body:not(.has-booked):not(.owner-mode) .guest-dock-btn[data-tab="experiences"] { display: none !important; }
+#exp-locked { display: none; padding: 32px; text-align: center; }
+#view-experiences.exp-locked > :not(h1):not(#exp-locked) { display: none !important; }
+#view-experiences.exp-locked > #exp-locked { display: block; }
