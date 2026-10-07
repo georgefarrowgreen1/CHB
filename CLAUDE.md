@@ -3435,6 +3435,30 @@ frees that platform's dates, so it is its own button with its own question
 (`calRemoveFeed`); an invalid link is flagged and never saved. `calLinkOk` accepts http
 too (Vrbo's own links are http). Gated by ui-test-manage §3c, the put-back break-tested.
 
+## Guests: invite back, and a reset LINK — the owner never sets a password (approved demo, built)
+
+Manage → Guests (`loadGuestList`/`gstRender`, admin.js; `.gst-*` in admin.css). Three stat tiles
+(lifetime spend · Coming back · To invite back — the last two FILTER, with a chip to clear), a
+search box that is never repainted while typing, and the list GROUPED by what to do: Coming back
+(an upcoming booking in `dbBookings`), Worth inviting back (no upcoming stay, last checkout
+>`GST_LAPSED_DAYS` 60 days ago), Past guests (by spend). A row is two lines; it opens into an
+email + stays fact list and plain actions (Email, Copy email, Open booking, Send a password
+reset link). Rows keep `.acw-prow[data-gemail]` for the search reveal.
+- **The owner never sets a guest's password.** `guest_reset_password` is GONE; `guest_send_reset`
+  (auth.php, admin) emails the magic-link token with `&pr=1` via `send_magic_link_email($g, $url,
+  'reset')`. Consuming it with `reset` sets `$_SESSION['pw_reset_at']`, which lets
+  `guest_change_password` accept a blank current password for 30 minutes, ONCE — the password is
+  not cleared, so a link opened by mistake locks nobody out. The client opens
+  `guestChooseNewPassword()` on landing. One send per guest per minute (activity-log check, 409
+  `already_sent`), and a send the mailer refused is not logged.
+- `guest_crm` carries `invited_at` (the last `guest.reinvite` in 90 days), so "Invited today ·
+  Jollyboat" and the tile count survive a reload.
+- Sent states are an animated `.gst-card` (`.is-new` only within 2s of the send, so re-renders
+  never replay it); the buttons morph Sending… → green ✓ Sent first.
+- Gates: test-integration §45 (the old action gone, refusals, the window both ways, one reset per
+  link — break-tested on the window), ui-test-manage §7/§7e (tiles, filter, search focus, invite
+  card, the email preview, a send carrying no password, the 60s wait).
+
 ## The Manage index is seven groups (owner-asked "reorder and recategorise")
 
 `#settings-index` in admin-views.html, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,

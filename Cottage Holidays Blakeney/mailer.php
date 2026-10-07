@@ -3021,8 +3021,11 @@ function send_arrival_email($b)
 
 // Passwordless sign-in link. $g: a guest row (needs name, email). $url: the
 // magic link from auth.php (carries id + issue-time + HMAC, expires in 30 min).
-function send_magic_link_email($g, $url)
+function send_magic_link_email($g, $url, $purpose = 'signin')
 {
+    // 'reset': the OWNER sent it from Manage → Guests so the guest can choose a
+    // new password themselves — same signed, single-use, 30-minute link.
+    $reset = $purpose === 'reset';
     if (empty($g['email'])) {
         return ['ok' => false, 'error' => 'No email'];
     }
@@ -3030,10 +3033,10 @@ function send_magic_link_email($g, $url)
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($g['name'], 'there');
 
-    $subject = 'Your sign-in link — Cottage Holidays Blakeney';
+    $subject = $reset ? 'Choose a new password — Cottage Holidays Blakeney' : 'Your sign-in link — Cottage Holidays Blakeney';
     $text =
         "Hello {$name},\n\n" .
-        "Here is your secure sign-in link for Cottage Holidays Blakeney:\n" .
+        ($reset ? "Here is your link to choose a new password for your Cottage Holidays Blakeney account:\n" : "Here is your secure sign-in link for Cottage Holidays Blakeney:\n") .
         $url .
         "\n\n" .
         "It works once and expires in 30 minutes — ask for a fresh one any time.\n" .
@@ -3048,13 +3051,13 @@ function send_magic_link_email($g, $url)
     // with nothing to copy. The URL is deliberately printed in full rather than
     // truncated: a shortened sign-in link cannot be pasted, which defeats the point.
     $inner =
-        email_h('Sign in to your account', $accent) .
+        email_h($reset ? 'Choose a new password' : 'Sign in to your account', $accent) .
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', tap the button below to sign in to your Cottage Holidays Blakeney account — no password needed.',
+                ($reset ? ', tap the button below to choose a new password for your Cottage Holidays Blakeney account.' : ', tap the button below to sign in to your Cottage Holidays Blakeney account — no password needed.'),
         ) .
-        email_btn($url, 'Sign me in', $accent) .
+        email_btn($url, $reset ? 'Choose a password' : 'Sign me in', $accent) .
         email_footnote(
             'Button not working, or reading this on another device? Copy this link into your browser:<br>' .
                 // email_muted_ink(), not a hand-picked grey: the dark pass found
@@ -3070,7 +3073,7 @@ function send_magic_link_email($g, $url)
             'It works once and expires in 30 minutes — if it has gone stale, just ask for a new one. ' .
                 'If you didn&rsquo;t request this, you can safely ignore this email.',
         );
-    $html = email_shell('Your secure sign-in link — works once, expires in 30 minutes', $inner, $accent);
+    $html = email_shell($reset ? 'Choose a new password — the link works once, for 30 minutes' : 'Your secure sign-in link — works once, expires in 30 minutes', $inner, $accent);
 
     return smtp_send($g['email'], $name, $subject, $text, $html);
 }

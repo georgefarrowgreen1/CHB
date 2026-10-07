@@ -1972,14 +1972,14 @@ chk('a released hold names a number of days, not "a few"',
 // likely to be opened on a different device from the one signing in, and the one
 // most likely to be read in a client that strips the button.
 chk('the magic link prints the URL as well as wrapping it in a button',
-    preg_match('/function send_magic_link_email[\s\S]{0,1800}Copy this link into your browser/', $mlE) === 1
-    && preg_match('/function send_magic_link_email[\s\S]{0,2000}word-break:break-all/', $mlE) === 1);
+    preg_match('/function send_magic_link_email[\s\S]{0,2500}Copy this link into your browser/', $mlE) === 1
+    && preg_match('/function send_magic_link_email[\s\S]{0,2700}word-break:break-all/', $mlE) === 1);
 // BOTH HALVES, ASSERTED SEPARATELY. The text and HTML halves both carry this
 // sentence, so one scan for the phrase passed with the HTML footnote deleted
 // (break-tested) — the plain-text copy was satisfying it.
 chk('...and says it is single-use before they tap it, in both halves',
-    preg_match('/function send_magic_link_email[\s\S]{0,1200}"It works once and expires in 30 minutes/', $mlE) === 1
-    && preg_match("/function send_magic_link_email[\s\S]{0,2600}email_footnote\(\s*\n?\s*'It works once and expires in 30 minutes/", $mlE) === 1);
+    preg_match('/function send_magic_link_email[\s\S]{0,1900}"It works once and expires in 30 minutes/', $mlE) === 1
+    && preg_match("/function send_magic_link_email[\s\S]{0,3300}email_footnote\(\s*\n?\s*'It works once and expires in 30 minutes/", $mlE) === 1);
 
 // THE ENQUIRY ACKNOWLEDGEMENT ANSWERS "WHEN DO I HEAR BACK?"
 // Both halves again, for the reason above (break-tested: deleting the HTML one
