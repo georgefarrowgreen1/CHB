@@ -78,6 +78,7 @@ $uptimeDays = [];
 $uptimeUp = 0;
 $uptimeKnown = 0;
 $uptimeNone = 0;
+$uptimeWarn = 0;
 if ($pdo) {
     try {
         $s = $pdo->prepare("SELECT item_value FROM content WHERE item_key = 'uptime-history'");
@@ -99,6 +100,9 @@ if ($pdo) {
                 }
                 if ($state === 'ok') {
                     $uptimeUp++;
+                }
+                if ($state === 'warn') {
+                    $uptimeWarn++;
                 }
             }
         }
@@ -127,10 +131,10 @@ $rows = [
 // a valid owner choice, not an outage). The website row is true by definition —
 // this script ran — so the database IS the verdict.
 $allCore = $dbUp;
-$overallLabel = $allCore ? 'All systems operational' : 'Some systems are having trouble';
+$overallLabel = $allCore ? 'Everything’s working' : 'Some things aren’t working';
 $overallSub = $allCore
     ? 'The website, bookings and enquiries are all working normally.'
-    : 'The website is up, but part of it isn’t responding. Please try again shortly.';
+    : 'The website is up, but bookings aren’t going through right now. Please try again shortly.';
 
 // Stamped in UK time, not UTC: this is a UK business and the owner compares it
 // against the clock on their own phone — under BST the two were an hour apart,
@@ -138,14 +142,34 @@ $overallSub = $allCore
 // (uk_date()/fmtDate() live in db.php, which this page must not load.)
 $ukNow = new DateTime('now', new DateTimeZone('Europe/London'));
 $checkedAt = $ukNow->format('j M Y, H:i') . ' ' . $ukNow->format('T');
+$checkedClock = 'Today at ' . $ukNow->format('H:i') . ' ' . $ukNow->format('T');
+// The ring is the verdict: full when everything that is switched ON works; a
+// switched-off row is the owner's choice, so it is neither counted for nor against.
+$onRows = array_values(array_filter($rows, fn($r) => $r[1] !== 'off'));
+$okRows = count(array_filter($onRows, fn($r) => $r[1] === 'ok'));
+$ringFrac = $onRows ? $okRows / count($onRows) : 1;
+$ringOff = (int) round(214 - 214 * $ringFrac);
+$uptimePct = $uptimeKnown ? round($uptimeUp / $uptimeKnown * 100, 1) : 0;
+$uptimePctTxt = rtrim(rtrim(number_format($uptimePct, 1, '.', ''), '0'), '.');
+// The little script is SAME-ORIGIN on purpose: the site's CSP carries no
+// 'unsafe-inline' for scripts. Pinned by its own content so a change reaches
+// every visitor however long their cache keeps it.
+$jsV = is_file(__DIR__ . '/status.js') ? substr(md5_file(__DIR__ . '/status.js'), 0, 8) : '0';
+$ICONS = [
+    'Website' => 'M3 5h18v12H3z M8 21h8 M12 17v4',
+    'Database' => 'M12 3c5 0 8 1.3 8 3v12c0 1.7-3 3-8 3s-8-1.3-8-3V6c0-1.7 3-3 8-3z M4 6c0 1.7 3 3 8 3s8-1.3 8-3 M4 12c0 1.7 3 3 8 3s8-1.3 8-3',
+    'Enquiries & bookings' => 'M4 5h16v15H4z M4 10h16 M8 3v4 M16 3v4',
+    'Card payments' => 'M3 7h18v10H3z M3 10h18',
+    'Email' => 'M4 6h16v12H4z M4 7l8 6 8-6',
+];
 
 function status_esc($s)
 {
     return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 }
 
-// State → the glyph inside its badge. SHAPE as well as colour, so the state
-// survives a colour-blind reading, a greyscale print and a phone in bright sun.
+// State → the glyph inside its round badge. SHAPE as well as colour, so the
+// state survives a colour-blind reading, a greyscale print and bright sun.
 function status_glyph($state)
 {
     if ($state === 'ok') {
@@ -154,21 +178,26 @@ function status_glyph($state)
     if ($state === 'off') {
         return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
     }
-    return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4v5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8" cy="11.8" r="1.15" fill="currentColor"/></svg>';
+    return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 }
 // Said to a screen reader, which can't see the badge colour or the glyph.
 function status_word($state)
 {
     return $state === 'ok' ? 'Working' : ($state === 'off' ? 'Switched off' : 'Not working');
 }
+function status_icon($d)
+{
+    return '<span class="ic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="' . status_esc($d) . '"/></svg></span>';
+}
+$dayWords = ['ok' => 'Everything worked all day', 'warn' => 'Running, with a hiccup that sorted itself out', 'none' => 'No check recorded that day'];
 ?>
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark light">
 <title>Service status — Cottage Holidays Blakeney</title>
 <link rel="icon" href="/favicon.png">
 <style>
@@ -189,257 +218,231 @@ function status_word($state)
     font-display: swap;
     src: url('/fonts/playfair-latin.woff2?v=e0c764a8') format('woff2');
   }
+  /* THE ADMIN STATUS PAGE'S LOOK (the approved demo), restated as values: this
+     page keeps no stylesheet dependency, so a broken app.css can never take the
+     one page you check when things are broken down with it. Dark is the default
+     (the back office's), light follows the visitor's setting. */
   :root {
-    color-scheme: light dark;
-    /* Values copied from app.css's :root — the VALUES, not the file, so this
-       page keeps no stylesheet dependency. Each was re-checked by arithmetic
-       against the surface it actually paints on here. */
-    --ink: #1b2a34;
-    --muted: #52646e;        /* 6.16:1 on the card, 5.56:1 on the page */
-    --accent-text: #965c35;  /* 5.41:1 on the card */
-    --page: #f5f3ee;
-    --card: #ffffff;
-    --line: rgba(27, 42, 52, 0.09);
-    /* Status FILLS carry meaning, so they are 1.4.11 non-text cases at 3:1 —
-       and the light-mode pair this page shipped with measured 3.06 and 2.28,
-       i.e. the amber failed outright. These are the deeper steps that clear it
-       AND take a white glyph at 4.5+ (5.13 and 4.24). */
-    --ok: #2e7d32;
-    --warn: #b26a00;
-    --ok-tint: rgba(76, 175, 80, 0.13);
-    --warn-tint: rgba(255, 167, 38, 0.13);
-    --ok-text: #29712d;      /* 5.32:1 on its own tint */
-    --warn-text: #9c5300;    /* 5.27:1 on its own tint */
-    --glyph-ink: #ffffff;    /* on the light-mode fills */
-    --bar-none: rgba(27, 42, 52, 0.10);
-    --shadow: 0 18px 50px -22px rgba(27, 42, 52, 0.35), 0 2px 8px rgba(27, 42, 52, 0.05);
+    color-scheme: dark light;
+    --ground: #121316;
+    --ink: #f4f5f7;
+    --muted: #b4b8c6;      /* 9.5:1 on the ground */
+    --faint: #8d92a0;      /* 6.0:1 */
+    --card: rgba(255, 255, 255, 0.035);
+    --hair: rgba(255, 255, 255, 0.08);
+    --chip: rgba(255, 255, 255, 0.06);
+    --track: rgba(255, 255, 255, 0.08);
+    --accent: #d6a785;
+    --accent-text: #d6a785;
+    --ok: #81c784;
+    --ok-bg: rgba(129, 199, 132, 0.14);
+    --bad: #ef9a9a;
+    --bad-bg: rgba(229, 115, 115, 0.15);
+    --day-ok: #81c784;
+    --day-warn: #ffb74d;
+    --day-none: rgba(255, 255, 255, 0.12);
+    --out: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      --ink: #f4f5f7;
-      --muted: #b4b8c6;       /* 8.41:1 on the dark card */
-      --accent-text: #d6a785; /* 7.71:1 */
-      --page: #17150f;
-      --card: #211e16;
-      --line: rgba(244, 245, 247, 0.08);
-      /* On the dark ground the app's own brighter steps already clear 3:1
-         (5.99 and 8.56) — and they take a DARK glyph, because white on amber
-         is 1.94, the trap --accent-ink exists for in DESIGN.md. */
-      --ok: #4caf50;
-      --warn: #ffa726;
-      --ok-tint: rgba(76, 175, 80, 0.15);
-      --warn-tint: rgba(255, 167, 38, 0.15);
-      --ok-text: #81c784;     /* 6.55:1 on its own tint */
-      --warn-text: #ffb74d;   /* 7.08:1 on its own tint */
-      --glyph-ink: #211e16;
-      --bar-none: rgba(244, 245, 247, 0.12);
-      --shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.6);
+      --ground: #f7f4ee;
+      --ink: #1c1d21;
+      --muted: #55524c;     /* 7.4:1 */
+      --faint: #6a655c;     /* 5.3:1 */
+      --card: #ffffff;
+      --hair: rgba(0, 0, 0, 0.09);
+      --chip: rgba(0, 0, 0, 0.05);
+      --track: rgba(0, 0, 0, 0.08);
+      --accent-text: #8a5a2b;
+      --ok: #2e7d32;
+      --ok-bg: rgba(46, 125, 50, 0.10);
+      --bad: #b3261e;
+      --bad-bg: rgba(198, 40, 40, 0.10);
+      --day-ok: #43a047;
+      --day-warn: #ef8f00;
+      --day-none: rgba(0, 0, 0, 0.14);
     }
   }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes ring { from { stroke-dashoffset: 214; } }
+  @keyframes pop { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes draw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+  @keyframes grow { from { transform: scaleY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes sheen { from { transform: translateX(-120%); } to { transform: translateX(220%); } }
+  @keyframes slide { from { opacity: 0; transform: translateY(-4px); } }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    align-items: safe center; /* tall card on a short screen: never clip the top
-                                 out of reach (ignored where unsupported, so the
-                                 plain value above stays the fallback) */
-    justify-content: center;
-    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background: var(--page);
+    background: var(--ground);
     color: var(--ink);
-    line-height: 1.55;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    /* The notch and home-indicator insets matter here: of every page on the
-       site this is the one most likely to be pinned to a phone home screen. */
-    padding: max(24px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px))
-             max(24px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+    /* Of every page on the site this is the one most likely to be pinned to a
+       phone home screen, so the notch and home-indicator insets matter here. */
+    padding: max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+             max(40px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
   }
-  .card {
-    width: 100%;
-    max-width: 480px;
-    background: var(--card);
-    border-radius: 22px;
-    box-shadow: var(--shadow);
-    padding: 30px 26px 22px;
-    border: 1px solid var(--line);
-  }
+  .wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-height: 44px; animation: fade 500ms ease-out both; }
+  .brand svg { display: block; width: 28px; height: auto; }
+  .brand span { font-family: 'Playfair Display', Georgia, serif; font-size: 17px; font-weight: 600; }
+  h1 { margin: 0; font-size: 28px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; animation: rise 520ms var(--out) 60ms both; }
+  h2 { margin: 0; padding: 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .sec { display: flex; flex-direction: column; gap: 8px; }
+  .card { border-radius: 20px; border: 1px solid var(--hair); background: var(--card); }
 
-  /* ---- head: the crown, the name, then what this page IS ---- */
-  .head { text-align: center; margin-bottom: 22px; }
-  .mark { display: block; width: 46px; margin: 0 auto 12px; }
-  .mark svg { display: block; width: 100%; height: auto; }
-  h1 {
-    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
-    font-size: 1.45rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    margin: 0;
-    line-height: 1.25;
-  }
-  .eyebrow {
-    margin: 7px 0 0;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
+  /* ---- the verdict: a ring that IS the answer ---- */
+  .hero { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 16px; padding: 20px; animation: rise 600ms var(--out) 120ms both; }
+  .hero-top { display: flex; align-items: center; gap: 16px; }
+  .ring { position: relative; flex: none; width: 84px; height: 84px; color: var(--ok); }
+  .is-bad .ring { color: var(--bad); }
+  .ring > svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring .track { fill: none; stroke: var(--track); stroke-width: 6; }
+  .ring .arc { fill: none; stroke: currentColor; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 214; transition: stroke-dashoffset 420ms var(--out); animation: ring 1200ms var(--out) 250ms both; }
+  .ring .mid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .ring .mark { width: 32px; height: 32px; animation: pop 460ms var(--out) 950ms both; }
+  .ring .mark path { stroke-dasharray: 30; animation: draw 420ms ease-out 1150ms both; }
+  .ring .pct { display: none; font-size: 17px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hero-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .hero-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; animation: rise 420ms ease-out 300ms both; }
+  .hero-sub { font-size: 13px; color: var(--muted); line-height: 1.45; animation: rise 420ms ease-out 380ms both; }
+  .hero-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--hair); }
+  .when { display: flex; flex-direction: column; gap: 2px; }
+  .when b { font-size: 13px; font-weight: 600; }
+  .when span { font-size: 12px; color: var(--faint); }
+  .again { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1; text-decoration: none; transition: transform 320ms var(--out); }
+  .again:active { transform: scale(0.96); }
+  .again svg { width: 15px; height: 15px; }
+  .sheen { position: absolute; inset: 0; pointer-events: none; display: none; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.07) 50%, transparent 70%); animation: sheen 1.1s ease-in-out infinite; }
+  /* Checking: the ring spins and says it is checking — the reload that follows IS the check. */
+  .is-checking .sheen { display: block; }
+  .is-checking .ring .arc { stroke-dashoffset: 160 !important; transform-origin: 42px 42px; animation: spin 1s linear infinite; }
+  .is-checking .ring .mark { display: none; }
+  .is-checking .again svg { animation: spin 0.9s linear infinite; }
 
-  /* ---- the verdict: the one thing people come here for ---- */
-  .overall {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 15px 16px;
-    border-radius: 15px;
-  }
-  .overall.ok { background: var(--ok-tint); color: var(--ok-text); }
-  .overall.bad { background: var(--warn-tint); color: var(--warn-text); }
-  .overall-title { font-weight: 700; font-size: 1rem; }
-  .overall-sub { font-weight: 400; font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
-  .overall .badge { margin-top: 1px; }
+  /* ---- what we checked ---- */
+  .list { overflow: hidden; animation: rise 520ms var(--out) 220ms both; }
+  .row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px; animation: rise 380ms var(--out) both; }
+  .row + .row { border-top: 1px solid var(--hair); }
+  .ic { flex: none; width: 36px; height: 36px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); display: inline-flex; align-items: center; justify-content: center; }
+  .txt { flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .name { font-size: 15px; font-weight: 600; }
+  .desc { font-size: 12px; color: var(--faint); line-height: 1.4; }
+  .badge { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; animation: pop 360ms var(--out) both; }
+  .badge svg { width: 15px; height: 15px; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.down { background: var(--bad-bg); color: var(--bad); }
+  .badge.off { background: var(--chip); color: var(--muted); }
+  .is-checking .badge { visibility: hidden; }
 
-  /* ---- one badge spec, shared by the verdict and every row ---- */
-  .badge {
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--glyph-ink);
-  }
-  .badge svg { width: 15px; height: 15px; display: block; }
-  .badge.ok { background: var(--ok); }
-  .badge.down { background: var(--warn); }
-  .badge.off { background: var(--muted); }
+  /* ---- last 30 days ---- */
+  .days { padding: 16px; display: flex; flex-direction: column; gap: 14px; animation: rise 520ms var(--out) 320ms both; }
+  .days-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .big { display: flex; flex-direction: column; gap: 2px; }
+  .big b { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .big b small { font-size: 17px; color: var(--muted); }
+  .big > span { font-size: 12px; color: var(--faint); }
+  .key { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; color: var(--muted); }
+  .key span { display: inline-flex; align-items: center; gap: 6px; }
+  .key i { width: 8px; height: 8px; border-radius: 2px; }
+  .bars { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; align-items: end; height: 48px; }
+  .bar { height: 48px; padding: 0; border: none; background: none; display: flex; align-items: flex-end; cursor: pointer; }
+  .bar i { width: 100%; height: 36px; border-radius: 3px; background: var(--day-ok); transform-origin: bottom; animation: grow 560ms var(--out) both; transition: translate 260ms var(--out), box-shadow 200ms ease; }
+  .bar.warn i { height: 48px; background: var(--day-warn); }
+  .bar.none i { height: 14px; background: var(--day-none); }
+  .bar[aria-pressed="true"] i { translate: 0 -3px; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--ink); }
+  .axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--faint); }
+  .day { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border-radius: 12px; background: var(--chip); font-size: 13px; }
+  .day.is-new { animation: slide 260ms ease-out both; }
+  .day i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--day-ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--day-ok) 22%, transparent); }
+  .day.warn i { background: var(--day-warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--day-warn) 22%, transparent); }
+  .day.none i { background: var(--day-none); box-shadow: none; }
+  .day b { display: block; font-weight: 600; }
+  .day > span > span { color: var(--muted); }
 
-  /* ---- the systems list ---- */
-  ul { list-style: none; margin: 14px 0 0; padding: 0; }
-  li {
-    display: flex;
-    align-items: center;
-    gap: 13px;
-    padding: 13px 2px;
-    border-bottom: 1px solid var(--line);
-  }
-  li:last-child { border-bottom: 0; }
-  .txt { flex: 1; min-width: 0; }
-  .name, .desc, .overall-title, .overall-sub { display: block; }
-  .name { font-weight: 600; font-size: 0.9rem; }
-  .desc { font-size: 0.79rem; color: var(--muted); margin-top: 1px; }
-
-  /* ---- 30-day strip ---- */
-  .uptime { margin-top: 16px; padding-top: 18px; border-top: 1px solid var(--line); }
-  .uptime-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 9px; }
-  .uptime-title { font-size: 0.8rem; font-weight: 600; }
-  .uptime-count { font-size: 0.74rem; color: var(--muted); }
-  .uptime-strip { display: flex; gap: 3px; align-items: stretch; }
-  .uptime-strip i { flex: 1 1 0; height: 26px; border-radius: 3px; background: var(--bar-none); }
-  .uptime-strip i.u-ok { background: var(--ok); }
-  .uptime-strip i.u-warn { background: var(--warn); }
-  /* The axis is what stops the strip lying: without it the leading no-record
-     days read as an outage that the count line has just denied. */
-  .uptime-axis {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 7px;
-    font-size: 0.72rem;
-    color: var(--muted);
-  }
-  .uptime-key { margin: 9px 0 0; font-size: 0.72rem; color: var(--muted); display: flex; align-items: flex-start; gap: 7px; }
-  .uptime-key i { width: 11px; height: 11px; border-radius: 3px; background: var(--bar-none); flex: 0 0 auto; margin-top: 4px; }
-
-  /* ---- foot ---- */
-  .foot { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); font-size: 0.75rem; color: var(--muted); text-align: center; }
-  .foot a { color: var(--accent-text); text-decoration: none; border-bottom: 1px solid currentColor; padding-bottom: 1px; }
-  .foot a:hover, .foot a:focus-visible { color: var(--ink); }
-  .foot-links { margin-top: 7px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
-  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; border-radius: 3px; }
-
-  /* Announced but not painted (app.css's .sr-only, restated locally). */
-  .sr-only {
-    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-  }
-
-  @media (max-width: 380px) {
-    .card { padding: 24px 18px 18px; }
-    h1 { font-size: 1.3rem; }
-    .uptime-strip { gap: 2px; }
+  /* ---- back to the site ---- */
+  .back { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px; color: var(--ink); text-decoration: none; animation: rise 520ms var(--out) 420ms both; transition: transform 320ms var(--out), border-color 200ms ease; }
+  .back:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .back:active { transform: scale(0.98); }
+  .back .chev { flex: none; color: var(--faint); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; border-radius: 8px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .is-checking .ring .arc { animation: spin 1s linear infinite !important; }
   }
 </style>
 </head>
 <body>
-  <main class="card">
-    <header class="head">
-      <span class="mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="4.449 8.173 17.446 10.496"><defs><linearGradient id="cr0" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#dfb9a4" offset="0"></stop><stop stop-color="#af877b" offset="1"></stop></linearGradient><linearGradient id="cr1" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#c49d8d" offset="0"></stop><stop stop-color="#956c65" offset="1"></stop></linearGradient><linearGradient id="cr2" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#d8b19e" offset="0"></stop><stop stop-color="#a67d73" offset="1"></stop></linearGradient><linearGradient id="cr3" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#b99284" offset="0"></stop><stop stop-color="#916862" offset="1"></stop></linearGradient></defs><g transform="matrix(0.8571428571428572,0,0,0.8571428571428572,3.8686100378989408,23.159729244099083)"><path d=" M 9.305130371658928 -8.279466277516764 L 9.309300329634548 -8.279466277516764 L 9.699124142968216 -8.279466277516764 L 6.994906395779325 -12.590664765213132 L 1.2601380611160131 -14.529022650008908 L 5.479597473348762 -8.279466277516764 L 9.305130371658928 -8.279466277516764 Z" fill="url(#cr0)" fill-rule="nonzero"></path><path d=" M 16.227193353799684 -8.279466277516764 L 20.44665276603243 -14.529022650008908 L 14.711884431369116 -12.590664765213132 L 12.007666684180228 -8.279466277516764 L 16.227193353799684 -8.279466277516764 Z" fill="url(#cr1)" fill-rule="nonzero"></path><path d=" M 13.557411388602999 -12.590664765213132 L 10.853395413574221 -16.900652619948836 L 8.149379438545443 -12.590664765213132 L 10.853395413574221 -8.28067691047743 L 13.557411388602999 -12.590664765213132 Z" fill="url(#cr2)" fill-rule="nonzero"></path><path d=" M 4.156779191663706 -5.821881367369727 L 17.550011635484744 -5.821881367369727 L 16.235735041911028 -7.47943966267826 L 5.471055785237414 -7.47943966267826 L 4.156779191663706 -5.821881367369727 Z" fill="url(#cr3)" fill-rule="nonzero"></path></g></svg></span>
-      <h1>Cottage Holidays Blakeney</h1>
-      <p class="eyebrow">Service status</p>
-    </header>
+  <main class="wrap">
+    <header class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="4.449 8.173 17.446 10.496"><defs><linearGradient id="cr0" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#dfb9a4" offset="0"></stop><stop stop-color="#af877b" offset="1"></stop></linearGradient><linearGradient id="cr1" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#c49d8d" offset="0"></stop><stop stop-color="#956c65" offset="1"></stop></linearGradient><linearGradient id="cr2" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#d8b19e" offset="0"></stop><stop stop-color="#a67d73" offset="1"></stop></linearGradient><linearGradient id="cr3" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#b99284" offset="0"></stop><stop stop-color="#916862" offset="1"></stop></linearGradient></defs><g transform="matrix(0.8571428571428572,0,0,0.8571428571428572,3.8686100378989408,23.159729244099083)"><path d=" M 9.305130371658928 -8.279466277516764 L 9.309300329634548 -8.279466277516764 L 9.699124142968216 -8.279466277516764 L 6.994906395779325 -12.590664765213132 L 1.2601380611160131 -14.529022650008908 L 5.479597473348762 -8.279466277516764 L 9.305130371658928 -8.279466277516764 Z" fill="url(#cr0)" fill-rule="nonzero"></path><path d=" M 16.227193353799684 -8.279466277516764 L 20.44665276603243 -14.529022650008908 L 14.711884431369116 -12.590664765213132 L 12.007666684180228 -8.279466277516764 L 16.227193353799684 -8.279466277516764 Z" fill="url(#cr1)" fill-rule="nonzero"></path><path d=" M 13.557411388602999 -12.590664765213132 L 10.853395413574221 -16.900652619948836 L 8.149379438545443 -12.590664765213132 L 10.853395413574221 -8.28067691047743 L 13.557411388602999 -12.590664765213132 Z" fill="url(#cr2)" fill-rule="nonzero"></path><path d=" M 4.156779191663706 -5.821881367369727 L 17.550011635484744 -5.821881367369727 L 16.235735041911028 -7.47943966267826 L 5.471055785237414 -7.47943966267826 L 4.156779191663706 -5.821881367369727 Z" fill="url(#cr3)" fill-rule="nonzero"></path></g></svg><span>Cottage Holidays Blakeney</span></header>
+    <h1>Service status</h1>
 
-    <div class="overall <?= $allCore ? 'ok' : 'bad' ?>" role="status">
-      <span class="badge <?= $allCore ? 'ok' : 'down' ?>"><?= status_glyph($allCore ? 'ok' : 'down') ?></span>
-      <span class="txt">
-        <span class="overall-title"><?= status_esc($overallLabel) ?></span>
-        <span class="overall-sub"><?= status_esc($overallSub) ?></span>
-      </span>
-    </div>
-
-    <ul>
-      <?php foreach ($rows as $r): ?>
-      <li>
-        <span class="badge <?= status_esc($r[1]) ?>"><?= status_glyph($r[1]) ?></span>
-        <span class="txt">
-          <span class="name"><?= status_esc($r[0]) ?></span>
-          <span class="desc"><?= status_esc($r[2]) ?></span>
+    <section class="card hero <?= $allCore ? 'is-ok' : 'is-bad' ?>" id="sp-hero" role="status" aria-live="polite">
+      <span class="sheen" aria-hidden="true"></span>
+      <div class="hero-top">
+        <span class="ring" aria-hidden="true">
+          <svg width="84" height="84" viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="34"/><circle class="arc" cx="42" cy="42" r="34" style="stroke-dashoffset: <?= (int) $ringOff ?>"/></svg>
+          <span class="mid"><?php if ($allCore): ?><svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><?php else: ?><svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 6v8"/><path d="M12 18.5v.01"/></svg><?php endif; ?></span>
         </span>
-        <span class="sr-only"><?= status_esc(status_word($r[1])) ?></span>
-      </li>
-      <?php endforeach; ?>
-    </ul>
-
-    <?php if ($uptimeDays): ?>
-    <section class="uptime">
-      <div class="uptime-head">
-        <span class="uptime-title">Last 30 days</span>
-        <span class="uptime-count"><?= (int) $uptimeUp ?> of <?= (int) $uptimeKnown ?> recorded days healthy</span>
+        <span class="hero-text">
+          <span class="hero-title" id="sp-title"><?= status_esc($overallLabel) ?></span>
+          <span class="hero-sub"><?= status_esc($overallSub) ?></span>
+        </span>
       </div>
-      <?php
-      // One sentence for a screen reader. Once it has been said the bars are
-      // decoration, so they're hidden from the tree rather than read out thirty
-      // times over.
-      $stripLabel =
-          'Daily health for the last 30 days, oldest first: ' .
-          (int) $uptimeUp .
-          ' healthy, ' .
-          (int) ($uptimeKnown - $uptimeUp) .
-          ' with failures, ' .
-          (int) $uptimeNone .
-          ' with no check recorded.';
-      ?>
-      <div class="uptime-strip" role="img" aria-label="<?= status_esc($stripLabel) ?>">
-        <?php foreach ($uptimeDays as $d): ?>
-        <i aria-hidden="true" class="<?= $d['state'] === 'ok' ? 'u-ok' : ($d['state'] === 'warn' ? 'u-warn' : '') ?>" title="<?= status_esc($d['day'] . ' — ' . ($d['state'] === 'ok' ? 'healthy' : ($d['state'] === 'warn' ? 'ran with failures' : 'no record'))) ?>"></i>
+      <div class="hero-foot">
+        <span class="when"><b id="sp-ago" data-at="<?= (int) $ukNow->getTimestamp() ?>">Checked just now</b><span><?= status_esc($checkedClock) ?></span></span>
+        <a class="again" id="sp-again" href="/status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg><span>Check again</span></a>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>What we checked</h2>
+      <div class="card list">
+        <?php foreach ($rows as $i => $r): ?>
+        <div class="row" style="animation-delay: <?= 260 + $i * 70 ?>ms">
+          <?= status_icon($ICONS[$r[0]] ?? $ICONS['Website']) ?>
+          <span class="txt"><span class="name"><?= status_esc($r[0]) ?></span><span class="desc"><?= status_esc($r[2]) ?></span></span>
+          <span class="badge <?= status_esc($r[1]) ?>" style="animation-delay: <?= 600 + $i * 90 ?>ms"><?= status_glyph($r[1]) ?></span>
+          <span class="sr-only"><?= status_esc(status_word($r[1])) ?></span>
+        </div>
         <?php endforeach; ?>
       </div>
-      <div class="uptime-axis" aria-hidden="true"><span>30 days ago</span><span>Today</span></div>
-      <?php if ($uptimeNone): ?>
-      <p class="uptime-key"><i aria-hidden="true"></i> Faded = no check recorded that day.</p>
-      <?php endif; ?>
+    </section>
+
+    <?php if ($uptimeDays): ?>
+    <section class="sec">
+      <h2>Last 30 days</h2>
+      <div class="card days">
+        <div class="days-top">
+          <span class="big"><b><span id="sp-pct" data-to="<?= status_esc($uptimePctTxt) ?>"><?= status_esc($uptimePctTxt) ?></span><small>%</small></b><span>of recorded days fully healthy</span></span>
+          <span class="key">
+            <span><i style="background: var(--day-ok)"></i><?= (int) $uptimeUp ?> healthy</span>
+            <?php if ($uptimeWarn): ?><span><i style="background: var(--day-warn)"></i><?= (int) $uptimeWarn ?> hiccup<?= $uptimeWarn === 1 ? '' : 's' ?></span><?php endif; ?>
+            <?php if ($uptimeNone): ?><span><i style="background: var(--day-none)"></i><?= (int) $uptimeNone ?> not recorded</span><?php endif; ?>
+          </span>
+        </div>
+        <div class="bars" id="sp-bars">
+          <?php foreach ($uptimeDays as $j => $d):
+              $dt = DateTime::createFromFormat('!Y-m-d', $d['day'], new DateTimeZone('Europe/London'));
+              $label = $j === count($uptimeDays) - 1 ? 'Today' : ($dt ? $dt->format('l j F') : $d['day']);
+              ?>
+          <button type="button" class="bar <?= status_esc($d['state']) ?>" aria-pressed="<?= $j === count($uptimeDays) - 1 ? 'true' : 'false' ?>" data-date="<?= status_esc($label) ?>" data-word="<?= status_esc($dayWords[$d['state']]) ?>" aria-label="<?= status_esc($label . ': ' . $dayWords[$d['state']]) ?>"><i style="animation-delay: <?= 520 + $j * 22 ?>ms"></i></button>
+          <?php endforeach; ?>
+        </div>
+        <div class="axis" aria-hidden="true"><span><?= status_esc((new DateTime($uptimeDays[0]['day']))->format('j M')) ?></span><span>Today</span></div>
+        <?php $last = $uptimeDays[count($uptimeDays) - 1]; ?>
+        <div class="day <?= status_esc($last['state']) ?>" id="sp-day" aria-live="polite"><i aria-hidden="true"></i><span><b>Today</b><span><?= status_esc($dayWords[$last['state']]) ?></span></span></div>
+      </div>
     </section>
     <?php endif; ?>
 
-    <footer class="foot">
-      Checked <?= status_esc($checkedAt) ?>
-      <span class="foot-links">
-        <a href="/status">Check again</a>
-        <a href="/">Back to the website</a>
-      </span>
-    </footer>
+    <a class="card back" href="/"><?= status_icon('M4 11l8-7 8 7v9H4z M10 20v-6h4v6') ?><span class="txt"><span class="name">Back to the website</span><span class="desc">See the cottages and book</span></span><svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
   </main>
+  <script src="/status.js?v=<?= status_esc($jsV) ?>" defer></script>
 </body>
 </html>
