@@ -3986,11 +3986,11 @@ function guestDockNeedsSync() {
     });
 }
 
-// THINGS TO DO LIVE ON THE YOU PAGE (approved demo). A row of cards between the
+// THINGS TO DO LIVE ON THE YOU PAGE (approved demos). A row of cards between the
 // stays and the settings, only for a guest who has booked (the server refuses
 // anyone else). Its caption follows the stay: "Plan your trip" before it,
-// "Near <cottage>" during it, when the boat trips come first with the next high
-// water — the tide feed the site already has. "See all" opens the full list.
+// "Near <cottage>" during it, when a tide chart leads (boats go out with the
+// tide — the feed the site already has) and the boat trips come first.
 let __gaTodoTried = false;
 // __experiences is declared far below; reading it before that line runs is a TDZ throw.
 function gaExps() {
@@ -4017,17 +4017,22 @@ function gaTodoHtml() {
     }
     const sp = gaStaysSplit();
     const cap = sp && sp.kind === 'now' ? 'Near ' + gaStayName(sp.lead) : sp && sp.kind === 'up' ? 'Plan your trip' : 'Things to do';
+    const all = gaExps();
     const cards = gaTodoOrder()
         .slice(0, 5)
         .map((x) => {
-            const art = x.image
-                ? `<img class="ga-tart" src="${escapeHtml(x.image)}" alt="" loading="lazy" decoding="async">`
-                : expPlaceholder(x).replace('class="card-img exp-noimg"', 'class="ga-tart exp-noimg"');
-            return `<button type="button" class="ga-tcard" ${chbAttrs('gaOpenTodo', x.id)}>${art}${x.category ? `<span class="ga-tcat">${escapeHtml(x.category)}</span>` : ''}<span class="ga-tb"><span class="ga-tn">${escapeHtml(x.title)}</span>${x.distance ? `<span class="ga-td">${escapeHtml(x.distance)}</span>` : ''}</span></button>`;
+            const k = expKind(x.category);
+            return `<button type="button" class="ga-tcard" ${chbAttrs('gaOpenTodo', x.id)}>${expPic(x, 'ga-tart')}<span class="ga-tb"><span class="ga-tk">${escapeHtml(k[1])}</span><span class="ga-tn">${escapeHtml(x.title)}</span>${x.distance ? `<span class="ga-td">${escapeHtml(x.distance)}</span>` : ''}</span></button>`;
         })
         .join('');
-    return `<div class="ga-caprow"><h2 class="ga-cap">${escapeHtml(cap)}</h2><button type="button" class="ga-link ga-seeall" data-act="gaOpenTodo">See all</button></div>` +
-        `<div id="ga-tide"></div><div class="ga-tdo">${cards}</div>`;
+    const counts = {};
+    all.forEach((x) => (counts[x.category] = (counts[x.category] || 0) + 1));
+    const nSaved = all.filter((x) => expSaved().has(Number(x.id))).length;
+    const quick = EXP_KINDS.filter((k) => counts[k[0]]).slice(0, 3).map((k) => [k[0], k[1]]);
+    if (nSaved) quick.push(['saved', `Your list · ${nSaved}`]);
+    return `<div class="ga-caprow"><h2 class="ga-cap">${escapeHtml(cap)}</h2><button type="button" class="ga-link ga-seeall" data-act="gaOpenTodo">See all ${all.length}</button></div>` +
+        `<div id="ga-tide"></div><div class="ga-tdo">${cards}<button type="button" class="ga-tcard ga-tmore" data-act="gaOpenTodo">All ${all.length} places</button></div>` +
+        `<div class="ga-tquick">${quick.map(([c, t]) => `<button type="button" class="ga-tq" ${chbAttrs('gaOpenTodoCat', c)}>${escapeHtml(t)}</button>`).join('')}</div>`;
 }
 function gaTodoPaint() {
     const host = document.getElementById('ga-todo');
@@ -4045,7 +4050,33 @@ async function gaTodoLoad() {
     }
     gaTodoPaint();
 }
-// The next high water, while they are staying — never a departure time we don't have.
+// The day's tide as a small chart, drawn from the high/low times the feed gives —
+// a cosine between neighbouring extremes, with a mark for now. Never a time we don't have.
+function tideChartSvg(ex, now) {
+    const day0 = new Date(todayDashed() + 'T00:00:00').getTime();
+    const pts = ex.map((e) => ({ x: (e.t - day0) / 3600e3, y: /high/i.test(e.type) ? 1 : -1 })).sort((a, z) => a.x - z.x);
+    if (pts.length < 2) return '';
+    const at = (h) => {
+        let i = 0;
+        while (i < pts.length - 2 && pts[i + 1].x < h) i++;
+        const a = pts[i], b = pts[i + 1];
+        const f = Math.min(1, Math.max(0, (h - a.x) / (b.x - a.x || 1)));
+        return a.y + (b.y - a.y) * (1 - Math.cos(f * Math.PI)) / 2;
+    };
+    const line = [];
+    for (let h = 0; h <= 24; h += 0.25) line.push(`${(h / 24 * 300).toFixed(1)},${(28 - at(h) * 20).toFixed(1)}`);
+    const nh = (now - day0) / 3600e3;
+    const nx = nh / 24 * 300, ny = 28 - at(nh) * 20;
+    return `<svg class="tide-svg" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true"><path d="M0,56 L${line.join(' L')} L300,56z" class="tide-fill"/><polyline points="${line.join(' ')}" class="tide-line"/><line x1="${nx}" x2="${nx}" y1="0" y2="56" class="tide-now"/><circle cx="${nx}" cy="${ny}" r="4" class="tide-dot"/></svg>`;
+}
+function tideToday() {
+    const d = typeof __tideData !== 'undefined' ? __tideData : null;
+    if (!d || !d.ok || !Array.isArray(d.extremes)) return null;
+    const today = todayDashed();
+    const all = d.extremes.map((e) => ({ t: new Date(e.time).getTime(), type: e.type })).filter((e) => e.t).sort((a, z) => a.t - z.t);
+    const ex = all.filter((e) => ukDateOfInstant(e.t) === today);
+    return ex.length ? { ex, all } : null;
+}
 async function gaTideTip() {
     const sp = gaStaysSplit();
     const el = document.getElementById('ga-tide');
@@ -4055,26 +4086,31 @@ async function gaTideTip() {
     } catch (e) {
         return;
     }
-    const d = __tideData;
-    if (!d || !d.ok || !Array.isArray(d.extremes)) return;
+    const td = tideToday();
+    if (!td || !document.getElementById('ga-tide')) return;
     const now = Date.now();
-    const hi = d.extremes
-        .map((e) => ({ t: new Date(e.time).getTime(), type: e.type }))
-        .filter((e) => /high/i.test(e.type) && e.t >= now && ukDateOfInstant(e.t) === todayDashed())
-        .sort((a, z) => a.t - z.t)[0];
-    if (!hi || !document.getElementById('ga-tide')) return;
-    el.innerHTML = `<div class="ga-tip"><b>Boat trips go out with the tide.</b> High water today is at ${escapeHtml(ukClockHm(hi.t))}.</div>`;
+    const next = td.all.find((e) => e.t >= now);
+    el.innerHTML = `<button type="button" class="ga-tidecard" ${chbAttrs('gaOpenTodoCat', 'Boat trips & wildlife')}><span class="ga-tide-top"><span><span class="ga-tide-k">Tide today</span>${next ? `<b>${/high/i.test(next.type) ? 'High' : 'Low'} water at ${escapeHtml(ukClockHm(next.t))}</b>` : ''}</span><span class="ga-tide-go">Seal trips ›</span></span>${tideChartSvg(td.ex, now)}<span class="ga-tide-ticks">${td.ex.map((e) => `<span class="${e.t < now ? 'is-past' : ''}">${/high/i.test(e.type) ? 'High' : 'Low'}<b>${escapeHtml(ukClockHm(e.t))}</b></span>`).join('')}</span></button>`;
 }
 async function gaOpenTodo(id) {
+    __expFilter = 'all';
+    __expQ = '';
     nav('view-experiences');
     if (id == null) return;
-    for (let i = 0; i < 30 && !document.querySelector(`#exp-grid [data-exp-id="${Number(id)}"]`); i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 30 && !gaExps().some((x) => Number(x.id) === Number(id)); i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 20 && !document.querySelector(`#exp-grid [data-exp-id="${Number(id)}"]`); i++) await new Promise((r) => setTimeout(r, 100));
+    expOpenDetail(Number(id));
     const row = document.querySelector(`#exp-grid [data-exp-id="${Number(id)}"]`);
-    if (!row) return;
-    expRowOpen(row, true);
-    try {
-        row.scrollIntoView({ block: 'start', behavior: chbReducedMotion() ? 'auto' : 'smooth' });
-    } catch (e) {}
+    if (row && expWide()) {
+        try {
+            row.scrollIntoView({ block: 'center', behavior: chbReducedMotion() ? 'auto' : 'smooth' });
+        } catch (e) {}
+    }
+}
+function gaOpenTodoCat(cat) {
+    __expFilter = cat || 'all';
+    __expQ = '';
+    nav('view-experiences');
 }
 
 // THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask). body.has-booked
@@ -9962,7 +9998,8 @@ async function renderTides() {
             hide();
             return;
         }
-        body.innerHTML = next
+        const td = tideToday();
+        body.innerHTML = (td ? tideChartSvg(td.ex, Date.now()) : '') + next
             .map((e) => {
                 const label = /high/i.test(e.type) ? 'High tide' : 'Low tide';
                 // The quay's clock, not the device's (ukClockHm).
@@ -15282,6 +15319,7 @@ const MODAL_CLOSERS = {
     'messages-modal': closeMessagesModal,
     'waitlist-modal': closeWaitlistModal,
     'ga-photo-sheet': gaPhotoSheetClose,
+    'exp-detail-modal': closeExpDetail,
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
 };
@@ -20471,132 +20509,273 @@ async function renderExperiencesView() {
         return;
     }
     if (empty) empty.style.display = 'none';
-    if (__expFilter !== 'all' && !__experiences.some((x) => x.category === __expFilter))
+    if (__expFilter !== 'all' && __expFilter !== 'saved' && !__experiences.some((x) => x.category === __expFilter))
         __expFilter = 'all';
+    const q = /** @type {HTMLInputElement|null} */ (document.getElementById('exp-q'));
+    if (q && q.value !== __expQ) q.value = __expQ;
+    const qc = document.getElementById('exp-qclear');
+    if (qc) qc.hidden = !__expQ;
     expBuildFilters();
     expRenderCards();
+    expDetailPaint();
+    // The tide, if a stay is in progress, decides the boat group's note: re-draw once it lands.
+    loadTideData().then(() => expHighWater() && expRenderCards()).catch(() => {});
+}
+document.addEventListener('click', (e) => {
+    const t = e.target instanceof Element ? e.target.closest('[data-exp-save]') : null;
+    if (t instanceof HTMLElement) expSaveToggle(t.dataset.expSave);
+});
+// ---- THE LIST, POLISHED (approved demo) ----
+// Grouped by kind in the order a coastal guest reaches for them, a search box,
+// a ♡ that keeps places on THIS phone (localStorage — nothing new on the
+// server), and a detail that opens as a sheet on a phone and in a pane beside
+// the list from 900px, so the list never moves under the guest.
+const EXP_KINDS = [
+    ['Boat trips & wildlife', 'Seal trips', 'boat'],
+    ['Food & drink', 'Pubs & food', 'pub'],
+    ['Walks & nature', 'Walks', 'marsh'],
+    ['Beaches & coast', 'Beaches', 'huts'],
+    ['Family & kids', 'Family', 'crab'],
+    ['Days out & attractions', 'Days out', 'mill'],
+    ['Local shops & markets', 'Shops', 'shop'],
+];
+const expKind = (c) => EXP_KINDS.find((k) => k[0] === c) || [c || 'Other', c || 'Other', 'marsh'];
+let __expQ = '';
+let __expOpen = 0;
+let __expSaved = null;
+function expSaved() {
+    if (!__expSaved) {
+        try {
+            __expSaved = new Set(JSON.parse(localStorage.getItem('chb-exp-saved') || '[]').map(Number));
+        } catch (e) {
+            __expSaved = new Set();
+        }
+    }
+    return __expSaved;
+}
+function expSaveToggle(id) {
+    id = Number(id);
+    const s = expSaved();
+    const on = !s.has(id);
+    if (on) s.add(id);
+    else s.delete(id);
+    try {
+        localStorage.setItem('chb-exp-saved', JSON.stringify([...s]));
+    } catch (e) {}
+    toast(on ? 'Saved to your list' : 'Removed from your list');
+    expBuildFilters();
+    expRenderCards();
+    if (__expOpen === id) expDetailPaint();
+    const b = document.querySelector(`#exp-grid [data-exp-id="${id}"] .exp-save`);
+    if (b && on) b.classList.add('pop');
+    try {
+        gaTodoPaint();
+    } catch (e) {}
+}
+// One small scene per kind, so rows read apart before their names do. The
+// colours are the --exp-* tokens (app.css), so the scene follows the theme.
+function expArt(kind, seed) {
+    const v = (Number(seed) % 3) * 6;
+    const sky = '<rect width="120" height="80" fill="var(--exp-sky)"/>';
+    const ink = 'var(--exp-ink)';
+    const S = {
+        boat: `${sky}<circle cx="${92 - v}" cy="20" r="9" fill="var(--exp-sun)"/><rect y="46" width="120" height="34" fill="var(--exp-sea)"/><path d="M0 46h120" stroke="var(--exp-sand)" stroke-width="4"/><path d="M${54 + v} 50h26l-5 9H${59 + v}z" fill="${ink}"/><rect x="${63 + v}" y="41" width="8" height="9" rx="1" fill="${ink}"/><ellipse cx="${24 + v}" cy="58" rx="10" ry="4" fill="${ink}"/><circle cx="${32 + v}" cy="54" r="3.2" fill="${ink}"/>`,
+        pub: `<rect width="120" height="80" fill="var(--exp-sun)"/><rect x="18" y="30" width="84" height="50" fill="var(--exp-sand)"/><path d="M14 32 60 10l46 22z" fill="var(--exp-sea)"/><rect x="${30 + v}" y="44" width="14" height="14" rx="2" fill="var(--exp-lamp)"/><rect x="${72 - v}" y="44" width="14" height="14" rx="2" fill="var(--exp-lamp)"/><rect x="53" y="54" width="14" height="26" rx="2" fill="${ink}"/>`,
+        marsh: `${sky}<rect y="50" width="120" height="30" fill="var(--exp-marsh)"/>${[14, 26, 38, 84, 96, 108].map((x, i) => `<path d="M${x + v} 52v-${12 + (i % 3) * 5}" stroke="${ink}" stroke-width="1.6"/>`).join('')}<path d="M${56 - v} 24c4-3 8-3 12 0M${68 - v} 24c4-3 8-3 12 0" stroke="${ink}" stroke-width="1.6" fill="none"/>`,
+        huts: `${sky}<rect y="54" width="120" height="26" fill="var(--exp-sand)"/>${['var(--accent)', 'var(--exp-sea)', 'var(--exp-marsh)', 'var(--exp-lamp)'].map((c, i) => `<path d="M${14 + i * 24 + v / 2} 54V38l8-7 8 7v16z" fill="${c}"/>`).join('')}`,
+        crab: `<rect width="120" height="80" fill="var(--exp-sand)"/><rect y="56" width="120" height="24" fill="var(--exp-sea)"/><ellipse cx="${60 + v / 2}" cy="44" rx="18" ry="11" fill="var(--exp-crab)"/><path d="M${44 + v / 2} 40l-10-8M${76 + v / 2} 40l10-8M${46 + v / 2} 50l-10 6M${74 + v / 2} 50l10 6" stroke="var(--exp-crab)" stroke-width="3" stroke-linecap="round"/><circle cx="${54 + v / 2}" cy="38" r="2" fill="${ink}"/><circle cx="${66 + v / 2}" cy="38" r="2" fill="${ink}"/>`,
+        mill: `${sky}<rect y="56" width="120" height="24" fill="var(--exp-marsh)"/><path d="M${54 + v} 58l4-28h8l4 28z" fill="${ink}"/><g stroke="${ink}" stroke-width="3"><path d="M${62 + v} 30l-14-14M${62 + v} 30l14-14M${62 + v} 30l-14 14M${62 + v} 30l14 14"/></g>`,
+        shop: `<rect width="120" height="80" fill="var(--exp-sun)"/><rect x="20" y="28" width="80" height="52" fill="var(--exp-sand)"/>${[0, 1, 2, 3, 4].map((i) => `<path d="M${20 + i * 16} 28h16v8a8 8 0 0 1-16 0z" fill="${i % 2 ? 'var(--exp-sand)' : 'var(--accent)'}"/>`).join('')}<rect x="${34 + v}" y="48" width="22" height="20" rx="2" fill="var(--exp-sky)"/><rect x="${66 - v / 2}" y="48" width="18" height="32" rx="2" fill="var(--exp-sea)"/>`,
+    };
+    return `<svg class="exp-art" viewBox="0 0 120 80" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${S[kind] || S.marsh}</svg>`;
+}
+// A photo the owner uploaded leads; the scene stands in for one.
+function expPic(x, cls) {
+    return x.image
+        ? `<span class="${cls}"><img src="${escapeHtml(x.image)}" alt="" loading="lazy" decoding="async"></span>`
+        : `<span class="${cls}">${expArt(expKind(x.category)[2], x.id)}</span>`;
+}
+function expMatch(x) {
+    if (__expFilter === 'saved' && !expSaved().has(Number(x.id))) return false;
+    if (__expFilter !== 'all' && __expFilter !== 'saved' && x.category !== __expFilter) return false;
+    if (!__expQ) return true;
+    return [x.title, x.body, x.category, x.distance].join(' ').toLowerCase().includes(__expQ.toLowerCase());
 }
 function expBuildFilters() {
     const filters = document.getElementById('exp-filters');
     if (!filters) return;
-    const present = EXPERIENCE_CATEGORIES.filter((c) =>
-        __experiences.some((x) => x.category === c),
+    const counts = {};
+    __experiences.forEach((x) => {
+        counts[x.category] = (counts[x.category] || 0) + 1;
+    });
+    const chips = [['all', 'All', __experiences.length], ['saved', 'Your list', __experiences.filter((x) => expSaved().has(Number(x.id))).length]].concat(
+        EXP_KINDS.filter((k) => counts[k[0]]).map((k) => [k[0], k[1], counts[k[0]]]),
     );
-    if (present.length < 2) {
-        filters.innerHTML = '';
-        return;
-    }
-    filters.innerHTML = ['all']
-        .concat(present)
-        .map((c) => {
-            const on = __expFilter === c ? ' is-on' : '';
-            return `<button type="button" class="exp-chip${on}" data-cat="${escapeHtml(c)}">${c === 'all' ? 'All' : escapeHtml(c)}</button>`;
-        })
+    filters.innerHTML = chips
+        .map(([c, t, n]) => `<button type="button" class="exp-chip${__expFilter === c ? ' is-on' : ''}" data-cat="${escapeHtml(c)}" aria-pressed="${__expFilter === c}">${escapeHtml(t)} <span class="exp-cc">${n}</span></button>`)
         .join('');
-    filters.querySelectorAll('.exp-chip').forEach((b) =>
+    /** @type {NodeListOf<HTMLElement>} */ (filters.querySelectorAll('.exp-chip')).forEach((b) =>
         b.addEventListener('click', () => {
             __expFilter = b.dataset.cat;
             // TRAVEL: toggle in place — a rebuild would destroy the pill mid-flight.
-            filters.querySelectorAll('.exp-chip').forEach((x) => x.classList.toggle('is-on', x.dataset.cat === __expFilter));
+            /** @type {NodeListOf<HTMLElement>} */ (filters.querySelectorAll('.exp-chip')).forEach((x) => {
+                x.classList.toggle('is-on', x.dataset.cat === __expFilter);
+                x.setAttribute('aria-pressed', String(x.dataset.cat === __expFilter));
+            });
             chbSeatPill(filters);
             expRenderCards();
         }),
     );
     chbSeatPill(filters, true);
 }
+// Today's next high water while the guest is staying — null when there is no
+// stay in progress or the tide feed has nothing, so nothing is said.
+function expHighWater() {
+    let sp = null;
+    try {
+        sp = gaStaysSplit();
+    } catch (e) {}
+    if (!sp || sp.kind !== 'now') return null;
+    const d = typeof __tideData !== 'undefined' ? __tideData : null;
+    if (!d || !d.ok || !Array.isArray(d.extremes)) return null;
+    const now = Date.now();
+    const hi = d.extremes
+        .map((e) => ({ t: new Date(e.time).getTime(), type: e.type }))
+        .filter((e) => /high/i.test(e.type) && e.t >= now && ukDateOfInstant(e.t) === todayDashed())
+        .sort((a, z) => a.t - z.t)[0];
+    return hi ? ukClockHm(hi.t) : null;
+}
+function expRowHtml(x) {
+    const on = expSaved().has(Number(x.id));
+    const facts = [x.linkUrl ? 'Website' : '', x.phone ? 'Phone' : ''].filter(Boolean).join(' · ');
+    return `<div class="exp-card exp-row${__expOpen === Number(x.id) ? ' is-open' : ''}" data-exp-id="${Number(x.id) || 0}">` +
+        `<button type="button" class="exp-rowbtn" aria-haspopup="dialog" aria-expanded="${__expOpen === Number(x.id)}">${expPic(x, 'exp-thumb')}` +
+        `<span class="exp-rowtx"><span class="card-title">${escapeHtml(x.title)}</span><span class="exp-meta">${x.distance ? `<span class="exp-dist">${escapeHtml(x.distance)}</span>` : ''}${facts ? `<span>${facts}</span>` : ''}</span></span></button>` +
+        `<button type="button" class="exp-save${on ? ' is-on' : ''}" aria-pressed="${on}" aria-label="${on ? 'Remove from your list' : 'Save to your list'}: ${escapeHtml(x.title)}">${EXP_HEART}</button></div>`;
+}
+const EXP_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.4-9.2-9.4C1.6 7 4 4 7.2 4c2 0 3.5 1.1 4.8 2.9C13.3 5.1 14.8 4 16.8 4 20 4 22.4 7 21.2 10.6 19.5 15.6 12 20 12 20z"/></svg>';
 function expRenderCards() {
     const grid = document.getElementById('exp-grid');
     if (!grid) return;
-    const list =
-        __expFilter === 'all'
-            ? __experiences
-            : __experiences.filter((x) => x.category === __expFilter);
-    // First card with a given photo keeps it; later cards that repeat the same
-    // photo (or have none) get a distinct category illustration instead — so the
-    // page never shows the same picture two or three times in a row.
-    const seen = {};
     if (!grid.dataset.rows) {
         grid.dataset.rows = '1';
         grid.addEventListener('click', (e) => {
-            const t = e.target instanceof Element ? e.target.closest('.exp-rowbtn') : null;
-            if (t && t.parentElement) expRowOpen(t.parentElement);
+            const t = e.target instanceof Element ? e.target : null;
+            if (!t) return;
+            const sv = t.closest('.exp-save');
+            const row = /** @type {HTMLElement|null} */ (t.closest('.exp-row'));
+            if (sv && row) return expSaveToggle(row.dataset.expId);
+            if (t.closest('.exp-rowbtn') && row) return expOpenDetail(Number(row.dataset.expId));
+            if (t.closest('[data-exp-clear]')) {
+                __expQ = '';
+                __expFilter = 'all';
+                const q = /** @type {HTMLInputElement|null} */ (document.getElementById('exp-q'));
+                if (q) q.value = '';
+                expBuildFilters();
+                expRenderCards();
+            }
         });
     }
-    grid.innerHTML = list
-        .map((x) => {
-            const dup = x.image && seen[x.image];
-            if (x.image) seen[x.image] = 1;
-            return expCardHtml(x, !!dup);
-        })
+    const hits = __experiences.filter(expMatch);
+    if (!hits.length) {
+        const saved = __expFilter === 'saved' && !__expQ;
+        grid.innerHTML = `<div class="exp-none"><p class="exp-none-t">${saved ? 'Nothing saved yet' : `Nothing matches “${escapeHtml(__expQ)}”`}</p><p>${saved ? 'Tap ♡ on any place to keep it here. Your list stays on this phone.' : 'Try a place name, or a word like crab, pub or walk.'}</p><button type="button" class="btn-glass" data-exp-clear>${saved ? 'See everything' : 'Clear the search'}</button></div>`;
+        return;
+    }
+    const hw = expHighWater();
+    /** @type {Array<[string, any[], string]>} */
+    const groups = [];
+    if (__expFilter === 'saved') groups.push(['Your list', hits, 'Saved on this phone.']);
+    else {
+        if (__expFilter === 'all' && !__expQ) {
+            const mine = __experiences.filter((x) => expSaved().has(Number(x.id)));
+            if (mine.length) groups.push(['Your list', mine, 'Saved on this phone.']);
+        }
+        EXP_KINDS.forEach((k) => {
+            const its = hits.filter((x) => x.category === k[0]);
+            if (its.length) groups.push([k[0], its, k[0] === 'Boat trips & wildlife' && hw ? `Boats go out with the tide: high water today at ${hw}.` : '']);
+        });
+        const other = hits.filter((x) => !EXP_KINDS.some((k) => k[0] === x.category));
+        if (other.length) groups.push(['More', other, '']);
+    }
+    grid.innerHTML = groups
+        .map(([h, its, note]) => `<section class="exp-sec"><div class="exp-sech"><h2>${escapeHtml(h)}</h2><span>${its.length}</span></div>${note ? `<p class="exp-secnote">${escapeHtml(note)}</p>` : ''}<div class="exp-group">${its.map(expRowHtml).join('')}</div></section>`)
         .join('');
 }
-// Deterministic hue (0–359) from a string, so each experience tints differently.
-function expHue(s) {
-    s = String(s || '');
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
-    return h;
+function expSearch(v) {
+    __expQ = String(v || '').trim();
+    const c = document.getElementById('exp-qclear');
+    if (c) c.hidden = !__expQ;
+    expRenderCards();
 }
-// Simple on-brand line motif per category (fallback = star) for image-less cards.
-const EXP_CAT_ART = {
-    'Boat trips & wildlife': '<path d="M4 16h16l-2.2 4H6.2z"/><path d="M12 3v9M12 5l6 2.5L12 10"/>',
-    'Walks & nature':
-        '<path d="M12 21v-9"/><path d="M12 12c-3 0-5-2-5-5 3 0 5 2 5 5z"/><path d="M12 11c2.6 0 4.2-1.6 4.2-4.2C13.6 6.8 12 8.4 12 11z"/>',
-    'Beaches & coast':
-        '<circle cx="17" cy="6.5" r="2.6"/><path d="M2 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18.5c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>',
-    'Food & drink':
-        '<path d="M6.5 3v7a2 2 0 0 0 4 0V3M8.5 12v9"/><path d="M16 3c-1.4 0-2.4 2-2.4 4.8 0 2.4 1 3.7 2.4 3.7s2.4-1.3 2.4-3.7C18.4 5 17.4 3 16 3zM16 11.5V21"/>',
-    'Family & kids': '<circle cx="12" cy="7" r="3"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
-    'Days out & attractions':
-        '<path d="M12 3.5l2.6 5.3 5.9.8-4.3 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.5 9.6l5.9-.8z"/>',
-    'Local shops & markets':
-        '<path d="M4.5 8h15l-1.1 12H5.6z"/><path d="M8.5 8a3.5 3.5 0 0 1 7 0"/>',
-};
-function expPlaceholder(x) {
-    const art =
-        EXP_CAT_ART[x.category] ||
-        '<path d="M12 3.5l2.6 5.3 5.9.8-4.3 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.5 9.6l5.9-.8z"/>';
-    return `<div class="card-img exp-noimg" style="--exp-h:${expHue(x.title || x.category || '')}"><svg class="exp-art" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${art}</svg></div>`;
+function expSearchInput(el) {
+    expSearch(el && el.value);
 }
-function expCardHtml(x, usePlaceholder) {
-    const img =
-        x.image && !usePlaceholder
-            ? `<img class="card-img exp-img" width="400" height="260" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
-            : expPlaceholder(x);
-    const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
-    // Only allow safe link schemes (block javascript:/data: even though experiences
-    // are admin-moderated — the admin preview would otherwise render it).
-    const safeLink = /^(https?:|tel:|mailto:)/i.test((x.linkUrl || '').trim()) ? x.linkUrl : '';
-    const link = safeLink
-        ? `<a class="btn-sm btn-edit" href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 5H5v14h14v-5"/></svg> ${escapeHtml(x.linkLabel || 'Find out more')}</a>`
-        : '';
-    const phone = x.phone
-        ? `<a class="btn-sm btn-edit" href="tel:${escapeHtml(String(x.phone).replace(/\s+/g, ''))}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call</a>`
-        : '';
-    const directions = x.mapQuery
-        ? `<a class="btn-sm btn-edit" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.mapQuery)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> Directions</a>`
-        : '';
-    const dist = x.distance
-        ? `<div class="exp-dist"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> ${escapeHtml(x.distance)}</div>`
-        : '';
-    const actions =
-        link || phone || directions
-            ? `<div class="exp-actions">${link}${phone}${directions}</div>`
-            : '';
-    // A ROW, not a screen-sized card (approved demo): picture, name and distance;
-    // tapping it unfolds the words and the actions in place.
-    const thumb = img.replace('class="card-img ', 'class="card-img exp-thumb ').replace('width="400" height="260"', 'width="112" height="112"');
-    return `<div class="exp-card exp-row" data-exp-id="${Number(x.id) || 0}"><button type="button" class="exp-rowbtn" aria-expanded="false">${thumb}<span class="exp-rowtx"><span class="card-title">${escapeHtml(x.title)}</span>${dist}</span>${GA_CHEV}</button><div class="exp-fold" hidden><div class="exp-foldin">${cat}<p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div></div></div>`;
+function expSearchClear() {
+    const q = /** @type {HTMLInputElement|null} */ (document.getElementById('exp-q'));
+    if (q) {
+        q.value = '';
+        q.focus();
+    }
+    expSearch('');
 }
-
-function expRowOpen(row, open) {
-    const btn = row.querySelector('.exp-rowbtn');
-    const fold = row.querySelector('.exp-fold');
-    if (!btn || !fold) return;
-    const on = open == null ? fold.hidden : !!open;
-    fold.hidden = !on;
-    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
-    row.classList.toggle('is-open', on);
+const expWide = () => window.matchMedia('(min-width: 900px)').matches;
+function expDetailHtml(x, inPane) {
+    const k = expKind(x.category);
+    const on = expSaved().has(Number(x.id));
+    const safeLink = /^(https?:)/i.test((x.linkUrl || '').trim()) ? x.linkUrl : '';
+    const hw = expHighWater();
+    const tide = x.category === 'Boat trips & wildlife'
+        ? `<p class="exp-tnote"><b>Departures follow the tide.</b> ${hw ? `High water today is at ${hw}; ring ahead to check the times.` : 'Ring ahead or check their website for the day you want.'}</p>`
+        : '';
+    const ic = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    const acts = [
+        safeLink ? `<a class="exp-act" href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${ic('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>')}${/book/i.test(x.linkLabel || '') ? 'Book' : 'Website'}</a>` : '',
+        x.phone ? `<a class="exp-act" href="tel:${escapeHtml(String(x.phone).replace(/\s+/g, ''))}">${ic('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/>')}Call</a>` : '',
+        `<a class="exp-act" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.mapQuery || x.title)}" target="_blank" rel="noopener noreferrer">${ic('<path d="M3 11 21 3l-8 18-2-8z"/>')}Directions</a>`,
+        `<button type="button" class="exp-act exp-act-save${on ? ' is-on' : ''}" data-exp-save="${Number(x.id)}" aria-pressed="${on}">${EXP_HEART}${on ? 'Saved' : 'Save'}</button>`,
+    ].join('');
+    return `<div class="exp-dt">${expPic(x, 'exp-hero')}${inPane ? '' : `<button type="button" class="exp-dt-x" data-act="closeExpDetail" aria-label="Close">${ic('<path d="M6 6l12 12M18 6 6 18"/>')}</button>`}` +
+        `<div class="exp-dt-b"><span class="exp-dt-cat">${escapeHtml(k[0])}</span><h2 id="exp-dt-title">${escapeHtml(x.title)}</h2>${x.distance ? `<p class="exp-dt-where">${escapeHtml(x.distance)}</p>` : ''}<p class="exp-body">${escapeHtml(x.body)}</p></div>` +
+        `${tide}<div class="exp-actions">${acts}</div>${x.phone ? `<p class="exp-dt-phone">Phone ${escapeHtml(x.phone)}</p>` : ''}</div>`;
+}
+function expDetailPaint() {
+    const x = __experiences.find((e) => Number(e.id) === __expOpen);
+    const pane = document.getElementById('exp-pane');
+    const box = document.getElementById('exp-detail-body');
+    if (pane) pane.innerHTML = x && expWide() ? expDetailHtml(x, true) : `<div class="exp-pane-ph">${expArt('marsh', 2)}<p>Pick a place to see the details, ring them or get directions.</p></div>`;
+    if (box && x) box.innerHTML = expDetailHtml(x, false);
+}
+function expOpenDetail(id) {
+    __expOpen = Number(id) || 0;
+    document.querySelectorAll('#exp-grid .exp-row').forEach((r) => {
+        const on = Number(/** @type {HTMLElement} */ (r).dataset.expId) === __expOpen;
+        r.classList.toggle('is-open', on);
+        const b = r.querySelector('.exp-rowbtn');
+        if (b) b.setAttribute('aria-expanded', String(on));
+    });
+    expDetailPaint();
+    if (expWide()) return;
+    const m = document.getElementById('exp-detail-modal');
+    if (!m || m.classList.contains('open')) return;
+    __expLastFocus = document.activeElement;
+    overlayHistPush();
+    m.classList.remove('closing');
+    m.classList.add('open');
+    setTimeout(() => {
+        const x = m.querySelector('.exp-dt-x');
+        if (x instanceof HTMLElement) x.focus();
+    }, 60);
+}
+let __expLastFocus = null;
+function closeExpDetail() {
+    const m = document.getElementById('exp-detail-modal');
+    __expOpen = 0;
+    document.querySelectorAll('#exp-grid .exp-row.is-open').forEach((r) => r.classList.remove('is-open'));
+    if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(m);
+    if (__expLastFocus instanceof HTMLElement && document.contains(__expLastFocus)) __expLastFocus.focus();
 }
 // ---- Guest: suggest an experience ----
 function openExperienceSuggest() {
@@ -20825,7 +21004,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'youtodo1';
+    const BUILD = 'ttdpolish1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=367">
+    <link rel="stylesheet" href="app.css?v=368">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -540,8 +540,14 @@
                 <button type="button" class="btn-glass" data-act="nav" data-view="view-cottages">See the cottages</button>
             </div>
         </div>
-        <div id="exp-filters" class="exp-filters"></div>
-        <div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>
+        <div class="exp-tools">
+            <label class="exp-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="sr-only">Search things to do</span><input id="exp-q" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="Search, e.g. crab, pub, Cley" data-act-input="expSearchInput" data-pass="self"><button type="button" id="exp-qclear" class="exp-qclear" aria-label="Clear the search" data-act="expSearchClear" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></label>
+            <div id="exp-filters" class="exp-filters"></div>
+        </div>
+        <div class="exp-layout">
+            <div id="exp-grid" class="grid grid-3"></div>
+            <aside id="exp-pane" class="exp-pane" aria-label="Place details"></aside>
+        </div>
         <div id="exp-empty" class="glass-panel" style="display:none;padding:32px;text-align:center;">
             <p style="font-size:var(--fs-headline);font-weight:600;margin:0 0 6px;">Things to do, coming soon</p>
             <p style="font-size:var(--fs-body);color:var(--text-muted);margin:0;">We're putting together our favourite local spots. Know a great one? Suggest it below.</p>
@@ -1144,6 +1150,11 @@
 
     <!-- ================= GUEST LOGIN / REGISTER ================= -->
     <!-- ================= CUSTOMER LOGIN / REGISTER (floating window) ================= -->
+    <!-- One place, opened from Things to do (a bottom sheet on a phone; from 900px
+         the details open in #exp-pane beside the list instead). -->
+    <div id="exp-detail-modal" class="modal-overlay chb-sheet" role="dialog" aria-modal="true" aria-labelledby="exp-dt-title" data-act="backdropClose" data-close="closeExpDetail">
+        <div class="modal-box glass-panel exp-detail-box"><div id="exp-detail-body"></div></div>
+    </div>
     <div id="guest-auth-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign in or create an account" data-act="backdropClose" data-close="closeGuestAuthModal">
         <div class="modal-box glass-panel auth-split">
             <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
@@ -1990,7 +2001,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1103"></script>
+    <script defer src="app.js?v=1104"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

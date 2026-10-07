@@ -3610,6 +3610,37 @@ then the account settings.
 - Gated by ui-test-guestaccount §9. ui-test-yourstay's header-pill check is re-aimed to "You".
   Budgets: app.js +3.5KB, app.css +0.5KB gz.
 
+## Things to do, polished (approved demo, built)
+
+Supersedes the row details in the section below; the You placement and booked-only rule stand.
+- **The You section**:
+  - While staying, a tide chart comes first (`gaTideTip` → `tideChartSvg`/`tideToday`): a cosine
+    drawn between the feed's own highs and lows, with a mark for now. It never shows a time the
+    feed didn't give.
+  - Then a row of scene cards, quick chips (`gaOpenTodoCat`), and at ≥900px four across with
+    an "All N places" card.
+- **The page**:
+  - A search box (`expSearch`, `#exp-q`) and counted chips (`expBuildFilters`, a "Your list" chip
+    included). The chips keep `.exp-chip` and the travelling pill.
+  - Groups by kind in `EXP_KINDS` order. Boat trips carry today's high water while staying
+    (`expHighWater`).
+  - Rows with a scene thumbnail (`expArt` — one SVG per kind on the `--exp-*` tokens; an
+    uploaded photo still leads), the distance, "Website · Phone", and a ♡.
+- **One place**:
+  - On a phone it opens as `#exp-detail-modal` (a `.chb-sheet`, body-level, `MODAL_CLOSERS`,
+    Back/Escape).
+  - At ≥900px it opens in `#exp-pane`, sticky beside the list.
+  - It shows Website / Call / Directions / Save, plus a tide note on boat trips.
+  - `gaOpenTodo(id)` opens a place.
+- **♡ saves to `chb-exp-saved` in localStorage**: on that phone only, nothing on the server.
+  A "Your list" group leads the page.
+- **Good to know** is cards; the tide card carries the chart too.
+- **Gates**: ui-test-guestaccount §10 covers the groups, the sheet and its actions, Save (store +
+  chip + group), Escape, search narrowing, nothing-found and clear. ui-test-reach caught the
+  sticky tools bleeding past the gutter.
+- **Budgets**: app.js +3.7KB, app.css +1.4KB, index.html +0.1KB gz. The tsc app budget fell
+  684 → 682.
+
 ## Things to do live on the You page (approved demo, built)
 
 The guest menu is **Cottages · You**. Things to do left the dock and is a section of the
