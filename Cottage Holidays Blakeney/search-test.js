@@ -3017,7 +3017,7 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         const l4 = ctx.apFloorLadderRows(4);
         check('a floor above every band still states what survives it', l4.line === 1 && l4.rows[0].dim === false && /More than 4 months/.test(l4.rows[0].lead), JSON.stringify(l4));
         const lh = ctx.apFloorLadderHtml(2);
-        check('the ladder html carries the line and every rung', /Your floor · 2 months/.test(lh) && (lh.match(/apfl-rung/g) || []).length >= 4, lh.slice(0, 160));
+        check('the ladder html carries the line and every rung', /Your cut-off · 2 months/.test(lh) && (lh.match(/apfl-rung/g) || []).length >= 4, lh.slice(0, 160));
         vm.runInContext("adminPrivateContent['instalment-floor-months'] = 2;", ctx);
         const nearBk = { balanceDueDate: dFut(20), checkIn: dFut(50) };
         check('the Edit-plan note fires inside the floor, names it, and points at the lever',

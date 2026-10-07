@@ -8255,3 +8255,50 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rvq-code svg { display: block; width: 100%; height: 100%; }
 .rvq-code path { fill: black; } /* a code is dark on white in both themes */
 .rvq-overlay.open .rvq-code { animation: chbAppear 420ms var(--sheet) 80ms backwards; }
+/* PAYMENTS (approved demo): the Reviews page's anatomy — captioned wells of rows,
+   the value or control on the right rail; the deposit and cut-off save as they
+   change ("Saved ✓" beside the caption); the bank details are checked fields. */
+.pay-caprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+.pay-caprow .acr-cap { margin: 0 2px; }
+.pay-caprow + .rv-well, .pay-caprow + .acr-well { margin-top: 8px; }
+.pay-saved { font-size: var(--fs-caption); font-weight: 600; color: var(--ok-text); opacity: 0; transition: opacity 240ms var(--out); }
+.pay-saved.is-on { opacity: 1; }
+.pay-row { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 56px; box-sizing: border-box; }
+.rv-well > .pay-row + .pay-row, .rv-well > .pay-row + #instal-ladder .apfl-rung:first-child { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.pay-row.pay-stack { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; }
+.pay-lbl { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.pay-flbl { flex: 0 0 112px; }
+.pay-val { flex: none; font-size: var(--fs-body); color: var(--text-muted); }
+.pay-row .acr-step { flex: none; }
+.pay-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 5%, transparent); }
+.pay-seg button { height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-light); font: inherit; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; transition: background-color 200ms var(--out), color 200ms var(--out), transform 320ms var(--settle); }
+.pay-seg button.is-on { background: var(--accent); color: var(--accent-ink); }
+#instal-ladder .apfl-rung { padding: 0 16px; min-height: 48px; align-items: center; font-size: var(--fs-body); border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+#instal-ladder .apfl-lead { color: var(--text-light); }
+#instal-ladder .apfl-dots { display: none; }
+#instal-ladder .apfl-line { margin: 0; padding: 4px 16px; }
+.pay-in { flex: 1 1 auto; min-width: 0; height: 44px; border: 0; background: transparent; color: var(--text-light); font: inherit; font-size: var(--fs-headline); text-align: right; outline: none; }
+.pay-in::placeholder { color: var(--text-muted); opacity: 0.7; }
+.pay-in.pay-num { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.pay-row:focus-within { box-shadow: inset 2px 0 0 var(--accent-text); }
+.pay-bad { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.pay-bad[hidden] { display: none; }
+.pay-problem { margin: 0; padding: 0 16px 12px; font-size: var(--fs-sub); color: var(--warn-text); }
+.pay-problem[hidden], .pay-acts[hidden], .pay-preview[hidden] { display: none; }
+.pay-acts { display: flex; justify-content: flex-end; gap: 8px; padding: 12px; border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.pay-btn, .pay-btn2 { height: 44px; padding: 0 20px; border-radius: var(--r-pill); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; flex: none; transition: transform 320ms var(--settle); }
+.pay-btn { border: 0; background: var(--accent); color: var(--accent-ink); }
+.pay-btn:disabled { background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); cursor: default; }
+.pay-btn2 { border: 1px solid color-mix(in srgb, var(--text-light) 14%, transparent); background: none; color: var(--text-light); }
+.pay-btn:not(:disabled):active, .pay-btn2:active, .pay-seg button:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+.pay-preview { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pay-preview .acr-cap { margin: 0 2px; }
+.pay-pvcard { border-radius: var(--r-sm); background: white; color: rgb(27 42 52); padding: 12px 16px; font-size: var(--fs-sub); line-height: 1.6; }
+.pay-pvhead { font-weight: 600; margin-bottom: 4px; }
+.pay-pvbody { white-space: pre-line; font-variant-numeric: tabular-nums; }
+.pay-locline { display: flex; gap: 8px; align-items: center; }
+.pay-locline select { flex: 1 1 auto; min-width: 0; margin: 0; }
+.pay-note { margin: 0; font-size: var(--fs-sub); color: var(--text-muted); }
+.pay-note:empty { display: none; }
+#sq-webhook-card .stcap-empty, #sq-webhook-status:empty { display: none; }
+#sq-loc-card[hidden] { display: none; }

@@ -18937,49 +18937,124 @@ function renderSquareLocation(d) {
 }
 function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
-    if (st)
-        st.innerHTML = squareAdminEnabled
-            ? '<span style="color:var(--ok-text);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
-            : '<span style="color:var(--warn-text);">●</span> Not set up — Square hasn’t been connected on the server yet, so card payments are off.';
-    const inp = document.getElementById('sq-deposit-pct');
+    if (st) st.innerHTML = squareAdminEnabled ? stCap('ok', 'Connected') : stCap('unk', 'Not set up');
+    // The title's capsule (Manage → Payments only): whether guests can pay by card.
+    const cap = document.getElementById('settings-panel-cap');
+    const sec = document.getElementById('sec-payments');
+    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = squareAdminEnabled ? stCap('ok', 'Taking cards') : stCap('unk', 'Cards off');
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('sq-deposit-pct'));
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
-        inp.value = v > 0 && v <= 100 ? v : 25;
+        inp.value = String(v > 0 && v <= 100 ? v : 25);
     }
-    // Bank details read from adminPrivateContent FIRST, not siteContent: this is an
-    // INTERNAL key, and siteContent is populated by the boot content GET — which is
-    // the ANONYMOUS one when the page loaded before sign-in, so the key would be
-    // missing and the field would render blank over real saved details, one Save
-    // away from wiping them. openArea() always refreshes adminPrivateContent
-    // (content.php get_all) before any section renders.
-    const bacs = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('bacs-details'));
-    if (bacs) {
-        const stored = (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent['bacs-details'] !== undefined
-            ? adminPrivateContent['bacs-details']
-            : siteContent['bacs-details']) || '';
-        bacs.value = String(stored);
-        const warn = document.getElementById('bacs-details-warn');
-        if (warn) warn.style.display = String(stored).trim() ? 'none' : 'block';
-    }
+    bacsFill();
     try { renderInstalFloor(); } catch (e) {}
     try { loadSquareWebhookStatus(); } catch (e) {}
+}
+// ---- Bank transfer: three checked fields, ONE stored text ----
+// The emails print `bacs-details` verbatim, so the fields are composed back into
+// that one key — nothing downstream changes. Details saved as free text before
+// are split back into the fields where they can be recognised.
+// Read adminPrivateContent FIRST, not siteContent: this is an INTERNAL key, and
+// siteContent is filled by the boot content GET — the ANONYMOUS one when the page
+// loaded before sign-in — so the key would be missing and the fields would render
+// blank over real saved details, one Save away from wiping them.
+function bacsStored() {
+    return String((typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent['bacs-details'] !== undefined
+        ? adminPrivateContent['bacs-details']
+        : siteContent['bacs-details']) || '');
+}
+function bacsParse(t) {
+    const text = String(t || '');
+    const sm = text.match(/(?<!\d)(\d{2})[-\s]?(\d{2})[-\s]?(\d{2})(?!\d)/);
+    let rest = sm ? text.replace(sm[0], ' ') : text;
+    const am = rest.match(/(?<!\d)(\d{8})(?!\d)/);
+    if (am) rest = rest.replace(am[1], ' ');
+    const name = rest
+        .split(/[\n·|•,]+/)
+        .map((x) => x
+            .replace(/^\s*(?:account\s*)?name\s*[:\-]\s*/i, '')
+            .replace(/\b(?:sort\s*code|sort|account\s*(?:no\.?|number)?|acct|a\/c)(?:\s*no\.?)?\b[:\s]*/gi, '')
+            .replace(/^[\s:.\-]+|[\s:.,\-]+$/g, '')
+            .trim())
+        .filter((x) => /[a-z]/i.test(x))[0] || '';
+    return { name: name.slice(0, 60), sort: sm ? `${sm[1]}-${sm[2]}-${sm[3]}` : '', acc: am ? am[1] : '' };
+}
+function bacsCompose(f) {
+    if (!f.name && !f.sort && !f.acc) return '';
+    return [f.name, f.sort ? 'Sort code ' + f.sort : '', f.acc ? 'Account ' + f.acc : ''].filter(Boolean).join('\n');
+}
+function bacsFields() {
+    const g = (id) => String((/** @type {HTMLInputElement|null} */ (document.getElementById(id)) || { value: '' }).value || '');
+    return { name: g('bank-name').trim(), sort: g('bank-sort'), acc: g('bank-acc') };
+}
+function bacsFill() {
+    const f = bacsParse(bacsStored());
+    const set = (id, v) => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id)); if (el) el.value = v; };
+    set('bank-name', f.name);
+    set('bank-sort', f.sort);
+    set('bank-acc', f.acc);
+    bacsEdit();
+}
+function bacsCancel() { bacsFill(); }
+// Runs on every keystroke: formats the sort code and account number as they are
+// typed, checks them, and shows Save/Cancel only once something has changed.
+function bacsEdit() {
+    const sortEl = /** @type {HTMLInputElement|null} */ (document.getElementById('bank-sort'));
+    const accEl = /** @type {HTMLInputElement|null} */ (document.getElementById('bank-acc'));
+    if (sortEl) {
+        const d = sortEl.value.replace(/\D/g, '').slice(0, 6);
+        const fm = d.replace(/(\d{2})(?=\d)/g, '$1-');
+        if (sortEl.value !== fm) sortEl.value = fm;
+    }
+    if (accEl) {
+        const d = accEl.value.replace(/\D/g, '').slice(0, 8);
+        if (accEl.value !== d) accEl.value = d;
+    }
+    const f = bacsFields();
+    const dirty = bacsCompose(f) !== bacsCompose(bacsParse(bacsStored()));
+    const sortBad = f.sort !== '' && f.sort.replace(/\D/g, '').length !== 6;
+    const accBad = f.acc !== '' && f.acc.length !== 8;
+    const empty = !f.name && !f.sort && !f.acc;
+    const partial = !empty && (!f.name || !f.sort || !f.acc);
+    const problem = sortBad ? 'A sort code is 6 digits.' : accBad ? 'An account number is 8 digits.' : partial ? 'Add all three to save them.' : '';
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+    show('bank-sort-bad', sortBad);
+    show('bank-acc-bad', accBad);
+    // Saved details in a shape the fields cannot hold (an IBAN, a building society
+    // roll number) are SHOWN as saved, never silently dropped on the next Save.
+    const raw = bacsStored().trim();
+    const st = bacsParse(raw);
+    const unread = !!raw && (!st.name || !st.sort || !st.acc);
+    const pr = document.getElementById('bacs-problem');
+    if (pr) {
+        pr.textContent = dirty ? problem : unread ? 'Saved as: ' + raw.replace(/\s*\n\s*/g, ' · ') : '';
+        pr.hidden = !((dirty && problem) || (!dirty && unread));
+    }
+    show('bacs-acts', dirty);
+    const sv = /** @type {HTMLButtonElement|null} */ (document.getElementById('bacs-save'));
+    if (sv) sv.disabled = !!problem;
+    const cap = document.getElementById('bacs-cap');
+    if (cap) cap.innerHTML = dirty ? stCap('warn', 'Unsaved') : bacsStored().trim() ? stCap('ok', 'Saved') : stCap('unk', 'Not set');
+    const pv = document.getElementById('bacs-preview-body');
+    if (pv) pv.textContent = bacsCompose(f);
+    show('bacs-preview', !empty);
 }
 // Save the owner's bank details for guests paying by transfer. Empty is allowed —
 // clearing them is a legitimate edit (the emails fall back to "reply and we'll
 // send them"), so this must not refuse a blank the way saveDepositPct refuses 0.
 async function saveBacsDetails() {
-    const el = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('bacs-details'));
-    if (!el) return;
-    const v = String(el.value || '').trim();
+    const sv = /** @type {HTMLButtonElement|null} */ (document.getElementById('bacs-save'));
+    if (sv && sv.disabled) return;
+    const v = bacsCompose(bacsFields());
     try {
         await saveContent('bacs-details', v);
         siteContent['bacs-details'] = v;
         if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['bacs-details'] = v;
-        const warn = document.getElementById('bacs-details-warn');
-        if (warn) warn.style.display = v ? 'none' : 'block';
+        bacsEdit();
         toast(v ? 'Bank transfer details saved.' : 'Bank transfer details cleared.');
     } catch (e) {
-        glassAlert("Couldn't save: " + e.message);
+        /* saveContent has already told the owner why */
     }
 }
 // Automatic payment updates (Square webhook): show whether it's connected. When
@@ -18995,21 +19070,21 @@ async function loadSquareWebhookStatus() {
     // The location picker rides this same response — see renderSquareLocation.
     try { renderSquareLocation(d); } catch (e) {}
     if (!d) {
-        line.innerHTML = '<span style="color:var(--text-muted);">●</span> Couldn\'t check just now.';
+        line.innerHTML = stCap('unk', 'Couldn’t check');
         if (btn) btn.style.display = 'none';
         return;
     }
     if (!d.square) {
-        line.innerHTML = '<span style="color:var(--text-muted);">●</span> Available once card payments are switched on.';
+        line.innerHTML = stCap('unk', 'Needs card payments');
         if (btn) btn.style.display = 'none';
         return;
     }
     if (d.connected) {
-        line.innerHTML = '<span style="color:var(--ok-text);">●</span> Connected — fees, payouts and refund statuses update automatically.';
-        if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Reconnect'; }
+        line.innerHTML = stCap('ok', 'Connected');
+        if (btn) btn.style.display = 'none';
     } else {
-        const why = d.error ? ' <span style="color:var(--text-muted);">(' + escapeHtml(d.error) + ')</span>' : '';
-        line.innerHTML = '<span style="color:var(--warn-text);">●</span> Not connected — payment info refreshes only when you open Payments.' + why;
+        line.innerHTML = '';
+        line.title = d.error ? String(d.error) : '';
         if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Connect'; }
     }
 }
@@ -19024,8 +19099,18 @@ async function connectSquareWebhook(btn) {
     if (btn) btn.disabled = false;
     try { renderSquareSettings(); } catch (e) {}
 }
+// The deposit stepper SAVES AS IT CHANGES — a short pause after the last tap, so
+// tapping 25 → 30 is one save, not five.
+let __depStepT = null;
+function depStep(d) {
+    occStep('sq-deposit-pct', d, 1);
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('sq-deposit-pct'));
+    if (el && +el.value > 100) el.value = '100';
+    clearTimeout(__depStepT);
+    __depStepT = setTimeout(() => { saveDepositPct(); }, 600);
+}
 async function saveDepositPct() {
-    const v = Math.round(parseFloat((document.getElementById('sq-deposit-pct') || {}).value) || 0);
+    const v = Math.round(parseFloat((/** @type {HTMLInputElement|null} */ (document.getElementById('sq-deposit-pct')) || { value: '' }).value) || 0);
     if (!(v >= 1 && v <= 100)) {
         glassAlert('Enter a deposit percentage between 1 and 100.');
         return;
@@ -19033,9 +19118,9 @@ async function saveDepositPct() {
     try {
         await saveContent('square-deposit-pct', v);
         siteContent['square-deposit-pct'] = v;
-        toast('Deposit policy saved.');
+        paySavedFlash('pay-dep-saved');
     } catch (e) {
-        glassAlert("Couldn't save: " + e.message);
+        /* saveContent has already told the owner why */
     }
 }
 // Email the guest a secure pay link (deposit or balance).
@@ -19146,44 +19231,65 @@ function apFloorLadderRows(floor) {
 }
 function apFloorLadderHtml(floor) {
     const { rows, line } = apFloorLadderRows(floor);
-    let html = '<div class="acw-cap">What guests are offered</div><div class="acr-capsub">By how long is left before they arrive.</div>';
+    let html = '';
     rows.forEach((r, i) => {
-        if (i === line) html += `<div class="apfl-line"><span>Your floor · ${floor} months</span></div>`;
+        if (i === line) html += `<div class="apfl-line"><span>Your cut-off · ${floor} months</span></div>`;
         html += `<div class="apfl-rung${r.dim ? ' is-dim' : ''}"><span class="apfl-lead">${r.lead}</span><span class="apfl-dots"></span><span class="apfl-offer">${r.offer}</span></div>`;
     });
-    html += '<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Cut-offs include a week\'s clearance for the advance-notice email, and each payment must be at least £50 — a small balance may offer fewer.</p>';
     return html;
 }
+// The cut-off is a four-way switch (Any time / 2 / 3 / 4 months) that SAVES AS IT
+// CHANGES; the ladder beneath it follows at once.
+function instalFloorSeg(n) {
+    document.querySelectorAll('#instal-floor [data-v]').forEach((b) => {
+        const on = +(/** @type {HTMLElement} */ (b).dataset.v) === n;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
+}
 function renderInstalFloor() {
-    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
     const lad = document.getElementById('instal-ladder');
-    if (!sel || !lad) return;
+    if (!lad) return;
     const cur = apFloorMonths();
-    sel.value = cur >= 1 ? String(cur) : '';
-    lad.innerHTML = apFloorLadderHtml(cur);
+    const n = cur >= 1 ? cur : 0;
+    instalFloorSeg(n);
+    lad.innerHTML = apFloorLadderHtml(n);
 }
-// The ladder follows the select as the owner browses the options — the line
-// moves BEFORE saving, so the choice can be seen before it is made.
-function instalFloorPreview() {
-    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
+function instalFloorPreview(n) {
     const lad = document.getElementById('instal-ladder');
-    if (!sel || !lad) return;
-    const v = parseInt(sel.value, 10);
-    lad.innerHTML = apFloorLadderHtml(v >= 1 && v <= 6 ? v : 0);
+    const v = parseInt(n, 10);
+    const m = v >= 1 && v <= 6 ? v : 0;
+    instalFloorSeg(m);
+    if (lad) lad.innerHTML = apFloorLadderHtml(m);
 }
-async function saveInstalFloor() {
-    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
-    if (!sel) return;
-    const v = parseInt(sel.value, 10);
+function pickInstalFloor(n) {
+    instalFloorPreview(n);
+    return saveInstalFloor(n);
+}
+// A "Saved ✓" beside the caption is the whole receipt for a setting that saves
+// as it changes — a toast for every step of a stepper is noise.
+const __paySavedT = {};
+function paySavedFlash(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = 'Saved ✓';
+    el.classList.remove('is-on');
+    void el.offsetWidth;
+    el.classList.add('is-on');
+    clearTimeout(__paySavedT[id]);
+    __paySavedT[id] = setTimeout(() => { el.classList.remove('is-on'); el.textContent = ''; }, 1800);
+}
+async function saveInstalFloor(arg) {
+    const v = parseInt(arg, 10);
     const n = v >= 1 && v <= 6 ? v : 0;
     try {
         await saveContent('instalment-floor-months', n);
         if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['instalment-floor-months'] = n;
-        toast(n ? `Monthly payments now need at least ${n} months of runway.` : 'Monthly payments offered whenever a plan fits.');
-        renderInstalFloor();
+        paySavedFlash('pay-floor-saved');
     } catch (e) {
-        glassAlert("Couldn't save: " + e.message);
+        /* saveContent has already said why; the switch goes back to what is saved */
     }
+    renderInstalFloor();
 }
 // The floor, said where the owner would otherwise wonder why a pinned plan is
 // not showing: the Edit-plan dialog's monthly field. '' when the floor is off
