@@ -20169,7 +20169,14 @@ function chbGapPlan(g) {
         const dev = (0.5 - sp.score) * 24 * sp.conf; // soft(score→0):+12, busy(score→1):−12, ×confidence
         disc = Math.max(5, Math.min(35, Math.round(anchor + dev)));
     }
-    const offer = Math.max(20, Math.round(cur * (1 - disc / 100)));
+    let offer = Math.max(20, Math.round(cur * (1 - disc / 100)));
+    // The owner's "never suggest below" (Manage → Pricing) is a floor for this offer
+    // too; a floor at or above the current rate leaves nothing to offer.
+    const floor = prSettings().floor;
+    if (floor) {
+        if (floor >= cur) return null;
+        offer = Math.max(offer, floor);
+    }
     const pct = Math.max(0, Math.round(((cur - offer) / cur) * 100));
     return { kind: 'offer', pct, offer, cur, endIncl };
 }
@@ -20252,30 +20259,273 @@ function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); 
 // now live here, alongside a link to the full pricing coach. Same one-tap apply,
 // same validated write path — just off the operations screen and into Manage.
 function openPricingCoach() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
+// ---- Manage → Pricing: standard and smart pricing on ONE page (approved demo) ----
+// The page answers one question per cottage: what will a guest pay on each night,
+// and should it be different? The calendar shows the real nightly price — the same
+// nightlyRateFor × lastMinuteFactor the booking quote charges with, never a second
+// derivation — with a dot where the smart side has an idea (a gap priced to sell, or
+// a night the demand model says is worth more). Tapping a night shows how its price
+// is built and the idea's reason. The usual prices sit beneath as steppers, so a
+// change re-prices the calendar in front of the owner; the smart side has an on/off
+// and limits. NOTHING changes a price until the owner taps.
+let __prCot = null;
+let __prSel = null;
+const __prDismissed = new Set();
+const PR_OWN_LABELS = ['Your price', 'Smart price', 'Gap offer'];
+function prSettings() {
+    const read = (k) => (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent[k] !== undefined ? adminPrivateContent[k] : siteContent[k]);
+    let lim = read('pricing-limits');
+    if (typeof lim === 'string') { try { lim = JSON.parse(lim); } catch (e) { lim = null; } }
+    lim = lim && typeof lim === 'object' ? lim : {};
+    const off = read('pricing-smart-off');
+    return { smart: !(off === true || off === 1 || off === '1' || off === 'true'), floor: Math.max(0, parseInt(lim.floor, 10) || 0), ceil: Math.max(0, parseInt(lim.ceil, 10) || 0) };
+}
+function prClamp(v) {
+    const s = prSettings();
+    let x = v;
+    if (s.floor) x = Math.max(s.floor, x);
+    if (s.ceil) x = Math.min(s.ceil, x);
+    return x;
+}
+function prRate(pk) { return propertyRates[pk] || defaultRates[pk] || {}; }
+// The season row that sets a night's base (first match by start, as the resolvers read).
+function prSeasonFor(pk, iso) {
+    return (propertySeasons[pk] || []).slice().sort((a, b) => (a.start_date < b.start_date ? -1 : 1))
+        .find((s) => s.start_date <= iso && iso <= s.end_date) || null;
+}
+function prNight(pk, iso) {
+    const r = prRate(pk);
+    const usual = Math.round(parseFloat(r.coupleRate) || 0);
+    const seasons = propertySeasons[pk] || [];
+    const base = coupleRateForNight(iso, parseFloat(r.coupleRate) || 0, seasons);
+    const lines = [{ k: 'Usual', v: `£${usual}` }];
+    const sea = prSeasonFor(pk, iso);
+    if (sea && Math.round(base) !== usual) {
+        const own = PR_OWN_LABELS.includes(sea.label || '');
+        lines.push({ k: own ? sea.label : sea.label || 'Season', v: `£${Math.round(base)}` });
+    }
+    let p = base;
+    const wk = weekendPctFor(iso, r);
+    if (wk > 0) { const add = base * wk / 100; p += add; lines.push({ k: `Weekend +${wk}%`, v: `+£${Math.round(add)}` }); }
+    const lm = lastMinuteFactor(iso, todayDashed(), r.lastminPct, r.lastminDays);
+    if (lm < 1) { const cut = p * (1 - lm); p -= cut; lines.push({ k: `Last minute −${Math.round((1 - lm) * 100)}%`, v: `−£${Math.round(cut)}` }); }
+    return { price: Math.round(p), lines, own: sea && PR_OWN_LABELS.includes(sea.label || '') ? sea : null };
+}
+// The smart side's idea for one free night, or null.
+function prIdea(pk, iso) {
+    if (!prSettings().smart || __prDismissed.has(pk + '|' + iso)) return null;
+    if (prNight(pk, iso).own) return null;
+    const g = chbGapScan().find((x) => x.pk === pk && x.from <= iso && iso < x.to);
+    if (g) {
+        const plan = chbGapPlan(g);
+        if (plan && plan.kind === 'offer') {
+            return { kind: 'gap', g, rate: plan.offer, why: `A ${g.nights}-night gap between two stays (${fmtStayRange(g.from, g.to)}). Gaps this short rarely sell at the full price — ${plan.pct}% off helps it go.`, conf: '' };
+        }
+        return null;
+    }
+    const sp = chbSmartPrice(pk, iso, 1);
+    if (sp && sp.pct >= 8) {
+        const rate = prClamp(sp.rate);
+        if (rate <= sp.base) return null;
+        return { kind: 'up', rate, why: sp.why.charAt(0).toUpperCase() + sp.why.slice(1) + '.', conf: sp.confWord.charAt(0).toUpperCase() + sp.confWord.slice(1) };
+    }
+    return null;
+}
+function prTakenBy(pk, iso) {
+    const c = cmdkBookClash(pk, iso, chbIsoShift(iso, 1));
+    if (!c) return '';
+    return /block/.test(c.name) ? 'Held' : 'Booked';
+}
 function renderPricing() {
     const wrap = document.getElementById('pricing-body');
     if (!wrap) return;
+    const keys = liveCottageKeys();
+    if (!keys.length) { wrap.innerHTML = ''; return; }
+    if (!__prCot || !keys.includes(__prCot)) __prCot = keys[0];
+    const pk = __prCot;
+    const nm = (k) => (propertyMeta[k] || {}).name || k;
+    const today = todayDashed();
+    const s = prSettings();
     let items = [];
     try { items = chbAnomalies(); } catch (e) {}
-    const rowsHtml = items.length
-        ? items.map((it) => `
-            <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}>
-                <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
-                <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
-                <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
-            </button>`).join('')
-        : `<p class="sl-empty">No pricing suggestions right now — no short gaps between stays to fill, and next month is pacing fine. Ideas appear here as your calendar fills.</p>`;
-    wrap.innerHTML = `
-        <section class="glass-panel sl-card">
-            <p class="sl-model">Demand-based ideas from your OWN bookings — nothing changes until you tap. A short gap between stays gets a ready-made offer priced to sell; a month pacing behind last year gets flagged.</p>
+    // Title capsule: how many ideas wait, or nothing at all.
+    const cap = document.getElementById('settings-panel-cap');
+    const sec = document.getElementById('sec-pricing');
+    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = items.length ? stCap('warn', `${items.length} idea${items.length === 1 ? '' : 's'}`) : '';
+    // The calendar: this week's Monday → six weeks.
+    const t = new Date(today + 'T12:00:00Z');
+    const start = chbIsoShift(today, -((t.getUTCDay() + 6) % 7));
+    let cells = '';
+    for (let i = 0; i < 42; i++) {
+        const iso = chbIsoShift(start, i);
+        const d = new Date(iso + 'T12:00:00Z');
+        const day = d.getUTCDate() === 1 ? d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) : String(d.getUTCDate());
+        if (iso < today) { cells += `<span class="pr-day is-past"><span class="pr-dn">${day}</span></span>`; continue; }
+        const taken = prTakenBy(pk, iso);
+        if (taken) { cells += `<span class="pr-day is-taken" aria-label="${fmtDate(iso)}, ${taken.toLowerCase()}"><span class="pr-dn">${day}</span><span class="pr-dp">${taken}</span></span>`; continue; }
+        const n = prNight(pk, iso);
+        const idea = prIdea(pk, iso);
+        cells += `<button type="button" class="pr-day${idea ? ' has-idea' : ''}${n.own ? ' is-own' : ''}${__prSel === iso ? ' is-sel' : ''}" aria-pressed="${__prSel === iso}" aria-label="${fmtDate(iso)}, £${n.price}${idea ? ', has a suggestion' : ''}" ${chbAttrs('prPick', iso)}><span class="pr-dn">${day}</span><span class="pr-dp">£${n.price}</span></button>`;
+    }
+    // The tapped night: how its price is built, and the idea.
+    let detail = '';
+    if (__prSel && __prSel >= today && !prTakenBy(pk, __prSel)) {
+        const n = prNight(pk, __prSel);
+        const idea = prIdea(pk, __prSel);
+        const when = new Date(__prSel + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).replace(',', '');
+        detail = `<div class="acr-well pr-detail" id="pr-detail">
+            <div class="pr-dhead"><span class="pr-dwhen">${escapeHtml(when)}</span><span class="pr-dprice">£${n.price} <span>a night</span></span></div>
+            ${n.lines.map((l) => `<div class="pr-line"><span>${escapeHtml(l.k)}</span><span>${escapeHtml(l.v)}</span></div>`).join('')}
+            ${idea ? `<div class="pr-idea">
+                <span class="pr-ideat">Smart suggestion · £${idea.rate}${idea.kind === 'gap' ? ' a night for the gap' : ''}</span>
+                <span class="pr-ideaw">${escapeHtml(idea.why)}</span>
+                ${idea.conf ? `<span class="pr-ideac">${escapeHtml(idea.conf)}</span>` : ''}
+                <div class="pr-ideaacts"><button type="button" class="pay-btn" ${chbAttrs('prApply', pk, __prSel)}>${idea.kind === 'gap' ? `Offer the gap at £${idea.rate}` : `Use £${idea.rate} for this night`}</button><button type="button" class="pay-btn2" ${chbAttrs('prDismiss', pk, __prSel)}>Not now</button></div>
+            </div>` : ''}
+            ${n.own ? `<div class="pr-own"><span>✓ ${escapeHtml(n.own.label)} set by you</span><button type="button" class="pr-back" ${chbAttrs('prBackToUsual', pk, __prSel)}>Back to usual</button></div>` : ''}
+        </div>`;
+    }
+    const r = prRate(pk);
+    const wkDays = String(r.weekendDays == null ? '5,6' : r.weekendDays).split(',').filter(Boolean).map((x) => ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][+x]).filter(Boolean);
+    const step = (field, label, sub, shown, lessLabel) => `<div class="pay-row pr-rule">
+            <span class="pr-rlbl"><span class="pay-lbl">${label}</span><span class="pr-rsub">${escapeHtml(sub)}</span></span>
+            <span class="acr-step"><button type="button" ${chbAttrs('prStep', field, '-1')} aria-label="${escapeHtml(lessLabel)} — less">−</button><span class="acr-val pr-val">${shown}</span><button type="button" ${chbAttrs('prStep', field, '1')} aria-label="${escapeHtml(lessLabel)} — more">+</button></span>
+        </div>`;
+    const usual = Math.round(parseFloat(r.coupleRate) || 0);
+    const wk = Math.round(parseFloat(r.weekendPct) || 0);
+    const lmp = Math.round(parseFloat(r.lastminPct) || 0);
+    const lmd = Math.round(parseFloat(r.lastminDays) || 0);
+    const coming = (propertySeasons[pk] || []).filter((x) => x.end_date >= today && !PR_OWN_LABELS.includes(x.label || '')).length;
+    const extras = `£${Math.round(parseFloat(r.extraAdultRate) || 0)} adult · £${Math.round(parseFloat(r.childRate) || 0)} child`;
+    const chev = '<span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
+    wrap.innerHTML = `<div class="rv-page pr-page">
+        <div class="pay-seg pr-cots" role="group" aria-label="Cottage" style="grid-template-columns: repeat(${keys.length}, minmax(0, 1fr));">${keys
+            .map((k) => `<button type="button" data-v="${escapeHtml(k)}" class="${k === pk ? 'is-on' : ''}" aria-pressed="${k === pk}" ${chbAttrs('prCottage', k)}><span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(nm(k).replace(/ Westgate( Street)?$/, ''))}</button>`)
+            .join('')}</div>
+        <section class="rv-sec">
+            <div class="pay-caprow"><h3 class="acr-cap">What guests pay · next 6 weeks</h3><span class="pr-legend"><span class="pr-ldot" aria-hidden="true"></span>idea</span></div>
+            <div class="acr-well pr-cal">
+                <div class="pr-dows" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+                <div class="pr-grid">${cells}</div>
+            </div>
+            ${detail}
         </section>
-        <div class="settings-section-label">Ready to apply</div>
-        <div id="pricing-recs" style="display:flex;flex-direction:column;gap:10px;">${rowsHtml}</div>
-        <div class="settings-section-label">Go deeper</div>
-        <section class="glass-panel sl-card">
-            <p class="sl-note" style="margin:0 0 12px;">The pricing coach reads guest-search demand and unmet interest, and drafts weekend-uplift and season ideas.</p>
-            <button type="button" class="btn-sm btn-edit" data-act="openPricingCoach">Open the pricing coach →</button>
-        </section>`;
+        <section class="rv-sec">
+            <h3 class="acr-cap">Ideas</h3>
+            ${items.length ? `<div class="pr-ideas" id="pricing-recs">${items.map((it) => `
+                <button type="button" class="ny-row pr-card ny-${it.sev}" ${it.go}>
+                    <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
+                    <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
+                </button>`).join('')}</div>`
+            : `<div class="acr-well pr-calm"><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
+            <div class="acr-well rv-well pr-more"><button type="button" class="rv-go" data-act="openPricingCoach"><span class="rv-go-txt"><span class="rv-name">Ideas from guest searches</span></span>${chev}</button></div>
+        </section>
+        <section class="rv-sec">
+            <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
+            <div class="acr-well rv-well">
+                ${step('coupleRate', 'Usual nightly', 'Every night unless something below applies', `£${usual}`, 'Usual nightly')}
+                ${step('weekendPct', 'Weekends', wkDays.length ? wkDays.join(' and ') : 'No weekend days set', wk ? `+${wk}%` : 'Off', 'Weekend uplift')}
+                ${step('lastminPct', 'Last minute', lmd ? `Within ${lmd} day${lmd === 1 ? '' : 's'} of arrival` : 'Set the days in the cottage’s rates', lmp ? `−${lmp}%` : 'Off', 'Last-minute discount')}
+                <button type="button" class="rv-go" ${chbAttrs('settingsOpenAccomSec', pk, 'rates')}><span class="rv-go-txt"><span class="rv-name">Extra guests</span></span><span class="pay-val">${extras}</span>${chev}</button>
+                <button type="button" class="rv-go" data-act="settingsOpen" data-arg="seasongrid"><span class="rv-go-txt"><span class="rv-name">Seasonal rates</span></span><span class="pay-val">${coming} coming up</span>${chev}</button>
+            </div>
+        </section>
+        <section class="rv-sec">
+            <h3 class="acr-cap">Smart pricing</h3>
+            <div class="acr-well rv-well">
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-smart-lbl">Suggest prices</span><span class="pr-rsub">Nothing changes until you tap</span></span>
+                    <label class="chb-switch"><input type="checkbox" id="pr-smart" aria-labelledby="pr-smart-lbl" ${s.smart ? 'checked' : ''} data-act-change="prSmartToggle"><span class="chb-switch-track" aria-hidden="true"></span></label></div>
+                <div class="pr-limits${s.smart ? '' : ' is-off'}">
+                    ${step('floor', 'Never suggest below', '', s.floor ? `£${s.floor}` : 'No limit', 'Lowest suggestion')}
+                    ${step('ceil', 'Never suggest above', '', s.ceil ? `£${s.ceil}` : 'No limit', 'Highest suggestion')}
+                </div>
+            </div>
+        </section>
+    </div>`;
+}
+function prCottage(k) { __prCot = k; __prSel = null; renderPricing(); }
+function prPick(iso) { __prSel = __prSel === iso ? null : iso; renderPricing(); }
+function prDismiss(pk, iso) { __prDismissed.add(pk + '|' + iso); renderPricing(); }
+async function prApply(pk, iso) {
+    const idea = prIdea(pk, iso);
+    if (!idea) return;
+    if (idea.kind === 'gap') { nyGapOffer(pk, idea.g.from); return; }
+    try {
+        await cmdkApplyPriceOverride(pk, iso, iso, idea.rate, 'Smart price');
+    } catch (e) {
+        glassAlert("Couldn't save: " + e.message);
+    }
+    renderPricing();
+}
+// "Back to usual" removes the one row the owner set (a night price, a smart price or
+// a gap offer) — never a season they built on the Seasonal rates page.
+async function prBackToUsual(pk, iso) {
+    const own = prNight(pk, iso).own;
+    if (!own) return;
+    const list = (propertySeasons[pk] || [])
+        .filter((x) => !(x.start_date === own.start_date && x.end_date === own.end_date && (x.label || '') === (own.label || '')))
+        .map((x) => ({ label: x.label || '', start: x.start_date, end: x.end_date, rate: parseFloat(x.couple_rate) || 0 }));
+    try {
+        await apiPost('rates.php', { action: 'seasons_save', prop_key: pk, seasons: list });
+        propertySeasons[pk] = list.map((x) => ({ label: x.label, start_date: x.start, end_date: x.end, couple_rate: x.rate }));
+        try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
+        toast(`Back to the usual price on ${fmtDate(own.start_date)}${own.end_date !== own.start_date ? '–' + fmtDate(own.end_date) : ''}.`);
+    } catch (e) {
+        glassAlert("Couldn't save: " + e.message);
+    }
+    renderPricing();
+}
+// The usual-price steppers: the mirror moves at once (the calendar re-prices in
+// front of the owner), the save waits for a short pause after the last tap.
+const __prStepT = {};
+function prStep(field, dir) {
+    const d = parseInt(dir, 10) || 0;
+    if (field === 'floor' || field === 'ceil') {
+        const s = prSettings();
+        const usual = Math.round(parseFloat(prRate(__prCot).coupleRate) || 100);
+        let v = s[field];
+        if (!v) v = d > 0 ? (field === 'floor' ? Math.round((usual * 0.7) / 5) * 5 : Math.round((usual * 1.5) / 5) * 5) : 0;
+        else v = v + d * 5;
+        if (v < 20) v = 0;
+        const next = { floor: s.floor, ceil: s.ceil };
+        next[field] = Math.min(2000, v);
+        if (next.floor && next.ceil && next.floor >= next.ceil) return;
+        if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['pricing-limits'] = next;
+        siteContent['pricing-limits'] = next;
+        renderPricing();
+        clearTimeout(__prStepT.lim);
+        __prStepT.lim = setTimeout(() => { saveContent('pricing-limits', next).catch(() => {}); }, 600);
+        return;
+    }
+    const pk = __prCot;
+    if (!propertyRates[pk]) propertyRates[pk] = Object.assign({}, defaultRates[pk]);
+    const r = propertyRates[pk];
+    const cur = Math.round(parseFloat(r[field]) || 0);
+    const by = field === 'coupleRate' ? 5 : 5;
+    const min = field === 'coupleRate' ? 20 : 0;
+    const max = field === 'coupleRate' ? 2000 : field === 'weekendPct' ? 200 : 90;
+    const v = Math.max(min, Math.min(max, cur + d * by));
+    if (v === cur) return;
+    r[field] = v;
+    renderPricing();
+    const key = pk + '|' + field;
+    clearTimeout(__prStepT[key]);
+    __prStepT[key] = setTimeout(async () => {
+        try {
+            await saveRateField(pk, field, v);
+            try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
+        } catch (e) {
+            /* saveRateField reports its own failure */
+        }
+    }, 600);
+}
+function prSmartToggle() {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('pr-smart'));
+    const on = !!(el && el.checked);
+    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['pricing-smart-off'] = !on;
+    siteContent['pricing-smart-off'] = !on;
+    saveContent('pricing-smart-off', !on).catch(() => {});
+    renderPricing();
 }
 // ============================================================
 //  chbDuties — ONE decision about what needs the owner, in PLAIN TEXT.

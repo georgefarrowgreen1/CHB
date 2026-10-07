@@ -1004,6 +1004,10 @@ function is_internal_content_key($key)
     if (strpos($key, 'chat-away-') === 0) {
         return true;
     }
+    if ($key === 'pricing-limits' || $key === 'pricing-smart-off') {
+        return true; // the owner's smart-pricing switch and suggestion limits (Manage →
+                     // Pricing) — an operating decision about their own prices
+    }
     if ($key === 'search-watchers') {
         return true; // the owner's standing queries (watchers-lib.php) — their own
                      // reminders, naming cottages and dates; never public
