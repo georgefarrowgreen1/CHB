@@ -365,23 +365,49 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ok(todo.order, 'it sits between the stays and the account settings');
     ok(!todo.tabs.includes('experiences'), `the menu no longer carries Things to do (${todo.tabs.join(', ')})`);
     await page.click('#ga-todo .ga-tcard:nth-child(2)');
-    await page.waitForFunction(() => document.getElementById('view-experiences').classList.contains('active') && !!document.querySelector('#exp-grid .exp-row.is-open'), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.getElementById('view-experiences').classList.contains('active') && document.getElementById('exp-detail-modal').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
     const list = await page.evaluate(() => {
+        const sheet = document.getElementById('exp-detail-modal');
         const open = document.querySelector('#exp-grid .exp-row.is-open');
         return {
             active: document.getElementById('view-experiences').classList.contains('active'),
             rows: document.querySelectorAll('#exp-grid .exp-row').length,
+            groups: [...document.querySelectorAll('#exp-grid .exp-sech h2')].map((h) => h.textContent),
             openId: open ? open.dataset.expId : '',
-            acts: open ? [...open.querySelectorAll('.exp-actions a')].map((a) => a.textContent.trim()) : [],
+            sheetOpen: sheet.classList.contains('open') && sheet.getClientRects().length > 0,
+            title: (sheet.querySelector('h2') || {}).textContent || '',
+            acts: [...sheet.querySelectorAll('.exp-actions .exp-act')].map((a) => a.textContent.trim()),
             back: [...document.querySelectorAll('#view-experiences .exp-back')].some((e) => e.getClientRects().length),
             dockCur: (document.querySelector('#guest-dock-slot .guest-dock-btn.current') || { dataset: {} }).dataset.tab,
         };
     });
     ok(list.active && list.rows === 2, `tapping a card opens the full list as rows (${list.rows})`);
-    ok(list.openId === '11' && list.acts.some((a) => /Directions/.test(a)), `…with that place unfolded and its actions showing (${list.openId} · ${list.acts.join(', ')})`);
+    ok(list.groups.join('|') === 'Boat trips & wildlife|Walks & nature', `…grouped by kind, boat trips first (${list.groups.join(' · ')})`);
+    ok(list.sheetOpen && list.openId === '11' && /Cley Marshes/.test(list.title), `…with that place open as a sheet (${list.openId} · ${list.title})`);
+    ok(list.acts.some((a) => /Directions/.test(a)) && list.acts.some((a) => /Save/.test(a)), `…carrying Directions and Save (${list.acts.join(', ')})`);
     ok(list.back && list.dockCur === 'account', `…a "‹ You" back link, and You still marked in the menu (${list.dockCur})`);
-    await page.click('#exp-grid .exp-row:last-child .exp-rowbtn');
-    ok(await page.evaluate(() => document.querySelector('#exp-grid .exp-row:last-child').classList.contains('is-open') && document.querySelector('#exp-grid .exp-row:last-child .exp-rowbtn').getAttribute('aria-expanded') === 'true'), 'a row opens on a tap and says so');
+    await page.click('#exp-detail-modal .exp-act-save');
+    await page.waitForTimeout(200);
+    const sv = await page.evaluate(() => ({
+        store: localStorage.getItem('chb-exp-saved'),
+        chip: (document.querySelector('#exp-filters [data-cat="saved"] .exp-cc') || {}).textContent,
+        rowOn: !!document.querySelector('#exp-grid [data-exp-id="11"] .exp-save.is-on'),
+        top: (document.querySelector('#exp-grid .exp-sech h2') || {}).textContent,
+    }));
+    ok(sv.store === '[11]' && sv.chip === '1' && sv.rowOn && sv.top === 'Your list', `Save keeps it on this phone and leads the list (${sv.store} · chip ${sv.chip} · ${sv.top})`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !document.getElementById('exp-detail-modal').classList.contains('open') && !document.querySelector('#exp-grid .exp-row.is-open')), 'Escape closes the sheet');
+    await page.fill('#exp-q', 'seals');
+    await page.waitForTimeout(150);
+    ok(await page.evaluate(() => [...document.querySelectorAll('#exp-grid .exp-row .card-title')].map((e) => e.textContent).join('|') === 'Beans Boat Trips'), 'search narrows the list as you type');
+    await page.fill('#exp-q', 'zzz');
+    await page.waitForTimeout(150);
+    ok(await page.evaluate(() => /Nothing matches/.test(document.getElementById('exp-grid').textContent) && !!document.querySelector('#exp-grid [data-exp-clear]')), 'nothing found says so and offers to clear');
+    await page.click('#exp-grid [data-exp-clear]');
+    await page.waitForTimeout(150);
+    ok(await page.evaluate(() => document.querySelectorAll('#exp-grid .exp-row').length >= 2 && document.getElementById('exp-q').value === ''), '…and clearing brings everything back');
     await page.click('#view-experiences .exp-back');
     await page.waitForTimeout(300);
     ok(await page.evaluate(() => document.getElementById('view-guest-account').classList.contains('active')), 'and the back link returns to You');
