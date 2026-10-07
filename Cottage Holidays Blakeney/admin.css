@@ -8564,3 +8564,7 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
   .cal-sum .mg-txt { flex-basis: calc(100% - 48px); }
   .cal-sum .cal-all { flex-basis: 100%; justify-content: center; min-height: 44px; }
 }
+/* The calendar fold's actions: the .mo-tool tiles, four across. */
+.cal-tools { grid-template-columns: repeat(4, 1fr); margin-top: 12px; }
+.cal-tools .mo-tool { min-height: 76px; line-height: 1.2; }
+.cal-tools .cal-tspin { width: 20px; height: 20px; color: var(--accent-text); }
