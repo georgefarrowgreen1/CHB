@@ -360,6 +360,18 @@ chbAct('openInboxMessages', function () {
 chbAct('openInboxEmail', function () {
     if (typeof openInbox === 'function') openInbox().then(function () { inboxFolder('email'); });
 });
+// Re-send the email-confirmation link from My Stays (an unconfirmed account).
+chbAct('guestResendConfirm', async function (el) {
+    const email = currentGuest && currentGuest.email;
+    if (!email) return;
+    try {
+        await apiPost('auth.php', { action: 'guest_magic_request', email: email });
+        el.textContent = 'Sent — check your inbox';
+        el.setAttribute('disabled', '');
+    } catch (e) {
+        toast("Couldn't send it just now — please try again in a minute.");
+    }
+});
 // Open the accommodations section then a specific cottage.
 chbAct('openAccomThenSec', function (el) {
     settingsOpen('accom');
@@ -457,6 +469,28 @@ function chbActArgs(el, event) {
     }
     return args;
 }
+// A TIME FROM THE SERVER IS A TIME OR IT IS THE DEFAULT. These strings are typed
+// by guests and owners and rendered into markup in a dozen places, several of them
+// unescaped — so they are vetted ONCE, where rows are mapped, and nothing else
+// ever reaches a template. "15:00:00" (a TIME column) is trimmed to "15:00".
+function chbTime(v, dflt) {
+    const m = /^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(String(v == null ? '' : v).trim());
+    return m ? m[1].padStart(2, '0') + ':' + m[2] : dflt;
+}
+// THE GLOBAL FALLBACK IS FOR THE APP'S OWN FUNCTIONS, NOT THE PLATFORM'S. A
+// data-act name resolves against window, so any attribute that ever let text
+// through would have reached fetch, open, eval-likes and the raw API wrappers with
+// arguments of its choosing. Browser built-ins (native code) and the request
+// primitives are refused by name; every real action is an app function.
+const CHB_ACT_DENY = ['apiPost', 'apiGet', 'apiPostCore', 'apiGetCore', 'queueOrPost', 'saveContent', 'chbRunAct', 'loadAdminBundle'];
+function chbActAllowed(name) {
+    if (CHB_ACT_DENY.indexOf(name) !== -1) return false;
+    try {
+        return !/\[native code\]/.test(Function.prototype.toString.call(window[name]));
+    } catch (e) {
+        return false;
+    }
+}
 function chbRunAct(el, name, event) {
     if (__chbNetOff && CHB_NEEDS_NET.indexOf(name) !== -1) {
         try {
@@ -480,7 +514,7 @@ function chbRunAct(el, name, event) {
         // registered action declares (), (el) or (el, event), and JS drops
         // trailing arguments a function did not ask for.
         r = fn.apply(el, [el, event].concat(chbActArgs(el, event)));
-    } else if (typeof window[name] === 'function') {
+    } else if (typeof window[name] === 'function' && chbActAllowed(name)) {
         // Plain global call — exact parity with the old inline `fn(...)` (this =
         // window). data-arg[2|3] carry up to three literal args in order; data-pass
         // appends one runtime value (this.value / .checked / .files, the element,
@@ -1841,8 +1875,8 @@ function mapBookingFromApi(row) {
         postcode: row.postcode || '',
         checkIn: row.check_in,
         checkOut: row.check_out,
-        checkInTime: row.check_in_time || '15:00',
-        checkOutTime: row.check_out_time || '10:00',
+        checkInTime: chbTime(row.check_in_time, '15:00'),
+        checkOutTime: chbTime(row.check_out_time, '10:00'),
         adults: parseInt(row.adults, 10) || 0,
         children: parseInt(row.children, 10) || 0,
         guests: guestSummary(parseInt(row.adults, 10) || 0, parseInt(row.children, 10) || 0),
@@ -1980,8 +2014,8 @@ function mapEnquiryFromApi(row) {
         postcode: row.postcode || '',
         checkIn: row.check_in,
         checkOut: row.check_out,
-        checkInTime: row.check_in_time || '15:00',
-        checkOutTime: row.check_out_time || '10:00',
+        checkInTime: chbTime(row.check_in_time, '15:00'),
+        checkOutTime: chbTime(row.check_out_time, '10:00'),
         adults: parseInt(row.adults, 10) || 0,
         children: parseInt(row.children, 10) || 0,
         guests: guestSummary(parseInt(row.adults, 10) || 0, parseInt(row.children, 10) || 0),
@@ -3685,8 +3719,10 @@ async function changeGuestPassword() {
             msg.style.display = 'block';
         }
     };
-    if (!cur || !nw) {
-        show('Please fill in your current and new password.', false);
+    // The current password may be BLANK: an account whose unconfirmed password was
+    // cleared at email confirmation has none, and the server accepts that case only.
+    if (!nw) {
+        show('Please fill in your new password (and your current one, if you have one).', false);
         return;
     }
     if (nw.length < 4) {
@@ -4011,7 +4047,10 @@ async function maybeConsumeMagicLink() {
         nav('view-guest-bookings');
         await renderGuestBookings();
         try {
-            toast('Signed in — welcome back.');
+            // A confirmation from a browser that did not register clears the unconfirmed
+            // password (auth.php) — say so, so "my password stopped working" is never a surprise.
+            if (res.reset) glassAlert('Your email is confirmed and your stays are below. For your security, set a new password in your account details — the one chosen before the email was confirmed no longer works.');
+            else toast('Signed in — welcome back.');
         } catch (e) {}
     } catch (e) {
         clean();
@@ -4194,9 +4233,21 @@ async function guestLogout() {
     currentGuest = null;
     // The device stops being a signed-in one, so the boot's fast reveal applies
     // again next time (the same hygiene forceAdminLogout does for chb-was-admin).
+    // AND NOTHING OF THEIRS STAYS BEHIND for the next person at this device: the
+    // chat token (it reopens their thread), the unsent enquiry draft, and the stays
+    // already rendered into the page and held in memory.
     try {
         localStorage.removeItem(GUEST_SEEN_KEY);
+        localStorage.removeItem('chb-chat-token');
+        localStorage.removeItem(ENQ_DRAFT_KEY);
     } catch (e) {}
+    guestBookingsCache = [];
+    myGuestReviews = {};
+    __wbStays = null;
+    const gl = document.getElementById('guest-bookings-list');
+    if (gl) gl.innerHTML = '';
+    const ct = document.getElementById('chat-thread');
+    if (ct) ct.innerHTML = '';
     setGuestUI();
     nav('view-main');
 }
@@ -4327,7 +4378,8 @@ async function renderGuestBookings() {
     // Fetch this guest's own bookings + pending enquiries (incl. property address)
     let rows = [],
         enqRows = [],
-        completedStays = 0;
+        completedStays = 0,
+        unproven = false;
     try {
         // Account preview reuses the payload already fetched at boot (admin-authed,
         // action-tokens stripped); the signed-in guest fetches their own.
@@ -4337,6 +4389,7 @@ async function renderGuestBookings() {
         rows = res.bookings || [];
         enqRows = res.enquiries || [];
         completedStays = res.completed_stays || 0;
+        unproven = !!res.unproven;
     } catch (e) {
         // "Please try again" named no way to try: this screen is reached from a
         // signed-in guest's own account and its only recovery was a page reload
@@ -4367,8 +4420,8 @@ async function renderGuestBookings() {
             address: row.property_address || '',
             checkIn: row.check_in,
             checkOut: row.check_out,
-            checkInTime: row.check_in_time || '15:00',
-            checkOutTime: row.check_out_time || '10:00',
+            checkInTime: chbTime(row.check_in_time, '15:00'),
+            checkOutTime: chbTime(row.check_out_time, '10:00'),
             adults: parseInt(row.adults, 10) || 0,
             children: parseInt(row.children, 10) || 0,
         }))
@@ -4397,6 +4450,21 @@ async function renderGuestBookings() {
     }
     const reviewShown = new Set(); // one review block per property
     const photoShown = new Set(); // one "share a photo" button per property
+    // AN UNCONFIRMED ACCOUNT IS SHOWN NO STAYS (my-bookings.php): the stays are
+    // matched by email, and only the person reading that inbox may see them. Say
+    // so and offer the link again, rather than "No bookings yet" — which would be
+    // false for a guest whose stay is simply waiting behind the confirmation.
+    const confirmCard = unproven
+        ? `<div class="glass-panel guest-empty guest-confirm">
+                <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">Confirm your email to see your stays</p>
+                <p style="font-size:var(--fs-body);">We sent a link to <strong>${escapeHtml(currentGuest.email || '')}</strong>. Open it on any device and your bookings will appear here.</p>
+                <button type="button" class="btn-glass" style="margin-top:20px;" data-act="guestResendConfirm" data-pass="self">Send the link again</button>
+            </div>`
+        : '';
+    if (mine.length === 0 && pendingMine.length === 0 && unproven) {
+        list.innerHTML = confirmCard;
+        return;
+    }
     if (mine.length === 0 && pendingMine.length === 0) {
         // A GUEST WHO HAS STAYED HERE IS NOT A NEW VISITOR. Cancelling DELETEs the
         // booking row (dates_clash and waitlist_notify_freed depend on it going), so a
@@ -4554,8 +4622,8 @@ async function renderGuestBookings() {
             extraRows:
                 gt.paid > 0
                     ? `
-                <div class="price-row" style="color:var(--ok);"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
-                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:var(--ok);' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
+                <div class="price-row" style="color:var(--ok-text);"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
+                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:var(--ok-text);' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
                     : '',
         });
         // The just-finished stay leads with Book again + the returning-guest
@@ -4703,6 +4771,7 @@ async function renderGuestBookings() {
                </div>`
             : '';
     list.innerHTML =
+        confirmCard +
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (currentCards.length ? gHdr('Staying now') + gGrid(currentCards) : '') +
@@ -5510,6 +5579,13 @@ function payHeadTitle(done) {
 // WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
 // never dead-ends. Additive beside the (unchanged) spoken sub.
 function payDoneNextRender(res, rem) {
+    // THE CAPSULE FOLLOWS THE MONEY: "Dates held for you" was set when the screen
+    // opened and never revisited, so it sat over "Your dates are confirmed".
+    const cap = document.querySelector('.pay-stay-cap.is-held');
+    if (cap) {
+        cap.classList.remove('is-held');
+        cap.textContent = '✓ Dates confirmed';
+    }
     const el = document.getElementById('pay-done-next');
     if (!el) return;
     const apo = res && res.autopay;
@@ -7167,7 +7243,7 @@ function guestReviewForm(propKey) {
     // asserts the absence). A JS comment, not an HTML one: a comment inside this
     // template would ship, quoting the wrong sentence back at the guest.
     const note = existing && existing.status === 'approved'
-        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you.</div>`
+        ? `<div style="font-size:var(--fs-sub);color:var(--ok-text);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you.</div>`
         : '';
     // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
     // tappable star row — two controls for one question, able to disagree until a
@@ -7490,7 +7566,7 @@ async function sendArrivalInfo(bookingId, via) {
         kind: 'email.arrival',
         to: b.email,
         sendLabel: 'Send arrival info',
-        fallbackConfirm: `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
+        fallbackConfirm: `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Cottages.`,
         doSend: async () => {
             try {
                 const arrBody = { action: 'send_arrival', id: b.dbId };
@@ -7967,7 +8043,7 @@ function postcodeRecognize(inputId, statusId, onBlur) {
             );
             if (seq !== __pcSeq) return; // superseded by a newer keystroke
             if (r.ok && r.valid) {
-                out.style.color = '#7FD68A';
+                out.style.color = 'var(--ok-text)';
                 out.textContent = '✓ ' + (r.postcode || val) + (r.place ? ' — ' + r.place : '');
             } else if (r.ok) {
                 out.style.color = 'var(--warn-text)';
@@ -10073,8 +10149,14 @@ function guestFlowHtml(propKey, b, payToken) {
         // decides that label, so the sentence reads it instead of restating it.
         // And an owner-arranged stay has no button at all to point at.
         const strip = guestPayCta(b, gt);
-        const stripCta = payToken && !bookingOwnerArranged(b) ? ` — use “Pay ${strip.word}” below.` : '.';
-        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${stripCta}</span></div>`;
+        // The whole outstanding is not "the balance" when the ask is the DEPOSIT:
+        // say what the button takes, then what remains, so the two figures beside
+        // each other cannot read as one contradicting the other.
+        const isDep = strip.word === 'deposit' && strip.amount < gt.balance - 0.005;
+        const stripCta = payToken && !bookingOwnerArranged(b)
+            ? (isDep ? ` — the ${gbp(strip.amount)} deposit is due now (“Pay deposit” below).` : ` — use “Pay ${strip.word}” below.`)
+            : '.';
+        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} still to pay${stripCta}</span></div>`;
     } else if (flow.inStay) {
         // A GUEST ALREADY IN THE COTTAGE IS NOT WAITING FOR ARRIVAL INFO. Both
         // sentences below are about a stay that has not started — "we'll send
@@ -11028,6 +11110,20 @@ function toggleChat() {
     loadChat();
     chatStartPolling(); // keep the thread live while it's open
 }
+// ESCAPE CLOSES THE CHAT, like every other overlay — Back always did; the key
+// never reached it because topOpenDialog only knows the modal family. Only when no
+// dialog sits above it (a terms window raised from the chat answers first).
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    const w = document.getElementById('chat-widget');
+    if (!w || !w.classList.contains('open') || topOpenDialog()) return;
+    const gd = document.getElementById('glass-dialog');
+    if (gd && gd.classList.contains('open')) return;
+    e.preventDefault();
+    closeChat();
+    const f = document.getElementById('chat-fab');
+    if (f && f.offsetParent) f.focus();
+});
 function closeChat() {
     const w = document.getElementById('chat-widget');
     if (w && w.classList.contains('open'))
@@ -12079,7 +12175,9 @@ let __msgThreadId = null;
 let __msgThreadArchived = false;
 function bookingLine(b) {
     const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
-    return `${escapeHtml(name)} · ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
+    // PLAIN TEXT — the caller escapes once (it used to be escaped here AND there,
+    // so "Harbour & Mill" read "Harbour &amp;amp; Mill").
+    return `${name} · ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)}${b.payment ? ' · ' + b.payment : ''}`;
 }
 // Bookings block in the reply modal, with one-tap "Send arrival info / balance
 // link" actions for any upcoming stay (reuses the normal arrival/payment senders).
@@ -12156,6 +12254,8 @@ async function openMessageThread(threadId) {
     if (thread)
         thread.innerHTML = `<div style="padding:10px 4px;"><span class="skel-bar w65" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w45" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w85" style="display:block;margin-left:auto;"></span></div>`;
     if (ctx) ctx.innerHTML = '';
+    // Floating (not docked in the Inbox pane): Back closes it, like any sheet.
+    if (modal && !modal.classList.contains('open') && modal.parentElement === document.body) overlayHistPush();
     if (modal) modal.classList.add('open');
     try {
         const r = await apiPost('messages.php', { action: 'thread', thread_id: threadId });
@@ -12261,7 +12361,9 @@ async function adminThreadPoll() {
 }
 function closeMessagesModal() {
     adminThreadStopPolling();
-    chbCloseOverlay(document.getElementById('messages-modal'));
+    const mm = document.getElementById('messages-modal');
+    if (mm && mm.classList.contains('open') && mm.parentElement === document.body) overlayHistConsume();
+    chbCloseOverlay(mm);
     __msgThreadId = null;
 }
 // Archive / unarchive the open conversation (kept, hidden from the active inbox).
@@ -13180,7 +13282,7 @@ async function loadGuestPhotosAdmin() {
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r-lg);overflow:hidden;">
                     <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
-                        <div style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
+                        <div style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok-text);">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:var(--fs-sub);margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
                         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
                             ${pend ? `<button class="btn-sm btn-edit" ${chbAttrs('moderatePhoto', p.id, 'approve')}>Approve</button>` : ''}
@@ -14316,6 +14418,7 @@ const MODAL_CLOSERS = {
     'admin-login-modal': closeAdminLogin,
     'terms-modal': closeTermsModal,
     'privacy-modal': closePrivacyModal,
+    'enquire-modal': closeEnquireModal,
     'edit-modal': closeModal,
     // Route Esc to these modals' own close functions so their cleanup runs
     // (e.g. the messages modal stops its live-refresh poll) instead of just
@@ -14338,9 +14441,16 @@ function topOpenDialog() {
     // trapped Tab in a form the guest could no longer see. Ordered by what is on top.
     const dp = document.getElementById('date-picker');
     if (dp && dp.classList.contains('open')) return dp;
+    // THE ONE ON TOP, NOT THE LAST IN THE DOM: the terms and privacy windows (z 2200)
+    // open OVER the enquiry/sign-in sheets but sit EARLIER in the markup, so DOM order
+    // answered Escape with the form underneath. Highest z-index wins; ties keep DOM order.
     const open = Array.from(document.querySelectorAll('.modal-overlay.open'));
-    if (open.length) return open[open.length - 1];
-    return null;
+    let top = null, topZ = -Infinity;
+    for (const el of open) {
+        const z = parseInt(getComputedStyle(el).zIndex, 10) || 0;
+        if (z >= topZ) { top = el; topZ = z; }
+    }
+    return top;
 }
 document.addEventListener('keydown', (e) => {
     // While the glass dialog is open, let its own handler manage the keys —
@@ -15434,6 +15544,10 @@ function dpDone() {
         display.innerText = 'Select your stay dates';
         trigger.classList.remove('has-dates');
     }
+    // New dates answer step one's own refusal ("Please choose your stay dates",
+    // "…just been taken") — it was set at Continue and nothing else cleared it, so it
+    // stood above the very dates that fixed it. Continue re-checks on the next tap.
+    if (dpState.start && dpState.end) setEnqMsg('review', '');
     closeDatePicker();
     updateEnquiryPrice();
     // THE FORM ASSEMBLES ITSELF AROUND THE DATES: landing a completed range
@@ -16659,8 +16773,21 @@ function clearCottageUrl() {
 function maybeOpenCottageRoute() {
     const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
     if (!m) return false;
-    const key = SLUG_TO_KEY[(m[1] || '').toLowerCase()];
-    if (!key) return false;
+    const slug = (m[1] || '').toLowerCase();
+    const key = Object.prototype.hasOwnProperty.call(SLUG_TO_KEY, slug) ? SLUG_TO_KEY[slug] : undefined; // never a prototype name ('/cottages/constructor')
+    if (!key) {
+        // AN OLD LINK SAYS SO. The server answers 404 for crawlers, but a person
+        // following a renamed or removed cottage's link was silently shown the
+        // homepage. Tell them, and show them the cottages there are.
+        if (slug && Object.keys(SLUG_TO_KEY).length) {
+            try {
+                nav('view-cottages');
+                toast("We couldn't find that cottage — here are all of ours.");
+            } catch (e) {}
+            return true;
+        }
+        return false;
+    }
     __suppressRouteSync = true;
     try {
         openProperty(key);
@@ -16725,6 +16852,12 @@ function closeTopOverlay() {
     if (open('houserules-modal')) { closeHouseRulesModal(); return true; }
     if (open('reviews-modal')) { closeAllReviews(); return true; }
     if (open('chat-widget')) { closeChat(); return true; }
+    // The owner's sheets — same rule. NB edit-modal can sit over the composer and
+    // the thread, so it is asked first.
+    if (open('edit-modal')) { closeModal(); return true; }
+    if (open('enq-email-modal') && typeof window.closeEnquiryEmailModal === 'function') { window.closeEnquiryEmailModal(); return true; }
+    const mm = document.getElementById('messages-modal');
+    if (mm && mm.classList.contains('open') && mm.parentElement === document.body) { closeMessagesModal(); return true; }
     return false;
 }
 window.addEventListener('popstate', (ev) => {
@@ -16788,7 +16921,7 @@ window.addEventListener('popstate', (ev) => {
     __suppressRouteSync = true;
     try {
         const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
-        const key = m && SLUG_TO_KEY[(m[1] || '').toLowerCase()];
+        const key = m && Object.prototype.hasOwnProperty.call(SLUG_TO_KEY, (m[1] || '').toLowerCase()) ? SLUG_TO_KEY[(m[1] || '').toLowerCase()] : undefined;
         if (key) openProperty(key);
         else if (/^\/experiences\/?$/.test(location.pathname || '')) nav('view-experiences');
         else {
@@ -18021,7 +18154,11 @@ function decodeEntities(str) {
 //  EDIT / MOVE MODAL  (shared by enquiries and confirmed bookings)
 // ===================================================================
 function openModal() {
-    document.getElementById('edit-modal').classList.add('open');
+    const em = document.getElementById('edit-modal');
+    // BACK CLOSES THE FORM, as it does every guest sheet: without its own history
+    // entry Back replayed the admin view underneath and left the form stranded on top.
+    if (!em.classList.contains('open')) overlayHistPush();
+    em.classList.add('open');
     // THE FORM OPENS AT ITS TOP. Focusing the name field scrolled it into view
     // — measured scrollTop 337 at open — so the STAY (cottage + dates, what this
     // form leads with) was already off screen, and on a phone the keyboard
@@ -18037,7 +18174,9 @@ function openModal() {
     }, 120);
 }
 function closeModal() {
-    chbCloseOverlay(document.getElementById('edit-modal'));
+    const em = document.getElementById('edit-modal');
+    if (em && em.classList.contains('open')) overlayHistConsume();
+    chbCloseOverlay(em);
     document.getElementById('modal-error').style.display = 'none';
     // Dismiss the guest typeahead dropdown (pure DOM — no admin dependency).
     const sg = document.getElementById('modal-name-suggest');
@@ -18154,7 +18293,7 @@ function openCustomSetup(name) {
     const s = (__customBooking && __customBooking.setup) || null;
     const sub = document.getElementById('newprop-sub');
     if (sub)
-        sub.textContent = `Prices for “${name}”. You can change these later in Manage → Preferences.`;
+        sub.textContent = `Prices for “${name}”. You can change these later in Manage → Cottages.`;
     document.getElementById('newprop-couple').value = s ? s.couple || '' : '';
     document.getElementById('newprop-extra-adult').value = s ? s.extraAdult || '' : '';
     document.getElementById('newprop-child').value = s ? s.child || '' : '';

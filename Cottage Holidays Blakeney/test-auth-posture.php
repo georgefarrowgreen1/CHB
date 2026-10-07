@@ -225,7 +225,9 @@ foreach ($REGISTRY as $file => $entry) {
     $markers = array_merge($KIND_MARKERS[$kind] ?? [], $entry[1] ?? []);
     $reason = $entry[2] ?? '';
     $src = (string) file_get_contents(__DIR__ . '/' . $file);
-    $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false));
+    // require_guest_proven() (db.php) is require_guest() plus the email-proof check —
+    // it satisfies the guest marker.
+    $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false && !($m === $GUEST && strpos($src, 'require_guest_proven(') !== false)));
     if ($missing) {
         ap_check("$file [$kind] — MISSING guard marker(s): " . implode(', ', $missing), false);
         continue;

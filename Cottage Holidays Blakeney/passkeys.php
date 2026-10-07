@@ -383,7 +383,7 @@ if ($action === 'any_login_finish') {
         ->prepare('UPDATE guest_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
         ->execute([$newCount, $cred['id']]);
     session_regenerate_id(true); // new session id on login — prevents session fixation
-    $_SESSION['guest_id'] = (int) $cred['guest_id'];
+    guest_session_begin((int) $cred['guest_id']);
     unset($_SESSION['admin_id']); // one role at a time
     unset($_SESSION['pk_any_login_challenge']);
     json_out([

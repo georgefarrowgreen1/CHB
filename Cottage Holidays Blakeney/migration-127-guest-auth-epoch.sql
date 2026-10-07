@@ -1,0 +1,11 @@
+-- ============================================================
+--  migration-127 — a guest's sessions can be revoked.
+--
+--  Proving an email (opening the emailed sign-in link) on an account whose
+--  password was chosen BEFORE anyone proved the address now clears that
+--  password and bumps this counter. Every session minted before the bump
+--  carries the old value and is signed out on its next request — so whoever
+--  registered with someone else's address loses the door the moment the real
+--  owner proves it.
+-- ============================================================
+ALTER TABLE guests ADD COLUMN auth_epoch INT NOT NULL DEFAULT 0;

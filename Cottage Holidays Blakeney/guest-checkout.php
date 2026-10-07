@@ -27,7 +27,7 @@
 //    listening, and its 'checkout' category is mutable in notify-prefs).
 // ============================================================
 require_once __DIR__ . '/db.php';
-require_guest();
+require_guest_proven(); // stays are matched by email — confirmed accounts only
 
 route_actions([
     'left' => function ($in) {

@@ -221,7 +221,7 @@
                 '<div class="row"><span class="stepn' + (st.connected ? ' done' : '') + '">' + (st.connected ? '✓' : '1') + '</span>' +
                 '<div class="main"><b>Connect to the website</b><span>' +
                 (st.connected ? 'Done — this Mac is paired and the site can ask it questions.'
-                    : 'Type the code from Manage → System check → Connect a Mac.') + '</span></div>' +
+                    : 'Type the code from Manage → Mac assistant → Connect a Mac.') + '</span></div>' +
                 '<div class="rail">' + (st.connected ? '<span class="chip ok">Connected</span>'
                     : '<button class="tbtn prime" type="button" id="stepConnect">Open Settings…</button>') + '</div></div>' +
                 '<div class="row"><span class="stepn' + (st.hasModel ? ' done' : '') + '">' + (st.hasModel ? '✓' : '2') + '</span>' +

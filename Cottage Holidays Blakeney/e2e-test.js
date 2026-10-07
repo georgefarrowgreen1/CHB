@@ -258,7 +258,7 @@ async function waitForServer(url, tries = 40) {
         return {
           onSettings: ((document.querySelector('.page-view.active') || {}).id === 'view-settings'),
           header: (document.querySelector('#view-settings .dashboard-header h1') || {}).textContent || '',
-          accom: rowVisible("settingsOpen('accom')"),
+          accom: rowVisible("openAccomThenSec("),
           analytics: rowVisible("settingsOpen('analytics')"),
           security: rowVisible("settingsOpen('security')"),
         };

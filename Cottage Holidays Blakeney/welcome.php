@@ -20,7 +20,7 @@ if ($action !== 'get') {
     json_out(['error' => 'Unknown action'], 400);
 }
 
-require_guest();
+require_guest_proven(); // stays are matched by email — confirmed accounts only
 $guestId = (int) $_SESSION['guest_id'];
 
 $prop = clean($in['prop'] ?? '');

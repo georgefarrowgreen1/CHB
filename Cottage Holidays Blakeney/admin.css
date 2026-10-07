@@ -6910,7 +6910,9 @@ body.rail-on.admin-screen #admin-rail {
   left: 14px;
   top: calc(14px + var(--safe-t));
   bottom: 14px;
-  width: 220px;
+  /* 236, not 220: the rows went to 17px (the one-font pass) and "Payments £1,800"
+     and "Ask anything…" were cut mid-word at 220. */
+  width: 236px;
   overflow-y: auto;
   /* Below the search pop-out (1430+) and the modals (2000+); above content. */
   z-index: 1200;
@@ -6932,7 +6934,7 @@ body.rail-on.admin-screen header {
    room. Left-anchored ON PURPOSE: a rail plus a column, not a centred page. */
 body.rail-on.admin-screen main.container {
   width: auto;
-  margin-left: 252px;
+  margin-left: 268px;
   margin-right: 24px;
   padding-top: calc(18px + var(--safe-t));
 }
@@ -7073,22 +7075,22 @@ body.rail-fold.admin-screen main.container {
 }
 /* Composure past 1720px: the rail-and-column ensemble centres as ONE unit —
    left-anchored composition reads as crowding a corner on a big monitor.
-   The ensemble is rail (220) + gap (18) + the column's own cap, so the two
-   caps get their own arithmetic (1438 = 220+18+1200, 1738 = 220+18+1500) and
-   the container sits 238px right of the rail's left edge in both. Measured
+   The ensemble is rail (236) + gap (18) + the column's own cap, so the two
+   caps get their own arithmetic (1454 = 236+18+1200, 1754 = 236+18+1500) and
+   the container sits 254px right of the rail's left edge in both. Measured
    equal-margin at 1920 in each. Below 1720 nothing changes. */
 body.rail-wide.admin-screen #admin-rail {
-  left: calc((100vw - 1438px) / 2);
+  left: max(14px, calc((100vw - 1454px) / 2));
 }
 body.rail-wide.admin-screen main.container {
-  margin-left: calc((100vw - 1438px) / 2 + 238px);
+  margin-left: max(268px, calc((100vw - 1454px) / 2 + 254px));
   margin-right: 24px;
 }
 body.rail-wide.rail-widecol.admin-screen #admin-rail {
-  left: calc((100vw - 1738px) / 2);
+  left: max(14px, calc((100vw - 1754px) / 2));
 }
 body.rail-wide.rail-widecol.admin-screen main.container {
-  margin-left: calc((100vw - 1738px) / 2 + 238px);
+  margin-left: max(268px, calc((100vw - 1754px) / 2 + 254px));
 }
 /* Today opens the way every other screen now does: the serif day sentence
    IS the head on rail screens — the greeting joins #today-date's own render

@@ -9,6 +9,7 @@
 //    POST {action:'unsubscribe', endpoint:'...'}       -> remove this device
 // ============================================================
 require_once __DIR__ . '/db.php';
+guest_session_check(); // a revoked guest session (migration-127) reads as signed out
 require_once __DIR__ . '/webpush.php';
 
 $in = body();

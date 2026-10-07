@@ -6,6 +6,7 @@
 //  Guest:  guest_register, guest_login, guest_logout, guest_status
 // ============================================================
 require_once __DIR__ . '/db.php';
+guest_session_check(); // a revoked guest session (migration-127) is signed out before any action reads it
 
 // ---- Login rate-limiting (5 failures per 10 min, per IP + account) ----
 // Resilient: if the login_attempts table doesn't exist (migration not run),
@@ -394,15 +395,15 @@ switch ($action) {
         }
 
         $hash = password_hash($pw, PASSWORD_DEFAULT);
-        // An account with nothing to claim is verified by definition — there is no
-        // one else's data behind it, so a new guest signs straight in as before.
-        // One that DOES claim existing stays stays unverified until the emailed
-        // link is used; guest_login refuses it meanwhile, or the password they just
-        // chose would walk straight back through the front door.
+        // NO ACCOUNT IS VERIFIED AT REGISTRATION ANY MORE. An address with nothing
+        // behind it TODAY can still gain bookings tomorrow — and an account squatting
+        // a guest's email would then inherit them (dates, money, the door code). So
+        // every new account starts unproven: it signs in (when there is nothing to
+        // claim) and works, but sees no stays until the emailed link is opened.
         try {
             db()
                 ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?,?,?,?,?,?,?)')
-                ->execute([$name, $email, $phone, $address, $postcode, $hash, $claimsExisting ? null : date('Y-m-d H:i:s')]);
+                ->execute([$name, $email, $phone, $address, $postcode, $hash, null]);
         } catch (\Throwable $e) {
             // migration-111 not applied yet — keep the pre-verification write.
             db()
@@ -410,6 +411,9 @@ switch ($action) {
                 ->execute([$name, $email, $phone, $address, $postcode, $hash]);
         }
         $newGuestId = (int) db()->lastInsertId();
+        // THIS browser registered the account — so the password it chose is the
+        // confirmer's own if the link is opened here (see guest_magic_consume).
+        $_SESSION['reg_gid'] = $newGuestId;
 
         if ($claimsExisting) {
             try {
@@ -428,8 +432,16 @@ switch ($action) {
         }
 
         session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['guest_id'] = $newGuestId;
+        guest_session_begin($newGuestId);
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
+        // The confirmation link: until it is opened the account sees no stays.
+        try {
+            $ts = time();
+            $url = site_base_url() . 'index.html?mlogin=' . $newGuestId . '&t=' . $ts . '&k=' . login_token($newGuestId, $ts);
+            require_once __DIR__ . '/mailer.php';
+            send_magic_link_email(['id' => $newGuestId, 'name' => $name, 'email' => $email], $url);
+        } catch (\Throwable $e) {
+        }
         log_activity('account', 'guest.register', 'New guest account — ' . $name, ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $_SESSION['guest_id']]);
         json_out([
             'ok' => true,
@@ -494,7 +506,16 @@ switch ($action) {
             $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
             $vq->execute([(int) $row['id']]);
             $verifiedAt = $vq->fetchColumn();
+            $hasStays = false;
             if ($verifiedAt === null) {
+                $hq = db()->prepare('SELECT 1 FROM bookings WHERE email = ? LIMIT 1');
+                $hq->execute([(string) $row['email']]);
+                $hasStays = (bool) $hq->fetchColumn();
+            }
+            // Unproven AND there are stays behind the address: the password proves
+            // nothing about who owns them, so only the emailed link will do. With
+            // nothing to claim, an unproven account signs in (it sees no stays).
+            if ($verifiedAt === null && $hasStays) {
                 $ts = time();
                 $url = site_base_url() . 'index.html?mlogin=' . (int) $row['id'] . '&t=' . $ts . '&k=' . login_token($row['id'], $ts);
                 require_once __DIR__ . '/mailer.php';
@@ -506,7 +527,7 @@ switch ($action) {
             // migration-111 not applied — behave exactly as before.
         }
         session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['guest_id'] = (int) $row['id'];
+        guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
         json_out([
             'ok' => true,
@@ -585,18 +606,38 @@ switch ($action) {
         // THIS is the proof of address — the link was emailed to it and has just been
         // opened. Stamping it here is what lets an account created against existing
         // bookings finally sign in (guest_register / guest_login).
+        // AND IT ENDS ANY CLAIM THAT CAME BEFORE IT. An unproven account's password
+        // was chosen by whoever registered, which may not be the person reading this
+        // inbox — so proving the address from any OTHER browser clears that password,
+        // forgets its passkeys and signs out every earlier session. Opened in the
+        // browser that registered, the password is the confirmer's own and stays.
+        $reset = false;
         try {
+            $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
+            $vq->execute([(int) $row['id']]);
+            $wasProven = $vq->fetchColumn() !== null;
+            if (!$wasProven && (int) ($_SESSION['reg_gid'] ?? 0) !== (int) $row['id']) {
+                db()->prepare("UPDATE guests SET password_hash = '', auth_epoch = auth_epoch + 1 WHERE id = ?")->execute([(int) $row['id']]);
+                try {
+                    db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([(int) $row['id']]);
+                } catch (\Throwable $e) {
+                }
+                $reset = true;
+                log_activity('account', 'guest.claim_reset', 'Email confirmed from a new browser — the unconfirmed password was cleared and other sessions signed out', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) (int) $row['id']]);
+            }
             db()
                 ->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')
                 ->execute([(int) $row['id']]);
         } catch (\Throwable $e) {
-            // migration-111 not applied — nothing to stamp.
+            // migration-111/127 not applied — nothing to stamp.
         }
+        unset($_SESSION['reg_gid']);
         session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['guest_id'] = (int) $row['id'];
+        guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']); // one role at a time
         json_out([
             'ok' => true,
+            'reset' => $reset,
             'guest' => [
                 'name' => $row['name'],
                 'email' => $row['email'],
@@ -652,7 +693,11 @@ switch ($action) {
         $stmt = db()->prepare('SELECT password_hash FROM guests WHERE id = ?');
         $stmt->execute([$_SESSION['guest_id']]);
         $row = $stmt->fetch();
-        if (!$row || !password_verify($current, $row['password_hash'])) {
+        // An account with NO password (cleared when the email was confirmed, or a
+        // magic-link-only account) sets one without a current one — the session is
+        // the proof, and there is nothing to type.
+        $noPw = $row && (string) $row['password_hash'] === '';
+        if (!$row || (!$noPw && !password_verify($current, $row['password_hash']))) {
             json_out(['error' => 'Your current password is incorrect'], 403);
         }
         db()
@@ -679,7 +724,18 @@ switch ($action) {
                 return [];
             }
         };
-        $bookings = $email !== '' ? $grab('SELECT * FROM bookings WHERE email = ? ORDER BY check_in', [$email]) : [];
+        // Stays are matched by EMAIL, so they belong to whoever proved the inbox —
+        // an unconfirmed account exports its own account data only.
+        $proven = guest_email_proven($gid);
+        $bookings = ($email !== '' && $proven) ? $grab('SELECT * FROM bookings WHERE email = ? ORDER BY check_in', [$email]) : [];
+        // The OWNER'S fields are not the guest's data: the private booking note, and
+        // the payment-processor handles that identify a card on file.
+        foreach ($bookings as &$bk) {
+            foreach (['notes', 'hold_payment_id', 'autopay_card_id', 'autopay_customer_id', 'autopay_last_error', 'autopay_last_code'] as $k) {
+                unset($bk[$k]);
+            }
+        }
+        unset($bk);
         $payments = [];
         $ids = array_values(array_filter(array_map(fn($b) => (int) $b['id'], $bookings)));
         if ($ids) {
@@ -694,7 +750,7 @@ switch ($action) {
             'account' => $account,
             'bookings' => $bookings,
             'payments' => $payments,
-            'enquiries' => $email !== '' ? $grab('SELECT * FROM enquiries WHERE email = ?', [$email]) : [],
+            'enquiries' => ($email !== '' && $proven) ? $grab('SELECT * FROM enquiries WHERE email = ?', [$email]) : [],
             'chat_threads' => $grab('SELECT * FROM chat_threads WHERE guest_id = ?', [$gid]),
             'messages' => $grab('SELECT * FROM messages WHERE guest_id = ?', [$gid]),
             'reviews' => $grab('SELECT * FROM guest_reviews WHERE guest_id = ?', [$gid]),
@@ -703,7 +759,7 @@ switch ($action) {
                 $email !== ''
                     ? $grab('SELECT email, name, created_at FROM newsletter_subscribers WHERE email = ?', [$email])
                     : [],
-            'waitlist' => $email !== '' ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
+            'waitlist' => ($email !== '' && $proven) ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
         ];
         json_out(['ok' => true, 'data' => $data]);
 
@@ -719,6 +775,11 @@ switch ($action) {
         $r = db()->prepare('SELECT email FROM guests WHERE id = ?');
         $r->execute([$gid]);
         $email = (string) ($r->fetchColumn() ?: '');
+        // An unconfirmed account deletes ITSELF, never the bookings and enquiries
+        // filed under an address it has not proven is its own.
+        if (!guest_email_proven($gid)) {
+            $email = '';
+        }
         $try = function ($sql, $params) {
             try {
                 db()->prepare($sql)->execute($params);
@@ -786,7 +847,11 @@ switch ($action) {
             $s->execute([$gid]);
             $g = $s->fetch();
         }
-        $_SESSION['guest_id'] = (int) $g['id'];
+        try {
+            db()->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')->execute([(int) $g['id']]);
+        } catch (\Throwable $e) {
+        }
+        guest_session_begin((int) $g['id']);
         unset($_SESSION['admin_id']); // one role at a time
         json_out([
             'ok' => true,

@@ -232,7 +232,7 @@ if (($in['action'] ?? '') === 'create') {
         json_out(
             [
                 'error' =>
-                    'Could not create the cottage — run migrations first (Manage → System check → Run migrations).',
+                    'Could not create the cottage — install the updates first (Manage → Status → More tools → Install updates).',
             ],
             500,
         );

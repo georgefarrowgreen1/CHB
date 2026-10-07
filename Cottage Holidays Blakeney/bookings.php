@@ -644,7 +644,7 @@ if ($action === 'add') {
         json_out(['error' => 'Unknown property'], 400);
     }
     if (prop_is_archived($propKey)) {
-        json_out(['error' => 'That cottage has been removed from the site — restore it (Manage → Preferences) before adding bookings.'], 400);
+        json_out(['error' => 'That cottage has been removed from the site — restore it (Manage → Removed cottages) before adding bookings.'], 400);
     }
     $name = clean($in['name'] ?? '');
     $checkIn = clean($in['check_in'] ?? '');
@@ -748,8 +748,8 @@ if ($action === 'add') {
             clean($in['postcode'] ?? ''),
             $checkIn,
             $checkOut,
-            clean($in['check_in_time'] ?? '15:00'),
-            clean($in['check_out_time'] ?? '10:00'),
+            clean_time($in['check_in_time'] ?? '15:00', '15:00'),
+            clean_time($in['check_out_time'] ?? '10:00', '10:00'),
             $adults,
             $children,
             clean($in['notes'] ?? ''),
@@ -1016,8 +1016,8 @@ if ($action === 'update') {
         clean($in['postcode'] ?? $b['postcode']),
         $checkIn,
         $checkOut,
-        clean($in['check_in_time'] ?? $b['check_in_time']),
-        clean($in['check_out_time'] ?? $b['check_out_time']),
+        clean_time($in['check_in_time'] ?? $b['check_in_time'], '15:00'),
+        clean_time($in['check_out_time'] ?? $b['check_out_time'], '10:00'),
         $adults,
         $children,
         clean($in['notes'] ?? $b['notes']),
@@ -1979,7 +1979,7 @@ if ($action === 'rate_guest') {
         json_out(['ok' => true, 'at' => $at]);
     } catch (\Throwable $e) {
         // Pre-migration installs have no table; say so rather than a bare 500.
-        json_out(['error' => 'Could not save the rating — run the migrations (Manage → System check).'], 500);
+        json_out(['error' => 'Could not save the rating — install the updates (Manage → Status → More tools → Install updates).'], 500);
     }
 }
 
