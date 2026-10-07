@@ -294,6 +294,13 @@ chbAct('saveContentField', function (el, event, key, value) {
     if (typeof key !== 'string' || !key) return;
     if (typeof saveContent === 'function') Promise.resolve(saveContent(key, value == null ? el.value : value)).catch(() => {}); // alerted inside
 });
+// Contact host FROM A STAY: the chat's instant answers read the page's cottage,
+// and on My Stays that was whatever cottage page was opened last ("Tell us which
+// cottage…" to a guest whose stay is right there).
+chbAct('chatForStay', function (el, event, propKey) {
+    if (typeof propKey === 'string' && propKey && typeof propertyMeta === 'object' && propertyMeta[propKey]) activeFrontProperty = propKey;
+    if (typeof toggleChat === 'function') toggleChat();
+});
 // Small bespoke compound closers from the guest-account modals.
 chbAct('detailsLogout', function () {
     closeGuestDetailsModal();
@@ -4739,7 +4746,7 @@ async function renderGuestBookings() {
                             <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
                             <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
                             <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
-                            <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+                            <button class="hub-tile" data-act="chatForStay" data-arg="${escapeHtml(propKey)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
                             <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
                         </div>
                         ${guestCheckoutBlockHtml(b, meta)}
@@ -5214,7 +5221,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
                 <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
                 <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
-                <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+                <button class="hub-tile" data-act="chatForStay" data-arg="${escapeHtml(propKey)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
                 <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
             </div>
         </div>`;
@@ -6064,6 +6071,16 @@ async function payWithToken(sourceId, partOverride) {
                 await openPayView(payState.token, payState.bookingId, payState.kind);
             } catch (e2) {}
             throw e;
+        }
+        // THE REPLY WAS LOST, NOT NECESSARILY THE PAYMENT. With no status the
+        // server never answered us — the charge may well have gone through, so
+        // "could not reach the server" invited a second payment. Re-read the
+        // summary (it shows what is really still due) and say so plainly.
+        if (!e || !e.status) {
+            try {
+                await openPayView(payState.token, payState.bookingId, payState.kind);
+            } catch (e2) {}
+            throw new Error("We couldn't confirm whether that payment went through — the connection dropped before the bank's answer reached us. Please check your email for a receipt before paying again; the amount above is what is still due.");
         }
         throw e;
     }
@@ -10155,7 +10172,14 @@ function guestFlowHtml(propKey, b, payToken) {
     const ASK = { booked: 'Booked', deposit: 'Deposit', details: 'Your details', paid: 'Balance', arrival: 'Arrival info', stay: 'Your stay', depositback: 'Deposit back' };
     const nowIdx = stages.findIndex((s) => s.now);
     const at = nowIdx >= 0 ? nowIdx : cur;
-    const cap = at < 0 ? 'Every step done' : `Next · ${at + 1} of ${stages.length} · ${ASK[stages[at].key] || stages[at].glabel}`;
+    // The caption names what is ACTUALLY being asked: inside the balance window
+    // the cursor sits on "deposit" while the ask is the whole stay (the owner's
+    // hub learned the same — capIdx/capLbl).
+    let askLbl = at >= 0 ? (ASK[stages[at].key] || stages[at].glabel) : '';
+    if (at >= 0 && stages[at].key === 'deposit' && !flow.gt.fullyPaid) {
+        try { if (guestPayCta(b, flow.gt).word === 'balance') askLbl = 'Payment in full'; } catch (e) {}
+    }
+    const cap = at < 0 ? 'Every step done' : `Next · ${at + 1} of ${stages.length} · ${askLbl}`;
     const steps = `<div class="bkflow-cap"${at >= 0 && stages[at].now ? ' data-staying="1"' : ''}>${escapeHtml(cap)}</div>`;
     const gt = flow.gt;
     let next;
@@ -14517,6 +14541,24 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// THE FULL-SCREEN CHAT IS A DIALOG on the guest phone shell: Tab must not walk
+// off it into the page hidden underneath (the footer's "Message us" was the next
+// stop after Send). Only when nothing else is on top and the shell owns the
+// screen; the desktop popover leaves the page usable on purpose.
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || topOpenDialog()) return;
+    const cw = document.getElementById('chat-widget');
+    if (!cw || !cw.classList.contains('open')) return;
+    if (!document.body.classList.contains('guest-app') || document.body.classList.contains('owner-mode')) return;
+    const items = /** @type {HTMLElement[]} */ (Array.from(cw.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')))
+        .filter((el) => el.getClientRects().length > 0);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    const ae = document.activeElement;
+    if (!cw.contains(ae)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && ae === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && ae === last) { e.preventDefault(); first.focus(); }
+});
 // ---- Modal focus management: when a dialog opens, move focus into it; when it
 //      closes, restore focus to whatever opened it. (Tab-trapping while open is
 //      handled by the keydown handler above.) Centralised via an observer so the
@@ -17432,7 +17474,7 @@ function enqLiveSync() {
         el.textContent = prob.msg;
         return;
     }
-    let line = 'No payment now — George usually replies the same day to confirm availability.';
+    let line = 'No payment now — George usually replies within a few hours to confirm availability.';
     const ci = dpVal('enq-checkin');
     const co = dpVal('enq-checkout');
     if (ci && co && co > ci) {
@@ -17446,6 +17488,11 @@ function enqLiveSync() {
 }
 // The postcode field's two data-act slots are taken by postcodeRecognize, so
 // this wrapper keeps the living line in step with it (one attribute per kind).
+// The change (blur) half: one element cannot carry two argument sets — the
+// duplicated data-arg3="true" made every KEYSTROKE run the no-debounce lookup.
+function enqPostcodeBlur() {
+    return enqPostcode('enq-postcode', 'enq-pc-status', true);
+}
 function enqPostcode(inputId, statusId, onBlur) {
     postcodeRecognize(inputId, statusId, onBlur);
     try {
@@ -17839,6 +17886,11 @@ async function submitEnquiry(propKey) {
         }
     }
     enqStepsEnd(true);
+    // The enquiry is IN: cancel the queued draft save + sync now. The account
+    // step below returns early, and a sync still armed from the last keystroke
+    // re-created the draft row ~2.5s later — the guest who had just enquired
+    // was then emailed "pick up where you left off".
+    enquireDraftClear();
     // Success shows on the control that was pressed first (the payBeat rule) —
     // a green "✓ Sent" beat before the sent moment replaces the screen.
     if (submitBtn) {
@@ -17867,7 +17919,7 @@ async function submitEnquiry(propKey) {
                 const pName = (propertyMeta[pk] || {}).name || pk || '';
                 const pb = priceBreakdown(pk, adults, children, checkIn, checkOut);
                 const ppl = adults + children;
-                sum.innerHTML = `<span>${escapeHtml(pName)} · <span style="white-space:nowrap">${escapeHtml(dpSpoken(checkIn))} →</span> <span style="white-space:nowrap">${escapeHtml(dpSpokenEnd(checkOut))}</span> · <span style="white-space:nowrap">${ppl} guest${ppl === 1 ? '' : 's'}</span></span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
+                sum.innerHTML = `<span>${escapeHtml(pName)} · <span style="white-space:nowrap">${escapeHtml(dpSpoken(checkIn))} →</span> <span style="white-space:nowrap">${escapeHtml(dpSpokenEnd(checkOut))}</span> · <span style="white-space:nowrap">${ppl} guest${ppl === 1 ? '' : 's'}</span></span><span style="font-weight:600;">${gbp(pb.rentalTotal + (Number(pb.damagesDeposit) || 0))}${Number(pb.damagesDeposit) > 0 ? ' all in' : ''}</span>`;
                 sum.style.display = '';
             } catch (e) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
@@ -17941,7 +17993,7 @@ async function submitEnquiry(propKey) {
         closeEnquireModal();
     } catch (e) {}
     enquireDraftClear();
-    toast('Enquiry sent — George usually replies the same day to confirm availability.');
+    toast('Enquiry sent — George usually replies within a few hours to confirm availability.');
     // Signed-in guests land on My Stays where the new enquiry card is waiting —
     // a real confirmation surface instead of a toast over the cottage page.
     if (currentGuest) {

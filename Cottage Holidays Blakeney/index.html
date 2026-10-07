@@ -360,7 +360,7 @@
                  cottage has a decent gap in the next fortnight; empty otherwise. -->
             <div id="late-avail" aria-live="polite"></div>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
-              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                 </div>
@@ -369,7 +369,7 @@
                     <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 </div>
               </a>
-              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                 </div>
@@ -378,7 +378,7 @@
                     <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 </div>
               </a>
-              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                 </div>
@@ -483,7 +483,7 @@
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
-              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-21a" hidden></span>
@@ -495,7 +495,7 @@
                 </div>
                 <div class="card-price" id="card-price-21a"></div>
             </a>
-              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-jollyboat" hidden></span>
@@ -507,7 +507,7 @@
                 </div>
                 <div class="card-price" id="card-price-jollyboat"></div>
             </a>
-              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-pimpernel" hidden></span>
@@ -855,7 +855,7 @@
                         </div>
                         <div>
                             <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
-                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" data-act-input="enqPostcode" data-arg="enq-postcode" data-arg2="enq-pc-status" data-act-change="enqPostcode" data-arg="enq-postcode" data-arg2="enq-pc-status" data-arg3="true">
+                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" data-act-input="enqPostcode" data-arg="enq-postcode" data-arg2="enq-pc-status" data-act-change="enqPostcodeBlur">
                             <p id="enq-pc-status" role="status" aria-live="polite" style="font-size:var(--fs-caption); min-height: 1.1em; margin: 0 0 8px;"></p>
                         </div>
                     </div>
@@ -894,7 +894,7 @@
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass btn-accent enq-fg" style="width: 100%; padding: 18px;--efd:0.195s;" id="enq-submit-btn">Send enquiry</button>
                     <!-- The living line — see enqLiveSync. -->
-                    <p id="enq-live-sub" class="enq-fg" style="font-size:var(--fs-sub);color:var(--text-muted);text-align:center;margin:10px 0 0;--efd:0.195s;">No payment now — George usually replies the same day to confirm availability.</p>
+                    <p id="enq-live-sub" class="enq-fg" style="font-size:var(--fs-sub);color:var(--text-muted);text-align:center;margin:10px 0 0;--efd:0.195s;">No payment now — George usually replies within a few hours to confirm availability.</p>
                     <a class="btn-glass enq-fg" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;--efd:0.195s;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to discuss</a>
                     </div>
                 </div>
@@ -2025,9 +2025,9 @@
             <nav class="footer-links ft-grp" aria-label="Cottages">
                 <h2 class="ft-cap">Cottages</h2>
                 <span id="footer-cottage-links" style="display:contents">
-                    <a href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">21A Westgate Street</a>
-                    <a href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">Jollyboat</a>
-                    <a href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">Pimpernel</a>
+                    <a href="/cottages/21a-westgate" data-act="cottageLink">21A Westgate Street</a>
+                    <a href="/cottages/jollyboat" data-act="cottageLink">Jollyboat</a>
+                    <a href="/cottages/pimpernel" data-act="cottageLink">Pimpernel</a>
                 </span>
             </nav>
             <nav class="footer-links ft-grp" aria-label="Explore">

@@ -80,7 +80,11 @@ if (session_status() === PHP_SESSION_NONE) {
     // Sliding expiry: push the cookie's clock forward on every visit so an active
     // user never lapses (session_start likewise refreshes the file's mtime, keeping
     // it clear of GC).
-    if (session_id() !== '' && isset($_COOKIE[session_name()])) {
+    // Only for a session that HOLDS something: a request already in flight when
+    // sign-in regenerated the id arrives on the old, deleted one — re-sending
+    // that id put the browser back on an empty session and signed a fresh
+    // account straight out (reported as My Stays failing just after sign-up).
+    if (session_id() !== '' && isset($_COOKIE[session_name()]) && !empty($_SESSION)) {
         @setcookie(session_name(), session_id(), [
             'expires' => time() + $sess_ttl,
             'path' => '/',
@@ -1416,7 +1420,8 @@ function log_activity($category, $action, $summary, $opts = [])
                     : (defined('CHB_CRON') && CHB_CRON
                         ? 'cron'
                         : 'system')));
-        $sev = in_array($opts['severity'] ?? 'info', ['info', 'warn', 'action'], true) ? $opts['severity'] : 'info';
+        $sevIn = $opts['severity'] ?? 'info';
+        $sev = in_array($sevIn, ['info', 'warn', 'action'], true) ? $sevIn : 'info';
         $vals = [
             mb_substr((string) $actor, 0, 120),
             mb_substr((string) $category, 0, 32),
