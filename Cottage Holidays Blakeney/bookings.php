@@ -466,9 +466,11 @@ function bookings_admin_payload()
     }
     // The guest's own profile photo, as a VERSION only (the stored name never
     // leaves the server); the hub reads the picture through avatar.php?email=.
+    // CONFIRMED accounts only: an unproven account may be a stranger squatting the
+    // address, and its picture must never sit beside the real guest's booking.
     try {
         $av = [];
-        foreach (db()->query('SELECT email, avatar FROM guests WHERE avatar IS NOT NULL') as $r) {
+        foreach (db()->query('SELECT email, avatar FROM guests WHERE avatar IS NOT NULL AND email_verified_at IS NOT NULL') as $r) {
             if (avatar_name_ok($r['avatar'])) {
                 $av[strtolower((string) $r['email'])] = substr((string) $r['avatar'], 0, 10);
             }

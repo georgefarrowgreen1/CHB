@@ -709,6 +709,7 @@ switch ($action) {
     case 'guest_avatar_set':
         require_guest();
         $gid = (int) $_SESSION['guest_id'];
+        rate_limit('avatar:' . $gid, 12, 60); // a dozen changes an hour is plenty for a person
         $name = avatar_store($in['data'] ?? '');
         if ($name === '') {
             json_out(['error' => "That photo couldn't be used — try a different one (a JPEG or a photo from your camera)."], 400);
@@ -834,6 +835,10 @@ switch ($action) {
                     : [],
             'waitlist' => ($email !== '' && $proven) ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
         ];
+        // The profile photo is theirs too — included as the JPEG itself.
+        $avN = guest_avatar_name($gid);
+        $avP = $avN !== '' ? __DIR__ . '/' . AVATAR_DIR . '/' . $avN : '';
+        $data['profile_photo'] = $avP !== '' && is_file($avP) ? 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($avP)) : null;
         json_out(['ok' => true, 'data' => $data]);
 
     // GDPR erasure: a logged-in guest deletes their account. Financial records

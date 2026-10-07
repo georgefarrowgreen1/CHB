@@ -307,7 +307,7 @@ const AVATAR_DIR = 'uploads/avatars';
 function avatar_dir()
 {
     $dir = __DIR__ . '/' . AVATAR_DIR;
-    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
         return '';
     }
     if (!is_file($dir . '/.htaccess')) {
@@ -329,7 +329,19 @@ function avatar_store($dataUri)
         if ($raw === false || strlen($raw) < 100 || strlen($raw) > 600 * 1024 || substr($raw, 0, 2) !== "\xFF\xD8") {
             return '';
         }
-        if (function_exists('imagecreatefromstring')) {
+        // GD is REQUIRED, not optional: the re-encode is what strips EXIF (a phone
+        // photo's location), so storing the raw file would break the promise.
+        if (!function_exists('imagecreatefromstring')) {
+            return '';
+        }
+        // Read the dimensions BEFORE decoding: a small JPEG can declare a huge
+        // canvas and exhaust memory when GD allocates it (a decompression bomb).
+        // The cropper sends 512px, so 2048 is generous and stays well inside memory.
+        $dim = @getimagesizefromstring($raw);
+        if (!$dim || ($dim[2] ?? 0) !== IMAGETYPE_JPEG || $dim[0] < 16 || $dim[1] < 16 || $dim[0] > 2048 || $dim[1] > 2048) {
+            return '';
+        }
+        {
             $im = @imagecreatefromstring($raw);
             if (!$im) {
                 return '';
@@ -354,6 +366,7 @@ function avatar_store($dataUri)
         if (@file_put_contents($dir . '/' . $name, $raw) === false) {
             return '';
         }
+        @chmod($dir . '/' . $name, 0600); // read only through avatar.php, never by other local users
         return $name;
     } catch (\Throwable $e) {
         return '';
