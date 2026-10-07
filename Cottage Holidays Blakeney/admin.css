@@ -8167,17 +8167,22 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rv-intro[hidden] { display: none; }
 .rv-sec .acr-cap { margin-top: 0; }
 .rv-well { overflow: hidden; }
-.rv-row, .rv-go { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; min-height: 64px; box-sizing: border-box; }
+.rv-go { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 56px; box-sizing: border-box; }
+.rv-row { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.rv-rowhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.rv-rowhead .rv-name { font-size: var(--fs-headline); overflow-wrap: anywhere; }
+.rv-acts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .rv-row + .rv-row, .rv-go + .rv-go, .rv-qrow + .rv-qrow { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .rv-go { width: 100%; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; padding-right: 16px; }
-.rv-go:focus-visible, .rv-copy:focus-visible, .rv-share:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.rv-go:focus-visible, .rv-act:focus-visible, .rvq-close:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
 .rv-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .rv-go-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rv-name { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
 .rv-sub { font-size: var(--fs-sub); color: var(--text-muted); }
 .rv-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rv-share { width: 44px; height: 44px; flex: none; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; color: var(--text-light); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.rv-copy { min-width: 96px; height: 44px; flex: none; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid transparent; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: var(--fs-body); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: background-color 0.2s var(--out, ease), color 0.2s var(--out, ease); }
+.rv-act { height: 44px; min-width: 0; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+.rv-act svg { flex: none; }
+.rv-copy { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
 .rv-copy.is-copied { background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 35%, transparent); color: var(--ok-text); }
 .rv-well .rv-qrow { border: 0; border-radius: 0; background: none; margin: 0; padding: 16px; }
 .rv-qhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -8187,7 +8192,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rv-qrow .acw-modacts button { flex: 1 1 0; font-size: var(--fs-body); }
 .rv-qrow .acw-modacts .mod-ok { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
 .rv-qrow .acw-modacts .mod-no { color: var(--text-light); border-color: color-mix(in srgb, var(--text-light) 14%, transparent); }
-@media (max-width: 479px) { .rv-copy { min-width: 0; padding: 0 12px; } }
 /* IMPORT REVIEWS (approved demo): cottage + source as chips, one paste box, the
    read-back list with what was removed, one add button that names the cottage. */
 .rvi-chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -8233,11 +8237,21 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rvi-stars.is-bow { animation: revBowTap 280ms var(--out); }
 .rvi-add.is-settle { animation: chbSettle 340ms var(--settle); }
 #rvi-found.is-leaving .rv-sec { opacity: 0; transform: translateY(-6px); transition: opacity 200ms var(--in), transform 200ms var(--in); }
-.rvi-add, .rvi-drop, .rvi-why, .rvi-stars, .rv-copy, .rv-share, .rv-go { transition: transform 320ms var(--settle), background-color 200ms var(--out), color 200ms var(--out); }
-.rvi-chip:active, .rvi-add:not(:disabled):active, .rvi-drop:active, .rvi-why:active, .rvi-stars:active, .rv-copy:active, .rv-share:active, .rv-go:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+.rvi-add, .rvi-drop, .rvi-why, .rvi-stars, .rv-act, .rv-go { transition: transform 320ms var(--settle), background-color 200ms var(--out), color 200ms var(--out); }
+.rvi-chip:active, .rvi-add:not(:disabled):active, .rvi-drop:active, .rvi-why:active, .rvi-stars:active, .rv-act:active, .rv-go:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
 .rv-copy.is-copied svg path { stroke-dasharray: 26; animation: chbDraw 400ms var(--out) both; }
 @media (prefers-reduced-motion: reduce) {
   .rvi-fold, .rvi-fold[hidden] { transition: none; }
   .rvi-fold[hidden] { display: none; }
   .rvi-row.is-in, .rvi-clutter.is-in, .rvi-stars.is-bow, .rvi-add.is-settle { animation: none; }
 }
+/* THE QR WINDOW (approved demo): the cottage's name and its code, nothing else.
+   A .modal-overlay, so the scrim, the arrival, Escape and the exit are the house's. */
+.rvq-overlay .rvq-box { max-width: 340px; width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.rvq-head { display: flex; align-items: center; gap: 12px; }
+.rvq-head h2 { margin: 0; flex: 1 1 auto; min-width: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; color: var(--text-light); text-align: left; }
+.rvq-close { width: 44px; height: 44px; margin: -12px -12px -12px 0; flex: none; border: 0; background: none; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rvq-code { align-self: center; width: 232px; max-width: 100%; aspect-ratio: 1; box-sizing: border-box; padding: 16px; border-radius: var(--r-lg); background: white; }
+.rvq-code svg { display: block; width: 100%; height: 100%; }
+.rvq-code path { fill: black; } /* a code is dark on white in both themes */
+.rvq-overlay.open .rvq-code { animation: chbAppear 420ms var(--sheet) 80ms backwards; }

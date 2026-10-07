@@ -26117,6 +26117,7 @@ function reviewLinkUrl(k) {
 }
 const RV_IC_COPY = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
 const RV_IC_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const RV_IC_QR = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>';
 const RV_IC_SHARE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
 function renderReviewLinks() {
     const wrap = document.getElementById('review-links');
@@ -26134,19 +26135,18 @@ function renderReviewLinks() {
     const rows = keys
         .map((k) => {
             const name = (propertyMeta[k] || {}).name || k;
-            const url = reviewLinkUrl(k);
-            const shown = url.replace(/^https?:\/\//, '');
             return `<div class="rv-row" id="revrow-${escapeHtml(k)}">
-                        <span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>
-                        <span class="rv-go-txt"><span class="rv-name">${escapeHtml(name)}</span><span class="rv-sub rv-path" title="${escapeHtml(url)}">${escapeHtml(shown)}</span></span>
-                        ${canShare ? `<button type="button" class="rv-share" aria-label="Share the review link for ${escapeHtml(name)}" ${chbAttrs('shareReviewLink', k)}>${RV_IC_SHARE}</button>` : ''}
-                        <button type="button" class="rv-copy" id="revcopy-${escapeHtml(k)}" aria-label="Copy the review link for ${escapeHtml(name)}" ${chbAttrs('copyReviewLink', k)}>${RV_IC_COPY}<span>Copy</span></button>
+                        <div class="rv-rowhead"><span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span><span class="rv-name">${escapeHtml(name)}</span></div>
+                        <div class="rv-acts">
+                            <button type="button" class="rv-act" aria-label="Show a QR code for ${escapeHtml(name)}" ${chbAttrs('reviewQrOpen', k)}>${RV_IC_QR}<span>QR</span></button>
+                            ${canShare ? `<button type="button" class="rv-act rv-share" aria-label="Share the review link for ${escapeHtml(name)}" ${chbAttrs('shareReviewLink', k)}>${RV_IC_SHARE}<span>Share</span></button>` : ''}
+                            <button type="button" class="rv-act rv-copy" id="revcopy-${escapeHtml(k)}" aria-label="Copy the review link for ${escapeHtml(name)}" ${chbAttrs('copyReviewLink', k)}>${RV_IC_COPY}<span>Copy</span></button>
+                        </div>
                     </div>`;
         })
         .join('');
     wrap.innerHTML = `<section class="rv-sec">
             <h3 class="acr-cap">Ask for a review</h3>
-            <p class="acr-capsub">Send an Airbnb or Vrbo guest their cottage's link after they check out. They leave a review and their contact details.</p>
             <div class="acr-well rv-well">${rows}</div>
         </section>`;
 }
@@ -26193,10 +26193,223 @@ async function shareReviewLink(key) {
     }
 }
 
+// ---- A review link as a QR code (approved demo) ----
+// A window with the cottage's name and its code — nothing else. Generated on the
+// device (chbQr below), so it works offline and the link is sent nowhere. The link
+// carries ?from=qr, so a review left by scanning is labelled "QR card".
+// Compact QR encoder: byte mode, error correction M, versions 1-10, best mask by
+// the standard penalty rules. Returns a boolean matrix (true = dark).
+function chbQr(text, forceMask) {
+    var data = [];
+    var s = unescape(encodeURIComponent(String(text)));
+    for (var i = 0; i < s.length; i++) data.push(s.charCodeAt(i));
+    // [total codewords, ecc per block, blocks] for version 1..10 at level M
+    var T = [null, [26, 10, 1], [44, 16, 1], [70, 26, 1], [100, 18, 2], [134, 24, 2], [172, 16, 4], [196, 18, 4], [242, 22, 4], [292, 22, 5], [346, 26, 5]];
+    var ver = 0, cap = 0;
+    for (var v = 1; v <= 10; v++) {
+        var dc = T[v][0] - T[v][1] * T[v][2];
+        var need = 4 + (v < 10 ? 8 : 16) + data.length * 8;
+        if (need <= dc * 8) { ver = v; cap = dc; break; }
+    }
+    if (!ver) return null;
+    // bit stream
+    var bits = [];
+    var put = function (val, n) { for (var j = n - 1; j >= 0; j--) bits.push((val >>> j) & 1); };
+    put(4, 4);
+    put(data.length, ver < 10 ? 8 : 16);
+    data.forEach(function (b) { put(b, 8); });
+    put(0, Math.min(4, cap * 8 - bits.length));
+    while (bits.length % 8) bits.push(0);
+    var cw = [];
+    for (var k = 0; k < bits.length; k += 8) { var x = 0; for (var m = 0; m < 8; m++) x = (x << 1) | bits[k + m]; cw.push(x); }
+    for (var pad = 0xec; cw.length < cap; pad ^= 0xec ^ 0x11) cw.push(pad);
+    // Reed-Solomon over GF(256), poly 0x11d
+    var EXP = [], LOG = [];
+    for (var e = 0, val = 1; e < 255; e++) { EXP[e] = val; LOG[val] = e; val <<= 1; if (val & 256) val ^= 0x11d; }
+    var mul = function (a, b) { return a && b ? EXP[(LOG[a] + LOG[b]) % 255] : 0; };
+    var eccLen = T[ver][1], nb = T[ver][2], total = T[ver][0];
+    var gen = [1];
+    for (var g = 0; g < eccLen; g++) {
+        var ng = new Array(gen.length + 1).fill(0);
+        for (var q = 0; q < gen.length; q++) { ng[q] ^= gen[q]; ng[q + 1] ^= mul(gen[q], EXP[g]); }
+        gen = ng;
+    }
+    var rs = function (msg) {
+        var r = new Array(eccLen).fill(0);
+        msg.forEach(function (b) {
+            var f = b ^ r.shift(); r.push(0);
+            for (var z = 0; z < eccLen; z++) r[z] ^= mul(gen[z + 1], f);
+        });
+        return r;
+    };
+    // blocks: short blocks first (data length floor), long blocks +1
+    var shortLen = Math.floor(cap / nb), longs = cap % nb, dBlocks = [], eBlocks = [], off = 0;
+    for (var bi = 0; bi < nb; bi++) {
+        var len = shortLen + (bi >= nb - longs ? 1 : 0);
+        var blk = cw.slice(off, off + len); off += len;
+        dBlocks.push(blk); eBlocks.push(rs(blk));
+    }
+    var final = [];
+    for (var c = 0; c <= shortLen; c++) dBlocks.forEach(function (b) { if (c < b.length) final.push(b[c]); });
+    for (var c2 = 0; c2 < eccLen; c2++) eBlocks.forEach(function (b) { final.push(b[c2]); });
+    // matrix
+    var n = ver * 4 + 17;
+    var M = [], F = [];
+    for (var r0 = 0; r0 < n; r0++) { M.push(new Array(n).fill(false)); F.push(new Array(n).fill(false)); }
+    var set = function (x, y, d) { M[y][x] = d; F[y][x] = true; };
+    var finder = function (cx, cy) {
+        for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+            var xx = cx + dx, yy = cy + dy;
+            if (xx < 0 || yy < 0 || xx >= n || yy >= n) continue;
+            var d = Math.max(Math.abs(dx), Math.abs(dy));
+            set(xx, yy, d !== 2 && d !== 4);
+        }
+    };
+    finder(3, 3); finder(n - 4, 3); finder(3, n - 4);
+    for (var t = 0; t < n; t++) { if (!F[6][t]) set(t, 6, t % 2 === 0); if (!F[t][6]) set(6, t, t % 2 === 0); }
+    if (ver > 1) {
+        var step = ver === 1 ? 0 : Math.ceil((n - 13) / (Math.floor(ver / 7) + 1) / 2) * 2;
+        var pos = [6];
+        for (var p = n - 7; pos.length < Math.floor(ver / 7) + 2; p -= step) pos.splice(1, 0, p);
+        var last = pos.length - 1;
+        pos.forEach(function (ay, iy) { pos.forEach(function (ax, ix) {
+            // Only the three finder corners are skipped — the ones on the timing
+            // lines are drawn over them.
+            if ((iy === 0 && ix === 0) || (iy === 0 && ix === last) || (iy === last && ix === 0)) return;
+            for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+        }); });
+    }
+    // reserve format + dark module
+    var fmtCells = function () {
+        var a = [];
+        for (var i2 = 0; i2 <= 5; i2++) a.push([8, i2]);
+        a.push([8, 7], [8, 8], [7, 8]);
+        for (var i3 = 9; i3 < 15; i3++) a.push([14 - i3, 8]);
+        var b = [];
+        for (var i4 = 0; i4 < 8; i4++) b.push([n - 1 - i4, 8]);
+        for (var i5 = 8; i5 < 15; i5++) b.push([8, n - 15 + i5]);
+        return [a, b];
+    };
+    fmtCells()[0].concat(fmtCells()[1]).forEach(function (c3) { set(c3[0], c3[1], false); });
+    set(8, n - 8, true);
+    // version info (v>=7)
+    if (ver >= 7) {
+        var rem = ver;
+        for (var vi = 0; vi < 12; vi++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+        var vb = (ver << 12) | rem;
+        for (var vj = 0; vj < 18; vj++) {
+            var bit = ((vb >>> vj) & 1) === 1, aa = n - 11 + (vj % 3), bb = Math.floor(vj / 3);
+            set(aa, bb, bit); set(bb, aa, bit);
+        }
+    }
+    // data placement
+    var bitIdx = 0, allBits = [];
+    final.forEach(function (b) { for (var j = 7; j >= 0; j--) allBits.push((b >>> j) & 1); });
+    for (var right = n - 1; right >= 1; right -= 2) {
+        if (right === 6) right = 5;
+        for (var vert = 0; vert < n; vert++) for (var jj = 0; jj < 2; jj++) {
+            var xx2 = right - jj, upward = ((right + 1) & 2) === 0, yy2 = upward ? n - 1 - vert : vert;
+            if (F[yy2][xx2]) continue;
+            M[yy2][xx2] = bitIdx < allBits.length ? allBits[bitIdx] === 1 : false;
+            bitIdx++;
+        }
+    }
+    var maskFn = [
+        function (x, y) { return (x + y) % 2 === 0; }, function (x, y) { return y % 2 === 0; },
+        function (x) { return x % 3 === 0; }, function (x, y) { return (x + y) % 3 === 0; },
+        function (x, y) { return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; },
+        function (x, y) { return (x * y) % 2 + (x * y) % 3 === 0; },
+        function (x, y) { return ((x * y) % 2 + (x * y) % 3) % 2 === 0; },
+        function (x, y) { return ((x + y) % 2 + (x * y) % 3) % 2 === 0; },
+    ];
+    var withMask = function (mk) {
+        var R = M.map(function (row) { return row.slice(); });
+        for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) if (!F[y][x] && maskFn[mk](x, y)) R[y][x] = !R[y][x];
+        // format bits: level M = 00
+        var fd = (0 << 3) | mk, fr = fd;
+        for (var fi = 0; fi < 10; fi++) fr = (fr << 1) ^ ((fr >>> 9) * 0x537);
+        var fb = ((fd << 10) | fr) ^ 0x5412;
+        var cells = fmtCells();
+        for (var fj = 0; fj < 15; fj++) {
+            var on = ((fb >>> fj) & 1) === 1;
+            R[cells[0][fj][1]][cells[0][fj][0]] = on;
+            R[cells[1][fj][1]][cells[1][fj][0]] = on;
+        }
+        R[n - 8][8] = true;
+        return R;
+    };
+    var penalty = function (R) {
+        var p = 0, x, y;
+        for (var pass = 0; pass < 2; pass++) for (y = 0; y < n; y++) {
+            var run = 1;
+            for (x = 1; x < n; x++) {
+                var a1 = pass ? R[x][y] : R[y][x], a0 = pass ? R[x - 1][y] : R[y][x - 1];
+                if (a1 === a0) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1;
+            }
+        }
+        for (y = 0; y < n - 1; y++) for (x = 0; x < n - 1; x++) { var cc = R[y][x]; if (cc === R[y][x + 1] && cc === R[y + 1][x] && cc === R[y + 1][x + 1]) p += 3; }
+        var pat = [true, false, true, true, true, false, true];
+        var isPat = function (get, i0) {
+            for (var k2 = 0; k2 < 7; k2++) if (get(i0 + k2) !== pat[k2]) return false;
+            var lightAt = function (from, to) { for (var k3 = from; k3 < to; k3++) { var v2 = (k3 < 0 || k3 >= n) ? false : get(k3); if (v2) return false; } return true; };
+            return lightAt(i0 - 4, i0) || lightAt(i0 + 7, i0 + 11);
+        };
+        for (y = 0; y < n; y++) for (x = 0; x + 7 <= n; x++) {
+            if (isPat(function (k) { return R[y][k]; }, x)) p += 40;
+            if (isPat(function (k) { return R[k][y]; }, x)) p += 40;
+        }
+        var dark = 0;
+        for (y = 0; y < n; y++) for (x = 0; x < n; x++) if (R[y][x]) dark++;
+        p += Math.floor(Math.abs(dark * 20 - n * n * 10) / (n * n)) * 10;
+        return p;
+    };
+    if (forceMask != null) return withMask(forceMask);
+    var best = null, bestP = Infinity;
+    for (var mk2 = 0; mk2 < 8; mk2++) { var R2 = withMask(mk2), pp = penalty(R2); if (pp < bestP) { bestP = pp; best = R2; } }
+    return best;
+}
+function chbQrSvg(text) {
+    const M = chbQr(text);
+    if (!M) return '';
+    let d = '';
+    for (let y = 0; y < M.length; y++) for (let x = 0; x < M.length; x++) if (M[y][x]) d += 'M' + x + ' ' + y + 'h1v1h-1z';
+    return `<svg viewBox="0 0 ${M.length} ${M.length}" shape-rendering="crispEdges" role="img" aria-label="QR code for ${escapeHtml(text)}"><path d="${d}"/></svg>`;
+}
+function reviewQrOpen(k) {
+    let ov = document.getElementById('rv-qr-modal');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'rv-qr-modal';
+        ov.className = 'modal-overlay rvq-overlay';
+        ov.innerHTML = `<div class="modal-box rvq-box" role="dialog" aria-modal="true" aria-labelledby="rvq-title">
+                <div class="rvq-head"><span class="rv-dot" id="rvq-dot" aria-hidden="true"></span><h2 id="rvq-title"></h2>
+                    <button type="button" class="rvq-close" aria-label="Close" data-act="reviewQrClose"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+                <div class="rvq-code" id="rvq-code"></div>
+            </div>`;
+        // A tap on the scrim closes it, like every other sheet.
+        ov.addEventListener('click', (e) => { if (e.target === ov) reviewQrClose(); });
+        document.body.appendChild(ov);
+    }
+    const name = (propertyMeta[k] || {}).name || k;
+    const t = document.getElementById('rvq-title');
+    if (t) t.textContent = name;
+    const dot = document.getElementById('rvq-dot');
+    if (dot) dot.style.background = `var(--prop-${k}, var(--accent))`;
+    const code = document.getElementById('rvq-code');
+    if (code) code.innerHTML = chbQrSvg(reviewLinkUrl(k) + '?from=qr');
+    ov.classList.add('open');
+    const c = ov.querySelector('.rvq-close');
+    if (c) /** @type {HTMLElement} */ (c).focus();
+}
+function reviewQrClose() {
+    const ov = document.getElementById('rv-qr-modal');
+    if (ov && ov.classList.contains('open')) chbCloseOverlay(ov);
+}
+
 // ---- External-guest reviews (direct_leads via the /review/<slug> links) ----
 // Approve to publish on the site; privately rate the guest (hidden from them) to
 // steer whether they get the book-direct follow-up next year.
-const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct' };
+const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct', qr: 'QR card' };
 // A platform's NAME as people write it — capitalising the raw source key printed
 // "Bookingcom" on the timeline, the key-safe page and the offline sheet.
 function otaSourceName(src, fallback) {
@@ -26333,7 +26546,6 @@ async function loadGuestReviewModeration() {
     rvGoogleCap();
     const leadsP = loadLeadModeration();
     const wrap = document.getElementById('guest-review-moderation');
-    const intro = document.getElementById('rv-intro');
     const cap = document.getElementById('settings-panel-cap');
     if (!wrap) return;
     let rows = [];
@@ -26341,7 +26553,6 @@ async function loadGuestReviewModeration() {
         const r = await apiPost('reviews.php', { action: 'list_admin' });
         rows = r.reviews || [];
     } catch (e) {
-        if (intro) intro.hidden = true;
         wrap.innerHTML = `<p class="rv-intro">Couldn't load (run migration-guest-reviews.sql?): ${escapeHtml(e.message)}</p>`;
         return;
     }
@@ -26349,7 +26560,7 @@ async function loadGuestReviewModeration() {
     const pending = rows.filter((r) => r.status === 'pending');
     wrap.innerHTML = pending.length
         ? `<section class="rv-sec">
-            <h3 class="acr-cap">Waiting for you · nothing shows until you approve</h3>
+            <h3 class="acr-cap">Waiting for you</h3>
             <div class="acr-well rv-well">${pending
                 .map((r) => {
                     const n = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
@@ -26372,7 +26583,6 @@ async function loadGuestReviewModeration() {
         leads = (await leadsP) || 0;
     } catch (e) {}
     const waiting = pending.length + leads;
-    if (intro) intro.hidden = waiting > 0;
     const sec = document.getElementById('sec-reviews');
     if (cap && sec && sec.style.display !== 'none')
         cap.innerHTML = waiting ? stCap('warn', `${waiting} waiting`) : stCap('ok', 'All caught up');
