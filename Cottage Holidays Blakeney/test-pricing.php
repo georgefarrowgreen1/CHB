@@ -48,6 +48,34 @@ if (!is_array($fx) || empty($fx['cases'])) {
     }
 }
 
+// Short-stay charge (migration-130) — same cases as smoke-test's shortStayCharge.
+chk('short stay: 2 nights at £50 → £100', approxEq(short_stay_charge(['short_fee' => 50, 'short_max' => 2], 2), 100));
+chk('short stay: 3 nights not short at max 2 → 0', approxEq(short_stay_charge(['short_fee' => 50, 'short_max' => 2], 3), 0));
+chk('short stay: max 3 covers 3 nights → £150', approxEq(short_stay_charge(['short_fee' => 50, 'short_max' => 3], 3), 150));
+chk('short stay: no fee → 0', approxEq(short_stay_charge(['short_fee' => 0, 'short_max' => 2], 1), 0));
+chk('short stay: max defaults to 2 nights', approxEq(short_stay_charge(['short_fee' => 40], 2), 80) && approxEq(short_stay_charge(['short_fee' => 40], 3), 0));
+$rateSs = ['prop_key' => 'ss', 'couple_rate' => 100, 'extra_adult_rate' => 0, 'child_rate' => 0, 'booking_fee' => 0, 'transaction_pct' => 0, 'short_fee' => 50, 'short_max' => 2, 'lastmin_pct' => 20, 'lastmin_days' => 10];
+$pss = price_breakdown($rateSs, 2, 0, '2026-01-05', '2026-01-07', null, [], '2026-01-01');
+chk('short stay rides AFTER the last-minute discount: 200×0.8 + 100 = 260', approxEq($pss['nightly'], 260) && approxEq($pss['perNight'], 130));
+$pss3 = price_breakdown($rateSs, 2, 0, '2026-01-05', '2026-01-08', null, [], '2026-01-01');
+chk('a 3-night stay carries no short-stay charge: 300×0.8 = 240', approxEq($pss3['nightly'], 240));
+
+// Minimum stay by date + gap fit (booking-rules-lib.php) — the same cases as
+// smoke-test's ruleMinNights / ruleGapFit, so the form and the server agree.
+require_once __DIR__ . '/booking-rules-lib.php';
+$rulesD = ['minNights' => 2, 'minByDate' => [['from' => '2026-10-24', 'to' => '2026-10-31', 'min' => 5], ['from' => '2026-11-02', 'to' => '2026-11-30', 'min' => 3]], 'gapFitDays' => 10];
+chk('dated minimum: half-term check-in → 5', rule_min_nights($rulesD, '2026-10-24') === 5 && rule_min_nights($rulesD, '2026-10-31') === 5);
+chk('dated minimum: November → 3', rule_min_nights($rulesD, '2026-11-15') === 3);
+chk('dated minimum: outside every range → the standard 2', rule_min_nights($rulesD, '2026-11-01') === 2 && rule_min_nights($rulesD, '2026-12-01') === 2);
+chk('dated minimum: garbage rows are ignored', rule_min_nights(['minNights' => 2, 'minByDate' => ['x', ['from' => 'nope', 'to' => '2026-12-01', 'min' => 9]]], '2026-11-15') === 2);
+$takenG = fn($d) => in_array($d, ['2026-10-09', '2026-10-12'], true);
+chk('gap fit: exactly the 10–12 gap, 2 days out → allowed', rule_gap_fit($rulesD, '2026-10-10', '2026-10-12', '2026-10-08', $takenG));
+chk('gap fit: part of the gap is not a fit', !rule_gap_fit($rulesD, '2026-10-10', '2026-10-11', '2026-10-08', $takenG));
+chk('gap fit: outside the window → not allowed', !rule_gap_fit($rulesD, '2026-10-10', '2026-10-12', '2026-09-01', $takenG));
+chk('gap fit: off by default', !rule_gap_fit(['minNights' => 2], '2026-10-10', '2026-10-12', '2026-10-08', $takenG));
+$enqSrc = (string) file_get_contents(__DIR__ . '/enquiries.php');
+chk('guard: enquiries.php enforces the dated minimum and the gap fit', strpos($enqSrc, 'rule_min_nights($rules, $checkIn)') !== false && strpos($enqSrc, '!$gapFit') !== false);
+
 // Weekend uplift: base 100, +20% on Fri(5)/Sat(6). 2026-01-02 is Fri, 01-03 Sat.
 $rateWk = [
     'prop_key' => 'wk',

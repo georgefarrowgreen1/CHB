@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS properties (
     max_children    INT           NOT NULL DEFAULT 0,
     max_total       INT           NOT NULL DEFAULT 2,
     weekend_pct     DECIMAL(5,2)  NOT NULL DEFAULT 0,    -- weekend uplift % (smart pricing); 0 = off
+    short_fee       DECIMAL(10,2) NOT NULL DEFAULT 0,    -- per-night charge on short stays (migration-130); 0 = off
+    short_max       INT           NOT NULL DEFAULT 2,    -- a stay of this many nights or fewer is short
     weekend_days    VARCHAR(16)   NOT NULL DEFAULT '5,6' -- weekend day-of-week CSV (0=Sun…6=Sat)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

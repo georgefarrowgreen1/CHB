@@ -94,6 +94,15 @@ function price_round2($x)
     return floor((float) $x * 100 + 0.5) / 100;
 }
 
+// The short-stay charge for a stay of $nights: short_fee a night when the stay
+// is short_max nights or fewer, else 0. JS mirror: shortStayCharge (app.js).
+function short_stay_charge($rate, $nights)
+{
+    $fee = max(0.0, (float) ($rate['short_fee'] ?? 0));
+    $max = (int) ($rate['short_max'] ?? 2);
+    return $fee > 0 && $nights > 0 && $nights <= $max ? $fee * $nights : 0.0;
+}
+
 // $rate is a properties row. Returns the full breakdown.
 // $depositOverride: optional per-booking damages deposit (null = use property standard).
 // $seasons: optional pre-fetched seasonal rates (null = fetch from DB).
@@ -125,8 +134,11 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
     // whose round() pre-rounds 28433.4999… up to 28434; $nightly feeds perNight,
     // txFee AND total, so any drift lands the snapshot/charge off the guest's
     // on-screen quote.
+    // The short-stay charge (migration-130) rides AFTER the last-minute factor:
+    // it covers the changeover trip, which a discount does not make cheaper.
     $nightly = price_round2(
-        $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0),
+        $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0)
+            + short_stay_charge($rate, $nights),
     );
     // Average per-night figure (for display and the agreed snapshot) — same
     // JS-identical rounding so the snapshot never drifts off the quote.

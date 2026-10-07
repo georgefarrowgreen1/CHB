@@ -2025,6 +2025,35 @@ through today's day number.
   at 10:00 the line is over the weekday letter and the check proves nothing). All three
   declarations break-tested.
 
+## Profit per night — the pricing engine knows the drive (approved demo, built)
+
+**The owner's aim is money kept per booked night, not nights filled**: every changeover is an
+hour's drive each way plus cleaning, the same for two nights as for a week. Gated by
+ui-test-manage §8d (13 checks), test-pricing + smoke-test (the two new rules, both sides),
+ui-test-intel (re-aimed: the gap goes to the guest already there first).
+- **The changeover cost** is the internal key `pricing-changeover` {drive (min each way), hourly,
+  fuel, clean}; `prCosts().trip` is the one figure. Its page is Pricing → Settings → "Changeovers
+  & what you keep" (`__prPage = 'costs'`): kept per booked night over six weeks, changeovers, hours
+  on the road, and across all cottages how many changeovers already share a day.
+- **Stays vs holds**: `prStays` = direct bookings + `isOtaBlock` stays; a hold is never a stay or a
+  changeover (§8d asserts both). Platform stays are valued at the cottage's own price and SAID so.
+- **Learned stay length** (`prLearned`/`prLikelyStay`): last three years, recency-weighted, by
+  booking window (direct bookings' `createdAt`) and by season; shown on the page and on a tapped night.
+- **Six profit ideas** (`prProfitIdeas`), each comparing two options in pounds kept with a confidence
+  and its basis: offer the guest already there the nights after them (opens the composer prefilled;
+  the gap's discount card stands down while it is live), a shared changeover day, raise a week guests
+  found full (dated override `Busy week`), a sunny weekend (`Sunny weekend`, weather.php), the
+  short-stay charge, minimum stay by month + gap fits. **Not now** stores `pricing-hidden`
+  {pk|id: sig} — the idea returns only when its numbers change.
+- **Short-stay charge** (migration-130 `short_fee`/`short_max`): `short_stay_charge()` /
+  `shortStayCharge()` add fee × nights to stays of ≤ short_max nights, AFTER the last-minute factor,
+  folded into `nightly` so every quote, snapshot and document carries it unchanged.
+- **Minimum stay by date + gap fit** (`booking-rules-lib.php` / `ruleMinNights` + `ruleGapFit`):
+  rules-<k> gains `minByDate` [{from, to, min}] (check-in inclusive) and `gapFitDays` (a stay that
+  exactly fills a gap between two taken nights, within that many days, books whatever the minimum).
+  Enforced by enquiries.php, checkBookingRules, the picker and the availability chips; `saveRules`
+  carries both through every rules save.
+
 ## The Bookings menus, simplified (approved demo, built)
 
 **Asked for as "the bookings menus need simplifying".** Twelve tappable controls sat above the

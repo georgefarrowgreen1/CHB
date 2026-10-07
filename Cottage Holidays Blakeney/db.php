@@ -1004,7 +1004,7 @@ function is_internal_content_key($key)
     if (strpos($key, 'chat-away-') === 0) {
         return true;
     }
-    if ($key === 'pricing-limits' || $key === 'pricing-smart-off') {
+    if ($key === 'pricing-limits' || $key === 'pricing-smart-off' || $key === 'pricing-changeover' || $key === 'pricing-hidden') {
         return true; // the owner's smart-pricing switch and suggestion limits (Manage →
                      // Pricing) — an operating decision about their own prices
     }

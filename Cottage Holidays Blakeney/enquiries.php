@@ -8,6 +8,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/booking-rules-lib.php'; // dated minimum stay + gap fit
 require_once __DIR__ . '/enquiry-actions.php'; // shared approve/decline logic + email-action tokens
 
 // The admin GET payload, as a function so admin-bootstrap.php can serve the
@@ -308,7 +309,7 @@ if ($action === 'submit') {
     // enforced here so the public form can't be bypassed. Rules are stored in the
     // content table under 'rules-<propKey>' as JSON; fall back to defaults.
     $nights = (int) round((strtotime($checkOut) - strtotime($checkIn)) / 86400);
-    $defaultRules = ['minNights' => 2, 'maxNights' => 0, 'arrivalDays' => []];
+    $defaultRules = ['minNights' => 2, 'maxNights' => 0, 'arrivalDays' => [], 'minByDate' => [], 'gapFitDays' => 0];
     $rules = $defaultRules;
     $rs = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
     $rs->execute(['rules-' . $propKey]);
@@ -319,8 +320,13 @@ if ($action === 'submit') {
             $rules = array_merge($defaultRules, $decoded);
         }
     }
-    $minN = max(1, (int) $rules['minNights']);
-    if ($nights < $minN) {
+    // The minimum for THIS stay: a dated minimum may apply, and a stay that
+    // exactly fills a short gap may be booked anyway (booking-rules-lib.php).
+    $minN = rule_min_nights($rules, $checkIn);
+    $gapFit =
+        $nights < $minN &&
+        rule_gap_fit($rules, $checkIn, $checkOut, date('Y-m-d'), fn($d) => dates_clash($propKey, $d, date('Y-m-d', strtotime($d . ' 12:00:00 +1 day'))));
+    if ($nights < $minN && !$gapFit) {
         json_out(
             ['error' => 'This property has a minimum stay of ' . $minN . ' night' . ($minN === 1 ? '' : 's') . '.'],
             400,

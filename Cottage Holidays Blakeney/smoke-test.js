@@ -181,6 +181,36 @@ else {
     // Empty weekendDays must mean "no weekend days" (parity with PHP), NOT a fallback to Fri/Sat.
     check('weekendDays="" applies no uplift (parity)', approx(nrf('2026-01-03', { coupleRate: 100, weekendPct: 20, weekendDays: '' }, []), 100));
 }
+// Short-stay charge — pure helper, MUST match short_stay_charge() in pricing.php
+// (test-pricing.php asserts the same cases on the PHP side).
+const ssc = get('shortStayCharge');
+if (typeof ssc !== 'function') { fail('shortStayCharge is not defined'); }
+else {
+    check('short stay: 2 nights at £50 → £100', approx(ssc({ shortFee: 50, shortMax: 2 }, 2), 100));
+    check('short stay: 3 nights is not short at max 2 → 0', approx(ssc({ shortFee: 50, shortMax: 2 }, 3), 0));
+    check('short stay: max 3 covers 3 nights → £150', approx(ssc({ shortFee: 50, shortMax: 3 }, 3), 150));
+    check('short stay: no fee → 0', approx(ssc({ shortFee: 0, shortMax: 2 }, 1), 0));
+    check('short stay: max defaults to 2 nights', approx(ssc({ shortFee: 40 }, 2), 80) && approx(ssc({ shortFee: 40 }, 3), 0));
+    const pbSrc = String(get('priceBreakdown'));
+    check('priceBreakdown adds the short-stay charge AFTER the last-minute factor', /lastMinuteFactor\([^)]*\)\s*\+\s*shortStayCharge\(r, nights\)/.test(pbSrc));
+}
+// Minimum stay by date + gap fit — MUST match booking-rules-lib.php (test-pricing.php).
+const rmn = get('ruleMinNights'), rgf = get('ruleGapFit');
+if (typeof rmn !== 'function' || typeof rgf !== 'function') { fail('ruleMinNights / ruleGapFit are not defined'); }
+else {
+    const R = { minNights: 2, minByDate: [{ from: '2026-10-24', to: '2026-10-31', min: 5 }, { from: '2026-11-02', to: '2026-11-30', min: 3 }], gapFitDays: 10 };
+    check('dated minimum: half-term check-in → 5', rmn(R, '2026-10-24') === 5 && rmn(R, '2026-10-31') === 5);
+    check('dated minimum: November → 3', rmn(R, '2026-11-15') === 3);
+    check('dated minimum: outside every range → the standard 2', rmn(R, '2026-11-01') === 2 && rmn(R, '2026-12-01') === 2);
+    check('dated minimum: garbage rows are ignored', rmn({ minNights: 2, minByDate: ['x', { from: 'nope', to: '2026-12-01', min: 9 }] }, '2026-11-15') === 2);
+    const sh = get('ukShiftDays'), td = get('todayDashed')();
+    const tk = (d) => d === sh(td, 1) || d === sh(td, 4);
+    const a = sh(td, 2), b = sh(td, 4);
+    check('gap fit: exactly the gap, inside the window → allowed', rgf(R, a, b, tk) === true);
+    check('gap fit: part of the gap is not a fit', rgf(R, a, sh(td, 3), tk) === false);
+    check('gap fit: off by default', rgf({ minNights: 2 }, a, b, tk) === false);
+    check('checkBookingRules reads the dated minimum and the gap fit', /ruleMinNights\(r, checkIn\)/.test(String(get('checkBookingRules'))) && /ruleGapFit\(/.test(String(get('checkBookingRules'))));
+}
 // Last-minute discount factor — pure helper, MUST match last_minute_factor() in pricing.php.
 const lmf = get('lastMinuteFactor');
 if (typeof lmf !== 'function') { fail('lastMinuteFactor is not defined'); }
