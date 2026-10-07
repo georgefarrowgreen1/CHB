@@ -12532,10 +12532,7 @@ function settingsRenderSection(section) {
     if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
-    else if (section === 'reviews-import') {
-        fillReviewImportControls();
-        renderReviewsEditor();
-    }
+    else if (section === 'reviews-import') rviRender();
     else if (section === 'reviews-google') initGoogleReviewUrl();
     else if (section === 'photos') loadGuestPhotosAdmin();
     else if (section === 'analytics') loadAnalytics();
@@ -23867,48 +23864,6 @@ function accomSectionHtml(k, sec) {
             return '';
     }
 }
-function reviewRowHtml(r) {
-    r = r || { name: '', stars: 5, text: '', prop: '', source: '' };
-    // The label states the CONSEQUENCE: "(no cottage)" reads as a neutral choice, and
-    // it is the default, so nothing said it takes the review off every cottage page.
-    const propOpts = ['<option value="">(no cottage \u2014 not shown on any cottage page)</option>']
-        .concat(
-            Object.keys(propertyMeta).map(
-                (k) =>
-                    `<option value="${k}" ${r.prop === k ? 'selected' : ''}>${escapeHtml(propertyMeta[k].name)}</option>`,
-            ),
-        )
-        .join('');
-    const starOpts = [5, 4, 3]
-        .map(
-            (n) =>
-                `<option value="${n}" ${parseInt(r.stars) === n ? 'selected' : ''}>${'★'.repeat(n)}</option>`,
-        )
-        .join('');
-    const srcOpts = ['', 'Airbnb', 'Vrbo', 'Booking.com', 'Google', 'Email', 'Guestbook']
-        .map(
-            (s) =>
-                `<option value="${s}" ${(r.source || '') === s ? 'selected' : ''}>${s || '(no source)'}</option>`,
-        )
-        .join('');
-    return `<div class="review-row">
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <input type="text" class="input-glass field-sm" placeholder="Guest name" value="${escapeHtml(r.name || '')}" data-rf="name" style="flex:1 1 140px;min-width:120px;">
-                    <select class="input-glass field-sm" data-rf="stars">${starOpts}</select>
-                    <select class="input-glass field-sm" data-rf="prop">${propOpts}</select>
-                    <select class="input-glass field-sm" data-rf="source" title="Where this review came from">${srcOpts}</select>
-                    <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".review-row" title="Remove review"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-                </div>
-                <textarea rows="2" class="input-glass field-sm" placeholder="What they said…" data-rf="text">${escapeHtml(r.text || '')}</textarea>
-            </div>`;
-}
-function renderReviewsEditor() {
-    const wrap = document.getElementById('reviews-editor');
-    if (!wrap) return;
-    const reviews = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
-    wrap.innerHTML = reviews.map(reviewRowHtml).join('');
-}
-
 // ---- Per-cottage FAQ editor (Settings, inside each rate panel) ----
 function faqRowHtml(propKey, f) {
     f = f || { icon: '', q: '', a: '' };
@@ -26454,175 +26409,206 @@ async function deleteGuestReview(id) {
         glassAlert("Couldn't delete: " + e.message);
     }
 }
-function addReviewRow() {
-    const wrap = document.getElementById('reviews-editor');
-    if (wrap) wrap.insertAdjacentHTML('beforeend', reviewRowHtml(null));
+// ---- Import reviews: ADD-ONLY (approved demo) ----
+// Pick a cottage (required — a review with no cottage appears on no cottage page
+// and is left out of that cottage's count and rating), pick where they came from,
+// paste the whole reviews page. reviewCleanPaste keeps the guest, the stars and
+// their words and NAMES everything it removed; nothing already imported is shown
+// or editable here, and adding APPENDS — it never replaces what is saved.
+const RVI_SOURCES = ['Airbnb', 'Vrbo', 'Booking.com', 'Google'];
+let __rvi = { prop: '', src: 'Airbnb', dropped: {}, stars: {}, open: {} };
+// Normalised review text, for "already imported" — case, punctuation and spacing
+// never make a review new.
+function reviewTextKey(t) {
+    return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
-// Populate the bulk-import dropdowns (cottages are dynamic, so build at open).
-// Source defaults to Airbnb — the common case for a one-time import.
-function fillReviewImportControls() {
-    const propSel = document.getElementById('bulk-rev-prop');
-    if (propSel)
-        propSel.innerHTML =
-            '<option value="">(no cottage \u2014 not shown on any cottage page)</option>' +
-            Object.keys(propertyMeta)
-                .map((k) => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`)
-                .join('');
-    const srcSel = document.getElementById('bulk-rev-source');
-    if (srcSel)
-        srcSel.innerHTML = ['Airbnb', 'Vrbo', 'Booking.com', 'Google', 'Email', 'Guestbook', '']
-            .map(
-                (s) =>
-                    `<option value="${s}" ${s === 'Airbnb' ? 'selected' : ''}>${s || '(no source)'}</option>`,
-            )
-            .join('');
-    const starSel = document.getElementById('bulk-rev-stars');
-    if (starSel)
-        starSel.innerHTML = [5, 4, 3]
-            .map((n) => `<option value="${n}">${'★'.repeat(n)}</option>`)
-            .join('');
-}
-// One-time bulk import: parse pasted reviews (one per blank-line-separated block)
-// into editable rows in #reviews-editor. Forgiving by design — the owner reviews
-// every row before saving, so we favour "add something sensible" over strictness.
-//   • A line that's only ★ chars or "5 stars" / "5/5" sets that review's rating.
-//   • A standalone date / "2 weeks ago" / "Reviewed…" line is dropped.
-//   • First remaining line → name, the rest → the review text.
-//   • A single-line block becomes the review text with a blank name to fill in.
-function bulkImportReviews() {
-    const ta = document.getElementById('bulk-rev-text');
-    const raw = ((ta && ta.value) || '').trim();
-    if (!raw) {
-        glassAlert('Paste your reviews into the box first.');
-        return;
-    }
-    const prop = (document.getElementById('bulk-rev-prop') || {}).value || '';
-    const source = (document.getElementById('bulk-rev-source') || {}).value || '';
-    const defStars = parseInt((document.getElementById('bulk-rev-stars') || {}).value) || 5;
-    const wrap = document.getElementById('reviews-editor');
-    if (!wrap) return;
-
-    const isStarLine = (l) =>
-        /^[★☆\s]*★[★☆\s]*$/.test(l) || /^\s*[1-5]\s*(?:\/\s*5|stars?|★)/i.test(l);
-    const starsFrom = (l) => {
-        const c = (l.match(/★/g) || []).length;
-        if (c) return c;
-        const m = l.match(/[1-5]/);
-        return m ? parseInt(m[0]) : defStars;
-    };
-    // A month only counts as a DATE when paired with a number (year or day) — so
-    // real names like "Mark", "May", "April", "June" or "Janet" are NOT dropped.
-    const MONTH =
-        '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-    const monthYear = new RegExp('^\\s*' + MONTH + '\\.?\\s+\\d{4}\\s*$', 'i'); // "October 2024"
-    const dayMonth = new RegExp(
-        '^\\s*\\d{1,2}(?:st|nd|rd|th)?\\s+' + MONTH + '(?:\\.?\\s+\\d{4})?\\s*$',
-        'i',
-    ); // "12 May", "2 March 2024"
-    const isMetaLine = (l) =>
-        monthYear.test(l) ||
-        dayMonth.test(l) ||
-        /^\s*\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\s*$/.test(l) || // 12/05/2024
-        /\b(?:days?|weeks?|months?|years?)\s+ago\b/i.test(l) || // "2 weeks ago"
-        /^\s*(?:reviewed|stayed|response from)\b/i.test(l); // dashboard chrome
-
-    const blocks = raw
-        .split(/\n\s*\n+/)
-        .map((b) => b.trim())
-        .filter(Boolean);
-    let added = 0;
-    for (const block of blocks) {
-        let lines = block
-            .split('\n')
-            .map((l) => l.trim())
-            .filter(Boolean);
-        let stars = defStars;
-        const si = lines.findIndex(isStarLine);
-        if (si !== -1) {
-            stars = starsFrom(lines[si]);
-            lines.splice(si, 1);
-        }
-        stars = Math.max(3, Math.min(5, stars)); // the row editor only offers 3–5
-        lines = lines.filter((l) => !isMetaLine(l));
+// PURE: raw pasted dashboard text → [{name, stars, text, removed:[{why, line}]}].
+// Never rewrites what a guest SAID: it drops whole dashboard lines, host replies,
+// a sentence carrying contact details, and squashes "!!!" / extra spaces / long
+// capitalised words. Anything it cannot classify stays IN the review.
+function reviewCleanPaste(raw) {
+    const MONTH = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+    const rules = [
+        ['date', new RegExp('^' + MONTH + '\\.?\\s+\\d{4}$', 'i')],
+        ['date', new RegExp('^\\d{1,2}(?:st|nd|rd|th)?\\s+' + MONTH + '\\.?(?:\\s+\\d{4})?$', 'i')],
+        ['date', /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/],
+        ['date', /\b(?:day|week|month|year)s?\s+ago$/i],
+        ['date', /^reviewed:?\s/i],
+        ['stay details', /^stayed (?:a few nights|about a week|with kids|with a pet|over a week|one night|in\b)/i],
+        ['stay details', /^(?:group trip|family trip|business trip|couple|solo traveller|solo traveler|family with (?:young|older) children|group of friends)$/i],
+        ['profile', /^\d+\s+(?:years?|months?)\s+on\s+airbnb$/i],
+        ['profile', /^(?:superhost|identity verified|verified|local guide)$/i],
+        ['button text', /^(?:show more|read more|show original|translate|helpful|not helpful|report(?: this review)?|see all reviews|show less|like|share)$/i],
+        ['translation note', /^translated (?:from|by)\b/i],
+        ['headline score', /^(?:exceptional|superb|wonderful|fabulous|very good|good|pleasant|review score)$/i],
+    ];
+    const COUNTRY = /^(?:united kingdom|uk|england|scotland|wales|ireland|northern ireland|germany|france|netherlands|belgium|spain|italy|usa|united states|canada|australia|new zealand)$/i;
+    const CONTACT = /https?:\/\/\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.]+|(?:\+44\s?|0)\d{3,4}\s?\d{6,7}/i;
+    const blocks = String(raw || '').replace(/\r/g, '').replace(/[\u00a0\u200b]/g, ' ').split(/\n\s*\n+/);
+    const out = [];
+    for (const b of blocks) {
+        const lines = b.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
         if (!lines.length) continue;
-        let name = '',
-            text = '';
-        if (lines.length === 1) {
-            text = lines[0];
-        } else {
-            name = lines[0].replace(/[\s:\-–—]+$/, '').slice(0, 80);
-            text = lines.slice(1).join(' ');
+        const removed = [];
+        const text = [];
+        let name = '';
+        let stars = 0;
+        let inReply = false;
+        for (const l of lines) {
+            if (inReply) { removed.push({ why: 'host reply', line: l }); continue; }
+            if (/^response from\b/i.test(l)) { inReply = true; removed.push({ why: 'host reply', line: l }); continue; }
+            if (/^[·•|\-–—]+$/.test(l)) continue;
+            let m;
+            if (/^[★☆\s]+$/.test(l) && /★/.test(l)) { stars = (l.match(/★/g) || []).length; removed.push({ why: 'rating → stars', line: l }); continue; }
+            if ((m = l.match(/^(?:rating,?\s*|rated\s*)?([1-5])(?:\.0)?\s*(?:stars?|\/\s*5|out of 5)$/i))) { stars = +m[1]; removed.push({ why: 'rating → stars', line: l }); continue; }
+            if ((m = l.match(/^scored\s+(\d+(?:\.\d)?)$/i))) { stars = Math.max(1, Math.min(5, Math.round(+m[1] / 2))); removed.push({ why: 'score → stars', line: l }); continue; }
+            // A lone capital before the name is the avatar initial Booking.com prints.
+            if (!name && /^[A-Z]$/.test(l)) { removed.push({ why: 'avatar letter', line: l }); continue; }
+            const rule = rules.find((r) => r[1].test(l));
+            if (rule) { removed.push({ why: rule[0], line: l }); continue; }
+            if (!name && l.length <= 40 && !/[.!?]$/.test(l)) { name = l.replace(/[\s:\-–—]+$/, ''); continue; }
+            if (name && !text.length && (COUNTRY.test(l) || /^[A-Z][\w .'-]+,\s*[A-Z][\w .'-]+$/.test(l))) { removed.push({ why: 'location', line: l }); continue; }
+            let t = l;
+            if ((m = t.match(/^disliked\s*[·:]\s*(.*)$/i))) {
+                if (/^(?:nothing|none|n\/a|nothing at all|no complaints|nothing to dislike)\W*$/i.test(m[1])) { removed.push({ why: 'empty answer', line: l }); continue; }
+                t = m[1];
+            }
+            t = t.replace(/^liked\s*[·:]\s*/i, '');
+            // A sentence carrying a link, an email or a phone number goes WHOLE —
+            // cutting the details out of its middle leaves "call me on  or  if…".
+            t = t.split(/(?<=[.!?])\s+/).filter((x) => {
+                if (CONTACT.test(x)) { removed.push({ why: 'contact details', line: x.trim() }); return false; }
+                return true;
+            }).join(' ').trim();
+            const fixes = [];
+            if (/([!?.])\1+/.test(t)) { fixes.push('“!!!” → “!”'); t = t.replace(/([!?.])\1+/g, '$1'); }
+            if (/\b[A-Z]{4,}\b/.test(t)) { fixes.push('CAPITALS'); t = t.replace(/\b([A-Z]{4,})\b/g, (w) => w.toLowerCase()); }
+            if (fixes.length) removed.push({ why: 'tidied', line: fixes.join(', ') });
+            if (t) text.push(t);
         }
-        text = text.trim();
-        if (!text) continue;
-        wrap.insertAdjacentHTML('beforeend', reviewRowHtml({ name, stars, text, prop, source }));
-        added++;
+        if (!text.length) continue;
+        out.push({ name: (name || 'Guest').slice(0, 80), stars: stars || 5, text: text.join(' '), removed });
     }
-    if (!added) {
-        glassAlert(
-            "Couldn't find any reviews to add — check the format: the guest's name on the first line, their review underneath, and a blank line between each one.",
-        );
-        return;
-    }
-    ta.value = '';
-    toast(
-        added +
-            ' review' +
-            (added === 1 ? '' : 's') +
-            ' added below — check them over, then “Save imported reviews”.',
-    );
-    chbScroll(wrap, { block: 'nearest' });
+    return out;
 }
-async function saveReviews() {
-    const wrap = document.getElementById('reviews-editor');
-    if (!wrap) return;
-    const reviews = [];
-    for (const row of wrap.querySelectorAll('.review-row')) {
-        const get = (f) => {
-            const el = row.querySelector(`[data-rf="${f}"]`);
-            return el ? el.value : '';
-        };
-        const text = get('text').trim();
-        if (!text) continue; // empty review — skip
-        reviews.push({
-            name: get('name').trim(),
-            stars: parseInt(get('stars')) || 5,
-            text,
-            prop: get('prop'),
-            source: get('source'),
-        });
+function rviRows() {
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('rvi-text'));
+    const have = new Set((Array.isArray(siteContent.reviews) ? siteContent.reviews : []).map((r) => reviewTextKey(r && r.text)));
+    return reviewCleanPaste(ta ? ta.value : '').map((r, i) => ({
+        ...r,
+        i,
+        stars: __rvi.stars[i] || r.stars,
+        dupe: have.has(reviewTextKey(r.text)),
+        dropped: !!__rvi.dropped[i],
+    }));
+}
+function rviRender() {
+    const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : Object.keys(propertyMeta);
+    if (__rvi.prop && !keys.includes(__rvi.prop)) __rvi.prop = '';
+    const all = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
+    const nm = (k) => (propertyMeta[k] || {}).name || k;
+    const sofar = document.getElementById('rvi-sofar');
+    if (sofar) {
+        const per = keys.map((k) => `${nm(k)} ${all.filter((r) => r && r.prop === k).length}`).join(' · ');
+        sofar.textContent = "Select everything on your host dashboard's reviews page, copy, and paste it here — dates, host replies and buttons included. We keep the guest, the stars and what they wrote." + (keys.length ? ` Already on the site: ${per}.` : '');
     }
-    // A REVIEW WITH NO COTTAGE APPEARS ON NO COTTAGE PAGE: renderPropReviews filters
-    // r.prop === propKey, so prop:'' hides the whole section, while renderGuestWords
-    // does not filter and keeps rotating it on the homepage. It also deflates that
-    // cottage's COUNT and AVERAGE (measured: 6 unassigned + 2 assigned read as "2").
-    // "(no cottage)" is the FIRST option in both editors, so it is what you get by not
-    // choosing. This ASKS rather than refusing — the bulk-send confirm's posture.
-    const stranded = reviews.filter((r) => !r.prop).length;
-    if (stranded) {
-        const ok = await glassConfirm(
-            (stranded === 1
-                ? 'One review has no cottage set.'
-                : `${stranded} reviews have no cottage set.`) +
-                '\n\nA review with no cottage does not appear on any cottage page, and it is left out of' +
-                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.',
-            'Save anyway',
-            { cancelLabel: 'Go back and pick one' },
-        );
-        if (!ok) return;
+    const chip = (on, act, arg, inner) =>
+        `<button type="button" class="rvi-chip${on ? ' is-on' : ''}" aria-pressed="${on}" ${chbAttrs(act, arg)}>${inner}</button>`;
+    const pe = document.getElementById('rvi-props');
+    if (pe)
+        pe.innerHTML = keys
+            .map((k) => chip(__rvi.prop === k, 'rviPick', k, `<span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(nm(k))}`))
+            .join('');
+    const se = document.getElementById('rvi-srcs');
+    if (se) se.innerHTML = RVI_SOURCES.map((s) => chip(__rvi.src === s, 'rviSource', s, escapeHtml(s))).join('');
+    const rows = rviRows();
+    const adding = rows.filter((r) => !r.dupe && !r.dropped);
+    const fe = document.getElementById('rvi-found');
+    if (fe) {
+        if (!rows.length) fe.innerHTML = '';
+        else {
+            const clutter = rows.reduce((n, r) => n + r.removed.length, 0);
+            const cap = `Found ${rows.length} review${rows.length === 1 ? '' : 's'}${adding.length !== rows.length ? ` · ${adding.length} to add` : ''}`;
+            fe.innerHTML = `<section class="rv-sec">
+                <div class="rvi-foundhead"><h3 class="acr-cap">${cap}</h3>${clutter ? stCap('ok', `${clutter} bit${clutter === 1 ? '' : 's'} of clutter removed`) : ''}</div>
+                <div class="acr-well rv-well">${rows
+                    .map((r) => {
+                        const kinds = [...new Set(r.removed.map((x) => x.why))];
+                        const open = !!__rvi.open[r.i];
+                        const st = '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars);
+                        return `<div class="rvi-row${r.dropped || r.dupe ? ' is-out' : ''}">
+                            <div class="rv-go-txt">
+                                <div class="rv-qhead"><span class="rv-name">${escapeHtml(r.name)}</span>
+                                    <button type="button" class="rvi-stars" aria-label="${r.stars} stars — tap to change" ${chbAttrs('rviStars', r.i)}>${st}</button>
+                                    ${r.dupe ? stCap('unk', 'Already imported — skipped') : ''}</div>
+                                <p class="rvi-text">${escapeHtml(r.text)}</p>
+                                ${kinds.length ? `<button type="button" class="rvi-why" aria-expanded="${open}" ${chbAttrs('rviWhy', r.i)}>Removed: ${escapeHtml(kinds.slice(0, 3).join(', '))}${kinds.length > 3 ? ' +' + (kinds.length - 3) : ''} · <span>${open ? 'Hide' : 'See'}</span></button>` : ''}
+                                ${open ? `<div class="rvi-removed">${r.removed.map((x) => `<div><span>${escapeHtml(x.why)}</span><s>${escapeHtml(x.line)}</s></div>`).join('')}</div>` : ''}
+                            </div>
+                            ${r.dupe ? '' : `<button type="button" class="rvi-drop" aria-label="${r.dropped ? 'Put back' : 'Leave out'} the review from ${escapeHtml(r.name)}" ${chbAttrs('rviDrop', r.i)}>${r.dropped ? '↺' : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</button>`}
+                        </div>`;
+                    })
+                    .join('')}</div>
+                <p class="acr-capsub rvi-hint">Tap the stars to change a rating · ✕ leaves one out.</p>
+            </section>`;
+        }
     }
+    const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('rvi-add'));
+    if (btn) {
+        const n = adding.length;
+        btn.disabled = !__rvi.prop || !n;
+        btn.textContent = !__rvi.prop ? 'Choose a cottage first' : !n ? (rows.length ? 'Nothing new to add' : 'Paste some reviews') : `Add ${n} review${n === 1 ? '' : 's'} to ${nm(__rvi.prop)}`;
+    }
+}
+function rviReset() {
+    __rvi = { prop: __rvi.prop, src: __rvi.src, dropped: {}, stars: {}, open: {} };
+}
+function rviPick(k) { __rvi.prop = k; rviRender(); }
+function rviSource(s) { __rvi.src = s; rviRender(); }
+function rviStars(i) {
+    const cur = rviRows().find((r) => r.i === +i);
+    const s = cur ? cur.stars : 5;
+    __rvi.stars[i] = s <= 1 ? 5 : s - 1;
+    rviRender();
+}
+function rviDrop(i) { __rvi.dropped[i] = !__rvi.dropped[i]; rviRender(); }
+function rviWhy(i) { __rvi.open[i] = !__rvi.open[i]; rviRender(); }
+async function rviAdd() {
+    const prop = __rvi.prop;
+    if (!prop) return;
+    const add = rviRows()
+        .filter((r) => !r.dupe && !r.dropped)
+        .map((r) => ({ name: r.name, stars: r.stars, text: r.text, prop, source: __rvi.src }));
+    if (!add.length) return;
+    const before = Array.isArray(siteContent.reviews) ? siteContent.reviews.slice() : [];
+    const next = before.concat(add);
     try {
-        await saveContent('reviews', reviews);
-        siteContent.reviews = reviews;
-        renderReviews();
-        toast(
-            stranded
-                ? `Reviews saved — ${stranded} with no cottage, so not on any cottage page.`
-                : 'Reviews saved.',
-        );
+        await saveContent('reviews', next);
     } catch (e) {
-        glassAlert("Couldn't save reviews: " + e.message);
+        return; // saveContent has already told the owner why
     }
+    siteContent.reviews = next;
+    try { renderReviews(); } catch (e) {}
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('rvi-text'));
+    if (ta) ta.value = '';
+    rviReset();
+    rviRender();
+    const name = (propertyMeta[prop] || {}).name || prop;
+    // Undo takes back exactly what this tap added — reviews saved since stay put.
+    toast(`${add.length} review${add.length === 1 ? '' : 's'} added to ${name}`, 'ok', {
+        label: 'Undo',
+        fn: async () => {
+            const now = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
+            const kept = now.filter((r) => !add.includes(r));
+            try {
+                await saveContent('reviews', kept);
+                siteContent.reviews = kept;
+                try { renderReviews(); } catch (e) {}
+                rviRender();
+                toast('Taken back off the site.');
+            } catch (e) {}
+        },
+    });
 }
 
 // ---- Seasonal rates editor (Settings) ----
@@ -31633,7 +31619,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable

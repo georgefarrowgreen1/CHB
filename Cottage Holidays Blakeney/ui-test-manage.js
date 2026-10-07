@@ -591,7 +591,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const noOldFold = !document.querySelector('#sec-reviews details') && !document.querySelector('#sec-reviews #bulk-rev-text');
     document.querySelector('#sec-reviews [data-arg="reviews-import"]').click();
     await wait(200);
-    const imp = { shown: document.getElementById('sec-reviews-import').style.display !== 'none', title: document.getElementById('settings-panel-title').textContent, filled: document.getElementById('bulk-rev-prop').options.length > 1, capGone: !document.querySelector('#settings-panel-cap .st-cap') };
+    const imp = { shown: document.getElementById('sec-reviews-import').style.display !== 'none', title: document.getElementById('settings-panel-title').textContent, filled: document.querySelectorAll('#rvi-props .rvi-chip').length === bookableCottageKeys().length, capGone: !document.querySelector('#settings-panel-cap .st-cap') };
     settingsBack();
     await wait(400);
     const backToReviews = document.getElementById('sec-reviews').style.display !== 'none';
@@ -614,6 +614,57 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(rv2.backToReviews, 'Back from a sub-page returns to Reviews, not the index');
   ok(rv2.goo.shown && rv2.goo.input, 'Google review link opens its own page');
   ok(/Not set/.test(rv2.gcap), `the Google row says whether the link is set (${rv2.gcap})`);
+
+  console.log('§7c importing reviews: add-only, the paste cleaned, nothing already imported added twice');
+  const imp = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const keys = bookableCottageKeys();
+    const k = keys[0];
+    siteContent.reviews = [{ name: 'Old', stars: 5, text: 'Lovely week — the welcome book answered everything before we asked.', prop: k, source: 'Airbnb' }];
+    const saves = [];
+    const realSave = window.saveContent;
+    window.saveContent = async (key, val) => { saves.push({ key, val: JSON.parse(JSON.stringify(val)) }); };
+    settingsOpen('reviews-import');
+    await wait(150);
+    const noEditor = !document.querySelector('#sec-reviews-import .review-row') && !document.querySelector('#sec-reviews-import select');
+    const btn = document.getElementById('rvi-add');
+    const before = { disabled: btn.disabled, label: btn.textContent };
+    const ta = document.getElementById('rvi-text');
+    ta.value = 'Hannah\nLeeds, United Kingdom\n★★★★☆\n·\nOctober 2024\nStayed a few nights\nPerfect base for the coast path!!! Cosy and spotless.\nShow more\nResponse from George\nOctober 2024\nThank you Hannah!\n\nMark\n2 weeks ago\nLovely week — the welcome book answered everything before we asked.\nHelpful\n\nPriya\nLondon, United Kingdom\nGreat location, the bed was SO comfy. Text me on 07700 900123 if you ever want a swap!\nReport this review';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(100);
+    const noCottage = { disabled: btn.disabled, label: btn.textContent };
+    document.querySelector('#rvi-props .rvi-chip').click();
+    await wait(100);
+    const rows = [...document.querySelectorAll('#rvi-found .rvi-row')].map((r) => ({ t: r.querySelector('.rvi-text').textContent, out: r.classList.contains('is-out'), dupe: /Already imported/.test(r.textContent) }));
+    const clutter = (document.querySelector('#rvi-found .st-cap') || {}).textContent || '';
+    const why = document.querySelector('#rvi-found .rvi-why');
+    why.click();
+    await wait(50);
+    const removedShown = (document.querySelector('#rvi-found .rvi-removed') || {}).textContent || '';
+    const ready = { disabled: btn.disabled, label: btn.textContent };
+    btn.click();
+    await wait(200);
+    const toastBtn = [...document.querySelectorAll('.toast-action')].pop();
+    const afterAdd = { saves: saves.length, n: saves[0] && saves[0].val.length, last: saves[0] && saves[0].val.slice(-2), cleared: ta.value === '' };
+    if (toastBtn) toastBtn.click();
+    await wait(200);
+    const undo = { saves: saves.length, n: saves[1] && saves[1].val.length };
+    window.saveContent = realSave;
+    return { noEditor, before, noCottage, rows, clutter, removedShown, ready, afterAdd, undo, k };
+  });
+  ok(imp.noEditor, 'the import page lists no imported reviews and has no editor rows');
+  ok(imp.before.disabled && /Choose a cottage first/.test(imp.before.label) && imp.noCottage.disabled, `nothing can be added until a cottage is chosen (${imp.noCottage.label})`);
+  ok(imp.rows.length === 3, `three reviews read out of the paste (${imp.rows.length})`);
+  ok(imp.rows[0] && imp.rows[0].t === 'Perfect base for the coast path! Cosy and spotless.', `dates, location, stay details, buttons and the host reply are gone; "!!!" squashed ("${imp.rows[0] && imp.rows[0].t}")`);
+  ok(imp.rows[2] && imp.rows[2].t === 'Great location, the bed was SO comfy.', `a sentence with a phone number goes whole ("${imp.rows[2] && imp.rows[2].t}")`);
+  ok(imp.rows[1] && imp.rows[1].dupe && imp.rows[1].out, 'a review already on the site is shown as skipped');
+  ok(/clutter removed/.test(imp.clutter), `the clutter removed is counted (${imp.clutter})`);
+  ok(/host reply/.test(imp.removedShown) && /Response from George/.test(imp.removedShown), 'what was removed can be seen, line by line');
+  ok(!imp.ready.disabled && /Add 2 reviews to /.test(imp.ready.label), `the button names the count and the cottage (${imp.ready.label})`);
+  ok(imp.afterAdd.saves === 1 && imp.afterAdd.n === 3 && imp.afterAdd.cleared, `adding APPENDS to what is saved (${imp.afterAdd.n} = 1 kept + 2 new)`);
+  ok(imp.afterAdd.last && imp.afterAdd.last[0].stars === 4 && imp.afterAdd.last.every((r) => r.prop === imp.k && r.source === 'Airbnb'), 'stars read from the paste; cottage and source stamped on every one');
+  ok(imp.undo.saves === 2 && imp.undo.n === 1, `Undo takes back exactly what was added (${imp.undo.n} left)`);
 
   console.log('§8 the data pages join by framing (batch 3) — seasons as CARDS');
   const p3 = await page.evaluate(async () => {
