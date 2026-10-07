@@ -77,7 +77,7 @@ const LOST = (sel) => {
 const READ_SELS = [
     '.bhub-fold-sub', '.bhub-kv-label', '.bhub-kv-sub',
     '.mo-pulse', '.bk-row-dates', '.bk-row-name', '.feed-who',
-    '.cmdk-turn-a', '.ks-say', '.ks-next-see', '.ks-dial-meta', '.acr-cap', '.mf-name', '.mf-sub',
+    '.cmdk-turn-a', '.ks-say', '.ks-row-sub', '.acr-cap', '.mf-name', '.mf-sub',
 ].join(', ');
 
 (async () => {
@@ -386,10 +386,10 @@ const READ_SELS = [
         grab();
         return seen;
     });
-    // The floor moved 4 → 2 with a consolidation: the Status page's old text
-    // disclosures became the Tools card (excluded above). Named, so two
-    // unrelated summaries cannot satisfy it.
-    ok(sums.length >= 2 && sums.some((s) => /How the keeper works/.test(s.t)), `(vacuity guard) ${sums.length} summaries reachable on Manage + Move money out + Key safes`);
+    // The floor moved 4 → 1 with consolidations: the Status page's text
+    // disclosures became the Tools card (excluded above) and the key-safe
+    // page's moved into its sheet. Named, so an unrelated summary cannot pass it.
+    ok(sums.length >= 1 && sums.some((s) => /Show how these figures are worked out/.test(s.t)), `(vacuity guard) ${sums.length} summaries reachable on Manage + Move money out + Key safes`);
     const short = sums.filter((s) => s.h < 44);
     ok(short.length === 0, `every one of them meets the 44px floor${short.length ? ' — ' + short.map((s) => `“${s.t}” ${s.h}px`).join('; ') : ''}`);
     const marked = sums.filter((s) => s.display === 'list-item' || s.marker !== 'none');

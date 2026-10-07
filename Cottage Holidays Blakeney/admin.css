@@ -6166,56 +6166,61 @@ body.offline-snap .ods-mark {
   margin-top: 9px;
 }
 
-/* ── THE KEY SAFE KEEPER (view-keysafe — the key in the dock). The overhaul:
-   a summary card, then ONE OPEN CARD per safe answering, in reading order,
-   what is on the dial (the code as tiles), who is next and when they see it,
-   what to do (one sentence) and the one button that does it. ── */
-#keysafe-body { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
-.ks-sum { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--well-bg); }
-.ks-sum-mark { flex: none; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: var(--fs-headline); }
-.ks-sum.is-ok .ks-sum-mark { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok-text); }
-.ks-sum.is-warn .ks-sum-mark { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-text); }
-.ks-sum.is-bad .ks-sum-mark { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger-text); }
-.ks-sum-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ks-sum-txt b { font-size: var(--fs-headline); font-weight: 600; }
-.ks-sum-txt small { font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
-.ks-card { display: flex; flex-direction: column; gap: 16px; padding: 16px; border-radius: var(--r-lg); }
-.ks-card.is-attn { border-color: color-mix(in srgb, var(--warn) 45%, var(--glass-border)); }
-.ks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.ks-card .prop-tag { margin-bottom: 0; }
-.ks-dial { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.ks-dial-k, .ks-next-k { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
-.ks-code { display: inline-flex; gap: 8px; }
-.ks-dig { width: 48px; height: 56px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--glass-border); background: var(--well-bg); font-size: var(--fs-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-text); }
-.ks-nocode { font-size: var(--fs-headline); font-weight: 600; color: var(--text-muted); }
-.ks-dial-meta { font-size: var(--fs-sub); color: var(--text-muted); }
-.ks-next { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
-.ks-next-v { font-size: var(--fs-body); }
-.ks-next-v b { font-weight: 600; }
-.ks-next-see { font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
-.ks-say { margin: 0; padding: 12px; border-radius: var(--r-sm); font-size: var(--fs-body); line-height: 1.45; text-wrap: pretty; }
-.ks-say.is-ok { padding: 0; color: var(--text-muted); }
-.ks-say.is-warn { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn-text); }
-.ks-say.is-bad { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger-text); }
+/* ── THE KEY SAFE KEEPER (view-keysafe). The approved "simpler" demo: a status
+   line, a to-do card only for a safe that needs a code, then every safe as one
+   row of a single list (name, code, one line). Detail lives in a sheet. ── */
+#keysafe-body { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+#view-keysafe .dashboard-header { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 12px; }
+.ks-info { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--glass-border); background: none; color: var(--text-muted); font: 600 var(--fs-headline) Georgia, serif; cursor: pointer; }
+.ks-status { display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); font-weight: 600; }
+.ks-status-dot { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-caption); font-weight: 700; }
+.ks-status.is-ok { color: var(--ok-text); }
+.ks-status.is-ok .ks-status-dot { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.ks-status.is-warn { color: var(--warn-text); }
+.ks-status.is-warn .ks-status-dot { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.ks-status.is-bad { color: var(--danger-text); }
+.ks-status.is-bad .ks-status-dot { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.ks-todo { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--r-lg); border-color: color-mix(in srgb, var(--warn) 50%, var(--glass-border)); }
+.ks-todo.is-bad { border-color: color-mix(in srgb, var(--danger) 55%, var(--glass-border)); }
+.ks-todo-h { margin: 0; font-size: var(--fs-headline); font-weight: 600; line-height: 1.35; text-wrap: balance; }
+.ks-say { margin: 0; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; text-wrap: pretty; }
 .ks-rotate { min-height: 48px; width: 100%; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
 .ks-rotate.is-primary { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
-.ks-card.is-calm { gap: 8px; }
-.ks-code.is-sm { gap: 4px; }
-.ks-code.is-sm .ks-dig { width: 32px; height: 40px; font-size: var(--fs-title); }
-.ks-calm-cap { display: flex; }
-.ks-say.is-note { padding: 0; color: var(--warn-text); }
-.ks-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; }
-.ks-foot .ks-hist[open] { flex-basis: 100%; }
-.ks-rotate.is-link { width: auto; min-height: 44px; padding: 0; border: 0; border-radius: 0; color: var(--accent-text); font-size: var(--fs-sub); }
-.ks-hist-n { font-weight: 500; color: var(--text-muted); font-size: var(--fs-caption); padding: 0 8px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); }
-.ks-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sub); margin-top: 4px; }
+.ks-cap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); padding: 0 4px; margin-bottom: -8px; }
+.ks-list { padding: 0; border-radius: var(--r-lg); overflow: hidden; }
+.ks-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; }
+.ks-row + .ks-row { border-top: 1px solid var(--glass-border); }
+.ks-row.is-flash { animation: ksFlash 1.2s ease both; }
+@keyframes ksFlash { from { background: color-mix(in srgb, var(--ok) 20%, transparent); } }
+.ks-swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.ks-row-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ks-row-txt b { font-weight: 600; }
+.ks-row-sub { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.35; text-wrap: pretty; }
+.ks-row-sub.is-warn { color: var(--warn-text); }
+.ks-row-sub.is-bad { color: var(--danger-text); }
+.ks-row-code { flex: none; font-size: var(--fs-title); font-weight: 600; letter-spacing: 0.12em; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.ks-row-code.is-none { font-size: var(--fs-sub); letter-spacing: 0; color: var(--text-muted); }
+.ks-row .bhub-chev { flex: none; color: var(--text-muted); }
+/* the sheet behind a row (a .chb-sheet overlay: a bottom sheet on a phone) */
+.ks-sheet-box { display: flex; flex-direction: column; gap: 16px; max-width: 480px; }
+.ks-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ks-sheet-head h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.ks-sheet-x { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--glass-border); background: none; color: var(--text-light); font-size: var(--fs-body); cursor: pointer; }
+.ks-code { display: inline-flex; gap: 8px; }
+.ks-dig { width: 56px; height: 64px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--glass-border); background: var(--well-bg); font-size: var(--fs-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-text); }
+.ks-nocode { margin: 0; color: var(--text-muted); }
+.ks-facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: var(--fs-sub); }
+.ks-facts dt { color: var(--text-muted); }
+.ks-facts dd { margin: 0; min-width: 0; }
+.ks-hist { display: flex; flex-direction: column; gap: 12px; }
+.ks-hist .ks-cap { margin: 0; padding: 0; }
+.ks-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sub); }
 .ks-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: var(--fs-caption); padding: 4px 8px 8px 0; border-bottom: 1px solid var(--glass-border); }
 .ks-table td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--glass-border); font-variant-numeric: tabular-nums; }
 .ks-code-sm { font-weight: 600; letter-spacing: 0.12em; color: var(--accent-text); }
-.ks-note { color: var(--text-muted); font-size: var(--fs-caption); margin: 12px 0 0; }
-.ks-how { padding: 4px 4px 0; color: var(--text-muted); font-size: var(--fs-sub); }
-.ks-how ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; }
-.ks-how b { color: var(--text-light); font-weight: 600; }
+.ks-note { color: var(--text-muted); font-size: var(--fs-caption); margin: 0; }
+.ks-how-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.5; }
+.ks-how-list b { color: var(--text-light); font-weight: 600; }
 
 /* Saved replies (composer picker + Manage). Chips take an OPAQUE ground,
    never a tint: a tinted chip on a row that tints on hover composites twice —
@@ -7353,8 +7358,6 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 .help-disclosure { max-width: 640px; margin: 14px 0 0; }
 .help-disclosure > summary,
 .night-setup > summary,
-.ks-hist > summary,
-.ks-how > summary,
 .sweep-detail > summary {
   cursor: pointer; list-style: none;
   display: flex; align-items: center; gap: 8px;
@@ -7374,13 +7377,9 @@ body.light-mode .help-disclosure > summary,
 body.light-mode .sweep-detail > summary { color: var(--accent-ink); }
 .help-disclosure > summary::-webkit-details-marker,
 .night-setup > summary::-webkit-details-marker,
-.ks-hist > summary::-webkit-details-marker,
-.ks-how > summary::-webkit-details-marker,
 .sweep-detail > summary::-webkit-details-marker { display: none; }
 .help-disclosure > summary::after,
 .night-setup > summary::after,
-.ks-hist > summary::after,
-.ks-how > summary::after,
 .sweep-detail > summary::after {
   content: ''; width: 14px; height: 14px; flex: 0 0 auto;
   background: currentColor;
@@ -7390,13 +7389,9 @@ body.light-mode .sweep-detail > summary { color: var(--accent-ink); }
 }
 .help-disclosure[open] > summary::after,
 .night-setup[open] > summary::after,
-.ks-hist[open] > summary::after,
-.ks-how[open] > summary::after,
 .sweep-detail[open] > summary::after { transform: rotate(90deg); }
 .help-disclosure > summary:focus-visible,
 .night-setup > summary:focus-visible,
-.ks-hist > summary:focus-visible,
-.ks-how > summary:focus-visible,
 .sweep-detail > summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

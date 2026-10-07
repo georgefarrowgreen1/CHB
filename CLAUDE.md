@@ -3550,28 +3550,29 @@ Manage → Activity log (`#act-log-app`, built once by `alShell()` in admin.js; 
 - Gates: ui-test-activitylog.js, test-integration §47 (summary judgement, seen excludes, 400 on empty, owner-only,
   never public), smoke §13 (re-aimed to the new cap sentence), ui-test-reach (the tabs fit at 390, 44px each).
 
-## The Key safes page, overhauled (owner-asked: "easier to understand and use")
+## The Key safes page: a status line, a to-do, one list (approved "simpler" demo)
 
-`renderKeysafe` (admin.js, `.ks-*` in admin.css). The fold rows are gone: a summary card
-(`.ks-sum` — "One safe needs a new code" naming the cottages, or "Every safe is ready" with
-the next arrival), then ONE OPEN CARD per safe, needing-action first, answering in reading
-order: the code ON THE SAFE as four tiles (`.ks-code` > `.ks-dig`, spoken digit by digit via
-`aria-label`), the next guest and when they see it (`.ks-next`), what to do in one sentence
-(`.ks-say`, tinted red/amber only when there is something to do), and ONE button
-(`.ks-rotate` — filled "Set a new code for Marcus" when needed, quiet "Change the code"
-otherwise). "Past codes" and "How the keeper works" are disclosures in the house vocabulary
-(joined to the ONE DISCLOSURE VOCABULARY rule). **CALM CARDS ARE ONE BLOCK** (owner follow-up, "can this be simplified?"):
-a safe with nothing to do (`!needs && rec.code` — ok / none / in residence) renders `.ks-card.is-calm`:
-the tag with small code tiles beside it (`.ks-code.is-sm`), one line of facts ("Set for Marcus, arriving
-08/10. They see it from 06/10." / "Set 24/08 for a platform guest. No one booked next."), and a quiet
-"Change code" link beside "Past codes". No capsule, no big button: the summary card already says all is
-well. An in-residence safe keeps its amber "Rotate at changeover" capsule. The full card is only for a safe
-that needs a code. With no booking the capsule says "Ready", not
-"No upcoming booking" (which read like a button). The rotate dialog is written as steps. Every
-keeper rule is unchanged — `keysafeDue` still decides the state. Gated by ui-test-keysafe §2b
-(re-aimed: summary, order, tiles, no folds, one primary button) and ui-test-ownerref (reading
-selectors re-aimed; §5 excludes the Status Tools card row, and its vacuity floor moved 4 → 2,
-naming the keeper's own disclosure).
+`renderKeysafe` / `keysafeView` (admin.js, `.ks-*` in admin.css). Three rounds, owner-led
+(overhaul → "can this be simplified?" → the approved demo); this is the end state:
+- **ONE STATUS LINE** (`.ks-status`) under the title — "✓ All 3 safes are ready" or red/amber
+  "1 safe needs a new code". It counts the TO-DOS below, which include a safe with no code
+  recorded (the duty counts only due/later; a safe with nothing on record has nothing to give).
+- **A TO-DO CARD ONLY WHEN A SAFE NEEDS A CODE** (`.ks-todo[data-pk]`): a heading naming the
+  work ("21A Westgate still has Hannah's code"), one `.ks-say` sentence (arrival + when they see
+  it; a platform guest is told to share it in the platform's thread; changeover morning says
+  "Rotate after X leaves at 10:00"), one primary `.ks-rotate`. AMBER while the leaver is still in
+  (`d0.dep`), RED otherwise (`isRed`) — the duty's own severity.
+- **EVERY SAFE IS A ROW OF ONE LIST** (`.ks-row`, a button opening `keysafeOpen`): cottage dot,
+  name, the code on the right, one line ("Marcus · sees it from 06/10/2026", "No one booked",
+  amber "Sarah staying until … · change it after"). Spoken with the code digit by digit.
+- **THE DETAIL IS A SHEET** (`#ks-sheet`, a `.modal-overlay.chb-sheet` built on demand — a bottom
+  sheet on a phone; Escape and the backdrop close it): tiles, set-for, next, when the guest sees it,
+  Change code (`keysafeSheetRotate` closes the sheet, then the unchanged `keysafeRotate` dialog),
+  past codes. **How it works** is the ⓘ by the title (`keysafeHow`, in admin-views.html).
+- A confirmed rotation flashes its row green (`__ksFlash`). Every keeper rule is unchanged —
+  `keysafeDue` still decides each state. Gated by ui-test-keysafe §2/§2b/§3/§4b–d/§6 (re-aimed to
+  the to-do, row and sheet) and ui-test-ownerref (reads `.ks-say`/`.ks-row-sub`; its §5 vacuity
+  floor is now 1, naming the sweep's own disclosure, since this page has none left).
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
