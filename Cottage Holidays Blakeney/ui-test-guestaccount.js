@@ -44,6 +44,12 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
                 return json({ ok: true, admin: false, guest: null });
             }
             if (url.includes('my-bookings.php')) return json({ ok: true, bookings, enquiries: [], completed_stays: 0 });
+            if (url.includes('experiences.php')) return bookings.length
+                ? json({ ok: true, experiences: [
+                    { id: 11, title: 'Cley Marshes', body: 'Hides over the reedbeds.', category: 'Walks & nature', distance: 'About 6 min drive', mapQuery: 'Cley Marshes' },
+                    { id: 12, title: 'Beans Boat Trips', body: 'Out to the seals.', category: 'Boat trips & wildlife', distance: 'About 5 min drive', phone: '01263 740505' },
+                ] })
+                : json({ error: 'Things to do are for guests who have booked with us.', code: 'stays_only' }, 403);
             if (url.includes('avatar.php')) return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
             if (url.includes('passkeys.php')) return json({ ok: true, passkeys: [{ id: 7, label: 'iPhone', created_at: '2026-09-01 10:00:00' }] });
             return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, mine: {}, value: null });
@@ -340,10 +346,45 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ({ page } = await open([]));
     await page.waitForTimeout(300);
     ok(!(await painted('.guest-dock-btn[data-tab="experiences"]')), 'a signed-in guest who has never booked gets no button either');
+    await page.evaluate(() => guestAccountTab());
+    await page.waitForTimeout(500);
+    ok(!(await page.evaluate(() => !!document.querySelector('#ga-todo .ga-tcard'))), '…and no Things to do section on You');
     await page.close();
-    ({ page } = await open([mk('jollyboat', d(-60), d(-57), { id: 801, payment: 'paid', deposit_paid: 400 })]));
-    await page.waitForFunction(() => document.body.classList.contains('has-booked'), null, { timeout: 4000 }).catch(() => {});
-    ok(await painted('.guest-dock-btn[data-tab="experiences"]'), 'a guest who has booked (even a past stay) gets the button');
+    await page.close();
+    ({ page } = await open([mk('jollyboat', d(-1), d(2), { id: 801, payment: 'paid', deposit_paid: 400 })]));
+    await page.evaluate(() => guestAccountTab());
+    await page.waitForFunction(() => !!document.querySelector('#ga-todo .ga-tcard'), null, { timeout: 5000 }).catch(() => {});
+    const todo = await page.evaluate(() => ({
+        cap: (document.querySelector('#ga-todo .ga-cap') || {}).textContent || '',
+        cards: [...document.querySelectorAll('#ga-todo .ga-tcard .ga-tn')].map((e) => e.textContent),
+        order: (() => { const a = document.getElementById('ga-stays'); const t = document.getElementById('ga-todo'); const b = [...document.querySelectorAll('#guest-account-body .ga-t')].find((e) => e.textContent === 'Your details'); return !!(a && t && b && (a.compareDocumentPosition(t) & 4) && (t.compareDocumentPosition(b) & 4)); })(),
+        tabs: [...document.querySelectorAll('#guest-dock-slot .guest-dock-btn')].filter((b) => b.getClientRects().length).map((b) => b.dataset.tab),
+    }));
+    ok(todo.cards.length === 2, `a guest who has booked gets Things to do on the You page (${todo.cards.join(' · ')})`);
+    ok(/^Near /.test(todo.cap) && todo.cards[0] === 'Beans Boat Trips', `while staying it is "Near …" with the boat trips first (${todo.cap} · ${todo.cards[0]})`);
+    ok(todo.order, 'it sits between the stays and the account settings');
+    ok(!todo.tabs.includes('experiences'), `the menu no longer carries Things to do (${todo.tabs.join(', ')})`);
+    await page.click('#ga-todo .ga-tcard:nth-child(2)');
+    await page.waitForFunction(() => document.getElementById('view-experiences').classList.contains('active') && !!document.querySelector('#exp-grid .exp-row.is-open'), null, { timeout: 5000 }).catch(() => {});
+    const list = await page.evaluate(() => {
+        const open = document.querySelector('#exp-grid .exp-row.is-open');
+        return {
+            active: document.getElementById('view-experiences').classList.contains('active'),
+            rows: document.querySelectorAll('#exp-grid .exp-row').length,
+            openId: open ? open.dataset.expId : '',
+            acts: open ? [...open.querySelectorAll('.exp-actions a')].map((a) => a.textContent.trim()) : [],
+            back: [...document.querySelectorAll('#view-experiences .exp-back')].some((e) => e.getClientRects().length),
+            dockCur: (document.querySelector('#guest-dock-slot .guest-dock-btn.current') || { dataset: {} }).dataset.tab,
+        };
+    });
+    ok(list.active && list.rows === 2, `tapping a card opens the full list as rows (${list.rows})`);
+    ok(list.openId === '11' && list.acts.some((a) => /Directions/.test(a)), `…with that place unfolded and its actions showing (${list.openId} · ${list.acts.join(', ')})`);
+    ok(list.back && list.dockCur === 'account', `…a "‹ You" back link, and You still marked in the menu (${list.dockCur})`);
+    await page.click('#exp-grid .exp-row:last-child .exp-rowbtn');
+    ok(await page.evaluate(() => document.querySelector('#exp-grid .exp-row:last-child').classList.contains('is-open') && document.querySelector('#exp-grid .exp-row:last-child .exp-rowbtn').getAttribute('aria-expanded') === 'true'), 'a row opens on a tap and says so');
+    await page.click('#view-experiences .exp-back');
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.getElementById('view-guest-account').classList.contains('active')), 'and the back link returns to You');
     await page.close();
 
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST ACCOUNT CHECKS PASSED');

@@ -61,12 +61,10 @@ const { boot, ok } = require('./ui-test-lib');
     // fails hard on a real teleport — that never produces an intermediate value.
     const travel = await page.evaluate(async () => {
         const el = document.querySelector('#guest-dock-slot .guest-dock-indicator');
-        // Things to do is only offered to a guest who has booked (body.has-booked),
-        // so this travel is a booked guest's — set it before the indicator is read.
-        document.body.classList.add('has-booked');
-        await new Promise((r) => setTimeout(r, 120));
+        // The menu is Cottages · You now (Things to do lives on You), so the
+        // travel is Cottages → You, driven by the view the You tab marks.
         const before = el.style.translate;
-        document.querySelector('#guest-dock-slot .guest-dock-btn[data-tab="experiences"]').click();
+        nav('view-guest-account');
         const xs = [];
         let sawSquash = false;
         for (let i = 0; i < 40; i++) {
@@ -93,6 +91,8 @@ const { boot, ok } = require('./ui-test-lib');
 
     // ---- B) scroll condenses, never hides ----
     const scrolled = await page.evaluate(async () => {
+        nav('view-main'); // a page long enough to scroll (the You page is short signed out)
+        await new Promise((r) => setTimeout(r, 300));
         window.scrollTo(0, 600);
         await new Promise((r) => setTimeout(r, 300));
         const h = document.querySelector('header');

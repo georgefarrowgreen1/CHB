@@ -66,7 +66,8 @@ const { boot, ok } = require('./ui-test-lib');
     check(s.guestApp, 'the guest shell is active at 390px');
     check(s.headerVisible, 'the header is visible on mobile (it used to be display:none)');
     check(s.dockInHeader && !s.dockInWrap, 'the menu dock is INSIDE the header');
-    check(s.tabs.includes('experiences') && s.tabs.includes('cottages') && s.tabs.includes('account'),
+    // Cottages · You — Things to do lives on the You page now (approved demo).
+    check(s.tabs.includes('cottages') && s.tabs.includes('account') && !s.tabs.includes('experiences'),
         `the real nav moved, with its tabs intact (${s.tabs.join(',')})`);
     check(s.msgOutsideHeader, 'the standalone Messages pill did NOT move into the header');
     check(!s.hamburger, 'the now-redundant hamburger is hidden');
