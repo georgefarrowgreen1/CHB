@@ -6199,6 +6199,14 @@ body.offline-snap .ods-mark {
 .ks-say.is-bad { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger-text); }
 .ks-rotate { min-height: 48px; width: 100%; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
 .ks-rotate.is-primary { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
+.ks-card.is-calm { gap: 8px; }
+.ks-code.is-sm { gap: 4px; }
+.ks-code.is-sm .ks-dig { width: 32px; height: 40px; font-size: var(--fs-title); }
+.ks-calm-cap { display: flex; }
+.ks-say.is-note { padding: 0; color: var(--warn-text); }
+.ks-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; }
+.ks-foot .ks-hist[open] { flex-basis: 100%; }
+.ks-rotate.is-link { width: auto; min-height: 44px; padding: 0; border: 0; border-radius: 0; color: var(--accent-text); font-size: var(--fs-sub); }
 .ks-hist-n { font-weight: 500; color: var(--text-muted); font-size: var(--fs-caption); padding: 0 8px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); }
 .ks-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sub); margin-top: 4px; }
 .ks-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: var(--fs-caption); padding: 4px 8px 8px 0; border-bottom: 1px solid var(--glass-border); }

@@ -23353,7 +23353,28 @@ function renderKeysafe() {
                 + rec.history.map((h) => '<tr><td><span class="ks-code-sm">' + e(h.code) + '</span></td><td>' + e(h.guest || ((h.forStay || '').charAt(0) === 'o' ? 'Platform guest' : '—')) + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
                 + '</table><p class="ks-note">Stored encrypted. A record of which code was live and when, if entry is ever disputed.</p></details>'
             : '';
-        const html = '<section class="ks-card glass-panel' + (needs ? ' is-attn' : '') + '" data-pk="' + e(pk) + '">'
+        // CALM CARDS ARE ONE BLOCK (owner: "can this be simplified?"). When
+        // there is nothing to do, the summary card has already said so — the
+        // card is just the code, one line of facts and a quiet way to change
+        // it. The full anatomy (big tiles, next guest, sentence, primary
+        // button) is kept for the safe that needs a new code.
+        const calm = !needs && !!rec.code;
+        const seeShort = next
+            ? next.ota ? 'Share it in your ' + next.name.replace(' guest', '') + ' message thread.'
+                : keysafeRevealOpen(next, today) || next.checkIn <= today ? 'They see it on their booking page now.' : 'They see it from ' + revealFrom + '.'
+            : '';
+        const calmSay = st === 'inres'
+            ? say
+            : !next
+              ? 'Set ' + fmtDate(String(rec.setAt || '').slice(0, 10)) + (forGuest ? ' for ' + forGuest : '') + '. No one booked next.'
+              : 'Set for ' + (next.name || 'the next guest') + ', ' + (staying ? 'staying until ' + fmtDate(next.checkOut) : 'arriving ' + fmtDate(next.checkIn)) + '. ' + seeShort;
+        const html = calm
+            ? '<section class="ks-card glass-panel is-calm" data-pk="' + e(pk) + '">'
+                + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>' + digits.replace('class="ks-code"', 'class="ks-code is-sm"') + '</div>'
+                + (st === 'inres' ? '<div class="ks-calm-cap">' + cap + '</div>' : '')
+                + '<p class="ks-say ' + (st === 'inres' ? 'is-note' : 'is-ok') + '">' + e(calmSay) + '</p>'
+                + '<div class="ks-foot"><button type="button" class="ks-rotate is-link" ' + chbAttrs('keysafeRotate', String(pk)) + '>Change code</button>' + hist + '</div></section>'
+            : '<section class="ks-card glass-panel' + (needs ? ' is-attn' : '') + '" data-pk="' + e(pk) + '">'
             + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>' + cap + '</div>'
             + '<div class="ks-dial"><span class="ks-dial-k">On the safe</span>' + digits + (meta ? '<small class="ks-dial-meta">' + e(meta) + '</small>' : '') + '</div>'
             + nextRow

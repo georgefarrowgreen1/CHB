@@ -157,10 +157,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(confirms.length === 1 && confirms[0].code === '4826' && confirms[0].booking_id === 2, 'the confirm posts the code FOR the next booking');
   ok(typeof confirms[0].op_id === 'string' && confirms[0].op_id.length > 6, '…stamped with an op_id (the offline replay contract)');
   const body2 = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
-  ok(/4826/.test(body2) && /Code on the safe/.test(body2), 'the card flips: 4826, on the safe for Marcus');
-  ok(/on their booking page now|on their booking page from/.test(body2), '…and says where (and when) Marcus sees it');
-  ok(await page.evaluate(() => { const c = document.querySelector('.ks-card[data-pk="21a"]'); return !!c && !c.classList.contains('is-attn') && !c.querySelector('.ks-rotate.is-primary') && /Change the code/.test(c.querySelector('.ks-rotate').textContent); }),
-    'once set, the card stands down: no attention edge, and the button is the quiet Change the code');
+  ok(/4826/.test(body2) && /Set for Marcus Ellery/.test(body2), 'the card flips: 4826, set for Marcus');
+  ok(/They see it (on their booking page now|from )/.test(body2), '…and says when Marcus sees it');
+  ok(await page.evaluate(() => { const c = document.querySelector('.ks-card[data-pk="21a"]'); return !!c && c.classList.contains('is-calm') && !c.classList.contains('is-attn') && !c.querySelector('.ks-rotate.is-primary') && !c.querySelector('.st-cap') && /Change code/.test(c.querySelector('.ks-rotate').textContent) && c.querySelectorAll('.ks-code.is-sm .ks-dig').length === 4; }),
+    'once set, the card collapses to one calm block: the code, one line, a quiet Change code — no badge, no big button');
   ok(/Hannah Whitlock/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body .ks-hist'); dt.open = true; return dt.textContent; })), 'the superseded code joined the history under Hannah’s name');
 
   console.log('§4 the rotation duty on Needs-you');
@@ -367,8 +367,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the confirm identifies the stay by ref, not a booking id (${confirms[0] && confirms[0].stay_ref})`);
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label)).length) === 0,
     'and once the safe is set for them, the duty is gone');
-  ok(await page.evaluate(() => { const c = [...document.querySelectorAll('.ks-card')].find((x) => /Jollyboat/.test(x.textContent)); return !!(c && /Code on the safe/.test(c.textContent) && c.querySelector('.st-cap.is-ok .st-tick')); }),
-    'the card flips — the platform stay wears the same ✓ capsule a direct one does');
+  ok(await page.evaluate(() => { const c = [...document.querySelectorAll('.ks-card')].find((x) => /Jollyboat/.test(x.textContent)); return !!(c && c.classList.contains('is-calm') && /Set for Airbnb guest/.test(c.textContent)); }),
+    'the card flips — the platform stay collapses to the same calm block a direct one does');
+  if (process.env.CHB_SHOTS) {
+    await page.setViewportSize({ width: 390, height: 1100 });
+    await page.evaluate(() => { document.body.classList.remove('light-mode'); renderKeysafe(); window.scrollTo(0, 0); });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: process.env.CHB_SHOTS + '/keysafe-calm.png' });
+    await page.setViewportSize({ width: 1280, height: 950 });
+  }
 
   console.log('§7 the per-cottage switch (Settings → cottage → Private notes)');
   // Reset 21a to "rotation pending" so the duty is live, then switch OFF.
