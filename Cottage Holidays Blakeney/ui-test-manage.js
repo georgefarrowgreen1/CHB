@@ -1068,14 +1068,89 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(sb.keptEnded, 'saving sends the ended season back — it is hidden, never deleted early');
   ok(sb.labels.includes('Easter'), `a suggested name is saved as the season's name (${sb.labels.join(', ')})`);
 
-  const p3d = await page.evaluate(async () => {
+  console.log('§8c Pricing: standard and smart on one page');
+  const pz = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t = todayDashed();
+    const keys = liveCottageKeys();
+    const pk = keys[0];
+    propertySeasons[pk] = [];
+    // Two stays with a 3-night gap between them, a few days out.
+    dbBookings[pk] = [
+      { id: 'pz1', dbId: 901, name: 'Gap Before', checkIn: sgIsoAdd(t, 3), checkOut: sgIsoAdd(t, 6) },
+      { id: 'pz2', dbId: 902, name: 'Gap After', checkIn: sgIsoAdd(t, 9), checkOut: sgIsoAdd(t, 12) },
+    ];
+    if (!propertyRates[pk]) propertyRates[pk] = Object.assign({}, defaultRates[pk]);
+    propertyRates[pk].weekendPct = 15;
+    propertyRates[pk].weekendDays = '5,6';
+    adminPrivateContent['pricing-smart-off'] = false;
+    adminPrivateContent['pricing-limits'] = {};
+    const posts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('rates.php') || (String(url).includes('content.php') && body.action === 'set')) { posts.push(Object.assign({ __url: String(url) }, body)); return { ok: true }; }
+      return realPost(url, body);
+    };
     settingsOpen('pricing');
-    await new Promise((r) => setTimeout(r, 300));
+    await wait(300);
     const pb = document.getElementById('pricing-body');
-    // the caption vocabulary is sentence case at 600 (the sentence-case pass)
-    return { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => { const cs = getComputedStyle(l); return cs.textTransform === 'none' && Number(cs.fontWeight) >= 600; }) : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
+    const cells = pb.querySelectorAll('.pr-grid .pr-day');
+    const cots = pb.querySelectorAll('.pr-cots button').length;
+    // The price on the calendar IS the booking quote's price for that night.
+    const free = sgIsoAdd(t, 20);
+    const cell = [...pb.querySelectorAll('.pr-grid button.pr-day')].find((b) => b.getAttribute('data-args') && b.getAttribute('data-args').includes(free));
+    const shown = cell ? +(/£(\d+)/.exec(cell.textContent) || [0, 0])[1] : -1;
+    const quoted = Math.round(priceBreakdown(pk, 2, 0, free, sgIsoAdd(free, 1)).nightly);
+    let sat = sgIsoAdd(t, 14);
+    while (new Date(sat + 'T12:00:00Z').getUTCDay() !== 6) sat = sgIsoAdd(sat, 1);
+    const satCell = [...pb.querySelectorAll('.pr-grid button.pr-day')].find((b) => (b.getAttribute('data-args') || '').includes(sat));
+    const satShown = satCell ? +(/£(\d+)/.exec(satCell.textContent) || [0, 0])[1] : -1;
+    const satQuoted = Math.round(priceBreakdown(pk, 2, 0, sat, sgIsoAdd(sat, 1)).nightly);
+    const bookedTxt = [...cells].filter((c) => /Booked/.test(c.textContent)).length;
+    const gapNight = sgIsoAdd(t, 7);
+    const gapCell = [...pb.querySelectorAll('.pr-grid button.pr-day')].find((b) => (b.getAttribute('data-args') || '').includes(gapNight));
+    const dot = !!gapCell && gapCell.classList.contains('has-idea');
+    gapCell.click();
+    await wait(50);
+    const det = document.getElementById('pr-detail');
+    const detail = { open: !!det, usual: !!det && /Usual/.test(det.textContent), idea: !!det && /gap between two stays/.test(det.textContent), btn: !!det && !!det.querySelector('[data-act="prApply"]') };
+    // The usual nightly stepper: the calendar re-prices at once, the save waits.
+    const before = +(/£(\d+)/.exec(cell.textContent) || [0, 0])[1];
+    [...pb.querySelectorAll('[data-act="prStep"]')].find((b) => b.getAttribute('data-args') === '["coupleRate","1"]').click();
+    await wait(30);
+    const cell2 = [...pb.querySelectorAll('.pr-grid button.pr-day')].find((b) => (b.getAttribute('data-args') || '').includes(free));
+    const after = +(/£(\d+)/.exec(cell2.textContent) || [0, 0])[1];
+    const savedNow = posts.filter((x) => x.action === 'save').length;
+    await wait(800);
+    const rateSave = posts.filter((x) => x.action === 'save').pop();
+    // Smart off: no dots; the choice is saved.
+    const sw = document.getElementById('pr-smart');
+    sw.checked = false;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(50);
+    const dotsOff = document.querySelectorAll('#pricing-body .pr-day.has-idea').length;
+    const offSaved = posts.some((x) => x.key === 'pricing-smart-off' && x.value === true);
+    sw.checked = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(50);
+    // A floor lifts the gap offer.
+    adminPrivateContent['pricing-limits'] = { floor: Math.round(parseFloat(propertyRates[pk].coupleRate)) - 1 };
+    const g = chbGapScan().find((x) => x.pk === pk);
+    const plan = g && chbGapPlan(g);
+    adminPrivateContent['pricing-limits'] = {};
+    window.apiPost = realPost;
+    return { satShown, satQuoted, cells: cells.length, cots, keys: keys.length, shown, quoted, bookedTxt, dot, detail, before, after, savedNow, rateSave, dotsOff, offSaved, floorOffer: plan && plan.offer, floorWant: Math.round(parseFloat(propertyRates[pk].coupleRate)) - 1, caps: [...pb.querySelectorAll('.acr-cap')].length };
   });
-  ok(p3d.has && p3d.caps, 'Pricing wears the caption vocabulary over its idea rows');
+  ok(pz.cots === pz.keys && pz.cells === 42, `a cottage switch and six weeks of nights (${pz.cots} cottages, ${pz.cells} days)`);
+  ok(pz.shown === pz.quoted && pz.shown > 0, `the calendar shows what the booking quote charges for that night (£${pz.shown} = £${pz.quoted})`);
+  ok(pz.satShown === pz.satQuoted && pz.satQuoted > pz.quoted, `…a Saturday too, weekend uplift included (£${pz.satShown} = £${pz.satQuoted})`);
+  ok(pz.bookedTxt >= 6, `booked nights say so (${pz.bookedTxt})`);
+  ok(pz.dot && pz.detail.open && pz.detail.usual && pz.detail.idea && pz.detail.btn, 'a gap night carries a dot; tapping it shows how the price is built and the idea with its reason');
+  ok(pz.after === pz.before + 5 || pz.after > pz.before, `the usual-price stepper re-prices the calendar at once (£${pz.before} → £${pz.after})`);
+  ok(pz.savedNow === 0 && pz.rateSave && pz.rateSave.couple_rate !== undefined, `…and saves after the pause through the same rate save (${JSON.stringify(pz.rateSave)})`);
+  ok(pz.dotsOff === 0 && pz.offSaved, 'switching suggestions off removes every dot and is saved');
+  ok(pz.floorOffer === pz.floorWant, `a "never below" limit lifts the gap offer to it (£${pz.floorOffer})`);
+  ok(pz.caps >= 4, 'the page wears the section captions');
 
   console.log('§9 the analytics VISITS trend is a GRAPH — bars PAINT, a dense axis thins');
   // The bars are measured, not asserted from markup: the old composer set each

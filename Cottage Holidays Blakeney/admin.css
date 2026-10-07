@@ -8379,3 +8379,58 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 #sg-savebar { animation: chbSettle 320ms var(--settle); }
 .sg-undo { flex: none; height: 44px; padding: 0 12px; border: 0; background: none; color: var(--text-muted); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .sg-fold, .sg-fold[hidden] { transition: none; } .sg-fold[hidden] { display: none; } }
+/* PRICING (approved demo): one page for standard and smart pricing — a cottage
+   switch, the next six weeks at the price guests actually pay (a dot where there is
+   an idea), the tapped night's breakdown, ideas as cards, the usual prices as
+   steppers and the smart side's switch and limits. */
+.pr-page { gap: 24px; }
+.pr-cots button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
+.pr-legend { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-ldot, .pr-day.has-idea::after { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.pr-cal { padding: 12px; }
+.pr-dows, .pr-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.pr-dows { margin-bottom: 4px; text-align: center; font-size: var(--fs-micro); font-weight: 600; color: var(--text-muted); }
+.pr-day { position: relative; min-height: 52px; padding: 0; border-radius: var(--r-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); background: color-mix(in srgb, var(--text-light) 3%, transparent); color: var(--text-light); font: inherit; cursor: pointer; transition: transform 320ms var(--settle); }
+.pr-day:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+.pr-day.is-past { border-color: transparent; background: none; cursor: default; }
+.pr-day.is-past .pr-dn { color: color-mix(in srgb, var(--text-muted) 50%, transparent); }
+.pr-day.is-taken { cursor: default; border-color: transparent; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-light) 4%, transparent) 0 4px, transparent 4px 8px); }
+.pr-day.is-taken .pr-dp { font-size: var(--fs-micro); color: var(--text-muted); font-weight: 500; }
+.pr-day.has-idea::after { content: ''; position: absolute; top: 4px; right: 4px; }
+.pr-day.is-own .pr-dp { color: var(--ok-text); }
+.pr-day.is-sel { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.pr-day:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
+.pr-dn { font-size: var(--fs-micro); font-weight: 600; color: var(--text-muted); }
+.pr-dp { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-detail { margin-top: 12px; overflow: hidden; animation: chbSettle 240ms var(--out); }
+.pr-dhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 16px 20px 12px; }
+.pr-dwhen { font-size: var(--fs-body); font-weight: 600; }
+.pr-dprice { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-dprice span { font-size: var(--fs-sub); font-weight: 500; color: var(--text-muted); }
+.pr-line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 20px; border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); font-size: var(--fs-sub); }
+.pr-line span:first-child { color: var(--text-muted); }
+.pr-line span:last-child { font-variant-numeric: tabular-nums; }
+.pr-idea { margin: 4px 12px 12px; padding: 12px 16px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); display: flex; flex-direction: column; gap: 8px; }
+.pr-ideat { font-size: var(--fs-sub); font-weight: 600; color: var(--accent-text); }
+.pr-ideaw { font-size: var(--fs-sub); line-height: 1.5; color: var(--text-light); }
+.pr-ideac { font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-ideaacts { display: flex; gap: 8px; margin-top: 4px; }
+.pr-ideaacts .pay-btn { flex: 1 1 auto; }
+.pr-own { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 12px 20px; border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); font-size: var(--fs-sub); color: var(--ok-text); }
+.pr-back { min-height: 44px; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; }
+.pr-ideas { display: flex; flex-direction: column; gap: 12px; }
+#pricing-body .pr-card { width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px 16px 16px 20px; border-radius: var(--r-lg); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); background: color-mix(in srgb, var(--text-light) 4%, transparent); color: var(--text-light); text-align: left; font: inherit; cursor: pointer; }
+#pricing-body .pr-card .ny-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#pricing-body .pr-card .ny-label { font-size: var(--fs-body); font-weight: 600; line-height: 1.35; }
+#pricing-body .pr-card .ny-sub { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
+#pricing-body .pr-card .ny-act { flex: none; font-size: var(--fs-sub); font-weight: 600; color: var(--accent-text); }
+.pr-calm { display: flex; align-items: center; gap: 12px; padding: 16px 20px; font-size: var(--fs-body); }
+.pr-more { margin-top: 12px; }
+.pr-rule { min-height: 64px; padding: 8px 12px 8px 20px; }
+.pr-rlbl { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pr-rsub { font-size: var(--fs-sub); color: var(--text-muted); }
+.pr-rsub:empty { display: none; }
+.pr-val { min-width: 64px; justify-content: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rv-well > .pr-rule + .pr-rule, .rv-well > .pr-rule + .rv-go, .rv-well > .rv-go + .rv-go, .pr-limits > .pr-rule, .rv-well > .pr-rule + .pr-limits { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.pr-limits.is-off { opacity: 0.5; }
+.rv-go .pay-val { margin-left: auto; }
