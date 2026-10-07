@@ -1082,6 +1082,9 @@ function is_internal_content_key($key)
                      // plan-presets; the guest only ever sees its consequence
                      // (the offer pay.php derives), never the setting
     }
+    if ($key === 'activity-seen') {
+        return true; // the owner's "Seen it" record on the Activity log (activity_log ids)
+    }
     if ($key === 'duty-dismissed') {
         return true; // which Needs-you rows the owner has swiped away (chbDutyDismiss) —
                      // names guests and bookings by id; rides the admin boot payload

@@ -12,6 +12,7 @@
 //      the activity_log table (db.php's log_activity()).
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/status-lib.php'; // status_warn_kind(): a warning said in plain words
 
 // Inbound business events (the "what happened while I was away" set).
 function activity_business_events($per = 12)
@@ -180,6 +181,8 @@ function activity_logged_events($limit = 200)
                 }
             }
             $row = [
+                'id' => (int) $r['id'],
+                'action' => (string) ($r['action'] ?? ''),
                 'type' => $r['category'] ?: 'other',
                 'label' => $r['summary'] ?: $r['action'],
                 'detail' => $detail,
@@ -187,7 +190,18 @@ function activity_logged_events($limit = 200)
                 'prop_key' => $r['prop_key'] ?? '',
                 'actor' => $r['actor'] ?: 'system',
                 'severity' => $r['severity'] ?? 'info',
+                'entity' => (string) ($r['entity'] ?? ''),
+                'entity_id' => (int) ($r['entity_id'] ?? 0),
             ];
+            // A WARNING IS SAID IN PLAIN WORDS (the Activity log redesign): the
+            // raw summary stays available as the technical detail, never lost.
+            if (in_array($row['severity'], ['warn', 'action'], true)) {
+                $k = status_warn_kind($row['action'], (string) $row['label']);
+                if ($k['known']) {
+                    $row['nice'] = $k['title'];
+                    $row['verdict'] = $k['verdict'];
+                }
+            }
             // The orphan-payment flag carries its own remedy: the one tap that
             // records the Square payment against the booking. CLOSED by event
             // key (the MC_ACTS posture) — no other log row ever grows an action
@@ -243,3 +257,54 @@ function activity_merged($opts = [])
     usort($events, fn($a, $b) => strcmp((string) $b['at'], (string) $a['at']));
     return array_slice($events, 0, $limit);
 }
+
+// THE LOG'S SUMMARY (the Activity log redesign): events per day for the last
+// seven days, which of them carried a warning, and the warnings not yet marked
+// seen — grouped by kind, newest first, each said in plain words. $seen is the
+// owner's own "Seen it" record (activity_log ids).
+function activity_summary($today, $seen = [])
+{
+    $seenSet = array_flip(array_map('intval', (array) $seen));
+    $events = array_merge(activity_business_events(200), activity_logged_events(1000));
+    $base = strtotime($today . ' 12:00:00 UTC');
+    $days = [];
+    $idx = [];
+    for ($i = 6; $i >= 0; $i--) {
+        $d = gmdate('Y-m-d', $base - $i * 86400);
+        $idx[$d] = count($days);
+        $days[] = ['date' => $d, 'n' => 0, 'warn' => 0];
+    }
+    $groups = [];
+    foreach ($events as $e) {
+        $d = substr((string) ($e['at'] ?? ''), 0, 10);
+        if (!isset($idx[$d])) {
+            continue;
+        }
+        $days[$idx[$d]]['n']++;
+        $isWarn = in_array($e['severity'] ?? 'info', ['warn', 'action'], true);
+        if (!$isWarn) {
+            continue;
+        }
+        $days[$idx[$d]]['warn']++;
+        $id = (int) ($e['id'] ?? 0);
+        if ($id && isset($seenSet[$id])) {
+            continue;
+        }
+        $k = status_warn_kind((string) ($e['action'] ?? ''), (string) ($e['label'] ?? ''));
+        if (!$k['needs']) {
+            continue; // a warning that sorted itself out is not a chore
+        }
+        $key = ($e['action'] ?? '') . '|' . $k['title'];
+        if (!isset($groups[$key])) {
+            $groups[$key] = ['title' => $k['title'], 'why' => $k['verdict'], 'tech' => (string) $e['label'], 'at' => $e['at'], 'ids' => [], 'n' => 0];
+        }
+        $groups[$key]['n']++;
+        if ($id) {
+            $groups[$key]['ids'][] = $id;
+        }
+    }
+    $needs = array_values($groups);
+    usort($needs, fn($a, $b) => strcmp((string) $b['at'], (string) $a['at']));
+    return ['days' => $days, 'total' => array_sum(array_column($days, 'n')), 'needs' => array_slice($needs, 0, 6)];
+}
+

@@ -471,9 +471,9 @@ const reachOk = (name, list, floor, axis) => {
     await run(page, "(async () => { await openArea('settings'); settingsShowIndex(); await checkSystemHealth(); })()", 1600);
     reachOk('manage 390 \u00b7 the health pill', await page.evaluate(REACH, '#health-pill'), 1, 'y');
     await run(page, "(async () => { nav('view-activity-log'); await renderActivityLog(); })()", 1600);
-    reachOk('manage 390 · the activity-log filters', await page.evaluate(REACH, '#act-log-filters .act-log-chip'), 6, 'y');
-    const wrapped = await page.evaluate(() => getComputedStyle(document.getElementById('act-log-filters')).flexWrap);
-    ok(wrapped === 'wrap', `manage 390 · the fourteen filters still WRAP — none hides behind a swipe (${wrapped})`);
+    reachOk('manage 390 · the activity-log tabs', await page.evaluate(REACH, '#act-log-filters .al-tab'), 5, 'both');
+    const tabsFit = await page.evaluate(() => { const r = document.getElementById('act-log-filters').getBoundingClientRect(); return r.right <= innerWidth + 0.5 && r.left >= -0.5; });
+    ok(tabsFit, 'manage 390 · the five activity-log tabs fit the screen — none hides behind a swipe');
     // 6. THE ASSISTANT: the deep-search chips and its Back.
     await run(page, `(async () => {
       openCmdK();

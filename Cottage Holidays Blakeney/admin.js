@@ -29418,28 +29418,28 @@ const ACTIVITY_ICONS = {
     media: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.6"/><path d="M21 16l-5-5L5 20"/>',
     other: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
 };
-// ---- Full activity log page (view-activity-log) ----
-// One page of the log. Named because the cap is STATED ON SCREEN when a page comes
-// back full — two copies of the number would let sentence and request drift.
-const ACT_LOG_LIMIT = 250;
-const ACT_LOG_CATS = [
-    ['all', 'All'],
-    ['attention', '⚠ Needs attention'],
-    ['booking', 'Bookings'],
-    ['payment', 'Payments'],
-    ['comms', 'Messages & email'],
-    ['enquiry', 'Enquiries'],
-    ['moderation', 'Moderation'],
-    ['content', 'Content'],
-    ['rates', 'Rates'],
-    ['calendar', 'Calendar'],
-    ['media', 'Media'],
-    ['settings', 'Settings'],
-    ['system', 'System'],
-    ['account', 'Account'],
+// ---- Full activity log page (view-activity-log): the approved redesign ----
+// A week summary, the warnings that need a look (said in plain words, with
+// "Seen it"), a search, five icon tabs, then the log grouped by day — each row
+// a time, an icon, a plain title and who did it, opening to the detail.
+const ACT_LOG_LIMIT = 150;
+const ACT_LOG_MAX = 500;
+const AL_GROUP = {
+    booking: 'bookings', enquiry: 'bookings', calendar: 'bookings',
+    payment: 'money', rates: 'money',
+    comms: 'messages', review: 'messages', photo: 'messages', signup: 'messages', moderation: 'messages',
+};
+const AL_TABS = [
+    ['all', 'All', 'M5 4.5h4.5a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5z M14.5 4.5H19a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5z M5 14h4.5a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-4.5A.5.5 0 0 1 5 14z M14.5 14H19a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5v-4.5a.5.5 0 0 1 .5-.5z'],
+    ['bookings', 'Bookings', 'M6 5.5h12A1.5 1.5 0 0 1 19.5 7v11a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V7A1.5 1.5 0 0 1 6 5.5z M4.5 10h15 M8.5 3.5v4 M15.5 3.5v4'],
+    ['money', 'Money', 'M16 7.2A3.4 3.4 0 0 0 9.7 9v10 M7.5 13.5h6 M7 19.5h10'],
+    ['messages', 'Messages', 'M6 5h12a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 18 16h-6.5L7.5 19.5V16H6a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 6 5z'],
+    ['system', 'System', 'M4.5 7.5h9 M17.5 7.5h2 M4.5 16.5h3 M11.5 16.5h8 M15.5 5.5v4 M9.5 14.5v4'],
 ];
-const activityLogState = { category: 'all', q: '' };
+const activityLogState = { category: 'all', q: '', day: null, limit: ACT_LOG_LIMIT, events: [], sum: null, open: null, seenKeys: null, leaving: null };
 let __actLogSearchTimer = null;
+let __alLive = null;
+let __alStamp = 0;
 function actorLabel(a) {
     if (a === 'owner') return 'You';
     if (a === 'cron') return 'Automatic';
@@ -29447,82 +29447,309 @@ function actorLabel(a) {
     if (a && a.indexOf('guest') === 0) return 'Guest';
     return a || '';
 }
-async function renderActivityLog() {
+function alGroupOf(type) {
+    return AL_GROUP[type] || 'system';
+}
+function alDate(at) {
+    const d = new Date(String(at || '').replace(' ', 'T'));
+    return isNaN(d.getTime()) ? null : d;
+}
+function alDayKey(d) {
+    return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') : '';
+}
+function alDayLabel(key) {
+    const now = chbNow();
+    const today = alDayKey(now);
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (key === today) return 'Today';
+    if (key === alDayKey(y)) return 'Yesterday';
+    const d = new Date(key + 'T12:00:00');
+    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+// The search words lit inside a title — escaped first, so the mark is the only markup.
+function alHi(text, q) {
+    const t = String(text || '');
+    const i = q ? t.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (i < 0) return escapeHtml(t);
+    return escapeHtml(t.slice(0, i)) + '<mark>' + escapeHtml(t.slice(i, i + q.length)) + '</mark>' + escapeHtml(t.slice(i + q.length));
+}
+function alIcon(d, w) {
+    return `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+}
+// The shell is built ONCE per visit, so typing in the search box is never
+// interrupted by a re-render; the parts below it repaint in place.
+function alShell() {
+    const app = document.getElementById('act-log-app');
+    if (!app) return null;
+    if (!app.querySelector('#al-week')) {
+        app.innerHTML = `
+            <section class="al-week al-card" id="al-week" aria-label="The last 7 days"></section>
+            <section class="al-needs-sec" id="al-needs" hidden></section>
+            <label class="al-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input type="search" id="act-log-search" placeholder="Search names, cottages, emails…" aria-label="Search the activity log" autocomplete="off" data-act-input="activityLogSearch" data-pass="value">
+                <button type="button" class="al-clear" data-act="alClear" aria-label="Clear search" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </label>
+            <div class="al-tabs" id="act-log-filters" role="group" aria-label="Show"><span class="al-pill" aria-hidden="true"></span>${AL_TABS.map(
+                ([k, label, d]) => `<button type="button" class="al-tab" data-tab="${k}" ${chbAttrs('activityLogFilter', k)} aria-label="${label}" title="${label}" aria-pressed="false"><span class="al-tabic">${alIcon(`<path d="${d}"/>`, 22)}<span class="al-count" data-count="${k}">0</span></span></button>`,
+            ).join('')}</div>
+            <div class="al-filterline" id="al-filterline" hidden></div>
+            <div id="act-log-list" aria-live="polite"></div>`;
+    }
+    return app;
+}
+async function renderActivityLog(opts) {
+    const app = alShell();
+    if (!app) return;
+    const st = activityLogState;
+    const stamp = ++__alStamp;
+    const quiet = !!(opts && opts.quiet);
     const list = document.getElementById('act-log-list');
-    const filters = document.getElementById('act-log-filters');
-    if (!list) return;
-    if (filters)
-        filters.innerHTML = ACT_LOG_CATS.map(
-            ([k, label]) =>
-                `<button type="button" class="act-log-chip${activityLogState.category === k ? ' active' : ''}" ${chbAttrs('activityLogFilter', String(k))}>${label}</button>`,
-        ).join('');
-    list.innerHTML = skelRows(4);
-    let events = [];
+    if (!quiet && list && !st.events.length) list.innerHTML = skelRows(4);
+    let r, s;
     try {
-        const r = await apiPost('activity-log.php', {
-            action: 'list',
-            category: activityLogState.category,
-            q: activityLogState.q,
-            limit: ACT_LOG_LIMIT,
-        });
-        events = r.events || [];
+        [r, s] = await Promise.all([
+            apiPost('activity-log.php', { action: 'list', category: 'all', q: st.q, limit: st.limit }),
+            apiPost('activity-log.php', { action: 'summary' }).catch(() => null),
+        ]);
     } catch (e) {
-        list.innerHTML = `<div class="act-log-empty">Couldn't load the activity log.</div>`;
+        if (stamp !== __alStamp) return;
+        if (list && !st.events.length) list.innerHTML = `<div class="al-empty"><b>Couldn't load the activity log.</b><span>Check the connection and try again.</span></div>`;
         return;
     }
-    if (!events.length) {
-        list.innerHTML = `<div class="act-log-empty">No matching activity yet.</div>`;
+    if (stamp !== __alStamp) return;
+    const before = new Set(st.events.map((e) => e.id || e.at + e.label));
+    const fresh = r.events || [];
+    st.arrived = quiet && st.events.length ? new Set(fresh.filter((e) => !before.has(e.id || e.at + e.label)).map((e) => e.id || e.at + e.label)) : new Set();
+    st.events = fresh;
+    st.full = fresh.length >= st.limit;
+    if (s) st.sum = s;
+    alPaintWeek();
+    alPaintNeeds();
+    alPaintList();
+    alLiveArm();
+}
+// While the page is open, new events arrive by themselves (every 30s), and
+// stop the moment the owner leaves it.
+function alLiveArm() {
+    if (__alLive) return;
+    __alLive = setInterval(() => {
+        const v = document.getElementById('view-activity-log');
+        if (!v || !v.classList.contains('active')) {
+            clearInterval(__alLive);
+            __alLive = null;
+            return;
+        }
+        if (document.visibilityState === 'visible') renderActivityLog({ quiet: true });
+    }, 30000);
+}
+function alPaintWeek() {
+    const host = document.getElementById('al-week');
+    const sum = activityLogState.sum;
+    if (!host) return;
+    if (!sum || !Array.isArray(sum.days)) {
+        host.hidden = true;
         return;
     }
-    // NO SILENT CAPS. A full page reads like a complete history, so say what was
-    // shown and how to reach the rest — the search box and filters are already up.
-    const capped = events.length >= ACT_LOG_LIMIT
-        ? `<p class="act-log-empty" style="margin-top:2px;">Showing the ${ACT_LOG_LIMIT} most recent${activityLogState.q || activityLogState.category !== 'all' ? ' that match' : ''} — search or filter above to reach older activity.</p>`
-        : '';
-    list.innerHTML = `
-                <div class="feed-list glass-panel" style="padding:6px 16px;">
-                    ${events
-                        .map((ev) => {
-                            const sev = ev.severity === 'warn' || ev.severity === 'action' ? ev.severity : '';
-                            const propTag =
-                                ev.prop_key && propertyMeta[ev.prop_key]
-                                    ? `<span class="prop-tag tag-${ev.prop_key}">${escapeHtml(propertyMeta[ev.prop_key].short)}</span>`
-                                    : '';
-                            const badge =
-                                sev === 'action'
-                                    ? '<span class="act-sev act-sev--action">Action</span>'
-                                    : sev === 'warn'
-                                      ? '<span class="act-sev act-sev--warn">Check</span>'
-                                      : '';
-                            const actor =
-                                ev.actor && ev.actor !== 'guest'
-                                    ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>`
-                                    : '';
-                            const detail = ev.detail ? `<span>${escapeHtml(ev.detail)}</span>` : '';
-                            // The orphan-payment warn's own remedy — the "one tap"
-                            // its wording promises. Closed registry: only the
-                            // square_orphan kind, with both pieces present, ever
-                            // renders a control from log data.
-                            const act =
-                                ev.act && ev.act.kind === 'square_orphan' && ev.act.booking && ev.act.payment
-                                    ? `<div style="margin-top:6px;"><button type="button" class="btn-sm" ${chbAttrs('recordSquareOrphan', String(ev.act.booking), String(ev.act.payment))}>Record it on the booking</button></div>`
-                                    : '';
-                            return `
-                    <div class="act-row act-log-row${sev ? ' act-row--' + sev : ''}">
-                        <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.other}</svg></span>
-                        <div class="act-body">
-                            <div class="act-line1">${propTag}<span class="act-label">${escapeHtml(ev.label)}</span>${badge}</div>
-                            <div class="act-line2">${detail}${actor}<span class="act-when">${timeAgoLabel(ev.at)}</span></div>${act}
-                        </div>
-                    </div>`;
-                        })
-                        .join('')}
-                </div>${capped}`;
+    host.hidden = false;
+    const needs = (sum.needs || []).length;
+    const mx = Math.max(1, ...sum.days.map((d) => d.n));
+    const sel = activityLogState.day;
+    const bars = sum.days.map((d, i) => {
+        const on = sel === d.date;
+        const lab = i === sum.days.length - 1 ? 'Today' : new Date(d.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' });
+        return `<button type="button" class="al-wbar${on ? ' is-on' : ''}${sel && !on ? ' is-dim' : ''}" ${chbAttrs('alDay', d.date)} aria-pressed="${on}" aria-label="${escapeHtml(lab)}: ${d.n} event${d.n === 1 ? '' : 's'}${d.warn ? ', with a warning' : ''}"><i style="height:${Math.max(6, Math.round((d.n / mx) * 46))}px;animation-delay:${200 + i * 50}ms">${d.warn ? '<b aria-hidden="true"></b>' : ''}</i><span>${escapeHtml(lab)}</span></button>`;
+    }).join('');
+    host.innerHTML = `<div class="al-wtop"><span class="al-wbig"><b>${sum.total} event${sum.total === 1 ? '' : 's'}</b><span>in the last 7 days</span></span>${stCap(needs ? 'warn' : 'ok', needs ? `${needs} need${needs === 1 ? 's' : ''} a look` : 'Nothing needs you')}</div><div class="al-wbars">${bars}</div>`;
+}
+function alPaintNeeds() {
+    const host = document.getElementById('al-needs');
+    const sum = activityLogState.sum;
+    if (!host) return;
+    const needs = (sum && sum.needs) || [];
+    if (!needs.length) {
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
+    }
+    host.hidden = false;
+    host.innerHTML = `<h2 class="al-cap">Needs a look</h2><div class="al-needs">${needs.map(
+        (n, i) => `<div class="al-need" data-need="${i}"><span class="al-pulse" aria-hidden="true"></span><span class="al-ntext"><b>${escapeHtml(n.title)}${n.n > 1 ? ` <span class="al-x">×${n.n}</span>` : ''}</b><span>${escapeHtml(n.why)}</span><code>${escapeHtml(n.tech || '')}</code></span>${(n.ids || []).length ? `<button type="button" class="al-seen" ${chbAttrs('alSeen', String(i))}>Seen it</button>` : ''}</div>`,
+    ).join('')}</div>`;
+}
+// The rows in view: the server answered the search; the tab and day narrow here,
+// so every tab's count is known at once.
+function alVisible(tab) {
+    const st = activityLogState;
+    return st.events.filter((e) => {
+        if (tab !== 'all' && alGroupOf(e.type) !== tab) return false;
+        if (st.day && alDayKey(alDate(e.at)) !== st.day) return false;
+        return true;
+    });
+}
+function alPaintList() {
+    const st = activityLogState;
+    const list = document.getElementById('act-log-list');
+    if (!list) return;
+    // tabs: counts + the sliding pill
+    AL_TABS.forEach(([k], i) => {
+        const c = document.querySelector(`#act-log-filters [data-count="${k}"]`);
+        if (c) c.textContent = String(alVisible(k).length);
+        const b = document.querySelector(`#act-log-filters [data-tab="${k}"]`);
+        if (b) {
+            b.setAttribute('aria-pressed', String(st.category === k));
+            b.setAttribute('aria-label', `${AL_TABS[i][1]}, ${alVisible(k).length}`);
+        }
+    });
+    const tabs = document.getElementById('act-log-filters');
+    if (tabs) tabs.style.setProperty('--al-i', String(Math.max(0, AL_TABS.findIndex(([k]) => k === st.category))));
+    const clear = /** @type {HTMLElement|null} */ (document.querySelector('#act-log-app .al-clear'));
+    if (clear) clear.hidden = !st.q;
+    // what's narrowing it
+    const parts = [];
+    if (st.day) parts.push(alDayLabel(st.day));
+    if (st.q) parts.push('“' + st.q + '”');
+    if (st.category !== 'all') parts.push(AL_TABS.find(([k]) => k === st.category)[1]);
+    const rows = alVisible(st.category);
+    const fl = document.getElementById('al-filterline');
+    if (fl) {
+        fl.hidden = !parts.length;
+        fl.innerHTML = parts.length ? `<span>Showing ${rows.length} · ${escapeHtml(parts.join(' · '))}</span><button type="button" data-act="alReset">Show everything</button>` : '';
+    }
+    if (!rows.length) {
+        list.innerHTML = `<div class="al-empty"><span class="al-emptyic" aria-hidden="true">${alIcon('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', 22)}</span><b>${st.q ? 'Nothing matches “' + escapeHtml(st.q) + '”' : 'Nothing here yet'}</b><span>${parts.length ? 'Try another word, or show everything.' : 'Activity will show here as it happens.'}</span></div>`;
+        return;
+    }
+    // group by day, folding a run of the same kind of event into one row
+    const days = [];
+    rows.forEach((e) => {
+        const key = alDayKey(alDate(e.at));
+        let day = days[days.length - 1];
+        if (!day || day.key !== key) days.push((day = { key, items: [] }));
+        const last = day.items[day.items.length - 1];
+        const sev = e.severity === 'warn' || e.severity === 'action';
+        if (last && e.action && last.e.action === e.action && !sev && !last.sev && !e.act && (e.entity_id || 0) === 0 && (last.e.entity_id || 0) === 0) {
+            last.more.push(e);
+        } else {
+            day.items.push({ e, sev, more: [] });
+        }
+    });
+    const q = st.q;
+    let n = 0;
+    list.innerHTML = days.map((day) => `
+        <section class="al-day"><h2 class="al-cap"><span>${escapeHtml(alDayLabel(day.key))}</span><span class="al-capn">${day.items.reduce((a, it) => a + 1 + it.more.length, 0)} event${day.items.reduce((a, it) => a + 1 + it.more.length, 0) === 1 ? '' : 's'}</span></h2>
+        <div class="al-card al-list">${day.items.map((it) => {
+            const e = it.e;
+            const k = String(e.id || e.at + '|' + e.label);
+            const d = alDate(e.at);
+            const time = d ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : '';
+            const grp = alGroupOf(e.type);
+            const title = e.nice || e.label;
+            const actor = e.actor && e.actor !== 'guest' ? actorLabel(e.actor) : e.actor === 'guest' ? 'Guest' : '';
+            const cottage = e.prop_key && propertyMeta[e.prop_key] ? propertyMeta[e.prop_key].short : '';
+            const meta = [actor, cottage].filter(Boolean).join(' · ');
+            const plain = e.verdict || e.detail || '';
+            const tech = e.nice ? e.label : '';
+            const facts = [actor, (alDayLabel(day.key) === 'Today' ? 'Today' : alDayLabel(day.key)) + ' ' + time, cottage].filter(Boolean);
+            const also = it.more.length ? `<span class="al-also">Also ${it.more.length === 1 ? 'once more' : it.more.length + ' more times'} earlier: ${it.more.slice(0, 3).map((m) => escapeHtml(m.label)).join(' · ')}</span>` : '';
+            const link = e.entity === 'booking' && e.entity_id
+                ? `<button type="button" class="al-link" ${chbAttrs('openBookingHub', String(e.entity_id))}>Open the booking ›</button>`
+                : '';
+            const act = e.act && e.act.kind === 'square_orphan' && e.act.booking && e.act.payment
+                ? `<button type="button" class="al-link" ${chbAttrs('recordSquareOrphan', String(e.act.booking), String(e.act.payment))}>Record it on the booking ›</button>`
+                : '';
+            const open = st.open === k;
+            const arrive = st.arrived && st.arrived.has(e.id || e.at + e.label);
+            const delay = Math.min(n++, 12) * 40;
+            return `<div class="al-item${arrive ? ' is-new' : ''}" data-k="${escapeHtml(k)}" style="animation-delay:${delay}ms">
+                <button type="button" class="al-row" ${chbAttrs('alToggle', k)} aria-expanded="${open}">
+                    <span class="al-time">${time}</span>
+                    <span class="al-ic al-g-${grp}">${alIcon(ACTIVITY_ICONS[e.type] || ACTIVITY_ICONS.other, 17)}${it.sev ? '<span class="al-wdot" aria-hidden="true"></span>' : ''}</span>
+                    <span class="al-txt"><span class="al-title">${alHi(title, q)}${it.more.length ? ` <span class="al-x">×${it.more.length + 1}</span>` : ''}</span>${meta ? `<span class="al-meta">${escapeHtml(meta)}</span>` : ''}</span>
+                    <svg class="al-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+                </button>
+                <div class="al-fold"${open ? '' : ' hidden'}><div class="al-foldin">
+                    ${plain ? `<span class="al-plain">${escapeHtml(plain)}</span>` : ''}
+                    <span class="al-facts">${facts.map((f) => `<span>${escapeHtml(f)}</span>`).join('')}</span>
+                    ${also}
+                    ${tech ? `<code class="al-tech">${escapeHtml(tech)}</code>` : ''}
+                    ${link}${act}
+                </div></div>
+            </div>`;
+        }).join('')}</div></section>`).join('') +
+        (st.full && st.limit < ACT_LOG_MAX && !st.day
+            ? `<button type="button" class="al-more" data-act="alMore">Show older activity</button>`
+            : `<p class="al-end">${st.full ? `Showing the ${st.limit} most recent — search to reach older activity.` : 'That’s everything in the log.'}</p>`);
 }
 function activityLogFilter(cat) {
     activityLogState.category = cat;
-    renderActivityLog();
+    activityLogState.open = null;
+    alPaintList();
 }
+function activityLogSearch(v) {
+    activityLogState.q = String(v || '').trim();
+    const clear = /** @type {HTMLElement|null} */ (document.querySelector('#act-log-app .al-clear'));
+    if (clear) clear.hidden = !activityLogState.q;
+    clearTimeout(__actLogSearchTimer);
+    __actLogSearchTimer = setTimeout(() => renderActivityLog(), 250);
+}
+chbAct('alClear', function () {
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('act-log-search'));
+    if (i) i.value = '';
+    activityLogSearch('');
+    if (i) i.focus();
+});
+chbAct('alReset', function () {
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('act-log-search'));
+    if (i) i.value = '';
+    const hadQ = !!activityLogState.q;
+    Object.assign(activityLogState, { category: 'all', q: '', day: null, open: null });
+    alPaintWeek();
+    if (hadQ) renderActivityLog();
+    else alPaintList();
+});
+chbAct('alDay', function (el, ev, date) {
+    activityLogState.day = activityLogState.day === date ? null : date;
+    activityLogState.open = null;
+    alPaintWeek();
+    alPaintList();
+});
+chbAct('alToggle', function (el, ev, k) {
+    const st = activityLogState;
+    st.open = st.open === k ? null : k;
+    document.querySelectorAll('#act-log-list .al-item').forEach((it) => {
+        const on = it.getAttribute('data-k') === st.open;
+        const f = /** @type {HTMLElement|null} */ (it.querySelector('.al-fold'));
+        if (f) f.hidden = !on;
+        const b = it.querySelector('.al-row');
+        if (b) b.setAttribute('aria-expanded', String(on));
+    });
+});
+chbAct('alMore', function () {
+    activityLogState.limit = Math.min(ACT_LOG_MAX, activityLogState.limit + ACT_LOG_LIMIT);
+    const b = document.querySelector('#act-log-list .al-more');
+    if (b) b.outerHTML = skelRows(2);
+    return renderActivityLog({ quiet: true });
+});
+chbAct('alSeen', async function (el, ev, idx) {
+    const st = activityLogState;
+    const n = st.sum && st.sum.needs ? st.sum.needs[Number(idx)] : null;
+    if (!n) return;
+    const row = el.closest ? el.closest('.al-need') : null;
+    if (row) row.classList.add('is-leaving');
+    try {
+        await apiPost('activity-log.php', { action: 'seen', ids: n.ids });
+    } catch (e) {
+        if (row) row.classList.remove('is-leaving');
+        toast((e && e.message) || "Couldn't save that just now.", 'error');
+        return;
+    }
+    setTimeout(() => {
+        st.sum.needs = st.sum.needs.filter((x) => x !== n);
+        alPaintNeeds();
+        alPaintWeek();
+    }, chbReducedMotion() ? 0 : 240);
+});
+
 // The orphan-sweep flag's "one tap": record the Square payment the sweep found
 // against its booking. The SERVER re-verifies everything (payment COMPLETED at
 // Square, its own reference naming this booking, GBP, under the booking lock,
@@ -29545,11 +29772,6 @@ async function recordSquareOrphan(bookingId, paymentId) {
     } catch (e) {
         await glassAlert("Couldn't record it — " + (e && e.message ? e.message : 'something went wrong.'));
     }
-}
-function activityLogSearch(v) {
-    activityLogState.q = v;
-    clearTimeout(__actLogSearchTimer);
-    __actLogSearchTimer = setTimeout(renderActivityLog, 250);
 }
 // ---- Status page: email me a sample of every guest email ----
 // THE TWO WEEKLY EMAILS HAD NO BUTTON. Both have supported ?force=1 since they were
