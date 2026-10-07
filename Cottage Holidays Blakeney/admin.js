@@ -26781,12 +26781,6 @@ function rviCounts(rows) {
 function rviRender() {
     const keys = rviKeys();
     if (__rvi.prop && !keys.includes(__rvi.prop)) __rvi.prop = '';
-    const all = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
-    const sofar = document.getElementById('rvi-sofar');
-    if (sofar) {
-        const per = keys.map((k) => `${rviNm(k)} ${all.filter((r) => r && r.prop === k).length}`).join(' · ');
-        sofar.textContent = "Select everything on your host dashboard's reviews page, copy, and paste it here — dates, host replies and buttons included. We keep the guest, the stars and what they wrote." + (keys.length ? ` Already on the site: ${per}.` : '');
-    }
     rviChips(document.getElementById('rvi-props'), keys.map((k) => ({ v: k, html: `<span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(rviNm(k))}` })), __rvi.prop, 'rviPick');
     rviChips(document.getElementById('rvi-srcs'), RVI_SOURCES.map((x) => ({ v: x, html: escapeHtml(x) })), __rvi.src, 'rviSource');
     const rows = rviRows();
