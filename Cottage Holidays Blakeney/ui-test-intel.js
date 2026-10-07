@@ -70,6 +70,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // (These recommendations moved OFF the Today ops strip and onto their own page.)
   await page.evaluate(() => { nav('view-settings'); settingsOpen('pricing'); }); await page.waitForTimeout(300);
   await page.evaluate(() => renderPricing());
+  // PROFIT FIRST: the gap after Bob is offered to BOB (no extra drive) before it
+  // is discounted to a stranger — and "Not now" on that brings the discount back.
+  const ext = await page.evaluate(() => {
+    const c = document.querySelector('#pricing-body .pr-pcard[data-idea="extend"]');
+    const t = c ? c.querySelector('.pr-stitle').textContent : '';
+    const gapShown = [...document.querySelectorAll('#pricing-body .ny-row')].some((r) => /night gap on/.test(r.textContent));
+    if (c) c.querySelector('.pay-btn2').click();
+    return { t, gapShown };
+  });
+  ok(/Offer Bob 3 more nights/.test(ext.t) && !ext.gapShown, `the gap is offered to the guest already there first (${ext.t})`);
+  await page.waitForTimeout(200);
   const gap = await page.evaluate(() => {
     const row = [...document.querySelectorAll('#pricing-body .ny-row')].find((r) => /night gap on/.test(r.textContent));
     return row ? row.textContent : null;

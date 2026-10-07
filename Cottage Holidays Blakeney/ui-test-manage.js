@@ -1152,6 +1152,112 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(pz.floorOffer === pz.floorWant, `a "never below" limit lifts the gap offer to it (£${pz.floorOffer})`);
   ok(pz.caps >= 4, 'the page wears the section captions');
 
+  console.log('§8d profit per night: the drive, learned stays, shared changeovers, ideas that act');
+  const pp = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const T = todayDashed(), sh = (n) => ukShiftDays(T, n);
+    const keepB = JSON.parse(JSON.stringify(dbBookings)), keepBl = JSON.parse(JSON.stringify(dbBlocks));
+    let id = 500;
+    const mk = (ci, co, name, created) => ({ id: 'b' + id, dbId: id++, name, email: name.toLowerCase().replace(/ /g, '') + '@x.com', checkIn: ci, checkOut: co, adults: 2, children: 0, createdAt: created, agreedPrice: { total: 360, perNight: 120, nights: 3 } });
+    const hist = [];
+    for (let y = 1; y <= 2; y++) for (const [a, n, lead] of [[-30, 2, 4], [-60, 6, 120], [-90, 4, 45], [-120, 2, 3], [-150, 7, 150], [-200, 3, 20]]) { const ci = sh(a - y * 365); hist.push(mk(ci, ukShiftDays(ci, n), 'Past Guest', ukShiftDays(ci, -lead))); }
+    dbBookings.jollyboat = hist.concat([mk(sh(2), sh(5), 'Sarah Pemberton', sh(-30)), mk(sh(7), sh(9), 'Tom Hall', sh(-3))]);
+    dbBookings['21a'] = [mk(sh(1), sh(5), 'Dan Rowe', sh(-10))];
+    dbBlocks.jollyboat = [{ checkIn: sh(26), checkOut: sh(29), source: 'airbnb', kind: 'reserved' }, { checkIn: sh(30), checkOut: sh(33), source: 'airbnb', kind: 'blocked' }];
+    if (!propertyRates.jollyboat) propertyRates.jollyboat = Object.assign({}, defaultRates.jollyboat);
+    Object.assign(propertyRates.jollyboat, { coupleRate: 120, weekendPct: 0, shortFee: 0, minNights: 2, minByDate: [], gapFitDays: 0 });
+    propertySeasons.jollyboat = [];
+    adminPrivateContent['pricing-smart-off'] = false;
+    adminPrivateContent['pricing-limits'] = {};
+    adminPrivateContent['pricing-hidden'] = {};
+    adminPrivateContent['pricing-changeover'] = {};
+    // A search week ahead that found the cottages full, and a sunny forecast.
+    const m = sh(14), md = (new Date(m + 'T12:00:00Z').getUTCDay() + 6) % 7, mon = ukShiftDays(m, -md);
+    const realGet = window.apiGet;
+    window.apiGet = async (u) => (String(u).includes('pricing-suggest') ? { ok: true, suggestions: [], signals: { searches60: 11, noResult60: 6, searchWeeks: [{ week: mon, count: 11, missed: 6 }] } } : realGet(u));
+    __prSugg = { at: Date.now(), d: { ok: true, suggestions: [], signals: { searches60: 11, noResult60: 6, searchWeeks: [{ week: mon, count: 11, missed: 6 }] } } };
+    __prWx = Array.from({ length: 10 }, (_, i) => ({ date: sh(i), code: 1, summary: 'Mainly clear', tmax: 18 }));
+    __prWxAsked = true;
+    const posts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('rates.php') || (String(url).includes('content.php') && body.action === 'set')) { posts.push(Object.assign({ __url: String(url) }, body)); return { ok: true }; }
+      return realPost(url, body);
+    };
+    __prPage = 'main';
+    __prCot = 'jollyboat';
+    settingsOpen('pricing');
+    await wait(300);
+    const pb = document.getElementById('pricing-body');
+    const ids = [...pb.querySelectorAll('.pr-pcard')].map((c) => c.getAttribute('data-idea'));
+    const out = {
+      ids,
+      learned: !!pb.querySelector('.pr-learn') && pb.querySelectorAll('.pr-learn .pr-lrow').length >= 7,
+      cars: pb.querySelectorAll('.pr-co').length, shared: pb.querySelectorAll('.pr-co.is-shared').length,
+      gapCardGone: ![...pb.querySelectorAll('[data-act="nyGapOffer"]')].some((b) => (b.getAttribute('data-args') || '').includes(sh(5))),
+      everyCardCompares: [...pb.querySelectorAll('.pr-pcard')].every((c) => c.querySelectorAll('.pr-cmprow').length === 2 && /confid|Fairly sure/i.test(c.querySelector('.pr-basis').textContent)),
+      costsRow: !!document.getElementById('pr-costs-row'),
+      holdNoTrip: !prTurnovers(sh(33)).includes('jollyboat') && prTurnovers(sh(29)).includes('jollyboat'),
+    };
+    const click = (idea) => { const c = pb.querySelector(`.pr-pcard[data-idea="${idea}"] .pay-btn`); if (c) c.click(); return !!c; };
+    // Raise the busy week → a dated override labelled as the owner's own.
+    out.raised = click('raise');
+    await wait(150);
+    out.raisePost = posts.find((x) => x.action === 'seasons_save');
+    // Not now hides the weather card, keyed to its numbers, and says so.
+    const nn = document.querySelector('#pricing-body .pr-pcard[data-idea="weather"] .pay-btn2');
+    if (nn) nn.click();
+    await wait(80);
+    out.hiddenSaved = posts.some((x) => x.key === 'pricing-hidden' && Object.keys(x.value || {}).some((k) => k === 'jollyboat|weather'));
+    out.weatherGone = !document.querySelector('#pricing-body .pr-pcard[data-idea="weather"]');
+    out.hiddenRow = !!document.querySelector('#pricing-body .pr-hiddenrow');
+    // The short-stay charge saves the price field.
+    click('shortfee');
+    await wait(150);
+    out.feeSaved = posts.some((x) => x.action === 'save' && Number(x.short_fee) > 0);
+    // Gap fits turn on through the rules save, and the minimum-stay row is honest.
+    const before = posts.length;
+    pb.querySelector('.pr-pcard[data-idea="mindate"] .pay-btn') && document.querySelector('#pricing-body .pr-pcard[data-idea="mindate"] .pay-btn').click();
+    await wait(150);
+    out.rulesSaved = posts.slice(before).some((x) => x.key === 'rules-jollyboat' && x.value && x.value.gapFitDays === 10);
+    out.gapSwitch = !!(document.getElementById('pr-gapfit') || {}).checked;
+    // Write to Sarah opens the composer with the offer written in.
+    const ex = document.querySelector('#pricing-body .pr-pcard[data-idea="extend"] .pay-btn');
+    if (ex) ex.click();
+    await wait(200);
+    out.offer = { subj: (document.getElementById('enq-email-subject') || {}).value || '', body: (document.getElementById('enq-email-body') || {}).value || '' };
+    try { closeEnquiryEmailModal(); } catch (e) {}
+    // The Changeovers page: the trip cost follows the drive.
+    prOpenCosts();
+    await wait(80);
+    const trip0 = (document.querySelector('#pricing-body .pr-tripv') || {}).textContent;
+    const plus = [...document.querySelectorAll('#pricing-body [data-act="prCostStep"]')].find((b) => b.getAttribute('data-args') === '["drive","1"]');
+    if (plus) plus.click();
+    await wait(30);
+    const trip1 = (document.querySelector('#pricing-body .pr-tripv') || {}).textContent;
+    await wait(800);
+    out.costs = { trip0, trip1, saved: posts.some((x) => x.key === 'pricing-changeover' && x.value && x.value.drive === 75), sum: !!document.getElementById('pr-sum') };
+    prCloseCosts();
+    window.apiPost = realPost;
+    window.apiGet = realGet;
+    Object.keys(dbBookings).forEach((k) => { dbBookings[k] = keepB[k] || []; });
+    Object.keys(dbBlocks).forEach((k) => { dbBlocks[k] = keepBl[k] || []; });
+    return out;
+  });
+  ok(['extend', 'share', 'raise', 'weather', 'shortfee', 'mindate'].every((x) => pp.ids.includes(x)), `the profit ideas all appear (${pp.ids.join(', ')})`);
+  ok(pp.everyCardCompares, 'every idea compares two options in pounds kept and says how sure it is');
+  ok(pp.learned, 'what it has learned about stay length is on the page');
+  ok(pp.cars >= 2 && pp.shared >= 1, `changeovers are marked, and a shared one is green (${pp.cars} / ${pp.shared})`);
+  ok(pp.gapCardGone, 'the gap Sarah can stay on into is not also offered at a discount');
+  ok(pp.raised && pp.raisePost && pp.raisePost.seasons.some((x) => x.label === 'Busy week'), `raising the busy week saves a dated price of the owner's own (${JSON.stringify(pp.raisePost && pp.raisePost.seasons)})`);
+  ok(pp.hiddenSaved && pp.weatherGone && pp.hiddenRow, 'Not now hides the idea, remembers it, and offers it back');
+  ok(pp.feeSaved, 'the short-stay charge saves through the rate field');
+  ok(pp.rulesSaved && pp.gapSwitch, 'gap fits turn on through the rules save and the switch shows it');
+  ok(/staying on/i.test(pp.offer.subj) && /10% off/.test(pp.offer.body), `"Write to Sarah" opens the composer with the offer (${pp.offer.subj})`);
+  ok(pp.costs.sum && pp.costs.trip0 === '£103' && pp.costs.trip1 === '£113' && pp.costs.saved, `the Changeovers page: £103 → £113 when the drive grows, and it saves (${JSON.stringify(pp.costs)})`);
+  ok(pp.costsRow, 'the Changeovers page is reached from Settings at the foot of Pricing');
+  ok(pp.holdNoTrip, 'an Airbnb stay is a changeover; an Airbnb "Not available" hold is not');
+
   // Pricing's "Extra guests" row deep-links into the cottage's rates editor — it used
   // to build that editor into the hidden cottage section and leave Pricing on screen.
   const xg = await page.evaluate(async () => {

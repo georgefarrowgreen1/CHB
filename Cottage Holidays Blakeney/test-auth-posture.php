@@ -69,6 +69,7 @@ $REGISTRY = [
     'optimize-hero.php' => ['admin'],
     'pricing-suggest.php' => ['admin'],
     'pricing-suggest-lib.php' => ['lib', [], 'pure decisions for the pricing engine (no direct entry)'],
+    'booking-rules-lib.php' => ['lib', [], 'the dated minimum stay + gap fit, shared by enquiries.php (no direct entry)'],
     'rates.php' => ['admin'], // public GET lists live rates; every write is admin
     'search.php' => ['admin'],
     'square-setup.php' => ['admin'],

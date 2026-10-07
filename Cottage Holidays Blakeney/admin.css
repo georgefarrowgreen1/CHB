@@ -8446,6 +8446,45 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .pr-swhy { margin: 0; font-size: var(--fs-sub); line-height: 1.5; color: var(--text-muted); }
 .pr-sapply { align-self: stretch; margin-top: 4px; }
 .pr-radar { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+/* Profit per night (owner-asked): the changeover marker, the profit ideas, what
+   the engine has learned, and the Changeovers page. */
+.pr-co { position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; color: var(--warn-text); }
+.pr-co svg { display: block; width: 100%; height: 100%; }
+.pr-co.is-shared { color: var(--ok-text); }
+.pr-line.is-keep span:last-child { color: var(--ok-text); font-weight: 600; }
+.pr-pcard { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; animation: chbSettle 280ms var(--out); }
+.pr-cmp { border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); overflow: hidden; }
+.pr-cmprow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 8px 12px; }
+.pr-cmprow + .pr-cmprow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+.pr-cmpk, .pr-cmpv { font-size: var(--fs-sub); font-weight: 600; }
+.pr-cmpv { text-align: right; font-variant-numeric: tabular-nums; }
+.pr-cmps { grid-column: 1 / -1; font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-cmprow.is-best .pr-cmpk, .pr-cmprow.is-best .pr-cmpv { color: var(--ok-text); }
+.pr-basis { display: flex; align-items: center; gap: 8px; font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-basis b { color: var(--text-light); font-weight: 600; }
+.pr-conf { display: inline-flex; gap: 4px; flex: none; }
+.pr-conf span { width: 6px; height: 12px; border-radius: 2px; background: color-mix(in srgb, var(--text-light) 14%, transparent); }
+.pr-conf span.is-on { background: var(--ok); }
+.pr-conf span.is-low { background: var(--warn); }
+.pr-hiddenrow { align-self: flex-start; margin-top: 4px; }
+.pr-learn { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+.pr-lt { font-size: var(--fs-sub); font-weight: 600; margin-top: 4px; }
+.pr-lrow { display: grid; grid-template-columns: 128px minmax(0, 1fr) 40px; align-items: center; gap: 12px; min-height: 28px; font-size: var(--fs-sub); }
+.pr-lk { color: var(--text-muted); }
+.pr-lbar { height: 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 6%, transparent); overflow: hidden; }
+.pr-lbar span { display: block; height: 100%; border-radius: var(--r-pill); background: var(--accent); transition: width 320ms var(--out); }
+.pr-lbar span.is-short { background: var(--warn); }
+.pr-lv { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-up { align-self: flex-start; font-size: var(--fs-headline); }
+.pr-ptitle { margin: 0; font-size: var(--fs-display); font-weight: 500; }
+.pr-sum { padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+.pr-sumk { font-size: var(--fs-sub); color: var(--text-muted); }
+.pr-sumv { font-size: var(--fs-hero); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ok-text); }
+.pr-sumg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.pr-sumg span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-caption); color: var(--text-muted); }
+.pr-sumg b { font-size: var(--fs-headline); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.pr-total { min-height: 56px; }
+.pr-tripv { margin-left: auto; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--warn-text); }
 .pr-rnums { display: flex; gap: 24px; margin-bottom: 4px; }
 .pr-rnums span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sub); color: var(--text-muted); }
 .pr-rnums b { font-size: var(--fs-title); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }

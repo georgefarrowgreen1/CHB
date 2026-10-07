@@ -30,6 +30,10 @@ function rates_public_payload()
         if (array_key_exists('weekend_pct', $r)) {
             $r['weekend_pct'] = (float) $r['weekend_pct'];
         }
+        if (array_key_exists('short_fee', $r)) {
+            $r['short_fee'] = (float) $r['short_fee'];
+            $r['short_max'] = (int) ($r['short_max'] ?? 2);
+        }
         if (array_key_exists('sort_order', $r)) {
             $r['sort_order'] = (int) $r['sort_order'];
         }
@@ -339,8 +343,8 @@ if (($in['action'] ?? '') === 'save') {
         json_out(['error' => 'Unknown property'], 400);
     }
 
-    $numeric = ['couple_rate', 'extra_adult_rate', 'child_rate', 'booking_fee', 'transaction_pct', 'weekend_pct', 'lastmin_pct'];
-    $ints = ['sort_order', 'max_adults', 'max_children', 'max_total', 'lastmin_days'];
+    $numeric = ['couple_rate', 'extra_adult_rate', 'child_rate', 'booking_fee', 'transaction_pct', 'weekend_pct', 'lastmin_pct', 'short_fee'];
+    $ints = ['sort_order', 'max_adults', 'max_children', 'max_total', 'lastmin_days', 'short_max'];
     $text = ['address', 'name', 'slug', 'accent', 'weekend_days'];
     $set = [];
     $vals = [];
@@ -367,6 +371,10 @@ if (($in['action'] ?? '') === 'save') {
             if ($f === 'lastmin_pct') {
                 $v = min(90.0, $v);
             }
+            // A per-night short-stay charge above £500 is a typo, not a policy.
+            if ($f === 'short_fee') {
+                $v = min(500.0, $v);
+            }
             $set[] = "$f = ?";
             $vals[] = $v;
         } elseif (in_array($f, $ints, true)) {
@@ -375,6 +383,9 @@ if (($in['action'] ?? '') === 'save') {
             // 99999 days out would be permanent).
             if ($f === 'lastmin_days') {
                 $v = min(60, $v);
+            }
+            if ($f === 'short_max') {
+                $v = max(1, min(14, $v));
             }
             $set[] = "$f = ?";
             $vals[] = $v;

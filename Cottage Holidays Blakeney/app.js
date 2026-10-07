@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 684;
+const ADMIN_BUNDLE_V = 685;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 328;
+const ADMIN_CSS_V = 329;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -8305,6 +8305,8 @@ async function loadContent(pre) {
             if (r.minNights != null) target.minNights = Math.max(1, parseInt(r.minNights, 10) || 1);
             if (r.maxNights != null) target.maxNights = Math.max(0, parseInt(r.maxNights, 10) || 0);
             if (Array.isArray(r.arrivalDays)) target.arrivalDays = r.arrivalDays.slice();
+            if (Array.isArray(r.minByDate)) target.minByDate = r.minByDate.slice();
+            if (r.gapFitDays != null) target.gapFitDays = Math.max(0, parseInt(r.gapFitDays, 10) || 0);
         }
     });
 
@@ -8806,6 +8808,33 @@ const occupancyLimits = {
 
 // Validate dates against a property's booking rules (min nights, arrival days).
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// The minimum stay for a stay starting on checkIn: a dated minimum (rules
+// minByDate [{from, to, min}], check-in inclusive) wins over minNights.
+// PHP twin: rule_min_nights (booking-rules-lib.php).
+function ruleMinNights(r, checkIn) {
+    const base = Math.max(1, parseInt(r && r.minNights, 10) || 1);
+    const dated = r && Array.isArray(r.minByDate) ? r.minByDate : [];
+    for (const d of dated) {
+        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d.from || '') && /^\d{4}-\d{2}-\d{2}$/.test(d.to || '') && d.from <= checkIn && checkIn <= d.to) {
+            return Math.max(1, Math.min(28, parseInt(d.min, 10) || base));
+        }
+    }
+    return base;
+}
+// A stay that EXACTLY fills a gap between two taken nights, within gapFitDays of
+// today, may be booked whatever the minimum. taken(iso) → bool.
+// PHP twin: rule_gap_fit (booking-rules-lib.php).
+function ruleGapFit(r, checkIn, checkOut, taken) {
+    const days = Math.max(0, Math.min(60, parseInt(r && r.gapFitDays, 10) || 0));
+    if (!days || !checkIn || !checkOut || checkOut <= checkIn) return false;
+    if (nightsBetween(todayDashed(), checkIn) > days) return false;
+    return !!(taken(ukShiftDays(checkIn, -1)) && taken(checkOut));
+}
+// Is a night taken (booked or held) at a cottage, from the availability the page holds.
+function nightTakenAt(propKey, iso) {
+    const ranges = (typeof propertyAvailability !== 'undefined' && propertyAvailability[propKey]) || (typeof publicAllAvailability !== 'undefined' && publicAllAvailability && publicAllAvailability[propKey]) || [];
+    return ranges.some((x) => iso >= x.start && iso < x.end);
+}
 function checkBookingRules(propKey, checkIn, checkOut) {
     // Book by the night before, as a minimum: the earliest guest check-in is
     // TOMORROW. Checked first (it holds regardless of the per-cottage rules);
@@ -8816,8 +8845,8 @@ function checkBookingRules(propKey, checkIn, checkOut) {
     }
     const r = propertyRates[propKey] || defaultRates[propKey] || {};
     const nights = nightsBetween(checkIn, checkOut);
-    const minN = Math.max(1, parseInt(r.minNights, 10) || 1);
-    if (nights < minN) {
+    const minN = ruleMinNights(r, checkIn);
+    if (nights < minN && !ruleGapFit(r, checkIn, checkOut, (d) => nightTakenAt(propKey, d))) {
         return `This property has a minimum stay of ${minN} night${minN === 1 ? '' : 's'}.`;
     }
     const maxN = Math.max(0, parseInt(r.maxNights, 10) || 0);
@@ -9731,6 +9760,8 @@ async function loadRates(pre) {
                 weekendDays: p.weekend_days != null ? String(p.weekend_days) : '5,6',
                 lastminPct: parseFloat(p.lastmin_pct) || 0,
                 lastminDays: parseInt(p.lastmin_days) || 0,
+                shortFee: parseFloat(p.short_fee) || 0,
+                shortMax: p.short_max != null ? parseInt(p.short_max, 10) || 2 : 2,
                 address: p.address || '',
                 // Booking rules aren't stored in the rates table; carry the
                 // defaults here so loadContent can layer any saved overrides on top.
@@ -9850,6 +9881,12 @@ function lastMinuteFactor(checkIn, today, pct, days) {
     if (lead < 0 || lead > days) return 1;
     return 1 - Math.min(90, pct) / 100; // never discount more than 90%
 }
+// The short-stay charge for a stay of `nights` (pricing.php short_stay_charge).
+function shortStayCharge(r, nights) {
+    const fee = Math.max(0, parseFloat(r && r.shortFee) || 0);
+    const max = r && r.shortMax != null && r.shortMax !== '' ? parseInt(r.shortMax, 10) : 2;
+    return fee > 0 && nights > 0 && nights <= max ? fee * nights : 0;
+}
 function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOverride, today) {
     const r = propertyRates[propKey] ||
         defaultRates[propKey] || {
@@ -9876,7 +9913,9 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
     // by a day between 23:00-00:00 UTC during BST, which made the JS quote and
     // pricing.php (Europe/London) disagree at the lead-time boundary.
     const lmToday = today || (typeof todayDashed === 'function' ? todayDashed() : chbNow().toISOString().slice(0, 10));
-    nightly = Math.round(nightly * lastMinuteFactor(checkIn, lmToday, r.lastminPct, r.lastminDays) * 100) / 100;
+    // Short-stay charge (migration-130) after the last-minute factor — it covers
+    // the changeover trip. EXACTLY mirrors short_stay_charge() in pricing.php.
+    nightly = Math.round((nightly * lastMinuteFactor(checkIn, lmToday, r.lastminPct, r.lastminDays) + shortStayCharge(r, nights)) * 100) / 100;
     const perNight =
         nights > 0 ? Math.round((nightly / nights) * 100) / 100 : r.coupleRate + extrasPerNight;
     // Refundable damages deposit: held, NOT income. Per-booking override allowed,
@@ -13376,6 +13415,8 @@ const RATE_FIELD_MAP = {
     weekendPct: 'weekend_pct',
     lastminPct: 'lastmin_pct',
     lastminDays: 'lastmin_days',
+    shortFee: 'short_fee',
+    shortMax: 'short_max',
     address: 'address',
 };
 async function saveRateField(propKey, field, value) {
@@ -13584,7 +13625,7 @@ function renderCardAvailability() {
         let firstStart = '';
         for (const g of gaps) {
             const s = firstArrivalInGap(g, minN, arrivalDays);
-            if (s) {
+            if (s && g.nights - nightsBetween(g.start, s) >= ruleMinNights(rules, s)) {
                 firstStart = s;
                 break;
             }
@@ -13628,7 +13669,7 @@ function renderLateAvailability() {
         if (!g) return;
         // Offer a permitted arrival day only; keep the offered start for the gap maths.
         const start = firstArrivalInGap(g, minN, arrivalDays);
-        if (!start) return;
+        if (!start || g.nights - nightsBetween(g.start, start) < ruleMinNights(rules, start)) return;
         const offered = { start, nights: g.nights - Math.round((dpParse(start).getTime() - dpParse(g.start).getTime()) / 864e5) };
         if (
             !best ||
@@ -14893,6 +14934,13 @@ function rangeCrossesBooked(start, end) {
 // night), so the picker blocks it out — matching what enquiries.php's
 // min-nights guard would reject anyway. `date` is a Date; checks nights
 // date … date+minN-1 (the checkout day date+minN may be a turnover arrival).
+// A night that can start a stay only as an EXACT gap fit: the night before is
+// taken and the free run from here ends at a taken night, inside the window.
+function dpGapFitStart(r, ds, minN) {
+    let n = 0;
+    while (n < minN && !isBookedNight(ukShiftDays(ds, n))) n++;
+    return n > 0 && n < minN && ruleGapFit(r, ds, ukShiftDays(ds, n), isBookedNight);
+}
 function dpCheckinFits(date, minN) {
     for (let n = 0; n < minN; n++) {
         if (isBookedNight(formatDashed(new Date(date.getFullYear(), date.getMonth(), date.getDate() + n)))) {
@@ -14955,7 +15003,7 @@ function dpFirstOpenMonth() {
         for (let d = 1; d <= days; d++) {
             const day = new Date(first.getFullYear(), first.getMonth(), d);
             if (day < t || isBookedNight(formatDashed(day))) continue;
-            if (dpCheckinFits(day, minN)) n++;
+            if (dpCheckinFits(day, ruleMinNights(r, formatDashed(day)))) n++;
         }
         return n;
     };
@@ -15290,8 +15338,11 @@ function renderDatePicker() {
         // picked and came back when a checkout was, changing three times per
         // selection. Each branch below decides whether the question applies.
         // `!tooSoon`: today's refusal states the notice rule, not the minimum.
+        // The minimum for a stay STARTING here (a dated minimum may apply), and the
+        // gap fit: a short run between two taken nights can start an exact-gap stay.
+        const cellMin = guestPick ? ruleMinNights(gRules, ds) : 1;
         const tooShort =
-            guestPick && !isPast && !booked && !tooSoon && minNights > 1 && !dpCheckinFits(date, minNights);
+            guestPick && !isPast && !booked && !tooSoon && cellMin > 1 && !dpCheckinFits(date, cellMin) && !dpGapFitStart(gRules, ds, cellMin);
         // Clickability rules (server enforces too — this is the friendly layer):
         //  - picking check-in: any free future night that can start a stay (a
         //    checkout/turnover day IS free)
@@ -15314,7 +15365,8 @@ function renderDatePicker() {
         const arrivalBranch = !pickingEnd || ds <= dpState.start;
         const badArrival =
             arrivalBranch && arrivalDays.length > 0 && !arrivalDays.includes(date.getDay());
-        const tooFew = stayN > 0 && stayN < minNights;
+        const startMin = pickingEnd && dpState.start ? ruleMinNights(gRules, dpState.start) : minNights;
+        const tooFew = stayN > 0 && stayN < startMin && !ruleGapFit(gRules, dpState.start, ds, isBookedNight);
         const tooMany = stayN > 0 && maxNights > 0 && stayN > maxNights;
         let clickable;
         if (dpMode === 'admin') clickable = true;
@@ -15378,7 +15430,7 @@ function renderDatePicker() {
         // day IS an offerable turnover, so "booked" would send that guest hunting for
         // another date when what they must change is the length.
         const unavailNote = tooFew
-            ? ` — too soon, the minimum stay is ${minNights} nights`
+            ? ` — too soon, the minimum stay is ${startMin} nights`
             : tooMany
               ? ` — too long, the maximum stay is ${maxNights} nights`
               : booked
@@ -15386,7 +15438,7 @@ function renderDatePicker() {
                 : tooSoon
                   ? ' — same-day stays need a day’s notice, unavailable'
                   : tooShort
-                    ? ` — minimum stay ${minNights} nights, unavailable`
+                    ? ` — minimum stay ${cellMin} nights, unavailable`
                     : badArrival
                       ? ' — this cottage does not take arrivals on this day'
                       : outOfReach
@@ -15426,13 +15478,13 @@ function renderDatePicker() {
         const title = chosenSay
             ? ` title="${selStage}"`
             : tooFew
-              ? ` title="Minimum stay is ${minNights} nights"`
+              ? ` title="Minimum stay is ${startMin} nights"`
               : tooMany
                 ? ` title="Maximum stay is ${maxNights} nights"`
                 : crossedPickable
                   ? ' title="Already booked — you can still pick it"'
                   : crossed
-                    ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
+                    ? (booked ? ' title="Booked"' : ` title="Minimum ${cellMin} nights"`)
                     : tooSoon
                       ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
                       : badArrival && !clickable
@@ -19988,7 +20040,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'holdsfix1';
+    const BUILD = 'profitnight1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

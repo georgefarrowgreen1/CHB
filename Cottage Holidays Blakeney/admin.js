@@ -20240,7 +20240,7 @@ function openPricingCoach() { Promise.resolve(openArea()).then(() => settingsOpe
 let __prCot = null;
 let __prSel = null;
 const __prDismissed = new Set();
-const PR_OWN_LABELS = ['Your price', 'Smart price', 'Gap offer'];
+const PR_OWN_LABELS = ['Your price', 'Smart price', 'Gap offer', 'Busy week', 'Sunny weekend'];
 function prSettings() {
     const read = (k) => (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent[k] !== undefined ? adminPrivateContent[k] : siteContent[k]);
     let lim = read('pricing-limits');
@@ -20305,6 +20305,457 @@ function prTakenBy(pk, iso) {
     if (!c) return '';
     return /block/.test(c.name) ? 'Held' : 'Booked';
 }
+// ============================================================
+//  PROFIT PER NIGHT — the pricing engine knows the drive (owner-asked).
+//
+//  The aim is money KEPT per booked night, not nights filled: every changeover
+//  costs the owner a round trip from home plus cleaning, the same for two
+//  nights as for a week. So every idea below compares its options in pounds
+//  kept AFTER the trip, says what it is based on and how sure it is, and
+//  changes nothing until it is tapped. The cost lives in the internal key
+//  `pricing-changeover`; a hidden idea in `pricing-hidden`, keyed to the
+//  numbers it showed, so it comes back only when they change.
+//  Stays are direct bookings plus platform guests (isOtaBlock); an owner block
+//  or a host's "Not available" hold is neither a stay nor a changeover.
+// ============================================================
+const PR_COST_KEY = 'pricing-changeover';
+const PR_HIDDEN_KEY = 'pricing-hidden';
+let __prPage = 'main';
+let __prWx = null;
+let __prWxAsked = false;
+const __prCostT = {};
+// Whole pounds: these are judgements about a drive, not invoices.
+function prGbp(n) { return (n < 0 ? '−£' : '£') + Math.round(Math.abs(n)).toLocaleString('en-GB'); }
+function prReadKey(k) {
+    let v = typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent[k] !== undefined ? adminPrivateContent[k] : siteContent[k];
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+    return v && typeof v === 'object' ? v : {};
+}
+function prWriteKey(k, v) {
+    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent[k] = v;
+    siteContent[k] = v;
+}
+// What one changeover costs: the drive both ways at the owner's hourly value,
+// fuel and cleaning. Defaults are a starting point the owner edits.
+function prCosts() {
+    const c = prReadKey(PR_COST_KEY);
+    const n = (v, d, hi) => { const x = parseFloat(v); return isFinite(x) ? Math.max(0, Math.min(hi, x)) : d; };
+    const drive = n(c.drive, 60, 300), hourly = n(c.hourly, 20, 200), fuel = n(c.fuel, 18, 300), clean = n(c.clean, 45, 500);
+    return { drive, hourly, fuel, clean, trip: Math.round((drive * 2 / 60) * hourly + fuel + clean), set: Object.keys(c).length > 0 };
+}
+function prCostStep(field, dir) {
+    const c = prCosts();
+    const by = { drive: 15, hourly: 5, fuel: 2, clean: 5 }[field];
+    const hi = { drive: 300, hourly: 200, fuel: 300, clean: 500 }[field];
+    if (!by) return;
+    const next = { drive: c.drive, hourly: c.hourly, fuel: c.fuel, clean: c.clean };
+    next[field] = Math.max(0, Math.min(hi, c[field] + (parseInt(dir, 10) || 0) * by));
+    if (next[field] === c[field]) return;
+    prWriteKey(PR_COST_KEY, next);
+    renderPricing();
+    clearTimeout(__prCostT.t);
+    __prCostT.t = setTimeout(() => { saveContent(PR_COST_KEY, next).catch(() => {}); }, 600);
+}
+function prDriveText(min) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+}
+// A cottage's stays — direct bookings and platform guests — oldest first.
+function prStays(pk) {
+    const out = [];
+    (dbBookings[pk] || []).forEach((b) => {
+        if (b && b.checkIn && b.checkOut && b.checkOut > b.checkIn) out.push({ from: b.checkIn, to: b.checkOut, who: String(b.name || 'Guest').trim().split(/\s+/)[0], b, direct: true });
+    });
+    (((dbBlocks || {})[pk]) || []).forEach((bl) => {
+        if (isOtaBlock(bl) && bl.checkOut > bl.checkIn) out.push({ from: bl.checkIn, to: bl.checkOut, who: (typeof otaSourceName === 'function' ? otaSourceName(bl.source) : bl.source) + ' guest', b: null, direct: false });
+    });
+    return out.sort((a, z) => a.from.localeCompare(z.from));
+}
+// Is a night taken at a cottage — a stay or a hold.
+function prTaken(pk, iso) {
+    if (prStays(pk).some((s) => s.from <= iso && iso < s.to)) return true;
+    return (((dbBlocks || {})[pk]) || []).some((bl) => bl && bl.checkIn <= iso && iso < bl.checkOut);
+}
+// The cottages that turn over on a day (a stay ends there).
+function prTurnovers(iso) {
+    return liveCottageKeys().filter((k) => prStays(k).some((s) => s.to === iso));
+}
+// What a stay pays: a direct booking's rental, a platform stay ESTIMATED at the
+// cottage's own price (the payout is the platform's and the app never sees it).
+function prStayPays(pk, s) {
+    if (s.direct) {
+        try { return { pays: Math.max(0, (paymentSummary(pk, s.b) || {}).total || 0), est: false }; } catch (e) {}
+    }
+    let sum = 0;
+    for (let d = s.from; d < s.to; d = chbIsoShift(d, 1)) sum += prNight(pk, d).price;
+    return { pays: sum, est: true };
+}
+// Money kept over the next six weeks: every stay whose changeover falls in it.
+function prKept(pk) {
+    const today = todayDashed(), end = chbIsoShift(today, 42), trip = prCosts().trip;
+    let pays = 0, nights = 0, n = 0, short = 0, est = 0;
+    prStays(pk).forEach((s) => {
+        if (s.to <= today || s.to > end) return;
+        const v = prStayPays(pk, s);
+        pays += v.pays; nights += nightsBetween(s.from, s.to); n += 1;
+        if (v.est) est += 1;
+        if (nightsBetween(s.from, s.to) <= 2) short += 1;
+    });
+    const kept = pays - n * trip;
+    return { kept, perNight: nights ? kept / nights : 0, nights, trips: n, short, est, trip };
+}
+// The changeovers across every cottage in the next six weeks, and how many share a day.
+function prFleetShare() {
+    const today = todayDashed(), end = chbIsoShift(today, 42), days = {};
+    let n = 0;
+    liveCottageKeys().forEach((k) => prStays(k).forEach((s) => { if (s.to > today && s.to <= end) { n += 1; days[s.to] = (days[s.to] || 0) + 1; } }));
+    return { n, days: Object.keys(days).length };
+}
+// HOW LONG GUESTS STAY, learned from the cottage's own last three years, recent
+// years counting more. By how far ahead they booked (direct bookings carry the
+// booking date) and by time of year (every stay).
+const PR_LEAD = [['3+ months ahead', 91, 1e9], ['1–3 months', 31, 90], ['1–4 weeks', 8, 30], ['Under a week', 0, 7]];
+const PR_SEASON = [['Summer', [6, 7]], ['Christmas & winter', [10, 11, 0, 1]], ['Spring & autumn', [2, 3, 4, 5, 8, 9]]];
+function prLearned(pk) {
+    const today = todayDashed(), cutoff = chbIsoShift(today, -3 * 365);
+    const lead = PR_LEAD.map(() => ({ w: 0, nw: 0, n: 0 }));
+    const season = PR_SEASON.map(() => ({ w: 0, nw: 0, n: 0 }));
+    const month = Array.from({ length: 12 }, () => ({ w: 0, nw: 0, n: 0 }));
+    const all = { w: 0, nw: 0, n: 0 };
+    let shortN = 0, count = 0;
+    const add = (acc, nights, w) => { acc.w += w; acc.nw += nights * w; acc.n += 1; };
+    prStays(pk).forEach((s) => {
+        if (s.from < cutoff) return;
+        const nights = nightsBetween(s.from, s.to);
+        if (nights < 1 || nights > 28) return;
+        const age = Math.max(0, nightsBetween(s.from, today));
+        const w = Math.pow(0.5, age / 550);
+        const m = new Date(s.from + 'T12:00:00Z').getUTCMonth();
+        add(all, nights, w);
+        add(month[m], nights, w);
+        const si = PR_SEASON.findIndex((x) => x[1].includes(m));
+        if (si >= 0) add(season[si], nights, w);
+        count += 1;
+        if (nights <= 2) shortN += 1;
+        const made = s.b && s.b.createdAt ? String(s.b.createdAt).slice(0, 10) : '';
+        if (made && /^\d{4}-\d{2}-\d{2}$/.test(made) && made <= s.from) {
+            const ahead = nightsBetween(made, s.from);
+            const li = PR_LEAD.findIndex((x) => ahead >= x[1] && ahead <= x[2]);
+            if (li >= 0) add(lead[li], nights, w);
+        }
+    });
+    const avg = (a) => (a.n >= 2 && a.w > 0 ? a.nw / a.w : null);
+    return {
+        lead: PR_LEAD.map((x, i) => ({ k: x[0], avg: avg(lead[i]), n: lead[i].n })),
+        season: PR_SEASON.map((x, i) => ({ k: x[0], avg: avg(season[i]), n: season[i].n })),
+        month: month.map((a) => ({ avg: a.n >= 4 && a.w > 0 ? a.nw / a.w : null, n: a.n })),
+        all: { avg: avg(all), n: all.n },
+        shortShare: count ? shortN / count : 0,
+        count,
+    };
+}
+// How long a guest booking this night is likely to stay: the booking-window
+// figure first, then the season, then overall. Null with too little history.
+function prLikelyStay(pk, iso, L) {
+    L = L || prLearned(pk);
+    const ahead = nightsBetween(todayDashed(), iso);
+    const li = PR_LEAD.findIndex((x) => ahead >= x[1] && ahead <= x[2]);
+    if (li >= 0 && L.lead[li].avg && L.lead[li].n >= 3) return L.lead[li].avg;
+    const m = new Date(iso + 'T12:00:00Z').getUTCMonth();
+    const si = PR_SEASON.findIndex((x) => x[1].includes(m));
+    if (si >= 0 && L.season[si].avg && L.season[si].n >= 3) return L.season[si].avg;
+    return L.all.avg && L.all.n >= 3 ? L.all.avg : null;
+}
+function prMinFor(pk, iso) {
+    if (typeof ruleMinNights !== 'function') return Math.max(1, parseInt(prRate(pk).minNights, 10) || 1);
+    return ruleMinNights(prRate(pk), iso);
+}
+function prHidden() { return prReadKey(PR_HIDDEN_KEY); }
+function prHide(pk, id, sig) {
+    const h = Object.assign({}, prHidden());
+    h[pk + '|' + id] = String(sig);
+    const keys = Object.keys(h);
+    if (keys.length > 60) keys.slice(0, keys.length - 60).forEach((k) => { delete h[k]; });
+    prWriteKey(PR_HIDDEN_KEY, h);
+    saveContent(PR_HIDDEN_KEY, h).catch(() => {});
+    renderPricing();
+}
+function prUnhideAll(pk) {
+    const h = Object.assign({}, prHidden());
+    Object.keys(h).forEach((k) => { if (k.indexOf(pk + '|') === 0) delete h[k]; });
+    prWriteKey(PR_HIDDEN_KEY, h);
+    saveContent(PR_HIDDEN_KEY, h).catch(() => {});
+    renderPricing();
+}
+function prLoadWeather() {
+    if (__prWxAsked) return;
+    __prWxAsked = true;
+    fetch('weather.php?days=10').then((r) => (r.ok ? r.json() : null)).then((j) => {
+        if (j && j.ok && Array.isArray(j.days)) { __prWx = j.days; try { renderPricing(); } catch (e) {} }
+    }).catch(() => {});
+}
+// Free nights in [from, to) at a cottage with no price of the owner's own, as runs.
+function prFreeRuns(pk, from, to) {
+    const runs = [];
+    let cur = null;
+    for (let d = from; d < to; d = chbIsoShift(d, 1)) {
+        const ok = d > todayDashed() && !prTaken(pk, d) && !prNight(pk, d).own;
+        if (ok) { if (!cur) cur = { from: d, to: chbIsoShift(d, 1) }; else cur.to = chbIsoShift(d, 1); }
+        else if (cur) { runs.push(cur); cur = null; }
+    }
+    if (cur) runs.push(cur);
+    return runs;
+}
+// The ideas, best first. Each: {id, sig, title, gain, why, compare:[[label, figure, sub]],
+// best, conf 1–3, basis, act, run:[fnName, ...args]}.
+function prProfitIdeas(pk) {
+    const s = prSettings();
+    if (!s.smart) return [];
+    const today = todayDashed(), trip = prCosts().trip, L = prLearned(pk), out = [];
+    const nm = (k) => ((propertyMeta[k] || {}).name || k).replace(/ Westgate( Street)?$/, '');
+    const usual = Math.round(parseFloat(prRate(pk).coupleRate) || 0);
+    const stays = prStays(pk);
+    // 1. A free night or three straight after a direct guest leaves: offer it to them.
+    for (const st of stays) {
+        if (!st.direct || !st.b.email || st.to <= today || st.to > chbIsoShift(today, 60)) continue;
+        let n = 0;
+        while (n < 4 && !prTaken(pk, chbIsoShift(st.to, n))) n++;
+        if (n < 1 || n > 3) continue;
+        let gross = 0;
+        for (let i = 0; i < n; i++) gross += prNight(pk, chbIsoShift(st.to, i)).price;
+        const ext = Math.round(gross * 0.9), sold = Math.round(gross - trip);
+        if (ext <= sold) continue;
+        out.push({ id: 'extend', sig: st.to + '|' + n + '|' + ext, conf: 2, basis: 'no extra drive · they are already there',
+            title: `Offer ${st.who} ${n === 1 ? 'one more night' : n + ' more nights'}`, gain: `+${prGbp(ext - Math.max(0, sold))}`,
+            why: `The ${n === 1 ? 'night' : n + ' nights'} after ${st.who} leaves on ${fmtDate(st.to)} ${n === 1 ? 'is' : 'are'} free before the next stay. Selling ${n === 1 ? 'it' : 'them'} to someone new is another trip; letting ${st.who} stay on is not.`,
+            compare: [[`Sell ${n === 1 ? 'it' : 'them'} to someone new`, prGbp(Math.max(0, sold)), `if ${n === 1 ? 'it books' : 'they book'} · ${prGbp(gross)} less the ${prGbp(trip)} trip`], [`Offer ${st.who} 10% off to stay on`, prGbp(ext), 'no trip']],
+            best: 1, act: `Write to ${st.who}`, run: ['prOfferExtension', pk, String(st.b.id), n, ext] });
+        break;
+    }
+    // 2. A changeover on a day another cottage already turns over: one drive, two cleans.
+    const shared = stays.map((x) => x.to).find((d) => d > today && d <= chbIsoShift(today, 42) && prTurnovers(d).length > 1);
+    if (shared) {
+        const others = prTurnovers(shared).filter((k) => k !== pk).map(nm).join(' and ');
+        const c = prCosts();
+        out.push({ id: 'share', sig: shared + '|' + trip, conf: 3, basis: 'your own calendars',
+            title: `${fmtDate(shared)} is a shared changeover with ${others}`, gain: `saves ${prGbp(trip - c.clean)}`,
+            why: `Both turn over that day, so one drive covers two cleans. Booking stays that start or end on a day you are already there keeps more of every stay.`,
+            compare: [['On separate days', prGbp(trip * 2), 'two drives, two cleans'], ['On the same day', prGbp(trip + c.clean), 'one drive, two cleans']],
+            best: 1, act: 'Show it on the calendar', run: ['prPick', shared] });
+    }
+    // 3. A week guests searched and found full: raise this cottage's free nights in it.
+    const sig = (__prSugg && __prSugg.d && __prSugg.d.signals) || null;
+    const weeks = ((sig && sig.searchWeeks) || []).filter((w) => w.missed >= 3 && String(w.week || '').slice(0, 10) >= chbIsoShift(today, -6));
+    for (const w of weeks) {
+        const wk = String(w.week).slice(0, 10);
+        const run = prFreeRuns(pk, wk, chbIsoShift(wk, 7)).find((r) => nightsBetween(r.from, r.to) >= 2);
+        if (!run) continue;
+        const base = chbCoupleRateOn(pk, run.from), rate = prClamp(Math.round(base * 1.15));
+        if (rate <= base) continue;
+        const len = Math.max(2, Math.round(prLikelyStay(pk, run.from, L) || 3));
+        const now = (base * len - trip) / len, up = (rate * len - trip) / len;
+        out.push({ id: 'raise', sig: run.from + '|' + rate, conf: w.missed >= 5 ? 3 : 2, basis: `${w.count} searches that week · ${w.missed} found you full`,
+            title: `Raise ${fmtStayRange(run.from, run.to)} by 15%`, gain: `+${prGbp(up - now)} a night`,
+            why: `Guests looking for that week found nothing free. Raising the nights you still have loses little demand, and a ${len}-night stay at the higher price keeps more per night after the drive.`,
+            compare: [[`At £${base}`, `${prGbp(now)} a night`, `a ${len}-night stay, less the trip`], [`At £${rate}`, `${prGbp(up)} a night`, `the same stay at 15% more`]],
+            best: 1, act: `Raise to £${rate}`, run: ['prApplyRange', pk, run.from, chbIsoShift(run.to, -1), rate, 'Busy week'] });
+        break;
+    }
+    // 4. A sunny weekend inside the forecast: lift the free weekend nights.
+    if (__prWx) {
+        const wdays = String(prRate(pk).weekendDays == null ? '5,6' : prRate(pk).weekendDays).split(',').filter(Boolean).map(Number);
+        const sunny = __prWx.filter((d) => d && d.date > today && wdays.includes(new Date(d.date + 'T12:00:00Z').getUTCDay()) && d.code != null && d.code <= 2 && (d.tmax == null || d.tmax >= 12));
+        for (const d of sunny) {
+            if (prTaken(pk, d.date) || prNight(pk, d.date).own) continue;
+            let end = chbIsoShift(d.date, 1);
+            if (sunny.some((x) => x.date === end) && !prTaken(pk, end) && !prNight(pk, end).own) end = chbIsoShift(end, 1);
+            const base = chbCoupleRateOn(pk, d.date), rate = prClamp(Math.round(base * 1.1));
+            if (rate <= base) break;
+            out.push({ id: 'weather', sig: d.date + '|' + rate, conf: 2, basis: `forecast: ${String(d.summary || 'sunny').toLowerCase()}${d.tmax != null ? ', ' + d.tmax + '°C' : ''}`,
+                title: `Sunny weekend · ${fmtStayRange(d.date, end)}`, gain: '+10%',
+                why: 'A good forecast lifts last-minute weekend searches on the coast. These free weekend nights go up 10% while the forecast holds.',
+                compare: [[`At £${base}`, prGbp(base * nightsBetween(d.date, end) - trip), 'the nights, less the trip'], [`At £${rate}`, prGbp(rate * nightsBetween(d.date, end) - trip), '10% more']],
+                best: 1, act: `Raise to £${rate}`, run: ['prApplyRange', pk, d.date, chbIsoShift(end, -1), rate, 'Sunny weekend'] });
+            break;
+        }
+    }
+    // 5. A short-stay charge, when short stays are a real share of the cottage's bookings.
+    const r = prRate(pk);
+    const upcomingShort = stays.filter((x) => x.to > today && nightsBetween(x.from, x.to) <= 2).length;
+    if (!(parseFloat(r.shortFee) > 0) && usual > 0 && (L.shortShare >= 0.25 || upcomingShort > 0)) {
+        const fee = Math.max(5, Math.round(trip / 2 / 5) * 5);
+        const two = (usual * 2 - trip) / 2, week = (usual * 7 - trip) / 7;
+        out.push({ id: 'shortfee', sig: String(fee), conf: L.count >= 8 ? 3 : 2, basis: L.count ? `${Math.round(L.shortShare * 100)}% of ${L.count} stays were 2 nights or fewer` : `${upcomingShort} short stay${upcomingShort === 1 ? '' : 's'} booked`,
+            title: `Add £${fee} a night to 2-night stays`, gain: `+${prGbp(fee * 2)} a stay`,
+            why: 'A 2-night stay costs the same drive and clean as a week but spreads it over two nights. The charge makes each short stay pay for its own trip; guests who want two nights still book.',
+            compare: [['2 nights, as now', `${prGbp(two)} a night`, `${prGbp(usual * 2)} less the ${prGbp(trip)} trip`], ['2 nights with the charge', `${prGbp(two + fee)} a night`, `a week keeps ${prGbp(week)} a night`]],
+            best: 1, act: 'Add the short-stay charge', run: ['prSetShortFee', pk, fee] });
+    }
+    // 6. Minimum stay by month, from how long guests really stay then; and gap fits.
+    const rows = [];
+    const dated = Array.isArray(r.minByDate) ? r.minByDate : [];
+    const base = Math.max(1, parseInt(r.minNights, 10) || 1);
+    for (let i = 1; i <= 4; i++) {
+        const first = new Date(today + 'T12:00:00Z');
+        first.setUTCDate(1);
+        first.setUTCMonth(first.getUTCMonth() + i);
+        const from = first.toISOString().slice(0, 10);
+        const last = new Date(first.getTime());
+        last.setUTCMonth(last.getUTCMonth() + 1);
+        last.setUTCDate(0);
+        const to = last.toISOString().slice(0, 10);
+        const avg = L.month[first.getUTCMonth()].avg;
+        if (!avg) continue;
+        const min = Math.min(5, Math.floor(avg));
+        if (min <= base || dated.some((d) => d && d.from <= to && d.to >= from)) continue;
+        rows.push({ from, to, min, avg, label: first.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' }) });
+    }
+    const gapOff = !(parseInt(r.gapFitDays, 10) > 0);
+    if (rows.length || gapOff) {
+        const list = rows.map((x) => `${x.min} nights in ${x.label}`).join(' · ');
+        out.push({ id: 'mindate', sig: rows.map((x) => x.from + x.min).join(',') + '|' + gapOff, conf: rows.length ? 2 : 3,
+            basis: rows.length ? rows.map((x) => `${x.label} stays average ${x.avg.toFixed(1)} nights`).join(' · ') : 'your own calendar',
+            title: rows.length ? `Minimum stay by month: ${list}` : 'Let short gaps book as exactly that gap',
+            gain: rows.length ? 'fewer trips' : 'no orphan nights',
+            why: (rows.length ? `Guests already stay about that long in ${rows.map((x) => x.label).join(' and ')}, so a longer minimum costs little and stops short stays splitting the month. ` : '')
+                + (gapOff ? 'Within 10 days of arrival, a gap between two stays shorter than the minimum can be booked as exactly that gap — one stay, one trip, no night left empty.' : ''),
+            compare: [[`${base} nights all year`, `${prGbp(usual > 0 ? (usual * base - trip) / base : 0)} a night`, 'short stays can split a busy month'], [rows.length ? list : 'Gap fits on', `${prGbp(usual > 0 ? (usual * Math.max(base, rows[0] ? rows[0].min : base) - trip) / Math.max(base, rows[0] ? rows[0].min : base) : 0)} a night`, 'fewer, longer stays']],
+            best: 1, act: rows.length ? 'Set these minimums' : 'Turn gap fits on', run: ['prApplyMinByDate', pk, JSON.stringify(rows.map((x) => ({ from: x.from, to: x.to, min: x.min })))] });
+    }
+    const hidden = prHidden();
+    return out.map((x) => Object.assign(x, { hidden: hidden[pk + '|' + x.id] === String(x.sig) }));
+}
+async function prApplyRange(pk, from, toIncl, rate, label) {
+    try { await cmdkApplyPriceOverride(pk, from, toIncl, Number(rate), label); } catch (e) { glassAlert("Couldn't save: " + e.message); }
+    __prSel = from;
+    renderPricing();
+}
+async function prSetShortFee(pk, fee) {
+    if (!propertyRates[pk]) propertyRates[pk] = Object.assign({}, defaultRates[pk]);
+    propertyRates[pk].shortFee = Number(fee);
+    propertyRates[pk].shortMax = 2;
+    renderPricing();
+    try {
+        await saveRateField(pk, 'shortMax', 2);
+        await saveRateField(pk, 'shortFee', Number(fee));
+        toast(`Short-stay charge on — £${fee} a night on stays of 2 nights or fewer.`);
+    } catch (e) { /* saveRateField reports its own failure */ }
+}
+function prApplyMinByDate(pk, rowsJson) {
+    let rows = [];
+    try { rows = JSON.parse(rowsJson) || []; } catch (e) {}
+    if (!propertyRates[pk]) propertyRates[pk] = Object.assign({}, defaultRates[pk]);
+    const r = propertyRates[pk];
+    r.minByDate = (Array.isArray(r.minByDate) ? r.minByDate : []).concat(rows.filter((x) => x && x.from && x.to && x.min));
+    r.gapFitDays = 10;
+    saveRules(pk);
+    toast(rows.length ? 'Minimum stays set — tap a night to see its minimum.' : 'Gap fits on — a short gap can be booked as exactly that gap.');
+    renderPricing();
+}
+function prClearMinByDate(pk) {
+    if (!propertyRates[pk]) return;
+    propertyRates[pk].minByDate = [];
+    saveRules(pk);
+    renderPricing();
+}
+function prGapFitToggle() {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('pr-gapfit'));
+    const pk = __prCot;
+    if (!propertyRates[pk]) propertyRates[pk] = Object.assign({}, defaultRates[pk]);
+    propertyRates[pk].gapFitDays = el && el.checked ? 10 : 0;
+    saveRules(pk);
+    renderPricing();
+}
+// Opens the booking's email composer with the extension offer written in.
+function prOfferExtension(pk, bookingId, nights, total) {
+    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
+    if (!b) return;
+    openBookingEmail(bookingId);
+    const n = Number(nights);
+    const subj = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
+    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    if (subj) subj.value = `Fancy staying on at ${nm}?`;
+    if (body) body.value = `The ${n === 1 ? 'night' : n + ' nights'} after your stay ${n === 1 ? 'is' : 'are'} still free, and we'd love you to stay on. You can have ${n === 1 ? 'it' : 'them'} for ${prGbp(Number(total))} in total — 10% off our usual price. Just reply and we'll add ${n === 1 ? 'it' : 'them'} to your booking.`;
+}
+// The minimum-stay row's sub: the standard, then any dated minimums.
+function prMinSummary(pk) {
+    const r = prRate(pk);
+    const base = Math.max(1, parseInt(r.minNights, 10) || 1);
+    const today = todayDashed();
+    const dated = (Array.isArray(r.minByDate) ? r.minByDate : []).filter((d) => d && d.to >= today);
+    const parts = dated.slice(0, 3).map((d) => `${d.min} from ${fmtDate(d.from)} to ${fmtDate(d.to)}`);
+    return `${base} night${base === 1 ? '' : 's'} usually${parts.length ? ' · ' + parts.join(' · ') : ''}`;
+}
+function prCostsSub(pk) {
+    const c = prCosts(), K = prKept(pk);
+    return `${prGbp(c.trip)} a changeover${K.nights ? ' · ' + prGbp(K.perNight) + ' kept a night' : ''}${c.set ? '' : ' · set your costs'}`;
+}
+function prOpenCosts() { __prPage = 'costs'; renderPricing(); }
+function prCloseCosts() { __prPage = 'main'; renderPricing(); }
+function prConfBars(n) {
+    return `<span class="pr-conf" aria-hidden="true">${[1, 2, 3].map((i) => `<span class="${i <= n ? (n === 1 ? 'is-low' : 'is-on') : ''}"></span>`).join('')}</span>`;
+}
+function prProfitCardHtml(pk, x) {
+    if (x.hidden) return '';
+    return `<div class="acr-well pr-pcard" data-idea="${escapeHtml(x.id)}">
+        <div class="pr-shead"><span class="pr-stitle">${escapeHtml(x.title)}</span>${stCap('ok', x.gain)}</div>
+        <p class="pr-swhy">${escapeHtml(x.why)}</p>
+        <div class="pr-cmp">${x.compare.map((c, i) => `<div class="pr-cmprow${i === x.best ? ' is-best' : ''}"><span class="pr-cmpk">${escapeHtml(c[0])}</span><span class="pr-cmpv">${escapeHtml(c[1])}</span><span class="pr-cmps">${escapeHtml(c[2])}</span></div>`).join('')}</div>
+        <div class="pr-basis">${prConfBars(x.conf)}<span><b>${['', 'Low confidence', 'Fairly sure', 'Confident'][x.conf]}</b> · ${escapeHtml(x.basis)}</span></div>
+        <div class="pr-ideaacts"><button type="button" class="pay-btn" ${chbAttrs(...x.run)}>${escapeHtml(x.act)}</button><button type="button" class="pay-btn2" ${chbAttrs('prHide', pk, x.id, x.sig)}>Not now</button></div>
+    </div>`;
+}
+function prLearnedHtml(pk) {
+    const L = prLearned(pk);
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    if (L.count < 3) return `<section class="rv-sec"><h3 class="acr-cap">What it has learned about ${escapeHtml(nm)}’s guests</h3><div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div></section>`;
+    const bar = (row) => {
+        const v = row.avg;
+        return `<div class="pr-lrow"><span class="pr-lk">${escapeHtml(row.k)}</span><span class="pr-lbar"><span class="${v != null && v < 3 ? 'is-short' : ''}" style="width:${v != null ? Math.min(100, Math.round((v / 7) * 100)) : 0}%"></span></span><span class="pr-lv">${v != null ? v.toFixed(1) : '—'}</span></div>`;
+    };
+    return `<section class="rv-sec">
+        <h3 class="acr-cap">What it has learned about ${escapeHtml(nm)}’s guests</h3>
+        <div class="acr-well pr-learn">
+            <span class="pr-lt">Nights per stay, by when they book</span>${L.lead.map(bar).join('')}
+            <span class="pr-lt">Nights per stay, by time of year</span>${L.season.map(bar).join('')}
+            <p class="pr-note">From ${L.count} stays over the last three years, recent ones counting more. Short averages are where the drive takes a big share of what a stay pays.</p>
+        </div>
+    </section>`;
+}
+function prCostsPageHtml(pk, keysHtml) {
+    const c = prCosts(), K = prKept(pk), F = prFleetShare();
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    const step = (field, label, sub, shown) => `<div class="pay-row pr-rule">
+            <span class="pr-rlbl"><span class="pay-lbl">${label}</span><span class="pr-rsub">${escapeHtml(sub)}</span></span>
+            <span class="acr-step"><button type="button" ${chbAttrs('prCostStep', field, '-1')} aria-label="${escapeHtml(label)} — less">−</button><span class="acr-val pr-val">${shown}</span><button type="button" ${chbAttrs('prCostStep', field, '1')} aria-label="${escapeHtml(label)} — more">+</button></span>
+        </div>`;
+    return `<div class="rv-page pr-page">
+        <button type="button" class="pr-back pr-up" data-act="prCloseCosts">‹ Pricing</button>
+        <h3 class="pr-ptitle">Changeovers</h3>
+        ${keysHtml}
+        <section class="rv-sec">
+            <h3 class="acr-cap">${escapeHtml(nm)} · next 6 weeks</h3>
+            <div class="acr-well pr-sum" id="pr-sum">
+                <span class="pr-sumk">Kept per booked night, after the drive</span>
+                <span class="pr-sumv">${K.nights ? prGbp(K.perNight) : '—'}</span>
+                <div class="pr-sumg"><span><b>${prGbp(K.kept)}</b>kept in all</span><span><b>${K.trips}</b>changeover${K.trips === 1 ? '' : 's'}</span><span><b>${prDriveText(Math.round(K.trips * c.drive * 2))}</b>on the road</span></div>
+                <p class="pr-note">${K.short ? `${K.short} of these ${K.trips} stays ${K.short === 1 ? 'is' : 'are'} 2 nights or fewer — each costs the same ${prGbp(c.trip)} trip as a week does.` : K.trips ? 'Every stay is three nights or more.' : 'No changeovers in the next six weeks.'}${K.est ? ` Platform stays are estimated at your own price.` : ''}</p>
+            </div>
+        </section>
+        <section class="rv-sec">
+            <h3 class="acr-cap">What a changeover costs you</h3>
+            <div class="acr-well rv-well">
+                ${step('drive', 'Drive, each way', 'Home to the cottage', prDriveText(c.drive))}
+                ${step('hourly', 'Your time', 'Per hour on the road', `£${c.hourly}`)}
+                ${step('fuel', 'Fuel', 'Per round trip', `£${c.fuel}`)}
+                ${step('clean', 'Cleaning & laundry', 'Per changeover', `£${c.clean}`)}
+                <div class="pay-row pr-rule pr-total"><span class="pay-lbl">Each changeover</span><span class="pr-tripv">${prGbp(c.trip)}</span></div>
+            </div>
+            <p class="pr-note">Across all your cottages: ${F.n} changeover${F.n === 1 ? '' : 's'} on ${F.days} day${F.days === 1 ? '' : 's'} in the next six weeks${F.n > F.days ? ` — ${F.n - F.days} already share${F.n - F.days === 1 ? 's' : ''} a drive` : ''}. The engine takes this cost off every stay before it compares anything; nights you or a platform hold back are neither booked nor unsold.</p>
+        </section>
+    </div>`;
+}
 function renderPricing() {
     const wrap = document.getElementById('pricing-body');
     if (!wrap) return;
@@ -20317,10 +20768,18 @@ function renderPricing() {
     const s = prSettings();
     let items = [];
     try { items = chbAnomalies(); } catch (e) {}
+    prLoadWeather();
+    let profit = [];
+    try { profit = prProfitIdeas(pk); } catch (e) { chbSwallow(e, 'pricing-profit-ideas'); }
+    const liveProfit = profit.filter((x) => !x.hidden);
+    // Profit first: a gap the guest already there can stay on into is offered to
+    // them, not discounted to a stranger — so its discount card stands down.
+    const ext = liveProfit.find((x) => x.id === 'extend');
+    if (ext) items = items.filter((it) => !String(it.go || '').includes(`"${pk}","${ext.sig.split('|')[0]}"`));
     // Title capsule: how many ideas wait, or nothing at all.
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-pricing');
-    const nIdeas = items.length + prSearchCount(pk);
+    const nIdeas = items.length + prSearchCount(pk) + liveProfit.length;
     if (cap && sec && sec.style.display !== 'none') cap.innerHTML = nIdeas ? stCap('warn', `${nIdeas} idea${nIdeas === 1 ? '' : 's'}`) : '';
     prLoadSearch();
     // The calendar: this week's Monday → six weeks.
@@ -20332,11 +20791,17 @@ function renderPricing() {
         const d = new Date(iso + 'T12:00:00Z');
         const day = d.getUTCDate() === 1 ? d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) : String(d.getUTCDate());
         if (iso < today) { cells += `<span class="pr-day is-past"><span class="pr-dn">${day}</span></span>`; continue; }
+        // A changeover (a stay leaves this cottage that day) wears a car; green
+        // when another cottage turns over the same day — one drive, two cleans.
+        const turns = prTurnovers(iso);
+        const co = turns.includes(pk) ? (turns.length > 1 ? ' is-shared' : '') : null;
+        const coMark = co === null ? '' : `<span class="pr-co${co}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18"/></svg></span>`;
+        const coSay = co === null ? '' : co ? ', changeover shared with another cottage' : ', changeover';
         const taken = prTakenBy(pk, iso);
-        if (taken) { cells += `<span class="pr-day is-taken" aria-label="${fmtDate(iso)}, ${taken.toLowerCase()}"><span class="pr-dn">${day}</span><span class="pr-dp">${taken}</span></span>`; continue; }
+        if (taken) { cells += `<span class="pr-day is-taken" aria-label="${fmtDate(iso)}, ${taken.toLowerCase()}${coSay}">${coMark}<span class="pr-dn">${day}</span><span class="pr-dp">${taken}</span></span>`; continue; }
         const n = prNight(pk, iso);
         const idea = prIdea(pk, iso);
-        cells += `<button type="button" class="pr-day${idea ? ' has-idea' : ''}${n.own ? ' is-own' : ''}${__prSel === iso ? ' is-sel' : ''}" aria-pressed="${__prSel === iso}" aria-label="${fmtDate(iso)}, £${n.price}${idea ? ', has a suggestion' : ''}" ${chbAttrs('prPick', iso)}><span class="pr-dn">${day}</span><span class="pr-dp">£${n.price}</span></button>`;
+        cells += `<button type="button" class="pr-day${idea ? ' has-idea' : ''}${n.own ? ' is-own' : ''}${__prSel === iso ? ' is-sel' : ''}" aria-pressed="${__prSel === iso}" aria-label="${fmtDate(iso)}, £${n.price}${idea ? ', has a suggestion' : ''}${coSay}" ${chbAttrs('prPick', iso)}>${coMark}<span class="pr-dn">${day}</span><span class="pr-dp">£${n.price}</span></button>`;
     }
     // The tapped night: how its price is built, and the idea.
     let detail = '';
@@ -20347,6 +20812,15 @@ function renderPricing() {
         detail = `<div class="acr-well pr-detail" id="pr-detail">
             <div class="pr-dhead"><span class="pr-dwhen">${escapeHtml(when)}</span><span class="pr-dprice">£${n.price} <span>a night</span></span></div>
             ${n.lines.map((l) => `<div class="pr-line"><span>${escapeHtml(l.k)}</span><span>${escapeHtml(l.v)}</span></div>`).join('')}
+            ${(() => {
+                const likely = prLikelyStay(pk, __prSel);
+                const minN = prMinFor(pk, __prSel);
+                const trip = prCosts().trip;
+                const len = likely ? Math.max(1, likely) : minN;
+                return `<div class="pr-line"><span>Likely stay from here</span><span>${likely ? likely.toFixed(1) + ' nights' : 'not enough history'}</span></div>
+                    <div class="pr-line"><span>Minimum stay that night</span><span>${minN} night${minN === 1 ? '' : 's'}${parseInt(prRate(pk).gapFitDays, 10) > 0 && nightsBetween(todayDashed(), __prSel) <= parseInt(prRate(pk).gapFitDays, 10) ? ' · gaps fit' : ''}</span></div>
+                    <div class="pr-line is-keep"><span>${likely ? 'A stay that long keeps' : `A ${minN}-night stay keeps`}</span><span>${prGbp((n.price * len - trip) / len)} a night</span></div>`;
+            })()}
             ${idea ? `<div class="pr-idea">
                 <span class="pr-ideat">Smart suggestion · £${idea.rate}${idea.kind === 'gap' ? ' a night for the gap' : ''}</span>
                 <span class="pr-ideaw">${escapeHtml(idea.why)}</span>
@@ -20369,10 +20843,12 @@ function renderPricing() {
     const coming = (propertySeasons[pk] || []).filter((x) => x.end_date >= today && !PR_OWN_LABELS.includes(x.label || '')).length;
     const extras = `£${Math.round(parseFloat(r.extraAdultRate) || 0)} adult · £${Math.round(parseFloat(r.childRate) || 0)} child`;
     const chev = '<span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
-    wrap.innerHTML = `<div class="rv-page pr-page">
-        <div class="pay-seg pr-cots" role="group" aria-label="Cottage" style="grid-template-columns: repeat(${keys.length}, minmax(0, 1fr));">${keys
+    const cotsHtml = `<div class="pay-seg pr-cots" role="group" aria-label="Cottage" style="grid-template-columns: repeat(${keys.length}, minmax(0, 1fr));">${keys
             .map((k) => `<button type="button" data-v="${escapeHtml(k)}" class="${k === pk ? 'is-on' : ''}" aria-pressed="${k === pk}" ${chbAttrs('prCottage', k)}><span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(nm(k).replace(/ Westgate( Street)?$/, ''))}</button>`)
-            .join('')}</div>
+            .join('')}</div>`;
+    if (__prPage === 'costs') { wrap.innerHTML = prCostsPageHtml(pk, cotsHtml); return; }
+    wrap.innerHTML = `<div class="rv-page pr-page">
+        ${cotsHtml}
         <section class="rv-sec">
             <div class="pay-caprow"><h3 class="acr-cap">What guests pay · next 6 weeks</h3><span class="pr-legend"><span class="pr-ldot" aria-hidden="true"></span>idea</span></div>
             <div class="acr-well pr-cal">
@@ -20382,15 +20858,18 @@ function renderPricing() {
             ${detail}
         </section>
         <section class="rv-sec">
-            <h3 class="acr-cap">Ideas</h3>
+            <h3 class="acr-cap">Ideas · more per night, fewer trips</h3>
+            ${liveProfit.length ? `<div class="pr-ideas" id="pr-profit">${liveProfit.map((x) => prProfitCardHtml(pk, x)).join('')}</div>` : ''}
+            ${profit.length > liveProfit.length ? `<button type="button" class="pr-back pr-hiddenrow" ${chbAttrs('prUnhideAll', pk)}>${profit.length - liveProfit.length} hidden · show again</button>` : ''}
             ${items.length ? `<div class="pr-ideas" id="pricing-recs">${items.map((it) => `
                 <button type="button" class="ny-row pr-card ny-${it.sev}" ${it.go}>
                     <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
                     <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
                 </button>`).join('')}</div>`
-            : prSearchCount(pk) ? '' : `<div class="acr-well pr-calm" id="pr-calm"${__prSugg ? '' : ' hidden'}><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
+            : prSearchCount(pk) || liveProfit.length ? '' : `<div class="acr-well pr-calm" id="pr-calm"${__prSugg ? '' : ' hidden'}><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
             <div id="pr-search-ideas">${prSearchIdeasHtml(pk)}</div>
         </section>
+        ${prLearnedHtml(pk)}
         ${prRadarHtml()}
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
@@ -20398,6 +20877,10 @@ function renderPricing() {
                 ${step('coupleRate', 'Usual nightly', 'Every night unless something below applies', `£${usual}`, 'Usual nightly')}
                 ${step('weekendPct', 'Weekends', wkDays.length ? wkDays.join(' and ') : 'No weekend days set', wk ? `+${wk}%` : 'Off', 'Weekend uplift')}
                 ${step('lastminPct', 'Last minute', lmd ? `Within ${lmd} day${lmd === 1 ? '' : 's'} of arrival` : 'Set the days in the cottage’s rates', lmp ? `−${lmp}%` : 'Off', 'Last-minute discount')}
+                ${step('shortFee', 'Short stays', `A night, on stays of ${Math.max(1, parseInt(r.shortMax, 10) || 2)} nights or fewer`, parseFloat(r.shortFee) > 0 ? `+£${Math.round(parseFloat(r.shortFee))}` : 'Off', 'Short-stay charge')}
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl">Minimum stay</span><span class="pr-rsub">${escapeHtml(prMinSummary(pk))}</span></span>${Array.isArray(r.minByDate) && r.minByDate.length ? `<button type="button" class="pr-back" ${chbAttrs('prClearMinByDate', pk)}>Clear dated</button>` : ''}</div>
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-gapfit-lbl">Short gaps can book</span><span class="pr-rsub">Within 10 days, a gap shorter than the minimum books as exactly that gap</span></span>
+                    <label class="chb-switch"><input type="checkbox" id="pr-gapfit" aria-labelledby="pr-gapfit-lbl" ${parseInt(r.gapFitDays, 10) > 0 ? 'checked' : ''} data-act-change="prGapFitToggle"><span class="chb-switch-track" aria-hidden="true"></span></label></div>
                 <button type="button" class="rv-go" ${chbAttrs('settingsOpenAccomSec', pk, 'rates')}><span class="rv-go-txt"><span class="rv-name">Extra guests</span></span><span class="pay-val">${extras}</span>${chev}</button>
                 <button type="button" class="rv-go" data-act="settingsOpen" data-arg="seasongrid"><span class="rv-go-txt"><span class="rv-name">Seasonal rates</span></span><span class="pay-val">${coming} coming up</span>${chev}</button>
             </div>
@@ -20411,6 +20894,12 @@ function renderPricing() {
                     ${step('floor', 'Never suggest below', '', s.floor ? `£${s.floor}` : 'No limit', 'Lowest suggestion')}
                     ${step('ceil', 'Never suggest above', '', s.ceil ? `£${s.ceil}` : 'No limit', 'Highest suggestion')}
                 </div>
+            </div>
+        </section>
+        <section class="rv-sec">
+            <h3 class="acr-cap">Settings</h3>
+            <div class="acr-well rv-well">
+                <button type="button" class="rv-go" id="pr-costs-row" data-act="prOpenCosts"><span class="rv-go-txt"><span class="rv-name">Changeovers &amp; what you keep</span><span class="pr-rsub">${escapeHtml(prCostsSub(pk))}</span></span>${chev}</button>
             </div>
         </section>
     </div>`;
@@ -20550,7 +21039,7 @@ function prStep(field, dir) {
     const cur = Math.round(parseFloat(r[field]) || 0);
     const by = field === 'coupleRate' ? 5 : 5;
     const min = field === 'coupleRate' ? 20 : 0;
-    const max = field === 'coupleRate' ? 2000 : field === 'weekendPct' ? 200 : 90;
+    const max = field === 'coupleRate' ? 2000 : field === 'weekendPct' ? 200 : field === 'shortFee' ? 500 : 90;
     const v = Math.max(min, Math.min(max, cur + d * by));
     if (v === cur) return;
     r[field] = v;
@@ -28352,6 +28841,10 @@ function saveRules(propKey) {
         minNights: Math.max(1, parseInt(r.minNights, 10) || 1),
         maxNights: Math.max(0, parseInt(r.maxNights, 10) || 0),
         arrivalDays: Array.isArray(r.arrivalDays) ? r.arrivalDays.slice() : [],
+        // Kept through every rules save: the Pricing page writes these, and the
+        // times/limits editor rebuilding the object must not drop them.
+        minByDate: Array.isArray(r.minByDate) ? r.minByDate.slice() : [],
+        gapFitDays: Math.max(0, parseInt(r.gapFitDays, 10) || 0),
     };
     try {
         localStorage.setItem('rules-' + propKey, JSON.stringify(rules));
