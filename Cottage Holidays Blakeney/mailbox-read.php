@@ -154,7 +154,7 @@ function mailbox_token_in($parsed)
         if ($hay === '') {
             continue;
         }
-        if (preg_match('/(\d+x[0-9a-f]{16})/', $hay, $m)) {
+        if (preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m)) {
             return $m[1];
         }
     }
@@ -304,7 +304,9 @@ function poll_mailbox_replies($force = false, $preview = false)
             } // partial read / desync → stop; uid NOT marked, retry next poll
             $p = parse_email_message($raw);
             $tok = mailbox_token_in($p);
-            $tid = msg_reply_verify($tok);
+            // Either audience routes a reply to its thread; only an OWNER token may
+            // make it an admin reply (a guest holds only their own token).
+            [$tid, $tokAud] = msg_reply_parse($tok);
             $fromAddr = mailbox_from_addr($p['from']);
             $senderOk = in_array($fromAddr, $allowed, true);
             $body = $tid > 0 ? strip_quoted_reply($p['body']) : '';
@@ -318,7 +320,7 @@ function poll_mailbox_replies($force = false, $preview = false)
             $isSelf = mailbox_is_self_notification($fromAddr);
             $route = 'drop';
             if ($tid > 0 && $body !== '' && !$isSelf) {
-                if ($senderOk) {
+                if ($senderOk && $tokAud === 'owner') {
                     $route = 'admin';
                 } elseif (mailbox_reply_is_guest($tid, $fromAddr)) {
                     $route = 'guest';

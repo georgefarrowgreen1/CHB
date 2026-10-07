@@ -1446,23 +1446,37 @@ function ical_token($propKey)
 // plus-address + Message-ID, so a reply the owner sends can be matched back to
 // the exact conversation (inbound-mail.php verifies it). One-way HMAC — a
 // forged token can't select an arbitrary thread.
-function msg_reply_token($threadId)
+// TWO AUDIENCES, TWO TOKENS. The owner's notification carries an OWNER token
+// ("<id>x<mac>"); an email to the GUEST carries a GUEST token ("<id>y<mac>",
+// its own HMAC label). Only an owner token may route a reply as the OWNER: the
+// guest used to receive the very token that authorised owner replies, so a
+// guest replying with a forged From: <owner> posted words in the owner's name.
+function msg_reply_token($threadId, $aud = 'owner')
 {
     $tid = (int) $threadId;
-    return $tid . 'x' . substr(hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET), 0, 32);
+    $g = $aud === 'guest';
+    return $tid . ($g ? 'y' : 'x') . substr(hash_hmac('sha256', ($g ? 'msg-reply-g|' : 'msg-reply|') . $tid, APP_SECRET), 0, 32);
 }
-function msg_reply_verify($token)
+// [tid, aud] for a token of either audience; [0, ''] when it does not verify.
+function msg_reply_parse($token)
 {
     // 32-hex is current (128-bit, matching the other tokens); 16-hex tokens
     // still ride in the Reply-To of ALREADY-SENT emails, so verify accepts
     // both — each against its own full-strength recomputation.
-    if (!preg_match('/(\d+)x([0-9a-f]{16,32})/', (string) $token, $m)) {
-        return 0;
+    if (!preg_match('/(\d+)([xy])([0-9a-f]{16,32})/', (string) $token, $m)) {
+        return [0, ''];
     }
     $tid = (int) $m[1];
-    $mac = hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET);
-    $want = strlen($m[2]) >= 32 ? substr($mac, 0, 32) : substr($mac, 0, 16);
-    return hash_equals($want, $m[2]) ? $tid : 0;
+    $g = $m[2] === 'y';
+    $mac = hash_hmac('sha256', ($g ? 'msg-reply-g|' : 'msg-reply|') . $tid, APP_SECRET);
+    $want = strlen($m[3]) >= 32 ? substr($mac, 0, 32) : substr($mac, 0, 16);
+    return hash_equals($want, $m[3]) ? [$tid, $g ? 'guest' : 'owner'] : [0, ''];
+}
+// The OWNER token's thread, else 0 — what may authorise an owner reply.
+function msg_reply_verify($token)
+{
+    [$tid, $aud] = msg_reply_parse($token);
+    return $aud === 'owner' ? $tid : 0;
 }
 // The reply address a message-notification email points at:
 //  1. If REPLY_INBOX is set → its plus-address (the webhook route).
@@ -1470,11 +1484,11 @@ function msg_reply_verify($token)
 //     SMTP_USER), which mailbox-read.php polls over POP3. Replies there are
 //     matched by the token in the Message-ID (In-Reply-To) + subject.
 //  3. Else '' → notifications behave as before (Reply-To = owner's own address).
-function msg_reply_address($threadId)
+function msg_reply_address($threadId, $aud = 'owner')
 {
     if (defined('REPLY_INBOX') && REPLY_INBOX && strpos(REPLY_INBOX, '@') !== false) {
         [$local, $domain] = explode('@', REPLY_INBOX, 2);
-        return $local . '+' . msg_reply_token($threadId) . '@' . $domain;
+        return $local . '+' . msg_reply_token($threadId, $aud) . '@' . $domain;
     }
     if (function_exists('mailbox_auto_enabled') && mailbox_auto_enabled()) {
         $addr = defined('MAIL_FROM') && MAIL_FROM ? MAIL_FROM : (defined('SMTP_USER') ? SMTP_USER : '');

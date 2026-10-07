@@ -544,7 +544,7 @@ body.light-mode {
 }.tl-label {
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 4; /* above the bars (3) that scroll under it */
   flex: 0 0 74px;
   display: flex;
   align-items: center;
@@ -950,7 +950,9 @@ body.light-mode .ny-act {
     justify-content: center;
   }}.tl-bar {
   grid-row: 1;
-  z-index: 2;
+  /* Above the playhead (z 2): the line shows in the gaps between stays and
+     never strikes through a guest's name. */
+  z-index: 3;
   height: 30px;
   transition:
     transform 320ms var(--settle),
@@ -1095,12 +1097,16 @@ body.light-mode .ny-act {
   border-left-color: rgba(128, 128, 128, 0.5);
   color: var(--text-muted);
   cursor: default;
+  /* A <span>, not a <button>: no UA centring, so its words sat on the bar's top
+     edge (0px above, 16 below). The bar's own height, as the line. */
+  line-height: 30px;
 }/* A platform block the host made: the dates are still taken, but it is not a guest, so it is
    a quiet dashed outline with no stripes — the calendar must still read busy on the eye. */
 .tl-bar.tl-ext.tl-blocked {
   background: transparent;
   border: 1px dashed rgba(128, 128, 128, 0.55);
   border-left-color: rgba(128, 128, 128, 0.55);
+  line-height: 28px; /* the dashed outline takes 1px top and bottom */
 }
 .tl-bar.tl-clip-l {
   margin-left: 1px;
@@ -7752,10 +7758,12 @@ body.light-mode .tl-cell:active {
 .bk-owed-tx small { color: var(--text-muted); font-size: var(--fs-sub); }
 .bk-owed-ic { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn-text); font-size: var(--fs-caption); font-weight: 700; }
 .bk-owed-go { margin-left: auto; white-space: nowrap; color: var(--warn-text); font-weight: 600; }
-/* The empty state joins the calm row above it into ONE well. */
-#bookings-owed:not(:empty):has(~ #bookings-list .bk-empty) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+/* The empty state joins the calm row above it into ONE well — but only while no
+   filter chip sits between them (a chip between two halves broke the join:
+   the row ended square, the list began square, with the chip in the gap). */
+#bookings-owed:not(:empty):has(+ #bookings-filter-chip:empty ~ #bookings-list .bk-empty) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .bk-empty { display: grid; justify-items: center; gap: 6px; padding: 28px 24px 24px; text-align: center; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); }
-#bookings-owed:not(:empty) ~ #bookings-list .bk-empty { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+#bookings-owed:not(:empty) + #bookings-filter-chip:empty ~ #bookings-list .bk-empty { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .bk-empty svg { width: 28px; height: 28px; margin-bottom: 4px; fill: none; stroke: var(--accent-text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .bk-empty p { margin: 0; font-weight: 600; font-size: var(--fs-body); }
 .bk-empty small { max-width: 30ch; color: var(--text-muted); font-size: var(--fs-sub); text-wrap: balance; }
@@ -7768,9 +7776,9 @@ body.light-mode .tl-cell:active {
 /* ONE CARD IN EVERY STATE: the status row is the header of the card that holds the list, so a list with
    bookings reads as the same object as the empty state — no gap, no second card. */
 .bk-owed-n { margin-left: auto; color: var(--text-muted); font-size: var(--fs-sub); font-weight: 600; white-space: nowrap; }
-#bookings-owed:not(:empty):has(~ #bookings-list .bk-row) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-#bookings-owed:not(:empty) ~ #bookings-list .bk-row:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
-#bookings-owed:not(:empty) ~ #bookings-list .bk-row:last-child { border-bottom-left-radius: var(--r-lg); border-bottom-right-radius: var(--r-lg); }
+#bookings-owed:not(:empty):has(+ #bookings-filter-chip:empty ~ #bookings-list .bk-row) .bk-owed { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+#bookings-owed:not(:empty) + #bookings-filter-chip:empty ~ #bookings-list .bk-row:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+#bookings-owed:not(:empty) + #bookings-filter-chip:empty ~ #bookings-list .bk-row:last-child { border-bottom-left-radius: var(--r-lg); border-bottom-right-radius: var(--r-lg); }
 
 /* THE BOOKING PAGE, ONE DECISION AT A TIME (approved demo). The decision card owns its buttons on every
    width; the sticky bar only exists while the card is off screen; call/email are plain buttons under the
@@ -8111,3 +8119,31 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
   .mg-wrap.is-new, .mg-mark.is-cheer .mg-halo, .mg-sum.is-swap .mg-t, .mg-sum.is-swap .mg-s { animation: none; }
   .mg-spin { animation: none; }
 }
+
+/* EXPENSE ROWS: five columns fitted a desktop; at 390 the description was cut to
+   "Maintenan…" and the edit/remove glyphs were 32px. On a phone the row stacks —
+   what it was for and the figure on top, the date and the actions beneath — and
+   the two controls reach the 44px floor. */
+.exp-row { grid-template-columns: 84px 1fr auto auto auto; gap: 8px 12px; }
+.exp-acts { display: flex; gap: 12px; }
+@media (max-width: 639px) {
+  .exp-row { grid-template-columns: auto 1fr auto; grid-template-areas: "who who amt" "date rc acts"; align-items: center; }
+  .exp-row > .feed-date { grid-area: date; }
+  .exp-row > .feed-who { grid-area: who; white-space: normal; overflow: visible; text-overflow: clip; }
+  .exp-row > :nth-child(3) { grid-area: rc; }
+  .exp-row > .feed-amt { grid-area: amt; }
+  .exp-row > .exp-acts { grid-area: acts; gap: 4px; }
+  .exp-row .feed-del { min-width: 44px; min-height: 44px; }
+}
+
+/* THE MONEY LANDING'S "To give back" SLOT is a wrapper filled late (moAsyncFill),
+   so the sibling join rules never saw through it: two joined runs with a
+   full-radius card and 12px gaps between them. Transparent to layout, and the
+   join looks through it whether it holds a group or nothing. */
+#mo-back-slot { display: contents; }
+.bhub-fold-grp + #mo-back-slot > .bhub-fold-grp,
+#mo-back-slot:has(> .bhub-fold-grp) + .bhub-fold-grp,
+.bhub-fold-grp + #mo-back-slot:empty + .bhub-fold-grp { margin-top: calc(-1 * var(--fold-gap, 0px)); border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.bhub-fold-grp:has(+ #mo-back-slot > .bhub-fold-grp),
+.bhub-fold-grp:has(+ #mo-back-slot:empty + .bhub-fold-grp),
+#mo-back-slot:has(+ .bhub-fold-grp) > .bhub-fold-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }

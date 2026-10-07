@@ -464,6 +464,12 @@ $grand = round($total + $damages, 2);
 // understated Paid and overstated Balance due — on a document the guest opens. The
 // email, the pay screen and the charge were unified; this was the fourth site.
 $paid = round(booking_paid_so_far($b) + ($depositCharged ? $damages : 0), 2);
+// A CASH deposit that has gone back is still inside deposit_paid (the cash rail
+// has no ledger row to net it out), so "£310 of £260 received" printed once it
+// was returned. Money given back is not money received: cap at the total.
+if (in_array($holdStatus, ['returned', 'released'], true) && empty($b['hold_payment_id'])) {
+    $paid = min($paid, $grand);
+}
 $balance = max(0, round($grand - $paid, 2));
 
 // How much of the deposit has actually gone back, and when — damages_returned()

@@ -477,6 +477,9 @@
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
+        <!-- The page's heading for the outline and screen readers; the header bar
+             already names the screen on the eye, so it stays visually hidden. -->
+        <h1 class="sr-only">Our cottages</h1>
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
@@ -2063,7 +2066,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1061"></script>
+    <script defer src="app.js?v=1062"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

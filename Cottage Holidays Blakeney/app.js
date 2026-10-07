@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 664;
+const ADMIN_BUNDLE_V = 665;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 317;
+const ADMIN_CSS_V = 318;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2027,6 +2027,11 @@ function mapEnquiryFromApi(row) {
         // enquiries.php SELECTs * and ORDERs BY declined_at; this mapper dropped it,
         // so the recovery drawer could not show the one fact identifying a decline.
         declinedAt: row.declined_at || '',
+        // The terms agreed with the enquirer, STORED (migration-128) — they used to
+        // live only on this object and died with the next data refresh.
+        priceOverride: row.agreed_price != null && Number(row.agreed_price) > 0 ? Number(row.agreed_price) : null,
+        planPct: row.plan_pct != null && Number(row.plan_pct) > 0 ? Number(row.plan_pct) : null,
+        planDue: row.plan_due || null,
         received: (row.created_at || '').split(' ')[0] || '',
         receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
@@ -10771,8 +10776,13 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
         // Money out → the server asks for a fresh confirmation (require_reauth).
         // chbWithReauth prompts and retries; it lives in admin.js, so this
         // public-file call site goes through the facade like every other.
-        const r = await window.chbWithReauth('refunding ' + gbp(amount), () =>
-            apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount }));
+        // Deterministic op id (the cancel discipline): a retry of THIS refund is
+        // answered from the ledger, never paid twice; chbOpBump after success makes
+        // a deliberate second refund of the same figure a new request.
+        const rb = { action: 'refund', square_payment_id: squareId, amount };
+        rb.op_id = chbOpFor(['refund', rb]);
+        const r = await window.chbWithReauth('refunding ' + gbp(amount), () => apiPost('bookings.php', rb));
+        chbOpBump();
         // Read the send outcome rather than assuming it (the deposit-return rule): the
         // endpoint mails best-effort and reports it, and this toasted success
         // unconditionally. The two states the owner already knows are not failures.
@@ -17271,7 +17281,9 @@ function enqScheduleHtml(p, checkIn) {
         `<div class="enq-sched-row"><span class="enq-sched-dot${solid ? '' : ' ghost'}" aria-hidden="true"></span><span class="enq-sched-when">${when}</span><span class="enq-sched-what">${what}</span></div>`;
     let h = '';
     if (due.inWindow) {
-        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — your stay in full <small>(arrival is under ${due.days} days away)</small>${refund}`);
+        // ITEMISED TO ITS OWN FIGURE: "£523.05 — your stay in full + £75 deposit"
+        // read as the deposit added on top of £523.05, which already includes it.
+        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — your stay in full ${gbp(due.dep)}${refund} <small>(arrival is under ${due.days} days away)</small>`);
     } else {
         h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — ${due.pct}% deposit ${gbp(due.dep)}${refund}`);
         h += row(false, `By ${escapeHtml(dpPretty(ukShiftDays(checkIn, -due.days)))}`, `${gbp(p.rentalTotal - due.dep)} balance <small>— we’ll remind you, nothing to set up</small>`);
@@ -19846,7 +19858,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'audit1oct';
+    const BUILD = 'audit2oct';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

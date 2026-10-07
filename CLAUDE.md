@@ -8060,6 +8060,59 @@ guest UX in a browser, owner UX in a browser). What it set:
   the escape sequence again; stale "Manage → System check / Preferences /
   Website content" directions now name the real pages, Mac app included.
 
+## The round-2 audit (money paths + every endpoint's authz)
+
+Two read-only lenses swept the money code and all 116 non-test PHP files; what
+shipped and the rules it set:
+- **A CASH DEPOSIT IS ALREADY TAKEN** (`booking_damages_due`): the cash rail
+  leaves `hold_status` at 'none', which used to read as "not yet taken", so an old
+  pay link charged the card for a deposit already in hand and the write-back
+  erased the cash record. Money paid above `booking_rental_price` counts against
+  it (test-payrail, 5 cases incl. part-rental-paid and the fresh booking).
+- **THE TERMS AGREED WITH AN ENQUIRER ARE STORED** (migration-128
+  `enquiries.agreed_price/plan_pct/plan_due`, action `set_terms`, mapped by
+  `mapEnquiryFromApi`). They lived on the in-memory enquiry only, so any of the
+  ~30 `loadData()` refreshes before approval dropped them and the guest was
+  charged the standard price after the owner was told otherwise. Approval and
+  its preview fall back to the stored terms when the client sends none (§42,
+  break-tested).
+- **REFUND AND DEPOSIT RETURN RIDE THE OP LEDGER** (client stamps `chbOpFor` +
+  `chbOpBump` after success): Square's idempotency key changes once money has
+  gone back, so a timed-out retry was a second refund. `cancel` already did this.
+- **A COTTAGE MOVE LOCKS BOTH COTTAGES** (sorted, so opposite moves cannot
+  deadlock) — the charge locks the ORIGIN.
+- **LEGACY `captured` HOLDS** are refunded/owed on cancel like `charged`, and
+  keeping one writes no second `damages` row (that doubled kept income).
+- **THE SQUARE WEBHOOK'S WRITE IS RAISE-ONLY IN SQL** (`AND deposit_paid <= ?`),
+  not just in its read, because it runs without the booking lock.
+- **The invoice** caps "received" at the total once a CASH deposit is returned.
+- **REPLY-BY-EMAIL HAS TWO AUDIENCE TOKENS** (`msg_reply_token($tid, 'guest')` →
+  `<id>y<mac>` under its own HMAC label; `msg_reply_parse` returns [tid, aud];
+  `msg_reply_verify` is OWNER-only). The guest's own copy used to carry the very
+  token that authorised owner replies, so a guest replying with a forged
+  `From: <owner>` posted in the owner's name. mailbox-read routes an admin reply
+  only from an owner token; a guest token still lands as a guest message.
+  Already-sent guest emails carry the old owner-shape token — a legacy window
+  that closes as those threads go quiet. Gated by test-reply.
+- **Public doors that cost money or disk**: tides clamps `start` to −1…+60 days
+  and rate-limits (each miss spends paid WorldTides credits); an anonymous chat
+  upload with no thread behind its token gets 2/hour, not 8.
+- **The guest-details link CLOSES a week after the stay (410)** and shows stored
+  document numbers MASKED (`••••1234`); posting the mask back unchanged keeps the
+  stored number. **The welcome book** only opens for a current/upcoming stay.
+- **GET never does owner work**: `push.php test_admin` and `webp-backfill.php`
+  refuse a GET (405) — the client test-push now POSTs. **client-error.php pushes a
+  FIXED sentence**, never the reporter's text (it was a public way onto the
+  owner's lock screen). `ical-export.php` casts its token.
+- **Sessions**: a guest password change signs out other sessions (epoch bump,
+  this one re-stamped) and is throttled; the staging gate's cookie now includes
+  the password's hash (changing it revokes every cookie) and a wrong guess costs
+  a second.
+- Status flags a reply-by-email webhook still authenticating with APP_SECRET.
+- NOT done, deliberately: double opt-in for newsletter/drafts/leads (product
+  change), DNS pinning for the admin-only iCal fetch, and deleting orphan chat
+  uploads (self-repair still only flags them).
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a

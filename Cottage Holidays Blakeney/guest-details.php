@@ -245,6 +245,37 @@ if (!$b) {
     exit();
 }
 
+// THE LINK CLOSES A WEEK AFTER THE STAY. Its token depends on the booking id
+// alone, so it never expired — and a GET shows the decrypted party (names,
+// nationalities, passport numbers) to whoever holds the link, for the twelve
+// months the register is kept. A forwarded email or a shared device should not
+// be a passport lookup a year later, nor a way to rewrite the legal record.
+if (!empty($b['check_out']) && $b['check_out'] < date('Y-m-d', strtotime('-7 days'))) {
+    echo token_link_error_page(
+        'Guest details',
+        'This stay has ended, so the guest-details form is closed. If something needs correcting, just reply to your confirmation email.',
+        410,
+    );
+    exit();
+}
+// Stored document numbers are shown MASKED; a masked value posted back unchanged
+// keeps the stored number (nobody has to retype a passport to fix a typo in a name).
+$stored = [];
+try {
+    $sq = db()->prepare('SELECT party_enc FROM guest_registrations WHERE booking_id = ?');
+    $sq->execute([$id]);
+    $sr = $sq->fetch();
+    if ($sr && !empty($sr['party_enc'])) {
+        $dec = json_decode(decrypt_value($sr['party_enc']), true);
+        $stored = is_array($dec) ? $dec : [];
+    }
+} catch (\Throwable $ex) {
+}
+$maskDoc = function ($d) {
+    $d = (string) $d;
+    return $d === '' ? '' : '••••' . mb_substr($d, -4);
+};
+
 $rate = get_rate($b['prop_key']) ?: [];
 $accent = $rate['accent'] ?? '';
 $actionUrl = 'guest-details.php?b=' . $id . '&token=' . $token;
@@ -258,6 +289,15 @@ $children = max(0, (int) ($b['children'] ?? 0));
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     rate_limit('guestreg', 30, 10); // per-IP: a leaked token can't be spammed
+    // A masked number left as it was means "keep what you have".
+    if (isset($_POST['doc']) && is_array($_POST['doc'])) {
+        foreach ($_POST['doc'] as $i => $dv) {
+            $dv = (string) $dv;
+            if (strpos($dv, '••••') === 0 && isset($stored[$i]['doc']) && $maskDoc($stored[$i]['doc']) === $dv) {
+                $_POST['doc'][$i] = (string) $stored[$i]['doc'];
+            }
+        }
+    }
     $clean = guest_reg_clean($_POST, $expected);
     if ($clean['error']) {
         $error = $clean['error'];
@@ -297,18 +337,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 } else {
-    // GET — prefill from any existing submission, else one row with the lead name.
-    try {
-        $s = db()->prepare('SELECT party_enc FROM guest_registrations WHERE booking_id = ?');
-        $s->execute([$id]);
-        $r = $s->fetch();
-        if ($r && !empty($r['party_enc'])) {
-            $dec = json_decode(decrypt_value($r['party_enc']), true);
-            if (is_array($dec)) {
-                $party = $dec;
+    // GET — prefill from any existing submission (document numbers MASKED), else
+    // one row with the lead name.
+    if ($stored) {
+        $party = array_map(function ($g) use ($maskDoc) {
+            if (is_array($g) && isset($g['doc'])) {
+                $g['doc'] = $maskDoc($g['doc']);
             }
-        }
-    } catch (\Throwable $ex) {
+            return $g;
+        }, $stored);
     }
 }
 

@@ -205,9 +205,11 @@ if (!function_exists('chat_admin_reply')) {
             if ($thread && !empty($thread['email'])) {
                 require_once __DIR__ . '/mailer.php';
                 if (function_exists('smtp_send')) {
-                    $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
+                    // The GUEST's copy carries a GUEST token — it routes their reply back as
+                    // a guest message and can never authorise one in the owner's name.
+                    $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId, 'guest') : '';
                     $msgId =
-                        $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
+                        $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId, 'guest') : null;
                     $photoUrl =
                         $attachment !== '' && function_exists('site_base_url')
                             ? rtrim(site_base_url(), '/') . '/' . $attachment

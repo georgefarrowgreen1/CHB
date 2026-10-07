@@ -27,7 +27,9 @@ $secret = defined('APP_SECRET') ? (string) APP_SECRET : '';
 $cookieName = 'chb_staging_gate';
 // Cookie token is an HMAC of the username with APP_SECRET — unforgeable, and the
 // password is never stored on the device.
-$cookieVal = $secret !== '' ? hash_hmac('sha256', 'staging-gate|' . $user, $secret) : '';
+// The password's hash rides it too, so changing the password revokes every
+// cookie already issued (it used to be the username alone, for ever).
+$cookieVal = $secret !== '' ? hash_hmac('sha256', 'staging-gate|' . $user . '|' . hash('sha256', $pass), $secret) : '';
 
 $serve = function () {
     header('Content-Type: text/html; charset=utf-8');
@@ -52,6 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /');
         exit(); // reload → now authorised via the cookie
     }
+    // The gate password opens an ADMIN seat on staging, so a wrong guess costs a
+    // second: unthrottled, a script could try it as fast as the host answers.
+    sleep(1);
     $loginError = 'Wrong username or password — please try again.';
 }
 

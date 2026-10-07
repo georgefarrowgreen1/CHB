@@ -553,11 +553,66 @@ if ($action === 'restore' || $action === 'undecline') {
 // it before approving. No booking is created and nothing is sent.
 if ($action === 'approve_preview') {
     require_admin();
-    $r = enquiry_confirmation_preview((int) ($in['id'] ?? 0), $in['price_override'] ?? null);
+    $po = $in['price_override'] ?? null;
+    if ($po === null) {
+        try {
+            $tq = db()->prepare('SELECT agreed_price FROM enquiries WHERE id = ?');
+            $tq->execute([(int) ($in['id'] ?? 0)]);
+            $v = $tq->fetchColumn();
+            $po = ($v === false || $v === null) ? null : $v;
+        } catch (\Throwable $e) {
+        }
+    }
+    $r = enquiry_confirmation_preview((int) ($in['id'] ?? 0), $po);
     json_out($r);
 }
 
+// THE TERMS AGREED WITH AN ENQUIRER, stored (migration-128) so a refresh cannot
+// lose them between "approving will charge £400" and the approval itself.
+if ($action === 'set_terms') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $price = trim((string) ($in['price_override'] ?? ''));
+    $pct = trim((string) ($in['plan_pct'] ?? ''));
+    $due = trim((string) ($in['plan_due'] ?? ''));
+    $priceV = $price === '' ? null : round((float) $price, 2);
+    $pctV = $pct === '' ? null : round((float) $pct, 2);
+    if ($priceV !== null && !($priceV > 0)) {
+        json_out(['error' => 'An agreed price must be more than £0 — leave it blank for the standard price.'], 400);
+    }
+    if ($pctV !== null && !($pctV > 0 && $pctV <= 100)) {
+        json_out(['error' => 'A deposit must be between 1% and 100% — leave it blank for the site standard.'], 400);
+    }
+    if ($due !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
+        json_out(['error' => 'That balance date is not a date.'], 400);
+    }
+    try {
+        $u = db()->prepare('UPDATE enquiries SET agreed_price = ?, plan_pct = ?, plan_due = ? WHERE id = ?');
+        $u->execute([$priceV, $pctV, $due === '' ? null : $due, $id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Saving agreed terms needs an update — install the updates (Manage → Status → More tools → Install updates).'], 500);
+    }
+    json_out(['ok' => true]);
+}
+
 if ($action === 'approve') {
+    // What the approval does not carry, the enquiry's STORED terms supply.
+    try {
+        $tq = db()->prepare('SELECT agreed_price, plan_pct, plan_due FROM enquiries WHERE id = ?');
+        $tq->execute([(int) ($in['id'] ?? 0)]);
+        $terms = $tq->fetch() ?: [];
+        if (!isset($in['price_override']) && ($terms['agreed_price'] ?? null) !== null) {
+            $in['price_override'] = $terms['agreed_price'];
+        }
+        if (empty($in['deposit_pct']) && empty($in['deposit_amount']) && ($terms['plan_pct'] ?? null) !== null) {
+            $in['deposit_pct'] = $terms['plan_pct'];
+        }
+        if (empty($in['balance_due_date']) && ($terms['plan_due'] ?? null) !== null) {
+            $in['balance_due_date'] = $terms['plan_due'];
+        }
+    } catch (\Throwable $e) {
+        // un-migrated: the approval carries what the client sent, as before
+    }
     // Optional agreed price (parity with the manual add's price override).
     // The plan agreed with the enquirer travels with the approval, so the
     // payment request that follows moments later is derived from it rather than

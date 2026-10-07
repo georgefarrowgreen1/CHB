@@ -15,6 +15,10 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/image-save.php'; // make_webp_copy()
 
 require_admin();
+// A batch of image work: a POST only, so a planted GET link cannot start one.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    json_out(['error' => 'This action needs a POST.'], 405);
+}
 
 $res = [
     'ok' => true,

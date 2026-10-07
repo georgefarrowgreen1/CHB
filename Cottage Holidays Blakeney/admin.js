@@ -16411,19 +16411,20 @@ function renderExpenses() {
     const list = years.length
         ? years
               .map((y) => {
-                  const items = rowsByYear[y];
+                  // Newest first — the expense you just logged is the one you look for.
+                  const items = rowsByYear[y].slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
                   const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                   return `<div style="margin-top:18px;">
                     <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);font-weight:600;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
                     ${items
                         .map(
                             (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
-                      <div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
+                      <div class="feed-row exp-row">
                         <span class="feed-date">${fmtDate(x.date)}</span>
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
                         ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <span style="display:flex;gap:12px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
+                        <span class="exp-acts"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
                       <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`,
@@ -16792,8 +16793,10 @@ async function returnDeposit(bookingId) {
           );
     if (!sure) return;
     try {
-        const r = await chbWithReauth('returning ' + gbp(amount), () =>
-            apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note }));
+        const rdb = { action: 'return_deposit', id: booking.dbId, amount, note };
+        rdb.op_id = chbOpFor(['return_deposit', rdb]); // a retried return is answered, not paid twice
+        const r = await chbWithReauth('returning ' + gbp(amount), () => apiPost('bookings.php', rdb));
+        chbOpBump();
         // THE GUEST'S EMAIL IS THE ONLY PLACE A RETENTION REASON EXISTS. The endpoint
         // reports the send as `email: {ok, error}`; this threw it away and toasted
         // success, so with SMTP down the money moved, the owner believed the guest had
@@ -18347,7 +18350,7 @@ async function testOwnerPush() {
         // devices nothing goes anywhere. Telling the owner to "check your
         // notifications" then sends them to wait for something never delivered,
         // and they conclude owner alerts are broken. Say which it was.
-        const r = await apiGet('push.php?action=test_admin');
+        const r = await apiPost('push.php', { action: 'test_admin' }); // a POST: the server refuses a GET for this
         const n = Number(r && r.sent) || 0;
         if (n > 0) {
             toast(`Test alert sent to ${n} device${n === 1 ? '' : 's'} — check your notifications.`);
@@ -23178,7 +23181,7 @@ function renderMessagesList() {
     const toggle = `<button class="btn-sm msg-archived-toggle" data-act="toggleArchivedMessages">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
     const controls = threads.length
         ? `<div class="msg-inbox-controls">
-                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" data-act-input="onMsgSearch" data-pass="value" autocomplete="off">
+                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search messages" aria-label="Search by name, email or message text" value="${escapeHtml(__msgSearch)}" data-act-input="onMsgSearch" data-pass="value" autocomplete="off">
                 ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button><button class="btn-sm msg-archived-toggle" data-act="markAllMessagesRead" title="Mark every guest message as read">Mark all read</button>` : ''}
            </div>`
         : '';
@@ -30093,7 +30096,12 @@ async function setEnquiryPrice(enqId) {
     if (vals === null) return;
     const raw = String(vals.price || '').trim();
     const n = Math.round((parseFloat(raw) || 0) * 100) / 100;
+    const was = enq.priceOverride;
     enq.priceOverride = raw !== '' && n > 0 ? n : null;
+    if (!(await enquiryTermsSave(enq))) {
+        enq.priceOverride = was;
+        return;
+    }
     renderInbox();
     if (__enqHubId === enqId) {
         try {
@@ -30122,6 +30130,23 @@ function planDueHint(isCustom, stdDue) {
             : 'Pick the day the balance is due';
     }
     return stdDue ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Custom';
+}
+// The agreed terms are saved WITH the enquiry, so a refresh cannot undo what the
+// owner was just told approving would charge. false = not saved (said why).
+async function enquiryTermsSave(enq) {
+    try {
+        await apiPost('enquiries.php', {
+            action: 'set_terms',
+            id: enq.dbId,
+            price_override: enq.priceOverride != null ? enq.priceOverride : '',
+            plan_pct: enq.planPct > 0 ? enq.planPct : '',
+            plan_due: enq.planDue || '',
+        });
+        return true;
+    } catch (e) {
+        glassAlert("Couldn't save the agreed terms: " + e.message);
+        return false;
+    }
 }
 function enquiryHasPlan(e) {
     return !!(e && (e.planPct > 0 || e.planDue));
@@ -30152,11 +30177,16 @@ async function setEnquiryPlan(enqId) {
     if (vals === null) return;
     const pct = Math.round((parseFloat(String(vals.dep || '').trim()) || 0) * 100) / 100;
     const due = String(vals.due || '').trim();
+    const wasPlan = [enq.planPct, enq.planDue];
     enq.planPct = pct > 0 && pct <= 100 ? pct : null;
     // Saving the STANDARD date unchanged still means "standard" — the same rule
     // the booking hub's dialog follows, so merely opening this cannot quietly
     // convert a standard plan into a custom one.
     enq.planDue = due && due !== stdDue ? due : null;
+    if (!(await enquiryTermsSave(enq))) {
+        [enq.planPct, enq.planDue] = wasPlan;
+        return;
+    }
     renderInbox();
     if (__enqHubId === enqId) { try { renderEnquiryHub(); } catch (e) {} }
     toast(enquiryHasPlan(enq) ? `Plan set — approving will use ${enquiryPlanWords(enq)}.` : 'The site standard will be used.');
