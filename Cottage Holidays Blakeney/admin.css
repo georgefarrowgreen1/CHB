@@ -8314,3 +8314,68 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .sql-opt + .sql-opt { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .sql-opt.is-on { color: var(--accent-text); font-weight: 600; }
 .sql-opt svg { flex: none; }
+/* SEASONAL RATES (approved demo): the year ahead as a strip, each season a card
+   whose summary (name · dates · price range · "In N days") opens to the editor,
+   names suggested from the dates, ended seasons not shown, a save bar only when
+   something changed. */
+.sg-page { gap: 24px; }
+.sg-page .rv-sec > .acr-cap { margin: 0 2px 8px; }
+.sg-year { padding: 16px; }
+.sg-strip { position: relative; height: 28px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 5%, transparent); overflow: hidden; }
+.sg-now { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--text-light); z-index: 1; }
+.sg-blk { position: absolute; top: 0; bottom: 0; min-width: 6px; border: 0; padding: 0; cursor: pointer; }
+.sg-months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-top: 8px; font-size: var(--fs-micro); font-weight: 600; color: var(--text-muted); }
+.sg-c0 { background: var(--accent); }
+.sg-c1 { background: var(--info); }
+.sg-c2 { background: var(--ok); }
+.sg-c3 { background: color-mix(in srgb, var(--accent) 55%, var(--info)); }
+.sg-c4 { background: var(--warn); }
+.sg-c5 { background: color-mix(in srgb, var(--ok) 55%, var(--info)); }
+.sg-cards { gap: 12px; }
+.sg-sum { width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 20px; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; }
+.sg-sum-top { display: flex; align-items: center; gap: 12px; width: 100%; }
+.sg-mark { width: 12px; height: 12px; border-radius: 4px; flex: none; }
+.sg-sum-name { flex: 1 1 auto; min-width: 0; font-size: var(--fs-headline); font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.sg-sum .bhub-chev { transition: transform 0.24s var(--unfold); }
+.sg-sum[aria-expanded="true"] .bhub-chev { transform: rotate(90deg); }
+.sg-sum-when { font-size: var(--fs-body); color: var(--text-muted); }
+.sg-sum-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.sg-sum-price { font-size: var(--fs-headline); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sg-sum-price span { font-size: var(--fs-sub); font-weight: 500; color: var(--text-muted); }
+.sg-sum:focus-visible, .sg-add:focus-visible, .sg-idea:focus-visible, .sg-act:focus-visible, .sg-usesug:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.sg-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.32s var(--unfold), visibility 0s; }
+.sg-fold[hidden] { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.32s var(--unfold), visibility 0s linear 0.32s; }
+.sg-foldin { min-height: 0; overflow: hidden; overflow: clip; overflow-clip-margin: 4px; }
+.sg-band .sg-foldin { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.sg-namebox { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px 12px; }
+.sg-namecap { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.sg-tag.is-sug { color: var(--ok-text); }
+.sg-nameline { display: flex; align-items: center; gap: 8px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 0 4px 0 12px; }
+#season-grid-body .sg-nameline .sg-name { flex: 1 1 auto; min-height: 44px; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; padding: 0; }
+.sg-nameline .sg-name::placeholder { font-style: normal; }
+.sg-usesug { flex: none; height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); font: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sg-usesug[hidden] { display: none; }
+.sg-band .sg-dates { width: calc(100% - 40px); margin: 0 20px 4px; }
+.sg-band .sg-len { padding: 0 20px 12px; }
+.sg-band .sg-row { padding: 8px 20px; }
+.sg-cotn { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sg-diff { font-size: var(--fs-caption); font-weight: 500; color: var(--text-muted); }
+.sg-diff:empty { display: none; }
+.sg-diff.is-up { color: var(--ok-text); }
+.sg-diff.is-down { color: var(--warn-text); }
+.sg-band .sg-foot { padding: 8px 20px 12px; }
+.sg-acts { display: flex; gap: 8px; padding: 12px 20px 20px; }
+.sg-act { flex: 1 1 0; height: 44px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; transition: transform 320ms var(--settle); }
+.sg-act-del { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.sg-act:active, .sg-sum:active, .sg-idea:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+.sg-addcard { margin-top: 12px; border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--r-lg); overflow: hidden; }
+.sg-page .sg-add { width: 100%; display: flex; align-items: center; gap: 12px; padding: 0 20px; min-height: 60px; color: var(--accent-text); font-size: var(--fs-body); text-align: left; }
+.sg-page .sg-add span { font-size: var(--fs-title); line-height: 1; }
+.sg-ideacap { padding: 0 20px 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.sg-idea { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px; min-height: 56px; border: 0; border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; text-align: left; cursor: pointer; }
+.sg-idea-when { font-size: var(--fs-sub); font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+.sg-idea-own { color: var(--accent-text); }
+#sg-savebar[hidden] { display: none; }
+#sg-savebar { animation: chbSettle 320ms var(--settle); }
+.sg-undo { flex: none; height: 44px; padding: 0 12px; border: 0; background: none; color: var(--text-muted); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .sg-fold, .sg-fold[hidden] { transition: none; } .sg-fold[hidden] { display: none; } }

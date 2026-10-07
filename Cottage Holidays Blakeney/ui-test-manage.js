@@ -908,7 +908,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/30 nights/.test(p3b.hint), `the picker's own hint counts inclusively too ("${p3b.hint}")`);
   ok(p3b.closed && p3b.co === '2027-07-30', `Done writes the range back through the hidden fields (${p3b.co})`);
   ok(/30\/07\/2027/.test(p3b.pills) && p3b.len === '30 nights', `…and the card repaints — pills DD/MM/YYYY + "${p3b.len}"`);
-  ok(/1 change to save/.test(p3b.msg), `the save bar counts a moved range as ONE change ("${p3b.msg}")`);
+  ok(/^1 unsaved change$/.test(p3b.msg), `the save bar counts a moved range as ONE change, its name following ("${p3b.msg}")`);
 
   // The save path is unchanged: per-cottage seasons_save, blank prices omitted.
   const p3c = await page.evaluate(async () => {
@@ -968,6 +968,105 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p3c2.posted === 0, `an unpriced season is REFUSED, not saved as nothing (${p3c2.posted} posts)`);
   ok(/no price on any cottage/i.test(p3c2.say), `…and says why, naming the card (${p3c2.say.slice(0, 90)})`);
   ok(p3c2.label !== '', `…with the owner's own work still on screen to fix ("${p3c2.label}")`);
+
+  console.log('§8b seasons: ended ones hidden but kept, summaries, suggested names, repeat next year');
+  const sb = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t = todayDashed();
+    const keys = liveCottageKeys();
+    const y = +t.slice(0, 4);
+    const nextEaster = (() => { for (const yy of [y, y + 1, y + 2]) { const e = sgEaster(yy); if (e > sgIsoAdd(t, 30)) return e; } return ''; })();
+    keys.forEach((k, ix) => {
+      propertySeasons[k] = [
+        { label: 'Old summer', start_date: sgIsoAdd(t, -60), end_date: sgIsoAdd(t, -1), couple_rate: 150 + ix },
+        { label: 'My break', start_date: sgIsoAdd(t, 10), end_date: sgIsoAdd(t, 16), couple_rate: 140 + ix * 5 },
+        { label: '', start_date: sgIsoAdd(nextEaster, -3), end_date: sgIsoAdd(nextEaster, 1), couple_rate: 160 },
+      ];
+    });
+    settingsOpen('seasongrid');
+    await wait(300);
+    const cards = [...document.querySelectorAll('#season-grid-body .sg-band')];
+    const c0 = cards[0];
+    const i0 = c0.getAttribute('data-sg-i');
+    const sum = {
+      n: cards.length,
+      noEnded: !/Old summer/.test(document.getElementById('season-grid-body').textContent),
+      cap: (document.getElementById('settings-panel-cap') || {}).textContent || '',
+      name: (document.getElementById(`sg-sum-name-${i0}`) || {}).textContent,
+      when: (document.getElementById(`sg-sum-when-${i0}`) || {}).textContent,
+      price: (document.getElementById(`sg-sum-price-${i0}`) || {}).textContent,
+      soon: (document.getElementById(`sg-sum-cap-${i0}`) || {}).textContent,
+      closed: document.getElementById(`sg-fold-${i0}`).hidden,
+      bar0: document.getElementById('sg-savebar').hidden,
+      blocks: document.querySelectorAll('#sg-strip .sg-blk').length,
+      noIntro: !/Each season is one card/.test(document.getElementById('sec-seasongrid').textContent),
+    };
+    document.getElementById(`sg-sum-${i0}`).click();
+    await wait(50);
+    sum.opened = !document.getElementById(`sg-fold-${i0}`).hidden;
+    const c2 = cards[1];
+    const i2 = c2.getAttribute('data-sg-i');
+    sum.easterName = (document.getElementById(`sg-sum-name-${i2}`) || {}).textContent;
+    sum.easterTag = (document.getElementById(`sg-nmtag-${i2}`) || {}).textContent;
+    sum.myTag = (document.getElementById(`sg-nmtag-${i0}`) || {}).textContent;
+    // a price edit raises the save bar
+    const p = document.getElementById(`sg-p-${i0}-${keys[0]}`);
+    p.value = String(+p.value + 5);
+    p.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    sum.bar1 = !document.getElementById('sg-savebar').hidden;
+    sum.msg1 = (document.getElementById('season-grid-msg') || {}).textContent;
+    sum.diff = (document.getElementById(`sg-diff-${i0}-${keys[0]}`) || {}).textContent;
+    // repeat the Easter card: next year's Easter, not the same dates a year on
+    document.querySelector(`.sg-band[data-sg-i="${i2}"] [data-act="sgRepeat"]`).click();
+    await wait(50);
+    const last = [...document.querySelectorAll('#season-grid-body .sg-band')].pop();
+    const il = last.getAttribute('data-sg-i');
+    const ny = +nextEaster.slice(0, 4) + 1;
+    sum.rep = { from: dpVal(`sg-ci-${il}`), want: sgIsoAdd(sgEaster(ny), -3), name: (document.getElementById(`sg-sum-name-${il}`) || {}).textContent, open: !document.getElementById(`sg-fold-${il}`).hidden };
+    // a typed name sticks; Use "…" hands it back
+    const nm = document.getElementById(`sg-nm-${il}`);
+    nm.value = 'Spring treat';
+    nm.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    sum.typedTag = (document.getElementById(`sg-nmtag-${il}`) || {}).textContent;
+    sum.useShown = !document.getElementById(`sg-usesug-${il}`).hidden;
+    document.getElementById(`sg-usesug-${il}`).click();
+    await wait(30);
+    sum.backTo = nm.value;
+    // add from the ideas list
+    document.getElementById('sg-add').click();
+    await wait(30);
+    sum.ideas = [...document.querySelectorAll('#sg-ideas .sg-idea')].map((b) => b.textContent.trim());
+    // save: the ended season goes back too
+    const realPost = window.apiPost;
+    const posts = [];
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('rates.php') && body.action === 'seasons_save') { posts.push(body); return { ok: true }; }
+      return realPost(url, body);
+    };
+    document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"]').click();
+    await wait(300);
+    window.apiPost = realPost;
+    const first = posts.find((x) => x.prop_key === keys[0]);
+    sum.keptEnded = !!first && first.seasons.some((x) => x.label === 'Old summer' && x.end === sgIsoAdd(t, -1));
+    sum.labels = first ? first.seasons.map((x) => x.label) : [];
+    return sum;
+  });
+  ok(sb.n === 2 && sb.noEnded, `an ended season is not shown (${sb.n} cards)`);
+  ok(/2 coming up/.test(sb.cap), `the title counts what is coming up (${sb.cap})`);
+  ok(sb.name === 'My break' && /· 7 nights/.test(sb.when) && /a night/.test(sb.price) && /In 10 days/.test(sb.soon), `the summary: name, dates and nights, the price range, "In 10 days" (${sb.name} | ${sb.when} | ${sb.price} | ${sb.soon})`);
+  ok(sb.closed && sb.opened, 'a season starts closed and its summary opens it');
+  ok(sb.bar0 && sb.bar1 && /1 unsaved change/.test(sb.msg1), `no save bar until something changes, then it counts (${sb.msg1})`);
+  ok(/on usual £/.test(sb.diff), `each price says how it compares with the usual rate (${sb.diff})`);
+  ok(sb.blocks === 2, `the year strip draws each coming season (${sb.blocks})`);
+  ok(sb.noIntro, 'the explanatory sentence is gone');
+  ok(sb.easterName === 'Easter' && /Suggested/.test(sb.easterTag) && /Your name/.test(sb.myTag), `an unnamed season is named from its dates; a typed name is kept (${sb.easterName})`);
+  ok(sb.rep.from === sb.rep.want && sb.rep.name === 'Easter' && sb.rep.open, `Repeat next year moves Easter with Easter (${sb.rep.from} = ${sb.rep.want})`);
+  ok(/Your name/.test(sb.typedTag) && sb.useShown && sb.backTo === 'Easter', 'typing a name makes it stick; "Use …" hands it back to the dates');
+  ok(sb.ideas.length >= 2 && sb.ideas.some((t) => /Choose your own dates/.test(t)), `Add a season offers what is coming up, plus your own dates (${sb.ideas.slice(0, 3).join(' | ')})`);
+  ok(sb.keptEnded, 'saving sends the ended season back — it is hidden, never deleted early');
+  ok(sb.labels.includes('Easter'), `a suggested name is saved as the season's name (${sb.labels.join(', ')})`);
 
   const p3d = await page.evaluate(async () => {
     settingsOpen('pricing');

@@ -12362,7 +12362,7 @@ const SETTINGS_TITLES = {
     accom: 'Cottages',
     calendar: 'Calendar sync',
     cancel: 'Cancellation policy',
-    seasongrid: 'Seasonal rates — all cottages',
+    seasongrid: 'Seasonal rates',
     payments: 'Payments',
     guests: 'Guest accounts',
     analytics: 'Analytics',
@@ -27118,62 +27118,342 @@ function sgLenText(ci, co) {
     const n = nightsBetween(ci, co) + 1; // end date inclusive — see the block comment
     return `${n} night${n === 1 ? '' : 's'}`;
 }
+// SEASONAL RATES (approved demo). Ended seasons are not shown: a season leaves the
+// page the day after its last night. They are KEPT (held in __sgEnded and sent back
+// with every save) because the pricing assistant reads the season price that applied
+// to past bookings; self-repair deletes them a year after they end. Each season is a
+// card whose summary (name, dates, price range, "In N days") opens to the editor.
+let __sgEnded = []; // bands that have ended — invisible here, preserved on save
+const SG_FILLS = 6;
+const SG_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SG_MONFULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function sgIsoAdd(iso, n) {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+function sgEaster(y) {
+    const [m, d] = chbEaster(y);
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function sgMondays(y, m) {
+    const out = [];
+    for (let dd = 1; dd <= 31; dd++) {
+        const x = new Date(Date.UTC(y, m, dd));
+        if (x.getUTCMonth() !== m) break;
+        if (x.getUTCDay() === 1) out.push(x.toISOString().slice(0, 10));
+    }
+    return out;
+}
+function sgShort(iso) {
+    const d = new Date(iso + 'T12:00:00Z');
+    return d.getUTCDate() + ' ' + SG_MON[d.getUTCMonth()];
+}
+// The name the dates suggest — from facts the app works out itself (Easter, the
+// bank holidays, the calendar), never a guess. School half terms are left out on
+// purpose: they vary by council and year, and a wrong one is a false claim.
+function sgSuggestName(from, to) {
+    if (!from || !to || to < from) return '';
+    const y1 = +from.slice(0, 4), y2 = +to.slice(0, 4);
+    const has = (iso) => from <= iso && iso <= to;
+    for (let y = y1; y <= y2; y++) {
+        if (has(`${y}-12-25`)) return to > `${y}-12-31` ? 'Christmas & New Year' : 'Christmas';
+        if (has(sgEaster(y))) return 'Easter';
+    }
+    for (let y = y1; y <= y2; y++) if (has(`${y}-07-31`) && has(`${y}-08-01`)) return 'Summer holidays';
+    const f = new Date(from + 'T12:00:00Z'), t = new Date(to + 'T12:00:00Z');
+    const lastDay = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + 1, 0)).getUTCDate();
+    if (f.getUTCDate() === 1 && t.getUTCFullYear() === f.getUTCFullYear() && t.getUTCMonth() === f.getUTCMonth() && t.getUTCDate() === lastDay) return SG_MONFULL[f.getUTCMonth()];
+    for (let y = y1; y <= y2; y++) {
+        const may = sgMondays(y, 4), aug = sgMondays(y, 7);
+        if (has(may[0])) return 'Early May bank holiday';
+        if (has(may[may.length - 1])) return 'Late May bank holiday';
+        if (has(aug[aug.length - 1])) return 'August bank holiday';
+    }
+    return f.getUTCMonth() === t.getUTCMonth() && f.getUTCFullYear() === t.getUTCFullYear()
+        ? `${f.getUTCDate()}–${t.getUTCDate()} ${SG_MONFULL[t.getUTCMonth()]}`
+        : `${sgShort(from)} – ${sgShort(to)}`;
+}
+// The same holiday next year: a moving feast moves with its anchor (Easter, the
+// bank-holiday Mondays); anything else is the same dates a year on.
+function sgNextYear(from, to) {
+    const name = sgSuggestName(from, to);
+    const y = +from.slice(0, 4);
+    const shift = (a, b) => {
+        const n = Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+        return [sgIsoAdd(from, n), sgIsoAdd(to, n)];
+    };
+    if (name === 'Easter') {
+        const ey = from <= sgEaster(y) && sgEaster(y) <= to ? y : y + 1;
+        return shift(sgEaster(ey), sgEaster(ey + 1));
+    }
+    const anchor = (fn) => {
+        for (const yy of [y, y + 1]) {
+            const a = fn(yy);
+            if (from <= a && a <= to) return shift(a, fn(yy + 1));
+        }
+        return null;
+    };
+    if (name === 'Early May bank holiday') { const r = anchor((yy) => sgMondays(yy, 4)[0]); if (r) return r; }
+    if (name === 'Late May bank holiday') { const r = anchor((yy) => { const m = sgMondays(yy, 4); return m[m.length - 1]; }); if (r) return r; }
+    if (name === 'August bank holiday') { const r = anchor((yy) => { const m = sgMondays(yy, 7); return m[m.length - 1]; }); if (r) return r; }
+    const plus = (iso) => {
+        const ny = +iso.slice(0, 4) + 1;
+        const md = iso.slice(5) === '02-29' ? '02-28' : iso.slice(5);
+        return `${ny}-${md}`;
+    };
+    return [plus(from), plus(to)];
+}
 function seasonCardHtml(b) {
     const i = __sgSeq++;
     const keys = liveCottageKeys();
+    const sug = sgSuggestName(b.start, b.end);
+    const auto = !b.label || b.label === sug;
+    const label = b.label || sug;
     return `
-                <div class="sg-band" data-sg-i="${i}"${b.isNew ? ' data-sg-new="1"' : ''}>
-                    <div class="sg-head">
-                        <input type="text" class="sg-name" id="sg-nm-${i}" value="${escapeHtml(b.label)}" data-sg="label" placeholder="Name this season" aria-label="Season name" ${chbInput('sgSync')}>
-                        <button type="button" class="sg-del" ${chbAttrs('sgRemove', String(i))} aria-label="Remove this season everywhere" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <div class="sg-band" data-sg-i="${i}"${b.isNew ? ' data-sg-new="1"' : ''} data-sg-auto="${auto ? 1 : 0}">
+                    <button type="button" class="sg-sum" id="sg-sum-${i}" aria-expanded="${b.open ? 'true' : 'false'}" aria-controls="sg-fold-${i}" ${chbAttrs('sgToggle', String(i))}>
+                        <span class="sg-sum-top"><span class="sg-mark sg-c${i % SG_FILLS}" aria-hidden="true"></span><span class="sg-sum-name" id="sg-sum-name-${i}"></span>${BHUB_CHEV}</span>
+                        <span class="sg-sum-when" id="sg-sum-when-${i}"></span>
+                        <span class="sg-sum-foot"><span class="sg-sum-price" id="sg-sum-price-${i}"></span><span id="sg-sum-cap-${i}"></span></span>
+                    </button>
+                    <div class="sg-fold" id="sg-fold-${i}"${b.open ? '' : ' hidden'}><div class="sg-foldin">
+                    <div class="sg-namebox">
+                        <div class="sg-namecap"><label for="sg-nm-${i}">Name</label><span id="sg-nmtag-${i}"></span></div>
+                        <div class="sg-nameline"><input type="text" class="sg-name" id="sg-nm-${i}" value="${escapeHtml(label)}" data-sg="label" placeholder="${escapeHtml(sug || 'Name this season')}" autocomplete="off" ${chbInput('sgName', String(i))}><button type="button" class="sg-usesug" id="sg-usesug-${i}" hidden ${chbAttrs('sgUseSuggested', String(i))}></button></div>
                     </div>
-                    <input type="hidden" id="sg-ci-${i}" value="${b.start || ''}" data-orig="${b.start || ''}" data-sg="start">
-                    <input type="hidden" id="sg-co-${i}" value="${b.end || ''}" data-orig="${b.end || ''}" data-sg="end">
+                    <input type="hidden" id="sg-ci-${i}" value="${b.start || ''}" data-orig="${b.isNew ? '' : b.start || ''}" data-sg="start">
+                    <input type="hidden" id="sg-co-${i}" value="${b.end || ''}" data-orig="${b.isNew ? '' : b.end || ''}" data-sg="end">
                     <button type="button" class="sg-dates" id="sg-trig-${i}" ${chbAttrs('openSeasonDates', String(i))}>${sgPillsHtml(b.start, b.end)}</button>
                     <div class="sg-len" id="sg-len-${i}">${sgLenText(b.start, b.end)}</div>
                     <div class="sg-rows">${keys
                         .map(
                             (k) => `
                         <label class="sg-row">
-                            <span class="sg-cot"><span class="legend-swatch swatch-${k}"></span>${escapeHtml(propertyMeta[k].name)}</span>
-                            <span class="sg-price"><span aria-hidden="true">£</span><input type="number" min="0" step="1" placeholder="base" id="sg-p-${i}-${k}" value="${b.rates[k] || ''}" data-sg-prop="${k}" aria-label="${escapeHtml(propertyMeta[k].name)} nightly rate for this season — blank keeps the base rate" ${chbInput('sgSync')}></span>
+                            <span class="sg-cot"><span class="legend-swatch swatch-${k}"></span><span class="sg-cotn">${escapeHtml(propertyMeta[k].name)}<span class="sg-diff" id="sg-diff-${i}-${k}"></span></span></span>
+                            <span class="sg-price"><span aria-hidden="true">£</span><input type="number" min="0" step="1" placeholder="usual" id="sg-p-${i}-${k}" value="${b.rates[k] || ''}" data-sg-prop="${k}" aria-label="${escapeHtml(propertyMeta[k].name)} nightly rate for this season — blank keeps the usual rate" ${chbInput('sgSync')}></span>
                         </label>`,
                         )
                         .join('')}</div>
                     <div class="sg-foot" id="sg-foot-${i}" style="display:none;"></div>
+                    <div class="sg-acts"><button type="button" class="sg-act" ${chbAttrs('sgRepeat', String(i))}>Repeat next year</button><button type="button" class="sg-act sg-act-del" ${chbAttrs('sgRemove', String(i))}>Delete</button></div>
+                    </div></div>
                 </div>`;
 }
 function renderSeasonGrid() {
     const wrap = document.getElementById('season-grid-wrap');
     if (!wrap) return;
-    const bands = seasonGridBands();
+    const today = todayDashed();
+    const all = seasonGridBands();
+    // An ended season is a season whose LAST NIGHT is before today.
+    __sgEnded = all.filter((b) => b.end && b.end < today);
+    const bands = all.filter((b) => !(b.end && b.end < today));
     __sgSeq = 0;
     __sgRemoved = 0;
     wrap.innerHTML = `
-                <div class="acr-cap" id="sg-count"></div>
-                <div class="sg-cards" id="season-grid-body">${
-                    bands.length
-                        ? bands.map(seasonCardHtml).join('')
-                        : seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true })
-                }</div>
-                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">Add a season</button></div>
-                <div id="sg-savebar">
+                <section class="rv-sec sg-yearsec">
+                    <h3 class="acr-cap">The year ahead</h3>
+                    <div class="acr-well sg-year"><div class="sg-strip" id="sg-strip"></div><div class="sg-months" id="sg-months" aria-hidden="true"></div></div>
+                </section>
+                <section class="rv-sec">
+                    <h3 class="acr-cap" id="sg-count"></h3>
+                    <div class="sg-cards" id="season-grid-body">${bands.map((b) => seasonCardHtml(b)).join('')}</div>
+                    <div class="sg-addcard">
+                        <button type="button" class="sg-add" id="sg-add" aria-expanded="false" aria-controls="sg-ideas" data-act="sgAddToggle"><span aria-hidden="true">+</span>Add a season</button>
+                        <div class="sg-fold" id="sg-ideas" hidden><div class="sg-foldin" id="sg-ideas-in"></div></div>
+                    </div>
+                </section>
+                <div id="sg-savebar" hidden>
                     <span id="season-grid-msg" role="status"></span>
-                    <button type="button" class="sg-save" data-act="saveSeasonGrid">Save all cottages</button>
-                </div>
-                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:12px 0 0;max-width:640px;">Leave a price blank and that cottage keeps its normal base rate for those dates. Removing a card removes the season from every cottage when you save.</p>`;
+                    <button type="button" class="sg-undo" data-act="renderSeasonGrid">Undo</button>
+                    <button type="button" class="sg-save" data-act="saveSeasonGrid">Save</button>
+                </div>`;
     sgSync();
 }
-function addSeasonGridRow() {
+// The seasons the owner has not covered yet, coming up in the next year — offered
+// as one-tap starts with the dates filled in. Overlapping an existing card = not offered.
+function sgIdeas() {
+    const today = todayDashed();
+    const y = +today.slice(0, 4);
+    const out = [];
     const body = document.getElementById('season-grid-body');
-    if (!body) return;
-    body.insertAdjacentHTML(
-        'beforeend',
-        seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true }),
-    );
+    const ranges = body ? [...body.querySelectorAll('.sg-band')].map((c) => {
+        const i = c.getAttribute('data-sg-i');
+        return [dpVal(`sg-ci-${i}`), dpVal(`sg-co-${i}`)];
+    }) : [];
+    for (const yy of [y, y + 1]) {
+        const e = sgEaster(yy), may = sgMondays(yy, 4), aug = sgMondays(yy, 7);
+        out.push(
+            [sgIsoAdd(e, -3), sgIsoAdd(e, 1)],
+            [sgIsoAdd(may[0], -3), may[0]],
+            [sgIsoAdd(may[may.length - 1], -3), sgIsoAdd(may[may.length - 1], 4)],
+            [`${yy}-07-24`, `${yy}-08-31`],
+            [sgIsoAdd(aug[aug.length - 1], -3), aug[aug.length - 1]],
+            [`${yy}-12-19`, `${yy + 1}-01-02`],
+        );
+    }
+    const horizon = sgIsoAdd(today, 400);
+    return out
+        .filter(([a, b]) => a > today && a < horizon && !ranges.some(([c, d]) => c && d && c <= b && d >= a))
+        .sort((p, q) => (p[0] < q[0] ? -1 : 1))
+        .filter((r, ix, arr) => !arr.slice(0, ix).some((o) => o[0] <= r[1] && o[1] >= r[0]))
+        .slice(0, 4);
+}
+function sgAddToggle() {
+    const f = document.getElementById('sg-ideas');
+    const b = document.getElementById('sg-add');
+    if (!f) return;
+    const open = f.hidden;
+    if (open) {
+        const inner = document.getElementById('sg-ideas-in');
+        if (inner)
+            inner.innerHTML =
+                '<div class="sg-ideacap">Coming up, not yet covered</div>' +
+                sgIdeas()
+                    .map(([a, z]) => `<button type="button" class="sg-idea" ${chbAttrs('sgAddRange', a, z)}><span>${escapeHtml(sgSuggestName(a, z))}</span><span class="sg-idea-when">${sgShort(a)} – ${sgShort(z)}</span></button>`)
+                    .join('') +
+                `<button type="button" class="sg-idea sg-idea-own" data-act="addSeasonGridRow">Choose your own dates</button>`;
+    }
+    f.hidden = !open;
+    if (b) b.setAttribute('aria-expanded', String(open));
+}
+function sgAddCard(b) {
+    const body = document.getElementById('season-grid-body');
+    if (!body) return null;
+    body.insertAdjacentHTML('beforeend', seasonCardHtml(Object.assign({ label: '', start: '', end: '', rates: {}, isNew: true, open: true }, b)));
+    const f = document.getElementById('sg-ideas');
+    if (f && !f.hidden) sgAddToggle();
     sgSync();
-    const nm = body.lastElementChild && body.lastElementChild.querySelector('.sg-name');
-    if (nm instanceof HTMLElement) nm.focus();
+    return body.lastElementChild;
+}
+function sgAddRange(a, z) {
+    const card = sgAddCard({ start: a, end: z });
+    if (card) chbScroll(card, { block: 'nearest' });
+}
+function addSeasonGridRow() {
+    const card = sgAddCard({});
+    if (!card) return;
+    const i = card.getAttribute('data-sg-i');
+    try { openSeasonDates(i); } catch (e) {}
+}
+function sgToggle(i) {
+    const f = document.getElementById(`sg-fold-${i}`);
+    const b = document.getElementById(`sg-sum-${i}`);
+    if (!f) return;
+    f.hidden = !f.hidden;
+    if (b) b.setAttribute('aria-expanded', String(!f.hidden));
+}
+function sgRepeat(i) {
+    const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
+    if (!card) return;
+    const a = dpVal(`sg-ci-${i}`), z = dpVal(`sg-co-${i}`);
+    if (!a || !z) return;
+    const [na, nz] = sgNextYear(a, z);
+    const rates = {};
+    liveCottageKeys().forEach((k) => {
+        const v = parseFloat(dpVal(`sg-p-${i}-${k}`)) || 0;
+        if (v > 0) rates[k] = v;
+    });
+    const auto = card.getAttribute('data-sg-auto') === '1';
+    const label = auto ? '' : dpVal(`sg-nm-${i}`).trim();
+    const nc = sgAddCard({ start: na, end: nz, rates, label });
+    if (nc) chbScroll(nc, { block: 'nearest' });
+}
+// Typing a name of your own makes it stick; clearing it (or typing the suggestion)
+// hands the name back to the dates.
+function sgName(i) {
+    const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
+    if (!card) return;
+    const v = dpVal(`sg-nm-${i}`).trim();
+    const sug = sgSuggestName(dpVal(`sg-ci-${i}`), dpVal(`sg-co-${i}`));
+    card.setAttribute('data-sg-auto', !v || v === sug ? '1' : '0');
+    sgSync();
+}
+function sgUseSuggested(i) {
+    const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(`sg-nm-${i}`));
+    if (!card || !el) return;
+    card.setAttribute('data-sg-auto', '1');
+    el.value = sgSuggestName(dpVal(`sg-ci-${i}`), dpVal(`sg-co-${i}`));
+    sgSync();
+}
+// The summary line, the name tag, the strip and the counts — everything derived
+// from the card's own fields, so the summary cannot disagree with the editor.
+function sgSyncExtras(cards, changes) {
+    const today = todayDashed();
+    const keys = liveCottageKeys();
+    const strip = [];
+    cards.forEach((card) => {
+        const i = card.getAttribute('data-sg-i');
+        const ci = dpVal(`sg-ci-${i}`), co = dpVal(`sg-co-${i}`);
+        const sug = sgSuggestName(ci, co);
+        const nmEl = /** @type {HTMLInputElement|null} */ (document.getElementById(`sg-nm-${i}`));
+        const auto = card.getAttribute('data-sg-auto') === '1';
+        if (nmEl) {
+            if (auto && sug && nmEl.value !== sug && document.activeElement !== nmEl) nmEl.value = sug;
+            nmEl.placeholder = sug || 'Name this season';
+        }
+        const name = (nmEl && nmEl.value.trim()) || sug || 'New season';
+        const tag = document.getElementById(`sg-nmtag-${i}`);
+        if (tag) { tag.textContent = auto ? 'Suggested from the dates' : 'Your name'; tag.className = auto ? 'sg-tag is-sug' : 'sg-tag'; }
+        const use = document.getElementById(`sg-usesug-${i}`);
+        if (use) { use.hidden = auto || !sug; use.textContent = `Use “${sug}”`; }
+        const sn = document.getElementById(`sg-sum-name-${i}`);
+        if (sn) sn.textContent = name;
+        const sw = document.getElementById(`sg-sum-when-${i}`);
+        if (sw) sw.textContent = ci && co ? `${sgShort(ci)} – ${sgShort(co)} · ${sgLenText(ci, co)}` : 'Pick the dates';
+        const vals = keys.map((k) => parseFloat(dpVal(`sg-p-${i}-${k}`)) || 0).filter((v) => v > 0);
+        const sp = document.getElementById(`sg-sum-price-${i}`);
+        if (sp) {
+            const lo = Math.min(...vals), hi = Math.max(...vals);
+            sp.innerHTML = vals.length ? `£${lo}${hi !== lo ? '–' + hi : ''} <span>a night</span>` : '<span>No prices yet</span>';
+        }
+        const sc = document.getElementById(`sg-sum-cap-${i}`);
+        if (sc) {
+            const days = ci ? Math.round((Date.parse(ci) - Date.parse(today)) / 864e5) : 99;
+            sc.innerHTML = ci && co && ci <= today && today <= co ? stCap('ok', 'Now') : ci && days > 0 && days <= 21 ? stCap('warn', `In ${days} day${days === 1 ? '' : 's'}`) : '';
+        }
+        keys.forEach((k) => {
+            const d = document.getElementById(`sg-diff-${i}-${k}`);
+            if (!d) return;
+            const v = parseFloat(dpVal(`sg-p-${i}-${k}`)) || 0;
+            const base = Math.round(parseFloat((propertyRates[k] || defaultRates[k] || {}).coupleRate) || 0);
+            const diff = v - base;
+            d.textContent = !v || !base ? '' : diff === 0 ? 'Same as usual' : `${diff > 0 ? '+' : '−'}£${Math.abs(diff)} on usual £${base}`;
+            d.className = 'sg-diff' + (v && base && diff > 0 ? ' is-up' : v && base && diff < 0 ? ' is-down' : '');
+        });
+        if (ci && co) strip.push({ i, ci, co, name });
+    });
+    // The year strip: the next twelve months, each season a block where it falls.
+    const st = document.getElementById('sg-strip');
+    if (st) {
+        const t0 = Date.parse(today), span = 365 * 864e5;
+        st.innerHTML = '<span class="sg-now" aria-hidden="true"></span>' + strip
+            .map((s) => {
+                const a = Math.max(0, (Date.parse(s.ci) - t0) / span), z = Math.min(1, (Date.parse(s.co) - t0 + 864e5) / span);
+                if (z <= 0 || a >= 1) return '';
+                return `<button type="button" class="sg-blk sg-c${+s.i % SG_FILLS}" style="left:${(a * 100).toFixed(2)}%;width:${(Math.max(0, z - a) * 100).toFixed(2)}%" aria-label="${escapeHtml(s.name)}" ${chbAttrs('sgOpenFromStrip', s.i)}></button>`;
+            })
+            .join('');
+    }
+    const mo = document.getElementById('sg-months');
+    if (mo && !mo.childElementCount) {
+        const m0 = +today.slice(5, 7) - 1;
+        mo.innerHTML = Array.from({ length: 12 }, (_, k) => `<span>${SG_MON[(m0 + k) % 12].charAt(0)}</span>`).join('');
+    }
+    const count = document.getElementById('sg-count');
+    if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
+    const cap = document.getElementById('settings-panel-cap');
+    const sec = document.getElementById('sec-seasongrid');
+    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = stCap('unk', `${cards.length} coming up`);
+    const bar = document.getElementById('sg-savebar');
+    if (bar) bar.hidden = !changes;
+}
+function sgOpenFromStrip(i) {
+    const f = document.getElementById(`sg-fold-${i}`);
+    if (f && f.hidden) sgToggle(i);
+    const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
+    if (card) chbScroll(card, { block: 'nearest' });
 }
 function sgRemove(i) {
     const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
@@ -27225,9 +27505,15 @@ function sgSync() {
         if (trig) trig.innerHTML = sgPillsHtml(ci, co);
         const len = document.getElementById(`sg-len-${i}`);
         if (len) len.textContent = sgLenText(ci, co);
-        // A moved date range is ONE change however both ends moved.
-        if (sgChanged(`sg-nm-${i}`)) changes++;
-        if (sgChanged(`sg-ci-${i}`) || sgChanged(`sg-co-${i}`)) changes++;
+        // A suggested name follows its dates BEFORE anything is counted, and moving
+        // the dates is ONE change however both ends (and the name with them) moved.
+        const auto = card.getAttribute('data-sg-auto') === '1';
+        const nmEl = /** @type {HTMLInputElement|null} */ (document.getElementById(`sg-nm-${i}`));
+        const sug = sgSuggestName(ci, co);
+        if (auto && sug && nmEl && nmEl.value !== sug && document.activeElement !== nmEl) nmEl.value = sug;
+        const datesMoved = sgChanged(`sg-ci-${i}`) || sgChanged(`sg-co-${i}`);
+        if (datesMoved) changes++;
+        else if (sgChanged(`sg-nm-${i}`)) changes++;
         keys.forEach((k) => {
             if (sgChanged(`sg-p-${i}-${k}`)) changes++;
         });
@@ -27248,13 +27534,12 @@ function sgSync() {
             foot.style.display = blank.length ? '' : 'none';
         }
     });
-    const count = document.getElementById('sg-count');
-    if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
     const msg = document.getElementById('season-grid-msg');
     if (msg) {
         msg.style.color = '';
-        msg.textContent = changes ? `${changes} change${changes === 1 ? '' : 's'} to save` : 'Nothing changed yet';
+        msg.textContent = changes ? `${changes} unsaved change${changes === 1 ? '' : 's'}` : 'Nothing changed yet';
     }
+    sgSyncExtras(cards, changes);
 }
 async function saveSeasonGrid() {
     const body = document.getElementById('season-grid-body');
@@ -27267,9 +27552,9 @@ async function saveSeasonGrid() {
             const el = card.querySelector(sel);
             return el ? el.value.trim() : '';
         };
-        const label = get('[data-sg="label"]'),
-            start = get('[data-sg="start"]'),
-            end = get('[data-sg="end"]');
+        const start = get('[data-sg="start"]'),
+            end = get('[data-sg="end"]'),
+            label = get('[data-sg="label"]') || sgSuggestName(start, end);
         const rates = keys.map((k) => {
             const el = card.querySelector(`[data-sg-prop="${k}"]`);
             return { k, rate: el ? parseFloat(el.value) || 0 : 0 };
@@ -27298,6 +27583,14 @@ async function saveSeasonGrid() {
             if (rate > 0) perProp[k].push({ label, start, end, rate });
         });
     }
+    // Ended seasons are not on the page but are still the owner's: every save sends
+    // them back, or saving would delete them early (self-repair clears them a year on).
+    __sgEnded.forEach((b) => {
+        keys.forEach((k) => {
+            const rate = b.rates[k];
+            if (rate > 0) perProp[k].push({ label: b.label, start: b.start, end: b.end, rate });
+        });
+    });
     const msg = document.getElementById('season-grid-msg');
     // ONE SAVE PER COTTAGE, so the report has to be per cottage too. This used to
     // run the loop inside a single try: the second cottage failing meant the FIRST
@@ -27350,7 +27643,7 @@ async function saveSeasonGrid() {
             m2.textContent = 'Saved for all cottages ✓';
             m2.style.color = 'var(--ok-text)';
         }
-        toast('Seasonal rates saved for all cottages.');
+        toast('Seasonal rates saved.');
         return;
     }
     const part = savedKeys.length
