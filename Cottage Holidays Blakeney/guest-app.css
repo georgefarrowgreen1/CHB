@@ -635,6 +635,12 @@ body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  /* The box still wears .glass-panel's BACKDROP blur (saturate + brightness)
+     under its transparent ground: on iOS that painted a brighter rectangle,
+     fading at its edges, over a page of the same colour (reported with a
+     screenshot of Account & security). A full page has no glass. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   /* Nothing floats at the bottom of these screens any more (the menu moved to
      the header), so only a comfortable end-of-scroll margin is needed. Kept
      INSIDE the box because iOS ignores a scroll container's own bottom padding
@@ -660,7 +666,12 @@ body.guest-app:not(.owner-mode) #chat-widget {
   max-height: none;
   border: 0;
   border-radius: 0;
-  box-shadow: none;
+  /* THE PAGE MUST NOT SHOW BEHIND IT WHILE TYPING. With the iOS keyboard up the
+     visual viewport pans below this fixed box, and the page underneath showed
+     between the composer and the keyboard (reported with a screenshot). A spread
+     shadow in the chat's own ground covers everything around the box — the
+     header (z 1410) still sits above it. */
+  box-shadow: 0 0 0 200vmax var(--dark-grey);
   background: var(--dark-grey);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;

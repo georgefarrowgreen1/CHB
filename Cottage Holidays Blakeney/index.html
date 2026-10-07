@@ -160,7 +160,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=64">
+    <link rel="stylesheet" href="guest-app.css?v=65">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1452,7 +1452,7 @@
             <label class="modal-label">Current password</label>
             <input type="password" class="input-glass" id="pw-current" autocomplete="current-password" placeholder="Your current password">
             <label class="modal-label">New password</label>
-            <input type="password" class="input-glass" id="pw-new" autocomplete="new-password" placeholder="At least 4 characters">
+            <input type="password" class="input-glass" id="pw-new" autocomplete="new-password" placeholder="At least 8 characters">
             <label class="modal-label">Confirm new password</label>
             <input type="password" class="input-glass" id="pw-confirm" autocomplete="new-password" placeholder="Re-type the new password">
             <div id="pw-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
@@ -2066,7 +2066,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1064"></script>
+    <script defer src="app.js?v=1065"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

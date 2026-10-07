@@ -15230,13 +15230,13 @@ async function resetGuestPassword(email) {
         return;
     }
     const next = await glassPrompt(
-        `At least 4 characters — you'll tell the guest this.`,
+        `At least 8 characters — you'll tell the guest this.`,
         '',
         { password: true, title: `New password for ${email}`, okLabel: 'Set the password' },
     );
     if (next === null) return;
-    if (next.trim().length < 4) {
-        glassAlert('Password must be at least 4 characters.');
+    if (next.trim().length < 8) {
+        glassAlert('Password must be at least 8 characters.');
         return;
     }
     try {
@@ -15256,12 +15256,12 @@ async function changeAdminPassword() {
     }
     const current = await glassPrompt('Enter your current admin password.', '', { password: true, title: 'Change your password', okLabel: 'Continue' });
     if (current === null) return;
-    const next = await glassPrompt('Enter a new password — at least 4 characters.', '', {
+    const next = await glassPrompt('Enter a new password — at least 12 characters.', '', {
         password: true, title: 'Change your password', okLabel: 'Continue',
     });
     if (next === null) return;
-    if (next.trim().length < 4) {
-        glassAlert('Password must be at least 4 characters.');
+    if (next.trim().length < 12) {
+        glassAlert('Password must be at least 12 characters.');
         return;
     }
     const confirmNext = await glassPrompt('Re-enter the new password to confirm.', '', {

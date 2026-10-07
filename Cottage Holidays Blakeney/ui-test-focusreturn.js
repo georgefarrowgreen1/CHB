@@ -98,6 +98,33 @@ const { boot } = require('./ui-test-lib');
     check(!!ring, 'the crown is reachable by Tab');
     check(!!ring && ring.style !== 'none' && ring.width >= 2, `…and shows a focus ring (${ring ? ring.style + ' ' + ring.width + 'px' : 'n/a'})`);
 
+    // F) THE ACCOUNT PAGES ARE ONE GROUND (reported from an iPhone): the transparent
+    //    box kept .glass-panel's backdrop blur, which iOS painted as a brighter
+    //    rectangle fading at its edges over a page of the same colour.
+    const grounds = await page.evaluate(() => ['guest-security-modal', 'guest-details-modal', 'guest-auth-modal'].map((id) => {
+        const m = document.getElementById(id); if (!m) return id + ':missing';
+        m.classList.add('open');
+        const c = getComputedStyle(m.querySelector('.modal-box'));
+        const out = id + ':' + (c.backdropFilter || 'none') + '|' + (c.webkitBackdropFilter || 'none');
+        m.classList.remove('open');
+        return out;
+    }));
+    check(grounds.every((g) => /:none\|none$/.test(g)), `the account pages carry no glass backdrop on their box (${grounds.join(' ; ')})`);
+    // G) THE CHAT'S GROUND COVERS THE PAGE BEHIND IT while the iOS keyboard pans the
+    //    visual viewport below the fixed box: a spread shadow in its own colour.
+    const chatGround = await page.evaluate(async () => {
+        if (typeof toggleChat === 'function') toggleChat();
+        await new Promise((r) => setTimeout(r, 700));
+        const w = document.getElementById('chat-widget');
+        const c = getComputedStyle(w);
+        const m = /(\d+(?:\.\d+)?)px\s*$/.exec(c.boxShadow.replace(/\s+inset/, '')) || /0px 0px 0px (\d+(?:\.\d+)?)px/.exec(c.boxShadow);
+        const out = { open: w.classList.contains('open'), shadow: c.boxShadow, bg: c.backgroundColor, spread: m ? parseFloat(m[1]) : 0 };
+        if (typeof toggleChat === 'function') toggleChat();
+        return out;
+    });
+    check(chatGround.open, '(fixture) the guest chat opened');
+    check(chatGround.spread >= 844 && chatGround.shadow.indexOf(chatGround.bg) !== -1, `the open chat's own ground extends past its box (${chatGround.shadow})`);
+
     console.log(fails ? `\n  ${fails} CHECK(S) FAILED ❌` : '\n  FOCUS-RETURN TEST PASSED ✅');
     await t.done(fails);
 })();
