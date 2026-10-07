@@ -9,7 +9,7 @@ if (isset($_GET['email'])) {
     require_admin();
     $email = strtolower(trim((string) $_GET['email']));
     try {
-        $q = db()->prepare('SELECT avatar FROM guests WHERE email = ?');
+        $q = db()->prepare('SELECT avatar FROM guests WHERE email = ? AND email_verified_at IS NOT NULL'); // a confirmed account only — never a squatter's picture
         $q->execute([$email]);
         $name = (string) $q->fetchColumn();
     } catch (\Throwable $e) {
@@ -27,8 +27,9 @@ if ($path === '' || !is_file($path)) {
     exit();
 }
 header('Content-Type: image/jpeg');
-// Versioned by ?v= on every URL the app builds, so a long private cache is safe.
-header('Cache-Control: private, max-age=31536000');
+// Versioned by ?v=; kept for a day only, so a shared browser does not hold a guest's
+// photo long after they sign out.
+header('Cache-Control: private, max-age=86400');
 header('X-Content-Type-Options: nosniff');
 header('Content-Length: ' . filesize($path));
 readfile($path);

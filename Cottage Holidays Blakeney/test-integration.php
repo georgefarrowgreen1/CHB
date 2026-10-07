@@ -4831,9 +4831,30 @@ $r = http($noJar, 'GET', '/avatar.php');
 it_check('§48 nobody else is', $r['code'] === 401, (string) $r['code']);
 $r = http($admin, 'GET', '/avatar.php?email=ks%40gmail.com');
 it_check('§48 the owner reads it by the guest\'s email', $r['code'] === 200 && substr($r['raw'], 0, 2) === "\xFF\xD8", (string) $r['code']);
+$rootDb->exec("UPDATE guests SET email_verified_at = NULL WHERE email = 'ks@gmail.com'");
+$r = http($admin, 'GET', '/avatar.php?email=ks%40gmail.com');
+it_check('§48 an UNCONFIRMED account\'s photo is never shown to the owner as that guest\'s', $r['code'] === 404, (string) $r['code']);
+$rootDb->exec("UPDATE guests SET email_verified_at = NOW() WHERE email = 'ks@gmail.com'");
 $r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_status']);
 it_check('§48 the session reports the version', ($r['json']['guest']['avatar'] ?? '') === $avV, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+it_check('§48 "Download my data" includes the photo itself', strpos((string) ($r['json']['data']['profile_photo'] ?? ''), 'data:image/jpeg;base64,/9j/') === 0, substr($r['raw'], 0, 120));
+// A tiny file that declares a vast canvas is refused BEFORE GD allocates it.
+$bomb = imagecreatetruecolor(3000, 16);
+ob_start();
+imagejpeg($bomb, null, 10);
+$bombData = 'data:image/jpeg;base64,' . base64_encode((string) ob_get_clean());
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_avatar_set', 'data' => $bombData]);
+it_check('§48 an oversized canvas is refused (no decompression bomb)', $r['code'] === 400, $r['raw']);
+// An orphaned file (a raced replace) is swept by self-repair after a day; a live one is kept.
+$orphan = $work . '/uploads/avatars/' . str_repeat('ab', 16) . '.jpg';
+file_put_contents($orphan, 'x');
+touch($orphan, time() - 2 * 86400);
+touch($work . '/uploads/avatars/' . $avName, time() - 2 * 86400);
+http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('§48 self-repair removes an unused photo file and keeps the live one', !is_file($orphan) && is_file($work . '/uploads/avatars/' . $avName), '');
 $r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_avatar_remove']);
+clearstatcache(); // PHP caches the last stat — this file was just checked above
 it_check('§48 removing it deletes the file', ($r['json']['ok'] ?? false) === true && !is_file($work . '/uploads/avatars/' . $avName), $r['raw']);
 $r = http($rsJar, 'GET', '/avatar.php');
 it_check('§48 and then there is nothing to serve', $r['code'] === 404, (string) $r['code']);

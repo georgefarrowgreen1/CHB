@@ -349,6 +349,31 @@ try {
         $fixed[] = "pruned $chatPruned chat photo(s) older than a week";
     }
 
+    // Profile photos nobody points at any more (a replace that raced, a write
+    // that failed after the file landed) — the folder holds only what a guest
+    // row names. A day's grace so an upload mid-flight is never caught.
+    try {
+        $avDir = __DIR__ . '/' . AVATAR_DIR;
+        if (is_dir($avDir)) {
+            $keep = array_flip(db()->query('SELECT avatar FROM guests WHERE avatar IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN));
+            $avPruned = 0;
+            foreach (scandir($avDir) ?: [] as $af) {
+                if (!avatar_name_ok($af) || isset($keep[$af])) {
+                    continue;
+                }
+                $mt = @filemtime($avDir . '/' . $af);
+                if ($mt !== false && $mt < time() - 86400 && @unlink($avDir . '/' . $af)) {
+                    $avPruned++;
+                }
+            }
+            if ($avPruned > 0) {
+                $fixed[] = "removed $avPruned unused profile photo(s)";
+            }
+        }
+    } catch (\Throwable $e) {
+        // pre-migration (no avatar column) — nothing to judge against
+    }
+
     // The AI chat's conversation rows: the cap is a RETENTION POLICY now,
     // not a memory limit — ninety days is longer than any thread stays live,
     // and the guarded try keeps a pre-migration install untouched.

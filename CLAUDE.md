@@ -3600,6 +3600,13 @@ inside is what is saved). Shown on the Account page, on the guest dock's Account
   256px square, which also drops EXIF (a phone photo's location). Every refusal returns `''`.
   `guest_avatar_set` / `guest_avatar_remove` (auth.php) act on the SESSION's guest only; replacing
   or removing deletes the old file, and deleting the account deletes the photo.
+- **The security pass that followed** (independent review, all fixed and gated in §48): dimensions
+  are read BEFORE GD decodes (≤2048px — a tiny JPEG can declare a canvas that exhausts memory);
+  no GD → refused, never stored raw (the re-encode is what strips EXIF); 12 sets an hour; files
+  0600 in a 0700 folder; a day's private cache; self-repair sweeps files no guest row names; the
+  photo rides "Download my data"; and **the owner only ever sees a CONFIRMED account's photo**
+  (`email_verified_at IS NOT NULL` in both the payload and `avatar.php?email=`) — a stranger who
+  squats a guest's address must never put a picture beside the real guest's booking.
 - The version rides `guest_status` / `guest_update_profile`; other login paths fetch it once
   (`guestAvatarEnsure`). The owner's payload carries `guest_avatar` per booking (by email).
 - Gated by ui-test-guestaccount §8 (sheet, Escape, a real drag, the post shape with no email, the
