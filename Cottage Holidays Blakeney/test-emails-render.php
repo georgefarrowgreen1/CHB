@@ -197,6 +197,8 @@ $JOBS = [
   ['payment-receipt', 'guest', fn() => send_payment_receipt($B)],
   ['arrival-info', 'guest', fn() => send_arrival_email($B)],
   ['magic-link', 'guest', fn() => send_magic_link_email(['name' => 'Debbie McGoldrick', 'email' => 'debbie@example.com'], site_base_url() . 'index.html?token=abc')],
+  ['sign-in-code', 'guest', fn() => send_guest_code_email(['name' => 'Debbie McGoldrick', 'email' => 'debbie@example.com'], site_base_url() . 'index.html?token=abc', '482913', false)],
+  ['join-code', 'guest', fn() => send_guest_code_email(['name' => '', 'email' => 'new@example.com'], '', '482913', true)],
   ['deposit-return', 'guest', fn() => send_deposit_return_email($B)],
   ['cancellation', 'guest', fn() => send_cancellation_email($B)],
   ['review-request', 'guest', fn() => send_review_request_email($B)],

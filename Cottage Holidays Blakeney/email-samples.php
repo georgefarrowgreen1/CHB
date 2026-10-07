@@ -189,6 +189,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'payment_receipt' => ['Payment receipt', fn() => send_payment_receipt($receiptPayload)],
         'review_request' => ['Review request', fn() => send_review_request_email($b)],
         'magic_link' => ['Sign-in (magic) link', fn() => send_magic_link_email($g, $magicUrl)],
+        'sign_in_code' => ['Sign-in code', fn() => send_guest_code_email($g, $magicUrl, '482913', false)],
         'refund' => ['Refund notice', fn() => send_refund_email($b)],
         'deposit_return' => ['Damage deposit return', fn() => send_deposit_return_email($b)],
         'cancellation' => ['Booking cancelled', fn() => send_cancellation_email($b)],

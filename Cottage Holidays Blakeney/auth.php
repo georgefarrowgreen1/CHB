@@ -11,6 +11,39 @@ guest_session_check(); // a revoked guest session (migration-127) is signed out 
 // ---- Login rate-limiting (5 failures per 10 min, per IP + account) ----
 // Resilient: if the login_attempts table doesn't exist (migration not run),
 // these helpers silently do nothing, so logins are never blocked by a missing table.
+// PROVING AN ADDRESS (the magic link or an emailed code): stamps email_verified_at,
+// and ENDS ANY CLAIM THAT CAME BEFORE IT. An unproven account's password was chosen
+// by whoever registered, which may not be the person reading this inbox — so
+// proving the address from any OTHER browser clears that password, forgets its
+// passkeys and signs out every earlier session. Returns whether it did.
+function guest_prove_address(int $gid): bool
+{
+    $reset = false;
+    try {
+        $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
+        $vq->execute([$gid]);
+        $wasProven = $vq->fetchColumn() !== null;
+        if (!$wasProven && (int) ($_SESSION['reg_gid'] ?? 0) !== $gid) {
+            db()->prepare("UPDATE guests SET password_hash = '', auth_epoch = auth_epoch + 1 WHERE id = ?")->execute([$gid]);
+            try {
+                db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([$gid]);
+            } catch (\Throwable $e) {
+            }
+            $reset = true;
+            log_activity('account', 'guest.claim_reset', 'Email confirmed from a new browser — the unconfirmed password was cleared and other sessions signed out', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
+        }
+        db()->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')->execute([$gid]);
+    } catch (\Throwable $e) {
+        // migration-111/127 not applied — nothing to stamp.
+    }
+    unset($_SESSION['reg_gid']);
+    return $reset;
+}
+function guest_code_hash(string $email, string $code): string
+{
+    return hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, APP_SECRET);
+}
+
 function throttle_check($identifier)
 {
     try {
@@ -582,6 +615,112 @@ switch ($action) {
         throttle_record('magic:' . $email, false);
         json_out(['ok' => true]);
 
+    // ---- THE CODE-FIRST SIGN-IN (approved demo) ----
+    // One email field. A six-digit code goes to it (with the magic link too, for a
+    // known guest). The reply is ALWAYS ok, whether or not an account exists — the
+    // same no-probing rule as the link. A code is HMAC'd at rest, works once, for 30
+    // minutes, and dies after 5 wrong tries; asking again retires older codes.
+    case 'guest_code_request':
+        $email = strtolower(clean($in['email'] ?? ''));
+        throttle_check('code:' . $email);
+        rate_limit('guestcode', 12, 15);
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            try {
+                db()->prepare('UPDATE guest_codes SET used_at = NOW() WHERE email = ? AND used_at IS NULL')->execute([$email]);
+                db()->prepare('INSERT INTO guest_codes (email, code_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL 30 MINUTE)')->execute([$email, guest_code_hash($email, $code)]);
+            } catch (\Throwable $e) {
+                json_out(['error' => 'Sign-in codes need the latest database update — ask the owner to run the migrations.'], 503);
+            }
+            $stmt = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
+            $stmt->execute([$email]);
+            $g = $stmt->fetch();
+            require_once __DIR__ . '/mailer.php';
+            if ($g) {
+                $ts = time();
+                $url = site_base_url() . 'index.html?mlogin=' . (int) $g['id'] . '&t=' . $ts . '&k=' . login_token($g['id'], $ts);
+                send_magic_link_email($g, $url, 'signin', $code);
+            } else {
+                send_magic_link_email(['name' => '', 'email' => $email], '', 'join', $code);
+            }
+            log_activity('account', 'guest.code', 'Sign-in code emailed', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => $g ? (string) $g['id'] : '']);
+        }
+        throttle_record('code:' . $email, false);
+        json_out(['ok' => true]);
+
+    case 'guest_code_verify':
+        $email = strtolower(clean($in['email'] ?? ''));
+        $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
+        throttle_check('codev:' . $email);
+        try {
+            $q = db()->prepare('SELECT id, code_hash, tries FROM guest_codes WHERE email = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY id DESC LIMIT 1');
+            $q->execute([$email]);
+            $c = $q->fetch();
+        } catch (\Throwable $e) {
+            $c = false;
+        }
+        if (!$c) {
+            json_out(['error' => 'That code has expired. Send yourself a new one.', 'code' => 'expired'], 401);
+        }
+        if (strlen($code) !== 6 || !hash_equals((string) $c['code_hash'], guest_code_hash($email, $code))) {
+            $tries = (int) $c['tries'] + 1;
+            db()->prepare('UPDATE guest_codes SET tries = ?, used_at = IF(? >= 5, NOW(), used_at) WHERE id = ?')->execute([$tries, $tries, (int) $c['id']]);
+            throttle_record('codev:' . $email, false);
+            if ($tries >= 5) {
+                json_out(['error' => 'Too many tries — for your security that code has stopped working. Send yourself a new one.', 'code' => 'too_many'], 429);
+            }
+            json_out(['error' => "That code isn't right. Check the latest email and try again.", 'code' => 'wrong', 'left' => 5 - $tries], 401);
+        }
+        // Claimed atomically, so a code cannot be used twice by two racing taps.
+        $claim = db()->prepare('UPDATE guest_codes SET used_at = NOW() WHERE id = ? AND used_at IS NULL');
+        $claim->execute([(int) $c['id']]);
+        if ($claim->rowCount() < 1) {
+            json_out(['error' => 'That code has already been used. Send yourself a new one.', 'code' => 'expired'], 401);
+        }
+        $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE email = ?');
+        $stmt->execute([$email]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            // A new guest: the code proved the address, so the account that follows
+            // is created CONFIRMED and needs only a name (guest_code_register).
+            session_regenerate_id(true);
+            $_SESSION['code_email'] = $email;
+            $_SESSION['code_at'] = time();
+            json_out(['ok' => true, 'new' => true]);
+        }
+        $reset = guest_prove_address((int) $row['id']);
+        session_regenerate_id(true);
+        guest_session_begin((int) $row['id']);
+        unset($_SESSION['admin_id']);
+        log_activity('account', 'guest.code_login', 'Guest signed in with an emailed code', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $row['id']]);
+        $row['avatar'] = guest_avatar_v((int) $row['id']);
+        unset($row['id']);
+        json_out(['ok' => true, 'reset' => $reset, 'guest' => $row]);
+
+    case 'guest_code_register':
+        $email = (string) ($_SESSION['code_email'] ?? '');
+        if ($email === '' || time() - (int) ($_SESSION['code_at'] ?? 0) > 1800) {
+            json_out(['error' => 'That took a little long — send yourself a new code to finish.', 'code' => 'expired'], 401);
+        }
+        $name = clean($in['name'] ?? '');
+        if (mb_strlen($name) < 2) {
+            json_out(['error' => "Add your name, so we know who we're talking to."], 400);
+        }
+        $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
+        $stmt->execute([$email]);
+        $gid = (int) ($stmt->fetchColumn() ?: 0);
+        if ($gid <= 0) {
+            db()->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, '', '', '', '', NOW())")->execute([$name, $email]);
+            $gid = (int) db()->lastInsertId();
+            log_activity('account', 'guest.registered', 'New guest account (email confirmed by code)', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
+        }
+        unset($_SESSION['code_email'], $_SESSION['code_at']);
+        guest_session_begin($gid);
+        unset($_SESSION['admin_id']);
+        $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
+        $stmt->execute([$gid]);
+        json_out(['ok' => true, 'guest' => $stmt->fetch()]);
+
     // Consume a magic link: verify the HMAC and that it's fresh (30 min), then
     // sign the guest in exactly like guest_login.
     case 'guest_magic_consume':
@@ -617,26 +756,7 @@ switch ($action) {
         // inbox — so proving the address from any OTHER browser clears that password,
         // forgets its passkeys and signs out every earlier session. Opened in the
         // browser that registered, the password is the confirmer's own and stays.
-        $reset = false;
-        try {
-            $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
-            $vq->execute([(int) $row['id']]);
-            $wasProven = $vq->fetchColumn() !== null;
-            if (!$wasProven && (int) ($_SESSION['reg_gid'] ?? 0) !== (int) $row['id']) {
-                db()->prepare("UPDATE guests SET password_hash = '', auth_epoch = auth_epoch + 1 WHERE id = ?")->execute([(int) $row['id']]);
-                try {
-                    db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([(int) $row['id']]);
-                } catch (\Throwable $e) {
-                }
-                $reset = true;
-                log_activity('account', 'guest.claim_reset', 'Email confirmed from a new browser — the unconfirmed password was cleared and other sessions signed out', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) (int) $row['id']]);
-            }
-            db()
-                ->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')
-                ->execute([(int) $row['id']]);
-        } catch (\Throwable $e) {
-            // migration-111/127 not applied — nothing to stamp.
-        }
+        $reset = guest_prove_address((int) $row['id']);
         unset($_SESSION['reg_gid']);
         // A RESET link (sent by the owner from Manage → Guests) opens a short window
         // in which this session may choose a new password without the old one —

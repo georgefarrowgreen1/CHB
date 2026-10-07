@@ -359,10 +359,8 @@ const reachOk = (name, list, floor, axis) => {
       'experiences 390 · the page itself does not scroll sideways (the ROW is the scroll container)');
     // 4. SIGN-IN: the password-less route and the two tabs.
     await run(page, "(async () => { nav('view-main'); openGuestAuthModal && openGuestAuthModal(); })()", 600);
-    reachOk('sign-in 390 · the magic-link route', await page.evaluate(REACH, '#magic-link-cta'), 1, 'y');
-    reachOk('sign-in 390 · the Log in / Create account tabs', await page.evaluate(REACH, '#guest-auth-modal .guest-tab'), 2, 'y');
-    const tabFs = await page.evaluate(() => Math.round(parseFloat(getComputedStyle(document.querySelector('#guest-auth-modal .guest-tab')).fontSize)));
-    ok(tabFs === 13, `sign-in 390 · the tabs read at 13px, not the 11px micro step (${tabFs}px)`);
+    reachOk('sign-in 390 · the email field', await page.evaluate(REACH, '#ga-auth #login-email'), 1, 'y');
+    reachOk('sign-in 390 · Continue', await page.evaluate(REACH, '#ga-auth .ga-big'), 1, 'y');
     await run(page, "(async () => { try { closeGuestAuthModal(); } catch (e) {} })()", 300);
     // 5. MY STAYS: Copy code.
     await run(page, "(async () => { nav('view-guest-bookings'); await renderGuestBookings(); })()", 1200);

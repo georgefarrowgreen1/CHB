@@ -4539,6 +4539,7 @@ async function deleteGuestAccount() {
     if (!ok) return;
     try {
         await apiPost('auth.php', { action: 'guest_delete_account' });
+        authForget(); // the phone stops remembering an account that no longer exists
         currentGuest = null;
         __gaSub = '';
         renderGuestAccount();
@@ -4551,12 +4552,348 @@ async function deleteGuestAccount() {
 }
 
 
+// ---- THE CODE-FIRST SIGN-IN (approved demo) ----
+// One email field, then a six-digit code we email (the link rides beside it for a
+// known guest). An iPhone opens an emailed link in Safari, not the installed app,
+// so the guest needs something to TYPE where they are; autocomplete="one-time-code"
+// lets iOS offer it straight from Mail. A password still works for anyone who has
+// one — and for the OWNER, whose username has no @ and goes straight there.
+// The phone remembers who signed in last (first name + email, nothing else), and a
+// new guest gives only a name: the code has already proved the address.
+const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null };
+const GA_LAST = 'chb-last-guest';
+function authLast() {
+    try {
+        const v = JSON.parse(localStorage.getItem(GA_LAST) || 'null');
+        return v && v.email ? v : null;
+    } catch (e) {
+        return null;
+    }
+}
+function authRemember(g) {
+    try {
+        if (g && g.email) localStorage.setItem(GA_LAST, JSON.stringify({ first: String(g.name || '').trim().split(/\s+/)[0], email: g.email }));
+    } catch (e) {}
+}
+function authForget() {
+    try {
+        localStorage.removeItem(GA_LAST);
+    } catch (e) {}
+}
+const AUTH_DOMAINS = ['gmail.com', 'googlemail.com', 'icloud.com', 'me.com', 'hotmail.com', 'hotmail.co.uk', 'outlook.com', 'live.co.uk', 'yahoo.com', 'yahoo.co.uk', 'btinternet.com', 'aol.com', 'sky.com', 'talktalk.net', 'virginmedia.com'];
+// A likely-misspelt common domain → the fix, else ''. Edit distance ≤ 2 only.
+function authTypoFix(e) {
+    const m = /^([^@\s]+)@([^@\s]+)$/.exec(String(e || '').trim());
+    if (!m) return '';
+    const d = m[2].toLowerCase();
+    if (AUTH_DOMAINS.includes(d)) return '';
+    const dist = (a, b) => {
+        const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+        for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+        for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        return dp[a.length][b.length];
+    };
+    let best = '', bd = 3;
+    AUTH_DOMAINS.forEach((x) => {
+        const k = dist(d, x);
+        if (k > 0 && k < bd) {
+            bd = k;
+            best = x;
+        }
+    });
+    return best ? `${m[1]}@${best}` : '';
+}
+const authBig = (cls, label, act) => `<button type="button" class="ga-big ${cls}${AU.busy === act ? ' is-busy' : ''}" data-act="${act}">${AU.busy === act ? '<span class="ga-spin" aria-hidden="true"></span><span class="sr-only">Working…</span>' : label}</button>`;
+function authPaint() {
+    const host = document.getElementById('ga-auth');
+    if (!host) return;
+    const back = { code: 'authToEmail', password: 'authToEmail', name: 'authToEmail' }[AU.step];
+    const err = AU.err ? `<p class="ga-aerr" id="login-error" role="alert">${escapeHtml(AU.err)}</p>` : '<p class="ga-aerr" id="login-error" role="alert" hidden></p>';
+    let h = back ? `<button type="button" class="ga-back ga-aback" data-act="${back}">${GA_BACK}Back</button>` : '';
+    const last = authLast();
+    if (AU.step === 'known' && last) {
+        h += `<h2 class="ga-ah">Welcome back</h2>
+            <div class="ga-who"><span class="ga-who-av">${escapeHtml((last.first || last.email)[0].toUpperCase())}</span><span><b>${escapeHtml(last.first || 'You')}</b><span>${escapeHtml(last.email)}</span></span></div>
+            ${authBig('pri', `Continue as ${escapeHtml(last.first || 'you')}`, 'authKnownGo')}
+            <p class="ga-asub">We'll email you a code.</p>
+            <button type="button" class="ga-alink is-mute" data-act="authNotYou">Not you? Use another email</button>`;
+    } else if (AU.step === 'email') {
+        h += `<h2 class="ga-ah">Sign in or create an account</h2>
+            <p class="ga-al">Enter your email and we'll send you a code — no password needed.</p>
+            <label class="ga-alabel" for="login-email">Email</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-email" type="email" inputmode="email" autocomplete="username webauthn" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="you@email.com" value="${escapeHtml(AU.email)}" data-act-input="authEmailInput" data-pass="self"></div>
+            ${err}
+            ${AU.fix ? `<p class="ga-afix">Did you mean <button type="button" data-act="authUseFix">${escapeHtml(AU.fix)}</button>?</p>` : ''}
+            ${authBig('pri', 'Continue', 'authContinue')}
+            ${passkeysSupported() ? '<button type="button" class="ga-alink" data-act="passkeyLogin">Sign in with a passkey</button>' : ''}
+            <p class="ga-asmall">By continuing you agree to our <a href="#" data-act="openTermsModal">booking terms</a> and <a href="#" data-act="authPrivacy">privacy policy</a>.</p>`;
+    } else if (AU.step === 'code') {
+        h += `<h2 class="ga-ah">Check your email</h2>
+            <p class="ga-al">We sent a 6-digit code to <b>${escapeHtml(AU.email)}</b>.</p>
+            <div class="ga-code${AU.err ? ' is-bad' : ''}" id="ga-codebox">${Array.from({ length: 6 }, () => '<span class="ga-cell"></span>').join('')}<input id="ga-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="The 6-digit code from the email" data-act-input="authCodeInput" data-pass="self"></div>
+            ${err}
+            ${AU.isNew ? '' : '<p class="ga-asub">Or tap the link in the same email.</p>'}
+            <button type="button" class="ga-alink" id="ga-resend" data-act="authResend"${AU.cool > 0 ? ' disabled' : ''}>${AU.cool > 0 ? `Send a new code in ${AU.cool}s` : 'Send a new code'}</button>
+            <button type="button" class="ga-alink is-mute" data-act="authToPassword">Use a password instead</button>`;
+    } else if (AU.step === 'password') {
+        h += `<h2 class="ga-ah">Your password</h2>
+            <div class="ga-chip"><span>${escapeHtml(AU.email)}</span><button type="button" data-act="authToEmail">Change</button></div>
+            <input type="hidden" id="login-email" value="${escapeHtml(AU.email)}">
+            <label class="ga-alabel" for="login-password">Password</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-password" type="password" autocomplete="current-password"><button type="button" class="ga-eye" data-act="authEye" data-pass="self" aria-label="Show the password">Show</button></div>
+            ${err}
+            ${authBig('pri', 'Sign in', 'authPasswordGo')}
+            ${AU.email.includes('@') ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
+    } else if (AU.step === 'name') {
+        h += `<h2 class="ga-ah">Nice to meet you</h2>
+            <p class="ga-al">Your email is confirmed. What should we call you?</p>
+            <label class="ga-alabel" for="ga-name">Your name</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="ga-name" autocomplete="name" autocapitalize="words" placeholder="First and last name"></div>
+            ${err}
+            ${authBig('pri', 'Create my account', 'authCreate')}
+            <p class="ga-asmall">We'll ask for your address and phone number when you book, not before.</p>`;
+    } else if (AU.step === 'locked') {
+        h += `<h2 class="ga-ah">Too many tries</h2>
+            <p class="ga-al">For your security that code has stopped working. We can send you a fresh one.</p>
+            ${authBig('pri', 'Send a new code', 'authResend')}
+            <button type="button" class="ga-alink is-mute" data-act="authToEmail">Use a different email</button>`;
+    }
+    host.innerHTML = `<div class="ga-astep${AU.back ? ' is-back' : ''}">${h}</div>`;
+    AU.back = false;
+    if (AU.step === 'email') authPasskeyAutofill();
+    else authPasskeyStop();
+}
+const GA_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>';
+function authGo(step, back) {
+    AU.step = step;
+    AU.back = !!back;
+    AU.err = '';
+    AU.busy = '';
+    authPaint();
+    setTimeout(() => {
+        const i = /** @type {HTMLInputElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden])'));
+        if (i) i.focus();
+    }, 60);
+}
+function authToEmail() {
+    authGo('email', true);
+}
+function authToPassword() {
+    authGo('password');
+}
+function authNotYou() {
+    authForget();
+    AU.email = '';
+    authGo('email');
+}
+function authEmailInput(el) {
+    AU.email = el.value;
+    if (AU.err || AU.fix) {
+        AU.err = '';
+        AU.fix = '';
+        const e = document.getElementById('login-error');
+        if (e) e.hidden = true;
+        const f = document.querySelector('#ga-auth .ga-afix');
+        if (f) f.remove();
+        const w = document.querySelector('#ga-auth .ga-ainp');
+        if (w) w.classList.remove('is-bad');
+    }
+}
+function authUseFix() {
+    AU.email = AU.fix;
+    AU.fix = '';
+    AU.__fixSeen = true;
+    authPaint();
+}
+function authEye(btn) {
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('login-password'));
+    if (!i) return;
+    const show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    btn.textContent = show ? 'Hide' : 'Show';
+    btn.setAttribute('aria-label', show ? 'Hide the password' : 'Show the password');
+    i.focus();
+}
+function authKnownGo() {
+    const last = authLast();
+    AU.email = last ? last.email : '';
+    return authContinue();
+}
+let __authCoolT = 0;
+async function authContinue() {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('login-email'));
+    if (el && AU.step === 'email') AU.email = el.value;
+    const email = AU.email.trim();
+    if (!email) {
+        AU.err = 'Enter the email you booked with.';
+        return authPaint();
+    }
+    // The owner's USERNAME has no @ — a password is its only way in.
+    if (!email.includes('@')) return authGo('password');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        AU.err = 'That doesn’t look like an email address — like you@email.com.';
+        return authPaint();
+    }
+    // Ask about a likely typo ONCE before sending: a code to a misspelt address
+    // is a guest who never hears back.
+    const fix = authTypoFix(email);
+    if (fix && !AU.__fixSeen && AU.step === 'email') {
+        AU.fix = fix;
+        AU.__fixSeen = true;
+        return authPaint();
+    }
+    AU.busy = 'authContinue';
+    authPaint();
+    try {
+        await apiPost('auth.php', { action: 'guest_code_request', email });
+    } catch (e) {
+        AU.busy = '';
+        AU.err = (e && e.message) || 'We couldn’t send the code — check your signal and try again.';
+        return authPaint();
+    }
+    AU.email = email;
+    AU.isNew = false;
+    authCooldown();
+    authGo('code');
+}
+function authCooldown() {
+    AU.cool = 30;
+    clearInterval(__authCoolT);
+    __authCoolT = window.setInterval(() => {
+        AU.cool--;
+        const b = /** @type {HTMLButtonElement|null} */ (document.getElementById('ga-resend'));
+        if (b) {
+            b.textContent = AU.cool > 0 ? `Send a new code in ${AU.cool}s` : 'Send a new code';
+            b.disabled = AU.cool > 0;
+        }
+        if (AU.cool <= 0) clearInterval(__authCoolT);
+    }, 1000);
+}
+async function authResend() {
+    if (AU.cool > 0) return;
+    await authContinue();
+    if (AU.step === 'code') toast('A new code is on its way.');
+}
+function authCodeInput(el) {
+    const v = String(el.value || '').replace(/\D/g, '').slice(0, 6);
+    if (el.value !== v) el.value = v;
+    const box = document.getElementById('ga-codebox');
+    if (box) {
+        box.classList.remove('is-bad');
+        box.querySelectorAll('.ga-cell').forEach((c, k) => {
+            c.textContent = v[k] || '';
+            c.classList.toggle('is-cur', k === Math.min(v.length, 5) && v.length < 6);
+        });
+    }
+    if (v.length === 6) authVerify(v);
+}
+async function authVerify(code) {
+    if (AU.busy) return;
+    AU.busy = 'verify';
+    const box = document.getElementById('ga-codebox');
+    if (box) box.classList.add('is-ok');
+    let res;
+    try {
+        res = await apiPost('auth.php', { action: 'guest_code_verify', email: AU.email, code });
+    } catch (e) {
+        AU.busy = '';
+        if (e && e.code === 'too_many') return authGo('locked');
+        AU.err = (e && e.message) || 'That code didn’t work — try again.';
+        if (e && e.code === 'wrong' && e.left <= 2) AU.err = `That code isn't right. ${e.left} more ${e.left === 1 ? 'try' : 'tries'}, or send a new one.`;
+        authPaint();
+        const i = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-code'));
+        if (i) i.focus();
+        return;
+    }
+    AU.busy = '';
+    if (res && res.new) {
+        AU.isNew = true;
+        return authGo('name');
+    }
+    authSignedIn(res.guest, res.reset ? 'Signed in — the password set by whoever registered this email has been cleared.' : '');
+}
+async function authCreate() {
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-name'));
+    const name = ((i && i.value) || '').trim();
+    if (name.length < 2) {
+        AU.err = "Add your name, so we know who we're talking to.";
+        return authPaint();
+    }
+    AU.busy = 'authCreate';
+    authPaint();
+    try {
+        const res = await apiPost('auth.php', { action: 'guest_code_register', name });
+        authSignedIn(res.guest, '');
+    } catch (e) {
+        AU.busy = '';
+        AU.err = (e && e.message) || 'We couldn’t create the account — try again.';
+        authPaint();
+    }
+}
+async function authPasswordGo() {
+    // Busy IN PLACE: a re-render here would swap the fields guestLogin reads.
+    const b = document.querySelector('#ga-auth [data-act="authPasswordGo"]');
+    if (b) {
+        b.classList.add('is-busy');
+        b.setAttribute('aria-busy', 'true');
+    }
+    try {
+        await guestLogin();
+    } finally {
+        if (b) {
+            b.classList.remove('is-busy');
+            b.removeAttribute('aria-busy');
+        }
+    }
+}
+// Every sign-in route ends here: remember the device, land on You.
+async function authSignedIn(g, note) {
+    currentGuest = g;
+    isAuthenticated = false;
+    setAuthUI(); // one role at a time
+    authRemember(g);
+    setGuestUI();
+    closeGuestAuthModal();
+    try {
+        guestAccountTab();
+    } catch (e) {}
+    toast(note || `Signed in as ${String((g && g.name) || '').split(/\s+/)[0] || 'you'}.`);
+}
+// PASSKEYS IN THE EMAIL FIELD: the browser offers a saved passkey in the field's
+// own suggestions (WebAuthn "conditional" mediation), so there is no separate
+// button to find. Aborted when the step changes; a refusal is silent.
+async function authPasskeyAutofill() {
+    try {
+        if (!passkeysSupported() || !window.PublicKeyCredential || !PublicKeyCredential.isConditionalMediationAvailable) return;
+        if (!(await PublicKeyCredential.isConditionalMediationAvailable())) return;
+        authPasskeyStop();
+        const ctl = new AbortController();
+        AU.pk = ctl;
+        const begin = await apiPost('passkeys.php', { action: 'any_login_begin' });
+        const publicKey = prepGetOptions(begin.options.publicKey || begin.options);
+        const assertion = await navigator.credentials.get(/** @type {any} */ ({ publicKey, mediation: 'conditional', signal: ctl.signal }));
+        if (!assertion) return;
+        await passkeyFinish(assertion);
+    } catch (e) {
+        /* aborted, refused or unsupported: the email path is still there */
+    }
+}
+function authPasskeyStop() {
+    if (AU.pk) {
+        try {
+            AU.pk.abort();
+        } catch (e) {}
+        AU.pk = null;
+    }
+}
 // Customer login/register floating window (liquid-glass modal).
 function openGuestAuthModal() {
-    const le = document.getElementById('login-error');
-    if (le) le.style.display = 'none';
-    const re = document.getElementById('reg-error');
-    if (re) re.style.display = 'none';
+    AU.err = '';
+    AU.fix = '';
+    AU.__fixSeen = false;
+    AU.busy = '';
+    AU.step = authLast() ? 'known' : 'email';
+    authPaint();
     const m = document.getElementById('guest-auth-modal');
     if (m) {
         m.classList.remove('closing');
@@ -4567,94 +4904,23 @@ function openGuestAuthModal() {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay('account');
     } catch (e) {}
     setTimeout(() => {
-        const el = document.getElementById('login-email');
+        const el = /** @type {HTMLElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden]), #ga-auth .ga-big'));
         if (el) el.focus();
     }, 120);
 }
 function closeGuestAuthModal() {
     const m = document.getElementById('guest-auth-modal');
+    authPasskeyStop();
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    // Play the fade-out, then actually hide it (animation lasts 0.35s).
     chbCloseOverlay(m);
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
     } catch (e) {}
 }
-
+// Kept for callers that still name a tab: there is one door now, the email.
 function switchGuestTab(which) {
-    const isLogin = which === 'login';
-    document.getElementById('guest-login-form').style.display = isLogin ? 'block' : 'none';
-    document.getElementById('guest-register-form').style.display = isLogin ? 'none' : 'block';
-    document.getElementById('tab-login').classList.toggle('active-mode', isLogin);
-    document.getElementById('tab-register').classList.toggle('active-mode', !isLogin);
-}
-
-async function guestRegister() {
-    const name = document.getElementById('reg-name').value.trim();
-    const email = document.getElementById('reg-email').value.trim();
-    const phone = document.getElementById('reg-phone').value.trim();
-    const address = document.getElementById('reg-address').value.trim();
-    const postcode = document.getElementById('reg-postcode').value.trim();
-    const password = document.getElementById('reg-password').value;
-    const err = document.getElementById('reg-error');
-    const showErr = (m) => {
-        err.innerText = m;
-        err.style.display = 'block';
-    };
-
-    if (!name || !email || !password) {
-        showErr('Name, email and password are required.');
-        return;
-    }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        showErr('Please enter a valid email address.');
-        return;
-    }
-    if (!address) {
-        showErr('Please enter your UK address.');
-        return;
-    }
-    if (!isUkPostcode(postcode)) {
-        showErr('Please enter a valid UK postcode. Outside the UK? Message us and we can help.');
-        return;
-    }
-    if (password.length < 8) {
-        showErr('Please choose a password of at least 8 characters.');
-        return;
-    }
-
-    try {
-        const res = await apiPost('auth.php', {
-            action: 'guest_register',
-            name,
-            email,
-            phone,
-            address,
-            postcode,
-            password,
-        });
-        // Email already has bookings → account made, no session, link emailed
-        // (guest_register). Navigating on would land in an empty My Stays.
-        if (res && res.verify) {
-            err.style.display = 'none';
-            try {
-                await glassAlert(res.message || "Account created — we've emailed you a sign-in link. Tap it to confirm it's you.");
-            } catch (e) {}
-            closeGuestAuthModal();
-            return;
-        }
-        currentGuest = res.guest;
-        isAuthenticated = false;
-        setAuthUI(); // one role at a time: drop any admin session
-        err.style.display = 'none';
-        setGuestUI();
-        closeGuestAuthModal();
-        nav('view-guest-bookings');
-        await renderGuestBookings();
-    } catch (e) {
-        showErr(e.message);
-    }
+    if (which === 'login' || which === 'register') authGo(authLast() && which === 'login' ? 'known' : 'email');
 }
 
 // Single, merged login. The same email/password box signs in either the
@@ -4666,7 +4932,9 @@ async function guestLogin() {
     const password = document.getElementById('login-password').value;
     const err = document.getElementById('login-error');
     const showErr = (m) => {
+        if (!err) return;
         err.innerText = m;
+        err.hidden = false;
         err.style.display = 'block';
     };
     if (!id || !password) {
@@ -4705,7 +4973,7 @@ async function guestLogin() {
         setAuthUI();
         currentGuest = null;
         setGuestUI(); // one role at a time
-        err.style.display = 'none';
+        if (err) err.hidden = true;
         closeGuestAuthModal();
         nav('view-backoffice');
         refreshOwnerHomeBadges();
@@ -4717,14 +4985,7 @@ async function guestLogin() {
     // 2) Guest (email + password).
     try {
         const res = await apiPost('auth.php', { action: 'guest_login', email: id, password });
-        currentGuest = res.guest;
-        isAuthenticated = false;
-        setAuthUI(); // one role at a time: drop any admin session
-        err.style.display = 'none';
-        setGuestUI();
-        closeGuestAuthModal();
-        nav('view-guest-bookings');
-        await renderGuestBookings();
+        authSignedIn(res.guest, '');
     } catch (e) {
         showErr(e.message);
     }
@@ -4916,41 +5177,36 @@ async function passkeyLogin() {
         glassAlert("This device or browser doesn't support passkeys.");
         return;
     }
+    authPasskeyStop(); // the field's own suggestion request, if one is waiting
     try {
         const begin = await apiPost('passkeys.php', { action: 'any_login_begin' });
         const publicKey = prepGetOptions(begin.options.publicKey || begin.options);
         const assertion = await navigator.credentials.get({ publicKey });
-        const res = await apiPost('passkeys.php', {
-            action: 'any_login_finish',
-            id: bufToB64url(assertion.rawId),
-            clientDataJSON: bufToB64url(assertion.response.clientDataJSON),
-            authenticatorData: bufToB64url(assertion.response.authenticatorData),
-            signature: bufToB64url(assertion.response.signature),
-        });
-        if (res.role === 'admin') {
-            isAuthenticated = true;
-            setAuthUI();
-            currentGuest = null;
-            setGuestUI(); // one role at a time
-            closeGuestAuthModal();
-            nav('view-backoffice');
-            refreshOwnerHomeBadges();
-        } else {
-            currentGuest = res.guest;
-            isAuthenticated = false;
-            setAuthUI(); // one role at a time: drop any admin session
-            setGuestUI();
-            closeGuestAuthModal();
-            nav('view-guest-bookings');
-            await renderGuestBookings();
-        }
+        await passkeyFinish(assertion);
     } catch (e) {
         if (e && e.name === 'NotAllowedError') return; // user cancelled
-        const err = document.getElementById('login-error');
-        if (err) {
-            err.innerText = 'Passkey sign-in failed: ' + (e.message || e);
-            err.style.display = 'block';
-        }
+        AU.err = 'Passkey sign-in didn’t work: ' + (e.message || e);
+        authPaint();
+    }
+}
+async function passkeyFinish(assertion) {
+    const res = await apiPost('passkeys.php', {
+        action: 'any_login_finish',
+        id: bufToB64url(assertion.rawId),
+        clientDataJSON: bufToB64url(assertion.response.clientDataJSON),
+        authenticatorData: bufToB64url(assertion.response.authenticatorData),
+        signature: bufToB64url(assertion.response.signature),
+    });
+    if (res.role === 'admin') {
+        isAuthenticated = true;
+        setAuthUI();
+        currentGuest = null;
+        setGuestUI(); // one role at a time
+        closeGuestAuthModal();
+        nav('view-backoffice');
+        refreshOwnerHomeBadges();
+    } else {
+        authSignedIn(res.guest, '');
     }
 }
 
@@ -18986,11 +19242,10 @@ function enquireSignInInstead() {
         closeEnquireModal();
     } catch (e) {}
     try {
+        AU.email = email;
         openGuestAuthModal();
-        switchGuestTab('login');
+        if (email) authGo('email');
     } catch (e) {}
-    const f = document.getElementById('login-email');
-    if (f && email) f.value = email;
     enquireDraftClear();
     try {
         toast('Enquiry sent — sign in to track it.');
@@ -21004,7 +21259,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ttdpolish1';
+    const BUILD = 'signin1007';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

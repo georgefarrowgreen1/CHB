@@ -198,17 +198,16 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => { openGuestAuthModal(); });
     await page.waitForTimeout(500);
     (await page.evaluate(() => document.getElementById('guest-auth-modal').classList.contains('open'))) ? pass('login modal open') : fail('login modal did not open');
-    await page.evaluate(() => switchGuestTab('register'));
-    await page.waitForTimeout(200);
-    (await page.locator('#reg-name').isVisible()) ? pass('register tab shows') : fail('register tab broken');
+    (await page.locator('#ga-auth #login-email').isVisible()) ? pass('the email step shows') : fail('the email step is missing');
 
     console.log('== 4b. Owner on a NEW device: 2FA code step must appear ==');
     // The owner's only sign-in on a fresh PC is this guest modal. With 2FA on,
     // admin_login returns {twofa:true} — the modal must hand over to the code
     // step, and the client must NOT claim to be signed in until the code lands.
-    await page.evaluate(() => switchGuestTab('login'));
+    await page.fill('#ga-auth #login-email', 'owner');
+    await page.click('#ga-auth [data-act="authContinue"]');
+    await page.waitForTimeout(300);
     await page.evaluate(() => {
-      document.getElementById('login-email').value = 'owner';
       document.getElementById('login-password').value = 'correct-password';
       return guestLogin();
     });

@@ -544,7 +544,7 @@ const NEST = (rootSel) => {
   glowsHere.push(['.btn-primary', await page.evaluate(HALO, '#faq-modal .btn-primary')]);
   await open(page, "(async () => { try { closeFaqModal(); } catch (e) { document.getElementById('faq-modal').classList.remove('open'); } })()", 500);
   await open(page, "(async () => { nav('view-main'); openGuestAuthModal ? openGuestAuthModal() : null; })()", 900);
-  glowsHere.push(['the Log in tab', await page.evaluate(HALO, '.toggle-btn.guest-tab.active-mode')]);
+  glowsHere.push(['the sign-in Continue', await page.evaluate(HALO, '#ga-auth .ga-big')]);
   for (const [name, g] of glowsHere) {
     ok(!g.missing, `${name} is on screen (vacuity guard)`);
     if (g.missing) continue;
@@ -553,7 +553,7 @@ const NEST = (rootSel) => {
     else ok(g.blur <= 4, `${name} carries a hairline lift, not a halo (${g.sh})`);
   }
   // .toggle-btn.active-mode — the green owner variant of the same control. It is
-  // not in today's markup (only .guest-tab is), so it is asserted BY DECLARATION
+  // not in today's markup, so it is asserted BY DECLARATION
   // through the CSSOM rather than dressed up as a paint reading.
   const greenRule = await page.evaluate(() => {
     let hit = null;

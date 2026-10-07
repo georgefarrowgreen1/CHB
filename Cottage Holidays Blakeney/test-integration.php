@@ -4888,6 +4888,61 @@ $rootDb->exec("DELETE FROM experiences WHERE title LIKE '§49%'");
 $rootDb->exec("DELETE FROM bookings WHERE email = 'notbooked49@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email = 'notbooked49@gmail.com'");
 
+echo "\n== §50 The code-first sign-in ==\n";
+$cHash = fn($email, $code) => hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, $SECRET);
+$cSet = function ($email, $code) use ($rootDb, $cHash, $DB_NAME) {
+    $rootDb->prepare("UPDATE `$DB_NAME`.guest_codes SET code_hash = ? WHERE email = ? AND used_at IS NULL")->execute([$cHash($email, $code), $email]);
+};
+$rootDb->exec("USE `$DB_NAME`");
+$newJar = [];
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'Newbie50@Gmail.com']);
+$known = http($noJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'ks@gmail.com']);
+it_check('§50 asking for a code answers the same whether or not an account exists', $r['code'] === 200 && $r['raw'] === $known['raw'] && ($r['json']['ok'] ?? false) === true, $r['raw'] . ' / ' . $known['raw']);
+$row = $rootDb->query("SELECT code_hash, expires_at > NOW() AS live, used_at FROM guest_codes WHERE email = 'newbie50@gmail.com' ORDER BY id DESC LIMIT 1")->fetch();
+it_check('§50 the code is stored only as a hash, alive for 30 minutes', $row && strlen($row['code_hash']) === 64 && (int) $row['live'] === 1 && $row['used_at'] === null, json_encode($row));
+$cSet('newbie50@gmail.com', '135790');
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '000000']);
+it_check('§50 a wrong code is refused in words, with the tries left', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'wrong' && ($r['json']['left'] ?? 0) === 4, $r['raw']);
+for ($i = 0; $i < 3; $i++) {
+    http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '00000' . $i]);
+}
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '000009']);
+it_check('§50 the fifth wrong try retires the code', $r['code'] === 429 && ($r['json']['code'] ?? '') === 'too_many', $r['raw']);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'code%'"); // the sign-in throttle would also refuse; prove the CODE is dead
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '135790']);
+it_check('§50 …and the right code no longer works after that', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'expired', $r['raw']);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'code%'");
+http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'newbie50@gmail.com']);
+$cSet('newbie50@gmail.com', '246801');
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_register', 'name' => 'Sneaky']);
+it_check('§50 no account can be made before a code is confirmed', $r['code'] === 401, $r['raw']);
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '246801']);
+it_check('§50 the right code for a new email asks only for a name', $r['code'] === 200 && ($r['json']['new'] ?? false) === true, $r['raw']);
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_register', 'name' => 'Nina Newbie']);
+$g50 = $rootDb->query("SELECT name, email_verified_at, password_hash, address FROM guests WHERE email = 'newbie50@gmail.com'")->fetch();
+it_check('§50 …and the account is created CONFIRMED, with no password and no address yet', $r['code'] === 200 && ($r['json']['guest']['name'] ?? '') === 'Nina Newbie' && $g50 && $g50['email_verified_at'] !== null && $g50['password_hash'] === '' && (string) $g50['address'] === '', $r['raw'] . json_encode($g50));
+$r = http($newJar, 'GET', '/my-bookings.php');
+it_check('§50 …signed in and proven (no "confirm your email" limbo)', $r['code'] === 200 && empty($r['json']['unproven']), $r['raw']);
+$r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '246801']);
+it_check('§50 a code works once', $r['code'] === 401, $r['raw']);
+// A squatter registered a guest's email with a password; the real guest's CODE ends that claim.
+$sqJar = [];
+http($sqJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squatter', 'email' => 'claim50@gmail.com', 'password' => 'squatpass1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Real Guest','claim50@gmail.com','2024-03-01','2024-03-04',2,0,'paid',300,300,300,0,3)");
+$realJar = [];
+http($realJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'claim50@gmail.com']);
+$cSet('claim50@gmail.com', '112358');
+$r = http($realJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'claim50@gmail.com', 'code' => '112358']);
+$c50 = $rootDb->query("SELECT password_hash, email_verified_at FROM guests WHERE email = 'claim50@gmail.com'")->fetch();
+it_check('§50 a code from another browser proves the address and clears a squatter\'s password', $r['code'] === 200 && ($r['json']['reset'] ?? false) === true && $c50['password_hash'] === '' && $c50['email_verified_at'] !== null, $r['raw']);
+$r = http($sqJar, 'GET', '/my-bookings.php');
+it_check('§50 …and the squatter\'s session is signed out', $r['code'] === 401, $r['raw']);
+$r = http($realJar, 'GET', '/my-bookings.php');
+it_check('§50 …while the real guest sees their stay', $r['code'] === 200 && count($r['json']['bookings'] ?? []) === 1, substr($r['raw'], 0, 120));
+$rootDb->exec("DELETE FROM bookings WHERE email = 'claim50@gmail.com'");
+$rootDb->exec("DELETE FROM guests WHERE email IN ('claim50@gmail.com', 'newbie50@gmail.com')");
+$rootDb->exec("DELETE FROM guest_codes");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
