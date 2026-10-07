@@ -473,4 +473,20 @@ if ($action === 'list') {
     ]);
 }
 
+if ($action === 'overview') {
+    // Every live cottage's links + per-platform health in ONE round trip, so the
+    // Calendar sync page can show each platform's state without a request per
+    // cottage. Same reads as 'list', looped.
+    $props = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
+    $out = [];
+    foreach ($props as $p) {
+        $out[$p] = [
+            'feeds' => get_feeds($p),
+            'status' => content_json('ical-status-' . $p, []),
+            'export_url' => site_base_url() . 'ical-export.php?prop=' . $p . '&token=' . ical_token($p),
+        ];
+    }
+    json_out(['ok' => true, 'props' => (object) $out]);
+}
+
 json_out(['error' => 'Unknown action'], 400);

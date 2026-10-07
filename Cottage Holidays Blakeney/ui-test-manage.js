@@ -16,6 +16,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // One stalled Jollyboat feed (74h, hourly expected) + one fresh 21A feed;
   // cron healthy; ONE pending review. Flip via `feedsStalled` for §2.
   let feedsStalled = true;
+  let calOvFix = null; let calSyncHold = false; const calPosts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -39,7 +40,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (url.includes('photos.php')) return json({ ok: true, photos: [] });
     if (url.includes('experiences.php')) return json({ ok: true, experiences: [] });
     if (url.includes('ical-import.php')) {
-      if (b.action === 'sync') return json({ ok: true, imported: 14 });
+      calPosts.push(b);
+      if (b.action === 'overview' && calOvFix) return json({ ok: true, props: calOvFix });
+      if (b.action === 'sync') {
+        if (calOvFix && calSyncHold) return new Promise((res) => setTimeout(res, 500)).then(() => json({ ok: true, result: [{ source: 'airbnb', ok: true, events: 5 }] }));
+        return json({ ok: true, imported: 14, result: [{ source: 'airbnb', ok: true, events: 5 }] });
+      }
       return json({ ok: true, feeds: [], blocks: [] });
     }
     if (url.includes('rates.php')) return json({ properties: [
@@ -169,6 +175,71 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     listHidden: (document.getElementById('calendar-list') || { style: {} }).style.display === 'none',
   }));
   ok(detail.shown && detail.listHidden, 'Edit-feed-links still opens the cottage’s own editor');
+
+  console.log('§3b calendar sync: the summary, the failing platform first, the fix in place');
+  const hAgo = (h) => { const d = new Date(Date.now() - h * 3600000); const z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:00`; };
+  const ovBroken = () => ({
+    '21a': { feeds: [{ source: 'airbnb', url: 'https://www.airbnb.com/calendar/ical/old.ics' }, { source: 'bookingcom', url: 'https://admin.booking.com/x.ics' }],
+      status: { sources: { airbnb: { ok: false, fails: 3, at: hAgo(1), events: 4, ok_at: hAgo(60), error: 'HTTP 404' }, bookingcom: { ok: true, fails: 0, at: hAgo(0.2), events: 3, ok_at: hAgo(0.2), error: '' } } },
+      export_url: 'https://example.test/ical-export.php?prop=21a&token=abc' },
+    jollyboat: { feeds: [{ source: 'airbnb', url: 'https://www.airbnb.com/calendar/ical/jb.ics' }],
+      status: { sources: { airbnb: { ok: true, fails: 0, at: hAgo(0.1), events: 6, ok_at: hAgo(0.1), error: '' } } },
+      export_url: 'https://example.test/ical-export.php?prop=jollyboat&token=def' },
+  });
+  calOvFix = ovBroken();
+  await page.evaluate(() => { __calOv = null; settingsOpen('calendar'); });
+  await page.waitForFunction(() => !!document.querySelector('#calendar-list .cal-prob'), null, { timeout: 4000 }).catch(() => {});
+  const c1 = await page.evaluate(() => {
+    const L = document.getElementById('calendar-list');
+    const sum = L.querySelector('.cal-sum');
+    return {
+      state: sum && sum.dataset.state, t: (L.querySelector('.cal-sum .mg-t') || {}).textContent || '', s: (L.querySelector('.cal-sum .mg-s') || {}).textContent || '',
+      probs: L.querySelectorAll('.cal-prob').length, probTxt: (L.querySelector('.cal-prob') || {}).textContent || '',
+      badDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-bad'),
+      okDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-ok'),
+      cap21: !!L.querySelector('[data-grp="cal-21a"] .st-cap.is-bad'),
+      explain: /flow into your calendar/.test(L.textContent),
+    };
+  });
+  ok(c1.state === 'warn' && /1 calendar isn.t syncing/.test(c1.t), `the summary names the one failing calendar (${c1.t})`);
+  ok(/2 of 3 cottages linked/.test(c1.s), `…and how many cottages are linked (${c1.s})`);
+  ok(c1.probs === 1 && /21A Westgate · Airbnb/.test(c1.probTxt) && /Still using the 4 Airbnb stays/.test(c1.probTxt), 'the failing platform leads, saying what it still has');
+  ok(c1.badDot && c1.okDot && c1.cap21, 'each platform wears its own dot; the cottage reads failing');
+  ok(!c1.explain, 'the explanation line is gone');
+  await page.click('.cal-prob .btn-accent');
+  await page.waitForSelector('#cal-link-in');
+  await page.fill('#cal-link-in', 'not a link');
+  const bad = await page.evaluate(() => ({ dis: document.getElementById('cal-link-go').disabled, hint: document.getElementById('cal-link-hint').className }));
+  ok(bad.dis && /is-bad/.test(bad.hint), 'a link that is not a calendar is refused before anything is sent');
+  await page.fill('#cal-link-in', 'https://www.airbnb.com/calendar/ical/new.ics');
+  ok(await page.evaluate(() => !document.getElementById('cal-link-go').disabled), '…a calendar link enables Save');
+  calPosts.length = 0;
+  calOvFix = ovBroken(); calOvFix['21a'].status.sources.airbnb = { ok: true, fails: 0, at: hAgo(0), events: 5, ok_at: hAgo(0), error: '' };
+  calOvFix['21a'].feeds[0].url = 'https://www.airbnb.com/calendar/ical/new.ics';
+  await page.click('#cal-link-go');
+  await page.waitForFunction(() => !document.querySelector('#calendar-list .cal-prob'), null, { timeout: 4000 }).catch(() => {});
+  const saved = calPosts.find((x) => x.action === 'save_feeds');
+  ok(!!saved && saved.feeds.length === 2 && saved.feeds.some((f) => f.source === 'bookingcom') && saved.feeds.some((f) => f.source === 'airbnb' && /new\.ics/.test(f.url)), 'saving replaces ONLY that platform’s link');
+  ok(calPosts.some((x) => x.action === 'sync' && x.prop === '21a'), '…then syncs it at once');
+  const c2 = await page.evaluate(() => ({ probs: document.querySelectorAll('#calendar-list .cal-prob').length, t: (document.querySelector('#calendar-list .cal-sum .mg-t') || {}).textContent || '' }));
+  ok(c2.probs === 0 && /All calendars up to date/.test(c2.t), `fixed → the problem card leaves and the summary clears (${c2.t})`);
+  // Sync all walks the cottages, each row showing its own spinner.
+  calPosts.length = 0; calSyncHold = true;
+  await page.click('#calendar-list .cal-all');
+  await page.waitForTimeout(250);
+  const spin = await page.evaluate(() => document.querySelectorAll('#calendar-list .bhub-fold-grp .st-cap .mg-spin').length);
+  ok(spin === 1, `Sync all runs one cottage at a time (${spin} spinning)`);
+  await page.waitForFunction(() => !__calSyncAll, null, { timeout: 6000 }).catch(() => {});
+  calSyncHold = false;
+  const props = calPosts.filter((x) => x.action === 'sync').map((x) => x.prop).sort().join(',');
+  ok(props === '21a,jollyboat', `…and syncs every linked cottage (${props})`);
+  // Link a platform: only the platforms not already linked are offered.
+  await page.evaluate(() => { __bhubOpenFolds.add('cal-jollyboat'); calLinkOpen('jollyboat', '', 'add'); });
+  await page.waitForSelector('#cal-link-in');
+  const seg = await page.evaluate(() => [...document.querySelectorAll('.cal-seg button')].map((b) => b.textContent));
+  ok(seg.length === 2 && !seg.includes('Airbnb'), `Link a platform offers only what is not linked (${seg.join(' / ')})`);
+  await page.evaluate(() => calLinkCancel());
+  calOvFix = null;
 
   console.log('§4 the cottage page: every section a fold group, the REAL editor inside');
   await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); });

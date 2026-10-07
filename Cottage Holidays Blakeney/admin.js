@@ -14796,6 +14796,132 @@ function settingsOpenAccomSec(k, sec) {
     const grp = document.querySelector(`#accom-detail [data-grp="${key}"]`);
     if (grp) setTimeout(() => { try { chbScroll(grp, { block: 'start' }); } catch (e) {} }, 60);
 }
+// ---- Calendar sync: one summary, the problem first, each cottage a verdict ----
+// The page reads `ical-import.php overview` (every cottage's links + per-platform
+// health from ical-status-<prop>) in ONE request; until it lands, the bootstrap's
+// per-cottage freshness (__feedStatusPre) paints the rows so nothing waits.
+let __calOv = null;          // {pk: {feeds, status, export_url}} once loaded
+let __calOvStamp = 0;
+const __calBusy = {};        // pk -> 'run' | 'done' while Sync all walks the list
+let __calSyncAll = false;
+let __calLink = null;        // {pk, source, url, mode:'add'|'fix', busy}
+const CAL_PLAT = {
+    airbnb: { name: 'Airbnb', l: 'A', c: '#c13c42', where: 'In Airbnb: Calendar › Availability › Export calendar' },
+    bookingcom: { name: 'Booking.com', l: 'B', c: '#1f4f95', where: 'In Booking.com: Rates & availability › Sync calendars' },
+    vrbo: { name: 'Vrbo', l: 'V', c: '#1d5ea8', where: 'In Vrbo: Calendar › Import/export › Export' },
+};
+function calPlat(src) {
+    return CAL_PLAT[src] || { name: String(src || 'Calendar'), l: String(src || '?').charAt(0).toUpperCase(), c: '#6b6357', where: '' };
+}
+// A link that could plausibly be a calendar feed. Shape only — the sync itself is
+// the real test, and its answer is what the page reports afterwards.
+function calLinkOk(url) {
+    const u = String(url || '').trim();
+    return /^https:\/\/\S+$/.test(u) && /ical|\.ics|calendar/i.test(u);
+}
+function calHoursSince(at) {
+    const d = at ? new Date(String(at).replace(' ', 'T')) : null;
+    return d && !isNaN(+d) ? (chbNow() - +d) / 3600000 : null;
+}
+function calAgo(h) {
+    if (h == null) return '';
+    return h >= 48 ? Math.round(h / 24) + ' days' : h >= 1.5 ? Math.round(h) + ' hours' : h >= 1 / 60 ? Math.max(1, Math.round(h * 60)) + ' min' : 'moments';
+}
+// One cottage's platforms: [{source, url, s}] for every LINKED feed.
+function calSources(k) {
+    if (!__calOv) return null;
+    const d = __calOv[k];
+    if (!d) return []; // not in the live list the server knows: nothing linked
+    const st = (d.status && d.status.sources) || {};
+    return (Array.isArray(d.feeds) ? d.feeds : []).filter((f) => f && f.url).map((f) => ({ source: f.source, url: f.url, s: st[f.source] || null }));
+}
+// The one verdict per cottage, from the overview when it is in, else the bootstrap.
+function calVerdict(k) {
+    const srcs = calSources(k);
+    if (srcs) {
+        if (!srcs.length) return { tone: 'none', linked: false };
+        const failing = srcs.filter((x) => x.s && x.s.ok === false);
+        const ats = srcs.map((x) => calHoursSince(x.s && x.s.at)).filter((h) => h != null);
+        const age = ats.length ? Math.max(...ats) : null;
+        return { tone: failing.length ? 'bad' : age == null ? 'unk' : age >= 36 ? 'warn' : 'ok', linked: true, age, failing: failing.length };
+    }
+    const f = (/** @type {any} */ (window).__feedStatusPre || []).find((x) => x && x.pk === k);
+    if (!f) return { tone: 'unk', linked: null };
+    return { tone: f.failing ? 'bad' : f.ageHours >= 36 ? 'warn' : 'ok', linked: true, age: f.ageHours, failing: f.failing ? 1 : 0 };
+}
+function calCapHtml(k, v) {
+    const busy = __calBusy[k];
+    if (busy === 'run') return '<span class="st-cap is-unk"><span class="mg-spin" aria-hidden="true"></span>Syncing</span>';
+    if (busy === 'done' && v.tone === 'ok') return stCap('ok', 'synced');
+    if (v.tone === 'none') return stCap('unk', 'not linked');
+    if (v.tone === 'unk') return stCap('unk', v.linked === null ? 'no feed yet' : 'not synced yet');
+    if (v.tone === 'bad') return stCap('bad', 'failing');
+    if (v.tone === 'warn') return stCap('warn', calAgo(v.age));
+    return stCap('ok', v.age < 1.5 ? 'just now' : calAgo(v.age) + ' ago');
+}
+function calSubHtml(k, v) {
+    const srcs = calSources(k);
+    const chips = srcs && srcs.length
+        ? srcs.map((x) => `<span class="cal-chip"><i class="cal-dot${x.s && x.s.ok === false ? ' is-bad' : x.s ? ' is-ok' : ''}" aria-hidden="true"></i>${escapeHtml(calPlat(x.source).name)}</span>`).join('')
+        : '';
+    if (v.tone === 'none') return 'link Airbnb, Booking.com or Vrbo';
+    if (v.linked === null) return 'add an Airbnb or Booking.com link';
+    const when = v.age == null ? '' : 'last imported ' + calAgo(v.age) + ' ago';
+    return chips + (chips && when ? '<span class="cal-sep">·</span>' : '') + escapeHtml(when);
+}
+function calProblems() {
+    const out = [];
+    Object.keys(propertyMeta).forEach((k) => {
+        (calSources(k) || []).forEach((x) => { if (x.s && x.s.ok === false) out.push({ k, ...x }); });
+    });
+    return out;
+}
+function calLinkFormHtml(k, fixSource) {
+    const L = __calLink && __calLink.pk === k && (!fixSource || __calLink.source === fixSource) ? __calLink : null;
+    if (!L) return '';
+    const have = (calSources(k) || []).map((x) => x.source);
+    const choices = Object.keys(CAL_PLAT).filter((s) => L.mode === 'fix' ? s === L.source : !have.includes(s));
+    const seg = L.mode === 'fix' ? '' : `<div class="cal-seg" role="radiogroup" aria-label="Platform">${choices.map((s) =>
+        `<button type="button" role="radio" aria-checked="${s === L.source}" class="${s === L.source ? 'is-on' : ''}" ${chbAttrs('calLinkPick', String(s))}>${escapeHtml(CAL_PLAT[s].name)}</button>`).join('')}</div>`;
+    const p = calPlat(L.source);
+    const valid = calLinkOk(L.url);
+    const state = !L.url ? '' : valid ? ' is-ok' : ' is-bad';
+    return `<div class="cal-form" data-calform="${escapeHtml(k)}">
+        ${seg}
+        <label class="cal-flbl" for="cal-link-in">${escapeHtml(p.name)} calendar link</label>
+        <input id="cal-link-in" class="input-glass cal-in${state}" type="url" inputmode="url" autocomplete="off" placeholder="https://…" value="${escapeHtml(L.url || '')}" ${chbInput('calLinkInput')} data-pass="value">
+        <div class="cal-hint${state}" id="cal-link-hint">${escapeHtml(!L.url ? p.where : valid ? 'Looks like a calendar link' : 'That doesn’t look like a calendar link — it should start https:// and end in .ics')}</div>
+        <div class="cal-form-acts">
+          <button type="button" class="btn-sm btn-accent cal-go" id="cal-link-go" ${valid && !L.busy ? '' : 'disabled'} ${chbAttrs('calLinkSave')}>${L.busy ? 'Connecting…' : L.mode === 'fix' ? 'Save new link' : 'Connect ' + escapeHtml(p.name)}</button>
+          <button type="button" class="bhub-actlink" ${chbAttrs('calLinkCancel')}>Cancel</button>
+        </div>
+      </div>`;
+}
+function calFoldHtml(k) {
+    const srcs = calSources(k);
+    const rows = (srcs || []).map((x) => {
+        const p = calPlat(x.source);
+        const s = x.s;
+        const line = !s ? 'not synced yet'
+            : s.ok === false ? 'Not responding' + (s.ok_at ? ' · last good ' + relTime(s.ok_at) : '') + ' · ' + (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's')
+            : (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's') + ' · synced ' + agoLabel(s.at);
+        return `<div class="cal-prow"><span class="cal-tile" style="background:${p.c};color:#fff" aria-hidden="true">${escapeHtml(p.l)}</span>
+            <span class="cal-pmain"><b>${escapeHtml(p.name)}</b><small class="${s && s.ok === false ? 'is-bad' : ''}">${escapeHtml(line)}</small></span>
+            <button type="button" class="bhub-actlink" ${chbAttrs('calLinkOpen', String(k), String(x.source), 'fix')}>Replace link</button></div>`;
+    }).join('');
+    const canAdd = !srcs || Object.keys(CAL_PLAT).some((s2) => !(srcs || []).some((x) => x.source === s2));
+    const formOpen = __calLink && __calLink.pk === k && __calLink.mode === 'add';
+    const fixOpen = __calLink && __calLink.pk === k && __calLink.mode === 'fix';
+    return (rows ? `<div class="cal-plist">${rows}</div>` : '')
+        + (fixOpen ? calLinkFormHtml(k) : '')
+        + (formOpen ? calLinkFormHtml(k) : '')
+        + `<div class="bhub-btn-row bhub-act-links">
+            <button class="bhub-actlink" ${chbAttrs('runSync', String(k))}>Sync now</button>
+            ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="bhub-actlink" ${chbAttrs('calCopyLink', String(k))}>Copy your link</button>` : ''}
+            ${canAdd && !formOpen ? `<button class="bhub-actlink" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>+ Link a platform</button>` : ''}
+            <button class="bhub-actlink" ${chbAttrs('settingsOpenCalendar', String(k))}>Edit feed links</button>
+          </div>`;
+}
 function renderCalendarList() {
     const list = document.getElementById('calendar-list');
     const detail = document.getElementById('calendar-detail');
@@ -14805,41 +14931,174 @@ function renderCalendarList() {
     }
     if (list) {
         list.style.display = '';
-        // Each cottage is a VERDICT fold group — freshness as the capsule,
-        // read off the SAME bootstrap payload the status line reads, so the
-        // two cannot disagree. Run-the-sync sits inside the fold; the feed
-        // links keep their own editor behind it.
-        const feeds = /** @type {any} */ (window).__feedStatusPre || [];
-        const byPk = {};
-        (Array.isArray(feeds) ? feeds : []).forEach((f) => { byPk[f.pk] = f; });
-        list.innerHTML = `<p class="mo-pulse" style="margin:2px 0 10px;">Airbnb and Booking.com stays flow into your calendar through these.</p>`
-            + Object.keys(propertyMeta).map((k) => {
-                const f = byPk[k];
-                const agoTxt = f ? (f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : f.ageHours >= 1.5 ? Math.round(f.ageHours) + ' hours' : 'minutes') : '';
-                const cap = !f
-                    ? stCap('unk', 'no feed yet')
-                    : f.failing
-                      ? stCap('bad', 'failing')
-                      : f.ageHours >= 36
-                        ? stCap('warn', agoTxt)
-                        : stCap('ok', f.ageHours < 1.5 ? 'just now' : agoTxt + ' ago');
-                const sub = !f
-                    ? 'add an Airbnb or Booking.com link'
-                    : f.failing
-                      ? 'a source is failing — run it and check the link'
-                      : 'last imported ' + agoTxt + ' ago';
-                return bhubFoldGrp('cal-' + k,
-                    `<span class="prop-tag tag-${escapeHtml(k)}">${escapeHtml((propertyMeta[k] || {}).name || k)}</span>`,
-                    escapeHtml(sub), cap,
-                    `<div class="bhub-btn-row bhub-act-links">
-                        <button class="bhub-actlink" ${chbAttrs('runSync', String(k))}>Run the sync now</button>
-                        <button class="bhub-actlink" ${chbAttrs('settingsOpenCalendar', String(k))}>Edit feed links</button>
-                     </div>`);
-            }).join('');
+        // Don't repaint over a link being typed (the bank-details trap).
+        const ae = document.activeElement;
+        if (ae && ae.id === 'cal-link-in' && list.contains(ae) && !(__calLink && __calLink.busy)) { /* keep typing */ }
+        else list.innerHTML = calListHtml();
+        if (!__calOv) calLoadOverview();
     }
     settingsBackTarget = () => settingsShowIndex();
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.calendar;
+}
+function calListHtml() {
+    const keys = Object.keys(propertyMeta).filter((k) => !(propertyMeta[k] && propertyMeta[k].archived));
+    const vs = keys.map((k) => ({ k, v: calVerdict(k) }));
+    const bad = vs.filter((x) => x.v.tone === 'bad').length;
+    const warn = vs.filter((x) => x.v.tone === 'warn').length;
+    const known = !!__calOv || !!(/** @type {any} */ (window).__feedStatusPre);
+    const state = !known ? 'unk' : bad || warn ? 'warn' : 'ok';
+    const t = !known ? 'Checking your calendars'
+        : bad ? `${bad} calendar${bad === 1 ? ' isn’t' : 's aren’t'} syncing`
+          : warn ? `${warn} calendar${warn === 1 ? ' is' : 's are'} behind`
+            : 'All calendars up to date';
+    const linked = vs.filter((x) => x.v.linked).length;
+    const ages = vs.map((x) => x.v.age).filter((a) => a != null);
+    const newest = ages.length ? Math.min(...ages) : null;
+    const s = (__calOv ? `${linked} of ${keys.length} cottages linked` : `${linked} cottage${linked === 1 ? '' : 's'} importing`)
+        + (newest != null ? ' · newest ' + (newest < 1.5 ? 'just now' : calAgo(newest) + ' ago') : '');
+    const summary = `<div class="cal-top">
+        <div class="mg-sum cal-sum" data-state="${state}">
+          <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
+            <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
+            <span class="mg-q">?</span>
+          </span>
+          <span class="mg-txt"><span class="mg-t">${escapeHtml(t)}</span><span class="mg-s">${escapeHtml(s)}</span></span>
+          <button type="button" class="btn-sm btn-accent cal-all" ${__calSyncAll ? 'disabled' : ''} ${chbAttrs('calSyncAll')}>${__calSyncAll ? '<span class="mg-spin" aria-hidden="true"></span>Syncing' : 'Sync all'}</button>
+        </div></div>`;
+    const probs = calProblems();
+    const probHtml = probs.length ? `<div class="bhub-grpcap">Needs a look</div>` + probs.map((x) => {
+        const p = calPlat(x.source);
+        const name = (propertyMeta[x.k] || {}).name || x.k;
+        const n = (x.s && x.s.events) || 0;
+        const since = x.s && x.s.ok_at ? relTime(x.s.ok_at) : '';
+        const body = since
+            ? `Still using the ${n} ${p.name} stay${n === 1 ? '' : 's'} from ${since}. New ${p.name} bookings won’t show until it’s fixed.`
+            : `Nothing has come in from it yet, so ${p.name} bookings aren’t on your calendar.`;
+        const fixing = __calLink && __calLink.pk === x.k && __calLink.mode === 'fix' && __calLink.source === x.source;
+        return `<div class="cal-prob" data-calprob="${escapeHtml(x.k + ':' + x.source)}">
+            <div class="cal-prob-h"><span class="cal-tile" style="background:${p.c};color:#fff" aria-hidden="true">${escapeHtml(p.l)}</span>
+              <span><b>${escapeHtml(name)} · ${escapeHtml(p.name)}</b><small>Not responding${x.s && x.s.fails > 1 ? ' · failed ' + x.s.fails + ' times in a row' : ''}</small></span></div>
+            <p>${escapeHtml(body)}</p>
+            ${fixing ? calLinkFormHtml(x.k, x.source) : `<div class="cal-prob-acts">
+              <button type="button" class="btn-sm btn-accent" ${chbAttrs('calLinkOpen', String(x.k), String(x.source), 'fix')}>Paste a new link</button>
+              <button type="button" class="bhub-actlink" ${chbAttrs('runSync', String(x.k))}>Try again</button></div>`}
+          </div>`;
+    }).join('') + `<div class="bhub-grpcap">Cottages</div>` : '';
+    const rows = vs.map(({ k, v }) => bhubFoldGrp('cal-' + k,
+        `<span class="prop-tag tag-${escapeHtml(k)}">${escapeHtml((propertyMeta[k] || {}).name || k)}</span>`,
+        calSubHtml(k, v), calCapHtml(k, v), calFoldHtml(k))).join('');
+    return summary + probHtml + rows;
+}
+async function calLoadOverview() {
+    const stamp = ++__calOvStamp;
+    try {
+        const res = await apiPost('ical-import.php', { action: 'overview' });
+        if (stamp !== __calOvStamp) return;
+        if (res && res.ok && res.props && typeof res.props === 'object') __calOv = res.props;
+    } catch (e) {
+        return; // the bootstrap verdicts stay on screen
+    }
+    calRepaint();
+}
+function calRepaint() {
+    const list = document.getElementById('calendar-list');
+    if (list && list.style.display !== 'none' && list.isConnected) renderCalendarList();
+}
+// Sync every linked cottage in turn, each row showing its own spinner then tick.
+async function calSyncAll() {
+    if (__calSyncAll) return;
+    __calSyncAll = true;
+    const keys = Object.keys(propertyMeta).filter((k) => calVerdict(k).linked !== false && !(propertyMeta[k] || {}).archived);
+    let failed = 0;
+    for (const k of keys) {
+        __calBusy[k] = 'run';
+        calRepaint();
+        try {
+            const res = await apiPost('ical-import.php', { action: 'sync', prop: k });
+            if (res && Array.isArray(res.result) && res.result.some((r) => !r.ok)) failed++;
+        } catch (e) {
+            failed++;
+        }
+        __calBusy[k] = 'done';
+    }
+    try { localStorage.setItem(ICAL_LAST_SYNC_KEY, String(Date.now())); } catch (e) {}
+    __calSyncAll = false;
+    await calLoadOverview();
+    calRepaint();
+    setTimeout(() => { keys.forEach((k) => delete __calBusy[k]); calRepaint(); }, 2400);
+    toast(failed ? `Synced — ${failed} cottage${failed === 1 ? ' has' : 's have'} a calendar that didn’t respond.` : 'All calendars synced.');
+}
+async function calCopyLink(k) {
+    const url = (__calOv && __calOv[k] && __calOv[k].export_url) || '';
+    if (!url) return;
+    try {
+        await navigator.clipboard.writeText(url);
+        toast('Your calendar link is copied — paste it into the platform’s import.');
+    } catch (e) {
+        await glassAlert('Copy this calendar link:\n\n' + url);
+    }
+}
+function calLinkOpen(k, source, mode) {
+    const have = (calSources(k) || []).map((x) => x.source);
+    const src = source || Object.keys(CAL_PLAT).find((s) => !have.includes(s)) || 'airbnb';
+    __calLink = { pk: k, source: src, url: '', mode: mode === 'fix' ? 'fix' : 'add', busy: false };
+    if (mode !== 'fix') __bhubOpenFolds.add('cal-' + k);
+    calRepaint();
+    setTimeout(() => { const el = document.getElementById('cal-link-in'); if (el) el.focus(); }, 30);
+}
+function calLinkPick(src) {
+    if (!__calLink) return;
+    __calLink.source = src;
+    calRepaint();
+    setTimeout(() => { const el = document.getElementById('cal-link-in'); if (el) el.focus(); }, 30);
+}
+function calLinkCancel() {
+    __calLink = null;
+    calRepaint();
+}
+// Typing updates the hint and the button IN PLACE — never a repaint mid-keystroke.
+function calLinkInput(value) {
+    if (!__calLink) return;
+    __calLink.url = String(value || '');
+    const v = __calLink.url.trim();
+    const ok = calLinkOk(v);
+    const inp = document.getElementById('cal-link-in');
+    const hint = document.getElementById('cal-link-hint');
+    const go = /** @type {HTMLButtonElement|null} */ (document.getElementById('cal-link-go'));
+    const cls = !v ? '' : ok ? 'is-ok' : 'is-bad';
+    if (inp) { inp.classList.remove('is-ok', 'is-bad'); if (cls) inp.classList.add(cls); }
+    if (hint) {
+        hint.className = 'cal-hint' + (cls ? ' ' + cls : '');
+        hint.textContent = !v ? calPlat(__calLink.source).where : ok ? 'Looks like a calendar link' : 'That doesn’t look like a calendar link — it should start https:// and end in .ics';
+    }
+    if (go) go.disabled = !ok;
+}
+async function calLinkSave() {
+    const L = __calLink;
+    if (!L || L.busy || !calLinkOk(L.url)) return;
+    const k = L.pk;
+    const cur = (calSources(k) || []).map((x) => ({ source: x.source, url: x.url }));
+    const feeds = cur.filter((f) => f.source !== L.source).concat([{ source: L.source, url: L.url.trim() }]);
+    L.busy = true;
+    calRepaint();
+    let worked = false;
+    try {
+        await apiPost('ical-import.php', { action: 'save_feeds', prop: k, feeds });
+        const res = await apiPost('ical-import.php', { action: 'sync', prop: k });
+        const r = res && Array.isArray(res.result) ? res.result.find((x) => x.source === L.source) : null;
+        worked = !!(r && r.ok);
+        __calLink = null;
+        await calLoadOverview();
+        const p = calPlat(L.source);
+        if (worked) toast(`${p.name} connected — ${r.events} stay${r.events === 1 ? '' : 's'} brought in.`);
+        else glassAlert(`The link is saved, but ${p.name} didn’t answer with a calendar${r && r.error ? ' (' + r.error + ')' : ''}. Check you copied the export link.`);
+    } catch (e) {
+        L.busy = false;
+        calRepaint();
+        glassAlert('Couldn’t save that link: ' + e.message);
+    }
 }
 async function settingsOpenCalendar(k) {
     adminHistPush('view-settings', 'calendar', { prop: k });
@@ -15066,6 +15325,8 @@ async function saveSyncFeeds(key, quiet) {
     }
 }
 async function runSync(key) {
+    const listUp = !!document.getElementById('calendar-list') && document.getElementById('calendar-list').style.display !== 'none';
+    if (listUp) { __calBusy[key] = 'run'; calRepaint(); }
     try {
         await saveSyncFeeds(key, true); // persist whatever's in the boxes first, so links can't be lost
         const res = await apiPost('ical-import.php', { action: 'sync', prop: key });
@@ -15073,16 +15334,10 @@ async function runSync(key) {
             localStorage.setItem(ICAL_LAST_SYNC_KEY, String(Date.now()));
         } catch (e) {}
         let msg = 'Sync complete.';
-        if (res.result && Array.isArray(res.result)) {
-            msg +=
-                '\n\n' +
-                res.result
-                    .map((r) =>
-                        r.ok
-                            ? `${r.source}: brought in ${r.events} set(s) of booked dates`
-                            : `${r.source}: failed (${r.error})`,
-                    )
-                    .join('\n');
+        if (res.result && Array.isArray(res.result) && res.result.length) {
+            msg = 'Synced — ' + res.result
+                .map((r) => calPlat(r.source).name + (r.ok ? ` ${r.events} stay${r.events === 1 ? '' : 's'}` : ' didn’t respond'))
+                .join(' · ');
         }
         toast(msg);
         // Refresh whichever calendar view is showing.
@@ -15091,10 +15346,15 @@ async function runSync(key) {
             document.getElementById('calendar-detail').style.display !== 'none'
         )
             loadCalendarSyncProp(key);
-        else loadCalendarSync();
+        else if (listUp) {
+            __calBusy[key] = 'done';
+            await calLoadOverview();
+            setTimeout(() => { delete __calBusy[key]; calRepaint(); }, 2400);
+        } else loadCalendarSync();
         // A source that FAILED is not a sync that worked — say so to the caller too.
         return !(res.result && Array.isArray(res.result) && res.result.some((r) => !r.ok));
     } catch (e) {
+        if (listUp) { delete __calBusy[key]; calRepaint(); }
         glassAlert('Sync failed: ' + e.message);
         return false;
     }
