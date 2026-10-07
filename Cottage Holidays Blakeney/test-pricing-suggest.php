@@ -66,12 +66,29 @@ $merged = [['2026-09-20', '2026-09-25'], ['2026-09-26', '2026-10-10'], ['2026-10
 psk('orphans: only gaps starting today or later', psug_future_orphans($merged, $today) === 3);
 psk('orphans: none in an empty calendar', psug_future_orphans([], $today) === 0);
 
+// Stays vs holds: an imported HOLD is availability, never a booking.
+psk('a direct booking row is a stay', psug_is_stay(['check_in' => 'x']));
+psk('an Airbnb guest is a stay', psug_is_stay(['source' => 'airbnb', 'kind' => 'reserved']));
+psk('an unclassified import is still a stay', psug_is_stay(['source' => 'vrbo', 'kind' => 'unknown']));
+psk("a host's Not available hold is not a stay", !psug_is_stay(['source' => 'airbnb', 'kind' => 'blocked']));
+psk("the owner's own block is not a stay", !psug_is_stay(['source' => 'owner']));
+$stays = [['check_in' => '2026-10-10', 'check_out' => '2026-10-13']];
+$holds = [['check_in' => '2026-10-13', 'check_out' => '2026-10-20']];
+[$bk, $sell] = psug_occupancy($stays, $holds, '2026-10-10', '2026-10-24');
+psk('occupancy: held nights leave the denominator', $bk === 3 && $sell === 7);
+[$bk2, $sell2] = psug_occupancy(array_merge($stays, $holds), [], '2026-10-10', '2026-10-24');
+psk('(the old way read a held week as booked)', $bk2 === 10);
+$mg = [['2026-10-01', '2026-10-05'], ['2026-10-06', '2026-10-09'], ['2026-10-10', '2026-10-12']];
+psk('a gap a hold touches is not an orphan', psug_future_orphans($mg, '2026-10-01', [['check_in' => '2026-10-05', 'check_out' => '2026-10-06']]) === 1);
+psk('…without holds both gaps count', psug_future_orphans($mg, '2026-10-01') === 2);
+
 // The endpoint actually uses the lib (the helper-tested-alone trap).
 $src = file_get_contents(__DIR__ . '/pricing-suggest.php');
 psk('endpoint requires the lib', strpos($src, "require_once __DIR__ . '/pricing-suggest-lib.php'") !== false);
-foreach (['psug_future_weeks(', 'psug_unmet_weeks_card(', 'psug_future_months(', 'psug_future_orphans('] as $fn) {
+foreach (['psug_is_stay(', 'psug_occupancy(', 'psug_future_weeks(', 'psug_unmet_weeks_card(', 'psug_future_months(', 'psug_future_orphans('] as $fn) {
     psk("endpoint calls $fn", strpos($src, $fn) !== false);
 }
+psk('endpoint passes the holds to the orphan count', strpos($src, 'psug_future_orphans(merge_intervals($bk), $psugToday, $held)') !== false);
 psk('endpoint no longer says "next year"', stripos($src, 'next year') === false);
 psk('endpoint no longer mints a card per radar week', strpos($src, "'radar-' .") === false);
 
