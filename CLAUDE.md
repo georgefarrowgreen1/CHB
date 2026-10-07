@@ -3427,6 +3427,13 @@ which is the 'list' reads looped over live cottages. Until it lands the bootstra
 loaded overview reads "not linked". Typing in the link field updates the hint and button
 IN PLACE (`calLinkInput`), and the list never repaints over a focused field. Gated by
 ui-test-manage §3b; the keep-other-links save and the overview read were break-tested.
+**The per-cottage page wears it too** (`calendarPropBoxHtml`, opened by Edit links): a
+summary with Sync now, one row per platform (state line + its link field, ids kept as
+`sync-<src>-<key>`), then "Your calendar link" with Copy. Leaving a box with a NEW valid
+link saves it and syncs at once (`calFieldBlur`); an EMPTIED box is put back — unlinking
+frees that platform's dates, so it is its own button with its own question
+(`calRemoveFeed`); an invalid link is flagged and never saved. `calLinkOk` accepts http
+too (Vrbo's own links are http). Gated by ui-test-manage §3c, the put-back break-tested.
 
 ## The Manage index is seven groups (owner-asked "reorder and recategorise")
 

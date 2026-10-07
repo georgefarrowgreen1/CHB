@@ -16,7 +16,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // One stalled Jollyboat feed (74h, hourly expected) + one fresh 21A feed;
   // cron healthy; ONE pending review. Flip via `feedsStalled` for §2.
   let feedsStalled = true;
-  let calOvFix = null; let calSyncHold = false; const calPosts = [];
+  let calOvFix = null; let calListFix = null; let calSyncHold = false; const calPosts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -41,6 +41,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (url.includes('experiences.php')) return json({ ok: true, experiences: [] });
     if (url.includes('ical-import.php')) {
       calPosts.push(b);
+      if (b.action === 'list' && calListFix) return json(calListFix);
+      if (b.action === 'save_feeds' && calListFix) { calListFix.feeds = (b.feeds || []).filter((f) => f.url); return json({ ok: true }); }
       if (b.action === 'overview' && calOvFix) return json({ ok: true, props: calOvFix });
       if (b.action === 'sync') {
         if (calOvFix && calSyncHold) return new Promise((res) => setTimeout(res, 500)).then(() => json({ ok: true, result: [{ source: 'airbnb', ok: true, events: 5 }] }));
@@ -269,6 +271,59 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(seg.length === 2 && !seg.includes('Airbnb'), `Link a platform offers only what is not linked (${seg.join(' / ')})`);
   await page.evaluate(() => calLinkCancel());
   calOvFix = null;
+
+  console.log('§3c the cottage sync page: a summary, one row per platform, links checked as you type');
+  calListFix = {
+    ok: true, blocks: 26, export_url: 'https://example.test/ical-export.php?prop=21a&token=abc',
+    feeds: [{ source: 'airbnb', url: 'https://www.airbnb.com/calendar/ical/1.ics' }, { source: 'vrbo', url: 'http://www.vrbo.com/icalendar/ce21.ics' }],
+    status: { sources: { airbnb: { ok: true, fails: 0, at: hAgo(0.1), events: 2, ok_at: hAgo(0.1), error: '' }, vrbo: { ok: false, fails: 2, at: hAgo(1), events: 24, ok_at: hAgo(30), error: 'HTTP 500' } } },
+  };
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await page.evaluate(() => settingsOpenCalendar('21a'));
+  await page.waitForSelector('#calendar-detail .cal-plat');
+  const d1 = await page.evaluate(() => {
+    const D = document.getElementById('calendar-detail');
+    const plats = [...D.querySelectorAll('.cal-plat')];
+    const sec = document.getElementById('sec-calendar');
+    return {
+      t: (D.querySelector('.cal-sum .mg-t') || {}).textContent || '', s: (D.querySelector('.cal-sum .mg-s') || {}).textContent || '',
+      n: plats.length, bc: plats[2] ? plats[2].textContent : '', vrboBad: plats[1] ? plats[1].classList.contains('is-bad') : false,
+      ids: ['sync-export-21a', 'sync-airbnb-21a', 'sync-vrbo-21a', 'sync-bookingcom-21a'].every((i) => !!document.getElementById(i)),
+      prose: /Links save automatically|Share booked dates|How it works/.test(sec.textContent),
+      unlinks: D.querySelectorAll('[data-act="calRemoveFeed"]').length,
+    };
+  });
+  ok(/Vrbo isn.t responding/.test(d1.t), `the summary leads with the failing platform (${d1.t})`);
+  ok(/26 stays imported · 2 of 3 platforms linked/.test(d1.s), `…and counts what came in (${d1.s})`);
+  ok(d1.n === 3 && d1.vrboBad && /Not linked/.test(d1.bc) && /Booking\.com/.test(d1.bc), 'one row per platform, each with its own state');
+  ok(d1.ids && d1.unlinks === 2, 'the fields keep their ids, and only linked platforms can be unlinked');
+  ok(!d1.prose, 'the explanation paragraphs are gone');
+  await page.screenshot({ path: '/tmp/claude-0/-home-user-CHB/e820a22c-cfa5-5535-94d0-f1835c6df202/scratchpad/caldet390.png', fullPage: true });
+  calPosts.length = 0;
+  await page.fill('#sync-bookingcom-21a', 'not a link');
+  await page.evaluate(() => document.getElementById('sync-bookingcom-21a').blur());
+  await page.waitForTimeout(300);
+  ok(/is-bad/.test(await page.getAttribute('#cal-hint-bookingcom-21a', 'class')) && !calPosts.some((x) => x.action === 'save_feeds'), 'a link that is not a calendar is flagged and NOT saved');
+  await page.fill('#sync-airbnb-21a', '');
+  await page.evaluate(() => document.getElementById('sync-airbnb-21a').blur());
+  await page.waitForTimeout(300);
+  ok((await page.inputValue('#sync-airbnb-21a')) === 'https://www.airbnb.com/calendar/ical/1.ics' && !calPosts.some((x) => x.action === 'save_feeds'), 'emptying a box puts the link back rather than silently unlinking');
+  await page.fill('#sync-bookingcom-21a', 'https://admin.booking.com/hotel/ical/9.ics');
+  await page.evaluate(() => document.getElementById('sync-bookingcom-21a').blur());
+  await page.waitForFunction(() => true);
+  await page.waitForTimeout(600);
+  const sv = calPosts.find((x) => x.action === 'save_feeds');
+  ok(!!sv && sv.feeds.filter((f) => f.url).length === 3, 'a new valid link saves beside the others…');
+  ok(calPosts.some((x) => x.action === 'sync' && x.prop === '21a'), '…and syncs at once');
+  calPosts.length = 0;
+  await page.evaluate(() => { calRemoveFeed('21a', 'vrbo'); });
+  await page.waitForSelector('#glass-dialog-ok');
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(500);
+  const un = calPosts.find((x) => x.action === 'save_feeds');
+  ok(!!un && !un.feeds.some((f) => f.source === 'vrbo' && f.url) && un.feeds.some((f) => f.source === 'airbnb' && f.url), 'Unlink asks, then drops only that platform');
+  calListFix = null;
+  await page.setViewportSize({ width: 1280, height: 950 });
 
   console.log('§4 the cottage page: every section a fold group, the REAL editor inside');
   await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); });

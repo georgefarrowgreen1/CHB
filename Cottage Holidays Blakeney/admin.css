@@ -8574,3 +8574,17 @@ body.owner-mode .cal-tools .mo-tool {
 }
 .cal-tools .mo-tool .ic, .cal-tools .cal-tspin { width: 20px; height: 20px; flex: none; color: var(--accent-text); }
 .cal-tools .mo-tool span:not(.mg-spin) { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The per-cottage sync page: the same wells as the rest of Manage. */
+.cal-detail { max-width: 640px; }
+.cal-detail .cal-top, .cal-detail .cal-sum { margin-bottom: 4px; }
+.cal-detail > .bhub-grpcap { margin: 20px 0 8px; }
+.cal-well { padding: 4px 16px 12px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
+.cal-plat { padding: 8px 0 4px; }
+.cal-plat + .cal-plat { border-top: 1px solid var(--glass-border); }
+.cal-plat .cal-prow { padding: 4px 0 8px; }
+.cal-in { width: 100%; min-width: 0; min-height: 44px; font-size: var(--fs-sub); text-overflow: ellipsis; }
+.cal-plat .cal-hint { margin: 4px 0 4px; }
+.cal-plat .cal-hint:empty { display: none; }
+.cal-copy { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
+.cal-copy .btn-sm { flex: none; min-height: 44px; }
+.cal-detail .cal-sum { display: flex; }
