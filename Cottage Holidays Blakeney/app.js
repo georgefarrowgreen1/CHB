@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 699;
+const ADMIN_BUNDLE_V = 700;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 342;
+const ADMIN_CSS_V = 343;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1970,6 +1970,8 @@ function mapBookingFromApi(row) {
         // The guest's own "we've left" tap (migration-120). '' = never tapped —
         // a SIGNAL the surfaces may add, never a state anything depends on.
         guestCheckedOutAt: row.guest_checked_out_at || '',
+        // The guest's own profile photo, as a version stamp (admin payload only).
+        guestAvatar: /^[a-f0-9]{10}$/.test(String(row.guest_avatar || '')) ? row.guest_avatar : '',
         // The Guest Book (migration-121) — the owner's PRIVATE rating of this
         // stay. Only the ADMIN payload carries gr_* (my-bookings never joins the
         // table), so on the guest side this is always null by construction.
@@ -3480,6 +3482,10 @@ function setGuestUI() {
     // Drives the guest-shell bar: My Stays / Experiences appear only when
     // signed in, so re-sync the dock highlight/indicator after the change.
     document.body.classList.toggle('guest-signed-in', !!currentGuest);
+    try {
+        guestDockAvatarSync();
+        guestAvatarEnsure();
+    } catch (e) {}
     // Returning guest? Load their stays (once) and paint the welcome-back
     // nudge + "stayed here before" notes; clears them on logout.
     try {
@@ -3631,6 +3637,8 @@ const GA_IC = {
     mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/>',
     face: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 10v1M15 10v1M12 10v3h-1M9.5 16a3.5 3.5 0 0 0 5 0"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    cam: '<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/>',
+    img: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
 };
 const gaSvg = (k) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GA_IC[k]}</svg>`;
 const GA_CHEV = '<svg class="ga-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
@@ -3684,6 +3692,7 @@ function renderGuestAccount(dir) {
         return;
     }
     const g = currentGuest;
+    guestAvatarEnsure();
     const back = `<button type="button" class="ga-back" ${chbAttrs('gaGo', '')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Account</button>`;
     let html = '';
     if (__gaSub === 'details') {
@@ -3691,6 +3700,7 @@ function renderGuestAccount(dir) {
         html =
             back +
             `<h1 class="section-title ga-h1">Your details</h1><p class="ga-lead">Used for your bookings and to reach you about your stay.</p>` +
+            `<div class="ga-group ga-hero">${gaAvaBtn(true)}<button type="button" class="ga-link ga-photolink" data-act="gaPhotoSheet">${g.avatar ? 'Change photo' : 'Add a photo'}</button></div>` +
             gaGroup([
                 gaRow({ t: 'Email', s: g.email || '', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true }),
                 gaRow({ t: 'Phone', s: g.phone || none, act: chbAttrs('gaEdit', 'phone'), chev: true }),
@@ -3735,10 +3745,9 @@ function renderGuestAccount(dir) {
             `<p class="ga-note">Past bookings are kept as financial records the law requires, but your name and contact details are removed from them.</p>`;
     } else {
         const ph = gaPhone();
-        const ini = String(g.name || '?').trim().charAt(0).toUpperCase() || '?';
         html =
             `<h1 class="section-title ga-h1">Account</h1>` +
-            `<div class="ga-group"><button type="button" class="ga-row ga-prof" ${chbAttrs('gaGo', 'details')}><span class="ga-ava" aria-hidden="true">${escapeHtml(ini)}</span><span class="ga-lb"><span class="ga-t ga-name">${escapeHtml(g.name || '')}</span><span class="ga-s">${escapeHtml(g.email || '')}</span></span>${GA_CHEV}</button></div>` +
+            `<div class="ga-group"><div class="ga-row ga-prof">${gaAvaBtn(false)}<button type="button" class="ga-profbtn" ${chbAttrs('gaGo', 'details')}><span class="ga-lb"><span class="ga-t ga-name">${escapeHtml(g.name || '')}</span><span class="ga-s">${escapeHtml(g.email || '')}</span></span>${GA_CHEV}</button></div></div>` +
             gaGroup(
                 [
                     gaRow({ ic: 'key', t: 'Sign-in & security', s: 'Password and passkeys', act: chbAttrs('gaGo', 'security'), chev: true }),
@@ -3757,6 +3766,281 @@ function renderGuestAccount(dir) {
             `<div class="ga-group ga-signout">${gaRow({ ic: 'out', t: 'Sign out', act: 'data-act="gaSignOut"' })}</div>`;
     }
     host.innerHTML = `<div class="ga-page${dir === 'fwd' ? ' ga-in' : dir === 'back' ? ' ga-in-back' : ''}">${html}</div>`;
+}
+// ---- THE PROFILE PHOTO (approved demo). Tap the circle → a sheet (take /
+// choose / remove) → position it in a circle → saved as a square JPEG the server
+// re-encodes to 256px. Shown only to the guest and the owner (avatar.php checks
+// both); the initial stays when there is none.
+const GA_CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>';
+function guestAvatarUrl() {
+    const v = currentGuest && currentGuest.avatar;
+    return v && /^[a-f0-9]{10}$/.test(v) ? 'avatar.php?v=' + v : '';
+}
+function gaAvaHtml(big) {
+    const g = currentGuest || {};
+    const url = guestAvatarUrl();
+    const ini = String(g.name || '?').trim().charAt(0).toUpperCase() || '?';
+    return `<span class="ga-ava${big ? ' is-big' : ''}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : escapeHtml(ini)}</span>`;
+}
+function gaAvaBtn(big) {
+    const has = !!guestAvatarUrl();
+    return `<button type="button" class="ga-avabtn${big ? ' is-big' : ''}" data-act="gaPhotoSheet" aria-label="${has ? 'Change your profile photo' : 'Add a profile photo'}">${gaAvaHtml(big)}<span class="ga-cam" aria-hidden="true">${GA_CAM}</span></button>`;
+}
+// The dock's Account button wears the photo once there is one (and the person
+// outline otherwise). Its original glyph is kept on the node so it comes back.
+function guestDockAvatarSync() {
+    const url = currentGuest && !isAuthenticated ? guestAvatarUrl() : '';
+    document.querySelectorAll('.guest-dock-btn[data-tab="account"]').forEach((b) => {
+        const btn = /** @type {HTMLElement} */ (b);
+        if (btn.dataset.glyph === undefined) btn.dataset.glyph = btn.innerHTML;
+        btn.classList.toggle('has-photo', !!url);
+        btn.innerHTML = url ? `<img class="gd-ava" src="${url}" alt="">` : btn.dataset.glyph || '';
+    });
+}
+window.guestDockAvatarSync = guestDockAvatarSync;
+// A login path that did not carry the photo version asks once; nothing waits on it.
+let __gaAvaAsked = false;
+async function guestAvatarEnsure() {
+    if (!currentGuest || isAuthenticated || currentGuest.avatar !== undefined || __gaAvaAsked) return;
+    __gaAvaAsked = true;
+    try {
+        const r = await apiPost('auth.php', { action: 'guest_status' });
+        if (r && r.guest && currentGuest && r.guest.email === currentGuest.email) {
+            currentGuest.avatar = r.guest.avatar || '';
+            guestDockAvatarSync();
+            if (document.getElementById('view-guest-account')?.classList.contains('active')) renderGuestAccount();
+        }
+    } catch (e) {
+        __gaAvaAsked = false;
+    }
+}
+function gaPhotoSheetEl() {
+    let o = document.getElementById('ga-photo-sheet');
+    if (o) return o;
+    o = document.createElement('div');
+    o.id = 'ga-photo-sheet';
+    o.className = 'modal-overlay pop-modal chb-sheet';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.setAttribute('aria-labelledby', 'ga-photo-title');
+    o.dataset.act = 'backdropClose';
+    o.dataset.close = 'gaPhotoSheetClose';
+    o.innerHTML = '<div class="modal-box glass-panel ga-sheetbox"></div>';
+    document.body.appendChild(o);
+    return o;
+}
+function gaPhotoSheet() {
+    const o = gaPhotoSheetEl();
+    const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
+    const has = !!guestAvatarUrl();
+    box.innerHTML =
+        `<h2 class="ga-sheet-t" id="ga-photo-title">Profile photo</h2><p class="ga-sheet-s">Only you and ${escapeHtml(businessShortName())} can see it.</p>` +
+        gaGroup(
+            [
+                gaRow({ ic: 'cam', t: 'Take a photo', act: 'data-act="gaPhotoPick" data-arg="cam"' }),
+                gaRow({ ic: 'img', t: 'Choose from library', act: 'data-act="gaPhotoPick" data-arg="lib"' }),
+                has ? gaRow({ ic: 'bin', t: 'Remove photo', act: 'data-act="gaPhotoRemove"', danger: true }) : '',
+            ].filter(Boolean),
+        ) +
+        `<button type="button" class="btn-glass ga-sheet-cancel" data-act="gaPhotoSheetClose">Cancel</button>`;
+    o.classList.remove('closing');
+    o.classList.add('open');
+    overlayHistPush();
+    setTimeout(() => {
+        const f = /** @type {HTMLElement|null} */ (box.querySelector('button'));
+        if (f) f.focus();
+    }, 60);
+}
+function gaPhotoSheetClose() {
+    const o = document.getElementById('ga-photo-sheet');
+    if (!o || !o.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(o);
+}
+function businessShortName() {
+    return (siteContent && typeof siteContent['business-name'] === 'string' && siteContent['business-name']) || 'Cottage Holidays Blakeney';
+}
+function gaPhotoPick(which) {
+    let inp = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-photo-file'));
+    if (!inp) {
+        inp = document.createElement('input');
+        inp.type = 'file';
+        inp.id = 'ga-photo-file';
+        inp.accept = 'image/*';
+        inp.className = 'sr-only';
+        inp.tabIndex = -1;
+        inp.addEventListener('change', () => {
+            const f = inp && inp.files && inp.files[0];
+            if (inp) inp.value = '';
+            if (!f) return;
+            if (!/^image\//.test(f.type || '')) {
+                toast("That isn't a photo — choose a picture instead.");
+                return;
+            }
+            const url = URL.createObjectURL(f);
+            gaCropOpen(url);
+        });
+        document.body.appendChild(inp);
+    }
+    if (which === 'cam') inp.setAttribute('capture', 'user');
+    else inp.removeAttribute('capture');
+    gaPhotoSheetClose();
+    inp.click();
+}
+// ---- The cropper: drag to place, slide (or wheel / pinch) to zoom, inside a
+// 280px circle. What is inside the circle is exactly what is saved.
+const GA_CROP = 280;
+let __gaCrop = { x: 0, y: 0, z: 1, base: 1, url: '' };
+function gaCropEl() {
+    let o = document.getElementById('ga-crop');
+    if (o) return o;
+    o = document.createElement('div');
+    o.id = 'ga-crop';
+    o.className = 'ga-crop';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.setAttribute('aria-label', 'Position your photo');
+    o.innerHTML =
+        '<div class="ga-crop-top"><button type="button" data-act="gaCropClose">Cancel</button><b>Move and scale</b><button type="button" class="is-done" data-act="gaCropSave">Use photo</button></div>' +
+        '<div class="ga-crop-stage" id="ga-crop-stage"><img id="ga-crop-img" alt=""></div>' +
+        '<div class="ga-crop-foot"><label class="ga-zoom"><span aria-hidden="true">−</span><input type="range" id="ga-crop-zoom" min="1" max="3" step="0.01" value="1" aria-label="Zoom"><span aria-hidden="true">+</span></label><p>Drag to position · only the circle is saved</p></div>';
+    document.body.appendChild(o);
+    o.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            gaCropClose();
+        }
+    });
+    const stage = /** @type {HTMLElement} */ (o.querySelector('#ga-crop-stage'));
+    const zoom = /** @type {HTMLInputElement} */ (o.querySelector('#ga-crop-zoom'));
+    const pts = new Map();
+    let drag = null;
+    let pinch = null;
+    stage.addEventListener('pointerdown', (e) => {
+        stage.setPointerCapture(e.pointerId);
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, ox: __gaCrop.x, oy: __gaCrop.y };
+        else if (pts.size === 2) {
+            const [a, b] = [...pts.values()];
+            pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: __gaCrop.z };
+            drag = null;
+        }
+    });
+    stage.addEventListener('pointermove', (e) => {
+        if (!pts.has(e.pointerId)) return;
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && pts.size === 2) {
+            const [a, b] = [...pts.values()];
+            __gaCrop.z = Math.max(1, Math.min(3, (pinch.z * Math.hypot(a.x - b.x, a.y - b.y)) / (pinch.d || 1)));
+            zoom.value = String(__gaCrop.z);
+        } else if (drag) {
+            __gaCrop.x = drag.ox + e.clientX - drag.x;
+            __gaCrop.y = drag.oy + e.clientY - drag.y;
+        }
+        gaCropPaint();
+    });
+    const up = (e) => {
+        pts.delete(e.pointerId);
+        if (pts.size < 2) pinch = null;
+        if (!pts.size) drag = null;
+    };
+    stage.addEventListener('pointerup', up);
+    stage.addEventListener('pointercancel', up);
+    stage.addEventListener(
+        'wheel',
+        (e) => {
+            e.preventDefault();
+            __gaCrop.z = Math.max(1, Math.min(3, __gaCrop.z - e.deltaY / 400));
+            zoom.value = String(__gaCrop.z);
+            gaCropPaint();
+        },
+        { passive: false },
+    );
+    zoom.addEventListener('input', () => {
+        __gaCrop.z = Number(zoom.value) || 1;
+        gaCropPaint();
+    });
+    return o;
+}
+function gaCropOpen(url) {
+    const o = gaCropEl();
+    const im = /** @type {HTMLImageElement} */ (o.querySelector('#ga-crop-img'));
+    const zoom = /** @type {HTMLInputElement} */ (o.querySelector('#ga-crop-zoom'));
+    if (__gaCrop.url) URL.revokeObjectURL(__gaCrop.url);
+    __gaCrop = { x: 0, y: 0, z: 1, base: 1, url };
+    zoom.value = '1';
+    im.onload = () => {
+        __gaCrop.base = GA_CROP / Math.max(1, Math.min(im.naturalWidth, im.naturalHeight));
+        im.style.width = im.naturalWidth * __gaCrop.base + 'px';
+        gaCropPaint();
+        o.classList.add('open');
+        overlayHistPush();
+        const done = /** @type {HTMLElement|null} */ (o.querySelector('.is-done'));
+        if (done) done.focus();
+    };
+    im.onerror = () => toast("That photo couldn't be opened — try another.");
+    im.src = url;
+}
+function gaCropPaint() {
+    const im = /** @type {HTMLImageElement|null} */ (document.getElementById('ga-crop-img'));
+    if (!im || !im.naturalWidth) return;
+    const w = im.naturalWidth * __gaCrop.base * __gaCrop.z;
+    const h = im.naturalHeight * __gaCrop.base * __gaCrop.z;
+    const mx = Math.max(0, (w - GA_CROP) / 2);
+    const my = Math.max(0, (h - GA_CROP) / 2);
+    __gaCrop.x = Math.max(-mx, Math.min(mx, __gaCrop.x));
+    __gaCrop.y = Math.max(-my, Math.min(my, __gaCrop.y));
+    im.style.transform = `translate(-50%, -50%) translate(${__gaCrop.x}px, ${__gaCrop.y}px) scale(${__gaCrop.z})`;
+}
+function gaCropClose() {
+    const o = document.getElementById('ga-crop');
+    if (!o || !o.classList.contains('open')) return;
+    overlayHistConsume();
+    o.classList.remove('open');
+}
+// The circle's square, drawn at 512px — the server makes the 256px it keeps.
+function gaCropDataUrl() {
+    const im = /** @type {HTMLImageElement|null} */ (document.getElementById('ga-crop-img'));
+    if (!im || !im.naturalWidth) return '';
+    const S = 512;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const g = cv.getContext('2d');
+    if (!g) return '';
+    const k = S / GA_CROP;
+    const w = im.naturalWidth * __gaCrop.base * __gaCrop.z * k;
+    const h = im.naturalHeight * __gaCrop.base * __gaCrop.z * k;
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, S, S);
+    g.drawImage(im, S / 2 + __gaCrop.x * k - w / 2, S / 2 + __gaCrop.y * k - h / 2, w, h);
+    return cv.toDataURL('image/jpeg', 0.86);
+}
+async function gaCropSave() {
+    const data = gaCropDataUrl();
+    if (!data) return;
+    try {
+        const r = await apiPost('auth.php', { action: 'guest_avatar_set', data });
+        if (currentGuest) currentGuest.avatar = r.avatar || '';
+        gaCropClose();
+        renderGuestAccount();
+        guestDockAvatarSync();
+        document.querySelectorAll('#guest-account-body .ga-ava').forEach((a) => a.classList.add('ga-land'));
+        toast('Photo saved');
+    } catch (e) {
+        glassAlert(e.message || "Couldn't save the photo.");
+    }
+}
+async function gaPhotoRemove() {
+    gaPhotoSheetClose();
+    try {
+        await apiPost('auth.php', { action: 'guest_avatar_remove' });
+        if (currentGuest) currentGuest.avatar = '';
+        renderGuestAccount();
+        guestDockAvatarSync();
+        toast('Photo removed — your initial is back');
+    } catch (e) {
+        glassAlert("Couldn't remove the photo: " + (e.message || e));
+    }
 }
 // Edit ONE fact. The server saves the three together and refuses a missing
 // address or a bad postcode, so a guest who has never given an address is
@@ -4354,6 +4638,7 @@ async function guestLogout() {
     __wbStays = null;
     __gaSub = '';
     __gaPasskeys = null;
+    __gaAvaAsked = false;
     const ga = document.getElementById('guest-account-body');
     if (ga) ga.innerHTML = '';
     const gl = document.getElementById('guest-bookings-list');
@@ -14671,6 +14956,7 @@ const MODAL_CLOSERS = {
     // hiding the element via the generic fallback below.
     'messages-modal': closeMessagesModal,
     'waitlist-modal': closeWaitlistModal,
+    'ga-photo-sheet': gaPhotoSheetClose,
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
 };
@@ -17156,6 +17442,8 @@ function closeTopOverlay() {
     // entry when it opens and consumes it when it closes, exactly as the four
     // above do; this is the list Back consults.
     if (open('lightbox')) { closeLightbox(); return true; }
+    if (open('ga-crop')) { gaCropClose(); return true; }
+    if (open('ga-photo-sheet')) { gaPhotoSheetClose(); return true; }
     if (open('photo-upload-modal')) { closePhotoUpload(); return true; }
     if (open('exp-suggest-modal')) { closeExperienceSuggest(); return true; }
     if (open('welcome-modal')) { closeWelcomeModal(); return true; }
@@ -20183,7 +20471,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'gacct100720';
+    const BUILD = 'gphoto100721';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

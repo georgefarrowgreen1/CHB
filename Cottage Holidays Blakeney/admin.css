@@ -8674,3 +8674,7 @@ body.owner-mode .cal-tools .mo-tool {
   .al-week, .al-needs-sec, .al-search, .al-tabs, .al-item, .al-wbar i, .al-pulse, .al-foldin, .al-need { animation: none !important; }
   .al-pill, .al-tabic, .al-chev { transition: none !important; }
 }
+
+/* The guest's own profile photo beside their name on the booking page (guests add
+   it on their Account page; served by avatar.php to the owner only). */
+.bhub-ava { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; align-self: center; }

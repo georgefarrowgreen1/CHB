@@ -7,6 +7,8 @@
 //   §5 Call us exists only when a number is configured
 //   §6 My stays: Upcoming | Past only when both sides have stays; switching hides a pane
 //   §7 the empty state shows the cottages; the stay card has a photo header
+//   §8 the profile photo: sheet → cropper → the REAL post shape → shown on the
+//      page and in the dock; remove brings the initial back
 const { bootBrowser } = require('./ui-test-lib');
 
 let fails = 0;
@@ -35,9 +37,12 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
                 if (body.action === 'guest_update_profile') return json({ ok: true, guest: Object.assign({}, guest, { phone: body.phone, address: body.address, postcode: body.postcode }) });
                 if (body.action === 'guest_change_password') return json({ ok: true });
                 if (body.action === 'guest_send_reset') return json({ ok: true, until: '12:30' });
+                if (body.action === 'guest_avatar_set') return json({ ok: true, avatar: 'abcdef0123' });
+                if (body.action === 'guest_avatar_remove') return json({ ok: true, avatar: '' });
                 return json({ ok: true, admin: false, guest: null });
             }
             if (url.includes('my-bookings.php')) return json({ ok: true, bookings, enquiries: [], completed_stays: 0 });
+            if (url.includes('avatar.php')) return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
             if (url.includes('passkeys.php')) return json({ ok: true, passkeys: [{ id: 7, label: 'iPhone', created_at: '2026-09-01 10:00:00' }] });
             return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, mine: {}, value: null });
         });
@@ -196,6 +201,63 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     }));
     ok(empty.t === 'Nothing booked yet' && empty.go === 'Find dates', `a first visit gets one short card (${empty.t} · ${empty.go})`);
     ok(empty.picks >= 3, `…and the cottages to start from (${empty.picks})`);
+    await page.close();
+
+    // §8
+    console.log('§8 the profile photo');
+    ({ page, posts } = await open([]));
+    await page.evaluate(() => guestAccountTab());
+    await page.waitForTimeout(300);
+    const pre = await page.evaluate(() => ({
+        ini: (document.querySelector('#guest-account-body .ga-ava') || {}).textContent || '',
+        label: (document.querySelector('.ga-avabtn') || { getAttribute: () => '' }).getAttribute('aria-label'),
+        dockImg: !!document.querySelector('.guest-dock-btn[data-tab="account"] img'),
+    }));
+    ok(pre.ini === 'G' && /Add a profile photo/.test(pre.label) && !pre.dockImg, `no photo yet: the initial, an "add" name, the dock's outline (${pre.ini})`);
+    await page.click('.ga-avabtn');
+    await page.waitForSelector('#ga-photo-sheet.open');
+    const sheet = await page.evaluate(() => [...document.querySelectorAll('#ga-photo-sheet .ga-t')].map((e) => e.textContent));
+    ok(sheet.includes('Take a photo') && sheet.includes('Choose from library') && !sheet.includes('Remove photo'), `the sheet offers take / choose, and no remove yet (${sheet.join(' · ')})`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !document.getElementById('ga-photo-sheet').classList.contains('open')), 'Escape closes the sheet');
+    // A real image through the real cropper (a wide one, so it has to be positioned).
+    await page.evaluate(() => {
+        const cv = document.createElement('canvas'); cv.width = 900; cv.height = 600;
+        const g = cv.getContext('2d'); g.fillStyle = '#4f6e66'; g.fillRect(0, 0, 900, 600); g.fillStyle = '#c98e6b'; g.fillRect(400, 200, 120, 160);
+        gaCropOpen(cv.toDataURL('image/jpeg', 0.9));
+    });
+    await page.waitForSelector('#ga-crop.open');
+    const st = await page.$('#ga-crop-stage');
+    const box = await st.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up();
+    const moved = await page.evaluate(() => (document.getElementById('ga-crop-img') || {}).style.transform || '');
+    ok(/translate\(-60px/.test(moved), `dragging moves the photo inside the circle (${moved})`);
+    await page.click('#ga-crop .is-done');
+    await page.waitForTimeout(500);
+    const set = posts.find((p) => p.body.action === 'guest_avatar_set');
+    ok(!!set && /^data:image\/jpeg;base64,/.test(set.body.data) && !('email' in set.body), 'Use photo posts one JPEG, and nothing that names whose (the session decides)');
+    const after = await page.evaluate(() => ({
+        img: (document.querySelector('#guest-account-body .ga-ava img') || {}).getAttribute ? document.querySelector('#guest-account-body .ga-ava img').getAttribute('src') : '',
+        dock: (document.querySelector('.guest-dock-btn[data-tab="account"] img') || { getAttribute: () => '' }).getAttribute('src'),
+        cropShut: !document.getElementById('ga-crop').classList.contains('open'),
+        label: document.querySelector('.ga-avabtn').getAttribute('aria-label'),
+    }));
+    ok(after.cropShut && after.img === 'avatar.php?v=abcdef0123', `the photo shows on the Account page, versioned (${after.img})`);
+    ok(after.dock === 'avatar.php?v=abcdef0123', 'and the dock\'s Account button wears it');
+    ok(/Change your profile photo/.test(after.label), 'the circle now says it changes the photo');
+    await page.click('.ga-avabtn');
+    await page.waitForSelector('#ga-photo-sheet.open');
+    await page.click('#ga-photo-sheet [data-act="gaPhotoRemove"]');
+    await page.waitForTimeout(500);
+    const gone = await page.evaluate(() => ({
+        ini: (document.querySelector('#guest-account-body .ga-ava') || {}).textContent || '',
+        dockImg: !!document.querySelector('.guest-dock-btn[data-tab="account"] img'),
+    }));
+    ok(posts.some((p) => p.body.action === 'guest_avatar_remove') && gone.ini === 'G' && !gone.dockImg, 'Remove posts once and the initial and the outline come back');
     await page.close();
 
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST ACCOUNT CHECKS PASSED');

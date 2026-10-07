@@ -673,7 +673,11 @@ switch ($action) {
         }
         $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
         $stmt->execute([$_SESSION['guest_id']]);
-        json_out(['guest' => $stmt->fetch() ?: null]);
+        $gRow = $stmt->fetch() ?: null;
+        if ($gRow) {
+            $gRow['avatar'] = guest_avatar_v((int) $_SESSION['guest_id']);
+        }
+        json_out(['guest' => $gRow]);
 
     // Logged-in guest updates their own contact details (NOT their email).
     case 'guest_update_profile':
@@ -694,7 +698,43 @@ switch ($action) {
             ->execute([$phone, $address, $postcode, (int) $_SESSION['guest_id']]);
         $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
         $stmt->execute([$_SESSION['guest_id']]);
-        json_out(['ok' => true, 'guest' => $stmt->fetch() ?: null]);
+        $gRow = $stmt->fetch() ?: null;
+        if ($gRow) {
+            $gRow['avatar'] = guest_avatar_v((int) $_SESSION['guest_id']);
+        }
+        json_out(['ok' => true, 'guest' => $gRow]);
+
+    // The guest's own profile photo: set (a cropped JPEG from the Account page) or
+    // remove. Only ever their OWN — the session decides whose, never the body.
+    case 'guest_avatar_set':
+        require_guest();
+        $gid = (int) $_SESSION['guest_id'];
+        $name = avatar_store($in['data'] ?? '');
+        if ($name === '') {
+            json_out(['error' => "That photo couldn't be used — try a different one (a JPEG or a photo from your camera)."], 400);
+        }
+        $was = guest_avatar_name($gid);
+        try {
+            db()->prepare('UPDATE guests SET avatar = ? WHERE id = ?')->execute([$name, $gid]);
+        } catch (\Throwable $e) {
+            avatar_delete($name);
+            json_out(['error' => 'Profile photos need the latest database update — please try again later.'], 503);
+        }
+        if ($was !== '' && $was !== $name) {
+            avatar_delete($was);
+        }
+        json_out(['ok' => true, 'avatar' => substr($name, 0, 10)]);
+
+    case 'guest_avatar_remove':
+        require_guest();
+        $gid = (int) $_SESSION['guest_id'];
+        $was = guest_avatar_name($gid);
+        try {
+            db()->prepare('UPDATE guests SET avatar = NULL WHERE id = ?')->execute([$gid]);
+        } catch (\Throwable $e) {
+        }
+        avatar_delete($was);
+        json_out(['ok' => true, 'avatar' => '']);
 
     // Logged-in guest changes their own password (must give the current one).
     case 'guest_change_password':
@@ -840,6 +880,7 @@ switch ($action) {
         $try('UPDATE guest_photos SET guest_id = NULL, guest_name = ? WHERE guest_id = ?', ['Former guest', $gid]);
         $try('DELETE FROM push_subscriptions WHERE guest_id = ?', [$gid]);
         $try('DELETE FROM guest_passkeys WHERE guest_id = ?', [$gid]);
+        avatar_delete(guest_avatar_name($gid)); // the photo goes with the account
         db()
             ->prepare('DELETE FROM guests WHERE id = ?')
             ->execute([$gid]);
