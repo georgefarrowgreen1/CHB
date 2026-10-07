@@ -216,10 +216,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       minMain: Math.min(...rows.map((r) => r.querySelector('.cal-pmain').getBoundingClientRect().width)),
       maxBtn: Math.max(...rows.map((r) => r.querySelector('button').getBoundingClientRect().width)),
       titleLines: t ? Math.round(t.getBoundingClientRect().height / lh) : 0,
+      tiles: [...document.querySelectorAll('#bhub-fold-cal-21a .cal-tools .mo-tool')].map((b) => {
+        const sp = b.querySelector('span'), ic = b.querySelector('.ic');
+        return { icTop: Math.round(ic.getBoundingClientRect().top), lines: Math.round(sp.getBoundingClientRect().height / (parseFloat(getComputedStyle(sp).lineHeight) || 16)), clipped: sp.scrollWidth > sp.clientWidth + 1, h: Math.round(b.getBoundingClientRect().height) };
+      }),
     };
   });
   ok(phone.n === 2 && phone.minMain >= 180, `at 390px each platform's words get a real column (${Math.round(phone.minMain)}px)`);
   ok(phone.maxBtn < 120, `…and Replace stays a small button (${Math.round(phone.maxBtn)}px)`);
+  ok(phone.tiles.length === 4 && new Set(phone.tiles.map((x) => x.icTop)).size === 1 && new Set(phone.tiles.map((x) => x.h)).size === 1,
+    `the fold's four action tiles are one size with their icons on one line (${JSON.stringify(phone.tiles.map((x) => [x.icTop, x.h]))})`);
+  ok(phone.tiles.every((x) => x.lines === 1 && !x.clipped), 'every tile label sits on one line, uncut');
+  await page.screenshot({ path: '/tmp/claude-0/-home-user-CHB/e820a22c-cfa5-5535-94d0-f1835c6df202/scratchpad/cal390c.png', clip: { x: 0, y: 700, width: 390, height: 450 } });
   ok(phone.titleLines === 1, `the summary title stays on one line beside its mark (${phone.titleLines})`);
   await page.setViewportSize({ width: 1280, height: 950 });
   ok(c1.state === 'warn' && /1 calendar isn.t syncing/.test(c1.t), `the summary names the one failing calendar (${c1.t})`);
