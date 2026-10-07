@@ -2116,7 +2116,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
             : '');
     $p = is_array($e['price'] ?? null) ? $e['price'] : null;
     $money = fn($n) => '£' . number_format((float) $n, 2);
-    $agreed = $p && !empty($p['agreed']);
+    $agreed = $p && !empty($p['agreedQuote']);
     $priceLine = $p
         ? $money($p['total']) .
             ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .

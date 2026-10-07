@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=358">
+    <link rel="stylesheet" href="app.css?v=359">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -653,7 +653,7 @@
                     <!-- Waitlist as a first-class action — not only buried in sold-out
                          search results. Prefilled with this cottage. -->
                     <div style="text-align:center;margin-top:10px;">
-                        <a style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become&nbsp;available</a>
+                        <a href="#" role="button" style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:inline-flex;align-items:center;min-height:44px;" data-act="pdCall" data-fn="openWaitlistHere">Dates booked? Get notified if they become&nbsp;available</a>
                     </div>
                 </div>
                 <div class="prop-divider"></div>
@@ -912,12 +912,12 @@
                          the guest left the email field blank — an enquiry with a phone and no
                          address is deliberately accepted, so the reply cannot be an email. -->
                     <!-- Said once: the drawn tick above is the mark; this line says WHEN, so it keeps no ✓ of its own. -->
-                    <p class="enq-sent-how" id="enq-sent-how">George replies personally — usually the same day, by email.</p>
+                    <p class="enq-sent-how" id="enq-sent-how">George replies personally — usually within a few hours, by email.</p>
                     <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
                     <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
                     <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
                         <div class="enq-sched-row"><span class="enq-sched-dot" aria-hidden="true"></span><span class="enq-sched-when">Now</span><span class="enq-sched-what">We read your enquiry and check your dates</span></div>
-                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Today</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
+                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Next</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
                         <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Then</span><span class="enq-sched-what" id="enq-sched-then">Pay the deposit and the cottage is yours — we'll look after the rest</span></div>
                     </div>
                     <!-- New guest: set a password to create an account -->
@@ -936,7 +936,7 @@
                         <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireSignInInstead">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
-                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);">No thanks, maybe later</a>
+                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);display:inline-flex;align-items:center;min-height:44px;padding:0 8px;">No thanks, maybe later</a>
                     </div>
                 </div>
             </div>
@@ -2066,7 +2066,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1062"></script>
+    <script defer src="app.js?v=1063"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

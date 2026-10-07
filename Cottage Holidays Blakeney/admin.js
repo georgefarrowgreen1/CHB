@@ -5116,7 +5116,7 @@ function cmdkIntent(q) {
         const totalDue = rows.reduce((s, r) => s + r.ps.balance, 0);
         const head = ans(
             rows.length ? `${rows.length} balance${rows.length === 1 ? '' : 's'} to chase · ${gbp(totalDue)}` : 'Nothing to chase',
-            rows.length ? 'Due soon or overdue — open Bookings ▸ Needs payment' : 'All balances are in hand',
+            rows.length ? 'Due soon or overdue — the “to collect” line on Today lists them' : 'All balances are in hand',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
         );
         return [head].concat(rows.slice(0, 12).map((r) => { const when = r.days < 0 ? `overdue — was due ${fmtDate(r.x.b.checkIn)}` : r.days === 0 ? 'arrives today' : r.days === 1 ? 'arrives tomorrow' : `arrives in ${r.days} days`; return bk(r.x.pk, r.x.b, `${gbp(r.ps.balance)} · ${when} · ${propName(r.x.pk)}`); }));
@@ -5424,8 +5424,8 @@ function cmdkIntent(q) {
             owedHead,
             n
                 ? (armTotal > 0.005
-                    ? `${gbp(armTotal)} of it you settle yourself · tap for the rest — Bookings ▸ Needs payment`
-                    : 'Tap to chase them — Bookings ▸ Needs payment')
+                    ? `${gbp(armTotal)} of it you settle yourself · tap for the rest — Today ▸ to collect`
+                    : 'Tap to chase them — Today ▸ to collect')
                 : 'No balances outstanding',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
             n ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
@@ -5639,7 +5639,7 @@ function helpTopics() {
             related: ['change-prices'] },
         { id: 'chase-balance', title: 'Chase an unpaid balance', cat: 'Money',
             kw: 'chase balance owed outstanding unpaid remind due money collect nudge',
-            steps: ['Open Bookings and filter to “Needs payment”.', 'Open the booking and tap “Request balance” to email a secure pay link.', 'Today’s Needs-you strip also flags balances due within 21 days.'],
+            steps: ['On Today, tap the “£… to collect” line under Bookings.', 'Open the booking and tap “Request balance” to email a secure pay link.', 'Today’s Needs-you strip also flags balances due within 21 days.'],
             doIt: { label: 'Who needs to pay', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
             related: ['take-payment'] },
         { id: 'export-accountant', title: 'Export figures for my accountant', cat: 'Money',
@@ -12096,7 +12096,7 @@ function renderBookingHub() {
         ? `“${escapeHtml(noteFirst.length > 44 ? noteFirst.slice(0, 43) + '…' : noteFirst)}”`
         : 'Add a private note — only you see it';
     const noteCard = bhubFoldGrp('note', 'Your note', noteSub, '', `
-            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:var(--fs-body);">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
+            <textarea id="bk-notes-${b.id}" class="input-glass" rows="4" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:var(--fs-body);">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>`);
 
     // ---- Activity — the chronological feed behind a summary row stating the
@@ -12993,7 +12993,8 @@ function mcDayHtml() {
     return `<div class="mc-day">
         <div class="mc-day-t">${escapeHtml(greet)}${brief ? ' — ' + escapeHtml(brief) : ''} ${escapeHtml(tail)}</div>
         ${rows}
-        <div class="mc-day-note">${__mcDayDuties.length ? 'The same list as Today’s strip — or just ask about any of it.' : 'All caught up — ask me anything about the day.'}</div>
+        ${duties.length > __mcDayDuties.length ? `<div class="mc-day-r"><span class="mc-day-l">${duties.length - __mcDayDuties.length} more on Today</span><button type="button" class="mc-day-go" data-act="nav" data-arg="view-backoffice">Open Today ›</button></div>` : ''}
+        <div class="mc-day-note">${__mcDayDuties.length ? (duties.length > __mcDayDuties.length ? 'The top of Today’s list — or just ask about any of it.' : 'The same list as Today’s strip — or just ask about any of it.') : 'All caught up — ask me anything about the day.'}</div>
     </div>`;
 }
 // The welcome card — the empty state STARTS you off instead of lecturing.
@@ -19038,7 +19039,13 @@ function bookingPlanDeposit(b, total) {
 }
 function bookingPlanDueDate(b) {
     if (b.balanceDueDate) return b.balanceDueDate;
-    return b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
+    if (!b.checkIn) return '';
+    const std = ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30));
+    // A booking made INSIDE the balance window owes in full on the day it was
+    // made — never weeks before it existed (that read as long overdue on Money
+    // while Today said "arriving in 5 days").
+    const made = String(b.agreedOn || b.createdAt || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(made) && made > std ? made : std;
 }
 // The plan, stated as sentences inside the Payments header. Hidden once a
 // standard-plan booking is settled (nothing left to schedule); a CUSTOM plan
@@ -19251,6 +19258,22 @@ function hubPlanHtml(b, ps, gt, past) {
         : dot(false) + (b.balanceRequestedAt
           ? `Asked ${day(b.balanceRequestedAt)}${b.balanceRemindedAt ? ' · reminded ' + day(b.balanceRemindedAt) : ''}`
           : 'Not asked yet');
+    // INSIDE THE WINDOW the standard plan has no deposit stage: the first ask is
+    // the whole stay (booking_payment_kind upgrades it). Saying "£205 deposit,
+    // £435 balance by <a date before the booking existed>" under a payask for
+    // £640 told two stories on one panel.
+    let inWin = false;
+    try { inWin = !custom && !apPlanLive(b) && !(gt.paid > 0.005) && bookingInBalanceWindow(b); } catch (e) {}
+    if (inWin) {
+        const askState = dot(false) + (b.balanceRequestedAt || b.depositRequestedAt
+            ? `Link sent ${day(b.balanceRequestedAt || b.depositRequestedAt)}`
+            : 'Not asked yet');
+        return `<div class="bhub-plan">
+        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag is-std">default</span></span>
+        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(gt.balance)} in full, due now</strong><span class="bhub-plan-why">${escapeHtml(`booked within ${paymentTerms.balanceDays || 30} days of arrival`)}</span></span><span class="bhub-plan-state">${askState}</span></div>
+        ${!past ? `<button type="button" class="bhub-actlink" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan</button>` : ''}
+    </div>`;
+    }
     return `<div class="bhub-plan">
         ${/* The FACTS carry the weight (600, the hero-figure rule — weight,
               not size) and the provenance stays quiet in the parenthetical;
@@ -23270,7 +23293,7 @@ function renderChatAnswersEditor() {
                 siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
             return (
                 `<div class="acw-frow"><label>\u201c${escapeHtml(f.q)}\u201d</label>` +
-                `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
+                `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContentField', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
             );
         }).join('') +
         '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:var(--fs-caption);">✓ Saves by itself as you edit</span></div></div>';
@@ -23297,11 +23320,11 @@ function renderChatAwayEditor() {
         '<div class="acr-capsub">Sent at most once every few hours \u2014 never right after you\u2019ve replied.</div>' +
         `<div class="acr-well">
             <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
-            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
+            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContentField', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
             <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
                 <span style="display:flex;gap:6px;align-items:center;">
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContentField', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContentField', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
                 </span></div>
         </div>`;
 }
@@ -23712,7 +23735,7 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-cap">Arrival info</div>
                     <div class="acr-capsub">Directions, key collection, wifi — private to booked guests.</div>
                     <div class="acr-well">
-                        <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
+                        <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContentField', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
                         <small class="acw-tip">✓ Saves by itself — emailed before check-in, and unlocks on the guest&rsquo;s account at the cottage door (see Location)</small></div>
                     </div>`;
         case 'opsnotes':
@@ -27407,7 +27430,9 @@ function osVBars(items, fmt) {
         items
             .map((i, ix) => {
                 const h = Math.max(3, Math.round(((i.value || 0) / peak) * AREA));
-                const tick = !dense || ix % every === 0 || ix === items.length - 1;
+                // The forced LAST tick and a regular one beside it overprint
+                // ("0607" on the 30-day chart): drop the regular tick near the end.
+                const tick = !dense || ix === items.length - 1 || (ix % every === 0 && items.length - 1 - ix >= Math.ceil(every / 2) + 1);
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
                     ${dense || !(i.value > 0) ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
                     <div class="osv-bar" style="width:100%;max-width:36px;min-width:2px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}px;"></div>
@@ -27545,6 +27570,19 @@ function tlPlaceNowLine() {
     // strikes through today's day number (reported: "S4" with the line through the 4).
     const hr = /** @type {HTMLElement|null} */ (inner.querySelector('.tl-headrow'));
     line.style.top = (hr ? hr.offsetHeight : 0) + 'px';
+    // A bar that SPANS now (a guest in residence) has the line running under its
+    // translucent fill, through the guest's name. Start that bar's label just
+    // past the line instead; every other bar keeps its own padding.
+    const lx = ir.left + (cr.left - ir.left) + frac * cr.width;
+    inner.querySelectorAll('.tl-bar').forEach((bar) => {
+        const el = /** @type {HTMLElement} */ (bar);
+        if (el.dataset.nowPad) { el.style.paddingLeft = ''; delete el.dataset.nowPad; }
+        const r = el.getBoundingClientRect();
+        if (lx > r.left + 4 && lx < r.right - 24) {
+            el.style.paddingLeft = Math.round(lx - r.left + 8) + 'px';
+            el.dataset.nowPad = '1';
+        }
+    });
 }
 function renderCalendar() {
     renderCalUpdated();

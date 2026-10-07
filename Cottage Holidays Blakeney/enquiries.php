@@ -106,7 +106,7 @@ function enq_quote_with_terms($p, array $row)
 {
     if (is_array($p) && isset($row['agreed_price']) && (float) $row['agreed_price'] > 0) {
         $p['total'] = round((float) $row['agreed_price'], 2);
-        $p['agreed'] = true;
+        $p['agreedQuote'] = true;
     }
     return $p;
 }

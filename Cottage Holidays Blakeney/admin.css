@@ -8147,3 +8147,11 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .bhub-fold-grp:has(+ #mo-back-slot > .bhub-fold-grp),
 .bhub-fold-grp:has(+ #mo-back-slot:empty + .bhub-fold-grp),
 #mo-back-slot:has(+ .bhub-fold-grp) > .bhub-fold-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+/* Round-3 audit. The Add-expense form's inline `flex: 1 1 160px` became a 160px
+   HEIGHT once the phone layout turned the form into a column (a 110px hole under
+   Note). One task's button is a button, not a 1086px bar, on wide screens. Below
+   480px a selected record's quick actions take one column, or "Record a payment"
+   truncates at 360/375. */
+@media (max-width: 639px) { .exp-add-form > div { flex: none !important; } }
+@media (min-width: 901px) { #needs-you.ny-solo .ny-act { flex: 0 1 auto; min-width: 240px; max-width: 360px; padding: 0 24px; } }
+@media (max-width: 479px) { .cmdk-qa { grid-template-columns: 1fr; } }

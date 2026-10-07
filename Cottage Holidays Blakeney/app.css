@@ -815,8 +815,7 @@ header.glass-panel:not(.header-hidden):active{
   /* No long-press "copy/save image" menu on mobile. */
   -webkit-touch-callout: none;
 }
-.logo:focus,
-.logo:focus-visible {
+.logo:focus {
   outline: none;
 }
 /* Belt-and-braces: kill every tap/press highlight, focus ring or active
@@ -826,9 +825,17 @@ header.glass-panel:not(.header-hidden):active{
 .logo-mark {
   -webkit-tap-highlight-color: transparent !important;
 }.logo:focus,
-.logo:focus-visible,
 .logo:focus-within{
   outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* The crown is the first Tab stop: a keyboard user must see it. A tap never
+   matches :focus-visible, so the press stays clean. */
+.logo:focus-visible{
+  outline: 2px solid var(--accent-text) !important;
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
   background: transparent !important;
   box-shadow: none !important;
 }
@@ -1021,6 +1028,15 @@ nav a:hover {
 }
 .mobile-nav-overlay.open {
   right: 0;
+  visibility: visible;
+  transition: right 0.6s var(--fluid-bezier), visibility 0s;
+}
+/* Closed it sits off screen: hidden from Tab and the a11y tree too, or its links
+   are three invisible stops on every page. The delay keeps it painted while it
+   slides out. */
+.mobile-nav-overlay:not(.open) {
+  visibility: hidden;
+  transition: right 0.6s var(--fluid-bezier), visibility 0s linear 0.6s;
 }
 .mobile-nav-overlay a {
   font-size: var(--fs-title);
