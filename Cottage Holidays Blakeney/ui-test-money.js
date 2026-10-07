@@ -441,7 +441,7 @@ let mailWillFail = false;
       if (String(url).includes('pricing-suggest.php')) return { suggestions: [
         { id: 's1', prop_key: '21a', severity: 'opportunity', title: 'Raise the weekend uplift', detail: 'Strong weekend demand.', apply: { field: 'weekendPct', value: 30 } },
         { id: 's2', prop_key: '21a', severity: 'insight', title: 'Midweek gaps cluster', detail: 'A midweek offer would fill them.' },
-      ], signals: { searches60: 12, noResult60: 3, searchWeeks: [{ week: '2026-08-10', count: 9, missed: 5 }] } };
+      ], signals: { searches60: 12, noResult60: 3, searchWeeks: [{ week: ukShiftDays(todayDashed(), -60), count: 7, missed: 4 }, { week: ukShiftDays(todayDashed(), 14), count: 9, missed: 5 }] } };
       return realGet(url);
     };
     await renderMoneyFeed();
@@ -471,7 +471,7 @@ let mailWillFail = false;
       insight: !!pc.querySelector('.pr-scard .st-cap.is-unk'),
       well: w ? getComputedStyle(w).borderStyle !== 'none' : false,
       apply: !!pc.querySelector('.pr-scard [data-act="applyPricingSuggestion"]'),
-      radar: pc.querySelectorAll('.pr-radar .pr-rrow').length === 1 && /3/.test((pc.querySelector('.pr-rnums') || {}).textContent || ''),
+      radar: /* a past week never paints — the engine looks forward */ pc.querySelectorAll('.pr-radar .pr-rrow').length === 1 && /3/.test((pc.querySelector('.pr-rnums') || {}).textContent || ''),
       loading: !pc.querySelector('.pr-loading'),
     };
     window.apiPost = realPost;
