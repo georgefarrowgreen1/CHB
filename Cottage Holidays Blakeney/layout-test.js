@@ -357,7 +357,7 @@ async function waitForServer(url, tries = 40) {
       page.on('pageerror', (e) => problems.push(`pageerror @status: ` + e.message));
       await page.goto(`http://127.0.0.1:${PORT}/status.php`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(400);
-      const r = await page.evaluate(MEASURE, ['.card h1', '.overall-title', '.badge', '.foot a']);
+      const r = await page.evaluate(MEASURE, ['h1', '.hero-title', '.badge', '.again', '.back']);
       judge(`status @ ${vp.name} (${vp.width}px)`, r);
       await page.screenshot({ path: path.join(SHOTS, `status-${vp.name}.png`), fullPage: true }).catch(() => {});
       await page.close();

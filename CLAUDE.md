@@ -3512,6 +3512,26 @@ in admin.css. Gated by **ui-test-status.js**, **test-status.php** and test-integ
   called from anywhere else (search, Needs a look, Analytics' weekly button) — so
   never set `btn.textContent` inside a row. Gated by ui-test-status §7.
 
+## The PUBLIC status page wears the admin Status look (approved demo, built)
+
+`/status` (status.php) is the admin Status page's vocabulary for visitors: a one-line
+crown + name, "Service status", a RING card ("Everything's working" / "Some things
+aren't working"; full when every switched-ON row works, an `off` row counted for
+neither side), "What we checked" as icon rows with ICON-ONLY round badges (✓ / ✕ / –,
+the word kept in `.sr-only`), "Last 30 days" with the healthy % counting up and tap-a-day
+bars, and "Back to the website" as a row. Dark by default, light by the visitor's
+setting, values restated inline as before (no stylesheet dependency). Removed at the
+owner's ask: the Live pill, the counts beside the captions, "tap a day", the
+switched-off footnote, the subtitle under the title, and the ring's orbit/glow.
+- **Interactions live in `status.js`, SAME-ORIGIN** — the CSP carries no
+  'unsafe-inline' for scripts, so an inline block would silently do nothing. It is
+  pinned by its own content hash (`?v=` from `md5_file`), and the page reads fully
+  without it. **Check again RELOADS the current address** (the reload IS the check) —
+  `location.href = '/status'` 404s under `php -S`, which has no rewrite.
+- Gated by **ui-test-publicstatus.js** (the real degraded response in both themes,
+  icon-only badges with spoken states, the script pin, Check again reloading) and
+  layout-test's /status scene (selectors re-aimed).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
