@@ -551,7 +551,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await new Promise((r) => setTimeout(r, 350));
     const rv = {
       qrow: !!document.querySelector('#guest-review-moderation .acw-qrow'),
-      cap: !!document.querySelector('#guest-review-moderation .st-cap.is-warn'),
+      // The waiting count rides the TITLE's capsule now (the approved Reviews demo).
+      cap: !!document.querySelector('#settings-panel-cap .st-cap.is-warn'),
       pills: !!document.querySelector('#guest-review-moderation .acw-modacts .mod-ok') && !!document.querySelector('#guest-review-moderation .acw-modacts .mod-no'),
     };
     return { ca, wl, ga, rv };
@@ -561,6 +562,58 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p2.ga.rows === 2 && p2.ga.fig && p2.ga.hooks, 'Guest accounts: person rows with serif lifetime spend + the data-gemail hooks');
   ok(p2.ga.resetOnlyWithAccount, 'Reset password only offered where an account exists');
   ok(p2.rv.qrow && p2.rv.cap && p2.rv.pills, 'Reviews: the pending item is a moderation row with verdict pills');
+
+  console.log('§7b the Reviews page: copy per cottage, two sub-pages, the title capsule');
+  const rv2 = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    let clip = '';
+    try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { clip = t; return Promise.resolve(); } } }); } catch (e) {}
+    settingsOpen('reviews');
+    await wait(400);
+    const keys = bookableCottageKeys();
+    const rows = document.querySelectorAll('#review-links .rv-row').length;
+    const copies = document.querySelectorAll('#review-links .rv-copy').length;
+    const k = keys[0];
+    const btn = document.getElementById('revcopy-' + k);
+    const r = btn.getBoundingClientRect();
+    btn.click();
+    await wait(150);
+    const b2 = document.getElementById('revcopy-' + k);
+    const copied = { cls: b2.classList.contains('is-copied'), txt: b2.textContent.trim(), clip };
+    const otherStill = keys.length < 2 || !document.getElementById('revcopy-' + keys[1]).classList.contains('is-copied');
+    const capOnLine = (() => {
+      const t = document.getElementById('settings-panel-title').getBoundingClientRect();
+      const c = document.querySelector('#settings-panel-cap .st-cap');
+      if (!c) return null;
+      const cr = c.getBoundingClientRect();
+      return Math.abs((t.top + t.bottom) / 2 - (cr.top + cr.bottom) / 2);
+    })();
+    const noOldFold = !document.querySelector('#sec-reviews details') && !document.querySelector('#sec-reviews #bulk-rev-text');
+    document.querySelector('#sec-reviews [data-arg="reviews-import"]').click();
+    await wait(200);
+    const imp = { shown: document.getElementById('sec-reviews-import').style.display !== 'none', title: document.getElementById('settings-panel-title').textContent, filled: document.getElementById('bulk-rev-prop').options.length > 1, capGone: !document.querySelector('#settings-panel-cap .st-cap') };
+    settingsBack();
+    await wait(400);
+    const backToReviews = document.getElementById('sec-reviews').style.display !== 'none';
+    siteContent['google-review-url'] = '';
+    document.querySelector('#sec-reviews [data-arg="reviews-google"]').click();
+    await wait(200);
+    const goo = { shown: document.getElementById('sec-reviews-google').style.display !== 'none', input: !!document.getElementById('google-review-url-input') };
+    settingsBack();
+    await wait(400);
+    const gcap = (document.getElementById('rv-google-cap') || {}).textContent || '';
+    return { rows, copies, keys: keys.length, h: r.height, copied, otherStill, capOnLine, noOldFold, imp, backToReviews, goo, gcap, wantUrl: reviewLinkUrl(k) };
+  });
+  ok(rv2.rows === rv2.keys && rv2.copies === rv2.keys && rv2.keys >= 1, `every cottage is a row with its own Copy button (${rv2.rows}/${rv2.copies}/${rv2.keys})`);
+  ok(rv2.h >= 44, `Copy is a 44px target (${rv2.h})`);
+  ok(rv2.copied.cls && /Copied/.test(rv2.copied.txt) && rv2.copied.clip === rv2.wantUrl, `tapping Copy puts THAT cottage's link on the clipboard and says Copied (${rv2.copied.txt} · ${rv2.copied.clip})`);
+  ok(rv2.otherStill, "only the tapped cottage's button flips");
+  ok(rv2.capOnLine !== null && rv2.capOnLine <= 1, `the waiting capsule sits centred on the title's line (Δ${rv2.capOnLine})`);
+  ok(rv2.noOldFold, 'the import form and its fold are off the Reviews page');
+  ok(rv2.imp.shown && rv2.imp.title === 'Import reviews' && rv2.imp.filled && rv2.imp.capGone, `Import opens its own page, filled, without the Reviews capsule (${rv2.imp.title})`);
+  ok(rv2.backToReviews, 'Back from a sub-page returns to Reviews, not the index');
+  ok(rv2.goo.shown && rv2.goo.input, 'Google review link opens its own page');
+  ok(/Not set/.test(rv2.gcap), `the Google row says whether the link is set (${rv2.gcap})`);
 
   console.log('§8 the data pages join by framing (batch 3) — seasons as CARDS');
   const p3 = await page.evaluate(async () => {

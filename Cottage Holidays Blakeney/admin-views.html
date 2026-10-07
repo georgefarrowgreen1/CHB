@@ -579,7 +579,12 @@
         <!-- DRILL-DOWN PANEL -->
         <div id="settings-panel" style="display:none;">
             <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="settings-back" data-act="settingsBack">‹ Back</span>
-            <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:var(--fs-display);margin:6px 0 18px;"></h2>
+            <!-- The title row carries an optional state capsule (#settings-panel-cap),
+                 centred on the title's line; settingsOpen clears it on every open. -->
+            <div class="settings-panel-head">
+                <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:var(--fs-display);margin:0;"></h2>
+                <span id="settings-panel-cap"></span>
+            </div>
 
             <!-- Enquiries -->
             <!-- Notifications (owner push) -->
@@ -772,33 +777,42 @@
 
             <!-- Pricing coach (data-driven suggestions; apply is opt-in) -->
             <!-- Reviews (moderation) -->
+            <!-- REVIEWS (approved demo): the queue leads — the title's capsule says
+                 whether anything waits (#settings-panel-cap) — then one row per
+                 cottage with Copy/Share, then two rows into the import and
+                 Google-link pages. Rendered by loadGuestReviewModeration(). -->
             <div class="settings-sec" id="sec-reviews" style="display:none;">
-                <div class="accounts-stat" style="max-width:640px;">
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
-
-                    <!-- THE QUEUE LEADS. External-guest reviews left via the links:
-                         approve to publish, and privately rate the guest (hidden from
-                         them) to steer the book-direct follow-up. Rendered by
-                         loadLeadModeration(). -->
+                <div class="rv-page">
+                    <p id="rv-intro" class="rv-intro" hidden>Nothing waiting. Guests review from their account after a stay, and nothing shows on the site until you approve it here.</p>
+                    <!-- External-guest reviews left via the links (loadLeadModeration). -->
                     <div id="lead-moderation"></div>
-
-                    <div id="guest-review-moderation"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
-
-                    <!-- Per-cottage review links to share with EXTERNAL (Airbnb/Vrbo)
-                         guests — a once-per-cottage set-up task, so it sits BELOW the
-                         verdicts and renders folded (renderReviewLinks()). -->
+                    <div id="guest-review-moderation"><p class="rv-intro">Loading…</p></div>
+                    <!-- Per-cottage review links for Airbnb / Vrbo guests (renderReviewLinks). -->
                     <div id="review-links"></div>
+                    <section class="rv-sec">
+                        <h3 class="acr-cap">Bring reviews in</h3>
+                        <div class="acr-well rv-well">
+                            <button type="button" class="rv-go" data-act="settingsOpen" data-arg="reviews-import">
+                                <span class="rv-go-txt"><span class="rv-name">Import from Airbnb &amp; others</span><span class="rv-sub">Paste them from your host dashboard</span></span>
+                                <span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+                            </button>
+                            <button type="button" class="rv-go" data-act="settingsOpen" data-arg="reviews-google">
+                                <span class="rv-go-txt"><span class="rv-name">Google review link</span><span class="rv-sub">Added to the after-stay email</span></span>
+                                <span id="rv-google-cap"></span>
+                                <span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </div>
 
-                    <!-- Import + Google-link are occasional setup tasks, tucked under a
-                         disclosure so the "approve" queue above leads. -->
-                    <details class="help-disclosure" style="margin-top:22px;">
-                      <summary>Import reviews &amp; Google review link</summary>
-                    <!-- Imported reviews: paste reviews from Airbnb / Vrbo / Booking.com /
-                         Google (your own genuine reviews from other platforms). Each is
-                         shown on the cottage page tagged with its source and counts toward
-                         that cottage's rating. Stored in siteContent.reviews. -->
-                    <div style="margin-top:14px;">
-                        <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
+            <!-- Import reviews (reached from Reviews; Back returns there). Imported
+                 reviews: paste reviews from Airbnb / Vrbo / Booking.com / Google (your
+                 own genuine reviews). Each is shown on the cottage page tagged with its
+                 source and counts toward that cottage's rating. Stored in siteContent.reviews. -->
+            <div class="settings-sec" id="sec-reviews-import" style="display:none;">
+                <div class="accounts-stat" style="max-width:640px;">
+                    <div>
                         <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                             <select class="input-glass field-sm" id="bulk-rev-prop" style="flex:1 1 160px;min-width:140px;" title="Which cottage these reviews are for" aria-label="Which cottage these reviews are for"></select>
@@ -815,11 +829,16 @@
                             <button class="btn-glass" style="width:auto;padding:12px 22px;" data-act="saveReviews">Save imported reviews</button>
                         </div>
                     </div>
+                </div>
+            </div>
 
+            <!-- Google review link (reached from Reviews; Back returns there). -->
+            <div class="settings-sec" id="sec-reviews-google" style="display:none;">
+                <div class="accounts-stat" style="max-width:640px;">
                     <!-- Google review funnel: a few days after checkout we email guests a
                          review link. Paste your Google "write a review" link to make it the
                          primary button (great for search ranking). Leave blank to skip. -->
-                    <div style="margin-top:24px;border-top:1px solid var(--glass-border);padding-top:18px;">
+                    <div>
                         <label class="modal-label" for="google-review-url-input">Google review link (optional)</label>
                         <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
                         <input type="url" id="google-review-url-input" class="input-glass" placeholder="https://g.page/r/…/review" autocomplete="off" spellcheck="false">
@@ -828,7 +847,6 @@
                             <span id="google-review-url-msg" style="font-size:var(--fs-sub);"></span>
                         </div>
                     </div>
-                    </details>
                 </div>
             </div>
 

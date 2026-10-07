@@ -12356,6 +12356,8 @@ const SETTINGS_TITLES = {
     notify: 'Notifications',
     host: 'Profile',
     reviews: 'Reviews',
+    'reviews-import': 'Import reviews',
+    'reviews-google': 'Google review link',
     security: 'Security',
     accom: 'Cottages',
     calendar: 'Calendar sync',
@@ -12509,7 +12511,12 @@ function settingsOpen(section) {
     sec.style.display = '';
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
-    settingsBackTarget = () => settingsShowIndex();
+    // The title's state capsule belongs to ONE section; a section that has one
+    // fills it again as it renders (Reviews), every other opens without it.
+    const cap = document.getElementById('settings-panel-cap');
+    if (cap) cap.innerHTML = '';
+    // The two Reviews sub-pages go back to Reviews, not to the index.
+    settingsBackTarget = /^reviews-/.test(section) ? () => settingsOpen('reviews') : () => settingsShowIndex();
     settingsRenderSection(section);
     // The rail's Cottages row goes current the moment the cottages section
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
@@ -12525,6 +12532,11 @@ function settingsRenderSection(section) {
     if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
+    else if (section === 'reviews-import') {
+        fillReviewImportControls();
+        renderReviewsEditor();
+    }
+    else if (section === 'reviews-google') initGoogleReviewUrl();
     else if (section === 'photos') loadGuestPhotosAdmin();
     else if (section === 'analytics') loadAnalytics();
     else if (section === 'waitlist') loadWaitlist();
@@ -26133,6 +26145,7 @@ async function saveGoogleReviewUrl() {
     const val = ((el && el.value) || '').trim();
     await saveContent('google-review-url', val);
     siteContent['google-review-url'] = val;
+    rvGoogleCap();
     if (msg) {
         msg.style.color = 'var(--ok)';
         msg.textContent = val ? 'Saved ✓' : 'Cleared.';
@@ -26142,10 +26155,17 @@ async function saveGoogleReviewUrl() {
 // Each live, listed cottage gets a /review/<slug> page (review.php) the owner
 // shares after a stay: the guest leaves a star review + their email/phone, which
 // feeds the "book direct next year" follow-up. Rendered from the live list.
+function reviewLinkUrl(k) {
+    const origin = typeof SITE_ORIGIN === 'string' ? SITE_ORIGIN : location.origin;
+    const slug = (typeof COTTAGE_SLUGS === 'object' && COTTAGE_SLUGS[k]) || k;
+    return origin + '/review/' + slug;
+}
+const RV_IC_COPY = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+const RV_IC_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const RV_IC_SHARE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
 function renderReviewLinks() {
     const wrap = document.getElementById('review-links');
     if (!wrap) return;
-    const origin = typeof SITE_ORIGIN === 'string' ? SITE_ORIGIN : location.origin;
     // EVERY live cottage, private ones included — a private cottage still takes
     // bookings, and this list is the owner's only door to its page from the landing.
     const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
@@ -26153,33 +26173,34 @@ function renderReviewLinks() {
         wrap.innerHTML = '';
         return;
     }
+    // Share only where the device has a share sheet — a button that does
+    // nothing on a desktop browser is worse than no button.
+    const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
     const rows = keys
         .map((k) => {
-            const slug = (typeof COTTAGE_SLUGS === 'object' && COTTAGE_SLUGS[k]) || k;
             const name = (propertyMeta[k] || {}).name || k;
-            const url = origin + '/review/' + slug;
-            return `<div style="margin-bottom:14px;">
-                        <div style="font-size:var(--fs-sub);font-weight:600;color:var(--text-light);margin-bottom:5px;">${escapeHtml(name)}</div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" data-act="selectSelf" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:var(--fs-sub);flex:1;min-width:0;">
-                            <button class="btn-sm btn-edit" style="flex-shrink:0;" ${chbAttrs('copyReviewLink', k)}>Copy</button>
-                        </div>
+            const url = reviewLinkUrl(k);
+            const shown = url.replace(/^https?:\/\//, '');
+            return `<div class="rv-row" id="revrow-${escapeHtml(k)}">
+                        <span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>
+                        <span class="rv-go-txt"><span class="rv-name">${escapeHtml(name)}</span><span class="rv-sub rv-path" title="${escapeHtml(url)}">${escapeHtml(shown)}</span></span>
+                        ${canShare ? `<button type="button" class="rv-share" aria-label="Share the review link for ${escapeHtml(name)}" ${chbAttrs('shareReviewLink', k)}>${RV_IC_SHARE}</button>` : ''}
+                        <button type="button" class="rv-copy" id="revcopy-${escapeHtml(k)}" aria-label="Copy the review link for ${escapeHtml(name)}" ${chbAttrs('copyReviewLink', k)}>${RV_IC_COPY}<span>Copy</span></button>
                     </div>`;
         })
         .join('');
-    // THE QUEUE COMES FIRST. This block is a set-up task done once per cottage
-    // and it led the page every visit — three URL fields and their Copy buttons,
-    // ~550px, pushing the reviews actually WAITING for a verdict to y=920 on a
-    // phone. It sits after them now (the markup order moved with this), folded.
-    wrap.innerHTML = bhubFoldGrp('revlinks', 'Share a review link', 'per cottage', '',
-        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
-                ${rows}`);
+    wrap.innerHTML = `<section class="rv-sec">
+            <h3 class="acr-cap">Ask for a review</h3>
+            <p class="acr-capsub">Send an Airbnb or Vrbo guest their cottage's link after they check out. They leave a review and their contact details.</p>
+            <div class="acr-well rv-well">${rows}</div>
+        </section>`;
 }
-// Copy a cottage's review link (mirrors copyIcalExport).
+// Copy a cottage's review link: the button itself says it worked ("✓ Copied",
+// two seconds) and the toast names whose link it was.
+const __rvCopyT = {};
 async function copyReviewLink(key) {
-    const el = document.getElementById('revlink-' + key);
-    const url = el ? el.value : '';
-    if (!url) return;
+    const url = reviewLinkUrl(key);
+    const name = (propertyMeta[key] || {}).name || key;
     let copied = false;
     try {
         await navigator.clipboard.writeText(url);
@@ -26187,13 +26208,33 @@ async function copyReviewLink(key) {
     } catch (e) {
         /* clipboard blocked */
     }
-    if (copied) toast('Review link copied — send it to your guest.');
-    else {
-        if (el) {
-            el.focus();
-            el.select();
-        }
+    if (!copied) {
         await glassAlert('Copy this review link:\n\n' + url);
+        return;
+    }
+    const btn = document.getElementById('revcopy-' + key);
+    if (btn) {
+        btn.classList.add('is-copied');
+        btn.innerHTML = RV_IC_TICK + '<span>Copied</span>';
+        clearTimeout(__rvCopyT[key]);
+        __rvCopyT[key] = setTimeout(() => {
+            const b = document.getElementById('revcopy-' + key);
+            if (!b) return;
+            b.classList.remove('is-copied');
+            b.innerHTML = RV_IC_COPY + '<span>Copy</span>';
+        }, 2200);
+    }
+    toast(`${name}'s link copied — paste it into the guest's thread.`);
+}
+// Hand the link to the phone's share sheet (Messages, WhatsApp, the Airbnb app).
+async function shareReviewLink(key) {
+    const url = reviewLinkUrl(key);
+    const name = (propertyMeta[key] || {}).name || key;
+    try {
+        await navigator.share({ title: `Review your stay at ${name}`, url });
+    } catch (e) {
+        // Cancelled share sheet: nothing to do. No share at all: copy instead.
+        if (!e || e.name !== 'AbortError') return copyReviewLink(key);
     }
 }
 
@@ -26316,6 +26357,10 @@ async function loadLeadModeration() {
         return;
     }
     const pend = rows.filter((r) => r.status === 'pending').length;
+    leadModerationHtml(wrap, rows, pend);
+    return pend;
+}
+function leadModerationHtml(wrap, rows, pend) {
     wrap.innerHTML =
         `<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
             <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">External guest reviews</h3>
@@ -26326,62 +26371,64 @@ async function loadLeadModeration() {
 }
 
 async function loadGuestReviewModeration() {
-    initGoogleReviewUrl();
+    // REVIEWS (approved demo): the title's capsule answers "does anything wait?",
+    // the queue leads when it does, and the intro sentence speaks only when it
+    // doesn't. The import and Google-link tools live on their own two pages.
     renderReviewLinks();
-    loadLeadModeration();
-    // Set up the "import reviews from Airbnb & other sites" tools (always —
-    // independent of whether there are on-site reviews to moderate).
-    fillReviewImportControls();
-    renderReviewsEditor();
+    rvGoogleCap();
+    const leadsP = loadLeadModeration();
     const wrap = document.getElementById('guest-review-moderation');
+    const intro = document.getElementById('rv-intro');
+    const cap = document.getElementById('settings-panel-cap');
     if (!wrap) return;
     let rows = [];
     try {
         const r = await apiPost('reviews.php', { action: 'list_admin' });
         rows = r.reviews || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load (run migration-guest-reviews.sql?): ${escapeHtml(e.message)}</p>`;
+        if (intro) intro.hidden = true;
+        wrap.innerHTML = `<p class="rv-intro">Couldn't load (run migration-guest-reviews.sql?): ${escapeHtml(e.message)}</p>`;
         return;
     }
-    if (!rows.length) {
-        wrap.innerHTML = emptyState({
-            icon: '<path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/>',
-            title: 'No reviews yet',
-            sub: 'Reviews you approve show on your website. Import your existing Airbnb reviews to get started.',
-            actionLabel: 'Import reviews',
-            onClick: 'data-act="bulkImportReviews"',
-        });
-        return;
-    }
-
     const stars = (n) => '★'.repeat(Math.max(1, Math.min(5, parseInt(n) || 5)));
     const pending = rows.filter((r) => r.status === 'pending');
-
-    // Pending reviews — shown in full, since these need your decision.
-    const pendingHtml = pending.length
-        ? pending
-              .map(
-                  (r) => `
-                <div id="modrev-${r.id}" class="acw-qrow">
-                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">
-                        <span class="star-static" style="color:var(--accent-text);">${stars(r.stars)}</span>
-                        ${stCap('warn', 'waiting')}
-                    </div>
-                    <div style="font-size:var(--fs-body);margin:7px 0 3px;line-height:1.5;">“${escapeHtml(r.review_text)}”</div>
-                    <div style="font-size:var(--fs-caption);color:var(--text-muted);">${escapeHtml(r.name)} · ${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</div>
-                    <div class="acw-modacts">
-                        <button class="mod-ok" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
-                        <button class="mod-no" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
-                        <button class="mod-mut" ${chbAttrs('deleteGuestReview', r.id)}>Delete</button>
-                    </div>
-                </div>`,
-              )
-              .join('')
-        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> No reviews waiting — you're all caught up.</p>`;
-
-    // Only reviews awaiting a decision are shown here. Approved reviews appear
-    // on the public site; declined ones are simply hidden.
-    wrap.innerHTML = pendingHtml;
+    wrap.innerHTML = pending.length
+        ? `<section class="rv-sec">
+            <h3 class="acr-cap">Waiting for you · nothing shows until you approve</h3>
+            <div class="acr-well rv-well">${pending
+                .map((r) => {
+                    const n = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
+                    const cott = (propertyMeta[r.prop_key] || {}).name || r.prop_key || '';
+                    return `<article id="modrev-${r.id}" class="acw-qrow rv-qrow">
+                        <div class="rv-qhead"><span class="star-static rv-stars" aria-label="${n} star${n === 1 ? '' : 's'}">${stars(n)}</span><span class="rv-sub">${escapeHtml(r.name)}${cott ? ' · ' + escapeHtml(cott) : ''}</span></div>
+                        <p class="rv-quote">“${escapeHtml(r.review_text)}”</p>
+                        <div class="acw-modacts">
+                            <button class="mod-ok" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
+                            <button class="mod-no" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
+                        </div>
+                    </article>`;
+                })
+                .join('')}</div>
+        </section>`
+        : '';
+    // External-guest reviews wait for a verdict too, so the capsule counts both.
+    let leads = 0;
+    try {
+        leads = (await leadsP) || 0;
+    } catch (e) {}
+    const waiting = pending.length + leads;
+    if (intro) intro.hidden = waiting > 0;
+    const sec = document.getElementById('sec-reviews');
+    if (cap && sec && sec.style.display !== 'none')
+        cap.innerHTML = waiting ? stCap('warn', `${waiting} waiting`) : stCap('ok', 'All caught up');
+}
+// The Google row's capsule says whether the link is set — the page it opens
+// is where it is changed.
+function rvGoogleCap() {
+    const el = document.getElementById('rv-google-cap');
+    if (!el) return;
+    const set = !!((siteContent && siteContent['google-review-url']) || '').trim();
+    el.innerHTML = set ? stCap('ok', 'Set') : stCap('unk', 'Not set');
 }
 async function setReviewStatus(id, status) {
     try {
