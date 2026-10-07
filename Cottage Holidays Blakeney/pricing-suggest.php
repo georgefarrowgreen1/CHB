@@ -14,6 +14,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/pricing-suggest-lib.php';
 
 require_admin();
 
@@ -107,23 +108,26 @@ function merge_intervals($bookings)
 }
 
 // ---- Search demand (global), last 60 days ----
+$psugToday = date('Y-m-d');
 $signals = ['searches60' => 0, 'noResult60' => 0];
 $topNoMonths = [];
 try {
     $since = date('Y-m-d H:i:s', strtotime('-60 days'));
-    $q = db()->prepare('SELECT COUNT(*) FROM search_log WHERE created_at >= ?');
-    $q->execute([$since]);
+    // Only searches for stays still AHEAD count — a search for last August is not
+    // demand anything can now be priced for. A search with no dates stays in.
+    $ahead = '(check_in IS NULL OR check_in >= ?) AND (month IS NULL OR month >= ?)';
+    $aheadArgs = [$since, $psugToday, substr($psugToday, 0, 7)];
+    $q = db()->prepare("SELECT COUNT(*) FROM search_log WHERE created_at >= ? AND $ahead");
+    $q->execute($aheadArgs);
     $signals['searches60'] = (int) $q->fetchColumn();
-    $q = db()->prepare('SELECT COUNT(*) FROM search_log WHERE created_at >= ? AND found = 0');
-    $q->execute([$since]);
+    $q = db()->prepare("SELECT COUNT(*) FROM search_log WHERE created_at >= ? AND found = 0 AND $ahead");
+    $q->execute($aheadArgs);
     $signals['noResult60'] = (int) $q->fetchColumn();
     $q = db()->prepare(
-        'SELECT month, COUNT(*) c FROM search_log WHERE created_at >= ? AND found = 0 AND month IS NOT NULL GROUP BY month ORDER BY c DESC LIMIT 2',
+        'SELECT month, COUNT(*) c FROM search_log WHERE created_at >= ? AND found = 0 AND month IS NOT NULL AND month >= ? GROUP BY month ORDER BY c DESC LIMIT 4',
     );
-    $q->execute([$since]);
-    foreach ($q->fetchAll() as $r) {
-        $topNoMonths[] = ['month' => $r['month'], 'count' => (int) $r['c']];
-    }
+    $q->execute([$since, substr($psugToday, 0, 7)]);
+    $topNoMonths = array_slice(psug_future_months(array_map(fn($r) => ['month' => $r['month'], 'count' => (int) $r['c']], $q->fetchAll()), $psugToday), 0, 2);
 } catch (\Throwable $e) {
     /* search_log not migrated yet */
 }
@@ -235,14 +239,7 @@ foreach ($props as $p) {
     // 4) Orphan gaps: 1–2 night gaps between reservations (across BOTH channels)
     // that your minimum stay may be leaving empty. Merge first so interleaved
     // direct + Airbnb/Vrbo ranges read as one calendar.
-    $orphans = 0;
-    $merged = merge_intervals($bk);
-    for ($i = 0; $i < count($merged) - 1; $i++) {
-        $gap = (int) round((strtotime($merged[$i + 1][0]) - strtotime($merged[$i][1])) / 86400);
-        if ($gap >= 1 && $gap <= 2) {
-            $orphans += $gap;
-        }
-    }
+    $orphans = psug_future_orphans(merge_intervals($bk), $psugToday);
     if ($orphans > 0) {
         $suggestions[] = [
             'id' => 'orphan-' . $k,
@@ -368,48 +365,20 @@ foreach ($topNoMonths as $tm) {
 }
 
 // 6) Week-level demand radar — exact-date searches (found or not) grouped by the
-//    Monday of the week guests wanted. Unmet weeks with a real signal become
-//    suggestion cards: future weeks are actionable now; past weeks inform next year.
+//    Monday of the week guests wanted, FUTURE weeks only (psug_future_weeks). The
+//    weeks where guests found nothing free become ONE info card, not one per week.
 try {
-    $q = db()->prepare("SELECT DATE_SUB(check_in, INTERVAL WEEKDAY(check_in) DAY) wk,
-                               COUNT(*) c, SUM(found = 0) missed
+    $q = db()->prepare("SELECT DATE_SUB(check_in, INTERVAL WEEKDAY(check_in) DAY) week,
+                               COUNT(*) count, SUM(found = 0) missed
                         FROM search_log
                         WHERE created_at >= ? AND check_in IS NOT NULL
-                        GROUP BY wk ORDER BY c DESC LIMIT 8");
-    $q->execute([$since]);
-    $weeks = $q->fetchAll();
-    $signals['searchWeeks'] = array_map(
-        fn($r) => [
-            'week' => $r['wk'],
-            'count' => (int) $r['c'],
-            'missed' => (int) $r['missed'],
-        ],
-        $weeks,
-    );
-    foreach ($weeks as $w) {
-        if ((int) $w['missed'] < 3) {
-            continue;
-        } // need a real signal, not noise
-        $wc = date('j M', strtotime($w['wk']));
-        $future = $w['wk'] >= date('Y-m-d');
-        $suggestions[] = [
-            'id' => 'radar-' . $w['wk'],
-            'prop_key' => '',
-            'prop_name' => '',
-            'severity' => 'opportunity',
-            'title' => 'Demand radar: week of ' . $wc,
-            'detail' =>
-                (int) $w['missed'] .
-                ' of ' .
-                (int) $w['c'] .
-                ' searches for the week of ' .
-                $wc .
-                ' found nothing free. ' .
-                ($future
-                    ? 'If any dates that week can be opened (or a booking moved), that\'s demand waiting — the waitlist and newsletter are the quickest way to fill it.'
-                    : 'You were full that week — worth pricing it higher next year, since demand outran supply.'),
-            'apply' => null,
-        ];
+                          AND check_in >= DATE_SUB(?, INTERVAL WEEKDAY(?) DAY)
+                        GROUP BY week ORDER BY count DESC LIMIT 12");
+    $q->execute([$since, $psugToday, $psugToday]);
+    $signals['searchWeeks'] = psug_future_weeks($q->fetchAll(), $psugToday);
+    $card = psug_unmet_weeks_card($signals['searchWeeks']);
+    if ($card) {
+        $suggestions[] = $card;
     }
 } catch (\Throwable $e) {
     /* search_log not migrated yet */

@@ -120,6 +120,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-pricing.php
 
+      - name: Pricing engine looks forward (pricing-suggest-lib)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-pricing-suggest.php
+
       - name: Reply-by-email logic (tokens + quote stripping)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-reply.php

@@ -20424,7 +20424,8 @@ function prSearchIdeasHtml(pk) {
 function prRadarHtml() {
     const sig = (__prSugg && __prSugg.d && __prSugg.d.signals) || null;
     if (!sig) return '';
-    const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
+    const mon = ukShiftDays(todayDashed(), -((new Date(todayDashed() + 'T12:00:00Z').getUTCDay() + 6) % 7));
+    const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0 && String(w.week || '').slice(0, 10) >= mon).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
     if (!sig.searches60 && !weeks.length) return '';
     const max = Math.max(1, ...weeks.map((w) => w.count));
     return `<section class="rv-sec">

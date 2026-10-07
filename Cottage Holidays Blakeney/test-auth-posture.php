@@ -68,6 +68,7 @@ $REGISTRY = [
     'notify-recipients.php' => ['admin'],
     'optimize-hero.php' => ['admin'],
     'pricing-suggest.php' => ['admin'],
+    'pricing-suggest-lib.php' => ['lib', [], 'pure decisions for the pricing engine (no direct entry)'],
     'rates.php' => ['admin'], // public GET lists live rates; every write is admin
     'search.php' => ['admin'],
     'square-setup.php' => ['admin'],
