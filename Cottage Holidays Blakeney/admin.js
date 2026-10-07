@@ -14827,12 +14827,14 @@ function calPlat(src) {
 // the real test, and its answer is what the page reports afterwards.
 function calLinkOk(url) {
     const u = String(url || '').trim();
-    return /^https:\/\/\S+$/.test(u) && /ical|\.ics|calendar/i.test(u);
+    return /^https?:\/\/\S+$/.test(u) && /ical|\.ics|calendar/i.test(u);
 }
 function calHoursSince(at) {
     const d = at ? new Date(String(at).replace(' ', 'T')) : null;
     return d && !isNaN(+d) ? (chbNow() - +d) / 3600000 : null;
 }
+// relTime mid-sentence: "from yesterday", never "from Yesterday".
+function calWhen(at) { const t = relTime(at); return t === 'Yesterday' ? 'yesterday' : t; }
 function calAgo(h) {
     if (h == null) return '';
     if (h >= 48) return Math.round(h / 24) + ' days';
@@ -14917,7 +14919,7 @@ function calFoldHtml(k) {
         const p = calPlat(x.source);
         const s = x.s;
         const line = !s ? 'not synced yet'
-            : s.ok === false ? 'Not responding' + (s.ok_at ? ' · last good ' + relTime(s.ok_at) : '') + ' · ' + (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's')
+            : s.ok === false ? 'Not responding' + (s.ok_at ? ' · last good ' + calWhen(s.ok_at) : '') + ' · ' + (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's')
             : (s.events || 0) + ' stay' + (s.events === 1 ? '' : 's') + ' · synced ' + agoLabel(s.at);
         return `<div class="cal-prow"><span class="cal-tile" style="background:${p.c};color:#fff" aria-hidden="true">${escapeHtml(p.l)}</span>
             <span class="cal-pmain"><b>${escapeHtml(p.name)}</b><small class="${s && s.ok === false ? 'is-bad' : ''}">${escapeHtml(line)}</small></span>
@@ -14986,7 +14988,7 @@ function calListHtml() {
         const p = calPlat(x.source);
         const name = (propertyMeta[x.k] || {}).name || x.k;
         const n = (x.s && x.s.events) || 0;
-        const since = x.s && x.s.ok_at ? relTime(x.s.ok_at) : '';
+        const since = x.s && x.s.ok_at ? calWhen(x.s.ok_at) : '';
         const body = since
             ? `Still using the ${n} ${p.name} stay${n === 1 ? '' : 's'} from ${since}. New ${p.name} bookings won’t show until it’s fixed.`
             : `Nothing has come in from it yet, so ${p.name} bookings aren’t on your calendar.`;
@@ -15232,37 +15234,118 @@ function agoLabel(at) {
     const t = relTime(at);
     return /^\d+([mh]| min| hours?)$/.test(t) ? t + ' ago' : t;
 }
-// One line of feed health under each import input, from the server-side
-// status snapshot (written on every sync, cron or manual).
-function feedStatusHtml(s) {
-    if (!s || !s.at) return '';
-    if (s.ok)
-        return `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin:-2px 0 8px;">Synced ${agoLabel(s.at)} · ${s.events} booked range${s.events === 1 ? '' : 's'}</div>`;
-    return `<div style="font-size:var(--fs-caption);color:var(--warn);margin:-2px 0 8px;">⚠ Not syncing (${escapeHtml(s.error || 'error')})${s.ok_at ? ' — still using the dates from ' + agoLabel(s.ok_at) : ''}</div>`;
-}
-// The channel-sync box markup for ONE cottage.
+// The per-cottage sync page, in the list's vocabulary: a summary with Sync now,
+// one row per platform (status + its link, checked as you type), then your own
+// link to hand out. The field ids stay `sync-<source>-<key>` / `sync-export-<key>`:
+// saveSyncFeeds and the layout gate read them.
+const __calDetail = {}; // key -> last 'list' payload, so a blur can tell new from unchanged
 function calendarPropBoxHtml(key, label, data) {
+    __calDetail[key] = data;
     const feeds = data.feeds || [];
     const status = (data.status && data.status.sources) || {};
-    const inputs = SYNC_SOURCES.map((p) => {
+    const linked = SYNC_SOURCES.filter((p) => feeds.some((f) => f.source === p.source && f.url));
+    const failing = linked.filter((p) => status[p.source] && status[p.source].ok === false);
+    const ats = linked.map((p) => calHoursSince(status[p.source] && status[p.source].at)).filter((h) => h != null);
+    const newest = ats.length ? Math.min(...ats) : null;
+    const stays = linked.reduce((n, p) => n + ((status[p.source] && status[p.source].events) || 0), 0);
+    const state = !linked.length ? 'unk' : failing.length ? 'warn' : 'ok';
+    const t = !linked.length ? 'No platforms linked yet'
+        : failing.length ? `${calPlat(failing[0].source).name} isn’t responding`
+          : newest == null ? 'Linked — not synced yet'
+            : 'Synced ' + (newest < 1 / 60 ? 'just now' : calAgo(newest) + ' ago');
+    const s = !linked.length ? 'Paste a platform’s calendar link below'
+        : `${stays} stay${stays === 1 ? '' : 's'} imported · ${linked.length} of ${SYNC_SOURCES.length} platforms linked`;
+    const rows = SYNC_SOURCES.map((p) => {
+        const P = calPlat(p.source);
         const f = feeds.find((x) => x.source === p.source);
-        return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:var(--fs-sub);margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
+        const url = f ? f.url : '';
+        const st = url ? status[p.source] : null;
+        const line = !url ? 'Not linked'
+            : !st ? 'Linked · not synced yet'
+              : st.ok === false ? 'Not responding' + (st.ok_at ? ' · using ' + (st.events || 0) + ' stay' + (st.events === 1 ? '' : 's') + ' from ' + calWhen(st.ok_at) : '')
+                : (st.events || 0) + ' stay' + (st.events === 1 ? '' : 's') + ' · synced ' + agoLabel(st.at);
+        const id = `sync-${p.source}-${key}`;
+        return `<div class="cal-plat${st && st.ok === false ? ' is-bad' : ''}">
+            <div class="cal-prow"><span class="cal-tile" style="background:${P.c};color:#fff" aria-hidden="true">${escapeHtml(P.l)}</span>
+              <span class="cal-pmain"><b>${escapeHtml(P.name)}</b><small class="${st && st.ok === false ? 'is-bad' : ''}">${escapeHtml(line)}</small></span>
+              ${url ? `<button type="button" class="cal-txt" aria-label="Unlink ${escapeHtml(P.name)}" ${chbAttrs('calRemoveFeed', String(key), String(p.source))}>Unlink</button>` : ''}</div>
+            <label class="sr-only" for="${id}">${escapeHtml(P.name)} calendar link</label>
+            <input class="input-glass cal-in" id="${id}" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+              placeholder="Paste the ${escapeHtml(P.name)} calendar link" value="${escapeHtml(url)}"
+              ${chbInput('calFieldInput', String(key), String(p.source))} data-pass="value" ${chbBlur('calFieldBlur', String(key), String(p.source))}>
+            <div class="cal-hint" id="cal-hint-${p.source}-${key}">${url ? '' : escapeHtml(P.where)}</div>
+          </div>`;
     }).join('');
-    return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
-                    <div class="acw-cap">Export</div><div class="acr-capsub">Paste this into each platform's calendar import.</div>
-                    <div style="display:flex;gap:8px;margin-bottom:14px;">
-                        <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:var(--fs-sub);flex:1;min-width:0;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('copyIcalExport', String(key))} style="flex-shrink:0;">Copy</button>
-                    </div>
-                    <div class="acw-cap">Import</div><div class="acr-capsub">Paste the platform calendar links here.</div>
-                    ${inputs}
-                    <div style="margin-top:2px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('runSync', String(key))}>Sync now</button>
-                        <span style="font-size:var(--fs-sub);color:var(--text-muted);margin-left:8px;white-space:nowrap;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
-                    </div>
-                    <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
-                </div>`;
+    return `<div class="cal-detail">
+        <div class="mg-sum cal-sum" data-state="${state}">
+          <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
+            <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
+            <span class="mg-q">?</span>
+          </span>
+          <span class="mg-txt"><span class="mg-t">${escapeHtml(t)}</span><span class="mg-s">${escapeHtml(s)}</span></span>
+          ${linked.length ? `<button type="button" class="btn-sm btn-accent cal-all" ${chbAttrs('runSync', String(key))}>Sync now</button>` : ''}
+        </div>
+        <div class="bhub-grpcap">Platforms</div>
+        <div class="cal-well">${rows}</div>
+        <div class="bhub-grpcap">Your calendar link</div>
+        <div class="cal-well">
+          <div class="cal-copy">
+            <label class="sr-only" for="sync-export-${key}">Your calendar link</label>
+            <input class="input-glass cal-in" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}">
+            <button type="button" class="btn-sm btn-accent" ${chbAttrs('copyIcalExport', String(key))}>Copy</button>
+          </div>
+          <div class="cal-hint">Paste it into each platform so they see your direct bookings.</div>
+        </div>
+      </div>`;
+}
+// Typing checks the link in place — never a repaint mid-keystroke.
+function calFieldInput(key, src, value) {
+    const v = String(value || '').trim();
+    const inp = document.getElementById(`sync-${src}-${key}`);
+    const hint = document.getElementById(`cal-hint-${src}-${key}`);
+    const ok = calLinkOk(v);
+    const cls = !v ? '' : ok ? 'is-ok' : 'is-bad';
+    if (inp) { inp.classList.remove('is-ok', 'is-bad'); if (cls) inp.classList.add(cls); }
+    if (hint) {
+        hint.className = 'cal-hint' + (cls ? ' ' + cls : '');
+        hint.textContent = !v ? calPlat(src).where : ok ? 'Looks like a calendar link — it saves and syncs when you leave the box' : 'That doesn’t look like a calendar link — it should start https:// and end in .ics';
+    }
+}
+// Leaving a box saves a NEW valid link and syncs it at once. An emptied box is put
+// back (unlinking is its own button with its own question — dropping a feed frees
+// its dates) and an invalid one is left for the owner to fix, unsaved.
+async function calFieldBlur(key, src) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById(`sync-${src}-${key}`));
+    if (!inp) return;
+    const v = inp.value.trim();
+    const d = __calDetail[key] || {};
+    const was = ((d.feeds || []).find((f) => f.source === src) || {}).url || '';
+    if (v === was) return;
+    if (!v) { inp.value = was; calFieldInput(key, src, was); return; }
+    if (!calLinkOk(v)) return;
+    try {
+        await saveSyncFeeds(key, true);
+        await runSync(key);
+    } catch (e) {}
+}
+async function calRemoveFeed(key, src) {
+    const P = calPlat(src);
+    const name = (propertyMeta[key] || {}).name || key;
+    const ok = await glassConfirm(`Unlink ${P.name} from ${name}? Its stays come off this calendar, so those dates read as free here until the link is added back.`, 'Unlink');
+    if (!ok) return;
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById(`sync-${src}-${key}`));
+    if (inp) inp.value = '';
+    try {
+        await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds: SYNC_SOURCES.map((p) => {
+            const el = /** @type {HTMLInputElement|null} */ (document.getElementById(`sync-${p.source}-${key}`));
+            return { source: p.source, url: el ? el.value.trim() : '' };
+        }) });
+        toast(`${P.name} unlinked.`);
+    } catch (e) {
+        glassAlert('Couldn’t unlink: ' + e.message);
+    }
+    loadCalendarSyncProp(key);
 }
 // Copy the export feed URL (mirrors the copyPayLink idiom).
 async function copyIcalExport(key) {
@@ -15276,7 +15359,7 @@ async function copyIcalExport(key) {
     } catch (e) {
         /* clipboard blocked */
     }
-    if (copied) toast('Calendar link copied — paste it into the platform.');
+    if (copied) toast('Your calendar link is copied — paste it into the platform’s import.');
     else {
         if (el) {
             el.focus();
