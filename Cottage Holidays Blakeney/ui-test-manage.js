@@ -641,10 +641,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const why = document.querySelector('#rvi-found .rvi-why');
     why.click();
     await wait(50);
-    const removedShown = (document.querySelector('#rvi-found .rvi-removed') || {}).textContent || '';
+    const fold0 = document.querySelector('#rvi-found .rvi-fold');
+    const removedShown = fold0 && !fold0.hidden ? fold0.textContent : '';
     const ready = { disabled: btn.disabled, label: btn.textContent };
     btn.click();
-    await wait(200);
+    await wait(500);
     const toastBtn = [...document.querySelectorAll('.toast-action')].pop();
     const afterAdd = { saves: saves.length, n: saves[0] && saves[0].val.length, last: saves[0] && saves[0].val.slice(-2), cleared: ta.value === '' };
     if (toastBtn) toastBtn.click();
@@ -665,6 +666,79 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(imp.afterAdd.saves === 1 && imp.afterAdd.n === 3 && imp.afterAdd.cleared, `adding APPENDS to what is saved (${imp.afterAdd.n} = 1 kept + 2 new)`);
   ok(imp.afterAdd.last && imp.afterAdd.last[0].stars === 4 && imp.afterAdd.last.every((r) => r.prop === imp.k && r.source === 'Airbnb'), 'stars read from the paste; cottage and source stamped on every one');
   ok(imp.undo.saves === 2 && imp.undo.n === 1, `Undo takes back exactly what was added (${imp.undo.n} left)`);
+
+  console.log('§7d the import page moves in the site\'s grammar, and only when something changed');
+  const mo = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const realSave = window.saveContent;
+    window.saveContent = async () => {};
+    siteContent.reviews = [];
+    __rvi.prop = '';
+    settingsOpen('reviews-import');
+    await wait(150);
+    const host = document.getElementById('rvi-props');
+    const chips = host.querySelectorAll('.rvi-chip');
+    chips[0].click();
+    await wait(60);
+    const pill = host.querySelector(':scope > .chb-pill');
+    const t1 = pill && pill.style.translate;
+    const chip0 = chips[0];
+    let t2 = t1, sameChip = true;
+    if (chips.length > 1) { chips[1].click(); await wait(60); t2 = pill.style.translate; sameChip = host.querySelectorAll('.rvi-chip')[0] === chip0; }
+    const travel = { pill: !!pill, has: host.classList.contains('has-pill'), moved: chips.length < 2 || t1 !== t2, sameChip, trans: pill ? getComputedStyle(pill).transitionProperty : '' };
+    const ta = document.getElementById('rvi-text');
+    ta.value = 'Ann\n★★★★★\nGreat stay.\n\nBen\nReally lovely place.';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    const rows1 = [...document.querySelectorAll('#rvi-found .rvi-row')];
+    const arrive = { n: rows1.length, allIn: rows1.every((r) => r.classList.contains('is-in')), anim: rows1[0] ? getComputedStyle(rows1[0]).animationName : '', staggered: rows1[1] ? rows1[1].style.getPropertyValue('--rvd') !== rows1[0].style.getPropertyValue('--rvd') : false };
+    // Typing that changes nothing READ must not replay the list.
+    ta.value += '\n\n';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    const kept = document.querySelector('#rvi-found .rvi-row') === rows1[0];
+    // A new review arriving animates ALONE.
+    ta.value += 'Cara\nPerfect.';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    const rows2 = [...document.querySelectorAll('#rvi-found .rvi-row')];
+    const onlyNew = rows2.length === 3 && !rows2[0].classList.contains('is-in') && !rows2[1].classList.contains('is-in') && rows2[2].classList.contains('is-in');
+    const r0 = rows2[0];
+    r0.querySelector('.rvi-stars').click();
+    await wait(30);
+    const bow = { same: document.querySelector('#rvi-found .rvi-row') === r0, cls: r0.querySelector('.rvi-stars').classList.contains('is-bow'), anim: getComputedStyle(r0.querySelector('.rvi-stars')).animationName };
+    const btn = document.getElementById('rvi-add');
+    btn.classList.remove('is-settle');
+    r0.querySelector('.rvi-drop').click();
+    await wait(30);
+    const drop = { same: document.querySelector('#rvi-found .rvi-row') === r0, out: r0.classList.contains('is-out'), trans: getComputedStyle(r0).transitionProperty, settle: btn.classList.contains('is-settle'), label: btn.textContent };
+    ta.value = 'Dee\nStayed a few nights\nGreat.';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(30);
+    const f = document.querySelector('#rvi-found .rvi-fold');
+    const fold = { hidden0: f && f.hidden, trans: f ? getComputedStyle(f).transitionProperty : '' };
+    document.querySelector('#rvi-found .rvi-why').click();
+    await wait(30);
+    fold.open = f && !f.hidden && document.querySelector('#rvi-found .rvi-why').getAttribute('aria-expanded') === 'true';
+    fold.rows = f ? getComputedStyle(f).display : '';
+    btn.click();
+    await wait(40);
+    const leaving = document.getElementById('rvi-found').classList.contains('is-leaving');
+    await wait(400);
+    const cleared = !document.querySelector('#rvi-found .rvi-row');
+    window.saveContent = realSave;
+    return { travel, arrive, kept, onlyNew, bow, drop, fold, leaving, cleared };
+  });
+  ok(mo.travel.pill && mo.travel.has && mo.travel.moved && /translate/.test(mo.travel.trans), `the cottage pill TRAVELS between chips (${mo.travel.trans})`);
+  ok(mo.travel.sameChip, 'chips are toggled in place, never rebuilt mid-flight');
+  ok(mo.arrive.n === 2 && mo.arrive.allIn && mo.arrive.anim === 'rviIn' && mo.arrive.staggered, `pasted reviews ARRIVE, staggered (${mo.arrive.anim})`);
+  ok(mo.kept, 'typing that changes nothing read does not replay the list');
+  ok(mo.onlyNew, 'a newly read review arrives alone');
+  ok(mo.bow.same && mo.bow.cls && mo.bow.anim === 'revBowTap', `a tapped star BOWS in place (${mo.bow.anim})`);
+  ok(mo.drop.same && mo.drop.out && /opacity/.test(mo.drop.trans), 'leaving one out FADES the row in place');
+  ok(mo.drop.settle, `the button's words SETTLE when the count moves (${mo.drop.label})`);
+  ok(mo.fold.hidden0 && mo.fold.open && /grid-template-rows/.test(mo.fold.trans) && mo.fold.rows === 'grid', 'what was removed UNFOLDS on the 0fr grid');
+  ok(mo.leaving && mo.cleared, `on add, the read-back LEAVES, then clears (${mo.leaving}/${mo.cleared})`);
 
   console.log('§8 the data pages join by framing (batch 3) — seasons as CARDS');
   const p3 = await page.evaluate(async () => {

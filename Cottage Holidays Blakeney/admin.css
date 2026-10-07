@@ -8206,7 +8206,7 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rvi-text { margin: 4px 0 0; font-size: var(--fs-body); line-height: 1.55; color: var(--text-light); text-wrap: pretty; }
 .rvi-why { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; min-height: 36px; margin-top: 4px; color: var(--text-muted); font: inherit; font-size: var(--fs-sub); text-align: left; cursor: pointer; }
 .rvi-why span { color: var(--accent-text); font-weight: 600; }
-.rvi-removed { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding: 8px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); font-size: var(--fs-sub); line-height: 1.45; }
+.rvi-removed { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; margin-bottom: 4px; padding: 8px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); font-size: var(--fs-sub); line-height: 1.45; }
 .rvi-removed div { display: flex; gap: 12px; align-items: baseline; }
 .rvi-removed span { flex: none; width: 96px; color: var(--text-muted); font-size: var(--fs-caption); font-weight: 600; }
 .rvi-removed s { color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
@@ -8214,3 +8214,30 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rvi-hint { margin: 8px 2px 0; }
 .rvi-add { height: 52px; border-radius: var(--r-pill); border: 0; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: var(--fs-headline); font-weight: 600; cursor: pointer; }
 .rvi-add:disabled { background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); cursor: default; }
+/* IMPORT REVIEWS — MOTION, the site's own grammar (ui-test-manage §7d):
+   TRAVEL the selection pill between chips (chbSeatPill); APPEAR a review once,
+   when its text first arrives (staggered, capped); UNFOLD what was removed on the
+   0fr grid ([hidden] IS the collapsed state, so .hidden stays the one switch);
+   BOW a tapped star at the small amplitude; FADE a left-out row; SETTLE the
+   button's words when they change; PRESS every control; LEAVE on add. */
+.rvi-chips { position: relative; }
+.rvi-chips .chb-pill { background: var(--accent); }
+.rvi-chips > .rvi-chip { position: relative; z-index: 1; transition: color 200ms var(--out), border-color 200ms var(--out), transform 320ms var(--settle); }
+.rvi-chips.has-pill .rvi-chip.is-on { background: transparent; border-color: transparent; }
+@keyframes rviIn { from { opacity: 0; transform: translateY(6px); } }
+.rvi-row.is-in, .rvi-clutter.is-in { animation: rviIn 360ms var(--out) backwards; animation-delay: var(--rvd, 0ms); }
+.rvi-row { transition: opacity 240ms var(--out); }
+.rvi-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 320ms var(--unfold), visibility 0s; }
+.rvi-fold[hidden] { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 320ms var(--unfold), visibility 0s linear 320ms; }
+.rvi-fold > .rvi-removed { min-height: 0; overflow: hidden; overflow: clip; }
+.rvi-stars.is-bow { animation: revBowTap 280ms var(--out); }
+.rvi-add.is-settle { animation: chbSettle 340ms var(--settle); }
+#rvi-found.is-leaving .rv-sec { opacity: 0; transform: translateY(-6px); transition: opacity 200ms var(--in), transform 200ms var(--in); }
+.rvi-add, .rvi-drop, .rvi-why, .rvi-stars, .rv-copy, .rv-share, .rv-go { transition: transform 320ms var(--settle), background-color 200ms var(--out), color 200ms var(--out); }
+.rvi-chip:active, .rvi-add:not(:disabled):active, .rvi-drop:active, .rvi-why:active, .rvi-stars:active, .rv-copy:active, .rv-share:active, .rv-go:active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+.rv-copy.is-copied svg path { stroke-dasharray: 26; animation: chbDraw 400ms var(--out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rvi-fold, .rvi-fold[hidden] { transition: none; }
+  .rvi-fold[hidden] { display: none; }
+  .rvi-row.is-in, .rvi-clutter.is-in, .rvi-stars.is-bow, .rvi-add.is-settle { animation: none; }
+}
