@@ -861,8 +861,19 @@ if ($action === 'update') {
 
     // Date-clash warning (soft) — ignore this booking's own dates. Confirm with
     // override_clash:true to proceed.
-    if (!book_lock($propKey)) {
-        json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
+    // A MOVE LOCKS BOTH COTTAGES. A charge (pay.php, the autopay collector) locks
+    // the booking's CURRENT cottage; locking only the destination let a move race a
+    // charge on the origin and write back a deposit_paid read before it landed.
+    // Sorted, so two moves in opposite directions can never wait on each other.
+    $lockKeys = array_values(array_unique([(string) $propKey, (string) $b['prop_key']]));
+    sort($lockKeys);
+    foreach ($lockKeys as $lk) {
+        if (!book_lock($lk)) {
+            foreach ($lockKeys as $uk) {
+                book_unlock($uk);
+            }
+            json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
+        }
     }
     // RE-READ UNDER THE LOCK. The $b above was fetched before book_lock, and the
     // wait itself widens the staleness window: pay.php's charge holds this same
@@ -1052,7 +1063,9 @@ if ($action === 'update') {
     $sql .= ' WHERE id = ?';
     $args[] = $id;
     db()->prepare($sql)->execute($args);
-    book_unlock($propKey);
+    foreach ($lockKeys as $uk) {
+        book_unlock($uk);
+    }
     // Say WHAT changed, so the booking hub's history reads like a story
     // ("dates 12→15 Aug ⇒ 13→16 Aug") instead of a bare "edited".
     $changes = [];
@@ -1685,6 +1698,10 @@ if ($action === 'refund') {
     // db.php: a signed-in session is long-lived and pocket-carried; a refund is
     // the one action here that cannot be undone by noticing it later.
     require_reauth('refunding a payment');
+    // EXACTLY ONCE: a refund whose reply timed out is retried by a person, and
+    // record_square_refund's idempotency key deliberately changes once money has
+    // gone back — so the second tap was a SECOND refund. The ledger answers it.
+    $opTok = op_claim($in);
     if (!square_enabled()) {
         json_out(['error' => 'Square payments are not switched on yet.'], 400);
     }
@@ -1784,7 +1801,7 @@ if ($action === 'refund') {
     // refund to the guest left no trace on the booking at all — the owner could not
     // tell later whether it had gone.
     log_comms_outcome('email.refund', 'Refund email', $emailResult, $bookingId, $gProp ?? '');
-    json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
+    json_out(op_finish($opTok, ['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]));
 }
 
 // CONFIRM BY HAND THAT A REFUND HAS ACTUALLY GONE. Square's API can lag what the
@@ -2038,6 +2055,7 @@ if ($action === 'confirm_return_settled') {
 // Tracked as 'damages_return' so it never changes the rental payment status.
 if ($action === 'return_deposit') {
     require_reauth('returning a deposit'); // money out — same rule as 'refund'
+    $opTok = op_claim($in); // a retried return is answered, not paid twice
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -2169,7 +2187,7 @@ if ($action === 'return_deposit') {
     }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     log_comms_outcome('email.deposit_return', 'Deposit-return email', $emailResult, $id, $b['prop_key'] ?? '');
-    json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
+    json_out(op_finish($opTok, ['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]));
 }
 
 // Keep a charge-upfront deposit (there WAS damage): don't refund it. Marks the
@@ -2205,7 +2223,11 @@ if ($action === 'keep_deposit') {
         json_out(['error' => 'This deposit has already been settled.'], 409);
     }
     // Record the kept deposit as income (kind 'damages'; excluded from rental status).
-    insert_payment_row($id, 'kept-' . bin2hex(random_bytes(8)), 'damages', $held, 'COMPLETED', $b['name'], $b['prop_key'], $note);
+    // NOT for a legacy CAPTURED hold: hold_capture already wrote that money as a
+    // 'damages' row, and a second one here reported £150 kept for a £75 deposit.
+    if (($b['hold_status'] ?? '') !== 'captured') {
+        insert_payment_row($id, 'kept-' . bin2hex(random_bytes(8)), 'damages', $held, 'COMPLETED', $b['name'], $b['prop_key'], $note);
+    }
     try {
         db()
             ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')
@@ -2311,7 +2333,10 @@ if ($action === 'cancel') {
     // only "Booking cancelled." It is reported and LOGGED instead, and the log
     // line has to stand on its own — the booking it points at will not exist.
     $hs = $b['hold_status'] ?? 'none';
-    if ($hs === 'charged' && !empty($b['hold_payment_id'])) {
+    // 'captured' is the LEGACY hold that was taken: money held exactly as a
+    // charged deposit is (damages_collected counts it), so it is returned — or
+    // reported as owed — the same way. It used to fall through every branch.
+    if (($hs === 'charged' || $hs === 'captured') && !empty($b['hold_payment_id'])) {
         // Serialise, then RE-READ the deposit state under the lock — the same
         // discipline return_deposit/keep_deposit follow. Computing $dep from the
         // row read at the top of this action (before any lock) let a concurrent
@@ -2323,7 +2348,7 @@ if ($action === 'cancel') {
         book_lock($b['prop_key'] ?? '');
         $bNow = booking_by_id($id) ?: $b;
         $hsNow = $bNow['hold_status'] ?? 'none';
-        $dep = $hsNow === 'charged'
+        $dep = ($hsNow === 'charged' || $hsNow === 'captured')
             ? round(max(0, damages_collected($bNow) - damages_returned($id)), 2)
             : 0.0;
         if ($dep > 0) {

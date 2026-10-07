@@ -22,8 +22,18 @@ if ($isAdmin) {
 } elseif ($guestId) {
     // logged-in guest — session is enough (parity with messages.php's guest path)
 } elseif (strlen($token) >= 16) {
-    // anonymous visitor with a chat token — curb abuse (per-IP), images only
-    rate_limit('chatupload', 8, 60);
+    // anonymous visitor with a chat token — curb abuse (per-IP), images only.
+    // A token is only a string the visitor made up, so one with NO conversation
+    // behind it yet (the photo-as-first-message case) gets a much tighter ceiling:
+    // otherwise any 16 hex chars bought 8 x 6MB an hour, kept for ever in uploads/.
+    $hasThread = false;
+    try {
+        $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE token = ? LIMIT 1');
+        $tq->execute([$token]);
+        $hasThread = (bool) $tq->fetchColumn();
+    } catch (\Throwable $e) {
+    }
+    rate_limit($hasThread ? 'chatupload' : 'chatupload-new', $hasThread ? 8 : 2, 60);
 } else {
     json_out(['error' => 'Not authorised'], 401);
 }

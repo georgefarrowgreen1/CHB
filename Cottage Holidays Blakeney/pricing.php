@@ -782,7 +782,22 @@ function booking_damages_amount($b, $rate = null)
 // account that ANNOUNCES the charge cannot disagree about what the card will take.
 function booking_damages_due($b, $rate = null)
 {
-    return ($b['hold_status'] ?? 'none') === 'none' ? booking_damages_amount($b, $rate) : 0.0;
+    if (($b['hold_status'] ?? 'none') !== 'none') {
+        return 0.0;
+    }
+    $amt = booking_damages_amount($b, $rate);
+    // A DEPOSIT HANDED OVER IN CASH IS ALREADY TAKEN. The cash rail never moves
+    // hold_status off 'none' — it records the deposit as money paid ABOVE the
+    // rental — so 'none' alone read "not yet taken", and an old pay link charged
+    // the card for a deposit already in the owner's hand (and the write-back then
+    // erased the cash record). Whatever was paid over the rental counts against it.
+    if ($amt > 0 && function_exists('booking_rental_price')) {
+        $over = (float) ($b['deposit_paid'] ?? 0) - (float) booking_rental_price($b);
+        if ($over > 0.005) {
+            $amt = max(0.0, round($amt - $over, 2));
+        }
+    }
+    return $amt;
 }
 
 // WHAT THE CARD WILL TAKE NEXT, and what to call it — one derivation for every

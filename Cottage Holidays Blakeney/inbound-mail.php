@@ -84,11 +84,11 @@ foreach ([$recipient, $inReplyTo, $headersRaw, $subject] as $hay) {
         continue;
     }
     // reply+<tid>x<sig>@…  |  <msg.<tid>x<sig>@…>  |  anywhere the pattern appears
-    if (preg_match('/\+(\d+x[0-9a-f]{16})@/', $hay, $m)) {
+    if (preg_match('/\+(\d+[xy][0-9a-f]{16})@/', $hay, $m)) {
         $token = $m[1];
         break;
     }
-    if (preg_match('/(\d+x[0-9a-f]{16})/', $hay, $m)) {
+    if (preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m)) {
         $token = $m[1];
         break;
     }

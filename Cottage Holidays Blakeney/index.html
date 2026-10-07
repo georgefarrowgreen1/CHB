@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=358">
+    <link rel="stylesheet" href="app.css?v=359">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -477,6 +477,9 @@
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
+        <!-- The page's heading for the outline and screen readers; the header bar
+             already names the screen on the eye, so it stays visually hidden. -->
+        <h1 class="sr-only">Our cottages</h1>
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
@@ -650,7 +653,7 @@
                     <!-- Waitlist as a first-class action — not only buried in sold-out
                          search results. Prefilled with this cottage. -->
                     <div style="text-align:center;margin-top:10px;">
-                        <a style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become&nbsp;available</a>
+                        <a href="#" role="button" style="font-size:var(--fs-sub);color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:inline-flex;align-items:center;min-height:44px;" data-act="pdCall" data-fn="openWaitlistHere">Dates booked? Get notified if they become&nbsp;available</a>
                     </div>
                 </div>
                 <div class="prop-divider"></div>
@@ -839,16 +842,16 @@
                     <p class="enq-fg" style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
                     <div class="enq-fg">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your name</label>
-                        <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
+                        <input type="text" class="input-glass" id="enq-name" maxlength="160" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
                     </div>
                     <div class="enq-fg" style="--efd:0.035s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
-                        <input type="email" class="input-glass" id="enq-email" autocomplete="email" inputmode="email" placeholder="you@email.com" data-act-input="enqLiveSync">
+                        <input type="email" class="input-glass" id="enq-email" maxlength="190" autocomplete="email" inputmode="email" placeholder="you@email.com" data-act-input="enqLiveSync">
                     </div>
                     <div class="reg-row enq-fg" style="--efd:0.075s;">
                         <div>
                             <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone (optional)</label>
-                            <input type="tel" class="input-glass" id="enq-phone" autocomplete="tel" inputmode="tel" placeholder="Contact number" data-act-input="enqLiveSync">
+                            <input type="tel" class="input-glass" id="enq-phone" maxlength="60" autocomplete="tel" inputmode="tel" placeholder="Contact number" data-act-input="enqLiveSync">
                         </div>
                         <div>
                             <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
@@ -862,13 +865,13 @@
                     </label>
                     <div class="enq-fg" style="--efd:0.115s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK address</label>
-                        <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
+                        <textarea class="input-glass" id="enq-address" maxlength="500" rows="2" placeholder="House name/number, street, town, county" style="margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
                         <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="openPrivacyModal" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy policy</a>.</p>
                     </div>
                     <div class="enq-fg" style="--efd:0.155s;">
                         <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 2px;" for="enq-message">About your party</label>
                         <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 5px;">A little about who&rsquo;s coming helps us look after you better.</p>
-                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="e.g. two of us and our teenage daughter" data-act-input="enqLiveSync"></textarea>
+                        <textarea class="input-glass" id="enq-message" maxlength="5000" rows="4" required aria-required="true" placeholder="e.g. two of us and our teenage daughter" data-act-input="enqLiveSync"></textarea>
                     </div>
                     <!-- Two declarations, both required before sending. -->
                     <div class="enq-fg" style="--efd:0.195s;">
@@ -909,12 +912,12 @@
                          the guest left the email field blank — an enquiry with a phone and no
                          address is deliberately accepted, so the reply cannot be an email. -->
                     <!-- Said once: the drawn tick above is the mark; this line says WHEN, so it keeps no ✓ of its own. -->
-                    <p class="enq-sent-how" id="enq-sent-how">George replies personally — usually the same day, by email.</p>
+                    <p class="enq-sent-how" id="enq-sent-how">George replies personally — usually within a few hours, by email.</p>
                     <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
                     <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
                     <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
                         <div class="enq-sched-row"><span class="enq-sched-dot" aria-hidden="true"></span><span class="enq-sched-when">Now</span><span class="enq-sched-what">We read your enquiry and check your dates</span></div>
-                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Today</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
+                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Next</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
                         <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Then</span><span class="enq-sched-what" id="enq-sched-then">Pay the deposit and the cottage is yours — we'll look after the rest</span></div>
                     </div>
                     <!-- New guest: set a password to create an account -->
@@ -933,7 +936,7 @@
                         <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireSignInInstead">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
-                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);">No thanks, maybe later</a>
+                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);display:inline-flex;align-items:center;min-height:44px;padding:0 8px;">No thanks, maybe later</a>
                     </div>
                 </div>
             </div>
@@ -2063,7 +2066,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1061"></script>
+    <script defer src="app.js?v=1063"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

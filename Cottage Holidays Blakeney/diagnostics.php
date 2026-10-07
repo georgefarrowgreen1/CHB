@@ -434,6 +434,21 @@ add(
     $secretOk ? '' : 'Set a long random APP_SECRET in config.php.',
 );
 
+// The reply-by-email WEBHOOK authenticates with ?key=. Without its own
+// INBOUND_SECRET it falls back to APP_SECRET — the master key that signs every
+// pay, invoice and iCal link — and that URL is stored at the mail provider.
+if (defined('REPLY_INBOX') && REPLY_INBOX) {
+    $inbOk = defined('INBOUND_SECRET') && INBOUND_SECRET && (!defined('APP_SECRET') || INBOUND_SECRET !== APP_SECRET);
+    add(
+        $checks,
+        'Security',
+        'Reply-by-email secret',
+        $inbOk ? 'ok' : 'warn',
+        $inbOk ? 'The inbound mail webhook has its own secret.' : 'The inbound mail webhook is using APP_SECRET, so the master key sits in a URL at your mail provider.',
+        $inbOk ? '' : 'Set a separate INBOUND_SECRET in config.php and update the webhook URL at the provider.',
+    );
+}
+
 // ---- Welcome book (content-backed, no table) ----------------------------
 add(
     $checks,

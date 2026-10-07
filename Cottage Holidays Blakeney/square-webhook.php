@@ -257,8 +257,12 @@ $newStatus = derive_payment_status($total, $paid);
 // earlier manual income into this event's tax year (the pay.php fix, mirrored).
 if ($newStatus !== ($b['payment'] ?? '') || abs($paid - (float) $b['deposit_paid']) > 0.001) {
     db()
-        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=" . ($paid > 0 ? "COALESCE(NULLIF(payment_date,''), ?)" : "?") . " WHERE id=?")
-        ->execute([$newStatus, $paid, $paid > 0 ? 'Square card' : '', $paid > 0 ? date('Y-m-d') : null, $bookingId]);
+        // RAISE-ONLY IN THE WRITE ITSELF, not just in the read above: this runs
+        // without the booking lock, and pay.php / set_payment can land a HIGHER
+        // figure (card + cash) between the read and this write. Conditioned on the
+        // stored value, a stale webhook can never cut what they recorded.
+        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=" . ($paid > 0 ? "COALESCE(NULLIF(payment_date,''), ?)" : "?") . " WHERE id=? AND deposit_paid <= ?")
+        ->execute([$newStatus, $paid, $paid > 0 ? 'Square card' : '', $paid > 0 ? date('Y-m-d') : null, $bookingId, $paid + 0.001]);
 }
 
 json_out(['ok' => true]);

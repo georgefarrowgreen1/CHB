@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS enquiries (
     terms_version     VARCHAR(20) NULL,
     no_dogs_at        DATETIME NULL,           -- guest confirmed they aren't bringing a dog
     seen_at           DATETIME NULL,           -- when the OWNER opened it (stops the red count nagging)
+    agreed_price      DECIMAL(10,2) NULL,      -- migration-128: an agreed total, kept until approval
+    plan_pct          DECIMAL(5,2)  NULL,      -- migration-128: an agreed deposit %
+    plan_due          DATE          NULL,      -- migration-128: an agreed balance date
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

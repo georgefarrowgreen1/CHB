@@ -793,6 +793,17 @@ chk('the £50 cash deposit on a discounted booking reads as collected', abs($col
 $legacy = max(0.0, min(50.0, 700.0 - booking_rental_price($ovb + ['price_override' => 700.0])));
 chk('…while a deposit-folded legacy override still collects £0 (no over-return)', $legacy === 0.0);
 
+// ---- A DEPOSIT HANDED OVER IN CASH IS ALREADY TAKEN (round-2 audit) ----------
+// The cash rail leaves hold_status at 'none', and booking_damages_due read 'none'
+// as "not yet taken" — so an old pay link charged the card for a deposit already
+// in the owner's hand. What was paid above the rental counts against it.
+$cashB = ['agreed_total' => 700.0, 'agreed_nightly' => 700.0, 'agreed_txn_fee' => 0.0, 'agreed_booking_fee' => 50.0, 'hold_status' => 'none'];
+chk('cash rail: the deposit paid in cash is not due again', booking_damages_due($cashB + ['deposit_paid' => 750.0]) == 0.0);
+chk('…half of it in cash leaves only the other half due', abs(booking_damages_due($cashB + ['deposit_paid' => 725.0]) - 25.0) < 0.005);
+chk('…nothing paid yet still owes the whole deposit (the fresh booking is unchanged)', abs(booking_damages_due($cashB + ['deposit_paid' => 0.0]) - 50.0) < 0.005);
+chk('…part of the RENTAL paid is not mistaken for the deposit', abs(booking_damages_due($cashB + ['deposit_paid' => 300.0]) - 50.0) < 0.005);
+chk('…and a charged deposit is still never due again', booking_damages_due(array_merge($cashB, ['hold_status' => 'charged', 'deposit_paid' => 0.0])) == 0.0);
+
 // ---- THE RECEIPT AND THE DEPOSIT-RETURN EMAIL, pinned -----------------------
 // The full payment-email sweep found both composing coherent figures — and
 // carrying ZERO gate coverage, so that coherence was one edit from silently
@@ -1723,9 +1734,9 @@ chk('...is noindex, like every other token-reached page', strpos($errPage, 'name
 chk('...and escapes what it is handed', strpos(token_link_error_page('<b>x</b>', 'a & b'), '&lt;b&gt;') !== false);
 // The WIRING, not just the helper: both files must be through it, or two of the
 // four pages stay 6.4px and this section passes on the two that moved.
-foreach (['invoice.php' => 2, 'guest-details.php' => 2] as $f => $n) {
+foreach (['invoice.php' => 2, 'guest-details.php' => 3] as $f => $n) { // guest-details: bad link, no booking, stay ended
     $src = (string) file_get_contents(__DIR__ . '/' . $f);
-    chk("$f raises both of its link errors through the shared page",
+    chk("$f raises every one of its link errors through the shared page",
         substr_count($src, 'token_link_error_page(') === $n);
     chk("$f has no hand-rolled viewport-less error page left",
         strpos($src, '<!doctype html><meta charset="utf-8"><title>') === false);

@@ -51,6 +51,27 @@ $find = function ($hay) {
 chk('token found in plus-recipient', msg_reply_verify($find('reply+' . $tok . '@x.co.uk')) === 42);
 chk('token found in In-Reply-To', msg_reply_verify($find('<msg.' . $tok . '@x.co.uk>')) === 42);
 
+// TWO AUDIENCES. The guest's own copy carries a GUEST token: it parses to its
+// thread (so a guest reply-by-email still lands as a guest message) but it can
+// NEVER authorise an owner reply — msg_reply_verify is owner-only.
+$gtok = msg_reply_token(42, 'guest');
+chk('guest token is its own shape', preg_match('/^42y[0-9a-f]{32}$/', $gtok) === 1 && $gtok !== $tok);
+chk('guest token parses to its thread as a GUEST token', msg_reply_parse($gtok) === [42, 'guest']);
+chk('…and can never authorise an owner reply', msg_reply_verify($gtok) === 0);
+chk('an owner token parses as the owner', msg_reply_parse($tok) === [42, 'owner']);
+chk('a guest mac on the owner shape is refused', msg_reply_verify('42x' . substr($gtok, 3)) === 0);
+chk('the guest plus-address carries the guest token', msg_reply_address(42, 'guest') === 'reply+' . $gtok . '@cottageholidaysblakeney.co.uk');
+$findY = function ($hay) {
+    return preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m) ? $m[1] : '';
+};
+chk('a guest token is found in In-Reply-To (the shipped regex shape)', msg_reply_parse($findY('<msg.' . $gtok . '@x.co.uk>')) === [42, 'guest']);
+// The SHIPPED extractors accept both shapes.
+foreach (['inbound-mail.php', 'mailbox-read.php'] as $f) {
+    chk("$f extracts both token shapes", strpos((string) file_get_contents(__DIR__ . '/' . $f), '[xy][0-9a-f]{16}') !== false);
+}
+chk('the guest-facing chat email carries a GUEST token', preg_match("/msg_reply_token\\(\\\$threadId, 'guest'\\)/", (string) file_get_contents(__DIR__ . '/chat-lib.php')) === 1);
+chk('mailbox-read makes an admin reply only from an OWNER token', strpos((string) file_get_contents(__DIR__ . '/mailbox-read.php'), "\$senderOk && \$tokAud === 'owner'") !== false);
+
 echo "== Quoted-history stripping ==\n";
 $gmail =
     "Yes, 1-8 August is free — shall I pencil you in?\n\nOn Fri, 4 Jul 2026 at 10:12, Cottage Holidays <reply@x> wrote:\n> Someone sent you a message\n> \"is jollyboat free?\"";

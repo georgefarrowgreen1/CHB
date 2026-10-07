@@ -76,6 +76,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 $in = body();
 $action = $in['action'] ?? '';
 
+const ENQ_MAX_NIGHTS = 60;
+const ENQ_MAX_NIGHTS_ADMIN = 366;
+const ENQ_MAX_AHEAD_DAYS = 730;
+
+function enq_real_date($d): bool
+{
+    $d = (string) $d;
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) {
+        return false;
+    }
+    return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+}
+
+/** '' when every field fits its column, else a sentence naming the field. */
+function enq_length_problem(array $in): string
+{
+    $caps = ['name' => [160, 'Your name'], 'email' => [190, 'Your email address'], 'phone' => [60, 'Your phone number'], 'postcode' => [12, 'Your postcode'], 'message' => [5000, 'Your message'], 'address' => [500, 'Your address']];
+    foreach ($caps as $k => [$max, $label]) {
+        if (mb_strlen(trim((string) ($in[$k] ?? ''))) > $max) {
+            return $label . ' is too long — please keep it under ' . $max . ' characters.';
+        }
+    }
+    return '';
+}
+
+/** The quote an enquirer is told: a stored agreed price (migration-128) replaces the standard total. */
+function enq_quote_with_terms($p, array $row)
+{
+    if (is_array($p) && isset($row['agreed_price']) && (float) $row['agreed_price'] > 0) {
+        $p['total'] = round((float) $row['agreed_price'], 2);
+        $p['agreedQuote'] = true;
+    }
+    return $p;
+}
+
 if ($action === 'draft') {
     // Public — the enquiry form quietly saves a server-side draft once the
     // visitor has typed a valid email, so an abandoned enquiry can get ONE
@@ -93,8 +128,8 @@ if ($action === 'draft') {
     }
     $checkIn = clean($in['check_in'] ?? '');
     $checkOut = clean($in['check_out'] ?? '');
-    $dateOk = fn($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
-    if (!$dateOk($checkIn) || !$dateOk($checkOut) || $checkOut <= $checkIn) {
+    if (!enq_real_date($checkIn) || !enq_real_date($checkOut) || $checkOut <= $checkIn
+        || (strtotime($checkOut) - strtotime($checkIn)) / 86400 > ENQ_MAX_NIGHTS) {
         $checkIn = null;
         $checkOut = null;
     }
@@ -159,8 +194,30 @@ if ($action === 'submit') {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) {
         json_out(['error' => 'Please provide valid dates (YYYY-MM-DD).'], 400);
     }
+    // A real calendar date, not just the shape of one ("2026-02-31" passes the
+    // pattern and stores as 0000-00-00 or throws, losing the enquiry).
+    if (!enq_real_date($checkIn) || !enq_real_date($checkOut)) {
+        json_out(['error' => 'Please provide valid dates (YYYY-MM-DD).'], 400);
+    }
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
+    }
+    // A stay has an upper bound: every price loop runs once per night, so an
+    // unbounded range (a crafted 9999-12-31) froze the owner's Inbox. Generous
+    // for a real stay; admin edits get a year.
+    $enqNights = (int) round((strtotime($checkOut) - strtotime($checkIn)) / 86400);
+    $enqMax = $isAdminEdit ? ENQ_MAX_NIGHTS_ADMIN : ENQ_MAX_NIGHTS;
+    if ($enqNights > $enqMax) {
+        json_out(['error' => 'That stay is longer than we take online (' . $enqMax . ' nights) — please get in touch.'], 400);
+    }
+    if (!$isAdminEdit && $checkIn > date('Y-m-d', strtotime('+' . ENQ_MAX_AHEAD_DAYS . ' days'))) {
+        json_out(['error' => 'We only take bookings up to two years ahead — please get in touch.'], 400);
+    }
+    // Field lengths match the columns (schema.sql), refused in words rather
+    // than a strict-mode insert error that loses the whole enquiry.
+    $lenProblem = enq_length_problem($in);
+    if ($lenProblem !== '') {
+        json_out(['error' => $lenProblem], 400);
     }
     // The picker blocks past dates client-side; enforce it here so a direct
     // POST can't create a stay that has already started. (Admin edits are
@@ -553,11 +610,50 @@ if ($action === 'restore' || $action === 'undecline') {
 // it before approving. No booking is created and nothing is sent.
 if ($action === 'approve_preview') {
     require_admin();
-    $r = enquiry_confirmation_preview((int) ($in['id'] ?? 0), $in['price_override'] ?? null);
+    $po = $in['price_override'] ?? null;
+    if ($po === null) {
+        try {
+            $tq = db()->prepare('SELECT agreed_price FROM enquiries WHERE id = ?');
+            $tq->execute([(int) ($in['id'] ?? 0)]);
+            $v = $tq->fetchColumn();
+            $po = ($v === false || $v === null) ? null : $v;
+        } catch (\Throwable $e) {
+        }
+    }
+    $r = enquiry_confirmation_preview((int) ($in['id'] ?? 0), $po);
     json_out($r);
 }
 
+// THE TERMS AGREED WITH AN ENQUIRER, stored (migration-128) so a refresh cannot
+// lose them between "approving will charge £400" and the approval itself.
+if ($action === 'set_terms') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $price = trim((string) ($in['price_override'] ?? ''));
+    $pct = trim((string) ($in['plan_pct'] ?? ''));
+    $due = trim((string) ($in['plan_due'] ?? ''));
+    $priceV = $price === '' ? null : round((float) $price, 2);
+    $pctV = $pct === '' ? null : round((float) $pct, 2);
+    if ($priceV !== null && !($priceV > 0)) {
+        json_out(['error' => 'An agreed price must be more than £0 — leave it blank for the standard price.'], 400);
+    }
+    if ($pctV !== null && !($pctV > 0 && $pctV <= 100)) {
+        json_out(['error' => 'A deposit must be between 1% and 100% — leave it blank for the site standard.'], 400);
+    }
+    if ($due !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
+        json_out(['error' => 'That balance date is not a date.'], 400);
+    }
+    try {
+        $u = db()->prepare('UPDATE enquiries SET agreed_price = ?, plan_pct = ?, plan_due = ? WHERE id = ?');
+        $u->execute([$priceV, $pctV, $due === '' ? null : $due, $id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Saving agreed terms needs an update — install the updates (Manage → Status → More tools → Install updates).'], 500);
+    }
+    json_out(['ok' => true]);
+}
+
 if ($action === 'approve') {
+    // Stored terms are applied inside enquiry_approve() (both approve routes).
     // Optional agreed price (parity with the manual add's price override).
     // The plan agreed with the enquirer travels with the approval, so the
     // payment request that follows moments later is derived from it rather than
@@ -602,7 +698,7 @@ if ($action === 'email_preview') {
     try {
         $rate = get_rate($row['prop_key']);
         if ($rate) {
-            $priceEst = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+            $priceEst = enq_quote_with_terms(price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']), $row);
         }
     } catch (\Throwable $e) {
     }
@@ -639,7 +735,7 @@ if ($action === 'email_guest') {
     try {
         $rate = get_rate($row['prop_key']);
         if ($rate) {
-            $priceEst = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+            $priceEst = enq_quote_with_terms(price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']), $row);
         }
     } catch (\Throwable $e) {
     }

@@ -35,6 +35,17 @@ if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
     json_out(['ok' => true, 'sent' => 0, 'mail_off' => true]);
 }
 
+// ONE run at a time: the sent-map is read once and written per send, so two
+// overlapping runs (cron + a manual run) would both see a booking as unsent and
+// both email it. The advisory lock is released with the connection.
+try {
+    $lk = db()->query("SELECT GET_LOCK('chb_anniv', 0)")->fetchColumn();
+    if ((string) $lk !== '1') {
+        json_out(['ok' => true, 'sent' => 0, 'busy' => true]);
+    }
+} catch (\Throwable $e) {
+}
+
 // One re-invite per booking, ever.
 $sent = content_json('anniv-sent', []); // array-valued key — read with content_json()
 
@@ -122,6 +133,12 @@ foreach ($rows as $b) {
     if ((int) $futureQ->fetchColumn() > 0) {
         // they're already coming back
         $sent[$b['id']] = date('Y-m-d') . ' (skipped: rebooked)';
+        $persist();
+        continue;
+    }
+    // A removed or unlisted cottage's page 404s — no invite back to it.
+    if (!prop_is_marketable($b['prop_key'])) {
+        $sent[$b['id']] = date('Y-m-d') . ' (skipped: cottage not listed)';
         $persist();
         continue;
     }

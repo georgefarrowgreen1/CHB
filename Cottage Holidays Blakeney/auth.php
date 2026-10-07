@@ -168,7 +168,7 @@ function staging_gate_passed()
     if ($user === '' || $secret === '') {
         return false;
     }
-    $want = hash_hmac('sha256', 'staging-gate|' . $user, $secret);
+    $want = hash_hmac('sha256', 'staging-gate|' . $user . '|' . hash('sha256', $pass), $secret); // the PASSWORD rides the cookie: changing it revokes every cookie
     if (isset($_COOKIE['chb_staging_gate']) && hash_equals($want, (string) $_COOKIE['chb_staging_gate'])) {
         return true;
     }
@@ -349,8 +349,14 @@ switch ($action) {
         $address = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
         $pw = $in['password'] ?? '';
-        if ($name === '' || $email === '' || strlen($pw) < 8) {
-            json_out(['error' => 'Name, email and an 8+ character password are required'], 400);
+        if ($name === '' || $email === '') {
+            json_out(['error' => 'Your name and email are required'], 400);
+        }
+        if (strlen($pw) < 8) {
+            json_out(['error' => 'Please choose a password of at least 8 characters.'], 400);
+        }
+        if (mb_strlen($name) > 160 || strlen($email) > 190 || mb_strlen($phone) > 60) {
+            json_out(['error' => 'One of those details is too long — please shorten it.'], 400);
         }
         if ($address === '') {
             json_out(['error' => 'Please enter your UK address'], 400);
@@ -697,12 +703,24 @@ switch ($action) {
         // magic-link-only account) sets one without a current one — the session is
         // the proof, and there is nothing to type.
         $noPw = $row && (string) $row['password_hash'] === '';
+        // Throttled on its own identifier: a borrowed signed-in phone must not be a
+        // free oracle for guessing the account's password.
+        throttle_check('guestpw:' . (int) $_SESSION['guest_id']);
         if (!$row || (!$noPw && !password_verify($current, $row['password_hash']))) {
+            throttle_record('guestpw:' . (int) $_SESSION['guest_id'], false);
             json_out(['error' => 'Your current password is incorrect'], 403);
         }
+        throttle_record('guestpw:' . (int) $_SESSION['guest_id'], true);
         db()
             ->prepare('UPDATE guests SET password_hash = ? WHERE id = ?')
             ->execute([password_hash($next, PASSWORD_DEFAULT), (int) $_SESSION['guest_id']]);
+        // A new password signs out every OTHER session (a phone left signed in is
+        // exactly why people change it); this one is re-stamped and stays in.
+        try {
+            db()->prepare('UPDATE guests SET auth_epoch = auth_epoch + 1 WHERE id = ?')->execute([(int) $_SESSION['guest_id']]);
+            guest_session_begin((int) $_SESSION['guest_id']);
+        } catch (\Throwable $e) {
+        }
         json_out(['ok' => true]);
 
     // GDPR: a logged-in guest downloads everything we hold about them (JSON).

@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 664;
+const ADMIN_BUNDLE_V = 666;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 317;
+const ADMIN_CSS_V = 319;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -286,6 +286,14 @@ chbAct('saveContentToggle', function (el) {
     const stored = el.dataset.invert === '1' ? (on ? '' : '1') : (on ? '1' : '');
     if (typeof saveContent === 'function') Promise.resolve(saveContent(el.dataset.key, stored)).catch(() => {}); // alerted inside
 });
+// A "saves by itself" field: data-arg is the content key, the value rides
+// CHB_VALUE. saveContent itself is refused by the global fallback (it writes any
+// key), so the five owner fields that called it by name route through this
+// named action instead — they had silently stopped saving.
+chbAct('saveContentField', function (el, event, key, value) {
+    if (typeof key !== 'string' || !key) return;
+    if (typeof saveContent === 'function') Promise.resolve(saveContent(key, value == null ? el.value : value)).catch(() => {}); // alerted inside
+});
 // Small bespoke compound closers from the guest-account modals.
 chbAct('detailsLogout', function () {
     closeGuestDetailsModal();
@@ -482,6 +490,10 @@ function chbTime(v, dflt) {
 // through would have reached fetch, open, eval-likes and the raw API wrappers with
 // arguments of its choosing. Browser built-ins (native code) and the request
 // primitives are refused by name; every real action is an app function.
+// The focused button the dispatcher disabled last (see chbRunAct) — the overlay
+// focus observer hands focus back to it.
+/** @type {{el: HTMLElement, t: number}|null} */
+let __chbPressed = null;
 const CHB_ACT_DENY = ['apiPost', 'apiGet', 'apiPostCore', 'apiGetCore', 'queueOrPost', 'saveContent', 'chbRunAct', 'loadAdminBundle'];
 function chbActAllowed(name) {
     if (CHB_ACT_DENY.indexOf(name) !== -1) return false;
@@ -530,6 +542,9 @@ function chbRunAct(el, name, event) {
     // ones never written. <button> only — disabling a checkbox mid-change breaks it.
     // aria-busy: announced as working, not as unavailable.
     if (r && typeof r.then === 'function' && el.tagName === 'BUTTON' && !el.disabled) {
+        // Disabling the FOCUSED button blurs it, so an overlay this handler opens
+        // would see focus on <body> and could never hand it back. Remember it.
+        if (document.activeElement === el) __chbPressed = { el, t: Date.now() };
         el.disabled = true;
         el.setAttribute('aria-busy', 'true');
         const free = () => {
@@ -2027,6 +2042,11 @@ function mapEnquiryFromApi(row) {
         // enquiries.php SELECTs * and ORDERs BY declined_at; this mapper dropped it,
         // so the recovery drawer could not show the one fact identifying a decline.
         declinedAt: row.declined_at || '',
+        // The terms agreed with the enquirer, STORED (migration-128) — they used to
+        // live only on this object and died with the next data refresh.
+        priceOverride: row.agreed_price != null && Number(row.agreed_price) > 0 ? Number(row.agreed_price) : null,
+        planPct: row.plan_pct != null && Number(row.plan_pct) > 0 ? Number(row.plan_pct) : null,
+        planDue: row.plan_due || null,
         received: (row.created_at || '').split(' ')[0] || '',
         receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
@@ -3725,8 +3745,8 @@ async function changeGuestPassword() {
         show('Please fill in your new password (and your current one, if you have one).', false);
         return;
     }
-    if (nw.length < 4) {
-        show('Your new password must be at least 4 characters.', false);
+    if (nw.length < 8) {
+        show('Your new password must be at least 8 characters.', false);
         return;
     }
     if (nw !== cf) {
@@ -3872,8 +3892,8 @@ async function guestRegister() {
         showErr('Please enter a valid UK postcode. Outside the UK? Message us and we can help.');
         return;
     }
-    if (password.length < 4) {
-        showErr('Please choose a password of at least 4 characters.');
+    if (password.length < 8) {
+        showErr('Please choose a password of at least 8 characters.');
         return;
     }
 
@@ -10771,8 +10791,13 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
         // Money out → the server asks for a fresh confirmation (require_reauth).
         // chbWithReauth prompts and retries; it lives in admin.js, so this
         // public-file call site goes through the facade like every other.
-        const r = await window.chbWithReauth('refunding ' + gbp(amount), () =>
-            apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount }));
+        // Deterministic op id (the cancel discipline): a retry of THIS refund is
+        // answered from the ledger, never paid twice; chbOpBump after success makes
+        // a deliberate second refund of the same figure a new request.
+        const rb = { action: 'refund', square_payment_id: squareId, amount };
+        rb.op_id = chbOpFor(['refund', rb]);
+        const r = await window.chbWithReauth('refunding ' + gbp(amount), () => apiPost('bookings.php', rb));
+        chbOpBump();
         // Read the send outcome rather than assuming it (the deposit-return rule): the
         // endpoint mails best-effort and reports it, and this toasted success
         // unconditionally. The two states the owner already knows are not failures.
@@ -14497,10 +14522,16 @@ document.addEventListener('keydown', (e) => {
 //      handled by the keydown handler above.) Centralised via an observer so the
 //      many ad-hoc `classList.add('open')` call sites don't each need wiring.
 (function () {
-    const SEL = '.modal-overlay, #lightbox, #date-picker, .reviews-modal, .chat-widget';
-    let lastTrigger = null;
+    const SEL = '.modal-overlay, #lightbox, #date-picker, .reviews-modal, .chat-widget, #glass-dialog';
+    // ONE OPENER PER OVERLAY. A single shared slot let a nested overlay (the date
+    // picker or terms opened from the enquiry sheet) spend the OUTER sheet's
+    // opener, dropping focus behind the still-open sheet.
+    const openers = new WeakMap();
     const isOpen = (el) => el.classList.contains('open');
     const focusInto = (el) => {
+        // The dialog already placed focus itself (glassDialog focuses its OK
+        // button or first field) — don't second-guess it.
+        if (el.contains(document.activeElement) && document.activeElement !== el) return;
         // A DIALOG MAY NAME ITS OWN ENTRY POINT. The heuristic below is right for a
         // form whose first field is an <input>, and wrong for the enquiry modal, where
         // the dates and the party counts are all `type=hidden` behind buttons: the
@@ -14536,18 +14567,43 @@ document.addEventListener('keydown', (e) => {
         syncScrollLock();
         const now = isOpen(el);
         if (now && !wasOpen) {
-            const ae = document.activeElement;
-            if (ae && ae !== document.body && !ae.closest(SEL)) lastTrigger = ae;
+            let ae = document.activeElement;
+            const pr = __chbPressed;
+            if ((!ae || ae === document.body) && pr && pr.el && Date.now() - pr.t < 8000 && document.body.contains(pr.el)) ae = pr.el;
+            if (ae && ae !== document.body && !el.contains(ae)) openers.set(el, ae);
             setTimeout(() => {
                 if (isOpen(el)) focusInto(el);
             }, 60); // after the open transition
         } else if (!now && wasOpen) {
-            const t = lastTrigger;
-            lastTrigger = null;
-            if (t && document.body.contains(t)) {
-                try {
-                    t.focus({ preventScroll: true });
-                } catch (e) {}
+            const t = openers.get(el);
+            openers.delete(el);
+            // Don't pull focus if it already moved somewhere real (a closer that
+            // restores its own field, e.g. closeDatePicker).
+            const ae = document.activeElement;
+            const focusLost = !ae || ae === document.body || el.contains(ae);
+            if (!focusLost) return;
+            // An opener that is no longer painted (a menu item whose menu closed
+            // behind the dialog) hands over to the control that opens its menu.
+            let tt = t;
+            if (tt && document.body.contains(tt) && !tt.getClientRects().length) {
+                const menu = tt.closest('.bhub-menu, [role="menu"]');
+                const opener = menu && menu.parentElement ? menu.parentElement.querySelector('[aria-haspopup], [aria-expanded]') : null;
+                if (opener && opener.getClientRects().length) tt = opener;
+            }
+            if (tt && document.body.contains(tt)) {
+                const restore = () => {
+                    try {
+                        tt.focus({ preventScroll: true });
+                    } catch (e) {}
+                };
+                restore();
+                // A button the dispatcher disabled is unfocusable until its work
+                // settles; try again once it is free.
+                if (document.activeElement !== tt) setTimeout(restore, 400);
+            } else {
+                // No opener: keep focus inside whatever overlay is still open.
+                const still = Array.from(document.querySelectorAll(SEL)).filter((o) => o !== el && isOpen(o));
+                if (still.length) focusInto(still[still.length - 1]);
             }
         }
     };
@@ -17271,7 +17327,10 @@ function enqScheduleHtml(p, checkIn) {
         `<div class="enq-sched-row"><span class="enq-sched-dot${solid ? '' : ' ghost'}" aria-hidden="true"></span><span class="enq-sched-when">${when}</span><span class="enq-sched-what">${what}</span></div>`;
     let h = '';
     if (due.inWindow) {
-        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — your stay in full <small>(arrival is under ${due.days} days away)</small>${refund}`);
+        // ITEMISED TO ITS OWN FIGURE: "£523.05 — your stay in full + £75 deposit"
+        // read as the deposit added on top of £523.05, which already includes it.
+        // With no refundable deposit the itemisation is the same figure twice.
+        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — your stay in full${dmg > 0 ? ' ' + gbp(due.dep) + refund : ''} <small>(arrival is under ${due.days} days away)</small>`);
     } else {
         h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — ${due.pct}% deposit ${gbp(due.dep)}${refund}`);
         h += row(false, `By ${escapeHtml(dpPretty(ukShiftDays(checkIn, -due.days)))}`, `${gbp(p.rentalTotal - due.dep)} balance <small>— we’ll remind you, nothing to set up</small>`);
@@ -17808,7 +17867,7 @@ async function submitEnquiry(propKey) {
                 const pName = (propertyMeta[pk] || {}).name || pk || '';
                 const pb = priceBreakdown(pk, adults, children, checkIn, checkOut);
                 const ppl = adults + children;
-                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpSpoken(checkIn))} → ${escapeHtml(dpSpokenEnd(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
+                sum.innerHTML = `<span>${escapeHtml(pName)} · <span style="white-space:nowrap">${escapeHtml(dpSpoken(checkIn))} →</span> <span style="white-space:nowrap">${escapeHtml(dpSpokenEnd(checkOut))}</span> · <span style="white-space:nowrap">${ppl} guest${ppl === 1 ? '' : 's'}</span></span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
                 sum.style.display = '';
             } catch (e) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
@@ -17824,8 +17883,8 @@ async function submitEnquiry(propKey) {
         const howEl = document.getElementById('enq-sent-how');
         if (howEl) {
             howEl.textContent = noEmail
-                ? `George replies personally — usually the same day. He'll call you${phone ? ' on ' + phone : ''}.`
-                : 'George replies personally — usually the same day, by email.';
+                ? `George replies personally — usually within a few hours. He'll call you${phone ? ' on ' + phone : ''}.`
+                : 'George replies personally — usually within a few hours, by email.';
         }
         const todayEl = document.getElementById('enq-sched-today');
         if (todayEl) {
@@ -17942,8 +18001,8 @@ async function enquireCreateAccount() {
         setM('We need a valid email to create your account.');
         return;
     }
-    if (pwd.length < 4) {
-        setM('Please choose a password of at least 4 characters.');
+    if (pwd.length < 8) {
+        setM('Please choose a password of at least 8 characters.');
         return;
     }
     const btn = document.getElementById('enq-acct-btn');
@@ -19846,7 +19905,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'audit1oct';
+    const BUILD = 'audit3oct';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

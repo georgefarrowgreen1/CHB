@@ -53,7 +53,7 @@ foreach ($rows as $e) {
     // nudge at all, and dates taken since the enquiry (another booking or an
     // imported OTA block) must not be described as "still held" — the approval
     // path re-checks both (enquiry-actions.php), so the nudge must too.
-    if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
+    if (!prop_is_marketable($e['prop_key'])) {
         continue;
     }
     $datesGone = function_exists('dates_clash') && dates_clash($e['prop_key'], $e['check_in'], $e['check_out']);
@@ -147,6 +147,11 @@ foreach ($drafts as $d) {
             }
         }
 
+        // A removed or unlisted cottage: its link 404s, so the rescue is moot.
+        if (!prop_is_marketable($d['prop_key'])) {
+            db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ? AND nudged_at IS NULL')->execute([(int) $d['id']]);
+            continue;
+        }
         $rate = get_rate($d['prop_key']);
         $propName = $rate['name'] ?? '' ?: $d['prop_key'];
         $name = first_name($d['name'], 'there');
@@ -160,11 +165,19 @@ foreach ($drafts as $d) {
         // Composed by enquiry_rescue_body() in mailer.php — previewable, gated.
         $m = enquiry_rescue_body($name, $propName, $dates, $link, prop_display($d['prop_key'])['accent']);
         [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
-        // Like the follow-up above: only mark it sent if it actually went, or the
-        // one-and-only rescue email is silently burned on a mail hiccup.
+        // Claim-first, like the follow-up above: two overlapping runs must not
+        // both email the same draft. A CLEAN failure un-claims so the
+        // one-and-only rescue is never burned; an uncertain one stays claimed.
+        $claim = db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ? AND nudged_at IS NULL');
+        $claim->execute([(int) $d['id']]);
+        if ($claim->rowCount() !== 1) {
+            continue;
+        }
         $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text, $html) : ['ok' => false];
+        if (empty($r['ok']) && empty($r['sent_uncertain'])) {
+            db()->prepare('UPDATE enquiry_drafts SET nudged_at = NULL WHERE id = ?')->execute([(int) $d['id']]);
+        }
         if (!empty($r['ok'])) {
-            db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ?')->execute([(int) $d['id']]);
             $rescued++;
             log_activity('comms', 'enquiry.rescue', 'Abandoned-enquiry rescue emailed — ' . ($d['name'] ?: $d['email']), [
                 'actor' => 'cron',

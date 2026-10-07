@@ -68,6 +68,11 @@ if ($action === 'sw_notify') {
 // ---- Admin: subscribe this device for owner alerts / test / release ping ----
 if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'unsubscribe_admin') {
     require_admin(); // admin session + CSRF token (the inline session check skipped CSRF)
+    // require_admin() checks CSRF on POST only — a planted GET link must not be able
+    // to wake every owner device.
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'This action needs a POST.'], 405);
+    }
     if ($action === 'subscribe_admin') {
         $sub = $in['subscription'] ?? null;
         if (!is_array($sub) || empty($sub['endpoint'])) {

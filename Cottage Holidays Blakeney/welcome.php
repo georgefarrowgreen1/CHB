@@ -39,8 +39,11 @@ if (!$email) {
 // Only a guest who has booked this cottage may read its welcome book — AND the
 // holiday must be paid in full. (Trip information is gated behind payment just
 // like the key code.) Allow it if ANY of their bookings here is settled.
-$own = db()->prepare('SELECT * FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND email = ?');
-$own->execute([$prop, $email]);
+// A CURRENT or UPCOMING stay — the book carries the door code's neighbours (the
+// Wi-Fi, the alarm, where things are), and a stay that ended last year must not
+// keep them readable for ever. Two days' grace after checkout for the drive home.
+$own = db()->prepare('SELECT * FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND email = ? AND check_out >= ?');
+$own->execute([$prop, $email, date('Y-m-d', strtotime('-2 days'))]);
 $bookings = $own->fetchAll();
 if (!$bookings) {
     json_out(['error' => 'No booking found for this cottage.'], 403);

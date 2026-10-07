@@ -23,6 +23,15 @@ if (!function_exists('tide_extremes')) {
         }
 
         $start = is_string($start) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) ? $start : date('Y-m-d');
+        // A PAID API BEHIND A PUBLIC DOOR: every new (start, days) pair is a live,
+        // credit-costing call, so an arbitrary date (year 0001…9999) was a way to
+        // drain the owner's tide credits. Tides are asked for around now; anything
+        // outside yesterday…+60 days is answered for today instead.
+        $lo = date('Y-m-d', strtotime('-1 day'));
+        $hi = date('Y-m-d', strtotime('+60 days'));
+        if ($start < $lo || $start > $hi) {
+            $start = date('Y-m-d');
+        }
         $days = max(1, min(14, (int) $days));
         $cacheKey = "tides-$start-$days";
 

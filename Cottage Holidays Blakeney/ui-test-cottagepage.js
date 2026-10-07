@@ -484,7 +484,7 @@ let base;
             await page.waitForTimeout(600);
             await page.evaluate(() => openProperty('21a'));
             await page.waitForTimeout(700);
-            for (const [name, sel] of [['the facts line', '#prop-subtitle'], ['the waitlist link', '[data-act="openWaitlistHere"]']]) {
+            for (const [name, sel] of [['the facts line', '#prop-subtitle'], ['the waitlist link', '[data-fn="openWaitlistHere"]']]) {
                 const lines = await page.evaluate(lineSplit(sel));
                 ok(Array.isArray(lines) && lines.length >= 1, `[${theme}] read ${name} (${lines ? lines.length : 0} line(s))`);
                 if (!lines) continue;

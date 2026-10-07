@@ -12,6 +12,11 @@ require_once __DIR__ . '/tide-data.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=1800');
 
+// Public, and each cache miss spends paid credits: a per-visitor ceiling
+// (generous — a page asks once or twice) on top of the date clamp in tide-data.
+if (function_exists('rate_limit')) {
+    rate_limit('tides', 60, 10);
+}
 $start = $_GET['start'] ?? null;
 $days = $_GET['days'] ?? 2;
 echo json_encode(tide_extremes($start, $days));

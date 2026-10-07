@@ -1942,7 +1942,7 @@ it_check('cancelling a booking nobody paid for needs no step-up', ($r['json']['o
 // the Test centre's seed_stage / purge_data round-trip on the real database.
 echo "\n== 20. Staging seats + stage seeder ==\n";
 $STG_HOST = 'staging.chb-it.test';
-$gateCookie = hash_hmac('sha256', 'staging-gate|it-gate', $SECRET); // staging-gate.php's own recipe
+$gateCookie = hash_hmac('sha256', 'staging-gate|it-gate|' . hash('sha256', 'it-gate-pass'), $SECRET); // staging-gate.php's own recipe (user + the password's hash)
 
 $sj = []; // fresh persona: gate passed, nothing else
 $r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
@@ -4561,6 +4561,99 @@ foreach (['run', 'run_files', 'verify', ''] as $ba) {
 }
 $r = http($admin, 'POST', '/backup.php', ['action' => 'status']);
 it_check('§41 …while the status read still answers', $r['code'] === 200, $r['raw']);
+
+// ── §42 round-2 audit: agreed terms survive a refresh; the register link closes;
+//        the welcome book and the owner's test push are not reachable sideways ──
+// (a) The price agreed with an enquirer is STORED, so the approval honours it
+//     even when the client sends nothing (it used to live in browser memory only).
+$e42In = $ukPlus(70); $e42Out = $ukPlus(73);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message) VALUES ('$propKey','Terms Kept','terms42@gmail.com','$e42In','$e42Out',2,0,'Hello')");
+$e42 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'set_terms', 'id' => $e42, 'price_override' => '250', 'plan_pct' => '40', 'plan_due' => '']);
+it_check('§42 set_terms stores the agreed price and plan', ($r['json']['ok'] ?? false) === true
+    && abs((float) $rootDb->query("SELECT agreed_price FROM enquiries WHERE id = $e42")->fetchColumn() - 250.0) < 0.005
+    && abs((float) $rootDb->query("SELECT plan_pct FROM enquiries WHERE id = $e42")->fetchColumn() - 40.0) < 0.005, $r['raw']);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'set_terms', 'id' => $e42, 'price_override' => '-5']);
+it_check('§42 …a nonsense price is refused in words', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'GET', '/enquiries.php');
+$e42Row = array_values(array_filter($r['json']['enquiries'] ?? [], fn($x) => (int) ($x['id'] ?? 0) === $e42))[0] ?? [];
+it_check('§42 …and the enquiry list carries it back (a refresh keeps it)', abs((float) ($e42Row['agreed_price'] ?? 0) - 250.0) < 0.005, json_encode($e42Row));
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => $e42]);
+$b42 = (int) ($r['json']['booking_id'] ?? 0);
+$b42Row = $b42 ? $rootDb->query("SELECT price_override, deposit_pct_override FROM bookings WHERE id = $b42")->fetch(PDO::FETCH_ASSOC) : [];
+it_check('§42 approval with NOTHING sent still books the stored price and plan', $b42 > 0
+    && abs((float) ($b42Row['price_override'] ?? 0) - 250.0) < 0.005 && abs((float) ($b42Row['deposit_pct_override'] ?? 0) - 40.0) < 0.005, $r['raw'] . ' ' . json_encode($b42Row));
+// (b) The guest-details link closes a week after the stay, and never shows a
+//     stored document number in full.
+$formPost = function ($path, array $fields) use ($BASE) {
+    $o = ['http' => ['method' => 'POST', 'header' => "Content-Type: application/x-www-form-urlencoded", 'content' => http_build_query($fields), 'timeout' => 20, 'ignore_errors' => true]];
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create($o));
+    $code = 0;
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw];
+};
+$g42In = $ukPlus(10); $g42Out = $ukPlus(12);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Reg Guest','reg42@gmail.com','$g42In','$g42Out',1,0,'paid',300,300,300,0,2)");
+$g42 = (int) $rootDb->lastInsertId();
+$g42Tok = substr(hash_hmac('sha256', 'guestreg:' . $g42, $SECRET), 0, 32);
+$r = $formPost('/guest-details.php', ['b' => $g42, 'token' => $g42Tok, 'name' => ['Reg Guest'], 'nationality' => ['French'], 'doc' => ['FR12345678'], 'docplace' => ['Paris'], 'onward' => ['Paris']]);
+it_check('§42 (fixture) the register saves', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM guest_registrations WHERE booking_id = $g42")->fetchColumn() === 1, substr($r['raw'], 0, 200));
+$noJar = [];
+$r = http($noJar, 'GET', '/guest-details.php?b=' . $g42 . '&token=' . $g42Tok);
+it_check('§42 reopening the link shows the document number MASKED', strpos($r['raw'], 'FR12345678') === false && strpos($r['raw'], '5678') !== false, '');
+$r = $formPost('/guest-details.php', ['b' => $g42, 'token' => $g42Tok, 'name' => ['Reg Guest Fixed'], 'nationality' => ['French'], 'doc' => ['••••5678'], 'docplace' => ['Paris'], 'onward' => ['Paris']]);
+it_check('§42 …and posting the mask back unchanged KEEPS the stored number (a name fix needs no retyped passport)', $r['code'] === 200 && strpos($r['raw'], 'Please add a passport') === false, substr($r['raw'], 0, 200));
+$rootDb->exec("UPDATE bookings SET check_in = '" . $ukPlus(-20) . "', check_out = '" . $ukPlus(-18) . "' WHERE id = $g42");
+$r = http($noJar, 'GET', '/guest-details.php?b=' . $g42 . '&token=' . $g42Tok);
+it_check('§42 a week after the stay the link is CLOSED (410), the party unshown', $r['code'] === 410 && strpos($r['raw'], 'Reg Guest Fixed') === false, (string) $r['code']);
+// (c) GET cannot fire owner-side work.
+$r = http($admin, 'GET', '/push.php?action=test_admin');
+it_check('§42 a GET cannot wake every owner device (test push needs a POST)', $r['code'] === 405, $r['raw']);
+$r = http($admin, 'GET', '/webp-backfill.php');
+it_check('§42 a GET cannot start the image batch', $r['code'] === 405, $r['raw']);
+$rootDb->exec("DELETE FROM guest_registrations WHERE booking_id = $g42");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($g42" . ($b42 ? ", $b42" : '') . ')');
+
+// ── §43 round-3 audit: the one-tap email route honours stored terms; a public
+//        enquiry is bounded; a reply quotes the agreed price ──
+// (a) The owner's one-tap Approve link books the STORED agreed price and plan
+//     (the stored-terms fallback lived in the in-app route only).
+$e43In = $ukPlus(80); $e43Out = $ukPlus(83);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, agreed_price, plan_pct) VALUES ('$propKey','One Tap','onetap43@gmail.com','$e43In','$e43Out',2,0,'Hello',275,35)");
+$e43 = (int) $rootDb->lastInsertId();
+$e43Tok = hash_hmac('sha256', 'enq-action|' . $e43 . '|approve', $SECRET);
+$r = $formPost('/enquiry-action.php', ['id' => $e43, 'a' => 'approve', 't' => $e43Tok]);
+$b43 = (int) $rootDb->query("SELECT id FROM bookings WHERE email = 'onetap43@gmail.com' ORDER BY id DESC LIMIT 1")->fetchColumn();
+$b43Row = $b43 ? $rootDb->query("SELECT price_override, deposit_pct_override FROM bookings WHERE id = $b43")->fetch(PDO::FETCH_ASSOC) : [];
+it_check('§43 the one-tap email Approve books the STORED agreed price and plan', $b43 > 0
+    && abs((float) ($b43Row['price_override'] ?? 0) - 275.0) < 0.005 && abs((float) ($b43Row['deposit_pct_override'] ?? 0) - 35.0) < 0.005, substr($r['raw'], 0, 200) . ' ' . json_encode($b43Row));
+// (b) A public enquiry is bounded: a real date, a sane stay, columns that fit.
+$e43Base = ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Bound Test', 'email' => 'bound43@gmail.com', 'adults' => 2, 'children' => 0,
+    'address' => '1 High St, Holt', 'postcode' => 'NR25 7AB', 'message' => 'Hi', 'terms_accepted' => 1, 'terms_version' => 'x', 'no_dogs' => 1];
+$anon43 = [];
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => date('Y', strtotime('+1 year')) . '-02-31', 'check_out' => date('Y', strtotime('+1 year')) . '-03-04']);
+it_check('§43 a date that does not exist (31 Feb) is refused in words', $r['code'] === 400 && stripos($r['raw'], 'valid dates') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(90), 'check_out' => '9999-12-31']);
+it_check('§43 a stay of millions of nights is refused (it froze the Inbox)', $r['code'] === 400 && stripos($r['raw'], 'longer than') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(900), 'check_out' => $ukPlus(903)]);
+it_check('§43 a check-in more than two years out is refused', $r['code'] === 400 && stripos($r['raw'], 'two years') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(90), 'check_out' => $ukPlus(93), 'phone' => str_repeat('0', 61)]);
+it_check('§43 a phone longer than its column is refused in words, not a 500', $r['code'] === 400 && stripos($r['raw'], 'phone number is too long') !== false, $r['raw']);
+// (c) The reply preview to an enquirer quotes the AGREED price, not the standard one.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, agreed_price) VALUES ('$propKey','Reply Quote','reply43@gmail.com','$e43In','$e43Out',2,0,'Hello',199)");
+$e43r = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'email_preview', 'id' => $e43r, 'message' => 'Lovely to hear from you.', 'subject' => 'Your stay']);
+$prev43 = (string) ($r['json']['html'] ?? $r['raw']) . (string) ($r['json']['text'] ?? '');
+it_check('§43 the reply quotes the agreed £199.00 and says so', strpos($prev43, '199.00') !== false && stripos($prev43, 'agreed price') !== false, substr($prev43, 0, 300));
+$rootDb->exec("DELETE FROM enquiries WHERE id IN ($e43, $e43r)");
+if ($b43) {
+    $rootDb->exec("DELETE FROM bookings WHERE id = $b43");
+}
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -720,7 +720,7 @@ try {
 // 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
 // function (the window-fallback path in chbRunAct). A typo'd data-act would silently
 // do nothing in the browser — this catches it. data-view etc. are params, not actions.
-const registeredActs = new Set([...appScript.matchAll(/chbAct\('([^']+)'/g)].map(m => m[1]));
+const registeredActs = new Set([...(appScript + '\n' + adminScript).matchAll(/chbAct\('([^']+)'/g)].map(m => m[1]));
 const actValues = new Set();
 // index.html static attrs + the static data-act literals emitted by app.js/admin.js
 // innerHTML templates (skip ${...}-interpolated names — resolved at runtime).
@@ -729,8 +729,24 @@ for (const src of [html, adminViews, appScript, adminScript]) {
         if (m[1]) actValues.add(m[1]);
     }
 }
+// …and the names the template HELPERS emit (chbAttrs/chbChange/chbInput('name', …)),
+// which the literal scan above cannot see.
+const helperActs = new Set();
+for (const src of [appScript, adminScript]) {
+    const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n'); // not the docs
+    for (const m of code.matchAll(/\bchb(?:Attrs|Change|Input)\(\s*'([A-Za-z_$][\w$]*)'/g)) helperActs.add(m[1]);
+}
+helperActs.forEach((n) => actValues.add(n));
 const unresolvedActs = [...actValues].filter(n => !registeredActs.has(n) && !definedFns.has(n));
 check('every data-act* value resolves to an action or global fn' + (unresolvedActs.length ? ' (unresolved: ' + unresolvedActs.join(', ') + ')' : ''), unresolvedActs.length === 0);
+// A name the GLOBAL FALLBACK refuses (CHB_ACT_DENY) only works if it is a
+// registered chbAct — otherwise the control renders and does nothing. Round 1
+// denied saveContent and five "saves by itself" fields silently stopped saving.
+const denyList = ((appScript.match(/const CHB_ACT_DENY = \[([^\]]*)\]/) || [])[1] || '').match(/'([^']+)'/g) || [];
+const denied = new Set(denyList.map((x) => x.replace(/'/g, '')));
+const deadActs = [...actValues].filter((n) => denied.has(n) && !registeredActs.has(n));
+check('the action deny-list is parsed (vacuity)', denied.size >= 3 && helperActs.size >= 20);
+check('no control is wired to an action the dispatcher refuses' + (deadActs.length ? ' (dead: ' + deadActs.join(', ') + ')' : ''), deadActs.length === 0);
 
 // 6b. No duplicate element ids (ignore JS template-literal ids like id="x-${k}")
 const ids = [...markup.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).filter(id => !id.includes('${'));

@@ -74,6 +74,9 @@ log_activity('system', $action, $summary, [
 // never push: the code handled the failure by design, so waking the owner over
 // one would be exactly the alert-fatigue this stays clear of.
 if (!$soft) {
-    chb_maybe_alert_owner_error($summary);
+    // A FIXED sentence, never the reporter's words: this endpoint is public, so
+    // passing $summary on made it a way to put any 160 characters on the owner's
+    // lock screen as a "site breakage" alert. The detail is in the activity log.
+    chb_maybe_alert_owner_error('A page error was reported from the website — see the activity log for the details.');
 }
 json_out(['ok' => true, 'soft' => $soft]);
