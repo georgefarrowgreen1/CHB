@@ -14474,3 +14474,49 @@ body:not(.has-booked):not(.owner-mode) .exp-back { display: none; }
 #view-experiences .things-grid { gap: 12px; }
 #view-experiences .things-col { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 16px; }
 @media (prefers-reduced-motion: reduce) { .exp-save.pop svg { animation: none; } }
+/* THE CODE-FIRST SIGN-IN (approved demo): one step at a time inside #ga-auth. */
+.ga-auth { display: block; }
+.ga-astep { display: flex; flex-direction: column; gap: 12px; animation: gaStepIn 0.34s var(--out); }
+.ga-astep.is-back { animation-name: gaStepBack; }
+@keyframes gaStepIn { from { opacity: 0; transform: translateX(16px); } }
+@keyframes gaStepBack { from { opacity: 0; transform: translateX(-16px); } }
+.ga-aback { align-self: flex-start; margin: -8px 0 0 -8px; }
+.ga-ah { font-family: var(--font-serif); font-size: var(--fs-display); font-weight: 600; line-height: 1.15; margin: 0; text-align: left; text-wrap: balance; }
+.ga-al { margin: 0; color: var(--text-muted); font-size: var(--fs-body); line-height: 1.5; text-wrap: pretty; }
+.ga-al b { color: var(--text-light); }
+.ga-asub { margin: 0; color: var(--text-muted); font-size: var(--fs-sub); text-align: center; }
+.ga-alabel { font-size: var(--fs-sub); font-weight: 600; margin-top: 4px; }
+.ga-ainp { display: flex; align-items: center; min-height: 52px; padding: 0 4px 0 16px; background: var(--well-bg); border: 1px solid var(--glass-border); border-radius: var(--r-sm); transition: border-color 0.2s var(--out), box-shadow 0.2s var(--out); }
+.ga-ainp:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.ga-ainp.is-bad { border-color: var(--danger-text); }
+.ga-ainp input { flex: 1; min-width: 0; min-height: 48px; border: 0; background: none; outline: none; color: var(--text-light); font: inherit; font-size: var(--fs-headline); }
+.ga-eye { min-width: 56px; min-height: 44px; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; }
+.ga-aerr { margin: 0; color: var(--danger-text); font-size: var(--fs-sub); line-height: 1.4; }
+.ga-aerr[hidden] { display: none; }
+.ga-afix { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--fs-sub); color: var(--text-muted); }
+.ga-afix button { min-height: 40px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
+.ga-big { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; border-radius: var(--r-sm); border: 0; font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; margin-top: 4px; }
+.ga-big.pri { background: var(--accent); color: var(--accent-ink); }
+.ga-big.is-busy { pointer-events: none; }
+.ga-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: gaSpin 0.7s linear infinite; }
+@keyframes gaSpin { to { transform: rotate(360deg); } }
+.ga-alink { align-self: center; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.ga-alink.is-mute { color: var(--text-muted); font-weight: 500; }
+.ga-alink[disabled] { opacity: 0.55; cursor: default; }
+.ga-asmall { margin: 4px 0 0; font-size: var(--fs-caption); color: var(--text-muted); text-align: center; line-height: 1.5; }
+.ga-asmall a { color: var(--accent-text); }
+.ga-who { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--well-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg); }
+.ga-who-av { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text); font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-title); flex: 0 0 auto; }
+.ga-who b { display: block; font-size: var(--fs-body); }
+.ga-who span span { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
+.ga-chip { display: flex; align-items: center; gap: 8px; align-self: flex-start; max-width: 100%; padding: 4px 4px 4px 16px; background: var(--well-bg); border-radius: var(--r-pill); }
+.ga-chip span { font-size: var(--fs-sub); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ga-chip button { min-height: 36px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: var(--glass-bg); color: var(--accent-text); font: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; position: relative; }
+.ga-chip button::before { content: ''; position: absolute; inset: -4px 0; }
+.ga-code { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.ga-cell { height: 60px; border-radius: var(--r-sm); background: var(--well-bg); border: 1px solid var(--glass-border); display: grid; place-items: center; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ga-code:focus-within .ga-cell.is-cur, .ga-code:focus-within .ga-cell:first-child:empty { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.ga-code.is-bad .ga-cell { border-color: var(--danger-text); }
+.ga-code.is-ok .ga-cell { border-color: var(--ok-text); }
+.ga-code input { position: absolute; inset: 0; width: 100%; opacity: 0; font-size: var(--fs-headline); border: 0; caret-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .ga-astep, .ga-astep.is-back { animation: none; } }

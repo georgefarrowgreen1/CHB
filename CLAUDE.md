@@ -3713,6 +3713,34 @@ inside is what is saved). Shown on the Account page, on the guest dock's Account
   page + dock, remove; the dock sync break-tested) and test-integration §48 (refusals, the 256px
   re-encode, the deny-all folder, served to the guest and owner only, removal deletes the file).
 
+## Sign-in is code-first (approved demo, built)
+
+The guest sign-in sheet (`#guest-auth-modal`, now one host `#ga-auth` painted by `authPaint` in
+app.js) asks for an EMAIL and nothing else. The Log in / Create account tabs and the register form
+are GONE (`switchGuestTab` survives as a compat opener).
+- **The email gets a 6-digit code AND a link** (`guest_code_request`, auth.php; migration-132
+  `guest_codes`, the code stored as an HMAC of email+code, 30 minutes, 5 tries). The answer is
+  always `{ok:true}`, so the endpoint never says whether an address has an account. A KNOWN guest's
+  correct code runs `guest_prove_address` (extracted from `guest_magic_consume` — same rules: an
+  unproven password is cleared and the epoch bumped when proof comes from another browser) and signs
+  in. A NEW address gets `{new:true}` and one more step: a NAME (`guest_code_register`, within 30
+  minutes of the code) — no password, no address; the account is born verified because the code
+  proved the inbox.
+- **Six digits auto-verify**; a wrong code says how many tries are left, the fifth retires it; a
+  30s cool-down guards "Send a new code". The owner's USERNAME (no @) goes straight to the password
+  step and `guestLogin` tries `admin_login` first, as before.
+- **The device is remembered** (`chb-last-guest`: name + email only, forgotten on account delete) so
+  the sheet opens on "Continue as …". A passkey is offered IN the email field (conditional
+  mediation, `authPasskeyAutofill`). A likely domain typo is offered once (`authTypoFix`).
+- **`authPasswordGo` marks its button busy IN PLACE** — re-rendering swapped the fields
+  `guestLogin` reads, and its error landed on a dead node (the gate caught it).
+- **NOT built, deliberately**: the demo's "this screen signs in by itself" when the link is opened
+  on another device. It is phishable — whoever requested the code could get the inbox owner to
+  approve their session. The link still signs in the device that opens it.
+- Gates: test-integration §50 (request/verify/register, tries, expiry, the proof rules),
+  test-emails-render (`send_guest_code_email`, both kinds), **ui-test-signin.js** (§1–§5);
+  e2e / ui-test-reach / ui-test-hig re-aimed off the tabs.
+
 ## The Key safes page: a status line, a to-do, one list (approved "simpler" demo)
 
 `renderKeysafe` / `keysafeView` (admin.js, `.ks-*` in admin.css). Three rounds, owner-led

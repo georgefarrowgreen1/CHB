@@ -3043,8 +3043,14 @@ function send_arrival_email($b)
 
 // Passwordless sign-in link. $g: a guest row (needs name, email). $url: the
 // magic link from auth.php (carries id + issue-time + HMAC, expires in 30 min).
-function send_magic_link_email($g, $url, $purpose = 'signin')
+function send_magic_link_email($g, $url, $purpose = 'signin', $code = '')
 {
+    // A CODE rides beside the link (the code-first sign-in): an iPhone opens an
+    // emailed link in Safari rather than the installed app, so the guest needs
+    // something to TYPE where they are. 'join' is a new guest — a code and no link.
+    if ($code !== '') {
+        return send_guest_code_email($g, $url, $code, $purpose === 'join');
+    }
     // 'reset': the OWNER sent it from Manage → Guests so the guest can choose a
     // new password themselves — same signed, single-use, 30-minute link.
     $reset = $purpose === 'reset';
@@ -3098,6 +3104,37 @@ function send_magic_link_email($g, $url, $purpose = 'signin')
     $html = email_shell($reset ? 'Choose a new password — the link works once, for 30 minutes' : 'Your secure sign-in link — works once, expires in 30 minutes', $inner, $accent);
 
     return smtp_send($g['email'], $name, $subject, $text, $html);
+}
+
+// The sign-in CODE email. Pure composer + sender, like every template here.
+function guest_code_email_body($name, $url, $code, $isNew)
+{
+    $accent = '#D6A785';
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $pretty = substr($code, 0, 3) . ' ' . substr($code, 3);
+    $subject = 'Your code is ' . $pretty . ' — Cottage Holidays Blakeney';
+    $text =
+        ($isNew ? "Hello,\n\nHere is your code to create your Cottage Holidays Blakeney account:\n\n" : "Hello {$name},\n\nHere is your code to sign in to Cottage Holidays Blakeney:\n\n") .
+        $pretty . "\n\n" .
+        ($url !== '' ? "Or tap this link to sign in on this device:\n{$url}\n\n" : '') .
+        "It works once and expires in 30 minutes.\nIf you didn't ask for it, you can safely ignore this email.\n\nCottage Holidays Blakeney";
+    $inner =
+        email_h($isNew ? 'Your code to create your account' : 'Your sign-in code', $accent) .
+        email_p($isNew ? 'Type this code where you asked for it:' : 'Hello ' . $esc($name) . ', type this code where you asked for it:') .
+        email_amount('Your code', $esc($pretty), 'Works once, for 30 minutes.', email_accent_ink()) .
+        ($url !== '' ? email_btn($url, 'Or sign me in on this device', $accent) .
+            email_footnote('Copy this link into your browser if the button doesn&rsquo;t work:<br><span style="word-break:break-all;">' . $esc($url) . '</span>') : '') .
+        email_footnote('If you didn&rsquo;t ask for this, you can safely ignore this email.');
+    $html = email_shell('Your code is ' . $pretty . ' — it works once, for 30 minutes', $inner, $accent);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+function send_guest_code_email($g, $url, $code, $isNew)
+{
+    if (empty($g['email'])) {
+        return ['ok' => false, 'error' => 'No email'];
+    }
+    $m = guest_code_email_body(first_name($g['name'] ?? '', 'there'), $url, $code, $isNew);
+    return smtp_send($g['email'], first_name($g['name'] ?? '', ''), $m['subject'], $m['text'], $m['html']);
 }
 
 // THE COTTAGE'S OWN PAGE. The two "come back" emails both sent the guest to the

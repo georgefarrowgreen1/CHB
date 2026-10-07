@@ -1972,8 +1972,8 @@ chk('a released hold names a number of days, not "a few"',
 // likely to be opened on a different device from the one signing in, and the one
 // most likely to be read in a client that strips the button.
 chk('the magic link prints the URL as well as wrapping it in a button',
-    preg_match('/function send_magic_link_email[\s\S]{0,2500}Copy this link into your browser/', $mlE) === 1
-    && preg_match('/function send_magic_link_email[\s\S]{0,2700}word-break:break-all/', $mlE) === 1);
+    preg_match('/function guest_code_email_body[\s\S]{0,1800}Copy this link into your browser/', $mlE) === 1
+    && preg_match('/function guest_code_email_body[\s\S]{0,1900}word-break:break-all/', $mlE) === 1);
 // BOTH HALVES, ASSERTED SEPARATELY. The text and HTML halves both carry this
 // sentence, so one scan for the phrase passed with the HTML footnote deleted
 // (break-tested) — the plain-text copy was satisfying it.
