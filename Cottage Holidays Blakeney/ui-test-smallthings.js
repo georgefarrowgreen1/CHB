@@ -318,7 +318,7 @@ function stub(page, mode, mine) {
   await page.waitForTimeout(800);
   const sc2 = await page.evaluate(() => {
     const tt = (q) => { const e = document.querySelector(q); return e ? getComputedStyle(e).textTransform : 'missing'; };
-    const call = [...document.querySelectorAll('.btn-sm')].find((b) => /call to/i.test(b.textContent));
+    const call = document.getElementById('enq-call-btn'); // My stays' twin moved to Account → Help as a row
     return { sm: tt('.btn-sm'), badge: tt('.guest-status-badge'), cap: tt('.gtl-cap'), call: call ? call.textContent.trim() : 'missing', weight: getComputedStyle(document.querySelector('.btn-sm')).fontWeight };
   });
   ok(sc2.sm === 'none' && sc2.badge === 'none' && sc2.cap === 'none' && Number(sc2.weight) >= 600, `My Stays: small buttons, badges and captions are sentence case at 600 (${sc2.sm}/${sc2.badge}/${sc2.cap}, ${sc2.weight})`);
