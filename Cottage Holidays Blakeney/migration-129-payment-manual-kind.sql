@@ -1,0 +1,12 @@
+-- ============================================================
+--  migration-129-payment-manual-kind.sql — the ledger records cash and
+--  bank-transfer receipts too.
+--
+--  set_payment stored ONE cumulative figure with ONE date, so a £200 cash
+--  deposit in March and a transfer for the rest in April reported the whole
+--  stay in April's tax year, and cancelling a cash booking (a hard delete)
+--  erased the money kept from the books. Each manual receipt is now its own
+--  dated row, kind 'manual', status MANUAL — never counted by the card-only
+--  readers (booking_ledger_net, find_charge_for_refund, the sweep).
+-- ============================================================
+ALTER TABLE payments MODIFY COLUMN kind ENUM('deposit','balance','refund','damages_return','damages','manual') NOT NULL DEFAULT 'deposit';

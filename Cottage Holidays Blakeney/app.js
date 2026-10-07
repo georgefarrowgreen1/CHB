@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 666;
+const ADMIN_BUNDLE_V = 667;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10658,6 +10658,9 @@ async function loadSquareAdminConfig(pre) {
 function paymentStatusLabel(kind, status) {
     const isReturn = kind === 'refund' || kind === 'damages_return';
     const st = String(status || '').toUpperCase();
+    // A receipt recorded BY HAND (cash/transfer, kind 'manual') is done the moment
+    // it is recorded — "Manual" read as an amber, still-pending line.
+    if (!isReturn && st === 'MANUAL') return 'Completed';
     return isReturn ? (st === 'FAILED' || st === 'REJECTED' ? 'Failed' : 'Completed') : (status || '');
 }
 // Traffic-light meta for a payment row: a dot LEVEL (ok=green done, wait=amber
@@ -10748,7 +10751,9 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                         ? 'Refund'
                         : p.kind === 'damages_return'
                           ? 'Deposit return'
-                          : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
+                          : p.kind === 'manual'
+                            ? 'Received' + (p.note ? ' — ' + String(p.note).toLowerCase() : ' by hand')
+                            : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
                 const sign = isReturn ? '−' : '';
                 // The figure the guest's CARD STATEMENT shows. payments.amount is
                 // rental-only (the bundled damages deposit lives on hold_*), so
@@ -19957,7 +19962,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'audit3oct';
+    const BUILD = 'audit4oct';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

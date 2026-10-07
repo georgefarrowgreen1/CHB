@@ -279,8 +279,9 @@ chk('…and the client folds it into the total AND the paid figure',
 // Balance remaining £50" about a settled stay. Same arithmetic as
 // damages_collected; JS mirror displayGrand (gated in smoke-test §9).
 $bkW = (string) file_get_contents(__DIR__ . '/bookings.php');
+$cfW = (string) file_get_contents(__DIR__ . '/booking-confirm-lib.php'); // the confirmation's home
 chk('the confirmation credits a cash-collected deposit as paid',
-    preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $bkW) === 1);
+    preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $cfW) === 1);
 
 // THE CONFIRMATION SAYS WHEN, NOT JUST HOW MUCH. It stated the outstanding sum
 // and never the date, so a plan the owner had agreed with a guest lived only in
@@ -290,7 +291,7 @@ chk('the confirmation credits a cash-collected deposit as paid',
 // and the composer must render it against a positive balance.
 $mlW = (string) file_get_contents(__DIR__ . '/mailer.php');
 chk('the confirmation payload carries the booking-derived due date',
-    preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $bkW) === 1);
+    preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $cfW) === 1);
 chk('…and the composer renders it only when something is actually outstanding',
     preg_match('/\$balNow > 0\.001 && !empty\(\$b\[.balance_due_date.\]\)/', $mlW) === 1);
 // SPOKEN, never a raw SQL stamp. The guest reads this deadline once and has to
@@ -1916,9 +1917,11 @@ chk('...and the autopay receipt gets the date but NO link (nothing to do)',
 // there and a token signed for a guessed id would be worse than no button.)
 $bkE = (string) file_get_contents(__DIR__ . '/bookings.php');
 $enqE = (string) file_get_contents(__DIR__ . '/enquiry-actions.php');
+// The approval now SENDS the shared confirmation, so the id rides one payload.
+$cfE = (string) file_get_contents(__DIR__ . '/booking-confirm-lib.php');
 chk('the confirmation payload carries the booking id (or its pay link is dead)',
-    preg_match("/'id' => \\(int\\) \\\$bookingId,/", $bkE) === 1
-    && preg_match("/'id' => \\(int\\) \\\$bookingId,/", $enqE) === 1);
+    preg_match("/'id' => \\(int\\) \\\$bookingId,/", $cfE) === 1
+    && strpos($enqE, 'send_booking_confirmation((int) $bookingId') !== false);
 chk('...and the composer only signs a link when it has one, on the card rail',
     preg_match("/!empty\\(\\\$b\\['id'\\]\\) &&\\s*\\n?\\s*payment_rail\\(\\\$b\\) === 'card'/", $mlE) === 1);
 

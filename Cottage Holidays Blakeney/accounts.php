@@ -46,7 +46,8 @@ try {
     $lq = db()->query(
         "SELECT booking_id, DATE(created_at) d, ROUND(SUM(amount),2) a
            FROM payments
-          WHERE kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
+          WHERE (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED'))
+             OR (kind = 'manual' AND UPPER(status) = 'MANUAL')
           GROUP BY booking_id, DATE(created_at)
           ORDER BY booking_id, d",
     );
@@ -176,8 +177,9 @@ foreach ($bookings as $b) {
 // (to free the calendar), but a limited-refund cancellation keeps rental money;
 // the card ledger rows survive the delete, so that genuinely-taxable income was
 // vanishing from the report entirely. Count the net settled card-in for any
-// booking_id no longer present, per received date. (Bank/cash-only cancellations
-// leave no ledger row and are unrecoverable — inherent to a hard delete.)
+// booking_id no longer present, per received date. Cash/bank receipts are ledger
+// rows too since migration-129 (kind 'manual'), so a cancelled cash stay keeps
+// its retained income; ones recorded before that are unrecoverable.
 try {
     $liveIds = [];
     foreach ($bookings as $b) {
@@ -194,7 +196,7 @@ try {
     // — the same shape the kept-damages block below already uses.
     $orphanRows = db()->query(
         "SELECT booking_id, DATE(created_at) d,
-              ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0),2) charged,
+              ROUND(COALESCE(SUM(CASE WHEN (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')) OR (kind = 'manual' AND UPPER(status) = 'MANUAL') THEN amount ELSE 0 END),0),2) charged,
               ROUND(COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) refunded
            FROM payments
           GROUP BY booking_id, DATE(created_at)
@@ -236,7 +238,7 @@ try {
                 'name' => '(cancelled booking)',
                 'prop_key' => '',
                 'property_name' => '',
-                'payment_method' => 'Square card',
+                'payment_method' => 'Cancelled — kept',
                 'payment_date' => $c['d'],
                 'received' => $take,
                 'income_part' => $take,

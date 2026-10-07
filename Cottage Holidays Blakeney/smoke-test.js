@@ -1879,6 +1879,7 @@ if (typeof get('paymentStatusLabel') === 'function') {
     check('refund PENDING → Completed', psl('refund', 'PENDING') === 'Completed');
     check('deposit-return PENDING → Completed', psl('damages_return', 'PENDING') === 'Completed');
     check('manually-returned deposit → Completed', psl('damages_return', 'MANUAL') === 'Completed');
+    check('a receipt recorded by hand → Completed (not an amber Manual)', psl('manual', 'MANUAL') === 'Completed');
     check('refund FAILED → Failed', psl('refund', 'FAILED') === 'Failed');
     check('refund REJECTED → Failed', psl('refund', 'REJECTED') === 'Failed');
     check('card-in balance keeps Square status', psl('balance', 'COMPLETED') === 'COMPLETED');

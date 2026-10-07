@@ -11,14 +11,10 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/payments-reconcile.php'; // reconcile_pending_refunds / reconcile_missing_fees
+require_once __DIR__ . '/booking-confirm-lib.php'; // booking_by_id / send_booking_confirmation
 
 // ---- helpers ----
-function booking_by_id($id)
-{
-    $s = db()->prepare('SELECT * FROM bookings WHERE id = ?');
-    $s->execute([$id]);
-    return $s->fetch();
-}
+// booking_by_id() lives in booking-confirm-lib.php (shared with enquiry approval).
 // (A boolean dates_clash() lives in db.php; this file uses the message form below.)
 // Returns a human-readable clash message if the dates overlap an existing booking
 // or an imported platform (Airbnb/Vrbo) block; empty string if the dates are free.
@@ -383,115 +379,9 @@ function damages_returned($bookingId)
 // RE-sending after a payment is recorded, so the owner isn't re-pinged each time.
 // $deferOwner = true sends the guest copy now (its result is what the UI shows)
 // but moves the owner copy to after the response is flushed (mail_after_response).
-function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner = false)
-{
-    try {
-        $b = booking_by_id((int) $bookingId);
-        if (!$b) {
-            return ['error' => 'Booking not found'];
-        }
-        $rate = get_rate($b['prop_key']);
-        require_once __DIR__ . '/mailer.php';
+// send_booking_confirmation() lives in booking-confirm-lib.php so the enquiry
+// approval sends the SAME confirmation (plan, invoice and register links).
 
-        // Prefer the locked agreed figures; fall back to a live calc if missing.
-        if ($b['agreed_total'] !== null) {
-            $nights = (int) $b['agreed_nights'];
-            $perNight = (float) $b['agreed_per_night'];
-            $nightly = (float) $b['agreed_nightly'];
-            $txPct = (float) $b['agreed_txn_pct'];
-            $txFee = (float) $b['agreed_txn_fee'];
-            $deposit = (float) $b['agreed_booking_fee'];
-            $total = booking_agreed_total($b);
-        } else {
-            if (!$rate) {
-                return ['error' => 'Property rate not found'];
-            }
-            $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-            $nights = $p['nights'];
-            $perNight = $p['perNight'];
-            $nightly = $p['nightly'];
-            $txPct = $p['transactionPct'];
-            $txFee = $p['txFee'];
-            $deposit = $p['damagesDeposit'];
-            $total = $p['total'];
-        }
-        $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
-
-        // Paid-so-far / balance for the confirmation. MUST mirror the JS
-        // displayGrand()/depositCharged() (app.js) so the email agrees with the
-        // invoice + My Stays: the refundable deposit is only "paid" when actually
-        // collected (Square → hold_status 'charged'/'captured'/'kept'); a manual
-        // cash/bank payment leaves it 'none', so it isn't counted.
-        $holdStatus = $b['hold_status'] ?? 'none';
-        $depAmt = in_array($holdStatus, ['returned', 'released'], true) ? 0.0 : (float) $deposit;
-        $grand = round($total + $depAmt, 2);
-        $rentalPaid = $b['payment'] === 'paid' ? $total : min($total, (float) ($b['deposit_paid'] ?? 0));
-        $chargedDep = in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $depAmt : 0.0;
-        // A CASH deposit counts as paid too — what was recorded ABOVE the rental,
-        // capped at the agreed deposit (damages_collected's own arithmetic; JS
-        // mirror displayGrand). hold_status is a card-rail fact cash never sets,
-        // and $rentalPaid caps at the total — so a re-sent confirmation for a
-        // guest who handed over £750 in cash said "Paid so far £700 · Balance
-        // remaining £50" about a settled stay. Zero for legacy folded totals
-        // (paid never exceeds the total there).
-        $cashDep = $holdStatus === 'none'
-            ? min($depAmt, max(0.0, round((float) ($b['deposit_paid'] ?? 0) - $total, 2)))
-            : 0.0;
-        $paidSoFar = round($rentalPaid + $chargedDep + $cashDep, 2);
-        $balanceDue = round(max(0, $grand - $paidSoFar), 2);
-
-        return send_booking_emails([
-            'name' => $b['name'],
-            'email' => $b['email'],
-            'phone' => $b['phone'] ?? '',
-            'prop_key' => $b['prop_key'],
-            'prop_name' => $rate['name'] ?? $b['prop_key'],
-            'address' => $rate['address'] ?? '',
-            'check_in' => $b['check_in'],
-            'check_out' => $b['check_out'],
-            'check_in_time' => $b['check_in_time'] ?? '15:00',
-            'check_out_time' => $b['check_out_time'] ?? '10:00',
-            'nights' => $nights,
-            'per_night' => $perNight,
-            'nightly' => $nightly,
-            'tx_pct' => $txPct,
-            'tx_fee' => $txFee,
-            'adults' => $b['adults'],
-            'children' => $b['children'],
-            'total' => $total,
-            'damages_deposit' => $deposit,
-            'payment' => $b['payment'],
-            // The guest's rail (payment_rail reads this): a cash/BACS guest's
-            // re-sent confirmation must offer bank details, not a Square card
-            // link. Omitting it left the rail guard reading '' → 'card' always.
-            'payment_method' => $b['payment_method'] ?? '',
-            'ref' => $ref,
-            // The booking's own id, so the confirmation can sign a pay link and
-            // the owner copy can link straight to the hub. Without it both
-            // features are dead code guarded on a key nobody passed.
-            'id' => (int) $bookingId,
-            // Payment state so the confirmation reflects money received (shown only
-            // when something has been paid; a fresh unpaid booking omits it).
-            'paid_so_far' => $paidSoFar,
-            'balance_due' => $balanceDue,
-            // WHEN the rest falls due, from this booking's own plan. The
-            // confirmation stated how much was outstanding and never by when,
-            // so the schedule the owner agreed existed only in the back office.
-            'balance_due_date' => booking_balance_due_date($b),
-            'grand_total' => $grand,
-            // Suppress the owner copy on a re-send after a payment.
-            'skip_owner' => $guestOnly,
-            // Send the owner copy after the HTTP response (booking-add flow).
-            'defer_owner' => $deferOwner,
-            // Signed link to the guest-viewable HTML invoice (invoice.php).
-            'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
-            // Signed link to the guest-registration form (UK hotel-records duty).
-            'guest_reg_url' => site_base_url() . 'guest-details.php?b=' . (int) $bookingId . '&token=' . guest_reg_token((int) $bookingId),
-        ]);
-    } catch (\Throwable $ex) {
-        return ['error' => 'Mail step skipped: ' . $ex->getMessage()];
-    }
-}
 
 // The admin GET payload, as a function so admin-bootstrap.php can serve the
 // SAME data in its combined back-office boot response. Caller must require_admin.
@@ -1220,6 +1110,27 @@ if ($action === 'set_payment') {
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
         ->execute([$status, $dep, $method, $date ?: null, $id]);
+    // EACH MANUAL RECEIPT IS ITS OWN DATED LEDGER ROW (migration-129). The rental
+    // part of an increase only — the refundable deposit is a holding, not income,
+    // and stays off the ledger as it does on the card rail. Income allocation
+    // (accounts.php) reads these dates, so a cash deposit in March and a transfer
+    // in April land in their own tax years, and a cancelled cash stay keeps its
+    // retained income on the books. A correction DOWN writes nothing: allocation
+    // is always capped by deposit_paid, so a surplus row cannot inflate income.
+    $rentalCap = booking_rental_price($b);
+    if ($rentalCap <= 0) {
+        $rentalCap = (float) $total;
+    }
+    $newRental = round(min($dep, $rentalCap), 2) - round(min($prevDep, $rentalCap), 2);
+    if ($newRental > 0.005 && $date) {
+        try {
+            $mid = 'manual-' . bin2hex(random_bytes(8));
+            insert_payment_row($id, $mid, 'manual', round($newRental, 2), 'MANUAL', $b['name'] ?? '', $b['prop_key'] ?? '', $method !== '' ? $method : '');
+            db()->prepare('UPDATE payments SET created_at = ? WHERE square_payment_id = ?')->execute([$date . ' 12:00:00', $mid]);
+        } catch (\Throwable $e) {
+            // un-migrated enum: the cumulative figure above still stands
+        }
+    }
     book_unlock($b['prop_key'] ?? '');
     // When money came in (recorded amount went UP), log it as a clear payment
     // event ("a deposit/payment has been made") rather than a vague status change.
@@ -2151,6 +2062,20 @@ if ($action === 'return_deposit') {
                 ->execute(['returned', $id]);
         } catch (\Throwable $e) {
         }
+    } elseif (in_array($b['hold_status'] ?? '', ['charged', 'none'], true) && $note !== '' && $held - $amount > 0.001) {
+        // A PART return WITH A REASON is a decision about the rest: the guest is
+        // emailed "Retained: £25 — broken lamp". Leaving it open kept a "Return
+        // £25" duty on Today for ever, Return/Keep still on the hub, and the
+        // invoice promising the full deposit back. Book the remainder as kept,
+        // exactly as keep_deposit does. (No reason = a staged return; stays open.)
+        $keptRest = round($held - $amount, 2);
+        try {
+            insert_payment_row($id, 'kept-' . bin2hex(random_bytes(8)), 'damages', $keptRest, 'COMPLETED', $b['name'], $b['prop_key'], $note);
+            db()
+                ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')
+                ->execute(['kept', $id]);
+        } catch (\Throwable $e) {
+        }
     }
     book_unlock($b['prop_key'] ?? '');
 
@@ -2289,7 +2214,10 @@ if ($action === 'cancel') {
     if ($refundAmount > 0) {
         $cancelCap = null;
         try {
-            $cancelCap = booking_ledger_net($id);
+            // Off the card rail the money was paid in cash or by transfer and the
+            // card ledger is empty — capping there refused every refund on a cash
+            // booking ("Only £0.00 is still refundable"). Cap at what was paid.
+            $cancelCap = payment_rail($b) === 'card' ? booking_ledger_net($id) : booking_paid_so_far($b);
         } catch (\Throwable $e) {
             $cancelCap = null; // ledger unreadable — leave it to Square, as before
         }
@@ -2396,6 +2324,13 @@ if ($action === 'cancel') {
             } catch (\Throwable $e) {
             }
         }
+    }
+    // A refund the owner makes BY HAND (cash/transfer, or no card charge to send
+    // it back to) is a ledger row too, so the cancelled booking's retained income
+    // (accounts.php's orphan block) nets it off rather than counting it as kept.
+    $manualRefund = round($refundAmount - $refundedByCard, 2);
+    if ($manualRefund > 0.005) {
+        insert_payment_row($id, 'mrefund-' . bin2hex(random_bytes(8)), 'refund', $manualRefund, 'MANUAL', $b['name'] ?? '', $b['prop_key'] ?? '', $reason !== '' ? $reason : 'Cancellation — refunded by hand');
     }
     // The DELETE is the terminal marker, so it goes BEFORE the email: the send
     // is seconds of SMTP, and a retry arriving mid-send used to find the row

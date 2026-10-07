@@ -533,6 +533,7 @@ try {
                 'damages' => 'Refundable deposit received',
                 'refund' => 'Refunded to you',
                 'damages_return' => 'Refundable deposit returned',
+                'manual' => 'Payment received',
             ][(string) $r['kind']] ?? 'Payment received',
             'amount' => $amount,
             'note' => $note,
@@ -545,11 +546,22 @@ try {
 // No ledger rows but the booking says money is in (cash, bank transfer, or a
 // charge recorded before the ledger existed) — say so rather than showing an
 // empty Payments card under a header claiming £X received.
-if (!$payments && $paid > 0.001) {
+// And when the ledger holds SOME rows (a deposit-return row, say) but not the
+// cash or transfer that paid the stay, the gap is stated too — "Paid in full"
+// over a Payments card holding only "deposit returned £50" did not add up.
+$creditsShown = 0.0;
+foreach ($payments as $pr) {
+    if (!empty($pr['credit'])) {
+        $creditsShown += (float) $pr['amount'];
+    }
+}
+$unlisted = round($paid - $creditsShown, 2);
+if ($unlisted > 0.005) {
+    $method = trim((string) ($b['payment_method'] ?? ''));
     $payments[] = [
-        'date' => '',
-        'label' => payment_rail($b) === 'card' ? 'Received' : 'Received — ' . strtolower((string) $b['payment_method']),
-        'amount' => $paid,
+        'date' => !empty($b['payment_date']) ? uk_date(substr((string) $b['payment_date'], 0, 10)) : '',
+        'label' => payment_rail($b) === 'card' || $method === '' ? 'Received' : 'Received — ' . strtolower($method),
+        'amount' => $unlisted,
         'credit' => true,
     ];
 }

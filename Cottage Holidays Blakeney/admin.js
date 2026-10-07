@@ -10518,7 +10518,14 @@ function renderBookings() {
             // The count rides this row's right edge (it is the header of the card that holds the
             // list), so the empty and the full versions answer the same question in the same place.
             const nWord = !q && (f === 'upcoming' || f === 'past') ? `<span class="bk-owed-n">${rows.length} ${f}</span>` : '';
-            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>Nobody owes you anything' + nWord + '</p>';
+            // "Nobody owes you anything" is a claim about EVERYONE. A guest paying the
+            // owner directly (owner-arranged) still owes — say that, not "nobody".
+            const arranged = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && bookingOwnerArranged(b) && !hasCheckedOut(b));
+            const arrSum = arranged.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
+            const clearTx = arranged.length
+                ? `Nothing to chase · £${Math.round(arrSum).toLocaleString('en-GB')} arranged with ${arranged.length === 1 ? '1 guest' : arranged.length + ' guests'}`
+                : 'Nobody owes you anything';
+            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>' + clearTx + nWord + '</p>';
             if (nWord && sum) sum.textContent = '';
         }
         if (owedEl.innerHTML !== html) {
@@ -16818,6 +16825,12 @@ async function returnDeposit(bookingId) {
         // a nag — nothing follows up if it's ignored.
         __gbDraft = null;
         __bhubOpenFolds.add('rating');
+        // Re-read the booking + the returns BEFORE repainting: the hub otherwise
+        // went on saying "£75 still held" with Return offered beside it.
+        try {
+            await loadData();
+            if (typeof loadDepositReturns === 'function') await loadDepositReturns();
+        } catch (e2) {}
         afterPaymentChange(bookingId);
     } catch (e) {
         // A SERVER VERDICT IS NOT A TRANSPORT FAILURE, and the screen must stop
@@ -17494,15 +17507,28 @@ function moAsyncFill() {
             // To give back — only exists when a deposit is held; otherwise the calm line says so.
             const slot = document.getElementById('mo-back-slot');
             if (slot && L && !L.error) {
-                const items = L.items || [];
-                __moHead.held = items.length ? Number(L.net || 0) : 0;
+                // The ring fence (L) is SQUARE money only. A deposit paid in cash or by
+                // transfer is held too — the owner hands it back themselves — and the
+                // landing said "no deposits are held" over one Today was asking to return.
+                const cashItems = [];
+                try {
+                    Object.keys(dbBookings).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+                        if ((b.holdStatus || 'none') !== 'none') return;
+                        const h = damageHeld(pk, b);
+                        if (h.held > 0.005) cashItems.push({ name: b.name, net: h.held, check_in: b.checkIn, check_out: b.checkOut, cash: true });
+                    }));
+                } catch (e) {}
+                const items = (L.items || []).concat(cashItems);
+                const cashSum = cashItems.reduce((n, it) => n + it.net, 0);
+                const backNet = Number(L.net || 0) + cashSum;
+                __moHead.held = items.length ? backNet : 0;
                 __moCalmState.back = !items.length;
                 if (items.length) {
                     const today2 = todayDashed();
-                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return');
+                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return') + (it.cash ? ' · paid in cash' : '');
                     // `it.net` — the liability items carry outstanding/awaiting/rental/fee/gross/feeBack/net and NO `amount`.
                     slot.innerHTML = bhubFoldGrp('moback', 'To give back', 'deposits still held',
-                        `<span class="bhub-payline-fig" id="mo-back-fig">${gbp(Number(L.net || 0))}</span>`,
+                        `<span class="bhub-payline-fig" id="mo-back-fig">${gbp(backNet)}</span>`,
                         `<div id="mo-back-rows" style="margin-bottom:6px;">${items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net) || 0)}</span></div>`).join('')}</div>
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
                     moLand(document.getElementById('mo-back-fig'), 1);
@@ -17730,7 +17756,7 @@ function mfPaint() {
     });
     const row = (x) => {
         const { p, isReturn, sMeta, gross, fee, wait } = x;
-        const label = p.kind === 'refund' ? 'Refund' : p.kind === 'damages_return' ? 'Deposit return' : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
+        const label = p.kind === 'refund' ? 'Refund' : p.kind === 'damages_return' ? 'Deposit return' : p.kind === 'manual' ? 'Cash / transfer' : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
         const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : p.prop_key || '';
         const deleted = p.booking_deleted == 1 || p.booking_deleted === true;
         const note = (p.note || '').trim();
@@ -18251,7 +18277,7 @@ function notifyPrefs() {
     } catch (e) {
         p = {};
     }
-    return Object.assign({ money: true, enquiries: true, messages: true, system: true, quietFrom: '', quietTo: '' }, p || {});
+    return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, p || {});
 }
 function renderNotifyPrefs() {
     const box = document.getElementById('notify-prefs-body');
@@ -19573,6 +19599,12 @@ async function keepDeposit(bookingId) {
         // opens on the re-render (an offer, never a nag; see returnDeposit).
         __gbDraft = null;
         __bhubOpenFolds.add('rating');
+        // Re-read the booking + the returns BEFORE repainting: the hub otherwise
+        // went on saying "£75 still held" with Return offered beside it.
+        try {
+            await loadData();
+            if (typeof loadDepositReturns === 'function') await loadDepositReturns();
+        } catch (e2) {}
         afterPaymentChange(bookingId);
     } catch (e) {
         glassAlert("Couldn't keep the deposit: " + e.message);
