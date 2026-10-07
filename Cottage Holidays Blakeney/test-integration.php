@@ -4718,6 +4718,45 @@ $rootDb->exec("DELETE FROM bookings WHERE id = $e44");
 $rootDb->exec("DELETE FROM payments WHERE booking_id IN ($c44, $p44)");
 $rootDb->exec("DELETE FROM bookings WHERE id = $p44");
 
+echo "\n== §45 Guests: the owner sends a reset link, never a password ==\n";
+// The owner-set password is GONE: the action no longer exists.
+$r = http($admin, 'POST', '/auth.php', ['action' => 'guest_reset_password', 'email' => 'ks@gmail.com', 'next' => 'ownerchose1']);
+it_check('§45 the owner can no longer set a guest password', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'nobody-here@gmail.com']);
+it_check('§45 a reset link for an address with no account is refused in words', $r['code'] === 404 && strpos($r['raw'], 'no account') !== false, $r['raw']);
+$r = http($noJar, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'ks@gmail.com']);
+it_check('§45 only the owner can send one', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+// MAIL_ENABLED is off here, so the send itself answers 500 — and logs nothing,
+// which is what keeps the one-a-minute guard from refusing a send that never went.
+$r = http($admin, 'POST', '/auth.php', ['action' => 'guest_send_reset', 'email' => 'ks@gmail.com']);
+$rl45 = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'guest.reset_link'")->fetchColumn();
+it_check('§45 a send the mailer refused is reported as a failure and not logged', $r['code'] === 500 && $rl45 === 0, $r['raw']);
+// The guest side: a RESET link opens a window to choose a password with no current one.
+$rsJar = [];
+$rsId = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn();
+$rootDb->exec("UPDATE guests SET password_hash = '" . password_hash('oldpassword9', PASSWORD_DEFAULT) . "', email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = $rsId");
+$rsTs = time() + 2;
+$rsTok = substr(hash_hmac('sha256', 'login:' . $rsId . ':' . $rsTs, $SECRET), 0, 32);
+// An ordinary sign-in link does NOT open the window.
+$plainJar = [];
+$pTs = time() + 1;
+$r = http($plainJar, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $rsId, 'ts' => $pTs, 'token' => substr(hash_hmac('sha256', 'login:' . $rsId . ':' . $pTs, $SECRET), 0, 32)]);
+it_check('§45 (fixture) an ordinary sign-in link signs in', ($r['json']['ok'] ?? false) === true && empty($r['json']['choose_password']), $r['raw']);
+$r = http($plainJar, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'hijacked99']);
+it_check('§45 …and a plain sign-in still needs the current password to change it', $r['code'] === 403, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $rsId, 'ts' => $rsTs, 'token' => $rsTok, 'reset' => true]);
+it_check('§45 a reset link signs in and asks for a new password', ($r['json']['ok'] ?? false) === true && ($r['json']['choose_password'] ?? false) === true, $r['raw']);
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'freshpass42']);
+it_check('§45 …the guest chooses it themselves, no old password needed', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$h45 = (string) $rootDb->query("SELECT password_hash FROM guests WHERE id = $rsId")->fetchColumn();
+it_check('§45 …and it is THEIR password that is stored', password_verify('freshpass42', $h45), '');
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'againpass77']);
+it_check('§45 one reset per link: a second blank-current change is refused', $r['code'] === 403, $r['raw']);
+// The CRM carries when a guest was last invited back, so the page remembers it.
+$r = http($admin, 'POST', '/auth.php', ['action' => 'guest_crm']);
+$g45 = $r['json']['guests'][0] ?? [];
+it_check('§45 the guest list says when each guest was last invited back', array_key_exists('invited_at', $g45), $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

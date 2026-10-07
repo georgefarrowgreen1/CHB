@@ -638,12 +638,22 @@ switch ($action) {
             // migration-111/127 not applied — nothing to stamp.
         }
         unset($_SESSION['reg_gid']);
+        // A RESET link (sent by the owner from Manage → Guests) opens a short window
+        // in which this session may choose a new password without the old one —
+        // the link was emailed to the address, which is the proof. Kept in the
+        // SESSION rather than clearing the password, so a link opened by mistake
+        // never locks the guest out of the password they still know.
+        $pwReset = !empty($in['reset']);
         session_regenerate_id(true); // new session id on login — prevents session fixation
         guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']); // one role at a time
+        if ($pwReset) {
+            $_SESSION['pw_reset_at'] = time();
+        }
         json_out([
             'ok' => true,
             'reset' => $reset,
+            'choose_password' => $pwReset,
             'guest' => [
                 'name' => $row['name'],
                 'email' => $row['email'],
@@ -703,6 +713,10 @@ switch ($action) {
         // magic-link-only account) sets one without a current one — the session is
         // the proof, and there is nothing to type.
         $noPw = $row && (string) $row['password_hash'] === '';
+        // …and so does a session opened by a reset link in the last 30 minutes.
+        if ($row && !empty($_SESSION['pw_reset_at']) && time() - (int) $_SESSION['pw_reset_at'] <= 1800) {
+            $noPw = true;
+        }
         // Throttled on its own identifier: a borrowed signed-in phone must not be a
         // free oracle for guessing the account's password.
         throttle_check('guestpw:' . (int) $_SESSION['guest_id']);
@@ -714,6 +728,7 @@ switch ($action) {
         db()
             ->prepare('UPDATE guests SET password_hash = ? WHERE id = ?')
             ->execute([password_hash($next, PASSWORD_DEFAULT), (int) $_SESSION['guest_id']]);
+        unset($_SESSION['pw_reset_at']); // one reset per link
         // A new password signs out every OTHER session (a phone left signed in is
         // exactly why people change it); this one is re-stamped and stays in.
         try {
@@ -917,27 +932,38 @@ switch ($action) {
         $rows = db()->query('SELECT id, name, email, phone, created_at FROM guests ORDER BY name ASC')->fetchAll();
         json_out(['guests' => $rows]);
 
-    case 'guest_reset_password':
+    // The owner never sets a guest's password: this EMAILS the guest a signed,
+    // single-use, 30-minute link (the magic-link token) that opens a "choose a new
+    // password" step. One per minute per guest, so a few quick taps send one email.
+    case 'guest_send_reset':
         require_admin();
         $email = strtolower(clean($in['email'] ?? ''));
-        $next = $in['next'] ?? '';
         if ($email === '') {
             json_out(['error' => 'Guest email is required'], 400);
         }
-        if (strlen($next) < 8) {
-            json_out(['error' => 'New password must be at least 8 characters'], 400);
-        }
-        $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
+        $stmt = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
         $stmt->execute([$email]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            json_out(['error' => 'No guest account found with that email'], 404);
+        $g = $stmt->fetch();
+        if (!$g) {
+            json_out(['error' => 'That guest has no account yet, so there is no password to reset.'], 404);
         }
-        $hash = password_hash($next, PASSWORD_DEFAULT);
-        db()
-            ->prepare('UPDATE guests SET password_hash = ? WHERE id = ?')
-            ->execute([$hash, $row['id']]);
-        json_out(['ok' => true]);
+        try {
+            $rq = db()->prepare("SELECT created_at FROM activity_log WHERE action = 'guest.reset_link' AND entity = 'guest' AND entity_id = ? AND created_at >= (NOW() - INTERVAL 60 SECOND) LIMIT 1");
+            $rq->execute([(string) (int) $g['id']]);
+            if ($rq->fetchColumn()) {
+                json_out(['error' => 'A reset link has just gone to ' . $g['email'] . ' — give it a minute before sending another.', 'code' => 'already_sent'], 409);
+            }
+        } catch (\Throwable $e) {
+        }
+        $ts = time();
+        $url = site_base_url() . 'index.html?mlogin=' . (int) $g['id'] . '&t=' . $ts . '&k=' . login_token($g['id'], $ts) . '&pr=1';
+        require_once __DIR__ . '/mailer.php';
+        $r = send_magic_link_email($g, $url, 'reset');
+        if (empty($r['ok'])) {
+            json_out(['error' => $r['error'] ?? 'Could not send the email'], 500);
+        }
+        log_activity('account', 'guest.reset_link', 'Password reset link emailed to a guest', ['entity' => 'guest', 'entity_id' => (string) (int) $g['id']]);
+        json_out(['ok' => true, 'until' => date('H:i', $ts + 1800)]);
 
     // Guest CRM: aggregate BOOKINGS (everyone who actually stayed, account or not)
     // by email into a lifetime-value view — stays, total spend, first/last stay,
@@ -976,6 +1002,18 @@ switch ($action) {
             $p = $r['prop_key'];
             $g[$e]['props'][$p] = ($g[$e]['props'][$p] ?? 0) + 1;
         }
+        $invited = [];
+        try {
+            $iq = db()->query("SELECT meta, created_at FROM activity_log WHERE action = 'guest.reinvite' AND created_at >= (NOW() - INTERVAL 90 DAY)");
+            foreach ($iq->fetchAll() as $ir) {
+                $m = json_decode((string) $ir['meta'], true);
+                $ie = is_array($m) ? strtolower((string) ($m['email'] ?? '')) : '';
+                if ($ie !== '' && (string) $ir['created_at'] > ($invited[$ie] ?? '')) {
+                    $invited[$ie] = (string) $ir['created_at'];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
         $out = [];
         foreach ($g as $e => $d) {
             arsort($d['props']);
@@ -989,6 +1027,7 @@ switch ($action) {
                 'fav_prop' => array_key_first($d['props']),
                 'repeat' => $d['stays'] > 1,
                 'has_account' => isset($acct[$e]),
+                'invited_at' => $invited[$e] ?? '',
             ];
         }
         // Best guests first: lifetime value, then stay count.

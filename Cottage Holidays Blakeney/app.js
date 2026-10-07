@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 691;
+const ADMIN_BUNDLE_V = 692;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 334;
+const ADMIN_CSS_V = 335;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4044,6 +4044,24 @@ async function requestMagicLink() {
         show("Couldn't send the link — please try again.", false);
     }
 }
+// A reset link (sent by the owner) lands here signed in: the guest chooses the new
+// password themselves. Closing the dialog is fine — they stay signed in and can set
+// one from their account details while the link's 30-minute window lasts.
+async function guestChooseNewPassword(note) {
+    const v = await glassForm(note || 'Choose a new password for your account.', [
+        { id: 'pw', label: 'New password (at least 8 characters)', type: 'password', autocomplete: 'new-password' },
+        { id: 'pw2', label: 'Type it again', type: 'password', autocomplete: 'new-password' },
+    ], { okLabel: 'Save password' });
+    if (!v) return;
+    if ((v.pw || '').length < 8) return guestChooseNewPassword('Your new password needs at least 8 characters.');
+    if (v.pw !== v.pw2) return guestChooseNewPassword('Those two passwords didn’t match — try again.');
+    try {
+        await apiPost('auth.php', { action: 'guest_change_password', current: '', next: v.pw });
+        toast('Password saved — you’re signed in.');
+    } catch (e) {
+        glassAlert(e.message || 'That password couldn’t be saved — please try again.');
+    }
+}
 // Boot: if the page was opened from a magic link (?mlogin=<id>&t=<ts>&k=<token>),
 // consume it, sign the guest in, and strip the token from the URL/history.
 async function maybeConsumeMagicLink() {
@@ -4056,6 +4074,7 @@ async function maybeConsumeMagicLink() {
     const gid = parseInt(usp.get('mlogin'), 10);
     const ts = parseInt(usp.get('t'), 10);
     const token = usp.get('k') || '';
+    const pwReset = usp.get('pr') === '1';
     if (!gid || !ts || !token) return false;
     const clean = () => {
         try {
@@ -4068,6 +4087,7 @@ async function maybeConsumeMagicLink() {
             guest_id: gid,
             ts,
             token,
+            reset: pwReset,
         });
         currentGuest = res.guest;
         isAuthenticated = false;
@@ -4079,7 +4099,8 @@ async function maybeConsumeMagicLink() {
         try {
             // A confirmation from a browser that did not register clears the unconfirmed
             // password (auth.php) — say so, so "my password stopped working" is never a surprise.
-            if (res.reset) glassAlert('Your email is confirmed and your stays are below. For your security, set a new password in your account details — the one chosen before the email was confirmed no longer works.');
+            if (res.choose_password) guestChooseNewPassword();
+            else if (res.reset) glassAlert('Your email is confirmed and your stays are below. For your security, set a new password in your account details — the one chosen before the email was confirmed no longer works.');
             else toast('Signed in — welcome back.');
         } catch (e) {}
     } catch (e) {
@@ -20040,7 +20061,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'calsync5';
+    const BUILD = 'guests1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

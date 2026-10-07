@@ -16,7 +16,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // One stalled Jollyboat feed (74h, hourly expected) + one fresh 21A feed;
   // cron healthy; ONE pending review. Flip via `feedsStalled` for §2.
   let feedsStalled = true;
-  let calOvFix = null; let calListFix = null; let calSyncHold = false; const calPosts = [];
+  const gstPosts = []; let calOvFix = null; let calListFix = null; let calSyncHold = false; const calPosts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -37,6 +37,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       { name: 'Debbie McGoldrick', email: 'debbie@example.com', stays: 4, ltv: 2840, last_stay: '2026-06-10', fav_prop: 'jollyboat', repeat: true, has_account: true },
       { name: 'Tom Harding', email: 'tom@example.com', stays: 1, ltv: 440, last_stay: '2026-04-02', fav_prop: '21a', repeat: false, has_account: false },
     ]});
+    if (url.includes('auth.php') && (b.action === 'guest_reinvite' || b.action === 'guest_send_reset')) { gstPosts.push(b); return json(b.action === 'guest_send_reset' ? { ok: true, until: '19:22' } : { ok: true }); }
     if (url.includes('photos.php')) return json({ ok: true, photos: [] });
     if (url.includes('experiences.php')) return json({ ok: true, experiences: [] });
     if (url.includes('ical-import.php')) {
@@ -752,7 +753,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       rows: document.querySelectorAll('#guest-admin-list .acw-prow').length,
       fig: /£2,840/.test((document.getElementById('guest-admin-list') || {}).textContent || ''),
       hooks: !!document.querySelector('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"]'),
-      resetOnlyWithAccount: document.querySelectorAll('#guest-admin-list [data-act="resetGuestPassword"]').length === 1,
+      resetOnlyWithAccount: document.querySelectorAll('#guest-admin-list [data-act="gstResetAsk"]').length === 1,
     };
     settingsOpen('reviews');
     await new Promise((r) => setTimeout(r, 350));
@@ -767,8 +768,71 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p2.ca.frows >= 3 && p2.ca.saves, `Instant chat answers: the chips' questions as labelled boxes in a well (${p2.ca.frows})`);
   ok(p2.wl.rows === 2 && p2.wl.notified && p2.wl.waiting && p2.wl.acts, 'Waitlist: person rows with truth-telling capsules + the real actions');
   ok(p2.ga.rows === 2 && p2.ga.fig && p2.ga.hooks, 'Guest accounts: person rows with serif lifetime spend + the data-gemail hooks');
-  ok(p2.ga.resetOnlyWithAccount, 'Reset password only offered where an account exists');
+  ok(p2.ga.resetOnlyWithAccount, 'A reset link is only offered where an account exists');
   ok(p2.rv.qrow && p2.rv.cap && p2.rv.pills, 'Reviews: the pending item is a moderation row with verdict pills');
+
+  console.log('§7e Guests: tiles that filter, groups by what to do, a reset LINK and never a password');
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await page.evaluate(() => { __gst.list = []; __gst.sent = {}; __gst.invited = {}; __gst.open = ''; __gst.filter = null; __gst.q = ''; settingsOpen('guests'); });
+  await page.waitForSelector('#guest-admin-list .gst-row');
+  const g1 = await page.evaluate(() => {
+    const L = document.getElementById('guest-admin-list');
+    return {
+      tiles: [...L.querySelectorAll('.gst-stat')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()),
+      inviteRows: L.querySelectorAll('.gst-grp.is-invite .gst-row').length,
+      prose: /set a new password for them|tell them the new password/i.test(document.getElementById('sec-guests').textContent),
+      pwInputs: L.querySelectorAll('input[type="password"]').length,
+      title: (document.getElementById('settings-panel-title') || {}).textContent || '',
+    };
+  });
+  ok(g1.tiles.length === 3 && /2\s*To invite back/.test(g1.tiles[2]), `three stat tiles, counting who to invite back (${g1.tiles.join(' | ')})`);
+  ok(g1.inviteRows === 2, 'guests with no stay in 2+ months are grouped as worth inviting back');
+  ok(!g1.prose && g1.pwInputs === 0, 'no "set a password for them" copy and no password box anywhere');
+  ok(/^Guests$/.test(g1.title), `the page is called Guests (${g1.title})`);
+  await page.click('#guest-admin-list .gst-stat.is-invite');
+  ok(await page.evaluate(() => !!document.querySelector('#guest-admin-list .gst-chip') && document.querySelectorAll('#guest-admin-list .gst-row').length === 2), 'a tile filters, with a chip to clear it');
+  await page.click('#guest-admin-list .gst-chip');
+  await page.fill('#gst-q', 'tom');
+  ok(await page.evaluate(() => document.querySelectorAll('#guest-admin-list .gst-row').length === 1), 'search narrows the list');
+  await page.fill('#gst-q', '');
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'gst-q'), '…and typing never loses the search box');
+  // Invite Debbie back: the button names the cottage, then the card arrives.
+  await page.click('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"] .gst-row');
+  const lead = await page.textContent('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"] .gst-lead');
+  ok(/Invite Debbie back to Jollyboat/.test(lead), `the one clear action names who and where (${lead.trim()})`);
+  gstPosts.length = 0;
+  await page.click('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"] .gst-lead');
+  await page.waitForSelector('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"] .gst-card', { timeout: 4000 });
+  const inv = await page.evaluate(() => {
+    const r = document.querySelector('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"]');
+    return { card: r.querySelector('.gst-card').textContent.replace(/\s+/g, ' '), sub: r.querySelector('.gst-main small').textContent, lead: !!r.querySelector('.gst-lead'), tile: document.querySelector('#guest-admin-list .gst-stat.is-invite b').textContent };
+  });
+  ok(gstPosts.some((x) => x.action === 'guest_reinvite' && x.email === 'debbie@example.com'), 'the invitation goes through the real endpoint');
+  ok(/Invitation sent/.test(inv.card) && /debbie@example\.com/.test(inv.card) && /Invites Debbie back to Jollyboat/.test(inv.card), 'a card confirms who it went to and where');
+  ok(/Invited today/.test(inv.sub) && !inv.lead && inv.tile === '1', `the row says so, the button stands down and the tile counts one fewer (${inv.sub})`);
+  // The reset link: preview the email, send it, see the card and the one-minute wait.
+  await page.click('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"] [data-act="gstResetAsk"]');
+  const conf = await page.evaluate(() => {
+    const c = document.querySelector('#guest-admin-list .gst-confirm');
+    return c ? { mail: c.querySelector('.gst-mail').textContent.replace(/\s+/g, ' '), pw: c.querySelectorAll('input').length } : null;
+  });
+  ok(!!conf && /Choose a new password/.test(conf.mail) && /debbie@example\.com/.test(conf.mail) && conf.pw === 0, 'the owner sees the email the guest will get, and no password field');
+  gstPosts.length = 0;
+  await page.click('#guest-admin-list .gst-send');
+  await page.waitForSelector('#guest-admin-list .gst-card [data-gst-resend]', { timeout: 4000 });
+  const sent = gstPosts.find((x) => x.action === 'guest_send_reset');
+  ok(!!sent && sent.email === 'debbie@example.com' && !('next' in sent), 'Send posts the guest’s email only — never a password');
+  const rc = await page.evaluate(() => {
+    const c = [...document.querySelectorAll('#guest-admin-list .gst-card')].pop();
+    const b = c.querySelector('[data-gst-resend]');
+    return { txt: c.textContent.replace(/\s+/g, ' '), btn: b.textContent, wait: b.classList.contains('is-wait'), junk: /junk/i.test(c.textContent) };
+  });
+  ok(/Reset link sent/.test(rc.txt) && /Link works until 19:22/.test(rc.txt) && !rc.junk, `the card states when the link stops working (${rc.txt.trim()})`);
+  ok(/Send again in \d+s/.test(rc.btn) && rc.wait, `Send again waits a minute (${rc.btn})`);
+  gstPosts.length = 0;
+  await page.evaluate(() => document.querySelector('#guest-admin-list [data-gst-resend]').click());
+  ok(!gstPosts.some((x) => x.action === 'guest_send_reset'), '…and a tap during the wait sends nothing');
+  await page.setViewportSize({ width: 1280, height: 950 });
 
   console.log('§7b the Reviews page: copy per cottage, two sub-pages, the title capsule');
   const rv2 = await page.evaluate(async () => {

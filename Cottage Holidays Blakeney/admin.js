@@ -298,7 +298,7 @@ function cmdkRegistry() {
         { id: 'chat-away', label: 'Guest chat', sub: 'Away reply & instant answers', kw: 'automation away office hours faq quick reply bot instant answers chips', sec: 'chat-away' },
         { id: 'mac', label: 'Mac assistant', sub: 'Overnight work & connecting your Mac', kw: 'mac overnight night shift app pair connect assistant ready for you', sec: 'mac' },
         { id: 'follow-ups', label: 'Follow-up emails', sub: 'Enquiry & guest nudges', kw: 'automation nudge reminder anniversary', sec: 'follow-ups' },
-        { id: 'guests', label: 'Guest accounts', sub: 'Look up & reset a guest', kw: 'account password reset user', sec: 'guests' },
+        { id: 'guests', label: 'Guests', sub: 'Invite back, send a reset link', kw: 'guest account password reset user invite back', sec: 'guests' },
         { id: 'newsletter', label: 'Newsletter', sub: 'Mailing list & broadcasts', kw: 'email marketing subscribers broadcast', sec: 'newsletter' },
         { id: 'waitlist', label: 'Waitlist', sub: 'Sold-out demand', kw: 'notify demand', sec: 'waitlist' },
         { id: 'analytics', label: 'Analytics', sub: 'Visits & referrers', kw: 'stats traffic visitors', sec: 'analytics' },
@@ -390,7 +390,7 @@ function cmdkActions(q) {
         A('experiences', 'Things to do', 'Local places and activities', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
         A('reviews', 'Approve reviews', 'Moderate guest reviews', 'review testimonial star approve moderate import google', /(approve|moderate|manage|import).{0,10}review/, toManage('reviews')),
         A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
-        A('guests', 'Guest accounts', 'Look up or reset a guest', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
+        A('guests', 'Guests', 'Invite a guest back or send a reset link', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
         A('away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'away auto reply out of office automation holiday', /(set|edit|turn on|enable).{0,12}(away|auto.?reply|out of office)/, toManage('chat-away')),
         A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-away')),
         A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
@@ -12364,7 +12364,7 @@ const SETTINGS_TITLES = {
     cancel: 'Cancellation policy',
     seasongrid: 'Seasonal rates',
     payments: 'Payments',
-    guests: 'Guest accounts',
+    guests: 'Guests',
     analytics: 'Analytics',
     waitlist: 'Waitlist',
     newsletter: 'Newsletter',
@@ -15458,101 +15458,265 @@ async function runSync(key) {
 }
 
 // ---- Owner tool: view guest accounts & reset a password ----
+// ---- Manage → Guests (the approved demo): who to welcome back, who to invite back,
+// and everyone else, each row opening into the guest's stays and ONE clear action.
+// The owner never sets a password: "Send a password reset link" emails the guest a
+// signed, single-use link (auth.php guest_send_reset). Rows keep `.acw-prow` +
+// `data-gemail` (the search reveal finds a guest by them).
+let __gst = { list: [], q: '', filter: null, open: '', mode: null, phase: null, iphase: null, sent: {}, cool: {}, invited: {}, invitedFresh: null };
+let __gstTick = 0;
+const GST_LAPSED_DAYS = 60;
+const GST_IC = {
+    mail: '<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    stay: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+    key: '<circle cx="8" cy="12" r="4"/><path d="M12 12h8M17 12v3M20 12v2"/>',
+    send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+    tick: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+};
+function gstSvg(p, cls) { return `<svg class="${cls || 'ic'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`; }
+function gstShort(iso) {
+    const d = new Date(String(iso || '').slice(0, 10) + 'T12:00:00Z');
+    return isNaN(+d) ? '' : d.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()];
+}
+// One guest's facts, from the CRM row plus the bookings already loaded here.
+function gstFacts(g) {
+    const email = String(g.email || '').toLowerCase();
+    const today = todayDashed();
+    const stays = [];
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+        if (String(b.email || '').toLowerCase() === email) stays.push({ pk, b });
+    }));
+    stays.sort((x, y) => String(y.b.checkIn).localeCompare(String(x.b.checkIn)));
+    const next = stays.filter((s) => s.b.checkIn > today).pop() || null;
+    const past = stays.filter((s) => s.b.checkIn <= today);
+    const last = past[0] || null;
+    const lastOut = last ? last.b.checkOut : g.last_stay || '';
+    const daysSince = lastOut ? Math.floor((Date.parse(today + 'T12:00:00Z') - Date.parse(String(lastOut).slice(0, 10) + 'T12:00:00Z')) / 864e5) : 0;
+    const kind = next ? 'back' : lastOut && daysSince > GST_LAPSED_DAYS ? 'invite' : 'rest';
+    const cotKey = (last || next || {}).pk || g.fav_prop || '';
+    let stars = 0;
+    try { const gb = last ? chbGuestBookFor(last.b) : null; stars = gb && gb.latest ? gb.latest.overall : 0; } catch (e) {}
+    return { email, stays, next, past, last, lastOut, daysSince, kind, cotKey, cot: (propertyMeta[cotKey] || {}).name || cotKey || '', stars, invitedAt: __gst.invited[email] || g.invited_at || '' };
+}
 async function loadGuestList() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
     }
     const box = document.getElementById('guest-admin-list');
-    box.innerHTML = skelRows(3);
+    if (!box) return;
+    if (!__gst.list.length) box.innerHTML = skelRows(3);
     let res;
     try {
         res = await apiPost('auth.php', { action: 'guest_crm' });
     } catch (e) {
-        box.innerHTML = `<p style="color:var(--danger-text);font-size:var(--fs-sub);">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
+        if (!__gst.list.length) box.innerHTML = `<p style="color:var(--danger-text);font-size:var(--fs-sub);">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
         return;
     }
-    const guests = res.guests || [];
-    if (guests.length === 0) {
-        box.innerHTML =
-            emptyState({
-                icon: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/>',
-                title: 'No guests yet',
-                sub: 'Guests appear here once they’ve booked — ranked by lifetime spend, with a badge on anyone who’s stayed before.',
-            });
+    __gst.list = res.guests || [];
+    if (!__gst.list.length) {
+        box.innerHTML = emptyState({
+            icon: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/>',
+            title: 'No guests yet',
+            sub: 'Everyone who books appears here, with what they’ve spent and when they’re back.',
+        });
         return;
     }
-    // Repeat-guest rate for a quick loyalty read.
-    const repeats = guests.filter((g) => g.repeat).length;
-    const repeatPct = Math.round((repeats / guests.length) * 100);
-    const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '—';
-    // Person rows in ONE well (the approved realistic demo, replacing the
-    // sideways-scrolling 5-column table): the guest leads with the Returning
-    // chip, the facts as the sub, lifetime spend as the serif figure. Same
-    // data-gemail hooks, same actions, same handlers.
-    box.innerHTML = `
-                <p style="color:var(--text-muted);font-size:var(--fs-sub);margin:0 0 10px;">${guests.length} past guest${guests.length === 1 ? '' : 's'} · ${repeatPct}% have stayed more than once · ranked by lifetime spend</p>
-                <div class="acr-well">
-                        ${guests
-                            .map(
-                                (g) => `<div class="acw-prow" data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
-                            <div class="acr-row" style="padding-bottom:4px;">
-                                <span class="acr-lbl">${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:var(--fs-micro);font-weight:600;">Returning</span>' : ''}<small>${g.stays} stay${g.stays === 1 ? '' : 's'} · last ${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'} · favourite: ${escapeHtml(propName(g.fav_prop))} · ${escapeHtml(g.email || '')}</small></span>
-                                <span class="acw-fig">${gbp(g.ltv || 0).replace('.00', '')}</span>
-                            </div>
-                            <div class="acw-acts" style="border-top:0;padding-top:0;">
-                                <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('reinviteGuest', CHB_SELF)} title="Email this guest a returning-guest invitation">Invite back</button>
-                                ${g.has_account ? `<button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('resetGuestPassword', CHB_SELF)}>Reset password</button>` : ''}
-                            </div>
-                        </div>`,
-                            )
-                            .join('')}
-                </div>`;
+    box.innerHTML = `<div id="gst-stats" class="gst-stats"></div>
+        <label class="sr-only" for="gst-q">Search guests</label>
+        <div class="gst-search">${gstSvg('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>')}<input id="gst-q" class="input-glass" type="search" autocomplete="off" placeholder="Search guests" value="${escapeHtml(__gst.q)}" ${chbInput('gstSearch')} data-pass="value"></div>
+        <div id="gst-body"></div>`;
+    gstRender();
+    if (!__gstTick) __gstTick = setInterval(() => {
+        const live = Object.keys(__gst.cool).some((k) => __gst.cool[k] > Date.now());
+        if (!live) return;
+        Object.keys(__gst.cool).forEach((k) => {
+            const b = document.querySelector(`[data-gst-resend="${CSS.escape(k)}"]`);
+            if (b) gstResendPaint(b, k);
+        });
+    }, 1000);
 }
-// One-tap "invite back": email a past guest the returning-guest re-invitation.
-async function reinviteGuest(btn) {
-    const email = btn.getAttribute('data-email') || '';
-    if (!email) return;
-    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`, 'Send the invitation'))) return;
-    btn.disabled = true;
-    const original = btn.textContent;
-    btn.textContent = 'Sending…';
+function gstSearch(v) { __gst.q = String(v || ''); gstRender(); }
+function gstFilter(k) { __gst.filter = __gst.filter === k ? null : k; __gst.open = ''; __gst.mode = null; gstRender(); }
+function gstToggle(email) {
+    if (__gst.phase || __gst.iphase) return;
+    __gst.open = __gst.open === email ? '' : email;
+    __gst.mode = null;
+    gstRender();
+}
+function gstRender() {
+    const statsEl = document.getElementById('gst-stats');
+    const body = document.getElementById('gst-body');
+    if (!statsEl || !body) return;
+    const all = __gst.list.map((g) => Object.assign({ f: gstFacts(g) }, g));
+    const total = all.reduce((n, g) => n + (Number(g.ltv) || 0), 0);
+    const nBack = all.filter((g) => g.f.kind === 'back').length;
+    const nInv = all.filter((g) => g.f.kind === 'invite' && !g.f.invitedAt).length;
+    const stat = (key, fig, cap, tone) => `<button type="button" class="gst-stat is-${tone}${__gst.filter === key ? ' is-on' : ''}"${key ? ` aria-pressed="${__gst.filter === key}" ${chbAttrs('gstFilter', key)}` : ' disabled'}><b>${fig}</b><span>${cap}</span></button>`;
+    statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
+        + stat('back', String(nBack), 'Coming back', 'back') + stat('invite', String(nInv), 'To invite back', 'invite');
+    const q = __gst.q.trim().toLowerCase();
+    const shown = all.filter((g) => (!q || String(g.name || '').toLowerCase().includes(q) || g.f.email.includes(q)) && (!__gst.filter || g.f.kind === __gst.filter))
+        .sort((a, b) => (Number(b.ltv) || 0) - (Number(a.ltv) || 0));
+    const chip = __gst.filter ? `<button type="button" class="gst-chip" ${chbAttrs('gstFilter', __gst.filter)}>Showing: ${__gst.filter === 'back' ? 'coming back' : 'worth inviting back'} <span aria-hidden="true">✕</span></button>` : '';
+    if (!shown.length) {
+        body.innerHTML = chip + `<div class="gst-empty">${q ? 'No guest matches “' + escapeHtml(__gst.q) + '”.' : __gst.filter === 'invite' ? 'Nobody to invite back right now ✓' : 'Nobody here yet.'}</div>`;
+        return;
+    }
+    const GROUPS = [['back', 'Coming back', ''], ['invite', 'Worth inviting back', 'no stay in 2+ months'], ['rest', 'Past guests', 'by spend']];
+    body.innerHTML = chip + GROUPS.map(([k, cap, note]) => {
+        const rows = shown.filter((g) => g.f.kind === k);
+        if (!rows.length) return '';
+        return `<section class="gst-grp is-${k}"><h2 class="gst-cap"><span>${cap}</span><small>${note}</small></h2><div class="acr-well gst-well">${rows.map(gstRowHtml).join('')}</div></section>`;
+    }).join('');
+    body.querySelectorAll('[data-gst-resend]').forEach((b) => gstResendPaint(b, b.getAttribute('data-gst-resend') || ''));
+}
+function gstRowHtml(g) {
+    const f = g.f, email = f.email, open = __gst.open === email;
+    const first = String(g.name || '').split(' ')[0] || 'them';
+    const initials = String(g.name || '?').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    const invited = f.invitedAt;
+    const sub = invited && f.kind === 'invite' ? 'Invited ' + (String(invited).slice(0, 10) === todayDashed() ? 'today' : gstShort(invited)) + ' · ' + f.cot
+        : f.kind === 'back' ? gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + ((propertyMeta[f.next.pk] || {}).name || f.next.pk)
+          : f.kind === 'invite' ? 'Last here ' + (f.daysSince < 45 ? 'a month' : Math.round(f.daysSince / 30.4) + ' months') + ' ago · ' + f.cot
+            : [f.cot, f.lastOut ? gstShort(f.last ? f.last.b.checkIn : f.lastOut) : ''].filter(Boolean).join(' · ');
+    const tone = invited && f.kind === 'invite' ? 'sent' : f.kind;
+    const head = `<button type="button" class="gst-row" aria-expanded="${open}" ${chbAttrs('gstToggle', email)}>
+            <span class="gst-av tag-${escapeHtml(f.cotKey)}" aria-hidden="true">${escapeHtml(initials)}</span>
+            <span class="gst-main"><b>${escapeHtml(g.name || email)}</b><small class="is-${tone}">${escapeHtml(sub)}</small></span>
+            <span class="gst-fig"><b>${gbp(Number(g.ltv) || 0).replace('.00', '')}</b>${f.stars ? `<small>★ ${f.stars}</small>` : ''}</span>
+        </button>`;
+    return `<div class="acw-prow gst-item${open ? ' is-open' : ''}" data-gemail="${escapeHtml(email)}">${head}<div class="gst-more"${open ? '' : ' hidden'}>${gstDetailHtml(g, first)}</div></div>`;
+}
+function gstDetailHtml(g, first) {
+    const f = g.f, email = f.email;
+    const showLead = f.kind === 'invite' && (!f.invitedAt || (__gst.iphase && __gst.open === email));
+    const ip = __gst.open === email ? __gst.iphase : null;
+    const lead = showLead ? `<button type="button" class="gst-lead${ip === 'done' ? ' is-done' : ''}" aria-live="polite" ${chbAttrs('gstInvite', email)}>${gstSvg(ip === 'done' ? GST_IC.tick : GST_IC.mail, 'ic' + (ip === 'sending' ? ' gst-fly' : ip === 'done' ? ' gst-draw' : ''))}<span>${ip === 'sending' ? 'Sending…' : ip === 'done' ? 'Invitation sent' : 'Invite ' + escapeHtml(first) + ' back to ' + escapeHtml(f.cot)}</span></button>` : '';
+    const invCard = f.invitedAt && String(f.invitedAt).slice(0, 10) === todayDashed() && f.kind === 'invite' && !ip
+        ? gstCardHtml('Invitation sent', email, GST_IC.home, 'Invites ' + escapeHtml(first) + ' back to ' + escapeHtml(f.cot), '',
+            !!(__gst.invitedFresh && __gst.invitedFresh.email === email && Date.now() - __gst.invitedFresh.at < 2000)) : '';
+    const facts = [['Email', escapeHtml(email), '']];
+    if (f.next) facts.push(['Booked', gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
+    f.past.forEach((s) => facts.push(['Stayed', gstShort(s.b.checkIn) + ' → ' + gstShort(s.b.checkOut) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
+    const target = f.next || f.last;
+    const acts = [];
+    if (target) acts.push(gstActHtml(GST_IC.mail, 'Email ' + escapeHtml(first), chbAttrs('openBookingEmail', String(target.b.id)), ''));
+    acts.push(gstActHtml(GST_IC.copy, 'Copy email address', `data-gst-copy="${escapeHtml(email)}" ${chbAttrs('gstCopy', email)}`, ''));
+    if (target) acts.push(gstActHtml(GST_IC.stay, f.next ? 'Open upcoming booking' : 'Open last booking', chbAttrs('openBookingHub', String(target.b.id)), '›'));
+    if (g.has_account) acts.push(gstActHtml(GST_IC.key, 'Send a password reset link', chbAttrs('gstResetAsk', email), ''));
+    const resetting = __gst.open === email && __gst.mode === 'reset';
+    const ph = resetting ? __gst.phase : null;
+    const confirm = resetting ? `<div class="gst-confirm">
+            <span class="gst-confirm-cap">${escapeHtml(first)} will get this email</span>
+            <div class="gst-mail">
+              <span class="gst-mail-to">${gstSvg(GST_IC.mail)}<span>To ${escapeHtml(email)}</span></span>
+              <b>Choose a new password</b>
+              <span>Tap the button to set a new password for your account. The link works once, for 30 minutes.</span>
+              <i>Choose a password</i>
+            </div>
+            <span class="gst-confirm-note">You never see or set the password.</span>
+            <div class="gst-confirm-acts">
+              <button type="button" class="gst-send${ph === 'done' ? ' is-done' : ''}" aria-live="polite" ${chbAttrs('gstResetSend', email)}>${gstSvg(ph === 'done' ? GST_IC.tick : GST_IC.send, 'ic' + (ph === 'sending' ? ' gst-fly' : ph === 'done' ? ' gst-draw' : ''))}<span>${ph === 'sending' ? 'Sending…' : ph === 'done' ? 'Sent' : 'Send reset link'}</span></button>
+              ${ph ? '' : `<button type="button" class="gst-cancel" ${chbAttrs('gstCancel')}>Cancel</button>`}
+            </div>
+          </div>` : '';
+    const sentCard = __gst.sent[email] && !resetting
+        ? gstCardHtml(__gst.sent[email].again ? 'Sent again' : 'Reset link sent', email, GST_IC.clock, 'Link works until ' + escapeHtml(__gst.sent[email].until),
+            `<button type="button" class="gst-resend" data-gst-resend="${escapeHtml(email)}" ${chbAttrs('gstResend', email)}>Send again</button>`,
+            Date.now() - (__gst.sent[email].at || 0) < 2000) : '';
+    return lead + invCard
+        + `<div class="gst-facts">${facts.map(([k, v, a]) => `<div><span>${k}</span><b>${v}</b><em>${a}</em></div>`).join('')}</div>`
+        + `<div class="gst-acts">${acts.join('')}</div>` + confirm + sentCard;
+}
+function gstAmt(s) {
+    try { const d = bookingDue(s.pk, s.b); return d && isFinite(d.total) ? gbp(d.total).replace('.00', '') : ''; } catch (e) { return ''; }
+}
+function gstActHtml(icon, label, attrs, side) {
+    return `<button type="button" class="gst-act" ${attrs}>${gstSvg(icon)}<span>${label}</span><em>${side}</em></button>`;
+}
+function gstCardHtml(head, email, icon, meta, foot, fresh) {
+    return `<div class="gst-card${fresh ? ' is-new' : ''}" role="status">
+        <span class="gst-mark" aria-hidden="true"><i></i><span>${gstSvg(GST_IC.tick)}</span></span>
+        <span class="gst-card-txt"><b>${head}</b><span>to <strong>${escapeHtml(email)}</strong></span><small>${gstSvg(icon)}${meta}</small>${foot ? `<span class="gst-card-foot">${foot}</span>` : ''}</span>
+      </div>`;
+}
+async function gstCopy(email) {
+    let ok = false;
+    try { await navigator.clipboard.writeText(email); ok = true; } catch (e) {}
+    if (ok) toast('Email address copied.');
+    else glassAlert(email);
+}
+function gstCancel() { __gst.mode = null; __gst.phase = null; gstRender(); }
+function gstResetAsk(email) {
+    if (__gst.phase) return;
+    __gst.open = email;
+    __gst.mode = 'reset';
+    gstRender();
+}
+async function gstResetSend(email) {
+    if (__gst.phase) return;
+    __gst.phase = 'sending';
+    gstRender();
+    try {
+        const r = await apiPost('auth.php', { action: 'guest_send_reset', email });
+        __gst.phase = 'done';
+        gstRender();
+        await new Promise((res) => setTimeout(res, chbReducedMotion() ? 0 : 650));
+        __gst.sent[email] = { until: (r && r.until) || '', again: false, at: Date.now() };
+        __gst.cool[email] = Date.now() + 60000;
+    } catch (e) {
+        __gst.phase = null;
+        gstRender();
+        glassAlert(e.message || 'That reset link couldn’t be sent.');
+        return;
+    }
+    __gst.phase = null;
+    __gst.mode = null;
+    gstRender();
+}
+async function gstResend(email) {
+    if ((__gst.cool[email] || 0) > Date.now()) return;
+    const btn = document.querySelector(`[data-gst-resend="${CSS.escape(email)}"]`);
+    if (btn) btn.textContent = 'Sending…';
+    try {
+        const r = await apiPost('auth.php', { action: 'guest_send_reset', email });
+        __gst.sent[email] = { until: (r && r.until) || '', again: true, at: Date.now() };
+        __gst.cool[email] = Date.now() + 60000;
+        gstRender();
+    } catch (e) {
+        if (btn) gstResendPaint(btn, email);
+        glassAlert(e.message || 'That reset link couldn’t be sent.');
+    }
+}
+function gstResendPaint(btn, email) {
+    const left = Math.ceil(((__gst.cool[email] || 0) - Date.now()) / 1000);
+    btn.textContent = left > 0 ? 'Send again in ' + left + 's' : 'Send again';
+    btn.classList.toggle('is-wait', left > 0);
+    btn.setAttribute('aria-disabled', left > 0 ? 'true' : 'false');
+}
+async function gstInvite(email) {
+    if (__gst.iphase) return;
+    __gst.iphase = 'sending';
+    gstRender();
     try {
         await apiPost('auth.php', { action: 'guest_reinvite', email });
-        btn.textContent = 'Invited ✓';
     } catch (e) {
-        btn.disabled = false;
-        btn.textContent = original;
+        __gst.iphase = null;
+        gstRender();
         glassAlert("Couldn't send the invitation: " + e.message);
-    }
-}
-
-async function resetGuestPassword(email) {
-    // Accept the clicked button (email on its data-email) or a raw string — reading
-    // from the attribute avoids interpolating an apostrophe email into the onclick.
-    if (email && email.dataset) email = email.dataset.email || '';
-    if (!isAuthenticated) {
-        tryAccessBackOffice();
         return;
     }
-    const next = await glassPrompt(
-        `At least 8 characters — you'll tell the guest this.`,
-        '',
-        { password: true, title: `New password for ${email}`, okLabel: 'Set the password' },
-    );
-    if (next === null) return;
-    if (next.trim().length < 8) {
-        glassAlert('Password must be at least 8 characters.');
-        return;
-    }
-    try {
-        await apiPost('auth.php', { action: 'guest_reset_password', email, next });
-        glassAlert(
-            `Password reset for ${email}.\n\nGive them the new password and ask them to sign in and change it.`,
-        );
-    } catch (e) {
-        glassAlert("Couldn't reset password: " + e.message);
-    }
+    __gst.invited[email] = todayDashed();
+    __gst.invitedFresh = { email, at: Date.now() };
+    __gst.iphase = 'done';
+    gstRender();
+    await new Promise((res) => setTimeout(res, chbReducedMotion() ? 0 : 650));
+    __gst.iphase = null;
+    gstRender();
 }
 
 async function changeAdminPassword() {
