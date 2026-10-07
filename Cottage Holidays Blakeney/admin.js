@@ -20341,14 +20341,27 @@ function prCosts() {
     const c = prReadKey(PR_COST_KEY);
     const n = (v, d, hi) => { const x = parseFloat(v); return isFinite(x) ? Math.max(0, Math.min(hi, x)) : d; };
     const drive = n(c.drive, 60, 300), hourly = n(c.hourly, 20, 200), fuel = n(c.fuel, 18, 300), clean = n(c.clean, 45, 500);
-    return { drive, hourly, fuel, clean, trip: Math.round((drive * 2 / 60) * hourly + fuel + clean), set: Object.keys(c).length > 0 };
+    // OFF (owner-asked) is an explicit false only: the figures stay stored, the
+    // engine stops counting them — every trip costs £0, so nothing is compared
+    // on the drive and the trip-based ideas stand down. Absent = on.
+    const on = c.on !== false;
+    const full = Math.round((drive * 2 / 60) * hourly + fuel + clean);
+    return { drive, hourly, fuel, clean, on, full, trip: on ? full : 0, set: Object.keys(c).length > 0 };
+}
+function prCostToggle() {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('pr-costs-on'));
+    const c = prCosts();
+    const next = { drive: c.drive, hourly: c.hourly, fuel: c.fuel, clean: c.clean, on: !!(el && el.checked) };
+    prWriteKey(PR_COST_KEY, next);
+    renderPricing();
+    saveContent(PR_COST_KEY, next).catch(() => {});
 }
 function prCostStep(field, dir) {
     const c = prCosts();
     const by = { drive: 15, hourly: 5, fuel: 2, clean: 5 }[field];
     const hi = { drive: 300, hourly: 200, fuel: 300, clean: 500 }[field];
     if (!by) return;
-    const next = { drive: c.drive, hourly: c.hourly, fuel: c.fuel, clean: c.clean };
+    const next = { drive: c.drive, hourly: c.hourly, fuel: c.fuel, clean: c.clean, on: c.on };
     next[field] = Math.max(0, Math.min(hi, c[field] + (parseInt(dir, 10) || 0) * by));
     if (next[field] === c[field]) return;
     prWriteKey(PR_COST_KEY, next);
@@ -20534,7 +20547,7 @@ function prProfitIdeas(pk) {
     }
     // 2. A changeover on a day another cottage already turns over: one drive, two cleans.
     const shared = stays.map((x) => x.to).find((d) => d > today && d <= chbIsoShift(today, 42) && prTurnovers(d).length > 1);
-    if (shared) {
+    if (shared && trip > 0) {
         const others = prTurnovers(shared).filter((k) => k !== pk).map(nm).join(' and ');
         const c = prCosts();
         out.push({ id: 'share', sig: shared + '|' + trip, conf: 3, basis: 'your own calendars',
@@ -20582,7 +20595,7 @@ function prProfitIdeas(pk) {
     // 5. A short-stay charge, when short stays are a real share of the cottage's bookings.
     const r = prRate(pk);
     const upcomingShort = stays.filter((x) => x.to > today && nightsBetween(x.from, x.to) <= 2).length;
-    if (!(parseFloat(r.shortFee) > 0) && usual > 0 && (L.shortShare >= 0.25 || upcomingShort > 0)) {
+    if (trip > 0 && !(parseFloat(r.shortFee) > 0) && usual > 0 && (L.shortShare >= 0.25 || upcomingShort > 0)) {
         const fee = Math.max(5, Math.round(trip / 2 / 5) * 5);
         const two = (usual * 2 - trip) / 2, week = (usual * 7 - trip) / 7;
         out.push({ id: 'shortfee', sig: String(fee), conf: L.count >= 8 ? 3 : 2, basis: L.count ? `${Math.round(L.shortShare * 100)}% of ${L.count} stays were 2 nights or fewer` : `${upcomingShort} short stay${upcomingShort === 1 ? '' : 's'} booked`,
@@ -20689,6 +20702,7 @@ function prMinSummary(pk) {
 }
 function prCostsSub(pk) {
     const c = prCosts(), K = prKept(pk);
+    if (!c.on) return 'Changeover costs off';
     return `${prGbp(c.trip)} a changeover${K.nights ? ' · ' + prGbp(K.perNight) + ' kept a night' : ''}${c.set ? '' : ' · set your costs'}`;
 }
 function prOpenCosts() { __prPage = 'costs'; renderPricing(); }
@@ -20737,22 +20751,26 @@ function prCostsPageHtml(pk, keysHtml) {
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm)} · next 6 weeks</h3>
             <div class="acr-well pr-sum" id="pr-sum">
-                <span class="pr-sumk">Kept per booked night, after the drive</span>
+                <span class="pr-sumk">${c.on ? 'Kept per booked night, after the drive' : 'Taken per booked night'}</span>
                 <span class="pr-sumv">${K.nights ? prGbp(K.perNight) : '—'}</span>
-                <div class="pr-sumg"><span><b>${prGbp(K.kept)}</b>kept in all</span><span><b>${K.trips}</b>changeover${K.trips === 1 ? '' : 's'}</span><span><b>${prDriveText(Math.round(K.trips * c.drive * 2))}</b>on the road</span></div>
-                <p class="pr-note">${K.short ? `${K.short} of these ${K.trips} stays ${K.short === 1 ? 'is' : 'are'} 2 nights or fewer — each costs the same ${prGbp(c.trip)} trip as a week does.` : K.trips ? 'Every stay is three nights or more.' : 'No changeovers in the next six weeks.'}${K.est ? ` Platform stays are estimated at your own price.` : ''}</p>
+                <div class="pr-sumg"><span><b>${prGbp(K.kept)}</b>${c.on ? 'kept in all' : 'taken in all'}</span><span><b>${K.trips}</b>changeover${K.trips === 1 ? '' : 's'}</span><span><b>${prDriveText(Math.round(K.trips * c.drive * 2))}</b>on the road</span></div>
+                <p class="pr-note">${K.short && c.on ? `${K.short} of these ${K.trips} stays ${K.short === 1 ? 'is' : 'are'} 2 nights or fewer — each costs the same ${prGbp(c.trip)} trip as a week does.` : K.trips ? 'Every stay is three nights or more.' : 'No changeovers in the next six weeks.'}${K.est ? ` Platform stays are estimated at your own price.` : ''}</p>
             </div>
         </section>
         <section class="rv-sec">
             <h3 class="acr-cap">What a changeover costs you</h3>
             <div class="acr-well rv-well">
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-costs-on-lbl">Count changeover costs</span><span class="pr-rsub">${c.on ? 'Taken off every stay before ideas are compared' : 'Off — figures show what guests pay, nothing is taken off'}</span></span>
+                    <label class="chb-switch"><input type="checkbox" id="pr-costs-on" aria-labelledby="pr-costs-on-lbl" ${c.on ? 'checked' : ''} data-act-change="prCostToggle"><span class="chb-switch-track" aria-hidden="true"></span></label></div>
+                <div class="pr-limits${c.on ? '' : ' is-off'}">
                 ${step('drive', 'Drive, each way', 'Home to the cottage', prDriveText(c.drive))}
                 ${step('hourly', 'Your time', 'Per hour on the road', `£${c.hourly}`)}
                 ${step('fuel', 'Fuel', 'Per round trip', `£${c.fuel}`)}
                 ${step('clean', 'Cleaning & laundry', 'Per changeover', `£${c.clean}`)}
-                <div class="pay-row pr-rule pr-total"><span class="pay-lbl">Each changeover</span><span class="pr-tripv">${prGbp(c.trip)}</span></div>
+                <div class="pay-row pr-rule pr-total"><span class="pay-lbl">Each changeover</span><span class="pr-tripv">${c.on ? prGbp(c.trip) : 'Off'}</span></div>
+                </div>
             </div>
-            <p class="pr-note">Across all your cottages: ${F.n} changeover${F.n === 1 ? '' : 's'} on ${F.days} day${F.days === 1 ? '' : 's'} in the next six weeks${F.n > F.days ? ` — ${F.n - F.days} already share${F.n - F.days === 1 ? 's' : ''} a drive` : ''}. The engine takes this cost off every stay before it compares anything; nights you or a platform hold back are neither booked nor unsold.</p>
+            <p class="pr-note">Across all your cottages: ${F.n} changeover${F.n === 1 ? '' : 's'} on ${F.days} day${F.days === 1 ? '' : 's'} in the next six weeks${F.n > F.days ? ` — ${F.n - F.days} already share${F.n - F.days === 1 ? 's' : ''} a drive` : ''}. ${c.on ? 'The engine takes this cost off every stay before it compares anything' : 'With changeover costs off, the engine compares what guests pay and nothing else'}; nights you or a platform hold back are neither booked nor unsold.</p>
         </section>
     </div>`;
 }
