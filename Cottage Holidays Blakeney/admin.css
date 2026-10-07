@@ -8155,3 +8155,36 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 @media (max-width: 639px) { .exp-add-form > div { flex: none !important; } }
 @media (min-width: 901px) { #needs-you.ny-solo .ny-act { flex: 0 1 auto; min-width: 240px; max-width: 360px; padding: 0 24px; } }
 @media (max-width: 479px) { .cmdk-qa-lbl { white-space: normal; text-overflow: clip; line-height: 1.2; } }
+/* REVIEWS (approved demo): a title row with its state capsule centred on the
+   title's line, the queue as one joined well, one row per cottage with Copy /
+   Share on the right rail, and two rows into the import + Google pages. */
+.settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 20px; }
+.settings-panel-head #settings-panel-cap:empty { display: none; }
+.settings-panel-head .st-cap { flex: none; }
+.rv-page { max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+.rv-page > div:empty { display: none; }
+.rv-intro { margin: -8px 0 0; font-size: var(--fs-body); line-height: 1.55; color: var(--text-muted); text-wrap: pretty; }
+.rv-intro[hidden] { display: none; }
+.rv-sec .acr-cap { margin-top: 0; }
+.rv-well { overflow: hidden; }
+.rv-row, .rv-go { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; min-height: 64px; box-sizing: border-box; }
+.rv-row + .rv-row, .rv-go + .rv-go, .rv-qrow + .rv-qrow { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.rv-go { width: 100%; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; padding-right: 16px; }
+.rv-go:focus-visible, .rv-copy:focus-visible, .rv-share:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.rv-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.rv-go-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rv-name { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.rv-sub { font-size: var(--fs-sub); color: var(--text-muted); }
+.rv-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-share { width: 44px; height: 44px; flex: none; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; color: var(--text-light); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rv-copy { min-width: 96px; height: 44px; flex: none; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid transparent; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: var(--fs-body); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: background-color 0.2s var(--out, ease), color 0.2s var(--out, ease); }
+.rv-copy.is-copied { background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 35%, transparent); color: var(--ok-text); }
+.rv-well .rv-qrow { border: 0; border-radius: 0; background: none; margin: 0; padding: 16px; }
+.rv-qhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rv-stars { color: var(--accent-text); letter-spacing: 1px; }
+.rv-quote { margin: 8px 0 0; font-size: var(--fs-body); line-height: 1.55; color: var(--text-light); text-wrap: pretty; }
+.rv-qrow .acw-modacts { gap: 8px; margin-top: 12px; flex-wrap: nowrap; }
+.rv-qrow .acw-modacts button { flex: 1 1 0; font-size: var(--fs-body); }
+.rv-qrow .acw-modacts .mod-ok { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.rv-qrow .acw-modacts .mod-no { color: var(--text-light); border-color: color-mix(in srgb, var(--text-light) 14%, transparent); }
+@media (max-width: 479px) { .rv-copy { min-width: 0; padding: 0 12px; } }
