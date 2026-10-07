@@ -201,6 +201,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       explain: /flow into your calendar/.test(L.textContent),
     };
   });
+  // At phone width the platform rows keep their words on one readable column
+  // (the first build squeezed them to a 60px sliver beside a full-width
+  // "Replace link" row), and the summary's title never wraps under Sync all.
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await page.evaluate(() => { __bhubOpenFolds.add('cal-21a'); renderCalendarList(); });
+  await page.waitForTimeout(400);
+  const phone = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#bhub-fold-cal-21a .cal-prow')];
+    const t = document.querySelector('#calendar-list .cal-sum .mg-t');
+    const lh = t ? parseFloat(getComputedStyle(t).lineHeight) || 20 : 20;
+    return {
+      n: rows.length,
+      minMain: Math.min(...rows.map((r) => r.querySelector('.cal-pmain').getBoundingClientRect().width)),
+      maxBtn: Math.max(...rows.map((r) => r.querySelector('button').getBoundingClientRect().width)),
+      titleLines: t ? Math.round(t.getBoundingClientRect().height / lh) : 0,
+    };
+  });
+  ok(phone.n === 2 && phone.minMain >= 180, `at 390px each platform's words get a real column (${Math.round(phone.minMain)}px)`);
+  ok(phone.maxBtn < 120, `…and Replace stays a small button (${Math.round(phone.maxBtn)}px)`);
+  ok(phone.titleLines === 1, `the summary title stays on one line beside its mark (${phone.titleLines})`);
+  await page.setViewportSize({ width: 1280, height: 950 });
   ok(c1.state === 'warn' && /1 calendar isn.t syncing/.test(c1.t), `the summary names the one failing calendar (${c1.t})`);
   ok(/2 of 3 cottages linked/.test(c1.s), `…and how many cottages are linked (${c1.s})`);
   ok(c1.probs === 1 && /21A Westgate · Airbnb/.test(c1.probTxt) && /Still using the 4 Airbnb stays/.test(c1.probTxt), 'the failing platform leads, saying what it still has');
