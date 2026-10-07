@@ -3610,6 +3610,28 @@ then the account settings.
 - Gated by ui-test-guestaccount §9. ui-test-yourstay's header-pill check is re-aimed to "You".
   Budgets: app.js +3.5KB, app.css +0.5KB gz.
 
+## Things to do are for guests who have booked (owner's ask)
+
+Anonymous visitors, crawlers, and signed-in guests with no booking get no Things to do.
+- **The server is the rule.** `viewer_has_booked()` (db.php) is true for the owner, or for
+  a guest whose PROVEN address has at least one booking, past or future. `experiences.php`'s
+  GET and `list` answer **403 `code: 'stays_only'`** to anyone else, and `suggest` requires
+  the same. `experiences-page.php` no longer renders the list for crawlers and sends
+  `X-Robots-Tag: noindex`. `/experiences` is gone from the sitemap. This trades away the
+  page's search traffic, deliberately.
+- **The site stops offering the door.** `body.has-booked` (`chbBookedSync`, called from
+  `guestDockNeedsSync`, read off `__gaStays`) shows the dock tab, header, mobile menu and
+  footer links. Owner-mode shows them too. Without it, app.css hides
+  `a[data-view="view-experiences"]` and the dock button.
+- **A direct visit says so.** On the 403, `renderExperiencesView` puts `exp-locked` on the
+  view and only `#exp-locked` shows: "For our guests", with Sign in and See the cottages.
+  It never shows "couldn't load" or "coming soon". `apiGet` now throws `apiErr` with
+  `status`/`code`, as `apiPost` already did.
+- Gates: test-integration §49 (visitor, POST door, owner, never-booked, past booking,
+  unproven, page, sitemap) and ui-test-guestaccount §10. §10 was break-tested on the CSS.
+  ui-test-motion and ui-test-guest-modals were re-aimed, because the first dock button is
+  now hidden for a visitor.
+
 ## A guest's profile photo (approved demo, built)
 
 Tap the circle on the Account page (or "Add a photo" on Your details) → a sheet (Take a photo /

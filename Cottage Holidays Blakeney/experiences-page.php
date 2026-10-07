@@ -2,6 +2,11 @@
 // ============================================================
 //  experiences-page.php — server-rendered shell for /experiences.
 //
+//  NB: since the owner restricted things to do to guests who have booked,
+//  this route renders NO list and is noindex — it only keeps /experiences
+//  working as a link (the app then asks experiences.php, which refuses
+//  anyone who hasn't booked). The history below is why the route exists.
+//
 //  The Experiences view (hand-picked local things to do) was rendered
 //  entirely by JavaScript with no URL of its own, so the best "things to do
 //  in Blakeney" content on the site was invisible to search engines. The
@@ -31,62 +36,11 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 3,
         ]);
-        $rows = $pdo
-            ->query(
-                "SELECT title, body, category, distance FROM experiences
-                             WHERE status = 'published' ORDER BY sort_order, id",
-            )
-            ->fetchAll();
-
-        $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+        // THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask), so this route
+        // no longer renders the list for crawlers: it serves the app shell, which
+        // asks experiences.php (booked guests + owner only) like every other door,
+        // and tells search engines not to index it.
         $origin = 'https://cottageholidaysblakeney.co.uk';
-        $canon = $origin . '/experiences';
-        $title = 'Things to do in Blakeney & North Norfolk | Cottage Holidays Blakeney';
-        $metaDesc =
-            'Hand-picked things to do around Blakeney: seal trips to Blakeney Point, coastal walks, beaches, pubs and food — curated by your hosts' .
-            ($rows ? ' (' . count($rows) . ' local recommendations)' : '') .
-            '.';
-
-        $inject = function ($pattern, $text) use (&$out, $esc) {
-            $new = preg_replace_callback($pattern, fn($m) => $m[1] . $esc($text) . $m[2], $out, 1);
-            if (is_string($new)) {
-                $out = $new;
-            }
-        };
-        $inject('#(<title>).*?(</title>)#s', $title);
-        $inject('#(<meta name="description" content=")[^"]*(")#', $metaDesc);
-        $inject('#(<link rel="canonical" href=")[^"]*(")#', $canon);
-        $inject('#(<meta property="og:title" content=")[^"]*(")#', 'Things to do in Blakeney & North Norfolk');
-        $inject('#(<meta property="og:description" content=")[^"]*(")#', $metaDesc);
-        $inject('#(<meta property="og:url" content=")[^"]*(")#', $canon);
-        $inject('#(<meta name="twitter:title" content=")[^"]*(")#', 'Things to do in Blakeney & North Norfolk');
-        $inject('#(<meta name="twitter:description" content=")[^"]*(")#', $metaDesc);
-
-        // The crawlable list itself: plain cards in the app's own classes, rendered
-        // into the empty #exp-grid (the JS re-renders its rich version on boot).
-        if ($rows) {
-            $cards = '';
-            foreach ($rows as $r) {
-                $meta = trim($r['category'] . ($r['distance'] !== '' ? ' · ' . $r['distance'] : ''), ' ·');
-                $cards .=
-                    '<div class="card glass-panel"><div class="card-title">' .
-                    $esc($r['title']) .
-                    '</div>' .
-                    ($meta !== '' ? '<div class="card-meta">' . $esc($meta) . '</div>' : '') .
-                    '<p class="lead" style="font-size:0.9rem;text-align:left;margin:8px 0 0;">' .
-                    $esc($r['body']) .
-                    '</p></div>';
-            }
-            $anchor = '<div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>';
-            $new = str_replace(
-                $anchor,
-                '<div id="exp-grid" class="grid grid-3" style="margin-top:18px;">' . $cards . '</div>',
-                $out,
-            );
-            if (is_string($new)) {
-                $out = $new;
-            }
-        }
 
         // Swap the static hero.jpg (404 on the live host) for the uploaded hero:
         // fixes the fetchpriority="high" preload firing at a 404 AND gives this
@@ -112,5 +66,6 @@ try {
 // Conditional GET, so an installed PWA's launch costs a ~0-byte 304 instead of
 // re-downloading a byte-identical 34.5KB shell. See shell-etag.php for why the
 // comparison has to tolerate mod_deflate's "-gzip" suffix.
+header('X-Robots-Tag: noindex');
 require_once __DIR__ . '/shell-etag.php';
 shell_send_html($out);

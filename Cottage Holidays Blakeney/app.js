@@ -1633,7 +1633,7 @@ async function apiGetCore(endpoint) {
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin();
-        throw new Error(data.error || 'That didn’t go through — check your signal and try again.');
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
     }
     chbClockSync(data.srv);
     return data;
@@ -3968,6 +3968,7 @@ async function gaOpenStay(id) {
 // The dock's You button wears an amber dot when something needs the guest:
 // a stay in progress, or money the pay screen is ready to take.
 function guestDockNeedsSync() {
+    chbBookedSync();
     const sp = currentGuest && !isAuthenticated ? gaStaysSplit() : null;
     const needs = !!(sp && sp.lead && (sp.kind === 'now' || (sp.kind === 'up' && gaStayMoney(sp.lead).payable)));
     document.querySelectorAll('.guest-dock-btn[data-tab="account"]').forEach((b) => {
@@ -3981,6 +3982,19 @@ function guestDockNeedsSync() {
         } else if (!needs && dot) dot.remove();
         b.setAttribute('aria-label', needs ? 'You — something needs you' : 'You');
     });
+}
+
+// THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask). body.has-booked
+// shows every way in (the dock tab, the header, the footer); the owner sees them
+// through owner-mode. The SERVER is the rule (experiences.php refuses anyone
+// else) — this only stops the site offering a door that would say no.
+function chbHasBooked() {
+    if (isAuthenticated) return true;
+    const st = currentGuest && __gaStays && __gaStays !== 'err' ? __gaStays : null;
+    return !!(st && !st.unproven && st.rows.length);
+}
+function chbBookedSync() {
+    document.body.classList.toggle('has-booked', chbHasBooked());
 }
 
 // ---- THE PROFILE PHOTO (approved demo). Tap the circle → a sheet (take /
@@ -20332,10 +20346,20 @@ async function renderExperiencesView() {
     // experiences-page.php renders server-side INTO that same grid for crawlers —
     // so a poor connection wiped real content the guest was already reading.
     let failed = false;
+    const view = document.getElementById('view-experiences');
     try {
         const res = await apiGet('experiences.php');
         __experiences = (res && res.experiences) || [];
+        if (view) view.classList.remove('exp-locked');
     } catch (e) {
+        // For guests who have booked: anyone else is told so, never shown
+        // "couldn't load" (nothing failed) or "coming soon" (not true).
+        if (e && (e.status === 403 || e.code === 'stays_only')) {
+            __experiences = [];
+            grid.innerHTML = '';
+            if (view) view.classList.add('exp-locked');
+            return;
+        }
         failed = true;
     }
     if (failed && !__experiences.length) {
@@ -20689,7 +20713,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'youpage1';
+    const BUILD = 'tdbooked1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

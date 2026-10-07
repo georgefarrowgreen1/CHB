@@ -2,7 +2,7 @@
 // ============================================================
 //  experiences.php — local "things to do" cards near Blakeney.
 //  Admin-curated, plus guest SUGGESTIONS (moderated).
-//  GET  /  POST {action:'list'}   -> published experiences (for the guest tab)
+//  GET  /  POST {action:'list'}   -> published experiences — booked guests + owner only
 //  POST {action:'suggest'}        -> signed-in guest suggests one (-> PENDING)
 //  POST {action:'list_admin'}     -> all rows incl. pending (admin)
 //  POST {action:'save'}           -> add/update a published card (admin)
@@ -51,7 +51,18 @@ function exp_norm_url($u)
     return $u;
 }
 
+// THINGS TO DO ARE FOR GUESTS WHO HAVE BOOKED (owner's ask): the list is
+// served to the owner and to a guest whose proven address has a booking, and
+// refused to everyone else — anonymous visitors and crawlers included.
+function exp_require_booked()
+{
+    if (!viewer_has_booked()) {
+        json_out(['error' => 'Things to do are for guests who have booked with us.', 'code' => 'stays_only'], 403);
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    exp_require_booked();
     json_out(['experiences' => exp_published()]);
 }
 
@@ -65,12 +76,14 @@ if ($action === '') {
 }
 
 if ($action === 'list') {
+    exp_require_booked();
     json_out(['experiences' => exp_published()]);
 }
 
 // ---- Guest: suggest a new experience (goes to PENDING for the owner) ----
 if ($action === 'suggest') {
-    require_guest();
+    require_guest_proven();
+    exp_require_booked();
     $title = trim((string) ($in['title'] ?? ''));
     $bodyTxt = trim((string) ($in['body'] ?? ''));
     $linkUrl = exp_norm_url($in['link_url'] ?? '');

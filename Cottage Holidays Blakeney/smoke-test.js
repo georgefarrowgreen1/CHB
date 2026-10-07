@@ -893,8 +893,6 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
         /data-edit-img="hero-bg" style="background-image: url\('hero\.jpg'\);"/,
         /<meta property="og:image" content="[^"]*"/,
         /<meta name="twitter:image" content="[^"]*"/,
-        // experiences-page.php renders the published list into this (empty) grid:
-        /<div id="exp-grid" class="grid grid-3" style="margin-top:18px;"><\/div>/,
         // cottage.php injects each cottage's aggregateRating after its node id:
         /"@id": "https:\/\/cottageholidaysblakeney\.co\.uk\/#cottage-21a",/,
     ];

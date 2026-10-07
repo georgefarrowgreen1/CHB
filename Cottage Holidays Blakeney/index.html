@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=365">
+    <link rel="stylesheet" href="app.css?v=366">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -531,6 +531,14 @@
     <main id="view-experiences" class="page-view container">
         <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Things to do</h1>
         <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
+        <div id="exp-locked" class="glass-panel">
+            <p style="font-size:var(--fs-headline);font-weight:600;margin:0 0 6px;">For our guests</p>
+            <p style="font-size:var(--fs-body);color:var(--text-muted);margin:0 0 14px;">Our local favourites open up once you&rsquo;ve booked a stay with us. Already booked? Sign in to see them.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <button type="button" class="btn-glass btn-accent" data-act="openGuestArea">Sign in</button>
+                <button type="button" class="btn-glass" data-act="nav" data-view="view-cottages">See the cottages</button>
+            </div>
+        </div>
         <div id="exp-filters" class="exp-filters"></div>
         <div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>
         <div id="exp-empty" class="glass-panel" style="display:none;padding:32px;text-align:center;">
@@ -1981,11 +1989,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1101"></script>
+    <script defer src="app.js?v=1102"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=35"></script>
+    <script defer src="guest-app.js?v=36"></script>
 
 </body>
 </html>

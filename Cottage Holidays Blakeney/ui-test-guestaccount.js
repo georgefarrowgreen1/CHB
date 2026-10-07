@@ -315,6 +315,37 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ok(await page.evaluate(() => document.getElementById('gb-pane-past') && !document.getElementById('gb-pane-past').hidden), 'a past row opens the stay page on Past');
     await page.close();
 
+    // §10
+    console.log('§10 things to do are for guests who have booked');
+    const painted = (sel) => page.evaluate((q) => [...document.querySelectorAll(q)].some((e) => e.getClientRects().length > 0), sel);
+    page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+    await page.route(/\.php/, (route) => {
+        const url = route.request().url();
+        const json = (x, st) => route.fulfill({ status: st || 200, contentType: 'application/json', body: JSON.stringify(x) });
+        if (url.includes('experiences.php')) return json({ error: 'Things to do are for guests who have booked with us.', code: 'stays_only' }, 403);
+        if (url.includes('auth.php')) return json({ ok: true, admin: false, guest: null });
+        return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, mine: {}, value: null });
+    });
+    await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    ok(!(await painted('.guest-dock-btn[data-tab="experiences"]')), 'a visitor gets no Things to do button in the menu');
+    ok(!(await painted('a[data-view="view-experiences"]')), '…and no Things to do link anywhere (header, footer)');
+    await page.evaluate(() => nav('view-experiences'));
+    await page.waitForTimeout(500);
+    ok(await painted('#exp-locked'), 'opening /experiences directly says it is for guests who have booked');
+    ok(!(await painted('#exp-grid')) && !(await painted('#exp-error')) && !(await painted('#exp-empty')), '…and shows no list, no "couldn\'t load", no "coming soon"');
+    await page.close();
+    ({ page } = await open([]));
+    await page.waitForTimeout(300);
+    ok(!(await painted('.guest-dock-btn[data-tab="experiences"]')), 'a signed-in guest who has never booked gets no button either');
+    await page.close();
+    ({ page } = await open([mk('jollyboat', d(-60), d(-57), { id: 801, payment: 'paid', deposit_paid: 400 })]));
+    await page.waitForFunction(() => document.body.classList.contains('has-booked'), null, { timeout: 4000 }).catch(() => {});
+    ok(await painted('.guest-dock-btn[data-tab="experiences"]'), 'a guest who has booked (even a past stay) gets the button');
+    await page.close();
+
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST ACCOUNT CHECKS PASSED');
     await done(fails);
 })();

@@ -61,6 +61,10 @@ const { boot, ok } = require('./ui-test-lib');
     // fails hard on a real teleport — that never produces an intermediate value.
     const travel = await page.evaluate(async () => {
         const el = document.querySelector('#guest-dock-slot .guest-dock-indicator');
+        // Things to do is only offered to a guest who has booked (body.has-booked),
+        // so this travel is a booked guest's — set it before the indicator is read.
+        document.body.classList.add('has-booked');
+        await new Promise((r) => setTimeout(r, 120));
         const before = el.style.translate;
         document.querySelector('#guest-dock-slot .guest-dock-btn[data-tab="experiences"]').click();
         const xs = [];

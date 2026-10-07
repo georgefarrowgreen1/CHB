@@ -84,8 +84,8 @@ if ($heroImg !== '') {
 }
 echo "  </url>\n";
 
-// Things to do (server-rendered for crawlers by experiences-page.php).
-echo "  <url>\n    <loc>{$origin}/experiences</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
+// Things to do is NOT listed: it is for guests who have booked (experiences.php
+// refuses anyone else), so there is nothing for a crawler to see.
 
 // One entry per live cottage.
 foreach ($cottages as $slug) {

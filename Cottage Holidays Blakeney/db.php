@@ -609,6 +609,26 @@ function guest_email_proven(int $gid): bool
         return true;
     }
 }
+// HAS THIS SESSION BOOKED WITH US? The owner, or a guest whose PROVEN address
+// has at least one booking (past or future). Gates the things-to-do list, which
+// is for guests who have booked and nobody else. A failing query reads as no.
+function viewer_has_booked(): bool
+{
+    if (!empty($_SESSION['admin_id'])) {
+        return true;
+    }
+    $gid = (int) (current_guest_id() ?? 0);
+    if ($gid <= 0 || !guest_email_proven($gid)) {
+        return false;
+    }
+    try {
+        $q = db()->prepare('SELECT b.id FROM bookings b JOIN guests g ON g.email = b.email WHERE g.id = ? LIMIT 1');
+        $q->execute([$gid]);
+        return $q->fetchColumn() !== false;
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
 function require_guest_proven(): void
 {
     require_guest();

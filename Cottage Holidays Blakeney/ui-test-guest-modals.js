@@ -41,7 +41,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(acct.rows >= 5 && acct.short === 0, `every row reaches the 44px floor (${acct.rows} rows, ${acct.short} short)`);
   ok(!acct.oldModals, 'the old details/security pop-ups are gone');
   const escapable = await page.evaluate(() => {
-      const btn = document.querySelector('#guest-dock-slot .guest-dock-btn');
+      // The first PAINTED button: Things to do is hidden until a guest has booked.
+      const btn = [...document.querySelectorAll('#guest-dock-slot .guest-dock-btn')].find((x) => x.getClientRects().length);
       if (!btn) return { ok: false, why: 'no menu button in the header' };
       const b = btn.getBoundingClientRect();
       const hit = document.elementFromPoint(Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2));
