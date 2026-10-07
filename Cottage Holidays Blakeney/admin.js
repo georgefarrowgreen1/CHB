@@ -16569,7 +16569,8 @@ async function repeatExpense(id) {
     const x = allExpenses.find((e) => e.id === id);
     if (!x) return;
     const [yy, mm, dd] = (x.date || todayDashed()).split('-').map(Number);
-    const next = new Date(yy, mm - 1 + 1, dd);
+    // Same day next month, capped at that month's length (31/01 → 28/02, not 03/03).
+    const next = new Date(yy, mm, Math.min(dd, new Date(yy, mm + 1, 0).getDate()));
     const nd = formatDashed(next);
     if (
         !(await glassConfirm(

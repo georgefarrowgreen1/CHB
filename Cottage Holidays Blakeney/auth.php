@@ -349,8 +349,14 @@ switch ($action) {
         $address = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
         $pw = $in['password'] ?? '';
-        if ($name === '' || $email === '' || strlen($pw) < 8) {
-            json_out(['error' => 'Name, email and an 8+ character password are required'], 400);
+        if ($name === '' || $email === '') {
+            json_out(['error' => 'Your name and email are required'], 400);
+        }
+        if (strlen($pw) < 8) {
+            json_out(['error' => 'Please choose a password of at least 8 characters.'], 400);
+        }
+        if (mb_strlen($name) > 160 || strlen($email) > 190 || mb_strlen($phone) > 60) {
+            json_out(['error' => 'One of those details is too long — please shorten it.'], 400);
         }
         if ($address === '') {
             json_out(['error' => 'Please enter your UK address'], 400);

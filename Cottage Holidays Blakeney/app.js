@@ -3730,8 +3730,8 @@ async function changeGuestPassword() {
         show('Please fill in your new password (and your current one, if you have one).', false);
         return;
     }
-    if (nw.length < 4) {
-        show('Your new password must be at least 4 characters.', false);
+    if (nw.length < 8) {
+        show('Your new password must be at least 8 characters.', false);
         return;
     }
     if (nw !== cf) {
@@ -3877,8 +3877,8 @@ async function guestRegister() {
         showErr('Please enter a valid UK postcode. Outside the UK? Message us and we can help.');
         return;
     }
-    if (password.length < 4) {
-        showErr('Please choose a password of at least 4 characters.');
+    if (password.length < 8) {
+        showErr('Please choose a password of at least 8 characters.');
         return;
     }
 
@@ -17954,8 +17954,8 @@ async function enquireCreateAccount() {
         setM('We need a valid email to create your account.');
         return;
     }
-    if (pwd.length < 4) {
-        setM('Please choose a password of at least 4 characters.');
+    if (pwd.length < 8) {
+        setM('Please choose a password of at least 8 characters.');
         return;
     }
     const btn = document.getElementById('enq-acct-btn');

@@ -162,6 +162,20 @@ function enquiry_approve($id, $priceOverride = null, $plan = [])
     if (!empty($e['declined_at'])) {
         return ['error' => 'This enquiry was declined — restore it from the Inbox first.', 'code' => 409];
     }
+    // What the caller does not carry, the enquiry's STORED terms supply
+    // (migration-128). Here, not in the route, so the in-app Approve and the
+    // one-tap email link cannot disagree about the agreed price or plan.
+    if ($priceOverride === null && isset($e['agreed_price']) && (float) $e['agreed_price'] > 0) {
+        $priceOverride = round((float) $e['agreed_price'], 2);
+    }
+    $plan = is_array($plan) ? $plan : [];
+    if (trim((string) ($plan['deposit_pct'] ?? '')) === '' && trim((string) ($plan['deposit_amount'] ?? '')) === ''
+        && isset($e['plan_pct']) && $e['plan_pct'] !== null && $e['plan_pct'] !== '') {
+        $plan['deposit_pct'] = $e['plan_pct'];
+    }
+    if (trim((string) ($plan['balance_due_date'] ?? '')) === '' && !empty($e['plan_due'])) {
+        $plan['balance_due_date'] = $e['plan_due'];
+    }
 
     $rate = get_rate($e['prop_key']);
     if (!$rate) {

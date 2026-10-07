@@ -48,13 +48,26 @@ $stillEmpty = function ($pk, $from, $to) {
     if ($pk === '' || $from === '' || $to === '') {
         return false;
     }
+    // `to` is the gap's LAST NIGHT (the client stores it inclusive), so the
+    // end-exclusive bound is the day after it.
+    $end = date('Y-m-d', strtotime($to . ' 12:00:00 +1 day'));
     try {
         $q = db()->prepare(
             'SELECT COUNT(*) FROM bookings
               WHERE prop_key = ? AND check_in < ? AND check_out > ?'
         );
-        $q->execute([$pk, $to, $from]);
-        return ((int) $q->fetchColumn()) === 0;
+        $q->execute([$pk, $end, $from]);
+        if ((int) $q->fetchColumn() > 0) {
+            return false;
+        }
+        // A gap sold on a platform exists only as an imported block. Owner
+        // blocks stay "unsold" (deliberately held — see above).
+        $q2 = db()->prepare(
+            "SELECT COUNT(*) FROM ical_blocks
+              WHERE prop_key = ? AND source <> 'owner' AND check_in < ? AND check_out > ?"
+        );
+        $q2->execute([$pk, $end, $from]);
+        return ((int) $q2->fetchColumn()) === 0;
     } catch (Throwable $e) {
         // Unknown beats wrong: on a DB error say nothing rather than claim a gap
         // is still empty and send the owner chasing something already booked.
@@ -136,7 +149,7 @@ foreach (watchers_due($list, $today) as $w) {
         $list = watchers_remove($list, $id);
         continue;
     }
-    $name = prop_display($w['pk'] ?? '') ?: ($w['pk'] ?? 'a cottage');
+    $name = (prop_display($w['pk'] ?? '')['name'] ?? '') ?: ($w['pk'] ?? 'a cottage');
     $say = trim((string) ($w['say'] ?? ''));
     if ($say === '') {
         $say = $name . ' ' . uk_date((string) ($w['from'] ?? '')) . '–' . uk_date((string) ($w['to'] ?? '')) . ' is still free.';

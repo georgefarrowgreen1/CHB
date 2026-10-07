@@ -41,6 +41,10 @@ if (!$isCron) {
 $base = site_base_url();
 $secret = rawurlencode(APP_SECRET);
 
+// The runner outlives any single job budget below; let it finish the list.
+@set_time_limit(0);
+@ignore_user_abort(true);
+
 // The daily jobs, in order. Each is a relative URL; the cron secret is appended.
 $jobs = [
     // FIRST, ALWAYS. migrate.php has always accepted the cron secret — it just
@@ -80,7 +84,10 @@ foreach ($jobs as $path => $label) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 60,
+        // A curl timeout does not stop the job — PHP keeps running it — so too
+        // short a budget starts the NEXT job alongside it (autopay must finish
+        // before payments-due chases). The slow ones get room.
+        CURLOPT_TIMEOUT => in_array($path, ['self-repair.php?cron=', 'autopay-run.php?cron=', 'backup.php?cron=', 'mailbox-read.php?cron='], true) ? 300 : 120,
         CURLOPT_FOLLOWLOCATION => true,
         // Same-origin loopback: some shared hosts present mismatched certs.
         CURLOPT_SSL_VERIFYPEER => false,

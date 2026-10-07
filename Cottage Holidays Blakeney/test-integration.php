@@ -4619,6 +4619,42 @@ it_check('§42 a GET cannot start the image batch', $r['code'] === 405, $r['raw'
 $rootDb->exec("DELETE FROM guest_registrations WHERE booking_id = $g42");
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($g42" . ($b42 ? ", $b42" : '') . ')');
 
+// ── §43 round-3 audit: the one-tap email route honours stored terms; a public
+//        enquiry is bounded; a reply quotes the agreed price ──
+// (a) The owner's one-tap Approve link books the STORED agreed price and plan
+//     (the stored-terms fallback lived in the in-app route only).
+$e43In = $ukPlus(80); $e43Out = $ukPlus(83);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, agreed_price, plan_pct) VALUES ('$propKey','One Tap','onetap43@gmail.com','$e43In','$e43Out',2,0,'Hello',275,35)");
+$e43 = (int) $rootDb->lastInsertId();
+$e43Tok = hash_hmac('sha256', 'enq-action|' . $e43 . '|approve', $SECRET);
+$r = $formPost('/enquiry-action.php', ['id' => $e43, 'a' => 'approve', 't' => $e43Tok]);
+$b43 = (int) $rootDb->query("SELECT id FROM bookings WHERE email = 'onetap43@gmail.com' ORDER BY id DESC LIMIT 1")->fetchColumn();
+$b43Row = $b43 ? $rootDb->query("SELECT price_override, deposit_pct_override FROM bookings WHERE id = $b43")->fetch(PDO::FETCH_ASSOC) : [];
+it_check('§43 the one-tap email Approve books the STORED agreed price and plan', $b43 > 0
+    && abs((float) ($b43Row['price_override'] ?? 0) - 275.0) < 0.005 && abs((float) ($b43Row['deposit_pct_override'] ?? 0) - 35.0) < 0.005, substr($r['raw'], 0, 200) . ' ' . json_encode($b43Row));
+// (b) A public enquiry is bounded: a real date, a sane stay, columns that fit.
+$e43Base = ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Bound Test', 'email' => 'bound43@gmail.com', 'adults' => 2, 'children' => 0,
+    'address' => '1 High St, Holt', 'postcode' => 'NR25 7AB', 'message' => 'Hi', 'terms_accepted' => 1, 'terms_version' => 'x', 'no_dogs' => 1];
+$anon43 = [];
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => date('Y', strtotime('+1 year')) . '-02-31', 'check_out' => date('Y', strtotime('+1 year')) . '-03-04']);
+it_check('§43 a date that does not exist (31 Feb) is refused in words', $r['code'] === 400 && stripos($r['raw'], 'valid dates') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(90), 'check_out' => '9999-12-31']);
+it_check('§43 a stay of millions of nights is refused (it froze the Inbox)', $r['code'] === 400 && stripos($r['raw'], 'longer than') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(900), 'check_out' => $ukPlus(903)]);
+it_check('§43 a check-in more than two years out is refused', $r['code'] === 400 && stripos($r['raw'], 'two years') !== false, $r['raw']);
+$r = http($anon43, 'POST', '/enquiries.php', $e43Base + ['check_in' => $ukPlus(90), 'check_out' => $ukPlus(93), 'phone' => str_repeat('0', 61)]);
+it_check('§43 a phone longer than its column is refused in words, not a 500', $r['code'] === 400 && stripos($r['raw'], 'phone number is too long') !== false, $r['raw']);
+// (c) The reply preview to an enquirer quotes the AGREED price, not the standard one.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, agreed_price) VALUES ('$propKey','Reply Quote','reply43@gmail.com','$e43In','$e43Out',2,0,'Hello',199)");
+$e43r = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'email_preview', 'id' => $e43r, 'message' => 'Lovely to hear from you.', 'subject' => 'Your stay']);
+$prev43 = (string) ($r['json']['html'] ?? $r['raw']) . (string) ($r['json']['text'] ?? '');
+it_check('§43 the reply quotes the agreed £199.00 and says so', strpos($prev43, '199.00') !== false && stripos($prev43, 'agreed price') !== false, substr($prev43, 0, 300));
+$rootDb->exec("DELETE FROM enquiries WHERE id IN ($e43, $e43r)");
+if ($b43) {
+    $rootDb->exec("DELETE FROM bookings WHERE id = $b43");
+}
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

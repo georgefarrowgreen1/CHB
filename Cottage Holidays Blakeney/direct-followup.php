@@ -82,10 +82,20 @@ foreach ($rows as $l) {
     } catch (\Throwable $e) {
     }
 
+    // A removed or unlisted cottage's page 404s — no invite to it.
+    if (!empty($l['prop_key']) && !prop_is_marketable($l['prop_key'])) {
+        $stamp->execute([$l['id']]);
+        continue;
+    }
+    // Claim-first: two overlapping runs must not both email this lead. The
+    // stamp stays on a soft failure (as before) so a dead address can't wedge
+    // the queue.
+    $claim = db()->prepare('UPDATE direct_leads SET follow_up_sent_at = NOW() WHERE id = ? AND follow_up_sent_at IS NULL');
+    $claim->execute([$l['id']]);
+    if ($claim->rowCount() !== 1) {
+        continue;
+    }
     $r = send_direct_followup_email(['name' => $l['name'], 'email' => $l['email'], 'prop_key' => $l['prop_key']]);
-    // Stamp regardless of a soft send failure so a permanently-bad address can't
-    // wedge the queue; a true retry would need re-queuing, which we don't do here.
-    $stamp->execute([$l['id']]);
     $emailedThisRun[$emailKey] = true;
     if (is_array($r) && !empty($r['ok'])) {
         $sent++;

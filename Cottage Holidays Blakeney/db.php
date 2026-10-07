@@ -714,6 +714,21 @@ function prop_is_archived($propKey)
     }
 }
 
+// Can a guest still be SENT to this cottage's page? Not archived and not
+// unlisted — cottage.php 404s both, so a marketing email linking there leads
+// nowhere. Pre-migration (no unlisted column) falls back to the archive test.
+function prop_is_marketable($propKey)
+{
+    try {
+        $s = db()->prepare('SELECT archived_at, unlisted FROM properties WHERE prop_key = ?');
+        $s->execute([$propKey]);
+        $row = $s->fetch();
+        return !$row || (empty($row['archived_at']) && empty($row['unlisted']));
+    } catch (\Throwable $e) {
+        return !prop_is_archived($propKey);
+    }
+}
+
 // True if the whole value IS a UK postcode (used for the dedicated postcode field).
 // 'YYYY-MM-DD' → 'DD/MM/YYYY' — the UK display format used wherever a date
 // reaches a guest or the owner (screens, emails, invoices). Storage stays ISO.

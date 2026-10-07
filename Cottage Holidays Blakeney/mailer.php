@@ -2116,10 +2116,11 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
             : '');
     $p = is_array($e['price'] ?? null) ? $e['price'] : null;
     $money = fn($n) => '£' . number_format((float) $n, 2);
+    $agreed = $p && !empty($p['agreed']);
     $priceLine = $p
         ? $money($p['total']) .
             ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
-            ' × ' . $money($p['perNight'] ?? 0) . ')' .
+            ($agreed ? ', agreed price' : ' × ' . $money($p['perNight'] ?? 0)) . ')' .
             (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (charged with your first payment, refunded after your stay)' : '')
         : '';
     $times = 'Arrive ' . email_time(($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . email_time(($e['check_out_time'] ?? '') ?: '10:00');
@@ -2144,7 +2145,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
         'Dates: ' . email_date($e['check_in'] ?? '') . ' to ' . email_date($e['check_out'] ?? '') . "\n" .
         $times . "\n" .
         "Party: {$party}\n" .
-        ($priceLine !== '' ? ($noun === 'booking' ? 'Price: ' : 'Estimated price: ') . $priceLine . "\n" : '') .
+        ($priceLine !== '' ? ($noun === 'booking' ? 'Price: ' : ($agreed ? 'Agreed price: ' : 'Estimated price: ')) . $priceLine . "\n" : '') .
         "\nJust reply to this email to reach us.\nCottage Holidays Blakeney";
 
     // Owner-typed message: escape, then preserve their line breaks.
@@ -2177,7 +2178,9 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
         $nightsN = (int) ($p['nights'] ?? 0);
         $qRows = [
             [
-                email_esc($nightsN . ' night' . ($nightsN === 1 ? '' : 's') . ' at ' . $money($p['perNight'] ?? 0) . ' a night'),
+                email_esc($agreed
+                    ? 'Agreed price for your stay (' . $nightsN . ' night' . ($nightsN === 1 ? '' : 's') . ')'
+                    : $nightsN . ' night' . ($nightsN === 1 ? '' : 's') . ' at ' . $money($p['perNight'] ?? 0) . ' a night'),
                 '<strong>' . email_esc($money($p['total'])) . '</strong>',
             ],
         ];
