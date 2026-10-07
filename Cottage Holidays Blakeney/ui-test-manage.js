@@ -589,6 +589,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       return Math.abs((t.top + t.bottom) / 2 - (cr.top + cr.bottom) / 2);
     })();
     const noOldFold = !document.querySelector('#sec-reviews details') && !document.querySelector('#sec-reviews #bulk-rev-text');
+    // The layout: name on its own line, the actions an even row under it, no URL
+    // line and no explanatory sentences.
+    const row0 = document.querySelector('#review-links .rv-row');
+    const nameBox = row0.querySelector('.rv-name').getBoundingClientRect();
+    const actsBox = row0.querySelector('.rv-acts').getBoundingClientRect();
+    const acts = [...row0.querySelectorAll('.rv-acts .rv-act')].map((b) => Math.round(b.getBoundingClientRect().width));
+    const layout = { below: actsBox.top >= nameBox.bottom - 1, even: acts.length >= 2 && Math.max(...acts) - Math.min(...acts) <= 1, noUrl: !/cottageholidaysblakeney/.test(document.getElementById('review-links').textContent), noSub: !document.querySelector('#sec-reviews .acr-capsub') && !document.getElementById('rv-intro') && !document.querySelector('#sec-reviews .rv-go .rv-sub') };
+    // The QR window: the cottage's name and a code for ITS link, nothing else.
+    row0.querySelector('.rv-act[data-act="reviewQrOpen"]').click();
+    await wait(200);
+    const ov = document.getElementById('rv-qr-modal');
+    const M = chbQr(reviewLinkUrl(k) + '?from=qr');
+    const svg = ov && ov.querySelector('.rvq-code svg');
+    const dark = M ? M.flat().filter(Boolean).length : 0;
+    const qr = {
+      open: !!ov && ov.classList.contains('open'),
+      title: (document.getElementById('rvq-title') || {}).textContent,
+      size: svg && svg.getAttribute('viewBox'),
+      cells: svg ? (svg.querySelector('path').getAttribute('d').match(/M/g) || []).length : 0,
+      dark, n: M ? M.length : 0,
+      finder: M && M[0][0] && M[0][6] && M[6][0] && !M[1][1] && M[3][3],
+      only: ov ? ov.querySelectorAll('button').length === 1 && !/http|camera|review link/i.test(ov.textContent) : false,
+      wantName: (propertyMeta[k] || {}).name || k,
+    };
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(80);
+    qr.closed = !ov.classList.contains('open');
     document.querySelector('#sec-reviews [data-arg="reviews-import"]').click();
     await wait(200);
     const imp = { shown: document.getElementById('sec-reviews-import').style.display !== 'none', title: document.getElementById('settings-panel-title').textContent, filled: document.querySelectorAll('#rvi-props .rvi-chip').length === bookableCottageKeys().length, capGone: !document.querySelector('#settings-panel-cap .st-cap') };
@@ -602,10 +629,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     settingsBack();
     await wait(400);
     const gcap = (document.getElementById('rv-google-cap') || {}).textContent || '';
-    return { rows, copies, keys: keys.length, h: r.height, copied, otherStill, capOnLine, noOldFold, imp, backToReviews, goo, gcap, wantUrl: reviewLinkUrl(k) };
+    return { layout, qr, rows, copies, keys: keys.length, h: r.height, copied, otherStill, capOnLine, noOldFold, imp, backToReviews, goo, gcap, wantUrl: reviewLinkUrl(k) };
   });
   ok(rv2.rows === rv2.keys && rv2.copies === rv2.keys && rv2.keys >= 1, `every cottage is a row with its own Copy button (${rv2.rows}/${rv2.copies}/${rv2.keys})`);
   ok(rv2.h >= 44, `Copy is a 44px target (${rv2.h})`);
+  ok(rv2.layout.below && rv2.layout.even, `each cottage: the name on its own line, the actions an even row beneath it`);
+  ok(rv2.layout.noUrl && rv2.layout.noSub, 'no link written out and no explanatory sentences on the Reviews page');
+  ok(rv2.qr.open && rv2.qr.title === rv2.qr.wantName, `QR opens a window titled with just the cottage's name (${rv2.qr.title})`);
+  ok(rv2.qr.n >= 21 && rv2.qr.size === `0 0 ${rv2.qr.n} ${rv2.qr.n}` && rv2.qr.cells === rv2.qr.dark && rv2.qr.finder, `the code drawn is the encoder's matrix for that cottage's ?from=qr link (${rv2.qr.n}×${rv2.qr.n})`);
+  ok(rv2.qr.only, 'the window carries the code and a close button — no link, no instructions, no other buttons');
+  ok(rv2.qr.closed, 'Escape closes it');
   ok(rv2.copied.cls && /Copied/.test(rv2.copied.txt) && rv2.copied.clip === rv2.wantUrl, `tapping Copy puts THAT cottage's link on the clipboard and says Copied (${rv2.copied.txt} · ${rv2.copied.clip})`);
   ok(rv2.otherStill, "only the tapped cottage's button flips");
   ok(rv2.capOnLine !== null && rv2.capOnLine <= 1, `the waiting capsule sits centred on the title's line (Δ${rv2.capOnLine})`);
