@@ -8188,3 +8188,29 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rv-qrow .acw-modacts .mod-ok { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
 .rv-qrow .acw-modacts .mod-no { color: var(--text-light); border-color: color-mix(in srgb, var(--text-light) 14%, transparent); }
 @media (max-width: 479px) { .rv-copy { min-width: 0; padding: 0 12px; } }
+/* IMPORT REVIEWS (approved demo): cottage + source as chips, one paste box, the
+   read-back list with what was removed, one add button that names the cottage. */
+.rvi-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.rvi-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--text-light) 14%, transparent); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.rvi-chip.is-on { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.rvi-chip:focus-visible, .rvi-stars:focus-visible, .rvi-why:focus-visible, .rvi-drop:focus-visible, .rvi-add:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.rvi-paste { box-sizing: border-box; width: 100%; min-height: 168px; resize: vertical; padding: 12px 16px; border-radius: var(--r-lg); border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); background: color-mix(in srgb, var(--text-light) 4%, transparent); color: var(--text-light); font: inherit; font-size: var(--fs-headline); line-height: 1.5; }
+.rv-sec .acr-cap label { font: inherit; color: inherit; }
+.rvi-foundhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rvi-foundhead .acr-cap { margin: 0 2px; }
+.rvi-foundhead + .rv-well { margin-top: 8px; }
+.rvi-row { display: flex; gap: 8px; align-items: flex-start; padding: 12px 4px 12px 16px; }
+.rvi-row + .rvi-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.rvi-row.is-out { opacity: 0.5; }
+.rvi-stars { border: 0; background: none; padding: 0 4px; min-height: 32px; color: var(--accent-text); font: inherit; font-size: var(--fs-body); letter-spacing: 1px; cursor: pointer; }
+.rvi-text { margin: 4px 0 0; font-size: var(--fs-body); line-height: 1.55; color: var(--text-light); text-wrap: pretty; }
+.rvi-why { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; min-height: 36px; margin-top: 4px; color: var(--text-muted); font: inherit; font-size: var(--fs-sub); text-align: left; cursor: pointer; }
+.rvi-why span { color: var(--accent-text); font-weight: 600; }
+.rvi-removed { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding: 8px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 4%, transparent); font-size: var(--fs-sub); line-height: 1.45; }
+.rvi-removed div { display: flex; gap: 12px; align-items: baseline; }
+.rvi-removed span { flex: none; width: 96px; color: var(--text-muted); font-size: var(--fs-caption); font-weight: 600; }
+.rvi-removed s { color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
+.rvi-drop { width: 44px; height: 44px; flex: none; border: 0; background: none; color: var(--text-muted); font: inherit; font-size: var(--fs-headline); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rvi-hint { margin: 8px 2px 0; }
+.rvi-add { height: 52px; border-radius: var(--r-pill); border: 0; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: var(--fs-headline); font-weight: 600; cursor: pointer; }
+.rvi-add:disabled { background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); cursor: default; }

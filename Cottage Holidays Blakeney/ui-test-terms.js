@@ -339,16 +339,16 @@ const clause = (text, n) => {
   ok(rev.one.shown && rev.one.btn === '', 'one review: the card shows and no button claims there is more');
   ok(rev.mixed.count === '2 reviews', `unassigned reviews never inflate a cottage's count ("${rev.mixed.count}")`);
 
-  // Fix 1's owner-side half: the option now states the CONSEQUENCE of leaving it
-  // blank, and saveReviews asks before stranding any. Source-scanned, because both
-  // live in the admin bundle behind a confirm.
+  // Fix 1's owner-side half: the importer now REQUIRES a cottage — there is no
+  // "(no cottage)" choice to strand a review with. Source-scanned, because it
+  // lives in the admin bundle.
   const adminSrc = require('fs').readFileSync(__dirname + '/admin.js', 'utf8');
-  ok(/no cottage \\u2014 not shown on any cottage page|no cottage — not shown on any cottage page/.test(adminSrc),
-    'the "(no cottage)" option says what choosing it costs');
-  ok(/const stranded = reviews\.filter\(\(r\) => !r\.prop\)\.length;/.test(adminSrc),
-    'saveReviews counts the reviews left with no cottage');
-  ok(/if \(stranded\) \{[\s\S]{0,400}glassConfirm\(/.test(adminSrc),
-    '…and asks before saving them that way');
+  ok(/async function rviAdd\(\) \{\s*const prop = __rvi\.prop;\s*if \(!prop\) return;/.test(adminSrc),
+    'the importer refuses to add reviews with no cottage');
+  ok(/btn\.disabled = !__rvi\.prop \|\|/.test(adminSrc),
+    '…and its button says "Choose a cottage first" until one is picked');
+  ok(!/no cottage \\u2014 not shown|\(no cottage — not shown/.test(adminSrc),
+    'no "(no cottage)" option is offered anywhere');
 
   // ── THE RESCUE EMAIL'S PROMISE IS KEPT ────────────────────────────────────
   // enquireDraftSave wrote chb-enq-draft since it shipped and NOTHING read it
