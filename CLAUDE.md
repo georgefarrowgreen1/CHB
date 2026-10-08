@@ -3615,8 +3615,8 @@ notify_prefs; `admin_devices.admin_id` and `push_subscriptions.admin_id`, NULL =
   bootstrap) ends a removed, still-invited or epoch-bumped session on its next request.
 - **EACH PERSON'S SIGN-IN IS THEIR OWN**: the new-device code goes to their email (`admin_contact_email`; the
   first owner falls back to the old owner address), passkeys and trusted devices are per person, two-step is their
-  switch. The sign-in sheet carries every step in place (password → device code → in; email → code → "this is a
-  back-office sign-in, so it needs your password too"; invite and reset pages; a passkey offer after the invite) —
+  switch. The sign-in sheet carries every step in place (password → device code → in; email → code → in, see "Three
+  ways into the back office"; invite and reset pages; a passkey offer after the invite) —
   never a detour to another dialog. A switched-off sign-in says so and is never retried as a guest login.
 - **THE AREAS ARE `people-lib.php`'s, and the server decides them on EVERY request.** Full access = everything;
   anyone else = the everyday work (`'all'`: bookings, calendar, enquiries, messages, email, key safes, guests,
@@ -3718,7 +3718,42 @@ Sign-in codes and reset links aren't kinds: they only ever go to the person sign
   fallback, the backup's extras, the must refusal, reply attribution, the lock state, the limited page and the digest
   note.
 
+## Three ways into the back office: an emailed code, a password or a passkey (owner-asked)
+
+Asked for after the passwordless demo: "give the ability for both admin and hosts to login via email 6 digit, password
+or passkey". **The emailed code alone signs a back-office person in now**; it used to be the first half, with the
+password after it. `guest_code_verify` finishes the sign-in for an ACTIVE person (`admin_trust_this_device` +
+`admin_complete_login`, logged "signed in with an emailed code"), and the `?signin=` link does the same on the device
+that opens it. A password still works (a username, or "Use a password instead" on the code step), and two-step still
+sends a new device a code after a PASSWORD. A passkey works as before. Someone INVITED and not started still chooses a
+password (the proof waits in `$_SESSION['admin_email_proof']` for `admin_invite_accept`), so everyone keeps a password
+for the refund step-up, which still asks for a passkey or the password, never a code: on an unlocked phone Mail is
+usually open too.
+- **A CODE THAT IS A WHOLE SIGN-IN NEEDS A DAILY CAP.** `throttle_check` allowed 20 wrong codes per 10 minutes per
+  address across IPs, about a 0.3% chance a day of guessing a 6-digit code. That was harmless while a password
+  followed the code, and not once the code is the key (it already was for a GUEST account, door code included).
+  `code_paused()` counts a DAY's wrong codes for the address across every IP; at `CODE_DAILY_FAILS` (10) both the
+  request and the verify answer 429 `paused`, the right code included, with one sentence for every address so it says
+  nothing about who has a sign-in. A success clears that browser's own wrong tries.
+- **A back-office code lives 10 minutes** (a guest's 30), and its email no longer says "your password comes next". The
+  sign-in email's "ignore this" line says nobody gets in without the code; the device-code email still says to change
+  the password, because someone had it.
+- **Removed, with nothing left to serve**: `admin_email_proven()`, the `wrong_password` / `guest_password` replies and
+  `guest_login`'s 409 `back_office`. All of it hung off the code-then-password step. A wrong password typed with an
+  email gets the generic reply and the merged login's guest attempt, as that path always did.
+- The sheet's "Welcome back" and "Too many tries" steps now show an error (neither rendered one, so a paused or failed
+  request there said nothing). The Security page's lead names the three ways in (`oaSecurityLead`, one sentence for
+  the page and its patch), and the two-step row says it applies after a password.
+- Gates: test-integration §50 (the cap from ten other IPs, the right code refused, no new code sent, nine under the
+  line) and §51 (the 10-minute life, the code alone in as herself, the device remembered, the log, a same-address guest
+  account never where the code lands, the password still working, removed and invited people), ui-test-people §C (the
+  three ways, a wrong password, the reset from a username, the link signing in), test-emails-render §14 (no password
+  promised and 10 minutes, each half read on its own).
+
 ## Signing in to the back office with an email (reported: "you can only get in with a password reset")
+
+**Partly superseded by "Three ways into the back office" above**: the code now signs in on its own, so the
+password step after it, and everything below that guarded it, is gone. The other three fixes stand.
 
 Every path works on a clean server, so none of this showed on a fresh copy. It took a full-stack copy (real
 MariaDB, real `php -S`, real mail caught by a local SMTP sink so the codes are read from the actual emails, two-step on)

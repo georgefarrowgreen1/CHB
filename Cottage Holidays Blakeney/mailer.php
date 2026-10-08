@@ -4764,20 +4764,20 @@ function owner_mail_test_body()
 /**
  * A back-office sign-in code, to the person signing in and nobody else.
  * 'device' — a new phone or computer, after the password (10 minutes).
- * 'signin' — the email-first path: the code proves the inbox, the password follows.
- * 'email'  — confirming a new sign-in address before it changes.
+ * 'signin' — the email-first path: the code alone signs in (10 minutes).
+ * 'email'  — confirming a new sign-in address before it changes (30 minutes).
  */
 // $url (sign-in codes only): a one-tap link that carries the code, like a guest's
-// code email has — the code screen promises one. It only proves the inbox; the
-// password still follows. A new-device code has its OWN title and subject: it can
-// land minutes after a sign-in code, and two emails both called "Your sign-in code"
-// invite typing the wrong one.
+// code email has — the code screen promises one. It signs in the device that opens
+// it. A new-device code has its OWN title and subject: it can land minutes after a
+// sign-in code, and two emails both called "Your sign-in code" invite typing the
+// wrong one.
 function admin_code_body($code, $purpose = 'device', $first = '', $url = '')
 {
-    $mins = $purpose === 'device' ? 10 : 30;
+    $mins = $purpose === 'email' ? 30 : 10;
     $leads = [
         'device' => 'Use this code to finish signing in to the back office on a new device.',
-        'signin' => 'Use this code to sign in to the back office. Your password comes next.',
+        'signin' => 'Use this code to sign in to the back office.',
         'email' => 'Use this code to make this your sign-in email for the back office.',
     ];
     $lead = $leads[$purpose] ?? $leads['device'];
@@ -4786,13 +4786,16 @@ function admin_code_body($code, $purpose = 'device', $first = '', $url = '')
     $url = $purpose === 'signin' ? (string) $url : '';
     $first = trim((string) $first);
     $hello = $first !== '' ? 'Hello ' . $first . ",\n\n" : '';
-    $ignore = $purpose === 'email'
-        ? 'If you didn’t just change your email, ignore this one: nothing changes until the code is used.'
-        : 'If you didn’t just try to sign in, ignore this email and consider changing your password.';
+    // A device code means someone had the password; a sign-in code only that someone
+    // typed this address, and nobody gets in without the code.
+    $ignore = [
+        'email' => 'If you didn’t just change your email, ignore this one: nothing changes until the code is used.',
+        'signin' => 'If you didn’t just try to sign in, ignore this email: nobody can sign in without the code.',
+    ][$purpose] ?? 'If you didn’t just try to sign in, ignore this email and consider changing your password.';
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     return [
         'subject' => $title . ' — Cottage Holidays Blakeney',
-        'text' => $hello . $lead . "\n\n" . 'Your code: ' . $code . "\n\n" . ($url !== '' ? "Or tap this link to carry on signing in:\n" . $url . "\n\n" : '') . 'It expires in ' . $mins . ' minutes. ' . $ignore,
+        'text' => $hello . $lead . "\n\n" . 'Your code: ' . $code . "\n\n" . ($url !== '' ? "Or tap this link to sign in on this device:\n" . $url . "\n\n" : '') . 'It expires in ' . $mins . ' minutes. ' . $ignore,
         'html' => email_shell(
             $pre,
             email_h($title) .
@@ -4800,7 +4803,7 @@ function admin_code_body($code, $purpose = 'device', $first = '', $url = '')
                 email_lead($esc($lead)) .
                 email_code('Your code', $code, 'Expires in ' . $mins . ' minutes.') .
                 ($url !== ''
-                    ? email_btn2($url, 'Or continue on this device') .
+                    ? email_btn2($url, 'Or sign in on this device') .
                         email_footnote('Copy this link into your browser if the button doesn&rsquo;t work:<br><a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>')
                     : '') .
                 email_footnote($esc($ignore)),

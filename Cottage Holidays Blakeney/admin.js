@@ -13159,6 +13159,11 @@ function oaKeyRows() {
     else if (!keys.length) rows.push(gaRow({ ic: 'face', t: 'No passkeys', s: 'This device or browser can’t make one', static: true }));
     return rows;
 }
+// The three equal ways in (an emailed code alone signs you in), and who else has
+// their own. One sentence, said on the page and patched when the people list lands.
+function oaSecurityLead(others) {
+    return 'Sign in with a code from your email, your password or a passkey. ' + (others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.');
+}
 function renderSecurity() {
     const box = document.getElementById('security-body');
     if (!box) return;
@@ -13169,7 +13174,7 @@ function renderSecurity() {
     box.innerHTML = oaPage(
         'security',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">How you get into the back office. ${escapeHtml(others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.')}</p>` +
+            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">${escapeHtml(oaSecurityLead(others))}</p>` +
             gaGroup([gaRow({ ic: 'key', t: 'Change password', act: 'data-act="changeAdminPassword"', chev: true })], 'Password') +
             `<h2 class="ga-cap">Passkeys</h2><div id="admin-passkey-list"><div class="ga-group">${oaKeyRows().join('')}</div></div>` +
             `<p class="ga-note">${escapeHtml(
@@ -13182,7 +13187,7 @@ function renderSecurity() {
                     gaRow({
                         ic: 'shield',
                         t: 'Email me a code on new devices',
-                        s: 'Trusted devices are remembered for 60 days',
+                        s: 'When your password is used on a new device. Devices are remembered for 60 days.',
                         v: oaSwitch('admin-2fa-toggle', oaTwoStepOn(), 'Email me a code on new devices', 'oaTwoStep'),
                         static: true,
                         cls: 'oa-swrow',
@@ -13247,7 +13252,7 @@ function oaPeoplePatch() {
     };
     set('#acct-body .oa-r-people .ga-s', others.length ? 'You and ' + listAnd(others) : 'Only you so far');
     set('#details-body .ga-lead', others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.');
-    set('#security-body .ga-lead', 'How you get into the back office. ' + (others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.'));
+    set('#security-body .ga-lead', oaSecurityLead(others));
     set('#notify-body .oa-r-emails .ga-s', oaMailSummary());
     __oaStill = true;
     try {
