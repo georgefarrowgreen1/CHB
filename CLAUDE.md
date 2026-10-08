@@ -3539,19 +3539,26 @@ reset link). Rows keep `.acw-prow[data-gemail]` for the search reveal.
 
 ## The Manage index is seven groups (owner-asked "reorder and recategorise")
 
-`#settings-index` in admin-views.html. **Your account comes FIRST** (owner-asked from Sophia's screen, where it
-sat last): ONE row with the person's photo and name — see "The owner's account" below; Log out lives on that page.
-It is the first GROUP, directly under the summary row, which stays the page's opening line for full access (for a
-limited person the summary is hidden, so the account is the very top). It was tried ABOVE the summary and refused
-on sight: on a phone the uncaptioned status card then reads as part of "Your account", and at ≥900px a group before
-the `column-span: all` summary is laid out in the column flow — narrower than the summary and touching it. Then,
-top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
+`#settings-index` in admin-views.html. **Your account comes FIRST, with no heading** (owner-asked twice: first
+from Sophia's screen, where it sat last, then "remove the your account text, move it closer to the line", approved
+demo): ONE row with the person's photo and name — see "The owner's account" below; Log out lives on that page.
+`#oa-acct-grp` is the index's FIRST child, ABOVE `#manage-verdicts`, so it sits the header's own gap under the title
+line (18px on a phone, 40px from 641px) in every state; "Needs a look" follows it under its own heading. The old
+order put the problems first, which pushed the account 253px down whenever one arrived, and without its heading the
+account row would have read as one more row of that list. Spacing traps, all measured: the row has **no bottom
+margin** (the empty `#manage-verdicts` is a FLEX box, so the margins either side of it ADD instead of collapsing,
+and the default 20px gave 42px to the next caption); the gap comes from the next caption, which inside the fold is
+the "Needs a look" caption, so the space opens with the rows; `#manage-verdicts` keeps no margin of its own. **From
+900px** the index is two CSS columns and a group before the `column-span: all` verdicts sat alone in column one, 4px
+from the next caption — so the row spans too (640px, as wide as "Needs a look") and brings 20px, with `.mg-probs`
+20px inside the fold. Then, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
 Calendar sync) · **Bookings & payments** (Payments, Cancellation policy, Booking terms) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
 **System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Gated by
-ui-test-manage §1 (caption first, no group above it, the summary above it) and ui-test-people §B (Sophia's first
+ui-test-manage §1 (first child, uncaptioned, the header's gap at 1280 and 18px/22px at 402, "Needs a look" after it,
+spanning on two columns; four break-tests) and ui-test-people §B (Sophia's first
 group). **`manageAccessSync` and `settingsFilter` walk only the index's OWN groups (`:scope >`)**: the summary keeps
 a "Needs a look" `.settings-group` of its own, empty until a problem arrives, and the unscoped access sync hid it —
 so a review counted a moment after opening Manage showed "1 thing needs a look" over nothing (ui-test-manage §2).

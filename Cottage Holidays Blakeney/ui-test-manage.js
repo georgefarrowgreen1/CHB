@@ -96,19 +96,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       toolboxIntact: !!document.querySelector('#settings-index .settings-group .settings-row[data-arg="reviews"]'),
       cotRows: document.querySelectorAll('#cottages-overview .settings-row.mg-cot').length,
       addRow: !!document.querySelector('#settings-index [data-act="addAccommodationPrompt"]'),
-      // Your account is the first group (owner-asked): its caption leads the toolbox,
-      // it heads the first column with nothing above it there, and the summary sits
-      // above it. Compared WITHIN a column: at this width the index flows in two, and
-      // the second column legitimately starts a few px higher (its first caption's
-      // margin is truncated at the column break).
-      firstCap: (() => { const l = [...document.querySelectorAll('#settings-index > .settings-section-label')].find((x) => x.getClientRects().length); return l ? l.textContent : ''; })(),
-      acctTop: (() => {
+      // YOUR ACCOUNT LEADS, UNCAPTIONED (owner-asked): the first thing in the index,
+      // no heading, the header's own gap under the line and nothing added, "Needs a
+      // look" below it, and at this two-column width it spans the top as they do.
+      acct: (() => {
         const g = document.getElementById('oa-index-row').closest('.settings-group');
         const r = g.getBoundingClientRect();
-        const others = [...document.querySelectorAll('#settings-index > .settings-group')].filter((x) => x !== g && x.getClientRects().length);
-        const sameCol = others.filter((x) => Math.abs(x.getBoundingClientRect().left - r.left) < 2);
-        return others.length > 3 && sameCol.length > 0 && others.every((x) => x.getBoundingClientRect().left >= r.left - 1)
-          && sameCol.every((x) => x.getBoundingClientRect().top >= r.bottom) && host.getBoundingClientRect().bottom <= r.top;
+        const head = document.querySelector('#view-settings .dashboard-header');
+        const first = [...document.getElementById('settings-index').children].find((x) => x.getClientRects().length);
+        const prev = g.previousElementSibling;
+        const nextCap = [...document.querySelectorAll('#settings-index .settings-section-label')].find((l) => l.getClientRects().length && l.getBoundingClientRect().top > r.bottom);
+        return {
+          first: first === g,
+          uncaptioned: !(prev && prev.classList.contains('settings-section-label')) && ![...document.querySelectorAll('#settings-index .settings-section-label')].some((l) => /your account/i.test(l.textContent)),
+          lineGap: Math.round((r.top - head.getBoundingClientRect().bottom) * 10) / 10,
+          headGap: parseFloat(getComputedStyle(head).marginBottom),
+          capGap: nextCap ? Math.round(nextCap.getBoundingClientRect().top - r.bottom) : -1,
+          lookBelow: host.getBoundingClientRect().top >= r.bottom - 1,
+          spans: Math.abs(r.width - host.getBoundingClientRect().width) < 1,
+        };
       })(),
     };
   });
@@ -122,7 +128,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(land.noGreenPills && land.noOldCaps, 'no column of green pills, no shouted captions');
   ok(land.toolboxIntact, 'the toolbox rows below are untouched');
   ok(land.cotRows >= 2 && land.addRow, `the cottages are rows in their group's list (${land.cotRows}), ending in Add a cottage`);
-  ok(land.firstCap === 'Your account' && land.acctTop, `Your account is the first group, under "Needs a look" (${land.firstCap})`);
+  ok(land.acct.first && land.acct.uncaptioned, 'your account is the first thing on Manage, with no heading over it');
+  ok(Math.abs(land.acct.lineGap - land.acct.headGap) < 1, `…sitting the header's own gap under the line, nothing added (${land.acct.lineGap}px, header ${land.acct.headGap}px)`);
+  ok(land.acct.lookBelow && land.acct.capGap >= 20 && land.acct.capGap <= 26, `"Needs a look" comes after it, its heading at the group gap (${land.acct.capGap}px)`);
+  ok(land.acct.spans, 'on two columns it spans the top, as wide as "Needs a look"');
+  // At phone width: 18px under the line, and the next heading 22px under the row.
+  await page.setViewportSize({ width: 402, height: 874 });
+  await page.waitForTimeout(400);
+  const onPhone = await page.evaluate(() => {
+    const g = document.getElementById('oa-index-row').closest('.settings-group');
+    const r = g.getBoundingClientRect();
+    const head = document.querySelector('#view-settings .dashboard-header');
+    const nextCap = [...document.querySelectorAll('#settings-index .settings-section-label')].find((l) => l.getClientRects().length && l.getBoundingClientRect().top > r.bottom);
+    return { lineGap: Math.round(r.top - head.getBoundingClientRect().bottom), capGap: nextCap ? Math.round(nextCap.getBoundingClientRect().top - r.bottom) : -1, cap: nextCap ? nextCap.textContent : '' };
+  });
+  await page.setViewportSize({ width: 1280, height: 950 });
+  await page.waitForTimeout(400);
+  ok(onPhone.lineGap === 18 && onPhone.capGap === 22, `on a phone: 18px under the line, "${onPhone.cap}" 22px below (${onPhone.lineGap}px, ${onPhone.capGap}px)`);
 
   console.log('§2 the pill follows the real stores, both ways');
   feedsStalled = false;
