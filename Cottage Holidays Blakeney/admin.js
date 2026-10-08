@@ -90,8 +90,8 @@ async function clearGeo(k) {
 let adminPrivateContent = {}; // includes arrival-* keys (admin-only)
 let __adminPrivateLoaded = false; // has content.php get_all ever answered this session?
 async function openSettings(section) {
-    // The health / cron pills live on this page now — refresh them on open
-    // (both are cached + best-effort, so this is cheap and never blocks).
+    // The status pill lives on this page: refresh what it reads on open (both
+    // are cached + best-effort, so this is cheap and never blocks).
     try {
         checkCronHealth();
     } catch (e) {}
@@ -9802,13 +9802,31 @@ async function openArea() {
     // navigate-first rule holds).
     try { refreshModerationCounts(); } catch (e) {}
 }
-// ---- MANAGE'S VERDICTS — the state that lived in pills and badges, said
-// once above the untouched toolbox (the approved demo). Every figure reads
-// the SAME store its existing badge reads: the cron + feed health from the
-// bootstrap payload, moderation counts from __nyMod, the teach loop from
-// chbMissList/slGuestQuestions — no new requests, and no surface can
-// disagree with another. Only what is ambiently KNOWN is claimed: backups,
-// push and the payments link belong to the full System check, which asks.
+// ---- MANAGE'S STATUS IS SAID ONCE (owner-asked: "remove duplication of status"):
+// by the pill beside the title, its dot green, amber, red or grey. Under it, only
+// what needs a look gets a row, each with its one-tap fix, and the dot is the
+// worst of those rows, so the two can never disagree. It replaced a summary card,
+// a second "Automation quiet" pill and a banner, which said one problem up to four
+// times. Every figure reads the SAME store its badge reads: cron + feed health from
+// the bootstrap payload, the system check's verdict (checkSystemHealth, once a
+// session), moderation counts from __nyMod, the teach loop from chbMissList /
+// slGuestQuestions. Only what was ASKED is claimed: nothing answered is grey.
+const MG_PILL = { ok: ['ok', 'Status: all clear'], warn: ['warn', 'Status: needs a look'], bad: ['danger', 'Status: needs fixing'], unk: ['unk', 'Status: couldn’t check'], wait: ['unk', 'Status: checking…'] };
+function manageStatusPill(tone) {
+    const pill = document.getElementById('health-pill');
+    if (!pill) return;
+    // A limited person is never sent the system's state, so no pill claims it.
+    const m = chbFull() ? MG_PILL[tone] : null;
+    if (!m) {
+        pill.style.display = 'none';
+        return;
+    }
+    pill.className = 'cron-pill ' + m[0];
+    pill.dataset.tone = tone;
+    if (pill.textContent !== m[1]) pill.innerHTML = `<span class="cron-pill-dot" aria-hidden="true"></span>${escapeHtml(m[1])}`;
+    pill.setAttribute('aria-label', m[1] + '. Open Status');
+    pill.style.display = '';
+}
 function manageVerdicts() {
     const host = document.getElementById('manage-verdicts');
     if (!host) return;
@@ -9816,27 +9834,38 @@ function manageVerdicts() {
     const cron = /** @type {any} */ (window).__cronStatusPre;
     const cronStale = !!(cron && cron.stale);
     const cronAgo = cron && cron.everRan
-        ? (cron.ageHours >= 48 ? Math.round(cron.ageHours / 24) + ' days ago' : Math.round(cron.ageHours) + ' hours ago')
-        : 'never run';
+        ? 'Last ran ' + (cron.ageHours >= 48 ? Math.round(cron.ageHours / 24) + ' days ago' : Math.round(cron.ageHours) + ' hours ago')
+        : 'Never run yet';
     let trouble = [];
     try { trouble = chbFeedTrouble(); } catch (err) {}
     const mod = __nyMod || { rev: 0, ph: 0, exp: 0 };
-    const modN = (mod.rev || 0) + (mod.ph || 0) + (mod.exp || 0);
     let misses = [];
     try { misses = chbMissList() || []; } catch (err) {}
     let guestQ = [];
     try { guestQ = slGuestQuestions() || []; } catch (err) {}
     const teachN = misses.length + guestQ.length;
-    // "RUNNING" IS ONLY CLAIMED WHEN IT WAS ASKED: cron and the feeds ride ONE
-    // bootstrap request, so a dropped one must read as "couldn't check", never
-    // as a clean bill of health.
+    // "ALL CLEAR" IS ONLY CLAIMED WHEN IT WAS ASKED: cron and the feeds ride ONE
+    // bootstrap request, so a dropped one must read as "couldn't check", never as
+    // a clean bill of health. The system check is undefined until it answers
+    // (checking), null when it could not (couldn't check).
     const sigOk = chbSignalsFresh();
+    const diag = /** @type {any} */ (window).__diagSum;
 
-    // ONE ROW PER THING THAT NEEDS THE OWNER (the approved prototype). Each row
-    // opens its page; the capsule is the one-tap fix where there is one.
+    // ONE ROW PER THING THAT NEEDS THE OWNER. Each row opens its page; the capsule
+    // is the one-tap fix where there is one.
     /** @type {Array<{id: string, t: string, s: string, cap: string, tone: string, go: string[], sync?: string}>} */
     const probs = [];
-    if (cronStale) probs.push({ id: 'cron', t: 'Daily automation looks stopped', s: 'last ran ' + cronAgo, cap: 'Open Status', tone: 'bad', go: ['settingsOpen', 'diagnostics'] });
+    if (cronStale) probs.push({ id: 'cron', t: 'Daily automation looks stopped', s: cronAgo + ' · guest emails won’t send', cap: 'Open Status', tone: 'bad', go: ['settingsOpen', 'diagnostics'] });
+    // THE SYSTEM CHECK gets a row only for what no other row says: it fails its own
+    // cron check when the daily jobs stop, which the row above has just said.
+    if (diag) {
+        const fail = Math.max(0, (diag.fail || 0) - (cronStale && diag.cron === 'fail' ? 1 : 0));
+        const warn = Math.max(0, (diag.warn || 0) - (cronStale && diag.cron === 'warn' ? 1 : 0));
+        if (fail || warn) {
+            const s = [fail ? fail + (fail === 1 ? ' check failing' : ' checks failing') : '', warn ? warn + (warn === 1 ? ' warning' : ' warnings') : ''].filter(Boolean).join(' · ');
+            probs.push({ id: 'sys', t: 'System check', s, cap: 'Open Status', tone: fail ? 'bad' : 'warn', go: ['settingsOpen', 'diagnostics'] });
+        }
+    }
     trouble.slice(0, 3).forEach((f) => probs.push({
         id: 'feed-' + f.pk, t: 'Calendar sync', s: `${f.name} · ${f.failing ? 'failing to sync' : (f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : Math.round(f.ageHours) + ' hours') + ' late'}`,
         cap: 'Run sync', tone: f.failing ? 'bad' : 'warn', go: ['settingsOpen', 'calendar'], sync: String(f.pk),
@@ -9850,50 +9879,12 @@ function manageVerdicts() {
     }
 
     const n = probs.length;
-    const fine = [];
-    if (!cronStale && !trouble.length && sigOk) fine.push('jobs and feeds on time');
-    if (!modN) fine.push('nothing to approve');
-    if (!teachN) fine.push('nothing to teach');
-    const cap1 = (t) => t.replace(/^./, (c) => c.toUpperCase());
-    const state = n ? 'warn' : sigOk ? 'ok' : 'unk';
-    const title = n ? (n === 1 ? 'One thing needs a look' : n + ' things need a look')
-        : sigOk ? 'Everything’s running' : 'Couldn’t check just now';
-    const sub = n ? (fine.length ? cap1(fine.join(' · ')) : 'Open Status for the detail')
-        : sigOk ? 'Jobs and feeds on time · nothing to approve · nothing to teach'
-            : 'The daily jobs and calendar feeds didn’t answer — open Status';
+    manageStatusPill(probs.some((p) => p.tone === 'bad') ? 'bad' : n ? 'warn' : diag === undefined ? 'wait' : diag && sigOk ? 'ok' : 'unk');
 
-    // Built ONCE, then updated in place, so the summary can animate between
-    // states and a problem row can arrive and leave rather than the whole block
-    // being repainted on every refresh.
-    let sum = /** @type {HTMLElement|null} */ (host.querySelector('.mg-sum'));
-    const first = !sum;
-    if (!sum) {
-        host.innerHTML = `<button type="button" class="mg-sum" ${chbAttrs('settingsOpen', 'diagnostics')}>
-            <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
-              <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-              <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
-              <span class="mg-q">?</span>
-            </span>
-            <span class="mg-txt"><span class="mg-t"></span><span class="mg-s"></span></span><span class="settings-row-chev" aria-hidden="true">›</span>
-          </button>
-          <div class="mg-fold"><div><div class="settings-section-label">Needs a look</div><div class="settings-group mg-probs"></div></div></div>`;
-        sum = /** @type {HTMLElement} */ (host.querySelector('.mg-sum'));
-    }
-    const was = sum.dataset.state || '';
-    const tEl = /** @type {HTMLElement} */ (sum.querySelector('.mg-t'));
-    const sEl = /** @type {HTMLElement} */ (sum.querySelector('.mg-s'));
-    // The words change AT ONCE (a reader, or a screen reader, never meets a
-    // stale sentence); only their arrival is animated.
-    const changed = !first && tEl.textContent !== title;
-    tEl.textContent = title;
-    sEl.textContent = sub;
-    if (changed) { sum.classList.remove('is-swap'); void sum.offsetWidth; sum.classList.add('is-swap'); }
-    sum.dataset.state = state;
-    sum.setAttribute('aria-label', title + '. ' + sub + '. Open Status');
-    if (was === 'warn' && state === 'ok') {
-        const mk = sum.querySelector('.mg-mark');
-        if (mk) { mk.classList.remove('is-cheer'); void (/** @type {HTMLElement} */ (mk)).offsetWidth; mk.classList.add('is-cheer'); }
-    }
+    // Built ONCE, then updated in place, so a row can arrive and leave rather than
+    // the whole list being repainted on every refresh.
+    const first = !host.querySelector('.mg-fold');
+    if (first) host.innerHTML = '<div class="mg-fold"><div><div class="settings-section-label">Needs a look</div><div class="settings-group mg-probs"></div></div></div>';
 
     const list = /** @type {HTMLElement} */ (host.querySelector('.mg-probs'));
     const have = new Map(Array.from(list.children).map((w) => [/** @type {HTMLElement} */ (w).dataset.id, /** @type {HTMLElement} */ (w)]));
@@ -27673,6 +27664,7 @@ async function loadDiagnostics() {
     }
     __sp.busy = false;
     __sp.r = r;
+    mgDiagStore(mgDiagFrom(r)); // the Manage pill follows the check just run
     __sp.day = null;
     __sp.at = spHm(chbNow());
     const still = spStill();
@@ -30437,14 +30429,10 @@ async function saveSeasonGrid() {
     }
     glassAlert(part);
 }
-// ---- Dashboard: warn the owner if the daily automation has stopped ----
-// Reads cron-status.php (stamped by cron.php on every real run). Only the
-// banner appears, and only when things are genuinely quiet, so a healthy
-// site shows nothing.
+// ---- Has the daily automation stopped? ----
+// Reads cron-status.php (stamped by cron.php on every real run) and tells Today's
+// to-do strip. A healthy site shows nothing.
 async function checkCronHealth() {
-    const el = document.getElementById('cron-alert');
-    const pill = document.getElementById('cron-pill');
-    if (!el) return;
     let d;
     try {
         // loadData's admin-bootstrap round-trip stashes the cron status (it runs
@@ -30452,95 +30440,55 @@ async function checkCronHealth() {
         // fetch directly only when it's absent.
         d = window.__cronStatusPre || (await apiGet('cron-status.php'));
     } catch (e) {
-        el.style.display = 'none';
-        if (pill) pill.style.display = 'none';
         return;
     }
-    // Exception-only pill: healthy automation stays hidden (a green "all fine"
-    // badge is just noise); it appears amber only when the daily job has gone
-    // quiet. A hard failure still raises the loud banner below.
-    if (pill && d) {
-        if (d.stale) {
-            const ago = !d.everRan
-                ? 'never run'
-                : d.ageHours >= 48
-                  ? Math.round(d.ageHours / 24) + ' days ago'
-                  : d.ageHours >= 1.5
-                    ? Math.round(d.ageHours) + ' h ago'
-                    : 'just now';
-            pill.className = 'cron-pill warn';
-            pill.innerHTML = `<span class="cron-pill-dot"></span>Automation quiet · ${ago}`;
-            pill.style.display = '';
-        } else {
-            pill.style.display = 'none';
-        }
-    }
+    // A stopped daily job is said by Today's duty and, on Manage, by the status
+    // pill and its one row (manageVerdicts) — never by a second pill or a banner.
     __nyCronQuiet = !!(d && d.stale);
     try {
         renderNeedsYou();
     } catch (e) {}
-    if (!d || !d.stale) {
-        el.style.display = 'none';
-        return;
-    }
-    const detail = d.everRan
-        ? `last ran ${d.ageHours >= 48 ? Math.round(d.ageHours / 24) + ' days' : Math.round(d.ageHours) + ' hours'} ago`
-        : 'it has never run';
-    el.innerHTML = `
-                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-                <div>
-                    <strong>Your daily automation looks stopped</strong> — ${detail}. While it's off, pre-arrival emails, balance reminders, guest re-invites and weekly backups won't send.
-                    <div style="margin-top:6px;font-size:var(--fs-sub);">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a data-act="navDiagnostics" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
-                </div>`;
-    el.style.display = '';
 }
-// ---- Dashboard: one-glance systems-health pill ----
-// Rolls up the full Status page (diagnostics.php: DB, mail, Square, cron,
-// backup, migrations, error rate …) into a single dashboard signal so trouble
-// surfaces without visiting System check. Green = all clear; amber = something
-// needs a look; red = a hard failure. Tap opens the full Status page. Cached
-// for the session so the (heavier) diagnostics scan runs at most once per visit.
-async function checkSystemHealth() {
-    const pill = document.getElementById('health-pill');
-    if (!pill) return;
-    let d;
+// ---- The system check behind Manage's status pill ----
+// The full Status page's verdict (diagnostics.php: database, mail, Square, the
+// daily jobs, backups, migrations, error rate…), asked once a session because it
+// is the heavy check, and handed to manageVerdicts, which folds it into the ONE
+// pill. Full access only: a limited person is never sent the system's state.
+// window.__diagSum: undefined until it answers, null when it could not, else
+// {fail, warn, cron} (cron: its own daily-jobs verdict, so a row can say it once).
+function mgDiagFrom(r) {
+    if (!r || !r.summary) return null;
+    const cronCheck = (Array.isArray(r.checks) ? r.checks : []).find((c) => c && c.label === 'Daily jobs (cron)');
+    return { fail: Number(r.summary.fail) || 0, warn: Number(r.summary.warn) || 0, cron: cronCheck ? String(cronCheck.status || '') : '' };
+}
+function mgDiagStore(d) {
+    /** @type {any} */ (window).__diagSum = d;
     try {
-        const cached = sessionStorage.getItem('chb-health');
+        if (d) sessionStorage.setItem('chb-health-v2', JSON.stringify(d));
+    } catch (e) {}
+    try {
+        manageVerdicts();
+    } catch (e) {}
+}
+async function checkSystemHealth() {
+    const w = /** @type {any} */ (window);
+    if (!chbFull()) return manageStatusPill('');
+    let d = null;
+    try {
+        const cached = sessionStorage.getItem('chb-health-v2');
         d = cached ? JSON.parse(cached) : null;
     } catch (e) {}
-    if (!d) {
+    if (d) return mgDiagStore(d);
+    if (w.__diagReq) return w.__diagReq;
+    w.__diagReq = (async () => {
+        let r = null;
         try {
-            const r = await apiGet('diagnostics.php');
-            d = r && r.summary ? r.summary : null;
-            if (d) {
-                try {
-                    sessionStorage.setItem('chb-health', JSON.stringify(d));
-                } catch (e) {}
-            }
-        } catch (e) {
-            pill.style.display = 'none';
-            return;
-        }
-    }
-    if (!d) {
-        pill.style.display = 'none';
-        return;
-    }
-    const fail = d.fail || 0;
-    const warn = d.warn || 0;
-    if (fail > 0) {
-        pill.className = 'cron-pill danger';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>${fail} system issue${fail === 1 ? '' : 's'} — tap to check`;
-    } else if (warn > 0) {
-        pill.className = 'cron-pill warn';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>Status: ${warn} warning${warn === 1 ? '' : 's'}`; // NOT the summary's words — a different list
-    } else {
-        // No failures and no actionable warnings (optional/off features don't
-        // count) → the calm green "all clear" state.
-        pill.className = 'cron-pill ok';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>Status: all clear`;
-    }
-    pill.style.display = '';
+            r = await apiGet('diagnostics.php');
+        } catch (e) {}
+        w.__diagReq = null;
+        mgDiagStore(mgDiagFrom(r));
+    })();
+    return w.__diagReq;
 }
 // ---- Dashboard: recent-activity feed ----
 function timeAgoLabel(at) {
