@@ -30,7 +30,11 @@ const base = process.env.CHB_BASE_SHA;
 const head = process.env.CHB_HEAD_SHA || 'HEAD';
 const PREFIX = 'Cottage Holidays Blakeney/';
 
-const git = (cmd) => execSync(cmd, { cwd: DIR, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+// maxBuffer is load-bearing: execSync's default is 1MB, and app.js passed it (1.07MB),
+// so `git show <sha>:app.js` threw ENOBUFS, at() returned '' for BOTH sides, and the
+// BUILD rule compared null with null — failing every PR that touched app.js however
+// correctly it was bumped. 64MB leaves room for the bundle to keep growing.
+const git = (cmd) => execSync(cmd, { cwd: DIR, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
 
 if (!base || /^0+$/.test(base)) {
     console.log('check-versions: no base SHA (not a PR / new branch) — skipping.');
