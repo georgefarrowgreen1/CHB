@@ -3650,8 +3650,8 @@ notify_prefs; `admin_devices.admin_id` and `push_subscriptions.admin_id`, NULL =
 - **The search window's system line is full access only** (`chbSysLine`): a limited person is never sent the
   cron state, so the line would have read "All systems normal" about nothing — and `.cmdk-sys[hidden]` needed
   its own rule (the hidden-vs-display trap, twice in one PR).
-- **Shared, deliberately or not yet**: duty dismissals and search pins are one store for everyone; who gets which
-  EMAIL is still the owner's address (per-person email routing is the next PR).
+- **Shared, deliberately or not yet**: duty dismissals and search pins are one store for everyone. Who gets which
+  EMAIL is per person (next section).
 - Gates: **test-people.php** (78 checks: the policy, links, names, every action candidate), **test-integration
   §51** (45 checks against the real endpoints: invite → accept → sign in, a reset signing other sessions out,
   removal ending a live session, refusals by area including a query-string action, money stripped from an
@@ -3661,6 +3661,52 @@ notify_prefs; `admin_devices.admin_id` and `push_subscriptions.admin_id`, NULL =
   duty filter, the nav guard, the dispatcher refusal, the summary row and the switch argument. It found a real
   bug on its first run: after one refused new password every later try was refused too (`AU.err` was never
   cleared).
+
+## Who gets which emails — per person (the approved demo's email matrix, built)
+
+Every email the back office sends its people is one of nine KINDS (`PEOPLE_MAILS` in people-lib.php): new enquiries,
+new bookings, payments received, guest messages, reviews to approve, things-to-do suggestions, the weekly digest, the
+weekly analytics and the database backup. Each person chooses which reach them (`admins.mail_prefs`, migration-134).
+Sign-in codes and reset links aren't kinds: they only ever go to the person signing in.
+- **`send_people($kind, …)` is the one sender** (mailer.php); `send_owner()` survives as `send_people('')`, meaning
+  the people with full access. `people_mail_recipients($kind)` decides: each person who has chosen the kind and may
+  have it, then the extra addresses ("Also emailed", the old `notify-emails`) on every kind but the backup. Before the
+  people migration, or when the table can't be read, it is `OWNER_NOTIFY_EMAIL` plus the extras, exactly as before.
+  **Every sender names its kind** (test-people §12 scans them). A new sender left on `send_owner` reaches only the
+  people with full access.
+- **An area switched off takes its emails with it** (`people_mail_can`: payments needs Take payments, ideas and
+  analytics need Website and marketing, the backup is full access only). The choice is kept, so switching the area
+  back on brings it back. **An invite reaches no one** until the person has chosen a password.
+- **Three kinds must always reach someone**: new enquiries, guest messages and the backup. `set_mail` refuses
+  switching off the last person (`people_mail_must_problem`, 409 `must`). Should nobody be left anyway (the last
+  person removed), the resolver falls back to the first owner.
+- **Defaults**: full access gets everything, which is how it worked before people existed. Anyone else gets the
+  guest-facing six (`PEOPLE_MAIL_LIMITED`): enquiries, bookings, payments, messages, reviews and the digest.
+- **THE DIGEST HAS A COPY WITHOUT THE MONEY** for anyone without Money overview (`owner_digest_body(['noMoney' =>
+  true])`). It leaves out every figure and also the warnings list, because a warning's free text can carry an amount.
+  `send_people`'s `compose` callback picks the copy per recipient. The render gate asserts no £ in either half.
+- **A weekly email asked for from the back office goes only to whoever asked** (`people_mail_only()`, the same
+  override the samples use), and it does not stamp the day, so it can't stop Monday's going to everyone else.
+- **Phone alerts stay separate**, and the email fallback is per person now. If an alert reached none of YOUR devices
+  and the category is in your areas, you get the email, whoever else's phone it reached. Muting stops the buzz, not
+  this email. The extras only get it when nobody's phone was reached, as before.
+- **Reply by email**: anyone with a sign-in may answer a guest by replying (`people_mail_senders()`; the thread token
+  is still the real gate), and the reply is credited to them (`people_mail_sender_row` → `chat_admin_reply`'s new
+  `$actor`).
+- **Samples and the test email go to the person who asked**, never to everyone who'd get the real email.
+- The page: People & access → **Who gets which emails** (also from Notifications and each person's page). It shows a
+  photo per person per email: lit with a tick = sent, a dashed ring = not sent, a lock = can't be sent (the reason
+  comes on tap). The extra addresses are at the foot. Someone without full access sees **Emails you get**, read-only.
+  `.em-*` in admin.css; a locked photo is `aria-disabled` but still tappable, so Playwright needs `force`.
+- **`OWNER_NOTIFY_EMAIL` changes meaning, and it matters at deploy**: it is the first sign-in's address until its owner
+  sets their own in Your details, then it receives nothing unless it is someone's address or an extra. A shared inbox
+  that should keep getting everything must be added under Also emailed.
+- Gates: test-people §12 (the rules and the wiring), test-integration §52 (who each kind really reaches, through the
+  app itself in CLI; the must and lock refusals; areas taking their emails; the fallback; reply-by-email senders),
+  test-emails-render (the digest without the money), test-webpush (the per-person fallback), ui-test-people (the
+  matrix, locks, the must refusal, the limited page), ui-test-owneraccount (re-aimed). Break-tested on the must
+  fallback, the backup's extras, the must refusal, reply attribution, the lock state, the limited page and the digest
+  note.
 
 ## The Status page (approved demo, built "exactly like the demo")
 

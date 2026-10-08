@@ -2017,8 +2017,8 @@ chk('...and their unsubscribe goes in the shell footer, which has a slot for it'
 
 // THE OWNER'S NEW-BOOKING NOTIFICATION IS READ ON A PHONE.
 chk('it has an HTML half at all (it was text-only)',
-    preg_match('/\$out\[.owner.\] = send_owner\(\$subject, \$body, \$oHtml\);/', $mlE) === 1
-    && preg_match('/send_owner\(\$subject, \$body, \$oHtml\);\s*\n\s*\}\);/', $mlE) === 1);
+    preg_match("/\\\$out\\[.owner.\\] = send_people\\('booking', \\\$subject, \\\$body, \\\$oHtml\\);/", $mlE) === 1
+    && preg_match("/send_people\\('booking', \\\$subject, \\\$body, \\\$oHtml\\);\\s*\\n\\s*\\}\\);/", $mlE) === 1);
 chk('...with the guest\u{2019}s number and address tappable',
     preg_match('/\$oRows\[\] = \[\s*\n?\s*.Phone.,\s*\n?\s*.<a href="tel:/', $mlE) === 1
     && preg_match("/mailto:' \\. email_esc\\(\\\$oGuestEmail\\)/", $mlE) === 1);
@@ -2147,7 +2147,7 @@ chk('smtp_send_reliable never queues an unqueueable failure', empty($st['ok']) &
 //  must never adopt the reliable wrapper or the outbox (structural scans).
 chk('the enquiry ack queues on failure', strpos($mlE, "smtp_send_reliable('enquiry-ack'") !== false);
 chk('the booking confirmation queues on failure', strpos($mlE, "smtp_send_reliable('confirmation'") !== false);
-chk('send_owner queues each failed owner copy', preg_match("/function send_owner\\(.*?email_outbox_add\\('owner-alert'/s", $mlE) === 1);
+chk('send_people queues each failed owner copy', preg_match("/function send_people\\(.*?email_outbox_add\\('owner-alert'/s", $mlE) === 1);
 $nlSrc = (string) file_get_contents(__DIR__ . '/newsletter.php');
 chk('the newsletter queues failed recipients', strpos($nlSrc, "email_outbox_add('newsletter'") !== false);
 foreach (['pre-arrival.php', 'waitlist-lib.php', 'payments-due.php', 'autopay-lib.php'] as $obF) {

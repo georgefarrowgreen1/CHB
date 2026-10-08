@@ -158,11 +158,11 @@ if ($action === 'suggest') {
         alert_owner('New experience suggestion', ($guest['name'] ?: 'A guest') . ': ' . mb_substr($title, 0, 80), ['category' => 'system', 'tag' => 'experiences', 'url' => './?open=moderation']);
     } catch (\Throwable $e) {
     }
-    if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
+    if (defined('MAIL_ENABLED') && MAIL_ENABLED) {
         try {
             require_once __DIR__ . '/mailer.php';
             $m = owner_note_experience($guest['name'], $title, $bodyTxt, $linkUrl, $phone);
-            send_owner($m['subject'], $m['text']);
+            send_people('ideas', $m['subject'], $m['text']);
         } catch (\Throwable $e) {
         }
     }

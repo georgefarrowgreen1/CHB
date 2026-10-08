@@ -106,7 +106,7 @@ if ($threadId <= 0) {
 // verdict (SPF/DKIM/spam), REJECT a hard failure — a spoofed From from a
 // third party who obtained a reply token can't then pass a DKIM-aligned check.
 $fromAddr = inb_addr($from);
-$allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
+$allowed = function_exists('people_mail_senders') ? people_mail_senders() : [];
 if ($fromAddr === '' || !in_array($fromAddr, $allowed, true)) {
     echo 'sender not allowed';
     exit();
@@ -139,6 +139,7 @@ if ($body === '') {
 // Idempotency: a provider retry (or a double-fire) re-POSTs the same reply, so
 // skip it if it's already the newest message in the thread.
 if (!chat_last_message_is($threadId, $body)) {
-    chat_admin_reply($threadId, $body);
+    $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
+    chat_admin_reply($threadId, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
 }
 echo 'ok';

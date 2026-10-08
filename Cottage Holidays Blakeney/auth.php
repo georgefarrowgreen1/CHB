@@ -224,6 +224,7 @@ function admin_me_payload($row)
     $me['twofaLive'] = admin_twofa_on($row);
     $me['original'] = (int) $row['id'] === admin_original_owner_id();
     $me['notify'] = notify_prefs_for($row);
+    $me += people_mail_payload($row);
     return $me;
 }
 // The first owner's row predates the email column: fill it once from the owner

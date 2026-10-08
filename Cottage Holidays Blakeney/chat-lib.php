@@ -161,7 +161,8 @@ if (!function_exists('chat_last_message_is')) {
 // reply-by-email is configured, the guest's email carries a Reply-To that routes
 // their reply straight back into this same thread.
 if (!function_exists('chat_admin_reply')) {
-    function chat_admin_reply($threadId, $bodyTxt, $attachment = '')
+    // $actor: who replied ('admin:<id>'); '' = whoever is signed in, else the owner.
+    function chat_admin_reply($threadId, $bodyTxt, $attachment = '', $actor = '')
     {
         $threadId = (int) $threadId;
         $bodyTxt = mb_substr(trim((string) $bodyTxt), 0, 4000);
@@ -191,10 +192,10 @@ if (!function_exists('chat_admin_reply')) {
             ->execute([$threadId]);
         $logBody = $bodyTxt !== '' ? $bodyTxt : '📷 Photo';
         if (function_exists('log_activity')) {
-            // Whoever is signed in replied; a reply that came in by EMAIL has no
-            // session and is the owner's, as it always was.
+            // Whoever is signed in replied; a reply by EMAIL names the person whose
+            // address it came from, and one from no one's sign-in is the owner's.
             log_activity('comms', 'message.reply', 'Replied to a guest chat', [
-                'actor' => !empty($_SESSION['admin_id']) ? 'admin:' . (int) $_SESSION['admin_id'] : 'owner',
+                'actor' => $actor !== '' ? (string) $actor : (!empty($_SESSION['admin_id']) ? 'admin:' . (int) $_SESSION['admin_id'] : 'owner'),
                 'entity' => 'thread',
                 'entity_id' => (string) $threadId,
                 'meta' => ['detail' => mb_substr($logBody, 0, 120)],
@@ -304,7 +305,7 @@ if (!function_exists('chat_guest_reply')) {
                     $replyAddr !== '',
                     $subjTag,
                 );
-                send_owner($m['subject'], $m['text'], null, [], $replyAddr ?: null, $msgId);
+                send_people('messages', $m['subject'], $m['text'], null, ['reply_to' => $replyAddr ?: null, 'message_id' => $msgId]);
             }
         } catch (\Throwable $e) {
         }

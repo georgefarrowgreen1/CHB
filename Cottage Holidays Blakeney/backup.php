@@ -4,7 +4,7 @@
 //
 //  Dumps every table with plain PDO (shared hosting has no mysqldump), gzips
 //  it, keeps the last 8 dumps in backups/ (blocked from the web by
-//  backups/.htaccess) and emails the fresh dump to OWNER_NOTIFY_EMAIL — so a
+//  backups/.htaccess) and emails the fresh dump (encrypted) to whoever gets the backup — so a
 //  copy always lives OFF the host. Bookings and payment history are the one
 //  part of the site that can't be rebuilt; this is the insurance.
 //
@@ -391,8 +391,10 @@ try {
 $emailed = false;
 $emailErr = null;
 try {
-    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && $res['bytes'] < 8 * 1024 * 1024) {
-        require_once __DIR__ . '/mailer.php';
+    require_once __DIR__ . '/mailer.php';
+    // To each person with full access who chose the backup (the first owner if
+    // nobody has): never to the extra addresses, which aren't anyone's sign-in.
+    if (owner_recipients('backup') && $res['bytes'] < 8 * 1024 * 1024) {
         require_once __DIR__ . '/backup-crypt.php';
         $nice = number_format($res['bytes'] / 1024, 0) . ' KB';
         // Photos/uploads are archived on the host but too big to attach —
@@ -435,7 +437,7 @@ try {
         // Composed by backup_report_body() in mailer.php — previewable, and the render
         // gate proves it builds. The attachment stays here: it is a file, not content.
         $m = backup_report_body($nice, trim($filesNote . ' ' . $encNote));
-        $r = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html'], $atts);
+        $r = send_people('backup', $m['subject'], $m['text'], $m['html'], ['attachments' => $atts]);
         $emailed = !empty($r['ok']);
         $emailErr = $r['error'] ?? null;
     }

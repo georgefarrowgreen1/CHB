@@ -14,14 +14,21 @@ require_once __DIR__ . '/db.php';
 function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
 {
     require_once __DIR__ . '/mailer.php';
-    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
-        return ['ok' => false, 'error' => 'No owner email is set in config.php (OWNER_NOTIFY_EMAIL).'];
+    // Samples go to the person who asked — every one of them, the back office's
+    // own emails included (people_mail_only), never to everyone who'd get the real
+    // thing. Without a signed-in person (the staging Test centre's own runs) it is
+    // the config owner address, as it always was.
+    $owner = function_exists('admin_me') && admin_me() && function_exists('admin_contact_email') ? admin_contact_email(admin_me()) : '';
+    if ($owner === '' && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+        $owner = (string) OWNER_NOTIFY_EMAIL;
+    }
+    if ($owner === '') {
+        return ['ok' => false, 'error' => 'No email to send the samples to: add yours in Your details.'];
     }
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Email is switched off (MAIL_ENABLED is false).'];
     }
-
-    $owner = OWNER_NOTIFY_EMAIL;
+    people_mail_only($owner);
 
     // A live cottage to name in the samples (falls back to a placeholder).
     $propKey = '';

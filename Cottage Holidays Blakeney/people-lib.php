@@ -382,3 +382,101 @@ function people_upload_cap($slot)
     }
     return 'owner';
 }
+
+// ---- Who gets which emails ----
+// Every email the back office sends its people, in the order the page shows
+// them. cap: who MAY get it ('all' anyone, a switch, or 'owner' full access
+// only) — an area switched off takes its emails with it. must: the reason one
+// always has to reach someone, so the last person on it can't be switched off.
+// Sign-in codes and reset links aren't here: they only ever go to the person
+// signing in, so there is nothing to choose.
+const PEOPLE_MAILS = [
+    'enquiry' => ['cap' => 'all', 'must' => 'a guest is waiting for a reply', 'name' => 'new enquiries'],
+    'booking' => ['cap' => 'all', 'must' => '', 'name' => 'new bookings'],
+    'paid' => ['cap' => 'payments', 'must' => '', 'name' => 'payments received'],
+    'messages' => ['cap' => 'all', 'must' => 'guests are waiting for an answer', 'name' => 'guest messages'],
+    'reviews' => ['cap' => 'all', 'must' => '', 'name' => 'reviews to approve'],
+    'ideas' => ['cap' => 'website', 'must' => '', 'name' => 'things-to-do suggestions'],
+    'digest' => ['cap' => 'all', 'must' => '', 'name' => 'the weekly digest'],
+    'analytics' => ['cap' => 'website', 'must' => '', 'name' => 'the weekly analytics'],
+    'backup' => ['cap' => 'owner', 'must' => 'it’s the copy that lives off the host', 'name' => 'the backup'],
+];
+// Someone added later starts with the guest-facing emails; someone with full
+// access gets everything, which is how it worked before people existed.
+const PEOPLE_MAIL_LIMITED = ['enquiry' => true, 'booking' => true, 'paid' => true, 'messages' => true, 'reviews' => true, 'ideas' => false, 'digest' => true, 'analytics' => false, 'backup' => false];
+
+// A person's choices, as exactly the nine booleans (their own over the defaults).
+function people_mail_norm($row)
+{
+    $base = people_is_full($row) ? array_fill_keys(array_keys(PEOPLE_MAILS), true) : PEOPLE_MAIL_LIMITED;
+    $own = is_array($row) && isset($row['mail_prefs']) && $row['mail_prefs'] !== '' ? json_decode((string) $row['mail_prefs'], true) : null;
+    $out = [];
+    foreach (PEOPLE_MAILS as $k => $_) {
+        $out[$k] = is_array($own) && array_key_exists($k, $own) ? (bool) $own[$k] : (bool) $base[$k];
+    }
+    return $out;
+}
+// May this person get this email at all? (Their choice is a separate question,
+// so switching an area back on brings their old choice back.)
+function people_mail_can($row, $kind)
+{
+    return isset(PEOPLE_MAILS[$kind]) && people_can($row, PEOPLE_MAILS[$kind]['cap']);
+}
+// Does it reach them today? An invite nobody has accepted yet reaches no one.
+function people_mail_gets($row, $kind)
+{
+    return people_mail_can($row, $kind) && empty($row['invited_at']) && people_mail_norm($row)[$kind];
+}
+// Why it can't be switched on for them, in words ('' = it can).
+function people_mail_lock($row, $kind)
+{
+    if (people_mail_can($row, $kind)) {
+        return '';
+    }
+    $n = people_first_name($row);
+    if (!empty($row['removed_at'])) {
+        return $n . ' no longer has access.';
+    }
+    $cap = PEOPLE_MAILS[$kind]['cap'] ?? 'owner';
+    if ($cap === 'owner') {
+        return 'Only someone with full access gets the backup. It’s everything on the site.';
+    }
+    return $n . ' can’t get this yet. Switch on ' . (PEOPLE_CAPS[$cap][0] ?? $cap) . ' on ' . $n . '’s page first.';
+}
+// Switching $kind off for person $id: refused when it is an email that must
+// reach someone and nobody else would get it ('' = fine). $rows is everyone.
+function people_mail_must_problem(array $rows, $id, $kind)
+{
+    $must = PEOPLE_MAILS[$kind]['must'] ?? '';
+    if ($must === '') {
+        return '';
+    }
+    foreach ($rows as $r) {
+        if ((int) ($r['id'] ?? 0) !== (int) $id && empty($r['removed_at']) && people_mail_gets($r, $kind)) {
+            return '';
+        }
+    }
+    return 'Someone has to get ' . PEOPLE_MAILS[$kind]['name'] . ' — ' . $must . '.';
+}
+// What the back office is told about one person's emails: their choices, which
+// they may have at all, and which actually reach them today.
+function people_mail_payload($row)
+{
+    $out = ['mail' => people_mail_norm($row), 'mailCan' => [], 'mailGets' => []];
+    foreach (PEOPLE_MAILS as $k => $_) {
+        $out['mailCan'][$k] = people_mail_can($row, $k);
+        if (people_mail_gets($row, $k)) {
+            $out['mailGets'][] = $k;
+        }
+    }
+    return $out;
+}
+// The kinds in page order, with who may get each and whether it must reach someone.
+function people_mail_kinds()
+{
+    $out = [];
+    foreach (PEOPLE_MAILS as $k => $m) {
+        $out[] = ['k' => $k, 'cap' => $m['cap'], 'must' => $m['must'] !== ''];
+    }
+    return $out;
+}

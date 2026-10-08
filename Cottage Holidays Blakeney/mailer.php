@@ -557,37 +557,142 @@ function mail_sent_tally($n)
     }
 }
 
-// Everyone who should receive owner/admin activity notifications: the primary
-// OWNER_NOTIFY_EMAIL plus any extra addresses added in Settings → Notifications
-// (content 'notify-emails' = JSON array). Deduped case-insensitively, validated,
-// primary first. This is the single source of truth for "who gets alerted".
-function owner_recipients()
+// ---- WHO GETS AN EMAIL TO THE BACK OFFICE ----
+// Each person chooses which kinds reach them (people-lib.php PEOPLE_MAILS: an
+// area switched off takes its emails with it), and the extra addresses on
+// Notifications are copied on every kind but the backup. Before people existed —
+// or whenever the people can't be read — it is the config owner address plus
+// those extras, exactly as it always was. A kind that must reach someone and that
+// nobody has chosen falls back to the first owner, so an enquiry can't vanish.
+// Returns [['to' => email, 'row' => person row|null], …], people first, deduped.
+// $kind '' = the people with full access (any sender not yet given a kind).
+function people_mail_recipients($kind)
 {
-    $list = [];
-    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && filter_var(OWNER_NOTIFY_EMAIL, FILTER_VALIDATE_EMAIL)) {
-        $list[] = OWNER_NOTIFY_EMAIL;
+    $only = people_mail_only();
+    if ($only !== '') {
+        return [['to' => $only, 'row' => function_exists('admin_me') ? admin_me() : null]];
     }
-    // 'notify-emails' is an ARRAY-valued content key, so it MUST be read with
-    // content_json() — content_value() returns '' for a JSON array, which would
-    // silently drop every extra recipient (and reject co-host reply-by-email).
-    if (function_exists('content_json')) {
-        foreach (content_json('notify-emails', []) as $e) {
-            $e = trim((string) $e);
-            if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) {
-                $list[] = $e;
+    $out = [];
+    $seen = [];
+    $add = function ($to, $row) use (&$out, &$seen) {
+        $to = strtolower(trim((string) $to));
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL) || isset($seen[$to])) {
+            return;
+        }
+        $seen[$to] = true;
+        $out[] = ['to' => $to, 'row' => $row];
+    };
+    $people = people_mail_rows();
+    if ($people === null) {
+        if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+            $add(OWNER_NOTIFY_EMAIL, null);
+        }
+    } else {
+        foreach ($people as $row) {
+            $wants = $kind === '' ? people_is_full($row) && empty($row['invited_at']) : people_mail_gets($row, $kind);
+            if ($wants) {
+                $add(admin_contact_email($row), $row);
+            }
+        }
+        if (!$out && ($kind === '' || (PEOPLE_MAILS[$kind]['must'] ?? '') !== '')) {
+            $first = null;
+            foreach ($people as $row) {
+                if ((int) $row['id'] === admin_original_owner_id()) {
+                    $first = $row;
+                }
+            }
+            $add($first ? admin_contact_email($first) : (defined('OWNER_NOTIFY_EMAIL') ? OWNER_NOTIFY_EMAIL : ''), $first);
+            if (!$out && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+                $add(OWNER_NOTIFY_EMAIL, null);
             }
         }
     }
-    $seen = [];
-    $out = [];
-    foreach ($list as $e) {
-        $k = strtolower($e);
-        if (!isset($seen[$k])) {
-            $seen[$k] = true;
-            $out[] = $e;
+    if ($kind !== 'backup') {
+        foreach (people_mail_extras() as $e) {
+            $add($e, null);
         }
     }
     return $out;
+}
+// The people who can sign in (not removed), or null before the people migration
+// or when the table can't be read — the caller then does what it always did.
+function people_mail_rows()
+{
+    if (!function_exists('db') || !function_exists('people_mail_gets') || !function_exists('admin_contact_email')) {
+        return null;
+    }
+    try {
+        return db()->query('SELECT * FROM admins WHERE removed_at IS NULL ORDER BY id')->fetchAll();
+    } catch (\Throwable $e) {
+        return null;
+    }
+}
+// The extra addresses on Notifications ('notify-emails', a JSON array — so it
+// MUST be read with content_json(): content_value() returns '' for an array,
+// which would silently drop every extra recipient).
+function people_mail_extras()
+{
+    $out = [];
+    if (function_exists('content_json')) {
+        try {
+            foreach (content_json('notify-emails', []) as $e) {
+                $e = trim((string) $e);
+                if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) {
+                    $out[] = $e;
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    return $out;
+}
+// Send THIS request's back-office emails to one address only (a sample, or a
+// weekly email asked for from the back office): get with no argument.
+function people_mail_only($addr = null)
+{
+    static $only = '';
+    if ($addr !== null) {
+        $only = strtolower(trim((string) $addr));
+    }
+    return $only;
+}
+// Who may reply to a guest by email (inbound-mail.php, mailbox-read.php): anyone
+// with a sign-in, the config owner address and the extras. The thread token is
+// the real gate; this list is defence in depth.
+function people_mail_senders()
+{
+    $out = [];
+    foreach (people_mail_rows() ?? [] as $row) {
+        if (empty($row['invited_at'])) {
+            $out[] = strtolower(admin_contact_email($row));
+        }
+    }
+    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+        $out[] = strtolower((string) OWNER_NOTIFY_EMAIL);
+    }
+    foreach (people_mail_extras() as $e) {
+        $out[] = strtolower($e);
+    }
+    return array_values(array_unique(array_filter($out)));
+}
+// The person a reply-by-email came from (their row), or null for an address that
+// isn't anyone's sign-in (the config owner address, an extra): that reply is the
+// owner's, as it always was.
+function people_mail_sender_row($addr)
+{
+    $addr = strtolower(trim((string) $addr));
+    foreach (people_mail_rows() ?? [] as $row) {
+        if ($addr !== '' && empty($row['invited_at']) && strtolower(admin_contact_email($row)) === $addr) {
+            return $row;
+        }
+    }
+    return null;
+}
+// The addresses for a kind ('' = the people with full access), for callers that
+// only need to know whether anyone would get it.
+function owner_recipients($kind = '')
+{
+    return array_map(fn($r) => $r['to'], people_mail_recipients($kind));
 }
 
 /**
@@ -664,9 +769,6 @@ function owner_alert_text_html($subject, $text)
     }
     return email_shell($heading, $inner);
 }
-// Send ONE owner/admin notification to every recipient (owner_recipients()).
-// Returns the primary send's result so existing callers keep their {ok,error}
-// contract; copies to the extra addresses are best-effort.
 // ============================================================
 // The email OUTBOX — durable retry for one-shot transactional emails.
 // The stamp-on-success crons (pre-arrival, review ask, waitlist, payment
@@ -914,29 +1016,31 @@ function email_outbox_kick()
     }
 }
 
-function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, $messageId = null)
+// Send one back-office email of one KIND (people-lib.php PEOPLE_MAILS) to everyone
+// who gets it. $opts: attachments, reply_to, message_id, and compose — asked per
+// recipient (their person row, or null for an extra address) for [subject, text,
+// html], which is how a digest leaves the money out of a copy for someone without
+// Money overview. Plain-text callers get the house shell automatically.
+function send_people($kind, $subject, $text, $html = null, array $opts = [])
 {
-    $rcpts = owner_recipients();
+    $rcpts = people_mail_recipients((string) $kind);
     if (!$rcpts) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
-    // Plain-text callers get the branded shell automatically — one look for
-    // every email that leaves this site, owner alerts included.
-    if ($html === null || $html === '') {
-        $html = owner_alert_text_html($subject, $text);
-    }
-    // One connection for all owner copies (was one full handshake per address).
+    $compose = isset($opts['compose']) && is_callable($opts['compose']) ? $opts['compose'] : null;
+    // One connection for all the copies (was one full handshake per address).
     $msgs = [];
-    foreach ($rcpts as $to) {
+    foreach ($rcpts as $r) {
+        [$s, $t, $h] = $compose ? $compose($r['row']) : [$subject, $text, $html];
         $msgs[] = [
-            'to' => $to,
-            'name' => 'Owner',
-            'subject' => $subject,
-            'text' => $text,
-            'html' => $html,
-            'attachments' => $atts,
-            'reply_to' => $replyTo,
-            'message_id' => $messageId,
+            'to' => $r['to'],
+            'name' => $r['row'] && function_exists('people_display_name') ? people_display_name($r['row']) : 'Owner',
+            'subject' => $s,
+            'text' => $t,
+            'html' => $h === null || $h === '' ? owner_alert_text_html($s, $t) : $h,
+            'attachments' => $opts['attachments'] ?? [],
+            'reply_to' => $opts['reply_to'] ?? null,
+            'message_id' => $opts['message_id'] ?? null,
         ];
     }
     $results = smtp_send_batch($msgs);
@@ -960,6 +1064,11 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
         $out['queued'] = true;
     }
     return $out;
+}
+// A sender with no kind yet: the people with full access (and the extras).
+function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, $messageId = null)
+{
+    return send_people('', $subject, $text, $html, ['attachments' => $atts, 'reply_to' => $replyTo, 'message_id' => $messageId]);
 }
 
 /** Encode a display name safely for a header (handles non-ASCII). */
@@ -1722,14 +1831,14 @@ function owner_payment_notice_body($b)
 }
 function send_owner_payment_notice($b)
 {
-    // Guard on what send_owner() can actually deliver to: the co-host list
-    // ('notify-emails') counts too — an owner relying on it with a cleared
-    // OWNER_NOTIFY_EMAIL silently got NO payment notices from this path.
-    if (!owner_recipients()) {
+    // Guard on who would actually get it: the people who chose payment emails
+    // and the extra addresses — an owner relying on the extras with a cleared
+    // OWNER_NOTIFY_EMAIL once silently got NO payment notices from this path.
+    if (!owner_recipients('paid')) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
     $m = owner_payment_notice_body($b);
-    return send_owner($m['subject'], $m['text']);
+    return send_people('paid', $m['subject'], $m['text']);
 }
 
 // The day-after-checkout thank-you — PURE (facts in as arguments, like arrival_email_body), so
@@ -2426,8 +2535,8 @@ function sanitize_email_attachments($raw)
 // the enquiry fields + prebuilt approve_url / decline_url (enquiry-action.php).
 function send_owner_enquiry_email($e)
 {
-    // Co-host recipients count too (see send_owner_payment_notice above).
-    if (!owner_recipients()) {
+    // The extra addresses count too (see send_owner_payment_notice above).
+    if (!owner_recipients('enquiry')) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
     $prop = function_exists('prop_display')
@@ -2543,7 +2652,7 @@ function send_owner_enquiry_email($e)
         email_btn2($e['decline_url'], 'Decline this enquiry') .
         email_footnote('Each link opens a confirmation page first &mdash; nothing happens until you press the button there.');
     $html = email_shell('You promised a reply by the end of the next day. ' . $party . ' · ' . $prop . '.', $inner);
-    return send_owner($subject, $text, $html);
+    return send_people('enquiry', $subject, $text, $html);
 }
 
 // One-line summary of a cottage's cancellation policy (mirrors the JS
@@ -2845,7 +2954,7 @@ function send_booking_emails($b)
     // ---- Owner notification ----
     // Skipped on a payment re-send (skip_owner) so the owner isn't re-pinged with
     // "new booking" each time a payment is recorded.
-    if (empty($b['skip_owner']) && owner_recipients()) {
+    if (empty($b['skip_owner']) && owner_recipients('booking')) {
         // WHO, WHERE, WHEN, and the money state — what the owner wants from a lock screen.
         $subject = 'New booking: ' . ($b['name'] ?: 'A guest') . ", {$b['prop_name']}, " . email_range($b['check_in'], $b['check_out']) .
             (round((float) ($b['paid_so_far'] ?? 0), 2) > 0 ? ' (£' . number_format((float) $b['paid_so_far'], 2) . ' paid)' : '');
@@ -2913,11 +3022,11 @@ function send_booking_emails($b)
             // the owner copy can go out after the response has been flushed, so
             // the save isn't kept waiting on a second SMTP handshake.
             mail_after_response(function () use ($subject, $body, $oHtml) {
-                send_owner($subject, $body, $oHtml);
+                send_people('booking', $subject, $body, $oHtml);
             });
             $out['owner'] = ['ok' => true, 'deferred' => true];
         } else {
-            $out['owner'] = send_owner($subject, $body, $oHtml);
+            $out['owner'] = send_people('booking', $subject, $body, $oHtml);
         }
     }
 
@@ -5083,13 +5192,16 @@ function owner_digest_body($d)
     $nameOf = fn($k) => prop_display($k)['name'];
     $pretty = fn($dt) => date('D j M', strtotime($dt));
     $accentOf = fn($k) => prop_display($k)['accent'];
+    // A COPY WITHOUT THE MONEY for someone without Money overview: no figures, no
+    // balances, and no list of warnings (their free text can carry an amount).
+    $plain = !empty($d['noMoney']);
     // THE THREE NUMBERS THAT DECIDE THE WEEK, with the one thing that needs doing named
     // first when there is one — read on a Monday-morning lock screen.
     $attn = is_array($d['actAttention'] ?? null) ? count($d['actAttention']) : 0;
     $subject =
         'Week ahead: ' .
         count((array) ($d['arrivals'] ?? [])) . ' arrival' . (count((array) ($d['arrivals'] ?? [])) === 1 ? '' : 's') .
-        ((float) ($d['owedSum'] ?? 0) > 0.005 ? ', ' . $money($d['owedSum']) . ' to collect' : '') .
+        (!$plain && (float) ($d['owedSum'] ?? 0) > 0.005 ? ', ' . $money($d['owedSum']) . ' to collect' : '') .
         ', ' . $d['newBookings'] . ' new booking' . ($d['newBookings'] === 1 ? '' : 's') .
         ($attn > 0 ? ' — ' . $attn . ' to fix' : '');
 
@@ -5107,28 +5219,22 @@ function owner_digest_body($d)
         "Good morning,\n\n" .
         "Here's how Cottage Holidays Blakeney is looking.\n\n" .
         "THE WEEK JUST GONE\n" .
-        "  • New bookings: {$d['newBookings']} (" .
-        $money($d['newValue']) .
-        " of stays)\n" .
-        '  • Money received: ' .
-        $money($d['received']) .
-        "\n\n" .
+        "  • New bookings: {$d['newBookings']}" .
+        ($plain ? "\n\n" : ' (' . $money($d['newValue']) . " of stays)\n" . '  • Money received: ' . $money($d['received']) . "\n\n") .
         "THE WEEK AHEAD — arrivals\n{$arrivalsTxt}\n\n" .
         "TO KEEP AN EYE ON\n" .
-        "  • Balances owed: {$d['owedCount']} booking" .
-        ($d['owedCount'] === 1 ? '' : 's') .
-        ' (' .
-        $money($d['owedSum']) .
-        ")\n" .
+        ($plain ? '' : "  • Balances owed: {$d['owedCount']} booking" . ($d['owedCount'] === 1 ? '' : 's') . ' (' . $money($d['owedSum']) . ")\n") .
         "  • Pending enquiries: {$d['pending']}\n" .
         ($d['occPct'] !== null ? "  • Occupancy (next 30 days): {$d['occPct']}%\n" : '') .
         "\nACTIVITY THIS WEEK\n" .
         "  • {$d['actTotal']} logged event" .
         ($d['actTotal'] === 1 ? '' : 's') .
         "\n" .
-        (count($d['actAttention'])
-            ? "  • Needs attention:\n" . implode("\n", array_map(fn($a) => '     - ' . $a['summary'], $d['actAttention'])) . "\n"
-            : "  • Nothing needs your attention.\n") .
+        ($plain
+            ? ''
+            : (count($d['actAttention'])
+                ? "  • Needs attention:\n" . implode("\n", array_map(fn($a) => '     - ' . $a['summary'], $d['actAttention'])) . "\n"
+                : "  • Nothing needs your attention.\n")) .
         (count($d['misses'])
             ? "\nTEACH YOUR ASSISTANT\n  • " .
                 count($d['misses']) .
@@ -5171,23 +5277,29 @@ function owner_digest_body($d)
         email_h('Your week at a glance', '#C6885E') .
         email_p(htmlspecialchars(date('l j F Y')), true) .
         $sectionLabel('The week just gone') .
-        email_rows([
-            ['New bookings', $d['newBookings'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['newValue']) . ')</span>'],
-            ['Money received', $money($d['received'])],
-        ]) .
+        email_rows(
+            $plain
+                ? [['New bookings', (string) $d['newBookings']]]
+                : [
+                    ['New bookings', $d['newBookings'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['newValue']) . ')</span>'],
+                    ['Money received', $money($d['received'])],
+                ],
+        ) .
         $sectionLabel('The week ahead — arrivals') .
         $arrivalsHtml .
         $sectionLabel('To keep an eye on') .
         email_rows(
             array_filter([
-                ['Balances owed', $d['owedCount'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['owedSum']) . ')</span>'],
+                $plain ? null : ['Balances owed', $d['owedCount'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['owedSum']) . ')</span>'],
                 ['Pending enquiries', (string) $d['pending']],
                 $d['occPct'] !== null ? ['Occupancy (next 30 days)', $d['occPct'] . '%'] : null,
             ]),
         ) .
         $sectionLabel('Activity this week') .
         email_rows([['Logged events', (string) $d['actTotal']]]) .
-        (count($d['actAttention'])
+        ($plain
+            ? ''
+            : (count($d['actAttention'])
             ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">' .
                 implode(
                     '',
@@ -5201,7 +5313,7 @@ function owner_digest_body($d)
                     ),
                 ) .
                 '</table>'
-            : email_p('Nothing needs your attention.', true)) .
+            : email_p('Nothing needs your attention.', true))) .
         (count($d['misses'])
             ? $sectionLabel('Teach your assistant') .
                 email_p(
