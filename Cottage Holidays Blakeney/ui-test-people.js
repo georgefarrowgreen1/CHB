@@ -315,6 +315,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
             rows: [...document.querySelectorAll('#settings-index .settings-row')].filter((r) => r.getClientRects().length).map((r) => (r.querySelector('.settings-row-label') || {}).textContent),
             labels: [...document.querySelectorAll('#settings-index .settings-section-label')].filter((l) => l.getClientRects().length).map((l) => l.textContent),
             summary: (() => { const m = document.getElementById('manage-verdicts'); return !!m && m.getClientRects().length > 0; })(),
+            first: (() => { const c = [...document.getElementById('settings-index').children].find((x) => x.getClientRects().length); return c ? c.id : ''; })(),
         }));
         const want = ['Booking terms & conditions', 'Guests', 'Waitlist', 'Reviews', 'Guest photos', 'Saved replies', 'Guest chat'];
         ok(want.every((t) => idx.rows.some((r) => (r || '').indexOf(t) === 0)), `Manage keeps her everyday rows (${idx.rows.join(' · ')})`);
@@ -322,7 +323,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(!gone.some((t) => idx.rows.includes(t)), 'and none of the areas switched off for her');
         ok(!idx.labels.includes('Website & marketing') && !idx.labels.includes('System & tools') && !idx.labels.includes('Cottages & pricing'), `a group left with nothing in it goes too (${idx.labels.join(' · ')})`);
         ok(!idx.summary, 'the system summary row is full access only');
-        ok(idx.labels[0] === 'Your account', `her own account is the first thing on Manage (${idx.labels[0]})`);
+        ok(idx.first === 'oa-acct-grp' && !idx.labels.includes('Your account'), `her own account is the first thing on Manage, with no heading over it (${idx.first})`);
         await page.evaluate(() => settingsOpen('acct'));
         await page.waitForTimeout(500);
         const acct = await page.evaluate(() => ({ lead: (document.querySelector('#acct-body .ga-lead') || {}).textContent, people: !!document.querySelector('#acct-body .oa-r-people'), host: !!document.querySelector('#acct-body .oa-r-host') }));

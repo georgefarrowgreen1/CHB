@@ -387,16 +387,28 @@
         </div>
 
         <div id="settings-index" class="settings-index">
+            <!-- YOUR ACCOUNT, first and uncaptioned (owner-asked): one row with you on
+                 it, 18px under the title line in every state. Your photo and name say
+                 what it is, so it carries no heading, and "Needs a look" comes AFTER
+                 it with a heading of its own: a problem row directly above an
+                 uncaptioned account row would read as one list, and the account would
+                 jump down the page whenever a problem arrived. The host profile,
+                 notifications, sign-in, the two device settings and Log out live on the
+                 account page it opens; oaIndexRowPaint fills in the photo and name. -->
+            <div class="settings-group" id="oa-acct-grp">
+                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit people access staff team sophia invite add someone user users admins" data-act="settingsOpen" data-arg="acct">
+                    <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
+                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub" id="oa-index-sub">Your details, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
             <!-- NEEDS A LOOK — a row for each thing to fix, with its one-tap fix,
                  above the untouched toolbox. Filled by manageVerdicts() from the
                  SAME stores the badges read (__cronStatusPre, the bootstrap feeds
                  payload, the system check, __nyMod, chbMissList). Empty when all
                  is clear: the pill above says so. -->
             <div id="manage-verdicts"></div>
-            <!-- One Manage index in SEVEN groups, each answering one question. You come
-                 first (owner-asked, the iOS Settings place for your own account), then the
-                 rest by how often they are used:
-                   Your account            you: profile, alerts, sign-in, display
+            <!-- Then the toolbox in SIX captioned groups, each answering one question,
+                 by how often they are used:
                    Cottages & pricing      what you let and what it costs
                    Bookings & payments     how guests pay and what they agree to
                    Guests                  the people: accounts, the waitlist, and what
@@ -405,16 +417,6 @@
                    Website & marketing     what the public site says and who sees it
                    System & tools          is it running, what happened, maintenance
                  The labels ARE the grouping; settingsFilter() hides empty groups on search. -->
-            <div class="settings-section-label">Your account</div>
-            <div class="settings-group">
-                <!-- ONE row with you on it (approved demo): the host profile, notifications,
-                     sign-in, the two device settings and Log out live on the account page it
-                     opens. oaIndexRowPaint fills in the photo and name. -->
-                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit people access staff team sophia invite add someone user users admins" data-act="settingsOpen" data-arg="acct">
-                    <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
-                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub" id="oa-index-sub">Your details, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
-                </button>
-            </div>
             <div class="settings-section-label">Cottages &amp; pricing</div>
             <div class="settings-group">
                 <div id="cottages-overview" class="area-overview mg-cots"></div>
