@@ -3563,7 +3563,9 @@ the "Needs a look" caption, so the space opens with the rows; `#manage-verdicts`
 900px** the index is two CSS columns and a group before the `column-span: all` verdicts sat alone in column one, 4px
 from the next caption — so the row spans too (640px, as wide as "Needs a look") and brings 20px, with `.mg-probs`
 20px inside the fold. Then, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
-Calendar sync) · **Bookings & payments** (Payments, Cancellation policy, Booking terms) · **Guests** (Guest
+Calendar sync) · **Bookings & payments** (Payments, Cancellation policy — the read-only "Booking terms &
+conditions" row was removed at the owner's ask, as nothing on it can be edited; the terms still open from the guest
+site) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
