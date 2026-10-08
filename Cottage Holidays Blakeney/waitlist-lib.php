@@ -46,17 +46,18 @@ function wl_send($row)
             : '';
     $guest = $row['name'] ?: 'there';
     $text =
-        'Hi ' .
+        'Hello ' .
         $guest .
         ",\n\nA space has just opened at {$name}{$prettyDates}. Popular dates can go quickly, so book soon to secure them.\n\nVisit our website to check availability and enquire.\nCottage Holidays Blakeney";
     // Branded HTML part like every other guest email (this one was bare text).
     $html = null;
     if (function_exists('email_shell')) {
         $esc = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
-        $accent = function_exists('prop_display') ? prop_display($row['prop_key'])['accent'] : '#C79A64';
+        $accent = function_exists('prop_display') ? prop_display($row['prop_key'])['accent'] : '#C6885E';
         $inner =
+            email_eyebrow($accent, $name . ($row['check_in'] && $row['check_out'] ? ' · ' . email_range($row['check_in'], $row['check_out']) : '')) .
             email_h('A space has opened up') .
-            email_p('Hello ' . $esc($guest) . ', good news — availability has just opened at <strong style="color:#2A2622;">' . $esc($name) . '</strong>' . $esc($prettyDates) . '.') .
+            email_p('Hello ' . $esc($guest) . ', good news — availability has just opened at <strong style="color:#1B2A34;">' . $esc($name) . '</strong>' . $esc($prettyDates) . '.') .
             email_p('Popular dates can go quickly, so book soon to secure them.') .
             email_btn(site_base_url() . '/', 'Check availability');
         $html = email_shell('Availability at ' . $name, $inner, $accent);

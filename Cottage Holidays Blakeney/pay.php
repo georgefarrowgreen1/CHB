@@ -691,6 +691,7 @@ if ($action === 'charge') {
         // Notify the owner that money has landed (best-effort).
         try {
             send_owner_payment_notice([
+                'id' => (int) $bookingId,
                 'name' => $b['name'],
                 'prop_key' => $b['prop_key'],
                 'prop_name' => $propName,

@@ -36,9 +36,9 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         }
     } catch (\Throwable $e) {
     }
-    // The cottage's own accent, for the two nudges and the rescue — they are the only
-    // samples whose builder takes one (email_shell's bar and email_btn's fill).
-    $accent = '#C79A64';
+    // The cottage's own accent — the builders take one for the cottage's dot (the
+    // shell has no bar and every button is the house accent, so that is all it colours).
+    $accent = '#C6885E';
     try {
         if ($propKey !== '') {
             $accent = prop_display($propKey)['accent'] ?: $accent;
@@ -353,6 +353,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                     'misses' => [['t' => 'is there a hot tub', 'n' => 3]],
                     'actTotal' => 12,
                     'actAttention' => [['summary' => 'A calendar feed has not imported for 2 days', 'severity' => 'warn']],
+                    'openUrl' => site_base_url() . '?open=today',
                 ]);
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },

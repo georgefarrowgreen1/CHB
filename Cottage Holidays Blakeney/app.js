@@ -8838,10 +8838,11 @@ async function downloadInvoice(bookingId) {
     const MUTED = [82, 100, 110];
     const HAIR = [230, 221, 202];
     // #4CAF50 was 2.78:1 and the accent as TEXT 2.55:1, both under AA. These are
-    // invoice.php's INV_OK_INK / INV_ACCENT_INK; the accent stays a FILL.
+    // invoice.php's INV_OK_INK / INV_ACCENT_INK / INV_ALERT_INK (the email inks, i.e.
+    // the dashboard's light --accent-text and --danger-text); the accent stays a FILL.
     const OK = [31, 107, 58];
-    const ACCENT_INK = [138, 90, 43];
-    const ALERT_INK = [163, 41, 28];
+    const ACCENT_INK = [150, 92, 53];
+    const ALERT_INK = [188, 38, 38];
     const ACCENT = hexRgb((meta && meta.accent) || '#C79A64');
     // ONE ANATOMY WITH invoice.php — the guest's page in pt: linen ground, an
     // amount card under the accent band, then Charges / Payments / Your stay /
@@ -21259,7 +21260,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'signin1007';
+    const BUILD = 'emaildash1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

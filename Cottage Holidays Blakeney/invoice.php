@@ -25,16 +25,19 @@
 //    is pure and mailer.php is not required on a guest page. test-invoice.php
 //    asserts each equals its mailer.php definition, so the pair cannot drift —
 //    the same discipline that keeps priceBreakdown and price_breakdown honest.
-//    What they replace, measured on this document's white:
-//      #8a8378 (every label, heading and note) 3.75:1  → INK_MUTED  6.49:1
-//      the per-cottage accent AS TEXT          2.55:1  → INK_ACCENT 5.87:1
-//      white on the accent fill                2.55:1  → ON_ACCENT  8.2:1
+//    Since the emails took the back office's own colours, these are the dashboard's
+//    light-mode text tokens — the same slate the owner's PDF (app.js) already used for
+//    its muted ink, so the page and the PDF agree again. Measured on this white:
+//      muted (--text-muted #52646E) 6.16:1, accent as words (--accent-text #965C35)
+//      5.41:1, warn 5.75:1, alert 6.10:1; test-invoice §1 measures every chip too.
+//    What they first replaced: #8a8378 at 3.75:1, the cottage accent as text at
+//    2.55:1, and white on the accent fill at 2.55:1.
 const INV_INK = '#1b2a34';        // body
 const INV_INK_2 = '#46525b';      // secondary prose
-const INV_MUTED = '#655D50';      // labels, captions, notes  (email_muted_ink)
-const INV_ACCENT_INK = '#8A5A2B'; // the accent as WORDS       (email_accent_ink)
-const INV_WARN_INK = '#8A5000';   // a due date                (email_warn_ink)
-const INV_ALERT_INK = '#A3291C';  // a deposit retained        (email_alert_ink)
+const INV_MUTED = '#52646E';      // labels, captions, notes  (email_muted_ink)
+const INV_ACCENT_INK = '#965C35'; // the accent as WORDS       (email_accent_ink)
+const INV_WARN_INK = '#9C5300';   // a due date                (email_warn_ink)
+const INV_ALERT_INK = '#BC2626';  // a deposit retained        (email_alert_ink)
 const INV_OK_INK = '#1f6b3a';     // settled, a credit
 const INV_ON_ACCENT = '#3a2e1e';  // ink ON the accent fill
 const INV_HAIR = '#e4dbc8';       // a stated edge (buttons, the action bar)

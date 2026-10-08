@@ -507,7 +507,9 @@ function alert_owner($title, $body, $opts = [])
     if ($sent === 0 && !empty($opts['email'])) {
         try {
             require_once __DIR__ . '/mailer.php';
-            $m = owner_note_push_fallback($title, $body);
+            // The email lands where the notification would have: the push's own target.
+            $open = preg_match('/[?&]open=([a-z0-9:-]+)/', (string) ($opts['url'] ?? ''), $om) ? $om[1] : '';
+            $m = owner_note_push_fallback($title, $body, $open);
             send_owner($m['subject'], $m['text']);
         } catch (\Throwable $e) {
         }

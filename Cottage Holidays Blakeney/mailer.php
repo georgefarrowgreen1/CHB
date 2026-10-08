@@ -1,8 +1,8 @@
 <?php
 
-// Centered crown logo for the top of customer emails. The image is embedded
-// as a base64 data URI so it travels inside the email — no external URL to
-// break and no dependence on the site domain. Works on a light background.
+// The crown for the header line of every email. The image is embedded as a base64
+// data URI so it travels inside the email — no external URL to break and no
+// dependence on the site domain. It reads on both the light and the dark card.
 //
 // A data URI cannot be stripped by the image blocking most clients apply by default,
 // which is worth its bytes — it is the one thing that makes these emails look like
@@ -20,22 +20,13 @@
 // arithmetic passed and looking at it did not, which is the whole reason to look.
 function email_crown_header($bg)
 {
-    $src =
-        'data:image/png;base64,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';
-    // THE HEADER IS A LINE, NOT A MASTHEAD (the invoice's modernisation, applied
-    // here). The centred 72px crown + brand + tagline block spent ~210px before
-    // the message started, on every email including a sign-in code. One quiet row
-    // now: small crown beside the serif name — the one place the serif survives —
-    // on the same left rail everything else stands on. $bg is unused since the
-    // header sits inside the card; kept so the signature doesn't ripple.
-    return '<tr><td class="ec-pad" style="padding:16px 32px 13px;border-bottom:1px solid #EFE9DD;background:' .
-        ($bg !== '' ? $bg : 'transparent') .
-        ';">' .
-        '<img src="' .
-        $src .
-        '" width="24" height="24" alt="" ' .
-        'style="display:inline-block;width:24px;height:24px;border:0;outline:none;vertical-align:-6px;margin-right:9px;">' .
-        '<span style="font-family:' . email_serif() . ';font-size:16px;color:#262320;letter-spacing:0.3px;">Cottage Holidays Blakeney</span>' .
+    $src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAYAAADnRuK4AAAZvklEQVR42u2deZxcVZXHz7n3bVXV3UlQEHAGxPnIhLSjwwiyCCbNTlhEoGqITkQGJBADgSQkAZFXTyVkIQYMhkUxhhmWecUyrAOyJM0mjDA4jN0ioyggwhgmSS9Vb7v3nPmjupIeIECS6nTn0/fL537yB8mnqu479/zOPefc+wAMBoPBYDAYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDCMaBkBmRjMTBoNhO3sfZvzlTUsKq1cuG8vMyAzGE70HwkzBexhPGEpEZHfsTt/+i53HXYuIDJXQzJXhQxiP7wtAhJcfuHHCK/et2vDqg//ML939k8MAAMIwlGaGjAd6f9rb64GzEktQ4JgkzcAScumvwmtaGtJmJskY0Oalq1TSv7lr5T+4jj25vxarOMmU61h/azv5C0qlkoZKxczZIMxqGhQ0AwC8XLlud3TdZzXR7pnSDABCCCTXdmoJ6QM+fdKZ3ez7AoOAzKwZD7SJSkUgIivL/q7rOB9Psowa86O0ZilFi4WwxPd9UZc5s/iMAW2UrqLEUkl33fWjyY6UZ2zo69MIKJkZmBkQUPb09mtHWpNPbd/9H7FU0mZXVmfU7yoYAMsTinD51MkthVwuZOadM0XvkncEBGZmS8r9v3H88eHHpkztBQDR2dnJxgONZsJQBEFAY8eMm+c5zoRqFGsAEEwMgwcAiChO2LHl7pbH30FEbm9vH/UyNqonoBEMv1i5bj9LWE8maWoRs0BE3HywTZT3PFRaH/M3xWk/C8NQlkolPVrn0BrVi6dcBh/AAcZlCOBqrTUKgcz8Prs1AK0JBeKSB/7p6meO7erqZ2ZERDYGtIWxAwLssJPGYSgQUf/yX1ack3PsQ9b39msphRyQq81bHYKoRZEe19b2mY9JPQeD4LLV9XlUO7gSbdWzFNvwicy+LzgM5Y6WnWXfF1gq6Wdu+sFeEoXfV4sIEETd87z/YGYARNFfrWrXFhf8+y0r9u0IAsW+v6PFkxiGRTlQnuFtsbyt4verV47dq+OMDZtcuy/WrAExaVJZj3R3zvU4h1645Zo7PMc9uadaIyFwiwyAiKmtkBNxmq35rbXmiGJxAiOO7OQiM2NlIJM+OG57YeWysfueceGG7SJhzL5ADMjSuX3fWlP5phB8u+taDyOe/L8AQAABcKPoWCzSSDOmsF5p1y/cvLzo2s7JPf1VLcQHS9e7XDei6Omv6bGtLZP2rB5yNuLMaxulkJFqNIioAUADADxz9dVt0KYPlVJOjRTfAwC3NBbWkBoQYkDMvgD4+zV/7rz97LZC4da33l7/xp87K49FSXYfa/0EHlt6s/H3V6/2rbVr27lYKtFwx0y+D6JYKtFDK5bsgkIuidOMmFm8X9D8Pg8GEBCrUUSu7Vz2xKqF90Op9Lrv+yIY/jIHhmFR7Nw1ARFRNYzmhZXLxvYrdWjOc4+NkvSYjxRa9uqtxc/9cb2+a2s3AlsVRJfLAEGA/OLNK6YnH23b37atv1KaprqONVVl8MdXf/bPT0pp3fn2hnWdf9sx/c+DV39xGD1TuT1EhBI91+oGjiX3rAfOUhBv3VdBAJEkmc61OrvmRP57CPC1sL1dDLenKZVKulSqaACAB66+fOdxrd7+wPDliOhw17b3QgCwpIDeavS/UVqbWpr9rcjv7RV1BdlOMVDDXb/60M0nSCnu6Y+iVCBKS0qZ9zxgZtDEv8uy9DHPdu7tS7POvSdP7R387ysAUNxOxtTI1zz7T1cd7lnOg7UoQa5vIrZ5A4AIKu95mKnsS/tNPf/+7ZUbqhtNSQAU/19M88zVV7eJVpiYqPRE27YmAuKnLIEQpxlkmSbNlLXl826UqrMmnj37Rt/3rSAI1FYuom3aCksslfTvHrjp2kLOO2d9b69GFIKBCQDAtWyZy7mQZQoyrV7NO879fdXoQbsVnxgcgG8HmUPf93HSJ8BpETs9IwR+tpZkLAU2ZfdIDOQ5tmDmXydpdMDDr9eqQRAwDNFvYd/HNQCiY9BDf2HlsrE9SXxozvWOSTJ9nCXFnrYlIU5SSDOlARhQCGRN3NKSl6lSdz/y+pyT29tD3JZ5x2b8mJf2/cuC6zrPIOKEWpyQRCEGckUETEQM0nNszHkuKK0hy7LfCykeBZJ3vd4f/+KLpTPXDqXMNVbYMz+9yi94bnlDb78WUjS1Dkia9Ni2Fhkl6eLPnz5z3mrftzq2clW/d0wTvmv3FC6cN+bju4w7kJQ8lZgPs6T8pC0lRGkCaaoYBWoEFI10DTOzZUm2pFgXZfKAo6bPeuWybYzZtnkFbmzCuu/GI/KOd39fLZIwSBoQEAABiIgZgBAAXdsWnueC1hqY+L8TpTo9x7kn0W937j15ZlNlriEnT9y49LM5x34qSVWOiLD+xZqpJ8ACkfKuk/Sl8WFfPPOiZ7dFypgBK6WigOL/l6enly7NcSsdlGk6wbLFYczwGVtIiLMM0kzRQHQvhBAIDMADjgXrnlKNKeStapKcddi5829shtQ2ZRJ59WoLOzrUb+75ybKWfO6CdT19SghhbW73AgDEzIwI4Nq2zLkupEqBUupV13Pur1WjBz2wntjry4NlbrU1adIaQtwyaQjDUH5y/XpBbu3fpJCH90cxCSGGJNBlIl3IeTLT9Piv/7D+6K+3t2dYKtEWfN/3lKenw6W5+M/qYMsRx2hNxyHweM+xMUkziAeMBhEREMTm1gVp0q0tOZmk6u6O6fNPalac1hwDYkYol/HJvb0xu4/d7XEi/nSUpCTwg5NzdZljYmbpug7mXRdSrUArekWgeAxI37rhrez5/aZN63mXZ/oA7W54x6d/smya59jX9VVrChGHtP7HTKqtULCiKDnv4G/MvuZDPKjNytPOY8bui4gnkuajEXEf17YxzlJI0wwYUCGiQPwQ1QQGsqRAS8o3ehL+wgkz570+kBfiEWFAg6Wi664fH+461kO1KAYAlFvyTZiYGZgQEF3bFjnXgThTIIV4MUmzx1zXudeprv35HqXZ0TuM5F2rvJGPefiqhXu0tDm/0Jp2zrSG96u0N2trJIUAS8p1tUh/7vAZF726mdwQhmEo3ilPWS49SCk6QdryMCb+jG1LSDMFSZoxA2hEFAggtqR6xcy6kM/JOEm+ctT53761mQnPpk5mI3DsuvNHy1py3gXrenq1kHLLg1UeqBYQMQqBOdcSruNAnKbMjC9JFPdnpB9szdqe3qNUit7boIvyk+vHiVSOX2U71pS+/poWArdLAx0R69ZCTiaZutXTLae/Mu4RauRl3snTS5fm+mV8sGPBMYrhOAAY7w7IU5opYiau2wzURWorvktbIS/jLLv1yPO+9ZVmpxiaGgusCQJi3xd9r9f8WhR3e64rtSZ6Z3PWB456K6lAgRKYRS3KaH1Pv4qiBJloH9uSc5Dh4ard+/xv/vUni1avXOkNFHRxkzes6A20x74IfFpfX1UjwsYW1aEeiCD7+mtaIk7phd6/K5UqetCZMmRmXOn73qPLFyyqWvHzIOBhIe05zLxPnKTY01dTcZpRPS4XkoEFAyMxw5YMrYlty8JM6dd7q+lcZsaurq6mphaaakABAEF7Ox44c2ZvmujzEUEj1wOcLf3xxAxE9T/rEwgWA0KUZLSut09FSQxK6X3GtOTnfqQQXYCIzJtiCWLfF/299q8V0WM5z5WkSTPDdjAgAK1J51xHKqUe16Bf8n1flOoyC2G9jYQ/NkZc0Jr35irS+yRJAj39/SpJ04FeWraAWTAxEBFs8QIkBiAGBtaOlKIWJ/NOmR/8sVKpNL3M0vTdCJZKevXq1dZnp5zzaJypa9paCpK01s16QAAs6iUYhDTL1Ftvr1OWZc978fbrx2OppAfaKhjKZT5p3ry+JONZWqsIBSIRcd2Ihm7UZRdRM0Wgxawjp83v2RiK1A1J33OlP96Sct7a9RtUprLGbstirreUUBPmSWmtC55nRXFy0/FzyrcOSFfTa3RDsp3t6OjQzL5Y/z/q0locP++5rqW1pq1ZSe8zkBmsTGkUiGOZaDFzvcuwscPgMJRHfHPui2mmlrbkPKEHLGgoBxFRq+eJLNM/OHT6nOc5DOXGVV8uAzOgBFwsAMcqTQgMVv3yhiZ+ByZybEsmmXol6+PZzIylLUsnDK8BAQBXKu3YMWNGf6SS8wWKmkBkqosZNHMAgOztq2rXsk544bYVUxCRNsYbpRIx+yJWyZJanLzoObakITQiIibHtmUtTl6KsmgB+76ATdIlEZEeWHLpFMe2Tuir1jQwSKIBqW7eYNbMUliUZtmsE4Pg7YEi65DUG4esclwakLLPT5n5dBxH32/J56RWmpovGwzELKIkIylwwUMrluxSLBbJ90HggCFPnhn0ZsyzJQoFzDwoUG/eIAZgYonIKlNzJ88Meivt7YgA7AOIYrFIN/mzd0EhF8RpSgQsaAiMWJPWhVxOxlG88ktzv3s389AWdoe09WBSR4dm3xe/0vHCKE6ey3ue1FpTs1cdAGIUxexIa8+PtHllRORye4gbDdn3rSOnX/xIkmarWnM5qal5MdnGB6cHstBK3XrEzEvv9X3fajy49jBEROSxuVzZknLPJMkY67ux5npA1mRbtpVk2e/6SX/L930BUBzS3qQh72VudLk9u2rZQa7jro6T1OJ6INzsz2YEoJzn6kRnR33+qzM7GzkPBkABwI9d4+9K4P47E/9FpjV/qCzuh0pbIVkCUQq5Vivc/8gL5r/GDIgIHBZDWaqU9J2LLp7oCvdncZLIZrWRvMfD1J5jQ6TSE0+9ZOED26OtZMibnxCROAzlAadf+PNUZUtaC0MlZYCKCLUmBxmvfHrp0lyxnvNABOB/CUPZMSN4Sym+xLEt5GbuyLRmz3EwIx0cecH81+oXVAEDAHZN6OLwwgtzksSVWmtHk8ZmB83MDFTfdckk08tPvWThA4M94A7tgd5RJHTyf7XTU5YQf1eNkw9VK9tCawXSWo9ra5G1KJ1/wNdnLhq8Clf7vrUGgA7eybrXs+3JfbV4m7PTTKzzOVemWnf27PqfhxehCI0yQeOz77riknmuZS/sqUZaDkE2nJnItR3BwN39iX3QbwH6gyAA2IoOwxHngTbuyrq7sSMIYkhpBgDEYqD01dxAlgAQRV+1RgL5ktXXXzm+VCrpeg83wBoACoKASPNcrXWPlI3c0FZv2VnUa3g1pbI5pVJFlwcyvY2cz83+rPHAcEl/FBMCiCHZdQEyAGiVZedPDYLegSPX26Uve7v175YqFc1hKA8468KfJ2m6tDWfk6ybH8wCM6aZYiFlm+fgYgZAqNTPsAdBQKt93zp21mVdcaYW5hxHDOQWtlI2iPI5TyZZtvy4WcFzA41rBABQqT9E9KSzWKBoU0pzPUz74LNnWzI0ad3iuTJV6odFf8mjq/2J1vY8ar3dDwQy++KnZXDG7zn2ESHEF2px3HQp4/oPU/mca8VKffXQf5x9y2Ap831fHLBunS0+sfMTUuL+UZISbuG5MGYm17YFMLzUk1YP7Iq8vkYba+Ozbv/OvK9Ylry5FiUKsJ49b7p0OY5gou6YooN+Czv1D2Er7fB6oI2UAc4IgjhW2QwE7pWinmAkJmjWYCbQRDJJUhAEVzy1MTdUl7Lu7m6cvHx5okjPQYYEEZm3TE4ZGFgKSVrz3NL8RT3l7m6sK5dfz/nMnr0LMV0RpwqISNaz59S0QUSMgIwINaX4nKnB8t729m6E7Xx0arsbEA7ISMfZc38ZJekVec8bkl0ZAGCcZNq1rT3IYn/wdSyVSkX7/kTr+IuCx+Ms+1FLzqt3DXzYepcmKniejOPktskX+fdyGEqs1Ns12tu7ERHZLqBvS3uPJE11o3OrmUNropzryjRNvz/lu0ueWO371uZaRoaSYblgalVnJzOzeOj5m54Zq9o6XNf5RJoqDQCimbOMiCJJU21b1n7/cMzEzuPPOPf3YViUlUo3r1nzBwYA0YrZ8zaIk4TAjyjS/MGyzmRJiQSwNu2Pp9y25smecqUCnZ2dHBaLshRU9KqLL5zoWOIH1SRhhOa3kRAReY4jldbP/bEKZx181FH6jGE6zDhcFwIwlMswbdoNWZSl55GmfoEIzZYyYgJNjMwshbSWXu/7eYAi1JN8dY/0lW9d8T8ZJfMtKXCgDL75Fol64MyubQulVPDlYNEfGi0SPGB41599dt62xFJikKwJm1xABiauv8KDONFpdv5FS5dWy5tCv1FjQIBBQL7vW0fPuPSXWaovz3uuJM16CKRMVONEebb1uU99LH9eqVTSlcqmHmQuFuWJcxfcEafZHQXXk0qT3pxLIyKd9zwZZ0nn8zVxQ2OrDgBQCYuiVKnolo8WzrOl9blanChAEAzN/U8RUYvnyEyrJV9dePXPw2JRDueNscN6JUkQBDoMQ/nyi68s7Y/ip/KeY5HWupnBJhMBM8v+WkQS4eIHf3D5+FKppBsBdXnCBGYGzFK4WCn1tiUF1pso39XcxgCARLoWpzRn8EnOesNYRa+cNWM8A1xcjSICANls76MVUc62ZS1On1VvrL/c931RqlSG9Rz+cN9pw11dXTzthhsy1uo8IuoTKGCrOxg3M4AZU6VZII6xERb7Poj27m5kAAyCgCqVojj1su/9d6LTy3OOLZhBQ724vkm6iKjFy4k4zZYXL13wXBiGEgekq7u7G30fBDpisRBiTKbrp5aa+RuImFEIZqa+JNHnnrFqVTyc0jVSDGhjcu/ImZe9ECXZgrqUETVTx+pn7UD2VmvatqwTDhn3ndNKlYquDLTAFosVCsOifO3N6rVxph73bMciqkfUDACaiBzLllGavIRpbWEYhrJYrFe5K8WiqFQqes/qN09zpDyhP4o0Asvmt2nUvU+aqgVnfX/5C74/0RoJl52PiGt+V3V2Evu+eGynN55pSVomera1V5xlBIDY5HgImBhQyP1OOuzQW371xtrapEmd2NEBPGFCEecvXqyKhx7chRK+polk4zJxZmbbtiDTfOYp/pUvFgHEp0sl8gHE2mIRztxnn50xZ9+WKRrDutHW3LzdJGuinOPINFNPpr3pOZ87/ngIglUj4h6iEXUt27RpN2Rxmk1TmtbbQvJ7xiLbMJhZxFlKtiX3LFjSD4KA2gf6hoIgIC4W5Sn+wl8orZcVPFcQkyJNusXLiSxTt5566YJ7wzCUpUbOp1jEIAhIt0hfCrlnkmbEAGJIpAu4LwN93rQbbshG0jMbUXcbNkoA9y/1Z+Rcd3lfNRqSs1zMQJ7rkFL6iMmz/c6wWJSlSkXXjwaVsTI/brVa5VPM1K4UsW1Zb1Oc7P9fVsvr5XKZEZGLxaKsVCr6+gvPnWhL+UiaZQKb3V1Ql0/dms/JJEnmnrXsuiVhWJTDkTDcIQyoYUTFYpHuv7L8kGvbR/ZHcYKiyVLLQJ7jCAZ+7rWX3vjitBtuUAMZRG48oNv8iya7tnWPECiTVE8vlRddO6iehgAAZ599tvX5FutxRNwvTjPCJnp0rBu6znmOmyn98DeuuvboSrGeKhhJz2vE3Sza1dXFiMiK9HlKq74xrQW34HpWi5dr2mjN5RxEsHZqbT1wt0/t/j1mhsrGM2UV7fu+dVqw5IE0U/clqfrPR/60/seDj8WExaJgZtgvJ743plA4EICtguc6ec+1mjU817FaC55LmvqqnJyHANxVqYy4y0tH5PW8jbPk9y689FQWeLwmrgFzs6WMhEAphOhxoLV89EUXVRt3Xzc+f9X8WXsLQS1TF1z1H4PuEEQA4Jtmzy7UVF+ZGMYQaV3vmm3qg9EWijxpvO/cFdffPkLuXtxxGGF3T+PwzsXIfSXFiH3VASJyWCzK9UccIfb+058YJjX5A9YAvLz7m7j3n3bjzd0k5vu+KA+UXd77/0+0dn/zr3Hv3XYbAmlZAy+/+dc4bv16QqyM2HdxjOgb5pl9MXDQdNRSLtevVjaatGNLmJmLHUnCOCxKRNSPLV80L5eXh1XjTOEoe7cZA1DBs62oph9DxEX1tyqOPCkbcZbduFH1/qX+11ry+VVa6/reaHS6HpBSQn+tdvpxs4ObtuU+51FhQI2M8B0Lvr1/wbMfTVVW0ET1TsXRCUkhpGPZ1WqcHX7KJd/9RWOORsoXHDHvTPV9X8z44Q/5DjvbzbOtu5TWH4/TlAHAGnifxWgcMlOKEdFzpDjklIlfuLO4/Lo+fwS9q3WkeCAMw1Ds3NWFb1vx3a7jTO6vRgNXBY/qd9oCAAIRqZZCzkrS9IGPKu9La9vbeaju+9khDWhT/WnOYs9xLuqt1ZRAYYFhk5YxqbZ83orTdMlpwZVzR0pRddgNyPcnWkHQqX4674KzCjnnR/1RrOu3ZqDZxr9zM89ALTlPVqP0G19fdNWPG3M3ag2o8fK6G2dNP8R1vX9LszSv6zUnYzybMSGJyI7t1JIkPvbM7694sjGHo86AfB9EEABdM/30XT2v8CQzfDJTSgOiRGA25vJeuSFEYNa2ZUlEeCWOq4fMWLHqrcZcjhoDYmYslxHh5Sk77bHb2Dtd2zm0WotISCmMmXyIeEhrKuRzIsnSJ157c8PJsPet68pl5uF4id+wGRAi8jXTp+9qCXWEBuhHZkmmfPGhEIjMiFoCtCiyHpmxYsVbo/nd9YYdOskwzJ8fFotGtraBgYOFxvMYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDAaDwWAwGAwGg8FgMBgMBoPBYDAYDAaDwWAY1fwfegLMaQrzlSMAAAAASUVORK5CYII=';
+    // THE HEADER IS THE RAIL'S BRAND ROW: the crown beside the name, in the back
+    // office's one font. One line, on the same left edge as everything below it.
+    return '<tr><td class="ec-pad" style="padding:20px 28px 16px;border-bottom:1px solid #E2E3E3;">' .
+        '<img src="' . $src . '" width="24" height="24" alt="" ' .
+        'style="display:inline-block;width:24px;height:24px;border:0;outline:none;vertical-align:-7px;margin-right:10px;">' .
+        '<span style="font-family:' . email_sans() . ';font-size:15px;font-weight:600;color:#1B2A34;letter-spacing:-0.005em;">Cottage Holidays Blakeney</span>' .
         '</td></tr>';
 }
 
@@ -599,43 +590,77 @@ function owner_recipients()
     return $out;
 }
 
-// Branded HTML for plain-text owner alerts — the SAME coastal shell guests
-// get, built automatically so every send_owner(subject, text) caller (new
-// payment, new message, new review, owner booking copies…) matches the guest
-// emails. Blank lines split paragraphs; bare URLs become links; all escaped.
 /**
- * WARNING AND ALERT AS TEXT. The digest's needs-attention rows set the status amber and
- * red straight into 13px `color:` — measured on the rendered output, **1.73:1** for the
- * amber and 2.99 for the red, on the one email that exists to tell the owner something
- * has gone wrong. Same ink-vs-fill split the screens and email_accent_ink already make:
- * `#ffb74d` and `#e57373` are fine as FILLS (a chip, a rule), illegible as WORDS.
- * Measured white / tinted panel / outer ground, a shade past AA rather than on it.
+ * WARNING AND ALERT AS TEXT. The digest's needs-attention rows once set the status amber
+ * and red straight into 13px `color:` — **1.73:1** for the amber and 2.99 for the red, on
+ * the one email that exists to tell the owner something has gone wrong. Same ink-vs-fill
+ * split the screens and email_accent_ink make: `#ffb74d` and `#e57373` are fine as FILLS
+ * (a chip, a rule), illegible as WORDS. These are the back office's light --warn-text and
+ * --danger-text, measured on card / well / outer ground: 5.61 / 5.22 / 5.11 and
+ * 5.95 / 5.54 / 5.41:1 — a shade past AA rather than on it.
  */
 function email_warn_ink()
 {
-    return '#8A5000'; // 6.51 / 6.09 / 5.67
+    return '#9C5300'; // the dashboard's light --warn-text
 }
 function email_alert_ink()
 {
-    return '#A3291C'; // 7.26 / 6.80 / 6.33
+    return '#BC2626'; // the dashboard's light --danger-text
 }
+// Branded HTML for plain-text owner alerts — the same shell and parts as every guest
+// email, built automatically so every send_owner(subject, text) caller (new payment,
+// new message, new review…) matches the rest. Blank lines split paragraphs; bare URLs
+// become links; all escaped.
 function owner_alert_text_html($subject, $text)
 {
     // The shell already carries the brand — don't repeat it in the heading.
     $heading = preg_replace('/\s*[—–-]\s*Cottage Holidays Blakeney\s*$/u', '', (string) $subject);
-    $inner = email_h($heading);
+    // A SUBJECT IS NOT A TITLE. "Payment received: £452.12 — Jollyboat — £301.27 still
+    // to collect" wrapped to three lines at 24px. A subject of three or more parts
+    // keeps its first part as the title and says the rest as the line under it.
+    $parts = preg_split('/\s+[—–]\s+/u', $heading);
+    $title = $heading;
+    $lead = '';
+    if (count($parts) >= 3) {
+        $title = array_shift($parts);
+        $lead = implode(' · ', $parts);
+    }
+    $inner = email_h($title) . ($lead !== '' ? email_lead(email_esc($lead)) : '');
+    $link = function ($safe) {
+        return preg_replace(
+            '~(https?://[^\s<]+)~',
+            '<a href="$1" style="color:' . email_accent_ink() . ';text-decoration:none;font-weight:600;">$1</a>',
+            $safe,
+        );
+    };
     foreach (preg_split('/\n{2,}/', trim((string) $text)) as $para) {
         $para = trim($para);
         if ($para === '') {
             continue;
         }
-        $safe = nl2br(email_esc($para));
-        $safe = preg_replace(
-            '~(https?://[^\s<]+)~',
-            '<a href="$1" style="color:' . email_accent_ink() . ';text-decoration:underline;">$1</a>',
-            $safe,
-        );
-        $inner .= email_p($safe);
+        // THE ALERT ENDS WHERE THE OWNER ACTS. owner_open_line()'s paragraph is the
+        // record's own deep link: plain text in the text half, the one button here.
+        if (preg_match('~^Open in the back office:\s+(https?://\S+)$~u', $para, $om)) {
+            $inner .= email_btn($om[1], 'Open in the back office');
+            continue;
+        }
+        // "Guest: Sarah / Amount: £452.12" IS A LIST OF FACTS — it renders as the
+        // dashboard's label/value rows, not as lines of prose with colons in them.
+        $lines = preg_split('/\n/', $para);
+        $rows = [];
+        foreach ($lines as $ln) {
+            if (preg_match('/^([A-Z][A-Za-z &\/()]{1,28}):\s+(\S.*)$/u', trim($ln), $m)) {
+                $rows[] = [email_esc($m[1]), $link(email_esc($m[2]))];
+            } else {
+                $rows = null;
+                break;
+            }
+        }
+        if ($rows) {
+            $inner .= email_rows($rows);
+            continue;
+        }
+        $inner .= email_p($link(nl2br(email_esc($para))));
     }
     return email_shell($heading, $inner);
 }
@@ -1004,44 +1029,27 @@ function build_booking_ics($b)
     return implode("\r\n", array_filter($lines, fn($l) => $l !== ''));
 }
 
-// ============================================================
-//  "Midnight Glass" email design kit — a dark, liquid-glass look that mirrors
-//  the site. Inboxes can't blur, so the glass feel is evoked with a deep
-//  gradient backdrop, a lifted card with a hairline top highlight, a rose-gold
-//  accent, and Playfair/Montserrat (Georgia/Arial fallbacks). All inline,
-//  table-based and Outlook-safe (bgcolor fallbacks + VML buttons).
-// ============================================================
-// ── INK vs FILL, the email half of the app's own --accent / --accent-text split ──
-// The screens learned this once already: the rose-gold is fine for a button, a rule
-// or a swatch, which only have to clear the 3:1 non-text bar, and fails AA outright
-// as WORDS. That fix stopped at the edge of the browser — measured on the rendered
-// HTML of all 21 templates, sixteen ink/ground/size combinations sat below AA, the
-// worst of them email_amount's 34px figure at 2.00:1, i.e. the one number a refund
-// email exists to state.
+// ── INK vs FILL ─────────────────────────────────────────────────────────────
+// The screens' --accent / --accent-text split, applied to the inbox: the rose-gold is
+// fine for a button, a rule or a dot (the 3:1 non-text bar) and fails AA as WORDS.
+// Every ink is the back office's own light-mode token, measured on the three grounds
+// it really sits on — card #FDFCFA / well #F4F4F2 / outer ground #F5F1E9:
 //
-// Two tokens, so a new email cannot reintroduce the problem by picking a hex that
-// looks right on a white background it does not actually sit on:
+//   email_muted_ink()  — --text-muted #52646E: every label and all secondary prose.
+//     6.01 / 5.60 / 5.47:1.
+//   email_accent_ink() — --accent-text #965C35: the accent as TEXT (a link, an accent
+//     word). 5.28 / 4.92 / 4.81:1.
 //
-//   email_muted_ink()  — every label and every piece of secondary prose. It replaces
-//     FOUR near-identical inks (#8E877A #9A927F #A0987F #A79E8A, spanning 2.12–3.56:1)
-//     that differed by a few hex points, served no hierarchy the size and letter-
-//     spacing were not already carrying, and all failed. One ink now, comfortably
-//     past the bar on all three grounds: 6.49:1 white, 6.02:1 tinted panel,
-//     5.18:1 the outer ground.
-//   email_accent_ink() — the accent when it is TEXT: a figure, a link, a status word.
-//     5.87 / 5.44 / 4.68:1 on the same three grounds.
-//
-// Deliberately a shade PAST the pass mark rather than on it, the same discipline the
-// screen tokens follow — 4.5 is the floor to clear, not to land on. test-payrail's
-// contrast section measures both against every ground in the rendered output, so
-// the prose here cannot drift from what ships.
+// A shade PAST the pass mark rather than on it, the discipline the screen tokens
+// follow — 4.5 is the floor to clear, not to land on. test-emails-render §2 measures
+// every rendered email in both themes, so the prose here cannot drift from what ships.
 function email_muted_ink()
 {
-    return '#655D50';
+    return '#52646E';
 }
 function email_accent_ink()
 {
-    return '#8A5A2B';
+    return '#965C35';
 }
 function email_sans()
 {
@@ -1071,78 +1079,61 @@ function email_esc($s)
 }
 
 // ============================================================
-//  Email design system — the MODERN pass (the invoice's own rules, applied
-//  to the inbox): one left rail, sentence-case 600 labels (no uppercase
-//  tracking), money in the grotesque — big, tight, tabular — and the serif
-//  surviving in exactly one place, the brand name in the header line. A white
-//  column on a whisper ground, rows on hairlines; ONE tinted callout survives
-//  (email_note) as the single thing an email may shout. Table-based +
-//  Outlook-safe (bgcolor fallbacks + VML buttons). Palette:
-//    ground #F7F4EE   column #FFFFFF (border #EAE3D5)   hairline #EFE9DD
-//    heavy rule #D9CFB8   the one tint #FAF6EC (border #ECE4D3)
-//    ink #262320/#2A2622/#2E2A25   body #57524A   muted email_muted_ink()
-//    accent (rose-gold) #C79A64 as FILL; as TEXT email_accent_ink()
+//  Email design system — THE BACK OFFICE'S OWN. Every colour is a dashboard
+//  token composited onto the ground it really sits on (an email cannot lean on
+//  rgba), so an email in a dark inbox is the Today screen's charcoal, card and
+//  rose-gold button, and a light one is the light theme's. One left rail, the
+//  dashboard's type scale (12 / 13 / 15 / 17 / 28 / 34), three corners (the
+//  card 20, everything inside it 12, buttons and capsules round). Table-based
+//  and Outlook-safe (bgcolor fallbacks + VML buttons). Light palette:
+//    ground #F5F1E9   card #FDFCFA (edge #E2E3E3)   hairline #E2E3E3
+//    well #F4F4F2 (edge #EBEBEA)   heavy rule #C7CACA
+//    ink #1B2A34   muted email_muted_ink()   accent #C6885E as FILL,
+//    email_accent_ink() as TEXT   button ink #1B1208
 //  Every ink and fill has a DARK twin — see email_dark_palette() below the
 //  shell: the media block ships from it and the render gate measures it.
+//  ONE SHAPE FOR EVERY EMAIL, top to bottom: brand line → the stay
+//  (email_eyebrow) → title (email_h) → lead → the key block (email_amount /
+//  email_code) → ONE button (email_btn) → a second choice (email_btn2) →
+//  details (email_rows, states as email_cap) → small print → footer.
 // ============================================================
 
-// Bulletproof rose-gold button (rounded in Outlook too, via VML). Warm tan fill
-// with a deep-brown label — matches the site's buttons and keeps AA contrast.
-// FULL WIDTH AT THUMB SIZE — these are read on phones, and the money moment's
-// button should be the easiest thing on the screen to hit. Radius 12, not a
-// pill: the modern register the invoice set.
-function email_btn($href, $label, $accent = '#C79A64', $textColor = '#3A2E1E')
+// THE DASHBOARD'S ONE BUTTON — the Today card's "Return £50": a full-width pill,
+// 48px tall, the accent with dark ink (6.23:1 light, 8.56:1 on the dark accent).
+// Rounded in Outlook too, via VML. ONE colour for every email: the $accent a caller
+// passes is accepted and ignored, because a cottage colour on a button carrying
+// WORDS measured 3.30:1 on Jollyboat's green.
+function email_btn($href, $label, $accent = '#C6885E', $textColor = '#1B1208')
 {
+    $accent = '#C6885E';
+    $textColor = '#1B1208';
     $h = email_esc($href);
     $l = email_esc($label);
     $sans = email_sans();
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 6px;"><tr><td align="center" bgcolor="' .
-        $accent .
-        '" style="border-radius:12px;">' .
-        '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="' .
-        $h .
-        '" style="height:52px;v-text-anchor:middle;width:520px;" arcsize="23%" stroke="f" fillcolor="' .
-        $accent .
-        '"><w:anchorlock/><center style="color:' .
-        $textColor .
-        ';font-family:' .
-        $sans .
-        ';font-size:15px;font-weight:bold;letter-spacing:0.2px;"><![endif]-->' .
-        '<a href="' .
-        $h .
-        '" style="display:block;background:' .
-        $accent .
-        ';color:' .
-        $textColor .
-        ';text-decoration:none;font-family:' .
-        $sans .
-        ';font-size:15px;font-weight:700;letter-spacing:0.2px;line-height:52px;border-radius:12px;">' .
-        $l .
-        '</a>' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;"><tr><td align="center" bgcolor="' .
+        $accent . '" style="border-radius:999px;">' .
+        '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="' . $h .
+        '" style="height:48px;v-text-anchor:middle;width:520px;" arcsize="50%" stroke="f" fillcolor="' . $accent .
+        '"><w:anchorlock/><center style="color:' . $textColor . ';font-family:' . $sans . ';font-size:15px;font-weight:bold;"><![endif]-->' .
+        '<a href="' . $h . '" style="display:block;background:' . $accent . ';color:' . $textColor .
+        ';text-decoration:none;font-family:' . $sans . ';font-size:15px;font-weight:600;line-height:48px;border-radius:999px;">' . $l . '</a>' .
         '<!--[if mso]></center></v:roundrect><![endif]--></td></tr></table>';
 }
 
-// The money moment — the invoice's own figure anatomy: sentence-case label,
-// then the amount big, tight-tracked and tabular in the grotesque, between a
-// hairline and a heavier rule. Left-aligned on the one rail; no tinted panel
-// (the figure IS the emphasis). $amount is pre-formatted; the label is escaped.
-function email_amount($label, $amount, $sub = '', $valueColor = '#2A2622')
+// THE KEY BLOCK — the one figure an email exists to state, in the dashboard's inset
+// well: label above, the amount 34px tight and tabular, a line of context below. A code
+// is its twin (email_code). The figure is always INK: whether money goes out or comes
+// back is said by the label, not by a colour the reader has to decode — so $valueColor
+// is accepted and ignored. $amount and $sub are pre-formatted; the label is escaped.
+function email_amount($label, $amount, $sub = '', $valueColor = '#1B2A34')
 {
     $sans = email_sans();
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr><td class="em-r2" style="border-top:1px solid #EFE9DD;border-bottom:2px solid #D9CFB8;padding:15px 0 16px;">' .
-        '<div style="font-family:' .
-        $sans .
-        ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';">' .
-        email_esc($label) .
-        '</div>' .
-        '<div style="font-family:' .
-        $sans .
-        ';font-size:40px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;color:' .
-        $valueColor .
-        ';padding:4px 0 2px;line-height:1.15;">' .
-        $amount .
-        '</div>' .
-        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:13px;color:' . email_muted_ink() . ';">' . $sub . '</div>' : '') .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr>' .
+        '<td bgcolor="#F4F4F2" style="background:#F4F4F2;border:1px solid #EBEBEA;border-radius:12px;padding:16px 20px 18px;">' .
+        '<div style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';">' . email_esc($label) . '</div>' .
+        '<div style="font-family:' . $sans . ';font-size:34px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:#1B2A34;padding:4px 0 2px;line-height:1.2;">' .
+        $amount . '</div>' .
+        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:13px;line-height:1.6;color:' . email_muted_ink() . ';">' . $sub . '</div>' : '') .
         '</td></tr></table>';
 }
 
@@ -1150,73 +1141,105 @@ function email_amount($label, $amount, $sub = '', $valueColor = '#2A2622')
 function email_rows($rows)
 {
     $sans = email_sans();
-    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">';
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;">';
     $n = count($rows);
     $i = 0;
     foreach ($rows as $r) {
         $i++;
-        // Sentence case at 600 weight — hierarchy from size and colour, not
-        // uppercase tracking (the invoice's caption rule).
-        $bd = $i < $n ? 'border-bottom:1px solid #EFE9DD;' : '';
-        $out .=
-            '<tr><td style="padding:11px 0;' .
-            $bd .
-            'font-family:' .
-            $sans .
-            ';font-size:13.5px;font-weight:600;color:' . email_muted_ink() . ';vertical-align:top;width:38%;">' .
-            $r[0] .
-            '</td>' .
-            '<td align="right" style="padding:11px 0;' .
-            $bd .
-            'font-family:' .
-            $sans .
-            ';font-size:14.5px;font-weight:600;color:#2E2A25;vertical-align:top;">' .
-            $r[1] .
-            '</td></tr>';
+        // The dashboard's label/value row: muted 13/600 label, ink 15/600 value on the
+        // right rail, one hairline between rows.
+        $bd = $i < $n ? 'border-bottom:1px solid #E2E3E3;' : '';
+        $out .= '<tr><td style="padding:12px 12px 12px 0;' . $bd . 'font-family:' . $sans .
+            ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';vertical-align:top;width:40%;line-height:1.5;">' . $r[0] . '</td>' .
+            '<td align="right" style="padding:12px 0;' . $bd . 'font-family:' . $sans .
+            ';font-size:15px;font-weight:600;color:#1B2A34;vertical-align:top;line-height:1.4;">' . $r[1] . '</td></tr>';
     }
     return $out . '</table>';
 }
 
-// Left-accent callout box.
-function email_note($html, $accent = '#C79A64')
+// THE ONE SHOUT AN EMAIL KEEPS — entry details, the ask — as the dashboard's tinted
+// card: the accent at 9% with its own 24% edge, and no left rail (the dashboard retired
+// those). A warning passes a warn colour as $accent and takes the warn tint, as the
+// Today card does. Pass pre-escaped HTML.
+function email_note($html, $accent = '#C6885E')
 {
     $sans = email_sans();
-    // THE ONE SHOUT AN EMAIL KEEPS. Every other panel went to hairlines in the
-    // modern pass; this tinted callout survives for the single thing an email
-    // genuinely needs to raise its voice about (entry details, the ask).
+    $warn = in_array(strtoupper((string) $accent), ['#FFA726', '#FFB74D', '#8A5000', '#9C5300'], true);
+    $bg = $warn ? '#FDF1DE' : '#F8F2EC';
+    $edge = $warn ? '#FDE8C7' : '#F0E0D5';
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr>' .
-        '<td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-left:3px solid ' .
-        $accent .
-        ';border-radius:12px;padding:15px 18px;font-family:' .
-        $sans .
-        ';font-size:13.5px;color:#5A554C;line-height:1.75;">' .
-        $html .
+        '<td bgcolor="' . $bg . '" style="background:' . $bg . ';border:1px solid ' . $edge . ';border-radius:12px;padding:14px 16px;font-family:' .
+        $sans . ';font-size:15px;color:#1B2A34;line-height:1.6;">' . $html . '</td></tr></table>';
+}
+
+// THE TITLE IS THE DASHBOARD'S PAGE TITLE — "Today": 28px at regular weight, sentence
+// case, saying what the email is for ("Pay your deposit", never just the cottage name).
+// $accent is accepted and unused: the cottage is named by email_eyebrow's dot.
+function email_h($text, $accent = '')
+{
+    return '<h1 style="font-family:' . email_sans() .
+        ';font-size:28px;font-weight:400;letter-spacing:0;color:#1B2A34;margin:0 0 4px;line-height:1.25;">' .
+        email_esc($text) . '</h1>';
+}
+// A CODE IS THE FIGURE'S TWIN: same well, same label/value/sub anatomy, the digits
+// spaced in their two groups so they can be read off one screen and typed on another.
+function email_code($label, $code, $sub = '')
+{
+    $sans = email_sans();
+    $c = preg_replace('/\s+/', '', (string) $code);
+    $pretty = strlen($c) === 6 ? substr($c, 0, 3) . '&#8201;&#8201;' . substr($c, 3) : email_esc($c);
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr>' .
+        '<td bgcolor="#F4F4F2" style="background:#F4F4F2;border:1px solid #EBEBEA;border-radius:12px;padding:16px 20px 18px;">' .
+        '<div style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';">' . email_esc($label) . '</div>' .
+        '<div style="font-family:' . $sans . ';font-size:34px;font-weight:700;letter-spacing:0.14em;font-variant-numeric:tabular-nums;color:#1B2A34;padding:4px 0 2px;line-height:1.2;">' .
+        $pretty . '</div>' .
+        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:13px;line-height:1.6;color:' . email_muted_ink() . ';">' . $sub . '</div>' : '') .
         '</td></tr></table>';
 }
 
-// The card's heading — grotesque, tight, sentence case. The serif survives in
-// exactly one place (the brand name in the header line), the invoice's rule.
-// $accent is accepted and unused: the cottage's colour is already the 3px rule
-// across the top of the card, and the old swatch square said it twice.
-function email_h($text, $accent = '')
+// The line under a title — muted, body size. PRE-ESCAPED, like email_p.
+function email_lead($html)
 {
-    return '<h1 style="font-family:' .
-        email_sans() .
-        ';font-size:24px;font-weight:700;letter-spacing:-0.02em;color:#262320;margin:0 0 8px;line-height:1.25;">' .
-        email_esc($text) .
-        '</h1>';
+    return '<p style="font-family:' . email_sans() . ';font-size:15px;color:' . email_muted_ink() . ';line-height:1.6;margin:4px 0 0;">' . $html . '</p>';
 }
+
+// THE COTTAGE IS A DOT, NEVER A BAR. Its colour marks the stay the way the timeline's
+// lane dot does — a fill, not words, so any cottage colour is safe — beside the name.
+// $dot is the cottage accent; $text is PLAIN text (escaped here).
+function email_eyebrow($dot, $text)
+{
+    return '<div style="font-family:' . email_sans() . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';margin:0 0 8px;line-height:1.5;">' .
+        '<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' . email_esc($dot) . ';margin-right:8px;vertical-align:1px;"></span>' .
+        email_esc($text) . '</div>';
+}
+
+// The dashboard's status capsule (.st-cap): 12/600, a pill tinted in its own tone.
+function email_cap($tone, $text)
+{
+    $t = [
+        'ok' => ['#E6F2E4', '#D3EAD1', '#29712D'],
+        'warn' => ['#FDF1DE', '#FDE8C7', '#9C5300'],
+        'bad' => ['#FAEAE8', '#F7DBDA', '#BC2626'],
+        'info' => ['#E5ECEE', '#D1DFE4', '#316784'],
+    ][$tone] ?? ['#E5ECEE', '#D1DFE4', '#316784'];
+    return '<span style="display:inline-block;background:' . $t[0] . ';border:1px solid ' . $t[1] . ';color:' . $t[2] .
+        ';font-family:' . email_sans() . ';font-size:12px;font-weight:600;line-height:1.4;padding:4px 12px;border-radius:999px;white-space:nowrap;">' .
+        email_esc($text) . '</span>';
+}
+
+// A section caption — the dashboard's caption tier, sentence case.
+function email_caption($text)
+{
+    return '<div style="font-family:' . email_sans() . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';margin:24px 0 4px;">' .
+        email_esc($text) . '</div>';
+}
+
 
 // Body paragraph (muted=secondary text). Pass pre-escaped HTML.
 function email_p($html, $muted = false)
 {
-    return '<p style="font-family:' .
-        email_sans() .
-        ';font-size:15px;color:' .
-        ($muted ? email_muted_ink() : '#57524A') .
-        ';line-height:1.75;margin:13px 0 0;">' .
-        $html .
-        '</p>';
+    return '<p style="font-family:' . email_sans() . ';font-size:15px;color:' .
+        ($muted ? email_muted_ink() : '#1B2A34') . ';line-height:1.6;margin:12px 0 0;">' . $html . '</p>';
 }
 
 // ============================================================
@@ -1269,22 +1292,22 @@ function email_address_block($addr)
         return '';
     }
     $sans = email_sans();
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 2px;"><tr><td style="padding:12px 0;border-top:1px solid #EFE9DD;">' .
-        '<div style="font-family:' . $sans . ';font-size:13.5px;font-weight:600;color:' . email_muted_ink() . ';padding-bottom:4px;">Address</div>' .
-        '<div style="font-family:' . $sans . ';font-size:14.5px;font-weight:600;color:#2E2A25;line-height:1.55;">' . email_esc($addr) . '</div>' .
-        '<div style="padding-top:6px;"><a href="' . email_esc(email_maplink($addr)) . '" style="font-family:' . $sans . ';font-size:13.5px;font-weight:600;color:#8A5A2B;text-decoration:none;">Open in Maps &rsaquo;</a></div>' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;"><tr><td style="padding:12px 0;border-top:1px solid #E2E3E3;">' .
+        '<div style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';padding-bottom:4px;">Address</div>' .
+        '<div style="font-family:' . $sans . ';font-size:15px;font-weight:600;color:#1B2A34;line-height:1.5;">' . email_esc($addr) . '</div>' .
+        '<div style="padding-top:8px;"><a href="' . email_esc(email_maplink($addr)) . '" style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_accent_ink() . ';text-decoration:none;">Open in Maps &rsaquo;</a></div>' .
         '</td></tr></table>';
 }
-// A SECOND destination without a second shout. Same 44px hit area as email_btn's 50px
-// primary, outlined rather than filled, so an email can carry "pay" and "view" without
-// two competing calls to action.
+// A SECOND CHOICE WITHOUT A SECOND SHOUT — the dashboard's .bhub-next-alt: the same
+// pill as email_btn, outlined and in ink, so an email can carry "pay" and "view"
+// without two competing calls to action.
 function email_btn2($href, $label)
 {
     $sans = email_sans();
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 4px;"><tr>' .
-        '<td align="center" class="em-b2" bgcolor="#FFFFFF" style="background:#FFFFFF;border-radius:12px;border:1.5px solid #D8C2A2;">' .
-        '<a href="' . email_esc($href) . '" style="display:block;color:' . email_accent_ink() . ';text-decoration:none;font-family:' . $sans .
-        ';font-size:14.5px;font-weight:700;line-height:48px;">' . email_esc($label) . '</a>' .
+        '<td align="center" bgcolor="#FDFCFA" style="background:#FDFCFA;border-radius:999px;border:1px solid #E2E3E3;">' .
+        '<a href="' . email_esc($href) . '" style="display:block;color:#1B2A34;text-decoration:none;font-family:' . $sans .
+        ';font-size:15px;font-weight:600;line-height:46px;border-radius:999px;">' . email_esc($label) . '</a>' .
         '</td></tr></table>';
 }
 // "Sun 6 – Fri 11 Sep": a stay range as people say it. The month is named once when both
@@ -1308,13 +1331,13 @@ function email_range($fromIso, $toIso)
 function email_timeline($steps)
 {
     $sans = email_sans();
-    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 10px;">';
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 12px;">';
     foreach ($steps as $st) {
         $done = !empty($st[2]);
-        $out .= '<tr><td width="30" valign="top" style="padding:7px 0;font-family:' . $sans . ';font-size:16px;line-height:1.4;color:' .
-            ($done ? '#2E7D32' : email_muted_ink()) . ';">' . ($done ? '&#10003;' : '&#9675;') . '</td>' .
-            '<td valign="top" style="padding:7px 0;font-family:' . $sans . ';">' .
-            '<div style="font-size:14.5px;font-weight:700;color:#2A2622;line-height:1.4;">' . email_esc($st[0]) . '</div>' .
+        $out .= '<tr><td width="28" valign="top" style="padding:8px 0;font-family:' . $sans . ';font-size:15px;font-weight:700;line-height:1.4;color:' .
+            ($done ? '#29712D' : email_muted_ink()) . ';">' . ($done ? '&#10003;' : '&#9675;') . '</td>' .
+            '<td valign="top" style="padding:8px 0;font-family:' . $sans . ';">' .
+            '<div style="font-size:15px;font-weight:600;color:#1B2A34;line-height:1.4;">' . email_esc($st[0]) . '</div>' .
             (isset($st[1]) && $st[1] !== '' ? '<div style="font-size:13px;color:' . email_muted_ink() . ';line-height:1.5;">' . email_esc($st[1]) . '</div>' : '') .
             '</td></tr>';
     }
@@ -1327,13 +1350,13 @@ function email_dates($inIso, $inTime, $outIso, $outTime)
     $sans = email_sans();
     $cell = function ($label, $iso, $time, $prep) use ($sans) {
         $t = email_time($time);
-        return '<td width="50%" valign="top" style="padding:13px 0;font-family:' . $sans . ';">' .
+        return '<td width="50%" valign="top" style="padding:12px 0;border-top:1px solid #E2E3E3;border-bottom:1px solid #E2E3E3;font-family:' . $sans . ';">' .
             '<div style="font-size:13px;font-weight:600;color:' . email_muted_ink() . ';">' . $label . '</div>' .
-            '<div style="font-size:18px;font-weight:700;letter-spacing:-0.01em;color:#2A2622;line-height:1.35;">' . email_esc(email_date($iso)) . '</div>' .
+            '<div style="font-size:17px;font-weight:700;letter-spacing:-0.01em;color:#1B2A34;line-height:1.4;">' . email_esc(email_date($iso)) . '</div>' .
             ($t !== '' ? '<div style="font-size:13px;color:' . email_muted_ink() . ';">' . $prep . ' ' . email_esc($t) . '</div>' : '') .
             '</td>';
     };
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0 6px;border-top:1px solid #EFE9DD;"><tr>' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 4px;"><tr>' .
         $cell('Arrive', $inIso, $inTime, 'from') . $cell('Leave', $outIso, $outTime, 'by') . '</tr></table>';
 }
 // Add the stay to a calendar in one tap. Google and Outlook take a link (no file); Apple
@@ -1359,8 +1382,8 @@ function email_cal_links($b)
 {
     $u = email_cal_urls($b);
     $sans = email_sans();
-    $link = fn($href, $label) => '<a href="' . email_esc($href) . '" style="font-family:' . $sans . ';font-size:13.5px;font-weight:700;color:' . email_accent_ink() . ';text-decoration:none;">' . $label . '</a>';
-    return '<p style="font-family:' . $sans . ';font-size:13.5px;color:' . email_muted_ink() . ';line-height:1.9;margin:12px 0 0;">Add to your calendar: ' .
+    $link = fn($href, $label) => '<a href="' . email_esc($href) . '" style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_accent_ink() . ';text-decoration:none;">' . $label . '</a>';
+    return '<p style="font-family:' . $sans . ';font-size:13px;color:' . email_muted_ink() . ';line-height:1.9;margin:8px 0 0;">Add to your calendar: ' .
         $link($u['google'], 'Google') . ' &nbsp;&middot;&nbsp; ' . $link($u['outlook'], 'Outlook') .
         ' &nbsp;&middot;&nbsp; <span>Apple (the attached invite)</span></p>';
 }
@@ -1369,31 +1392,23 @@ function email_cal_links($b)
 // Pre-escaped HTML, like email_p().
 function email_footnote($html)
 {
-    return '<p style="font-family:' . email_sans() .
-        ';font-size:12.5px;line-height:1.7;color:' . email_muted_ink() . ';margin:10px 2px 0;">' . $html . '</p>';
+    return '<p style="font-family:' . email_sans() . ';font-size:12px;line-height:1.6;color:' . email_muted_ink() . ';margin:12px 0 0;">' . $html . '</p>';
 }
-// MONEY ROWS IN SENTENCE CASE. email_rows() uppercases its label column, which is right
-// for a field NAME (ARRIVE, PARTY) and wrong for a price line — "£130.00 × 3 NIGHTS"
-// shouts and wraps. Same tinted panel the money blocks already use.
-// $rows = [[labelHtml, valueHtml], …], both PRE-ESCAPED.
+// MONEY ROWS: a price line is a sentence ("£130.00 × 3 nights"), so the label is body
+// text in ink rather than email_rows()' muted field-name column, with the figure
+// tabular on the right rail. $rows = [[labelHtml, valueHtml], …], both PRE-ESCAPED.
 function email_money_rows($rows)
 {
-    // The tinted panel went in the modern pass — price lines stand on hairlines
-    // like every other row, and the ONE surviving tint (email_note) keeps its
-    // meaning as the email's single shout.
     $sans = email_sans();
-    $out =
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 0;">';
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 0;">';
     $n = count($rows);
     $i = 0;
     foreach ($rows as $r) {
         $i++;
-        $bd = $i < $n ? 'border-bottom:1px solid #EFE9DD;' : '';
-        $out .=
-            '<tr><td style="padding:11px 0;' . $bd . 'font-family:' . $sans .
-            ';font-size:14px;color:#57524A;">' . $r[0] . '</td>' .
-            '<td align="right" style="padding:11px 0;' . $bd . 'font-family:' . $sans .
-            ';font-size:14px;font-weight:600;color:#2E2A25;">' . $r[1] . '</td></tr>';
+        $bd = $i < $n ? 'border-bottom:1px solid #E2E3E3;' : '';
+        $out .= '<tr><td style="padding:12px 12px 12px 0;' . $bd . 'font-family:' . $sans . ';font-size:15px;color:#1B2A34;line-height:1.5;">' . $r[0] . '</td>' .
+            '<td align="right" style="padding:12px 0;' . $bd . 'font-family:' . $sans .
+            ';font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:#1B2A34;">' . $r[1] . '</td></tr>';
     }
     return $out . '</table>';
 }
@@ -1411,11 +1426,11 @@ function email_ownernote($who, $text)
     }
     $sans = email_sans();
     $who = trim((string) $who) !== '' ? $who : 'us';
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr>' .
-        '<td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-left:3px solid #C79A64;border-radius:12px;padding:14px 17px;">' .
-        '<div style="font-family:' . $sans . ';font-size:13px;font-weight:700;color:' . email_muted_ink() . ';padding-bottom:4px;">A note from ' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr>' .
+        '<td bgcolor="#F4F4F2" style="background:#F4F4F2;border:1px solid #EBEBEA;border-radius:12px;padding:14px 16px;">' .
+        '<div style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:' . email_muted_ink() . ';padding-bottom:4px;">A note from ' .
         email_esc($who) . '</div>' .
-        '<div style="font-family:' . $sans . ';font-size:13.5px;color:#5A554C;line-height:1.7;">' .
+        '<div style="font-family:' . $sans . ';font-size:15px;color:#1B2A34;line-height:1.6;">' .
         email_esc($text) . '</div></td></tr></table>';
 }
 // The host's name for those notes, falling back to the business.
@@ -1439,28 +1454,43 @@ function email_phone()
 //  @media (prefers-color-scheme: dark) block is BUILT from it, and
 //  test-emails-render's dark contrast pass READS it, so the CSS that ships and
 //  the palette the gate measures can never drift apart. Clients that honour the
-//  media query (Apple Mail, most UK guests) get a designed dark email; Gmail
-//  ignores everyone's preferences and self-transforms regardless — these values
-//  also survive that transform gracefully, which the old pinned-light shell
-//  only partly did. The light rendering is byte-for-byte unaffected: the media
-//  block only ever fires in a dark client.
+//  media query (Apple Mail, most UK guests) get the back office's own dark theme;
+//  Gmail ignores everyone's preferences and self-transforms regardless — these
+//  values survive that transform too. The light rendering is unaffected: the
+//  media block only ever fires in a dark client.
 // ============================================================
 function email_dark_palette()
 {
+    // The dashboard's :root, composited onto its #121316 ground: card #16171A (glass at
+    // 1.8%), hairline #242528, well #1F2023, ink #F4F5F7, muted #B4B8C6, the accent
+    // #D6A785 as fill AND text. A SURFACE's fill is a simple class rule (the render gate
+    // measures those); its EDGE is a descendant rule declared after `.em-card td`, so a
+    // well's own border outranks the hairline that rule sets.
     return [
-        'body, .em-gr' => ['background' => '#171310'],
-        '.em-card' => ['background' => '#231E18', 'border-color' => '#3B342A'],
-        '.em-card td' => ['border-color' => '#37312A'],
-        '.em-r2' => ['border-color' => '#4E4536'],
-        '.em-pan' => ['background' => '#2C261E', 'border-color' => '#3B342A'],
-        '.em-ink' => ['color' => '#F0E9DC'],
-        '.em-txt' => ['color' => '#C9C0AF'],
-        '.em-mut' => ['color' => '#A79C87'],
-        '.em-acc' => ['color' => '#D9A96A'],
-        '.em-ok' => ['color' => '#8FCC96'],
-        '.em-warn' => ['color' => '#DFA24B'],
-        '.em-bad' => ['color' => '#E88B80'],
-        '.em-b2' => ['background' => '#231E18', 'border-color' => '#5A4B34'],
+        'body, .em-gr' => ['background' => '#121316'],
+        '.em-card' => ['background' => '#16171A', 'border-color' => '#242528'],
+        '.em-well' => ['background' => '#1F2023'],
+        '.em-note' => ['background' => '#272424'],
+        '.em-capok' => ['background' => '#1D2B21'],
+        '.em-capwarn' => ['background' => '#342A1C'],
+        '.em-capbad' => ['background' => '#312326'],
+        '.em-capinfo' => ['background' => '#1C252B'],
+        '.em-btn' => ['background' => '#D6A785'],
+        '.em-card td' => ['border-color' => '#242528'],
+        '.em-card .em-r2' => ['border-color' => '#4B4C4F'],
+        '.em-card .em-well' => ['border-color' => '#28292C'],
+        '.em-card .em-note' => ['border-color' => '#443A34'],
+        '.em-card .em-capok' => ['border-color' => '#233B27'],
+        '.em-card .em-capwarn' => ['border-color' => '#4E3A1D'],
+        '.em-card .em-capbad' => ['border-color' => '#482D2F'],
+        '.em-card .em-capinfo' => ['border-color' => '#22313A'],
+        '.em-ink' => ['color' => '#F4F5F7'],
+        '.em-mut' => ['color' => '#B4B8C6'],
+        '.em-acc' => ['color' => '#D6A785'],
+        '.em-ok' => ['color' => '#81C784'],
+        '.em-warn' => ['color' => '#FFB74D'],
+        '.em-bad' => ['color' => '#EF9A9A'],
+        '.em-info' => ['color' => '#79AEC8'],
     ];
 }
 function email_dark_css()
@@ -1480,23 +1510,27 @@ function email_dark_css()
 // element whose inline ink or fill has a dark twin — run once by email_shell
 // over the finished document, so a composer (or a future one) can never forget
 // to opt in. The pdfSafe rule: a sanitiser you have to remember is one the next
-// call site forgets. Inks NOT in the map (the button's #3A2E1E on the accent
-// fill, the dark status chips) deliberately keep their light values — they
-// already work on both grounds.
+// call site forgets. The one ink NOT in the map is the button's #1B1208: it sits on
+// the accent in both themes (the fill is what changes, #C6885E → #D6A785), and reads
+// 6.23:1 and 8.56:1 on them.
 function email_dark_hooks($html)
 {
     static $ink = null, $fill = null;
     if ($ink === null) {
         $ink = [
-            '#2A2622' => 'em-ink', '#2E2A25' => 'em-ink', '#262320' => 'em-ink',
-            '#57524A' => 'em-txt', '#5A554C' => 'em-txt',
+            '#1B2A34' => 'em-ink',
             strtoupper(email_muted_ink()) => 'em-mut',
             strtoupper(email_accent_ink()) => 'em-acc',
-            '#2E7D32' => 'em-ok',
+            '#29712D' => 'em-ok',
             strtoupper(email_warn_ink()) => 'em-warn',
-            strtoupper(email_alert_ink()) => 'em-bad', '#C62828' => 'em-bad',
+            strtoupper(email_alert_ink()) => 'em-bad',
+            '#316784' => 'em-info',
         ];
-        $fill = ['#FFFFFF' => 'em-card', '#FAF6EC' => 'em-pan', '#F7F4EE' => 'em-gr'];
+        $fill = [
+            '#FDFCFA' => 'em-card', '#F5F1E9' => 'em-gr', '#F4F4F2' => 'em-well', '#F8F2EC' => 'em-note',
+            '#C6885E' => 'em-btn',
+            '#E6F2E4' => 'em-capok', '#FDF1DE' => 'em-capwarn', '#FAEAE8' => 'em-capbad', '#E5ECEE' => 'em-capinfo',
+        ];
     }
     return preg_replace_callback('#<([a-z][a-z0-9]*)\b([^>]*)>#i', function ($m) use ($ink, $fill) {
         $attrs = $m[2];
@@ -1504,7 +1538,6 @@ function email_dark_hooks($html)
             return $m[0];
         }
         $add = [];
-        // (?<!-) so background-color's "color" is not read as an ink.
         if (preg_match('/(?<!-)\bcolor\s*:\s*(#[0-9A-Fa-f]{6})/i', $attrs, $c) && isset($ink[strtoupper($c[1])])) {
             $add[] = $ink[strtoupper($c[1])];
         }
@@ -1604,52 +1637,46 @@ function email_prop_photo($propKey)
     }
 }
 
-// The full document shell. $inner = card body HTML. $accentBar = the 3px
-// cottage-accent rule across the top of the card (the invoice's own device).
-// $opts: ['unsubscribe' => url, 'footer' => html, 'photo' => a rendered
-// email_photo_band() row, seated between the header line and the content].
-function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
+// The full document shell. $inner = card body HTML. $opts: ['unsubscribe' => url,
+// 'footer' => html, 'photo' => a rendered email_photo_band() row, seated between the
+// header line and the content]. $accentBar is accepted and ignored: THERE IS NO
+// ACCENT BAR. The dashboard's cards carry none, and three different bar colours
+// (cottage / gold / rose) were the loudest inconsistency in the set — the cottage is
+// named by its dot (email_eyebrow) where an email is about a stay.
+function email_shell($preheader, $inner, $accentBar = '#C6885E', $opts = [])
 {
     $sans = email_sans();
     $unsub = $opts['unsubscribe'] ?? '';
     $footerExtra = $opts['footer'] ?? '';
     $photo = $opts['photo'] ?? '';
     $doc = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">' .
-        '<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap");' .
-        'body{margin:0;padding:0;background:#F7F4EE;}' .
-        '@media (max-width:600px){.ec-wrap{width:100%!important;}.ec-pad{padding-left:24px!important;padding-right:24px!important;}}' .
+        '<style>@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap");' .
+        'body{margin:0;padding:0;background:#F5F1E9;}' .
+        '@media (max-width:600px){.ec-wrap{width:100%!important;}.ec-pad{padding-left:20px!important;padding-right:20px!important;}}' .
         email_dark_css() .
         '</style></head>' .
-        '<body style="margin:0;padding:0;background:#F7F4EE;">' .
-        '<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">' .
-        email_esc($preheader) .
-        '</div>' .
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F7F4EE" style="background:#F7F4EE;"><tr><td align="center" style="padding:28px 12px 34px;">' .
+        '<body style="margin:0;padding:0;background:#F5F1E9;">' .
+        '<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">' . email_esc($preheader) . '</div>' .
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F5F1E9" style="background:#F5F1E9;"><tr><td align="center" style="padding:24px 12px 32px;">' .
         '<table role="presentation" width="600" class="ec-wrap" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' .
-        '<tr><td bgcolor="#FFFFFF" style="background:#FFFFFF;border:1px solid #EAE3D5;border-radius:16px;">' .
+        '<tr><td bgcolor="#FDFCFA" style="background:#FDFCFA;border:1px solid #E2E3E3;border-radius:20px;">' .
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
-        '<tr><td height="3" bgcolor="' . $accentBar . '" style="background:' . $accentBar . ';border-radius:16px 16px 0 0;font-size:0;line-height:3px;">&nbsp;</td></tr>' .
         email_crown_header('') .
         $photo .
-        '<tr><td class="ec-pad" style="padding:24px 32px 30px;">' .
-        $inner .
-        '</td></tr>' .
+        '<tr><td class="ec-pad" style="padding:24px 28px 28px;">' . $inner . '</td></tr>' .
         '</table>' .
         '</td></tr>' .
-        '<tr><td class="ec-pad" style="padding:18px 32px 0;font-family:' .
-        $sans .
-        ';font-size:11.5px;color:' . email_muted_ink() . ';line-height:1.8;">' .
+        '<tr><td class="ec-pad" style="padding:16px 28px 0;font-family:' . $sans . ';font-size:12px;color:' . email_muted_ink() . ';line-height:1.7;">' .
         'Self-catering holiday cottages in Blakeney, North Norfolk &middot; NR25<br>' .
         ($footerExtra !== '' ? $footerExtra . '<br>' : '') .
-        ($unsub !== ''
-            ? '<a href="' . email_esc($unsub) . '" style="color:' . email_muted_ink() . ';text-decoration:underline;">Unsubscribe</a>'
-            : '') .
+        ($unsub !== '' ? '<a href="' . email_esc($unsub) . '" style="color:' . email_muted_ink() . ';text-decoration:underline;">Unsubscribe</a>' : '') .
         '</td></tr>' .
         '</table></td></tr></table></body></html>';
     return email_dark_hooks($doc);
 }
 
-// Let the owner know money has landed. $b: name, prop_name, kind, amount, status.
+// Let the owner know money has landed. $b: id (the booking, for the deep link), name,
+// prop_name, kind, amount, status.
 // Pure — split out of send_owner_payment_notice so a gate can drive the REAL
 // composer rather than reading its source (which proves the words exist, not
 // that they are ever reached).
@@ -1689,7 +1716,8 @@ function owner_payment_notice_body($b)
             "\n" .
             ($leftTxt !== '' ? $leftTxt . "\n" : '') .
             "\n" .
-            "See Money & income for the full picture.\nCottage Holidays Blakeney",
+            "See Money & income for the full picture.\nCottage Holidays Blakeney" .
+            (!empty($b['id']) ? owner_open_line('booking-' . (int) $b['id']) : ''),
     ];
 }
 function send_owner_payment_notice($b)
@@ -1734,12 +1762,12 @@ function thank_you_body($b)
     $inner =
         email_h('Thank you for staying, ' . $name . '.') .
         email_p(
-            'We hope you had a lovely time at <strong style="color:#2A2622;">' . email_esc($prop) . '</strong>' .
+            'We hope you had a lovely time at <strong style="color:#1B2A34;">' . email_esc($prop) . '</strong>' .
                 ($range !== '' ? ' (' . email_esc($range) . ')' : '') . ' and that Blakeney treated you well.',
         ) .
         ($depSentence !== '' ? email_note(email_esc($depSentence), $accent) : '') .
         ($url !== ''
-            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#2A2622;margin:22px 0 2px;">Coming back?</div>' .
+            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#1B2A34;margin:22px 0 2px;">Coming back?</div>' .
                 email_p('Booking direct is the best price &mdash; no platform fees &mdash; and the easiest way to get the weeks you like.', true) .
                 email_btn($url, 'See dates & prices')
             : '') .
@@ -1796,7 +1824,7 @@ function send_review_request_email($b)
     // question alone invites the reply, and the ask is inside where it belongs.
     $subject = "How was your stay at {$prop}?";
     $text =
-        "Hi {$name},\n\n" .
+        "Hello {$name},\n\n" .
         "Thank you for staying at {$prop}. We'd love to hear how it went — a short review " .
         "really helps other guests (and us).\n\n" .
         // "Or review us on our site" with no Google link above it began the
@@ -1809,9 +1837,9 @@ function send_review_request_email($b)
     $inner =
         email_h('How was your stay?') .
         email_p(
-            'Hi ' .
+            'Hello ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#2A2622;">' .
+                ', thank you for staying at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).',
         );
@@ -1828,7 +1856,7 @@ function send_review_request_email($b)
             // things rule the whole design system follows).
             $stars .=
                 '<a href="' . email_esc($url . $sep . 'stars=' . $n) . '" aria-label="' . $n . ' star' . ($n === 1 ? '' : 's') . '" ' .
-                'style="text-decoration:none;font-size:36px;line-height:1.2;color:' . email_accent_ink() . ';padding:0 6px;">&#9733;</a>';
+                'style="text-decoration:none;font-size:34px;line-height:1.2;color:' . email_accent_ink() . ';padding:0 6px;">&#9733;</a>';
         }
         $inner .=
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;"><tr><td align="center">' .
@@ -1880,7 +1908,7 @@ function send_anniversary_email($b)
     $bookUrl = email_cottage_url($b['prop_key'] ?? '');
     $subject = "{$month} at {$prop} — fancy a return visit?";
     $text =
-        "Hi {$name},\n\n" .
+        "Hello {$name},\n\n" .
         "Around this time last year you were getting ready for your stay at {$prop} — " .
         "we hope Blakeney has stayed with you the way it tends to.\n\n" .
         "The same {$month} weeks are starting to book up again, so if you fancy a return " .
@@ -1894,14 +1922,14 @@ function send_anniversary_email($b)
     $inner =
         email_h('Fancy a return visit?') .
         email_p(
-            'Hi ' .
+            'Hello ' .
                 $esc($name) .
-                ', around this time last year you were getting ready for your stay at <strong style="color:#2A2622;">' .
+                ', around this time last year you were getting ready for your stay at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong> — we hope Blakeney has stayed with you the way it tends to.',
         ) .
         email_p(
-            'The same <strong style="color:#2A2622;">' .
+            'The same <strong style="color:#1B2A34;">' .
                 $esc($month) .
                 '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates.',
         );
@@ -1980,7 +2008,7 @@ function send_direct_followup_email($lead)
     $bookUrl = email_cottage_url($lead['prop_key'] ?? '');
     $subject = "The coast is calling — come back to {$prop}, direct";
     $text =
-        "Hi {$name},\n\n" .
+        "Hello {$name},\n\n" .
         "Thank you again for your lovely review of {$prop} — it genuinely made our week.\n\n" .
         "If North Norfolk is on your mind again — the big skies over the marshes, the walk down to the " .
         "quay, the hush once the day-trippers have gone — we'd love to have you back.\n\n" .
@@ -1994,27 +2022,21 @@ function send_direct_followup_email($lead)
     $hero = $img !== ''
         ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:0 0 6px;">' .
             '<img src="' . email_esc($img) . '" alt="' . $esc($prop) . '" width="528" ' .
-            'style="display:block;width:100%;max-width:528px;height:auto;border-radius:16px;border:0;outline:none;">' .
+            'style="display:block;width:100%;max-width:528px;height:auto;border-radius:12px;border:0;outline:none;">' .
             '</td></tr></table>'
         : '';
-    $tag =
-        '<p style="font-family:' . $sans . ';text-align:center;font-size:12.5px;font-weight:700;' .
-        'color:' . email_accent_ink() . ';margin:16px 0 0;">Book direct &middot; best price</p>';
-    $head =
-        '<h1 style="font-family:' . $serif . ';text-align:center;font-size:30px;font-weight:700;color:#262320;' .
-        'margin:6px 0 2px;line-height:1.25;">The coast is calling you back</h1>';
-    $highlights =
-        '<p style="font-family:' . $sans . ';text-align:center;font-size:12px;letter-spacing:1px;color:' . email_muted_ink() . ';' .
-        'margin:22px 0 2px;">Blakeney Quay &nbsp;&middot;&nbsp; The Coastal Path &nbsp;&middot;&nbsp; Seal trips to the Point</p>';
+    $tag = email_caption('Book direct · best price');
+    $head = email_h('The coast is calling you back');
+    $highlights = email_footnote('Blakeney Quay &nbsp;&middot;&nbsp; The Coastal Path &nbsp;&middot;&nbsp; Seal trips to the Point');
 
     $inner =
         $hero .
         $tag .
         $head .
         email_p(
-            'Hi ' .
+            'Hello ' .
                 $esc($name) .
-                ', thank you again for your lovely review of <strong style="color:#262320;">' .
+                ', thank you again for your lovely review of <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong> — it genuinely made our week.',
         ) .
@@ -2022,7 +2044,7 @@ function send_direct_followup_email($lead)
             'If North Norfolk is on your mind again — the big skies over the marshes, the walk down to the quay, the hush once the day-trippers have gone — we\'d love to have you back.',
         ) .
         email_p(
-            'And here\'s the best part: book <strong style="color:#262320;">direct</strong> with us and you skip the booking-site fees entirely. <strong style="color:#262320;">Best price</strong>, no middle-man — just you and the people who look after the cottage.',
+            'And here\'s the best part: book <strong style="color:#1B2A34;">direct</strong> with us and you skip the booking-site fees entirely. <strong style="color:#1B2A34;">Best price</strong>, no middle-man — just you and the people who look after the cottage.',
         ) .
         $highlights;
     if ($bookUrl) {
@@ -2035,7 +2057,7 @@ function send_direct_followup_email($lead)
     $html = email_shell(
         'Come back to ' . $prop . ' — book direct and skip the fees',
         $inner,
-        '#C79A64',
+        '#C6885E',
         $unsub !== '' ? ['unsubscribe' => $unsub] : [],
     );
 
@@ -2075,7 +2097,7 @@ function send_enquiry_ack($enq, $accountExists = false)
     // escape-at-the-boundary asymmetry email_h/email_p have.
     $pre = "We'll confirm your dates and price" . ($prop ? ' for ' . $prop : '') . ' — usually within a few hours.';
     $text =
-        "Hi {$first},\n\n" .
+        "Hello {$first},\n\n" .
         'Thanks for your enquiry' .
         ($prop ? " about {$prop}" : '') .
         ($dates ? " for {$dates}" : '') .
@@ -2092,8 +2114,8 @@ function send_enquiry_ack($enq, $accountExists = false)
         email_h('Thanks, ' . $first . ' — we\'ve got it.') .
         email_p(
             'Thanks for your enquiry' .
-                ($prop ? ' about <strong style="color:#2A2622;">' . email_esc($prop) . '</strong>' : '') .
-                ($dates ? ' for <strong style="color:#2A2622;">' . email_esc($dates) . '</strong>' : '') .
+                ($prop ? ' about <strong style="color:#1B2A34;">' . email_esc($prop) . '</strong>' : '') .
+                ($dates ? ' for <strong style="color:#1B2A34;">' . email_esc($dates) . '</strong>' : '') .
                 '.',
         ) .
         // WHEN, not just WHAT. The one question this email leaves a guest with is
@@ -2127,7 +2149,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
     $prop = function_exists('prop_display')
         ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
         : $e['prop_key'] ?? '';
-    $accent = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '')['accent'] ?? '#C79A64' : '#C79A64';
+    $accent = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '')['accent'] ?? '#C6885E' : '#C6885E';
     $name = first_name($e['name'], 'Guest');
     $party =
         (int) ($e['adults'] ?? 0) .
@@ -2210,7 +2232,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
             $qRows[] = ['Refundable damage deposit', email_esc($money($p['damagesDeposit']))];
         }
         $quote =
-            email_p('<strong style="color:#2A2622;">' . ($noun === 'booking' ? 'Your price' : 'Your quote') . '</strong>', true) .
+            email_p('<strong style="color:#1B2A34;">' . ($noun === 'booking' ? 'Your price' : 'Your quote') . '</strong>', true) .
             email_money_rows($qRows) .
             (!empty($p['damagesDeposit'])
                 ? email_footnote('The damage deposit is charged with your first payment and refunded after your stay.')
@@ -2235,7 +2257,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $ac
         email_p($msgHtml) .
         $actBtns .
         $quote .
-        email_p('<strong style="color:#2A2622;">Your ' . $noun . ' details</strong>', true) .
+        email_p('<strong style="color:#1B2A34;">Your ' . $noun . ' details</strong>', true) .
         email_rows($dRows) .
         email_p('Just reply to this email to reach us.<br>Cottage Holidays Blakeney', true);
     $html = email_shell($subject, $inner, $accent);
@@ -2474,15 +2496,15 @@ function send_owner_enquiry_email($e)
     $dRows = [];
     $gEmail = trim((string) ($e['email'] ?? ''));
     if ($gEmail !== '') {
-        $dRows[] = ['Email', '<a href="mailto:' . email_esc($gEmail) . '" style="color:#2E2A25;">' . email_esc($gEmail) . '</a>'];
+        $dRows[] = ['Email', '<a href="mailto:' . email_esc($gEmail) . '" style="color:#1B2A34;">' . email_esc($gEmail) . '</a>'];
     }
     $gPhone = trim((string) ($e['phone'] ?? ''));
     if ($gPhone !== '') {
         $tel = preg_replace('/[^0-9+]/', '', $gPhone);
-        $dRows[] = ['Phone', '<a href="tel:' . email_esc($tel) . '" style="color:#2E2A25;">' . email_esc($gPhone) . '</a>'];
+        $dRows[] = ['Phone', '<a href="tel:' . email_esc($tel) . '" style="color:#1B2A34;">' . email_esc($gPhone) . '</a>'];
     }
     if ($addr !== '') {
-        $dRows[] = ['Address', '<a href="' . email_esc(email_maplink($addr)) . '" style="color:#2E2A25;">' . email_esc($addr) . '</a>'];
+        $dRows[] = ['Address', '<a href="' . email_esc(email_maplink($addr)) . '" style="color:#1B2A34;">' . email_esc($addr) . '</a>'];
     }
     if ($times !== '') {
         $dRows[] = ['Times', email_esc($times)];
@@ -2497,9 +2519,9 @@ function send_owner_enquiry_email($e)
     $inner =
         email_h('New enquiry') .
         email_p(
-            '<strong style="color:#2A2622;">' .
+            '<strong style="color:#1B2A34;">' .
                 email_esc($e['name'] ?? '') .
-                '</strong> would like to stay at <strong style="color:#2A2622;">' .
+                '</strong> would like to stay at <strong style="color:#1B2A34;">' .
                 email_esc($prop) .
                 '</strong>.',
         ) .
@@ -2563,7 +2585,7 @@ function send_booking_emails($b)
     // Property accent colour (matches the site's calendar/tag colours)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $paymentLabel = ucfirst($b['payment'] ?? 'unpaid');
-    $paymentColor = ($b['payment'] ?? 'unpaid') === 'paid' ? '#2E7D32' : '#C62828';
+    $paymentColor = ($b['payment'] ?? 'unpaid') === 'paid' ? '#29712D' : '#BC2626';
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
     // ---- Guest confirmation ----
@@ -2705,24 +2727,21 @@ function send_booking_emails($b)
         // correct one and is still in scope, so this shadow is simply gone.
         $sans = email_sans();
         $serif = email_serif();
-        $statusBadge =
-            '<span style="display:inline-block;background:#22321f;color:#7bd687;font-family:' .
-            $sans .
-            ';font-size:10px;font-weight:700;letter-spacing:1.5px;padding:5px 12px;border-radius:12px;">UPCOMING</span>';
+        $statusBadge = email_cap('ok', 'Confirmed');
         $pr = fn($l, $v) => '<tr><td style="padding:8px 0;font-family:' .
             $sans .
-            ';font-size:14px;color:#57524A;">' .
+            ';font-size:15px;color:#1B2A34;">' .
             $l .
             '</td><td align="right" style="padding:8px 0;font-family:' .
             $sans .
-            ';font-size:14px;color:#57524A;">' .
+            ';font-size:15px;color:#1B2A34;">' .
             $v .
             '</td></tr>';
         // The modern money anatomy (the invoice's): price lines on hairlines, the
         // Total in the grotesque above a heavier rule — no tinted panel, so the
         // one tint an email keeps (email_note) stays the single shout.
         $priceBox =
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 4px;"><tr><td style="border-top:1px solid #EFE9DD;padding-top:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 4px;"><tr><td style="border-top:1px solid #E2E3E3;padding-top:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
             // Same branch as the plain-text body above — a custom price is one
             // coherent line, not standard-rate maths beside a total it can't reach.
             ($customPrice
@@ -2730,12 +2749,12 @@ function send_booking_emails($b)
                 : $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
                   $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee']))) .
             ($depAmt > 0 ? $pr('Refundable damages deposit', $money($depAmt)) : '') .
-            '<tr><td colspan="2" class="em-r2" style="border-top:2px solid #D9CFB8;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+            '<tr><td colspan="2" class="em-r2" style="border-top:2px solid #C7CACA;font-size:0;line-height:0;">&nbsp;</td></tr>' .
             '<tr><td style="padding:10px 0 4px;font-family:' .
             $sans .
-            ';font-size:15px;font-weight:700;color:#2A2622;">Total' . ($depAmt > 0 ? ' <span style="font-size:12px;font-weight:400;color:' . email_muted_ink() . ';">(incl. deposit)</span>' : '') . '</td><td align="right" style="padding:10px 0 4px;font-family:' .
+            ';font-size:15px;font-weight:700;color:#1B2A34;">Total' . ($depAmt > 0 ? ' <span style="font-size:12px;font-weight:400;color:' . email_muted_ink() . ';">(incl. deposit)</span>' : '') . '</td><td align="right" style="padding:10px 0 4px;font-family:' .
             $sans .
-            ';font-size:18px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:#2A2622;">' .
+            ';font-size:17px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:#1B2A34;">' .
             $money($grandTotal) .
             '</td></tr>' .
             // (the refundable-deposit sentence is a FOOTNOTE under this box, not a row
@@ -2746,21 +2765,21 @@ function send_booking_emails($b)
             // balance row here too, not only in the plain-text half: a guest who
             // reads the HTML (nearly all) was shown a balance with no deadline.
             ($paidNow > 0
-                ? '<tr><td colspan="2" style="border-top:1px solid #EFE9DD;font-size:0;line-height:0;">&nbsp;</td></tr>' .
-                    $pr('Paid so far', '<span style="color:#2E7D32;font-weight:600;">' . $money($paidNow) . '</span>') .
+                ? '<tr><td colspan="2" style="border-top:1px solid #E2E3E3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+                    $pr('Paid so far', '<span style="color:#29712D;font-weight:600;">' . $money($paidNow) . '</span>') .
                     ($balNow > 0.001
                         ? $pr(
                             '<strong>Balance remaining</strong>',
                             '<strong>' . $money($balNow) . '</strong>' . $dueByHtml,
                         )
-                        : $pr('<strong style="color:#2E7D32;">Paid in full</strong>', '<strong style="color:#2E7D32;">&#10003;</strong>'))
+                        : $pr('<strong style="color:#29712D;">Paid in full</strong>', '<strong style="color:#29712D;">&#10003;</strong>'))
                 : ($balNow > 0.001
-                    ? '<tr><td colspan="2" style="border-top:1px solid #EFE9DD;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+                    ? '<tr><td colspan="2" style="border-top:1px solid #E2E3E3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
                         $pr('<strong>Balance</strong>', '<strong>' . $money($balNow) . '</strong>' . $dueByHtml)
                     : '')) .
             '</table></td></tr></table>';
         $inner =
-            email_h('You’re booked, ' . first_name($b['name'], 'Guest') . '.', $accent) .
+            email_eyebrow($accent, $b['prop_name'] . ' · ' . email_range($b['check_in'], $b['check_out'])) . email_h('You’re booked, ' . first_name($b['name'], 'Guest') . '.', $accent) .
             '<div style="font-family:' .
             $sans .
             ';font-size:12px;font-weight:600;color:' . email_muted_ink() . ';margin:2px 0 6px;">Booking ref ' .
@@ -2768,13 +2787,13 @@ function send_booking_emails($b)
             ' &nbsp;&middot;&nbsp; ' .
             $statusBadge .
             '</div>' .
-            email_p('<strong style="color:#2A2622;">' . $esc($b['prop_name']) . '</strong> is yours from ' . email_date($b['check_in']) . '. Here are the details:') .
+            email_p('<strong style="color:#1B2A34;">' . $esc($b['prop_name']) . '</strong> is yours from ' . email_date($b['check_in']) . '. Here are the details:') .
             email_dates($b['check_in'], $b['check_in_time'], $b['check_out'], $b['check_out_time']) .
             email_cal_links($b) .
             // (Arrive and Leave are the dates block above — said once, not twice.)
             email_rows([
                 ['Party', $esc($party)],
-                ['Payment', '<span style="color:' . $paymentColor . ';font-weight:600;">' . $paymentLabel . '</span>'],
+                ['Payment', email_cap(($b['payment'] ?? 'unpaid') === 'paid' ? 'ok' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'warn' : 'bad'), ($b['payment'] ?? 'unpaid') === 'paid' ? 'Paid in full' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'Deposit paid' : 'Not paid yet'))],
             ]) .
             // An address is its own block with a Maps link, not a value squeezed into
             // the 40/60 grid — where a long one wrapped to three right-aligned lines.
@@ -2787,7 +2806,7 @@ function send_booking_emails($b)
             // card rail is the guest's (an owner-arranged stay is settled by hand — the
             // bookingOwnerArranged rule).
             $payCta .
-            '<div style="font-family:' . $sans . ';font-size:15px;font-weight:700;color:#2A2622;margin:22px 0 2px;">What happens next</div>' .
+            email_caption('What happens next') .
             email_timeline($nextSteps) .
             (!empty($b['invoice_url']) ? email_btn2($b['invoice_url'], 'View your invoice') : '') .
             (!empty($b['guest_reg_url']) ? email_p('<strong>Before you arrive:</strong> UK law asks us to record the name &amp; nationality of everyone staying who is 16 or over. Please add your guest details — it only takes a minute.', true) . email_btn($b['guest_reg_url'], 'Add your guest details') : '') .
@@ -2861,13 +2880,13 @@ function send_booking_emails($b)
         $oRows = [['Reference', email_esc((string) $b['ref'])], ['Cottage', email_esc((string) $b['prop_name'])]];
         $oGuestEmail = trim((string) ($b['email'] ?? ''));
         if ($oGuestEmail !== '') {
-            $oRows[] = ['Email', '<a href="mailto:' . email_esc($oGuestEmail) . '" style="color:#2E2A25;">' . email_esc($oGuestEmail) . '</a>'];
+            $oRows[] = ['Email', '<a href="mailto:' . email_esc($oGuestEmail) . '" style="color:#1B2A34;">' . email_esc($oGuestEmail) . '</a>'];
         }
         $oGuestPhone = trim((string) ($b['phone'] ?? ''));
         if ($oGuestPhone !== '') {
             $oRows[] = [
                 'Phone',
-                '<a href="tel:' . email_esc(preg_replace('/[^0-9+]/', '', $oGuestPhone)) . '" style="color:#2E2A25;">' . email_esc($oGuestPhone) . '</a>',
+                '<a href="tel:' . email_esc(preg_replace('/[^0-9+]/', '', $oGuestPhone)) . '" style="color:#1B2A34;">' . email_esc($oGuestPhone) . '</a>',
             ];
         }
         $oRows[] = ['Arrive', '<strong>' . email_esc(email_date($b['check_in'])) . '</strong>' . (email_time($b['check_in_time']) !== '' ? ' &middot; ' . email_esc(email_time($b['check_in_time'])) : '')];
@@ -2878,7 +2897,7 @@ function send_booking_emails($b)
         $oInner =
             email_h('New confirmed booking', $accent) .
             email_p(
-                '<strong style="color:#2A2622;">' . email_esc((string) $b['name']) . '</strong> is confirmed at <strong style="color:#2A2622;">' .
+                '<strong style="color:#1B2A34;">' . email_esc((string) $b['name']) . '</strong> is confirmed at <strong style="color:#1B2A34;">' .
                     email_esc((string) $b['prop_name']) . '</strong>.',
             ) .
             email_rows($oRows) .
@@ -2977,7 +2996,7 @@ function arrival_email_body($b)
     // filled button; the booking page is the quiet second. Arrive/Leave is the dates pair
     // (check-out is the second thing guests forget, so it stays).
     $inner =
-        email_h('See you ' . date('l', strtotime((string) $b['check_in'])) . ', ' . $name . '.', $accent) .
+        email_eyebrow($accent, $prop . ' · ' . email_range($b['check_in'], $b['check_out'] ?? '')) . email_h('See you ' . date('l', strtotime((string) $b['check_in'])) . ', ' . $name . '.', $accent) .
         // The owner's own words when they reviewed it, else the house sentence.
         // email_p expects PRE-ESCAPED HTML (the asymmetry in CLAUDE.md), and a
         // reviewed note is free text typed by a person — so it is escaped here
@@ -2990,7 +3009,7 @@ function arrival_email_body($b)
         email_dates($b['check_in'], $b['check_in_time'] ?: '15:00', $outDate !== '' ? $b['check_out'] : $b['check_in'], $outDate !== '' ? ($b['check_out_time'] ?: '10:00') : '') .
         email_address_block($addr) .
         email_note(
-            '<strong style="color:#2A2622;">Your entry details</strong><br>They appear on your booking page once you&rsquo;re here &mdash; we never email a door code. Tap below and open <strong style="color:#2A2622;">Your stay</strong>.',
+            '<strong style="color:#1B2A34;">Your entry details</strong><br>They appear on your booking page once you&rsquo;re here &mdash; we never email a door code. Tap below and open <strong style="color:#1B2A34;">Your stay</strong>.',
             $accent,
         ) .
         ($addr !== '' ? email_btn2($stayUrl, 'Open my booking') : email_btn($stayUrl, 'Open my booking')) .
@@ -3010,14 +3029,14 @@ function arrival_email_body($b)
         ($rules
             // Body ink, NOT email_p's muted variant: these are the owner's own
             // terms, not a footnote about them.
-            ? email_p('<strong style="color:#2A2622;">A few house rules</strong><br>' .
+            ? email_p('<strong style="color:#1B2A34;">A few house rules</strong><br>' .
                 implode('<br>', array_map(fn($r) => '&bull;&nbsp; ' . email_esc($r), $rules)))
             : '') .
         email_footnote(
             $phone !== ''
                 ? 'Trouble getting in, or running late? Call <a href="tel:' .
                     email_esc(preg_replace('/\s+/', '', $phone)) .
-                    '" style="color:#8A5A2B;">' . email_esc($phone) . '</a> — or just reply to this email.'
+                    '" style="color:#965C35;">' . email_esc($phone) . '</a> — or just reply to this email.'
                 : 'Running late or stuck? Just reply to this email and we&rsquo;ll help.',
         );
     $html = email_shell(
@@ -3057,7 +3076,7 @@ function send_magic_link_email($g, $url, $purpose = 'signin', $code = '')
     if (empty($g['email'])) {
         return ['ok' => false, 'error' => 'No email'];
     }
-    $accent = '#D6A785';
+    $accent = '#C6885E';
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($g['name'], 'there');
 
@@ -3091,7 +3110,7 @@ function send_magic_link_email($g, $url, $purpose = 'signin', $code = '')
                 // email_muted_ink(), not a hand-picked grey: the dark pass found
                 // #6b6b6b at 3.10:1 on the dark card — an off-token ink is
                 // invisible to the palette and gets no dark twin.
-                '<span style="word-break:break-all;color:' . email_muted_ink() . ';">' . $esc($url) . '</span>',
+                '<a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>',
         ) .
         // WHAT THE GUEST NEEDS TO KNOW BEFORE THEY TAP: that it is single-use. A
         // link that silently stops working on the second tap reads as broken —
@@ -3109,7 +3128,7 @@ function send_magic_link_email($g, $url, $purpose = 'signin', $code = '')
 // The sign-in CODE email. Pure composer + sender, like every template here.
 function guest_code_email_body($name, $url, $code, $isNew)
 {
-    $accent = '#D6A785';
+    $accent = '#C6885E';
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $pretty = substr($code, 0, 3) . ' ' . substr($code, 3);
     $subject = 'Your code is ' . $pretty . ' — Cottage Holidays Blakeney';
@@ -3121,9 +3140,9 @@ function guest_code_email_body($name, $url, $code, $isNew)
     $inner =
         email_h($isNew ? 'Your code to create your account' : 'Your sign-in code', $accent) .
         email_p($isNew ? 'Type this code where you asked for it:' : 'Hello ' . $esc($name) . ', type this code where you asked for it:') .
-        email_amount('Your code', $esc($pretty), 'Works once, for 30 minutes.', email_accent_ink()) .
-        ($url !== '' ? email_btn($url, 'Or sign me in on this device', $accent) .
-            email_footnote('Copy this link into your browser if the button doesn&rsquo;t work:<br><span style="word-break:break-all;">' . $esc($url) . '</span>') : '') .
+        email_code('Your code', $code, 'Works once, for 30 minutes.') .
+        ($url !== '' ? email_btn2($url, 'Or sign me in on this device') .
+            email_footnote('Copy this link into your browser if the button doesn&rsquo;t work:<br><a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>') : '') .
         email_footnote('If you didn&rsquo;t ask for this, you can safely ignore this email.');
     $html = email_shell('Your code is ' . $pretty . ' — it works once, for 30 minutes', $inner, $accent);
     return ['subject' => $subject, 'text' => $text, 'html' => $html];
@@ -3335,11 +3354,11 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         'Cottage Holidays Blakeney';
 
     $inner =
-        email_h($prop, $accent) .
+        email_eyebrow($accent, $prop . ' · ' . email_range($b['check_in'], $b['check_out'])) . email_h('Pay your ' . $what) .
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for booking <strong style="color:#2A2622;">' .
+                ', thank you for booking <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong> (' .
                 $esc(email_date($b['check_in'])) .
@@ -3648,13 +3667,13 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
         'Cottage Holidays Blakeney';
 
     $inner =
-        email_h($prop, $accent) .
+        email_eyebrow($accent, $prop . ' · ' . email_range($b['check_in'], $b['check_out'])) . email_h('A reminder about your ' . $noun) .
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', a friendly reminder that the ' . $esc($noun) . ' for your stay at <strong style="color:#2A2622;">' .
+                ', a friendly reminder that the ' . $esc($noun) . ' for your stay at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
-                '</strong> is still outstanding, and your arrival is <strong style="color:#2A2622;">' .
+                '</strong> is still outstanding, and your arrival is <strong style="color:#1B2A34;">' .
                 $esc($when) .
                 '</strong> (' .
                 $esc(email_date($b['check_in'])) .
@@ -3728,7 +3747,7 @@ function send_hold_request($b, $url)
         'Cottage Holidays Blakeney';
 
     $inner =
-        email_h($prop, $accent) .
+        email_eyebrow($accent, $prop . ' · ' . email_range($b['check_in'], $b['check_out'])) . email_h('Place your security hold') .
         email_p(
             'Hello ' .
                 $esc($name) .
@@ -3780,7 +3799,7 @@ function send_hold_released($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#2A2622;">' .
+                ', thank you for staying at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong>. We\'ve released your refundable security hold.',
         ) .
@@ -3829,7 +3848,7 @@ function send_refund_email($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', we\'ve issued a refund for your booking at <strong style="color:#2A2622;">' .
+                ', we\'ve issued a refund for your booking at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong>' .
                 (!empty($b['check_in']) ? ' (' . $esc(email_date($b['check_in'])) . ' to ' . $esc(email_date($b['check_out'])) . ')' : '') .
@@ -3904,7 +3923,7 @@ function send_deposit_return_email($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#2A2622;">' .
+                ', thank you for staying at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong>. We\'re returning your refundable damage deposit.',
         ) .
@@ -3998,7 +4017,7 @@ function send_cancellation_email_body($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', your booking at <strong style="color:#2A2622;">' .
+                ', your booking at <strong style="color:#1B2A34;">' .
                 $esc($prop) .
                 '</strong>' .
                 (!empty($b['check_in']) ? ' (' . $esc(email_date($b['check_in'])) . ' to ' . $esc(email_date($b['check_out'])) . ')' : '') .
@@ -4382,11 +4401,11 @@ function payment_receipt_body($b)
                 // made of.
                 (!empty($b['automatic'])
                     ? ($autoPartial
-                        ? 'as arranged, we\'ve now collected <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
-                        : 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.')
+                        ? 'as arranged, we\'ve now collected <strong style="color:#1B2A34;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#1B2A34;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
+                        : 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#1B2A34;">' . $money($paidNow) . '</strong> for <strong style="color:#1B2A34;">' . $esc($prop) . '</strong>. Nothing was needed from you.')
                     : ($partial
-                        ? 'thank you — we\'ve received your payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.'
-                        : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.')),
+                        ? 'thank you — we\'ve received your payment of <strong style="color:#1B2A34;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#1B2A34;">' . $esc($prop) . '</strong>.'
+                        : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#1B2A34;">' . $money($paidNow) . '</strong> for <strong style="color:#1B2A34;">' . $esc($prop) . '</strong>.')),
         ) .
         // A RECEIPT'S JOB IS THE FIGURE. It was stated only inside the greeting
         // sentence, at prose size, so the one thing the guest opens a receipt to
@@ -4408,7 +4427,7 @@ function payment_receipt_body($b)
         ) .
         email_p($statusLine, true) .
         ($leftSteps
-            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#2A2622;margin:18px 0 2px;">What&rsquo;s left</div>' . email_timeline($leftSteps)
+            ? '<div style="font-family:' . email_sans() . ';font-size:15px;font-weight:700;color:#1B2A34;margin:18px 0 2px;">What&rsquo;s left</div>' . email_timeline($leftSteps)
             : '') .
         // WHICHEVER ACTION IS ACTUALLY WANTED LEADS. With money still owing the
         // primary action is paying it; the invoice is then the quiet one. With
@@ -4537,6 +4556,20 @@ function send_arrival_for_booking($bk, $note = '')
 // Plain text on purpose: owner_alert_text_html turns blank lines into paragraphs and
 // bare URLs into links, which is the whole content of an alert like this.
 
+// THE DEEP LINK AN OWNER ALERT ENDS WITH — the push notifications' own ?open= target
+// (chbOpenTarget's vocabulary: booking-42, moderation, inbox:messages, settings:<id>).
+// A paragraph of its own: a link in the plain-text half, and owner_alert_text_html
+// renders it as the email's one button. '' when the base URL is unknown, so a builder
+// stays usable anywhere and simply carries no link.
+function owner_open_line($target)
+{
+    $t = preg_replace('/[^a-z0-9:-]/', '', strtolower((string) $target));
+    if ($t === '' || !function_exists('site_base_url')) {
+        return '';
+    }
+    return "\n\nOpen in the back office: " . site_base_url() . '?open=' . $t;
+}
+
 /** A guest review submitted through the site, waiting for approval. */
 function owner_note_review($guestName, $propName, $stars, $text)
 {
@@ -4545,7 +4578,8 @@ function owner_note_review($guestName, $propName, $stars, $text)
         'text' =>
             'A review was submitted by ' . $guestName . ' for ' . $propName . ' (' . (int) $stars . "\u{2605}):\n\n" .
             trim((string) $text) .
-            "\n\nApprove or decline it in Manage \u{2192} Guest reviews.",
+            "\n\nApprove or decline it in Manage \u{2192} Guest reviews." .
+            owner_open_line('moderation'),
     ];
 }
 
@@ -4558,7 +4592,8 @@ function owner_note_lead($name, $propName, $stars, $text, $email, $phone = '')
             $name . ' left a ' . (int) $stars . "\u{2605} review for " . $propName . " via the review link:\n\n" .
             trim((string) $text) .
             "\n\nContact: " . $email . ($phone ? ' / ' . $phone : '') .
-            "\n\nApprove it (and privately rate the guest) in Manage \u{2192} Guest reviews.",
+            "\n\nApprove it (and privately rate the guest) in Manage \u{2192} Guest reviews." .
+            owner_open_line('moderation'),
     ];
 }
 
@@ -4572,19 +4607,22 @@ function owner_note_experience($guestName, $title, $body, $linkUrl = '', $phone 
             $title . "\n\n" . trim((string) $body) . "\n\n" .
             ($linkUrl ? 'Link: ' . $linkUrl . "\n" : '') .
             ($phone ? 'Phone: ' . $phone . "\n" : '') .
-            "\nReview it in Manage \u{2192} Experiences.",
+            "\nReview it in Manage \u{2192} Experiences." .
+            owner_open_line('settings:experiences'),
     ];
 }
 
-/** A push that reached NO device, so the alert falls back to email. */
-function owner_note_push_fallback($title, $body)
+/** A push that reached NO device, so the alert falls back to email. $open is the
+ * push's own ?open= target, so the email lands where the notification would have. */
+function owner_note_push_fallback($title, $body, $open = '')
 {
     return [
         'subject' => $title,
         'text' =>
             trim((string) $body) .
             "\n\n(Sent by email because no device is currently receiving alerts \u{2014} " .
-            "check Manage \u{2192} Notifications.)",
+            "check Manage \u{2192} Notifications.)" .
+            owner_open_line($open),
     ];
 }
 
@@ -4621,23 +4659,12 @@ function admin_code_body($code)
             'Your one-time sign-in code is: ' . $code .
             "\n\nIt expires in 10 minutes. If you didn't just try to sign in to your back office, " .
             'ignore this email and consider changing your password.',
-        // The code is set big enough to read off a phone screen, which is the one
-        // thing this email exists to do.
         'html' => email_shell(
             'Your one-time sign-in code',
             email_h('Your sign-in code') .
-                email_p(
-                    'Use this code to finish signing in to your back office on a new device. It expires in 10 minutes.',
-                ) .
-                '<div style="text-align:center;padding:20px 0 8px;"><span style="font-family:' .
-                email_sans() .
-                ';font-size:34px;letter-spacing:9px;font-weight:700;color:#2A2622;">' .
-                email_esc($code) .
-                '</span></div>' .
-                email_p(
-                    'If you didn&rsquo;t just try to sign in, ignore this email and consider changing your password.',
-                    true,
-                ),
+                email_lead('Use this code to finish signing in to your back office on a new device.') .
+                email_code('Your code', $code, 'Expires in 10 minutes.') .
+                email_footnote('If you didn&rsquo;t just try to sign in, ignore this email and consider changing your password.'),
         ),
     ];
 }
@@ -4712,7 +4739,8 @@ function owner_note_chat_reply($guestName, $guestEmail, $message, $replyable = f
             ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
             $message . "\"\n" .
             ($replyable ? "\nJust reply to this email and they get it on the website and by email." : '') .
-            "\nOr open the back office → Guest messages to reply.",
+            "\nOr open the back office → Guest messages to reply." .
+            owner_open_line('inbox:messages'),
     ];
 }
 
@@ -4747,7 +4775,8 @@ function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = fal
             ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
             $message . "\"\n" .
             ($replyable ? "\nJust reply to this email and the guest gets it on the website and by email." : '') .
-            "\nOr open the back office → Guest messages to reply.",
+            "\nOr open the back office → Guest messages to reply." .
+            owner_open_line('inbox:messages'),
     ];
 }
 
@@ -4782,7 +4811,7 @@ function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesG
             $datesGone ? 'See what’s free instead — it takes a minute.' : 'Pick up where you left off — your details are saved.',
             email_h('Still thinking it over?') .
                 email_p(
-                    'Hello ' . email_esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' .
+                    'Hello ' . email_esc($name) . ', thanks for your enquiry about <strong style="color:#1B2A34;">' .
                         email_esc($propName) . '</strong> for ' . email_esc($dateSpan) . '.',
                 ) .
                 email_p(email_esc($holdLine)) .
@@ -4819,7 +4848,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             email_h('Finish your enquiry?') .
                 email_p(
                     'Hello ' . email_esc($name) .
-                        ', it looks like you were part-way through an enquiry about <strong style="color:#2A2622;">' .
+                        ', it looks like you were part-way through an enquiry about <strong style="color:#1B2A34;">' .
                         email_esc($propName) . '</strong>' . email_esc($span) . " and didn't quite finish.",
                 ) .
                 email_p(
@@ -4862,7 +4891,7 @@ function newsletter_body($subject, $bodyText, $bodyHtml, $unsubUrl)
     return [
         'subject' => $subject,
         'text' => $bodyText . "\n\n—\n" . $foot . "\nUnsubscribe: " . $unsubUrl,
-        'html' => email_shell($subject, email_p($bodyHtml), '#D6A785', [
+        'html' => email_shell($subject, email_p($bodyHtml), '#C6885E', [
             'unsubscribe' => $unsubUrl,
             'footer' => $foot,
         ]),
@@ -4920,7 +4949,7 @@ function weekly_analytics_body($d)
             : '';
 
     $inner =
-        email_h('Your week online', '#D6A785') .
+        email_h('Your week online', '#C6885E') .
         email_p(email_esc(date('l j F Y')), true) .
         $alertHtml .
         email_amount(
@@ -4949,7 +4978,7 @@ function weekly_analytics_body($d)
         ) .
         email_btn($d['siteUrl'], 'Open analytics') .
         email_p('You can switch this weekly email off in Manage.', true);
-    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week online', $inner, '#D6A785')];
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week online', $inner, '#C6885E')];
 }
 
 /**
@@ -5026,24 +5055,20 @@ function owner_digest_body($d)
             : '') .
         "\nHave a good week,\nyour website";
 
-    $sectionLabel = fn($t) => '<div style="font-family:' .
-        email_sans() .
-        ';font-size:13px;font-weight:700;color:' . email_muted_ink() . ';margin:22px 0 2px;">' .
-        htmlspecialchars($t) .
-        '</div>';
+    $sectionLabel = fn($t) => email_caption($t);
     $arrivalsHtml = $d['arrivals']
         ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">' .
             implode(
                 '',
                 array_map(
-                    fn($a) => '<tr><td style="padding:7px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                    fn($a) => '<tr><td style="padding:7px 0;border-bottom:1px solid #E2E3E3;font-family:' .
                         email_sans() .
-                        ';font-size:14px;color:#57524A;">' .
-                        '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' .
+                        ';font-size:15px;color:#1B2A34;">' .
+                        '<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' .
                         $accentOf($a['prop_key']) .
                         ';margin-right:9px;"></span>' .
                         htmlspecialchars($pretty($a['check_in'])) .
-                        ' — <strong style="color:#2A2622;">' .
+                        ' — <strong style="color:#1B2A34;">' .
                         htmlspecialchars($a['name']) .
                         '</strong> · ' .
                         htmlspecialchars($nameOf($a['prop_key'])) .
@@ -5055,7 +5080,7 @@ function owner_digest_body($d)
         : email_p('No arrivals in the next 7 days.', true);
 
     $inner =
-        email_h('Your week at a glance', '#D6A785') .
+        email_h('Your week at a glance', '#C6885E') .
         email_p(htmlspecialchars(date('l j F Y')), true) .
         $sectionLabel('The week just gone') .
         email_rows([
@@ -5079,11 +5104,9 @@ function owner_digest_body($d)
                 implode(
                     '',
                     array_map(
-                        fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                        fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #E2E3E3;font-family:' .
                             email_sans() .
-                            ';font-size:13px;color:' .
-                            ($a['severity'] === 'action' ? email_alert_ink() : email_warn_ink()) .
-                            ';">⚠ ' .
+                            ';font-size:15px;color:#1B2A34;">' . email_cap($a['severity'] === 'action' ? 'bad' : 'warn', $a['severity'] === 'action' ? 'Needs you' : 'Worth a look') . '&nbsp; ' .
                             htmlspecialchars($a['summary']) .
                             '</td></tr>',
                         $d['actAttention'],
@@ -5104,9 +5127,9 @@ function owner_digest_body($d)
                 implode(
                     '',
                     array_map(
-                        fn($m) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                        fn($m) => '<tr><td style="padding:6px 0;border-bottom:1px solid #E2E3E3;font-family:' .
                             email_sans() .
-                            ';font-size:13px;color:#57524A;">“' .
+                            ';font-size:13px;color:#1B2A34;">“' .
                             htmlspecialchars($m['t']) .
                             '”' .
                             ($m['n'] > 1 ? ' <span style="color:' . email_muted_ink() . ';">· asked ' . $m['n'] . ' times</span>' : '') .
@@ -5116,6 +5139,8 @@ function owner_digest_body($d)
                 ) .
                 '</table>'
             : '') .
+        // Like every alert to the owner, it ends where they act: today's screen.
+        (!empty($d['openUrl']) ? email_btn((string) $d['openUrl'], 'Open the back office') : '') .
         email_p('Have a good week.', true);
-    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week at a glance', $inner, '#D6A785')];
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week at a glance', $inner, '#C6885E')];
 }
