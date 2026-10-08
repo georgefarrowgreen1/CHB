@@ -353,19 +353,36 @@ const NEST = (rootSel) => {
   ok(pay.lbls.length >= 3, `${pay.lbls.length} answer rows found (vacuity guard)`);
   ok(pay.lbls.every((l) => l.color === pay.ink && !/ok-text/.test(l.style)), `every answer title is body ink, none green (${pay.lbls.map((l) => l.text + '=' + l.color).join('; ')})`);
 
-  console.log('§2 Manage — calm is said ONCE, by the summary, not by a column of green pills');
+  console.log('§2 Manage — the status is said ONCE, by the pill, not by a card or a column of green pills');
   await open(page, "(async () => { await openArea('manage'); })()", 1000);
-  const calm = await page.evaluate(() => {
-    const sum = document.querySelector('#manage-verdicts .mg-sum');
-    if (!sum) return null;
+  const calm = await page.evaluate(async () => {
+    const pill = document.getElementById('health-pill');
+    if (!pill) return null;
     const okText = getComputedStyle(document.body).getPropertyValue('--ok-text').trim();
     const probe = document.createElement('span'); probe.style.color = okText; document.body.appendChild(probe); const okRgb = getComputedStyle(probe).color; probe.remove();
-    const mk = sum.querySelector('.mg-mark');
-    return { state: sum.dataset.state, mark: mk ? getComputedStyle(mk).color : null, okRgb, pills: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length };
+    // All well, set up rather than hoped for: this fixture's own state is not.
+    const w = window;
+    const keep = { cron: w.__cronStatusPre, feeds: w.__feedStatusPre, diag: w.__diagSum, sig: w.__sigAt, mod: __nyMod, m: w.chbMissList, g: w.slGuestQuestions };
+    w.__cronStatusPre = { stale: false, everRan: true, ageHours: 3 }; w.__feedStatusPre = []; w.__diagSum = { fail: 0, warn: 0, cron: 'ok' }; w.__sigAt = Date.now();
+    __nyMod = { rev: 0, ph: 0, exp: 0 }; w.chbMissList = () => []; w.slGuestQuestions = () => [];
+    manageVerdicts();
+    await new Promise((r) => setTimeout(r, 450)); // the colour change settles
+    const dot = pill.querySelector('.cron-pill-dot');
+    const out = {
+      tone: pill.dataset.tone || '',
+      dot: dot ? getComputedStyle(dot).backgroundColor : null, okRgb,
+      pills: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length,
+      card: !!document.querySelector('#manage-verdicts .mg-sum'),
+      heads: document.querySelectorAll('.settings-head-pills .cron-pill').length,
+    };
+    w.__cronStatusPre = keep.cron; w.__feedStatusPre = keep.feeds; w.__diagSum = keep.diag; w.__sigAt = keep.sig;
+    __nyMod = keep.mod; w.chbMissList = keep.m; w.slGuestQuestions = keep.g;
+    manageVerdicts();
+    return out;
   });
-  ok(!!calm, 'Manage opens with its one summary row');
+  ok(!!calm && calm.heads === 1 && !calm.card, `Manage says its status with one pill and no summary card (${calm && calm.heads} pill, card ${calm && calm.card})`);
   ok(calm && calm.pills === 0, `no green "all fine" pills on the landing (${calm && calm.pills})`);
-  ok(calm && (calm.state !== 'ok' || calm.mark === calm.okRgb), `and when all is well its mark is the ONE green mark (${calm && calm.state} ${calm && calm.mark})`);
+  ok(calm && calm.tone === 'ok' && calm.dot === calm.okRgb, `and when all is well its dot is the ONE green mark (${calm && calm.tone} ${calm && calm.dot})`);
   await open(page, "(async () => { await openAccounts(); })()", 1200);
   const grpcapSpec = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-grpcap, #accounts-index .bhub-grpcap')].filter((e) => e.getClientRects().length)[0]; if (!g) return null; const c = getComputedStyle(g); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; });
 

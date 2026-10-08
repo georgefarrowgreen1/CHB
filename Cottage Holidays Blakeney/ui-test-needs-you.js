@@ -446,29 +446,34 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const st = (() => { try { return chbSystemState(); } catch (e) { return null; } })();
     let pulse = '', cap = '';
     try {
+      window.__diagSum = { fail: 0, warn: 0, cron: 'ok' }; // the system check answered; the bootstrap did not
+      window.__keepRows = { mod: __nyMod, m: window.chbMissList, g: window.slGuestQuestions };
+      __nyMod = { rev: 0, ph: 0, exp: 0 }; window.chbMissList = () => []; window.slGuestQuestions = () => []; // the signals alone decide
       manageVerdicts();
       const host = document.getElementById('manage-verdicts');
       pulse = host ? (host.textContent || '').replace(/\s+/g, ' ') : '';
-      const sm = host ? host.querySelector('.mg-sum') : null;
-      cap = sm ? sm.dataset.state + ':' + ((sm.querySelector('.mg-t') || {}).textContent || '') : '';
+      const pill = document.getElementById('health-pill');
+      cap = pill ? (pill.dataset.tone || '') + ':' + pill.textContent : '';
     } catch (e) {}
     return { level: st && st.level, say: st && st.say, pulse, cap };
   }, Date.now() - 30 * 60 * 1000); // stamped half an hour ago: the last few tries did not answer
   ok(sig.level === 'unknown', `the assistant's status line says it could not check (${sig.level} — ${sig.say})`);
   ok(!/All systems normal/.test(sig.say || ''), '…rather than reporting the business healthy');
-  ok(!/Everything.s running|jobs and feeds on time/i.test(sig.pulse), `Manage's summary does not claim the jobs are running (${(sig.pulse || '').slice(0, 90)})`);
-  ok(!/^ok:/.test(sig.cap || ''), `…and its mark is not the green tick (${sig.cap})`);
+  ok(!/Everything.s running|jobs and feeds on time|all clear/i.test(sig.pulse), `Manage does not claim the jobs are running (${(sig.pulse || '').slice(0, 90)})`);
+  ok(/^unk:Status: couldn’t check$/.test(sig.cap || ''), `…and its status pill is grey, saying it couldn't check (${sig.cap})`);
   // …and with a FRESH stamp and nothing wrong, the clean bill of health is back.
   const sigOk = await page.evaluate(() => {
     window.__sigAt = Date.now();
     const st = (() => { try { return chbSystemState(); } catch (e) { return null; } })();
     let cap = '';
-    try { manageVerdicts(); const host = document.getElementById('manage-verdicts'); cap = host ? (host.textContent || '').replace(/\s+/g, ' ') : ''; } catch (e) {}
+    try { manageVerdicts(); const pill = document.getElementById('health-pill'); cap = pill ? (pill.dataset.tone || '') + ':' + pill.textContent : ''; } catch (e) {}
+    const k = window.__keepRows;
+    if (k) { __nyMod = k.mod; window.chbMissList = k.m; window.slGuestQuestions = k.g; }
     return { level: st && st.level, say: st && st.say, cap };
   });
   ok(sigOk.level === 'ok' && /All systems normal/.test(sigOk.say || ''),
     `a bootstrap that DID answer still reports healthy (${sigOk.say})`);
-  ok(/Everything.s running|jobs and feeds on time/i.test(sigOk.cap || ''), `…with the summary counting jobs and feeds as fine (${(sigOk.cap || '').slice(0, 90)})`);
+  ok(/^ok:Status: all clear$/.test(sigOk.cap || ''), `…with the status pill green (${sigOk.cap})`);
 
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);

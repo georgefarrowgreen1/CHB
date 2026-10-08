@@ -1,9 +1,10 @@
-// MANAGE'S VERDICTS + the calendar-feeds verdict list, in a real browser:
-//  §1 the landing leads with a pulse + exception (a stalled feed) above the
-//     untouched toolbox; the verdict groups read the SAME stores the pills
-//     and badges read (bootstrap cron/feeds, __nyMod, chbMissList)
-//  §2 the exception rule both ways (fresh feeds → no red), and the To-approve
-//     verdict counts what the moderation lists hold
+// MANAGE'S STATUS + the calendar-feeds verdict list, in a real browser:
+//  §1 the status is ONE pill beside the title (no card, no second pill, no
+//     banner); a stalled feed and a review are rows under "Needs a look", read
+//     from the SAME stores the badges read (bootstrap cron/feeds, __nyMod, chbMissList)
+//  §2 the pill follows the stores both ways and is the worst row: the system
+//     check as a row (never repeating stopped daily jobs), grey when nothing
+//     answered, hidden from a limited person
 //  §3 the calendar-feeds section is one verdict fold group per cottage with
 //     Run-the-sync inside the fold; the toolbox rows still route
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
@@ -16,11 +17,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // One stalled Jollyboat feed (74h, hourly expected) + one fresh 21A feed;
   // cron healthy; ONE pending review. Flip via `feedsStalled` for §2.
   let feedsStalled = true;
+  // The system check behind the status pill: clean, unless a case says otherwise.
+  const diagFix = { ok: true, summary: { ok: 20, warn: 0, fail: 0, optional: 3 }, checks: [{ category: 'Automation', label: 'Daily jobs (cron)', status: 'ok' }] };
   const gstPosts = []; let calOvFix = null; let calListFix = null; let calSyncHold = false; const calPosts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     let b = {}; try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+    if (url.includes('diagnostics.php')) return json(diagFix);
     if (url.includes('admin-bootstrap.php')) return json({
       ok: true,
       cron: { stale: false, everRan: true, ageHours: 5 },
@@ -69,15 +73,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { await openArea(); });
   await page.waitForTimeout(900);
 
-  console.log('§1 the landing: ONE summary row, problems unfold beneath it');
+  console.log('§1 the landing: ONE status pill, problems unfold beneath it');
   const land = await page.evaluate(() => {
     const host = document.getElementById('manage-verdicts');
-    const sum = host.querySelector('.mg-sum');
+    const pill = document.getElementById('health-pill');
     const rows = [...host.querySelectorAll('.mg-probs .mg-wrap:not(.is-gone)')];
     const feed = rows.find((w) => (w.dataset.id || '').startsWith('feed-'));
     return {
-      state: sum ? sum.dataset.state : null,
-      title: sum ? (sum.querySelector('.mg-t') || {}).textContent : '',
+      tone: pill.dataset.tone,
+      words: pill.textContent,
+      shown: pill.getClientRects().length > 0,
+      noCard: !host.querySelector('.mg-sum'),
+      noExtras: !document.getElementById('cron-pill') && !document.getElementById('cron-alert') && document.querySelectorAll('.settings-head-pills .cron-pill').length === 1,
       foldOpen: !!host.querySelector('.mg-fold.is-open'),
       feedRow: !!feed && /Calendar sync/.test(feed.textContent) && /Jollyboat/.test(feed.textContent),
       feedCap: !!(feed && feed.querySelector('.mg-cap.st-cap.is-warn, .mg-cap.st-cap.is-bad')),
@@ -101,11 +108,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         const others = [...document.querySelectorAll('#settings-index > .settings-group')].filter((x) => x !== g && x.getClientRects().length);
         const sameCol = others.filter((x) => Math.abs(x.getBoundingClientRect().left - r.left) < 2);
         return others.length > 3 && sameCol.length > 0 && others.every((x) => x.getBoundingClientRect().left >= r.left - 1)
-          && sameCol.every((x) => x.getBoundingClientRect().top >= r.bottom) && sum.getBoundingClientRect().bottom <= r.top;
+          && sameCol.every((x) => x.getBoundingClientRect().top >= r.bottom) && host.getBoundingClientRect().bottom <= r.top;
       })(),
     };
   });
-  ok(land.state === 'warn' && /need(s)? a look/.test(land.title || ''), `the summary says how many things need a look (${land.title})`);
+  ok(land.shown && land.tone === 'warn' && land.words === 'Status: needs a look', `the one pill says something needs a look, its dot amber (${land.tone}: ${land.words})`);
+  ok(land.noCard && land.noExtras, 'no summary card, no second pill, no banner: the status is said once');
   ok(land.foldOpen, 'the "Needs a look" list unfolds under it');
   ok(land.feedRow && land.feedCap, 'the stalled feed is a row of its own, wearing a warning capsule');
   ok(land.runSync, 'Run sync is one tap, on the row itself');
@@ -114,9 +122,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(land.noGreenPills && land.noOldCaps, 'no column of green pills, no shouted captions');
   ok(land.toolboxIntact, 'the toolbox rows below are untouched');
   ok(land.cotRows >= 2 && land.addRow, `the cottages are rows in their group's list (${land.cotRows}), ending in Add a cottage`);
-  ok(land.firstCap === 'Your account' && land.acctTop, `Your account is the first group, under the summary (${land.firstCap})`);
+  ok(land.firstCap === 'Your account' && land.acctTop, `Your account is the first group, under "Needs a look" (${land.firstCap})`);
 
-  console.log('§2 the summary follows the real stores, both ways');
+  console.log('§2 the pill follows the real stores, both ways');
   feedsStalled = false;
   const down = await page.evaluate(async () => {
     const ab = await apiGet('admin-bootstrap.php');
@@ -126,23 +134,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const host = document.getElementById('manage-verdicts');
     return {
       feedGone: ![...host.querySelectorAll('.mg-wrap:not(.is-gone)')].some((w) => (w.dataset.id || '').startsWith('feed-')),
-      sub: (host.querySelector('.mg-s') || {}).textContent || '',
+      tone: document.getElementById('health-pill').dataset.tone,
     };
   });
   ok(down.feedGone, 'fresh feeds → the feed row folds away');
-  ok(/jobs and feeds on time/i.test(down.sub), `…and the summary counts the feeds as fine (${down.sub})`);
+  ok(down.tone === 'warn', `…and the pill stays amber for what is left, the review (${down.tone})`);
   const allClear = await page.evaluate(async () => {
     const keep = __nyMod; __nyMod = { rev: 0, ph: 0, exp: 0 };
     const keepM = window.chbMissList, keepG = window.slGuestQuestions;
     window.chbMissList = () => []; window.slGuestQuestions = () => [];
     manageVerdicts();
     await new Promise((r) => setTimeout(r, 500));
-    const sum = document.querySelector('#manage-verdicts .mg-sum');
-    const out = { state: sum.dataset.state, title: (sum.querySelector('.mg-t') || {}).textContent, fold: !!document.querySelector('#manage-verdicts .mg-fold.is-open') };
+    const pill = document.getElementById('health-pill');
+    const out = { state: pill.dataset.tone, title: pill.textContent, fold: !!document.querySelector('#manage-verdicts .mg-fold.is-open') };
     __nyMod = keep; window.chbMissList = keepM; window.slGuestQuestions = keepG;
     return out;
   });
-  ok(allClear.state === 'ok' && /Everything.s running/.test(allClear.title || ''), `nothing left → "Everything's running" (${allClear.title})`);
+  ok(allClear.state === 'ok' && allClear.title === 'Status: all clear', `nothing left → "Status: all clear", its dot green (${allClear.title})`);
   ok(!allClear.fold, '…and the Needs-a-look list folds shut');
   // A problem that arrives AFTER an all-clear open must still PAINT. The review count
   // re-renders the summary on its own, after the access sync has run — and that sync
@@ -165,6 +173,55 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return out;
   });
   ok(late.row && late.cap, 'a problem that arrives after an all-clear open still shows, under its caption');
+  // THE PILL IS THE WORST ROW, and every row it counts is on screen. The system
+  // check folds in as a row of its own, but never repeats the stopped daily jobs
+  // (it fails its own cron check then, which the cron row has already said).
+  const states = await page.evaluate(async () => {
+    const w = window;
+    const keep = { mod: __nyMod, m: w.chbMissList, g: w.slGuestQuestions, cron: w.__cronStatusPre, diag: w.__diagSum, me: w.__me };
+    w.chbMissList = () => []; w.slGuestQuestions = () => []; __nyMod = { rev: 0, ph: 0, exp: 0 };
+    const look = () => {
+      manageVerdicts();
+      const pill = document.getElementById('health-pill');
+      const ids = [...document.querySelectorAll('#manage-verdicts .mg-wrap:not(.is-gone)')].map((x) => x.dataset.id);
+      const sub = (id) => ((document.querySelector(`#manage-verdicts .mg-wrap[data-id="${id}"] .settings-row-sub`) || {}).textContent || '');
+      return { tone: pill.dataset.tone, words: pill.textContent, shown: pill.style.display !== 'none', ids, sys: sub('sys'), cron: sub('cron') };
+    };
+    const settle = () => new Promise((r) => setTimeout(r, 500));
+    const out = {};
+    w.__diagSum = { fail: 0, warn: 1, cron: 'ok' };
+    out.warn = look(); await settle();
+    w.__cronStatusPre = { stale: true, everRan: true, ageHours: 50 };
+    w.__diagSum = { fail: 1, warn: 0, cron: 'fail' };
+    out.stopped = look(); await settle();
+    w.__diagSum = { fail: 2, warn: 0, cron: 'fail' };
+    out.stoppedPlus = look(); await settle();
+    w.__cronStatusPre = keep.cron;
+    w.__diagSum = null;
+    out.none = look(); await settle();
+    delete w.__diagSum;
+    out.asking = look(); await settle();
+    w.__me = { id: 2, full: false, caps: {} };
+    out.limited = look();
+    w.__me = keep.me;
+    // The real fetch: once a session, and what it says becomes a row.
+    sessionStorage.removeItem('chb-health-v2');
+    out.fetchBefore = w.__diagSum;
+    await checkSystemHealth();
+    out.fetched = JSON.stringify(w.__diagSum);
+    out.afterFetch = look(); await settle();
+    __nyMod = keep.mod; w.chbMissList = keep.m; w.slGuestQuestions = keep.g; w.__diagSum = keep.diag;
+    manageVerdicts();
+    return out;
+  });
+  ok(states.warn.tone === 'warn' && states.warn.ids.join() === 'sys' && /1 warning/.test(states.warn.sys), `a system-check warning is its own row, and the pill is amber (${states.warn.ids.join()} · ${states.warn.sys})`);
+  ok(states.stopped.tone === 'bad' && states.stopped.words === 'Status: needs fixing' && states.stopped.ids.join() === 'cron', `stopped daily jobs: red, ONE row (${states.stopped.ids.join()})`);
+  ok(/won’t send/.test(states.stopped.cron), `…which says what stops working (${states.stopped.cron})`);
+  ok(states.stoppedPlus.ids.includes('cron') && states.stoppedPlus.ids.includes('sys') && /1 check failing/.test(states.stoppedPlus.sys), `a second failing check still gets a row of its own (${states.stoppedPlus.sys})`);
+  ok(states.none.tone === 'unk' && states.none.words === 'Status: couldn’t check', `the check not answering is grey, never green (${states.none.words})`);
+  ok(states.asking.tone === 'wait' && states.asking.words === 'Status: checking…', `…and while it is still asking it says so (${states.asking.words})`);
+  ok(!states.limited.shown, 'a limited person gets no pill: they are never sent the system state');
+  ok(states.fetchBefore === undefined && /"warn":0/.test(states.fetched) && states.afterFetch.tone === 'ok', `the real check is fetched and folded in (${states.fetched} → ${states.afterFetch.tone})`);
   feedsStalled = true;
   await page.evaluate(async () => {
     const ab = await apiGet('admin-bootstrap.php');

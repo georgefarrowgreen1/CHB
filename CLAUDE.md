@@ -1126,8 +1126,38 @@ the click is guarded).
 - The Move-money-out screen itself was deliberately left as-is this pass — it already
   had its answer-first rebuild (see the sweep notes).
 
+## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
+
+**Supersedes the summary row below.** The status is said once, by `#health-pill` beside the Manage title, its dot
+green / amber / red / grey: `Status: all clear`, `needs a look`, `needs fixing`, `couldn't check` (plus `checking…`
+until the system check first answers). It replaced the `.mg-sum` card, the `#cron-pill` "Automation quiet" pill
+and the `#cron-alert` banner, which between them said one stopped cron up to four times. The pill and the card had
+also watched different halves: the pill the full system check (diagnostics.php), the card the ambient stores
+(cron, feeds, approvals, teach), so the pill read "all clear" over a card saying "2 things need a look".
+- **THE DOT IS THE WORST ROW, and every row it counts is on screen.** `manageVerdicts()` builds the rows under
+  "Needs a look" and hands `manageStatusPill(tone)` the worst of them; no rows → green, but only once the system
+  check has answered (`window.__diagSum`: undefined while asking, null when it couldn't) AND the bootstrap signals
+  are fresh (`chbSignalsFresh`), else grey. A grey pill never becomes green by default.
+- **The system check is a row only for what no other row says** (`id: 'sys'`). It fails its own "Daily jobs
+  (cron)" check when the jobs stop, which the cron row has already said, so `mgDiagFrom` keeps that check's status
+  as `cron` and the row subtracts it. The cron row now says what stops ("guest emails won't send"): the banner's
+  one fact worth keeping.
+- `checkSystemHealth()` asks diagnostics.php once a session (`chb-health-v2` in sessionStorage, one in-flight
+  request) and `loadDiagnostics` (the Status page's own run) refreshes it, so "Check again" there moves the pill.
+  `checkCronHealth()` now only tells Today (`__nyCronQuiet`).
+- **A limited person gets no pill**: they are never sent the system's state (diagnostics is full access only), and
+  `#manage-verdicts` was already hidden for them.
+- `.mg-sum` CSS stays: it is the Calendar sync page's summary row. The banner's CSS left app.css (guests paid for it).
+- Gated by ui-test-manage §1–§2 (the one pill and no extras; amber for a feed and a review; all clear; the system
+  row; stopped jobs red with ONE row; a second failing check still a row; grey both ways; hidden when limited; the
+  real fetch folded in), ui-test-needs-you §10 (a dropped bootstrap is grey, a fresh one green), ui-test-hig §2 (one
+  pill, no card, and the green dot measured in a state SET UP as all clear: the fixture's own state is red, which
+  had made the old card's green-mark check pass without testing anything). Break-tested four ways: the tone, the
+  dedupe, grey-not-green and the limited-person rule.
+
 ## Manage opens with ONE summary row (the approved prototype, built "exactly as the demo")
 
+**Superseded by "Manage's status is ONE pill" above** (the card is gone; the rows and the cottage list stand).
 **Supersedes the pulse + "Running for you" groups below.** `manageVerdicts()` builds `.mg-sum` ONCE and updates it in
 place: a mark (✓ ok / ! warn / ? couldn't check — `chbSignalsFresh`, never claiming health it didn't ask about),
 "Everything's running" or "N things need a look", and a sub naming what IS fine; it opens Status. Problems are

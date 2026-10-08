@@ -367,19 +367,15 @@
             <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Manage</h1>
             </div>
-            <!-- Both health pills sit to the RIGHT of the Manage title (stacked if
-                 both show). #cron-pill = automation quiet (checkCronHealth);
-                 #health-pill = systems rollup incl. "N things need a look"
-                 (checkSystemHealth). The full-width cron-alert banner stays below. -->
+            <!-- THE STATUS, SAID ONCE (owner-asked): one pill to the RIGHT of the title,
+                 its dot green, amber, red or grey. manageVerdicts() decides it from the
+                 same rows shown under "Needs a look", plus the system check
+                 (checkSystemHealth). It replaced a summary card, an "Automation quiet"
+                 pill and a banner. -->
             <div class="settings-head-pills">
-                <button id="cron-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
                 <button id="health-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
             </div>
         </div>
-
-        <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
-             automation has gone quiet. -->
-        <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
 
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
              then your listing & account, with the legal reference last.
@@ -391,10 +387,11 @@
         </div>
 
         <div id="settings-index" class="settings-index">
-            <!-- MANAGE'S VERDICTS — the state that was buried in pills and
-                 badges, above the untouched toolbox. Filled by manageVerdicts()
-                 from the SAME stores the pills read (__cronStatusPre, the
-                 bootstrap feeds payload, __nyMod, chbMissList). -->
+            <!-- NEEDS A LOOK — a row for each thing to fix, with its one-tap fix,
+                 above the untouched toolbox. Filled by manageVerdicts() from the
+                 SAME stores the badges read (__cronStatusPre, the bootstrap feeds
+                 payload, the system check, __nyMod, chbMissList). Empty when all
+                 is clear: the pill above says so. -->
             <div id="manage-verdicts"></div>
             <!-- One Manage index in SEVEN groups, each answering one question. You come
                  first (owner-asked, the iOS Settings place for your own account), then the

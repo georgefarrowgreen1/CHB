@@ -7369,33 +7369,7 @@ body.owner-mode .chat-widget {
     gap: 0;
   }
 }
-/* Cron dead-man's-switch banner (dashboard) */
-.cron-alert {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  margin: 0 0 22px;
-  padding: 16px 18px;
-  background: rgba(229, 115, 115, 0.1);
-  border: 1px solid var(--danger);
-  border-radius: var(--r-lg);
-  color: var(--text-light);
-}
-.cron-alert .ic {
-  width: 22px;
-  height: 22px;
-  color: var(--danger-text);
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-.cron-alert code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 1px 6px;
-  border-radius: 5px;
-  font-size: 0.9em;
-}
-/* Always-on automation health pill (dashboard) — green healthy / amber quiet. */
-/* Manage header: the automation-health pill sits to the RIGHT of the title,
+/* Manage header: the one status pill sits to the RIGHT of the title,
    centred on the title's line (owner-asked: "perfectly in line"). */
 .dashboard-header.settings-head {
   /* flex-direction:row (explicit) beats the ≤640px .dashboard-header column
@@ -7411,7 +7385,7 @@ body.owner-mode .chat-widget {
   width: auto; /* override the mobile > div:first-child { width:100% } */
   flex: 1 1 auto;
 }
-/* The pill group on the right — both health pills, stacked & right-aligned. */
+/* The pill on the right. */
 .settings-head-pills {
   display: flex;
   flex-direction: column;
