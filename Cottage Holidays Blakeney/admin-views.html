@@ -396,17 +396,28 @@
                  from the SAME stores the pills read (__cronStatusPre, the
                  bootstrap feeds payload, __nyMod, chbMissList). -->
             <div id="manage-verdicts"></div>
-            <!-- One Manage index in SEVEN groups, each answering one question, ordered
-                 by how often it is used:
+            <!-- One Manage index in SEVEN groups, each answering one question. You come
+                 first (owner-asked, the iOS Settings place for your own account), then the
+                 rest by how often they are used:
+                   Your account            you: profile, alerts, sign-in, display
                    Cottages & pricing      what you let and what it costs
                    Bookings & payments     how guests pay and what they agree to
                    Guests                  the people: accounts, the waitlist, and what
                                            they send in for approval (reviews, photos)
                    Messages & automation   everything that writes to a guest for you
                    Website & marketing     what the public site says and who sees it
-                   Your account            you: profile, alerts, sign-in, display
                    System & tools          is it running, what happened, maintenance
                  The labels ARE the grouping; settingsFilter() hides empty groups on search. -->
+            <div class="settings-section-label">Your account</div>
+            <div class="settings-group">
+                <!-- ONE row with you on it (approved demo): the host profile, notifications,
+                     sign-in, the two device settings and Log out live on the account page it
+                     opens. oaIndexRowPaint fills in the photo and name. -->
+                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit people access staff team sophia invite add someone user users admins" data-act="settingsOpen" data-arg="acct">
+                    <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
+                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub" id="oa-index-sub">Your details, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
             <div class="settings-section-label">Cottages &amp; pricing</div>
             <div class="settings-group">
                 <div id="cottages-overview" class="area-overview mg-cots"></div>
@@ -505,16 +516,6 @@
                 <button class="settings-row" data-kw="stats visits traffic referrers pages searches" data-act="settingsOpen" data-arg="analytics">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Visits, referrers &amp; popular pages</span></span><span class="settings-row-chev">›</span>
-                </button>
-            </div>
-            <div class="settings-section-label">Your account</div>
-            <div class="settings-group">
-                <!-- ONE row with you on it (approved demo): the host profile, notifications,
-                     sign-in, the two device settings and Log out live on the account page it
-                     opens. oaIndexRowPaint fills in the photo and name. -->
-                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit people access staff team sophia invite add someone user users admins" data-act="settingsOpen" data-arg="acct">
-                    <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
-                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub" id="oa-index-sub">Your details, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-section-label">System &amp; tools</div>

@@ -89,6 +89,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       toolboxIntact: !!document.querySelector('#settings-index .settings-group .settings-row[data-arg="reviews"]'),
       cotRows: document.querySelectorAll('#cottages-overview .settings-row.mg-cot').length,
       addRow: !!document.querySelector('#settings-index [data-act="addAccommodationPrompt"]'),
+      // Your account is the first group (owner-asked): its caption leads the toolbox,
+      // it heads the first column with nothing above it there, and the summary sits
+      // above it. Compared WITHIN a column: at this width the index flows in two, and
+      // the second column legitimately starts a few px higher (its first caption's
+      // margin is truncated at the column break).
+      firstCap: (() => { const l = [...document.querySelectorAll('#settings-index > .settings-section-label')].find((x) => x.getClientRects().length); return l ? l.textContent : ''; })(),
+      acctTop: (() => {
+        const g = document.getElementById('oa-index-row').closest('.settings-group');
+        const r = g.getBoundingClientRect();
+        const others = [...document.querySelectorAll('#settings-index > .settings-group')].filter((x) => x !== g && x.getClientRects().length);
+        const sameCol = others.filter((x) => Math.abs(x.getBoundingClientRect().left - r.left) < 2);
+        return others.length > 3 && sameCol.length > 0 && others.every((x) => x.getBoundingClientRect().left >= r.left - 1)
+          && sameCol.every((x) => x.getBoundingClientRect().top >= r.bottom) && sum.getBoundingClientRect().bottom <= r.top;
+      })(),
     };
   });
   ok(land.state === 'warn' && /need(s)? a look/.test(land.title || ''), `the summary says how many things need a look (${land.title})`);
@@ -100,6 +114,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(land.noGreenPills && land.noOldCaps, 'no column of green pills, no shouted captions');
   ok(land.toolboxIntact, 'the toolbox rows below are untouched');
   ok(land.cotRows >= 2 && land.addRow, `the cottages are rows in their group's list (${land.cotRows}), ending in Add a cottage`);
+  ok(land.firstCap === 'Your account' && land.acctTop, `Your account is the first group, under the summary (${land.firstCap})`);
 
   console.log('§2 the summary follows the real stores, both ways');
   feedsStalled = false;
@@ -129,6 +144,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(allClear.state === 'ok' && /Everything.s running/.test(allClear.title || ''), `nothing left → "Everything's running" (${allClear.title})`);
   ok(!allClear.fold, '…and the Needs-a-look list folds shut');
+  // A problem that arrives AFTER an all-clear open must still PAINT. The review count
+  // re-renders the summary on its own, after the access sync has run — and that sync
+  // once hid the empty "Needs a look" list, so the row landed inside a hidden group.
+  const late = await page.evaluate(async () => {
+    const keep = __nyMod, keepM = window.chbMissList, keepG = window.slGuestQuestions;
+    window.chbMissList = () => []; window.slGuestQuestions = () => [];
+    __nyMod = { rev: 0, ph: 0, exp: 0 };
+    applyAreaFilter();
+    __nyMod = { rev: 1, ph: 0, exp: 0 };
+    manageVerdicts();
+    await new Promise((r) => setTimeout(r, 600));
+    const row = document.querySelector('#manage-verdicts .mg-wrap[data-id="rev"]:not(.is-gone)');
+    const cap = document.querySelector('#manage-verdicts .mg-fold .settings-section-label');
+    const out = {
+      row: !!row && row.getClientRects().length > 0 && row.getBoundingClientRect().height > 20,
+      cap: !!cap && cap.getClientRects().length > 0,
+    };
+    __nyMod = keep; window.chbMissList = keepM; window.slGuestQuestions = keepG;
+    return out;
+  });
+  ok(late.row && late.cap, 'a problem that arrives after an all-clear open still shows, under its caption');
   feedsStalled = true;
   await page.evaluate(async () => {
     const ab = await apiGet('admin-bootstrap.php');

@@ -322,6 +322,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(!gone.some((t) => idx.rows.includes(t)), 'and none of the areas switched off for her');
         ok(!idx.labels.includes('Website & marketing') && !idx.labels.includes('System & tools') && !idx.labels.includes('Cottages & pricing'), `a group left with nothing in it goes too (${idx.labels.join(' · ')})`);
         ok(!idx.summary, 'the system summary row is full access only');
+        ok(idx.labels[0] === 'Your account', `her own account is the first thing on Manage (${idx.labels[0]})`);
         await page.evaluate(() => settingsOpen('acct'));
         await page.waitForTimeout(500);
         const acct = await page.evaluate(() => ({ lead: (document.querySelector('#acct-body .ga-lead') || {}).textContent, people: !!document.querySelector('#acct-body .oa-r-people'), host: !!document.querySelector('#acct-body .oa-r-host') }));
