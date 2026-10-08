@@ -69,16 +69,20 @@ Thirty-eight templates, one look, every one composed from the helpers at the top
 owner's new-enquiry notification each grew their own label-value table and looked like a
 different product from the confirmation that follows them.
 
-- **Blocks**: `email_shell` (document + preheader + footer), `email_crown_header`,
-  `email_h`, `email_p`, `email_note` (tinted callout), `email_rows` (label + right-rail
-  value), `email_money_rows`, `email_amount` (the one big figure), `email_ownernote`,
-  `email_footnote`, `email_address_block`, `email_btn` (primary, VML-safe), `email_btn2`
-  (outlined, same 44px target), `email_photo_band`.
-- **ESCAPING IS ASYMMETRIC AND IT BITES.** `email_h`, `email_btn`, `email_amount`'s
-  LABEL, `email_ownernote` and **`email_shell`'s PREHEADER** run `email_esc()` on what
-  you give them, so a pre-escaped name or an `&mdash;` prints the entity literally in the
-  inbox. `email_p`, `email_note`, `email_rows`, `email_money_rows` and `email_footnote`
-  expect PRE-ESCAPED HTML. The preheader one shipped ("We&rsquo;ll confirm your dates" in
+- **Blocks**, top to bottom in the order an email uses them: `email_shell` (document +
+  preheader + footer; NO accent bar), `email_crown_header`, `email_eyebrow` (the stay: the
+  cottage's dot + name + dates), `email_h` (the title), `email_lead` (the muted line under
+  it), `email_p`, `email_amount` / `email_code` (the key block, in an inset well),
+  `email_btn` (the ONE button, a pill, VML-safe), `email_btn2` (the outlined second
+  choice), `email_rows` (label + right-rail value), `email_money_rows`, `email_cap` (a
+  status capsule), `email_caption` (a section caption), `email_note` (the one tinted
+  shout), `email_ownernote`, `email_footnote`, `email_address_block`, `email_photo_band`.
+- **ESCAPING IS ASYMMETRIC AND IT BITES.** `email_h`, `email_btn`, `email_btn2`,
+  `email_amount`'s and `email_code`'s LABEL, `email_eyebrow`, `email_cap`,
+  `email_caption`, `email_ownernote` and **`email_shell`'s PREHEADER** run `email_esc()`
+  on what you give them, so a pre-escaped name or an `&mdash;` prints the entity literally
+  in the inbox. `email_p`, `email_lead`, `email_note`, `email_rows`, `email_money_rows` and
+  `email_footnote` expect PRE-ESCAPED HTML. The preheader one shipped ("We&rsquo;ll confirm your dates" in
   the inbox preview); test-payrail sweeps every `email_shell` call's first argument.
 - **DATES ARE SPOKEN, TIMES LOSE THEIR DEAD :00.** `email_date('2026-09-06')` → "Sun 6
   Sep 2026" (`, false` drops the year for subjects); `email_time('15:00')` → "3pm". A
@@ -123,17 +127,21 @@ the fix stopped at the edge of the browser: measured across the rendered templat
 **sixteen ink/ground/size combinations sat below AA** — the worst `email_amount`'s figure
 at **2.00:1**, i.e. the one number a refund email exists to state, and an **unsubscribe
 link at 2.12:1**, the one element in a marketing email with a legal expectation attached.
-Four ink tokens now, each measured on all three grounds (white / tinted panel / outer):
-- `email_muted_ink()` **#655D50** (6.49 / 6.02 / 5.18) — replaced FOUR near-identical
-  failing greys that differed by a few hex points and served no hierarchy the size and
-  letter-spacing weren't already carrying.
-- `email_accent_ink()` **#8A5A2B** (5.87 / 5.44 / 4.68) — the accent as TEXT: a figure, a
-  link, a status word, a ★ glyph. `#C79A64` stays the FILL.
-- `email_warn_ink()` **#8A5000** (6.51 / 6.09 / 5.67) and `email_alert_ink()` **#A3291C**
-  (7.26 / 6.80 / 6.33) — the digest's needs-attention rows had set amber and red straight
-  into 13px `color:` (**#ffb74d at 1.73:1**), on the one email that exists to say
-  something has gone wrong. Both are fine as FILLS.
-A shade past the mark, never on it — the discipline the screen tokens follow.
+Four ink tokens, now the back office's own light-mode text tokens, each measured on the
+three grounds an email ink sits on (card #FDFCFA / well #F4F4F2 / outer #F5F1E9):
+- `email_muted_ink()` **#52646E** = `--text-muted` (6.01 / 5.60 / 5.47) — all secondary
+  text. It first replaced FOUR near-identical failing greys that served no hierarchy.
+- `email_accent_ink()` **#965C35** = `--accent-text` (5.28 / 4.92 / 4.81) — the accent as
+  TEXT: a link, an accent word, a ★ glyph. The accent stays the FILL (#C6885E light,
+  #D6A785 dark).
+- `email_warn_ink()` **#9C5300** and `email_alert_ink()` **#BC2626** = `--warn-text` /
+  `--danger-text` (5.61 / 5.22 / 5.11 and 5.95 / 5.54 / 5.41) — the digest's
+  needs-attention rows once set amber and red straight into 13px `color:` (**#ffb74d at
+  1.73:1**), on the one email that exists to say something has gone wrong.
+A shade past the mark, never on it — the discipline the screen tokens follow. NB
+invoice.php restates these four (its composer is pure and loads no mailer) and
+test-invoice §6 asserts equality, and the owner's PDF (app.js `downloadInvoice`) carries
+the same accent/alert inks with smoke-test pinning `150,92,53` — move all three together.
 
 **`test-emails-render.php` — every composer runs, and no colour is illegible.** It
 splices a capture into BOTH `smtp_send` and `smtp_send_batch` (send_owner posts through
@@ -161,6 +169,16 @@ captured"), stubs the db.php helpers, and lets `db()` THROW, so a composer that 
 - **§9** counts greetings BY NAME over every rendered template, in each half separately,
   discovering the name FROM the greeting rather than a list.
 - **§11** drives the REAL GD path for the photo band with a fixture JPEG.
+- **§13** reads every email colour against the **app.css token it was taken from**,
+  composited onto its real ground (`rgba` glass over `--dark-grey` → the card) in both
+  themes, so "the dashboard's colours" is a property of two files gated as one: move a
+  token and this fails until the emails follow. Plus one button colour across every
+  rendered email, no 3px accent bar, the stay dot above the title, and the owner deep
+  links. Break-tested six ways (card drift, a bar restored, the payment link removed, a
+  caller's own accent reaching the button, a dark ink drifting, the dot removed). NB
+  "the button takes the cottage colour" first did NOT fire — no caller passed one any
+  more, so removing the guard changed nothing; the break-test had to add a caller that
+  does.
 
 ### The lessons the gates themselves taught
 
@@ -237,22 +255,52 @@ GUESTS, so forcing it is live marketing, not a sample.
 
 ### The look
 
-- **THE MODERN PASS** (the invoice's rules applied to the inbox; approved demo). ONE
-  restyle of the shell + block helpers with the same helper API, so all 38 templates
-  carried at once and no composer changed. The centred crown-over-brand masthead (~210px
-  before the message) became ONE header line — 24px crown + the serif name, the serif's
-  only survivor; a 3px cottage-accent rule tops the card (`email_h`'s `$accent` is
-  accepted-and-ignored now — the swatch said the accent twice); labels are sentence-case
-  600; money is grotesque 40px tight tabular between a hairline and a 2px rule; tinted
-  panels went to hairlines EXCEPT `email_note`, deliberately the ONE shout an email
-  keeps; buttons are full-width radius-12. Ground `#ECE5D7` → `#F7F4EE`, which made every
-  ink floor easier.
+- **THE BACK OFFICE'S OWN COLOURS** (asked for from a screenshot of the sign-in code
+  email beside Today: "change all emails from the brown colour to the exact same colour
+  as the admin dashboard… they need to look consistent"; approved demo). Supersedes the
+  modern pass's brown palette, serif brand and cottage bar. Every colour is a dashboard
+  token COMPOSITED onto the ground it sits on, since an email cannot lean on rgba: dark is
+  Today's `#121316` ground, `#16171A` card (the 1.8% glass), `#242528` hairline and
+  `#D6A785` button; light is the linen `#F5F1E9`, card `#FDFCFA`, slate inks.
+  - **ONE SHAPE** (the order in mailer.php's header comment): brand line → the stay →
+    title → lead → key block → one button → second choice → details → small print.
+  - **NO ACCENT BAR** — it was three colours (cottage / gold / rose), the loudest
+    inconsistency. The cottage is a DOT beside its name (`email_eyebrow`), the timeline's
+    lane-dot vocabulary; a fill, so any cottage colour is safe.
+  - **THE TITLE IS "Today"** — 28px at regular weight — and says what the email is for:
+    "Pay your deposit", never just "Jollyboat".
+  - **ONE BUTTON**, the Today card's "Return £50": full-width 48px pill, the accent under
+    `#1B1208`; `email_btn` ignores a passed accent. The second choice is the same pill,
+    outlined. The key figure or code sits in an inset well and is always INK — the label
+    says whether money goes out or comes back.
+  - **STATES ARE CAPSULES** (`email_cap`, the dashboard's `.st-cap`): "UPCOMING" in 10px
+    tracked capitals became "Confirmed", and a deposit-paid booking stopped showing its
+    payment state in RED (the old rule was paid → green, anything else → red).
+  - Six type sizes (12/13/15/17/28/34, was sixteen), three corners (card 20, inside 12,
+    round), the brand name in Montserrat (the back office's one font — the serif's last
+    survivor went), one greeting ("Hello <first name>,"; three said "Hi").
+  - **OWNER ALERTS END WHERE THE OWNER ACTS.** `owner_alert_text_html` renders a
+    paragraph of "Label: value" lines as `email_rows`, keeps a 3+-part subject's first
+    part as the title (the payment alert's wrapped to three lines), and renders
+    `owner_open_line($target)`'s "Open in the back office: <url>?open=<target>" paragraph
+    as the one button — a usable link in the text half too. Targets are chbOpenTarget's:
+    `booking-<id>` (pay.php now passes `id`), `moderation`, `inbox:messages`,
+    `settings:experiences`; the push fallback carries the push's own target and the
+    digest opens `today`.
+  - **A PRINTED LINK IS STYLED AS A LINK.** The sign-in emails' fallback URL was plain
+    text, so iOS Mail auto-linked it in system blue — the one off-palette colour in the
+    screenshot. It is an `<a>` in the accent ink now.
 - **THE DARK TWIN IS ONE DEFINITION** (`email_dark_palette()`): the shell BUILDS its
   `@media (prefers-color-scheme: dark)` block from it and §2's dark pass READS it, so the
   palette served and the palette measured cannot drift. Class hooks are INJECTED AT THE
   CHOKE POINT (`email_dark_hooks()` over the finished document inside email_shell) — the
   pdfSafe rule: a sanitiser you have to remember is one the next composer forgets.
-  Unmapped inks keep their light values ON PURPOSE, already working on both grounds.
+  The one unmapped ink is the button's `#1B1208`, on the accent in both themes. **A
+  SURFACE'S FILL IS A SIMPLE CLASS RULE (what §2 measures) AND ITS EDGE A DESCENDANT RULE
+  declared after `.em-card td`** — before that split, `.em-card td` (0,1,1) silently
+  outranked `.em-r2` (0,1,0) under `!important`, so the price box's heavy rule had never
+  once rendered heavy in dark mode, and a descendant-only well would have been invisible
+  to the gate.
   Apple Mail honours the block; Gmail ignores everyone's preferences and self-transforms
   regardless (no opt-out exists; the chosen values survive that transform too).
   Break-tested three ways. **The dark pass found a real ink on its first run** — the

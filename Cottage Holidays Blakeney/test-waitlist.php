@@ -291,7 +291,7 @@ echo "\n-- what the guest actually reads --\n";
 wl_reset(['rows' => [$WAITING[0]]]);
 waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 $mail = wl_sent(0);
-chk('the guest is greeted by name', strpos($mail['text'], 'Hi Ada Bell') !== false);
+chk('the guest is greeted by name', strpos($mail['text'], 'Hello Ada Bell') !== false);
 chk('the cottage is named, not keyed', strpos($mail['subject'], 'Jollyboat') !== false && strpos($mail['subject'], 'jollyboat') === false);
 chk('dates are spoken, not DD/MM/YYYY', strpos($mail['text'], email_date($WL_FROM)) !== false && strpos($mail['text'], '/') === false);
 chk('...and never raw ISO', strpos($mail['text'], $WL_FROM) === false);

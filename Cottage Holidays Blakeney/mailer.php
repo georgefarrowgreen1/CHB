@@ -3107,9 +3107,10 @@ function send_magic_link_email($g, $url, $purpose = 'signin', $code = '')
         email_btn($url, $reset ? 'Choose a password' : 'Sign me in', $accent) .
         email_footnote(
             'Button not working, or reading this on another device? Copy this link into your browser:<br>' .
-                // email_muted_ink(), not a hand-picked grey: the dark pass found
-                // #6b6b6b at 3.10:1 on the dark card — an off-token ink is
-                // invisible to the palette and gets no dark twin.
+                // A LINK STYLED AS A LINK, in a token ink. Left as text, iOS Mail
+                // auto-links it and paints it system blue; and a hand-picked grey
+                // here once measured 3.10:1 on the dark card (an off-token ink gets
+                // no dark twin).
                 '<a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>',
         ) .
         // WHAT THE GUEST NEEDS TO KNOW BEFORE THEY TAP: that it is single-use. A
