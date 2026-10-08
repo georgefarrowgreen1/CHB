@@ -12727,6 +12727,17 @@ document.addEventListener('chb-me', () => {
 });
 
 // ---- The account page ----
+// The host profile is the HOST's to keep (owner-asked): it shows on the account of
+// the person the cottage pages name, not on everyone's. When nobody who signs in is
+// that person (no host set up yet, or they were removed), full access keeps it, so
+// the card can always be edited.
+function oaHostRowShown() {
+    const host = String(hostVal('host-name') || '').trim().split(/\s+/)[0].toLowerCase();
+    const first = oaFirst().toLowerCase();
+    if (host && host === first) return true;
+    if (!chbFull() || !Array.isArray(__oaPeople)) return false;
+    return !__oaPeople.some((p) => p.state !== 'removed' && String(p.first || '').toLowerCase() === host);
+}
 function renderOwnerAccount() {
     const box = document.getElementById('acct-body');
     if (!box) return;
@@ -12735,6 +12746,12 @@ function renderOwnerAccount() {
     const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
     const hostFirst = String(hostVal('host-name') || '').trim().split(/\s+/)[0] || '';
     const hostSub = !hostFirst ? 'The card on every cottage page' : hostFirst === first ? 'Your card on every cottage page' : `${hostFirst}’s card on every cottage page`;
+    const bizRows = [
+        oaHostRowShown() ? gaRow({ ic: 'card', t: 'Host profile', s: hostSub, act: chbAttrs('oaGo', 'host'), chev: true, cls: 'oa-r-host' }) : '',
+        chbFull()
+            ? gaRow({ ic: 'people', t: 'People & access', s: others.length ? 'You and ' + listAnd(others) : __oaPeople ? 'Only you so far' : 'Who signs in, and what each can do', act: chbAttrs('oaGo', 'people'), chev: true, cls: 'oa-r-people' })
+            : '',
+    ].filter(Boolean);
     box.innerHTML = oaPage(
         'acct',
         oaBack('', 'Manage') +
@@ -12747,15 +12764,7 @@ function renderOwnerAccount() {
                 ],
                 'Account',
             ) +
-            gaGroup(
-                [
-                    gaRow({ ic: 'card', t: 'Host profile', s: hostSub, act: chbAttrs('oaGo', 'host'), chev: true, cls: 'oa-r-host' }),
-                    chbFull()
-                        ? gaRow({ ic: 'people', t: 'People & access', s: others.length ? 'You and ' + listAnd(others) : __oaPeople ? 'Only you so far' : 'Who signs in, and what each can do', act: chbAttrs('oaGo', 'people'), chev: true, cls: 'oa-r-people' })
-                        : '',
-                ].filter(Boolean),
-                'The business',
-            ) +
+            (bizRows.length ? gaGroup(bizRows, 'The business') : '') +
             gaGroup(
                 [
                     gaRow({ ic: 'moon', t: 'Dark mode', v: oaSwitch('oa-dark', !document.body.classList.contains('light-mode'), 'Dark mode', 'oaDarkMode'), static: true, cls: 'oa-swrow' }),
@@ -13204,6 +13213,7 @@ function oaPeoplePatch() {
     set('#notify-body .oa-r-emails .ga-s', oaMailSummary());
     __oaStill = true;
     try {
+        if (document.querySelector('#acct-body .ga-page') && !!document.querySelector('#acct-body .oa-r-host') !== oaHostRowShown()) renderOwnerAccount();
         if (document.querySelector('#people-body .ga-page')) renderPeople();
         if (document.querySelector('#person-body .ga-page')) renderPerson();
         if (document.querySelector('#emails-body .ga-page')) renderEmails();
