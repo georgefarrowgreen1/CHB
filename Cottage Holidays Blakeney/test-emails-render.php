@@ -1210,13 +1210,24 @@ chk('§13 every filled button in every email is the one accent (' . implode(', '
 $barred = array_keys(array_filter($RENDERED, fn($m) => strpos((string) $m['html'], 'height="3"') !== false));
 chk('§13 no email carries the old 3px accent bar', $barred === []);
 // THE STAY IS A DOT in the cottage's own colour (a fill, so any cottage colour is safe).
-$pr13 = (string) ($RENDERED['payment-request']['html'] ?? '');
+// Looked up by ITERATING: $RENDERED is filled from the capture splice, which static
+// analysis cannot follow, so PHPStan reads a literal offset on it as one on an empty
+// array. The lookup is the same either way.
+$doc13 = function (string $name) use ($RENDERED): array {
+    foreach ($RENDERED as $n => $m) {
+        if ($n === $name) {
+            return $m;
+        }
+    }
+    return ['html' => '', 'text' => ''];
+};
+$pr13 = (string) $doc13('payment-request')['html'];
 chk('§13 a stay email names its cottage with a dot in the cottage colour, above the title',
     preg_match('/width:8px;height:8px;border-radius:4px;background:#43a047;/i', $pr13) === 1
     && strpos($pr13, 'width:8px;height:8px') < strpos($pr13, '<h1'));
 // AN OWNER ALERT ENDS WHERE THE OWNER ACTS: the record's own deep link, as the one
 // button in the HTML and as a usable link in the text half.
-$op13 = $RENDERED['owner-payment'] ?? ['html' => '', 'text' => ''];
+$op13 = $doc13('owner-payment');
 $deep = 'https://cottageholidaysblakeney.co.uk/?open=booking-42';
 chk('§13 the payment alert ends in a button to that booking',
     preg_match('~<a\b[^>]*href="' . preg_quote($deep, '~') . '"[^>]*style="display:block;background:~', (string) $op13['html']) === 1);
