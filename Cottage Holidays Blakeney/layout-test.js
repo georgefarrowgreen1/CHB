@@ -332,7 +332,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-money-sweep', open: "(async () => { await openAccounts(); accountsOpen('sweep'); await new Promise(r => setTimeout(r, 500)); if (window.sweepSet) sweepSet('balance', '2000'); await new Promise(r => setTimeout(r, 250)); })()", mustSee: ['#sweep-balance', '#sweep-buffer'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#money-overview'] },
       { key: 'admin-manage', open: "(async () => { await openArea('manage'); })()", mustSee: ['#settings-index'] },
-      { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpen('accom'); })()", mustSee: ['#sec-accom'] },
+      { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpenAccom('21a'); })()", mustSee: ['#sec-accom'] },
       { key: 'admin-seasongrid', open: "(async () => { await openArea('cottages'); settingsOpen('seasongrid'); })()", mustSee: ['#sec-seasongrid'] },
       { key: 'admin-calendar-sync', open: "(async () => { await openArea('cottages'); settingsOpen('calendar'); await settingsOpenCalendar('21a'); })()", mustSee: ['#sync-export-21a', '#sync-airbnb-21a', '#sync-bookingcom-21a'] },
       { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },

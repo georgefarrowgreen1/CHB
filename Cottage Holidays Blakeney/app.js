@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 707;
+const ADMIN_BUNDLE_V = 708;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 348;
+const ADMIN_CSS_V = 349;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -379,9 +379,8 @@ chbAct('guestResendConfirm', async function (el) {
         toast("Couldn't send it just now — please try again in a minute.");
     }
 });
-// Open the accommodations section then a specific cottage.
+// Open a cottage's page straight from Manage's cottage rows.
 chbAct('openAccomThenSec', function (el) {
-    settingsOpen('accom');
     settingsOpenAccom(el.dataset.arg);
 });
 // Booking-hub ⋯ menu toggle: bhubMenuToggle reads ev.currentTarget (the button),
@@ -21487,7 +21486,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'acctrow1';
+    const BUILD = 'cotlist1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
