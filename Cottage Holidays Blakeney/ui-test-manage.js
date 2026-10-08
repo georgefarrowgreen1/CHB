@@ -653,13 +653,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     hydrateFollowUpToggles();
     settingsOpen('notify');
     await new Promise((r) => setTimeout(r, 300));
+    // The owner's account pages (ui-test-owneraccount owns them): each alert is a
+    // switch ROW, and quiet hours a row that opens its small form.
     const nf = {
-      rows: document.querySelectorAll('#notify-prefs-body .acr-row .chb-switch input').length,
+      rows: document.querySelectorAll('#notify-prefs-body .ga-row .chb-switch input').length,
       // Compare against the registry's OWN length, not a hand-count — a new
       // category (checkout joined for the check-out tap) must not fail a
       // literal that only ever described the list at one moment.
       cats: (typeof NOTIFY_CATS !== 'undefined' && NOTIFY_CATS.length) || 0,
-      quiet: document.querySelectorAll('#notify-prefs-body select.acw-pill').length,
+      quiet: document.querySelectorAll('#notify-prefs-body [data-act="oaQuiet"]').length,
     };
     settingsOpen('sms');
     const sms = { sw: !!document.querySelector('#sec-sms .chb-switch #sms-on'), wells: document.querySelectorAll('#sec-sms .acr-well').length, token: (document.getElementById('sms-token') || {}).type };
@@ -670,6 +672,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const plus = [...document.querySelectorAll('#sec-payments [data-act="depStep"]')].find((b) => (b.getAttribute('aria-label') || '').includes('more'));
     plus.click();
     await new Promise((r) => setTimeout(r, 120));
+    settingsOpen('security'); // the two-step switch is drawn when its page opens
     const pay = { bumped: dep.value, twofa: !!document.querySelector('#sec-security .chb-switch #admin-2fa-toggle') };
     settingsOpen('chat-away');
     const away = { sw: !!document.querySelector('#chat-away-editor .chb-switch input[data-key="chat-away-enabled"]'), pills: document.querySelectorAll('#chat-away-editor select.acw-pill').length };
@@ -677,7 +680,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(p1.fu.ids && p1.fu.well, 'Follow-up emails: the REAL toggles wear the switch, in a well');
   ok(p1.fu.ty && p1.fu.tyOff === true && p1.fu.tyOn === true, `the thank-you switch is off by default and shows ON from the private setting (${p1.fu.ty}/${p1.fu.tyOff}/${p1.fu.tyOn})`);
-  ok(p1.nf.rows === p1.nf.cats && p1.nf.cats >= 4 && p1.nf.quiet === 2, `Notifications: every category is a switch row + quiet-hour pills (${p1.nf.rows}/${p1.nf.cats}/${p1.nf.quiet})`);
+  ok(p1.nf.rows === p1.nf.cats && p1.nf.cats >= 4 && p1.nf.quiet === 1, `Notifications: every category is a switch row + a quiet-hours row (${p1.nf.rows}/${p1.nf.cats}/${p1.nf.quiet})`);
   ok(p1.sms.sw && p1.sms.wells === 2 && p1.sms.token === 'password', `Text messages: switch + two wells, the token stays write-only (${p1.sms.wells})`);
   ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the value (${p1.pay.bumped})`);
   ok(p1.pay.twofa, 'Security: two-step sign-in is the switch on the real toggle');

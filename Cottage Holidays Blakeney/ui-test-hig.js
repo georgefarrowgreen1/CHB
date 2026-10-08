@@ -371,9 +371,11 @@ const NEST = (rootSel) => {
 
   await open(page, "(async () => { await openArea('manage'); })()", 900);
   console.log('§1c Manage — the well LIFTS, and a field sits in at most two boxes');
-  await open(page, "settingsOpen('notify')", 1100);
+  // Notifications is a page of account rows now (ui-test-owneraccount); the
+  // Google review link still wears the settings well.
+  await open(page, "settingsOpen('reviews-google')", 1100);
   const well = await page.evaluate(() => {
-    const w = document.querySelector('.settings-sec .accounts-stat');
+    const w = document.querySelector('#sec-reviews-google .accounts-stat');
     if (!w) return null;
     const c = getComputedStyle(w);
     const grp = getComputedStyle(document.querySelector('.settings-group') || document.body);

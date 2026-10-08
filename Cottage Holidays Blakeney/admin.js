@@ -6,24 +6,6 @@
 // ============================================================
 
 
-async function saveContactPhone() {
-    const dial = (document.getElementById('contact-phone-dial').value || '').trim();
-    const display = (document.getElementById('contact-phone-display').value || '').trim();
-    if (!dial) {
-        glassAlert('Please enter a dial number.');
-        return;
-    }
-    const value = { dial, display: display || dial };
-    try {
-        await saveContent('contact-phone', value);
-        siteContent['contact-phone'] = value;
-        wireCallButtons();
-        toast('Contact number saved.');
-    } catch (e) {
-        glassAlert("Couldn't save the number: " + e.message);
-    }
-}
-
 // ---- Per-cottage GPS location for the on-arrival key-code unlock ----
 function geoVal(k) {
     const g = adminPrivateContent['geo-' + k];
@@ -302,9 +284,10 @@ function cmdkRegistry() {
         { id: 'newsletter', label: 'Newsletter', sub: 'Mailing list & broadcasts', kw: 'email marketing subscribers broadcast', sec: 'newsletter' },
         { id: 'waitlist', label: 'Waitlist', sub: 'Sold-out demand', kw: 'notify demand', sec: 'waitlist' },
         { id: 'analytics', label: 'Analytics', sub: 'Visits & referrers', kw: 'stats traffic visitors', sec: 'analytics' },
-        { id: 'host', label: 'Profile', sub: 'Host bio & contact', kw: 'bio about phone', sec: 'host' },
-        { id: 'notify', label: 'Notifications', sub: 'Phone alerts', kw: 'push alerts', sec: 'notify' },
-        { id: 'security', label: 'Security', sub: 'Password & quick sign-in', kw: 'password passkey 2fa face id fingerprint', sec: 'security' },
+        { id: 'acct', label: 'Your account', sub: 'Profile, alerts, sign-in & log out', kw: 'account me my profile appearance dark light mode theme layout search first classic log out sign out', sec: 'acct' },
+        { id: 'host', label: 'Host profile', sub: 'Photo, bio & phone number', kw: 'bio about phone photo picture host card', sec: 'host' },
+        { id: 'notify', label: 'Notifications', sub: 'Phone alerts & who gets emailed', kw: 'push alerts quiet hours email recipients', sec: 'notify' },
+        { id: 'security', label: 'Sign-in & security', sub: 'Password, passkeys & two-step', kw: 'password passkey 2fa face id fingerprint security', sec: 'security' },
         { id: 'sms', label: 'Text messages', sub: 'Balance reminders & arrival info by SMS', kw: 'sms text message twilio mobile phone number send texts balance reminder arrival', sec: 'sms' },
         { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
         { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check diagnostics updates migrations database storage', sec: 'diagnostics' },
@@ -5720,8 +5703,8 @@ function helpTopics() {
             doIt: { label: 'Open Newsletter', run: sec('newsletter') } },
         { id: 'two-factor', title: 'Turn on two-step sign-in', cat: 'System',
             kw: 'two factor 2fa security sign in login password passkey face id fingerprint protect code',
-            steps: ['Open Manage → Security.', 'Add a passkey (Face ID / fingerprint) for fast sign-in, and/or turn on the emailed 2-step code.'],
-            doIt: { label: 'Open Security', run: sec('security') } },
+            steps: ['Open Manage → Your account → Sign-in & security.', 'Add a passkey (Face ID / fingerprint) for fast sign-in, and/or turn on the emailed 2-step code.'],
+            doIt: { label: 'Open Sign-in & security', run: sec('security') } },
         { id: 'backup', title: 'Back up my data', cat: 'System',
             kw: 'backup back up download data database export save copy restore protect',
             steps: ['Open Manage → Status.', 'Use the backup tool to download a copy of your database; automatic weekly backups also run.'],
@@ -5737,7 +5720,7 @@ function helpTopics() {
             doIt: { label: 'Open Status', run: sec('diagnostics') } },
         { id: 'notifications', title: 'Get phone alerts for new bookings', cat: 'System',
             kw: 'notification notifications push alert phone new booking message enable turn on notify',
-            steps: ['Open Manage → Notifications.', 'Enable push alerts on this device for new bookings, enquiries and messages.'],
+            steps: ['Open Manage → Your account → Notifications.', 'Turn on alerts for this device for new bookings, enquiries and messages.'],
             doIt: { label: 'Open Notifications', run: sec('notify') } },
         { id: 'record-payment', title: 'Record a payment I took another way', cat: 'Money',
             kw: 'record manual payment cash bank transfer cheque took offline mark paid add money received',
@@ -5791,8 +5774,8 @@ function helpTopics() {
             related: ['host-profile'] },
         { id: 'host-profile', title: 'Edit your host bio & photo', cat: 'Marketing',
             kw: 'host profile bio about me photo owner introduction contact number your details',
-            steps: ['Search “host bio” to edit it inline, or open Manage → Profile.', 'Update your introduction, photo and contact number.'],
-            doIt: { label: 'Open Profile', run: sec('host') } },
+            steps: ['Search “host bio” to edit it inline, or open Manage → Your account → Host profile.', 'Tap a detail to change it — your introduction, photo or contact number.'],
+            doIt: { label: 'Open Host profile', run: sec('host') } },
         { id: 'experiences', title: 'Edit things to do', cat: 'Marketing',
             kw: 'experiences things to do activities local attractions seal trips walks add edit guide',
             steps: ['Open Manage → Things to do.', 'Add or edit the local places and activities shown on your Things to do page.'],
@@ -7985,7 +7968,11 @@ function cmdkFields(q) {
         hint: 'Your short introduction guests see on the site.',
         kw: 'host bio about you owner profile introduction blurb me welcome',
         get: () => (sc['host-bio'] != null ? String(sc['host-bio']) : ''),
-        set: (v) => Promise.resolve(saveHostText('host-bio', v)),
+        // saveHostText answers whether it landed; cmdkFieldSave reads a THROW as
+        // "not saved", so a refusal must throw or the editor says "Saved ✓".
+        set: async (v) => {
+            if (!(await saveHostText('host-bio', v))) throw new Error('not saved');
+        },
     });
     out.forEach((f) => { f.run = () => cmdkFieldOpen(f); });
     return out;
@@ -9972,6 +9959,7 @@ function applyAreaFilter() {
     try {
         manageVerdicts();
     } catch (e) {}
+    oaIndexRowPaint();
     const h = document.querySelector('#view-settings .dashboard-header h1');
     if (h) h.textContent = 'Manage';
     const s = document.getElementById('settings-search');
@@ -12353,12 +12341,13 @@ function copyGuestRegLink(id) {
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
+    acct: 'Your account',
     notify: 'Notifications',
-    host: 'Profile',
+    host: 'Host profile',
     reviews: 'Reviews',
     'reviews-import': 'Import reviews',
     'reviews-google': 'Google review link',
-    security: 'Security',
+    security: 'Sign-in & security',
     accom: 'Cottages',
     calendar: 'Calendar sync',
     cancel: 'Cancellation policy',
@@ -12384,6 +12373,13 @@ const SETTINGS_TITLES = {
     pricing: 'Pricing',
     replies: 'Saved replies',
 };
+// The owner's account pages (renderOwnerAccount and below): their depth, for
+// the slide direction, and what each page has learned so far.
+const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2 };
+let __oaFrom = ''; // the section shown before this one ('' = the Manage index)
+let __oaStill = false; // a repaint in place: no slide, and __oaFrom untouched
+let __oaKeys = null; // the owner's passkeys: null = not asked, 'err' = couldn't ask
+let __oaPush = ''; // this device's alert state once asked ('' = not yet)
 // Open the separate staging sandbox (where all testing now happens) in a new tab.
 const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
 function openStagingSite() {
@@ -12461,7 +12457,10 @@ function settingsShowIndex() {
     const idx = document.getElementById('settings-index');
     const panel = document.getElementById('settings-panel');
     const chrome = document.getElementById('settings-chrome');
-    if (panel) panel.style.display = 'none';
+    if (panel) {
+        panel.style.display = 'none';
+        panel.classList.remove('is-oa');
+    }
     if (idx) idx.style.display = '';
     if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
@@ -12491,6 +12490,8 @@ function settingsOpen(section) {
     adminHistPush('view-settings', section);
     // Same as accountsOpen: come back to the section, not the index.
     if (section) chbNavRemember('settings:' + section);
+    // Where the owner came FROM, so the account pages slide the right way.
+    __oaFrom = (__settingsPath && __settingsPath.section) || '';
     __settingsPath = section ? { section } : null;
     const idx = document.getElementById('settings-index');
     const panel = document.getElementById('settings-panel');
@@ -12511,12 +12512,20 @@ function settingsOpen(section) {
     sec.style.display = '';
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
+    // The account pages carry their own back link and heading (the guest
+    // account's), so the panel's pair stands down for them.
+    panel.classList.toggle('is-oa', !!OA_DEPTH[section]);
     // The title's state capsule belongs to ONE section; a section that has one
     // fills it again as it renders (Reviews), every other opens without it.
     const cap = document.getElementById('settings-panel-cap');
     if (cap) cap.innerHTML = '';
-    // The two Reviews sub-pages go back to Reviews, not to the index.
-    settingsBackTarget = /^reviews-/.test(section) ? () => settingsOpen('reviews') : () => settingsShowIndex();
+    // The two Reviews sub-pages go back to Reviews, not to the index; the
+    // account's three pages go back to the account.
+    settingsBackTarget = /^reviews-/.test(section)
+        ? () => settingsOpen('reviews')
+        : OA_DEPTH[section] === 2
+          ? () => settingsOpen('acct')
+          : () => settingsShowIndex();
     settingsRenderSection(section);
     // The rail's Cottages row goes current the moment the cottages section
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
@@ -12529,8 +12538,9 @@ function settingsOpen(section) {
 // "edit here") without duplicating the per-section render dispatch.
 function settingsRenderSection(section) {
     if (section === 'chat-answers') section = 'chat-away';
-    if (section === 'notify') renderNotifySettings();
-    else if (section === 'host') fillHostFields();
+    if (section === 'acct') renderOwnerAccount();
+    else if (section === 'notify') renderNotifySettings();
+    else if (section === 'host') renderHostProfile();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'reviews-import') rviRender();
     else if (section === 'reviews-google') initGoogleReviewUrl();
@@ -12555,10 +12565,7 @@ function settingsRenderSection(section) {
     else if (section === 'testcentre') renderTestCentreList();
     else if (section === 'sms') renderSms();
     else if (section === 'apis') renderApis();
-    else if (section === 'security') {
-        loadAdminPasskeys();
-        syncAdmin2faToggle();
-    }
+    else if (section === 'security') renderSecurity();
     else if (section === 'payments') renderSquareSettings();
     else if (section === 'accom') renderAccomList();
     else if (section === 'calendar') renderCalendarList();
@@ -12571,6 +12578,468 @@ function settingsRenderSection(section) {
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
     else settingsShowIndex();
+}
+
+// ===================================================================
+//  THE OWNER'S ACCOUNT (approved demo), built the way the guest account is:
+//  one page with you at the top, grouped rows (app.js gaRow / gaGroup), each
+//  opening its own page with a back link, every detail edited on its own.
+//  Four Manage sections: acct (the page) and host / notify / security (its
+//  rows). On the Manage index the five old account rows and Log out are ONE
+//  row with your photo and name (oaIndexRowPaint).
+// ===================================================================
+Object.assign(GA_IC, {
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    moon: '<path d="M20 13.4A8 8 0 1 1 10.6 4a6.3 6.3 0 0 0 9.4 9.4z"/>',
+    layout: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    send: '<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+});
+// The page slides forward going deeper and back coming out; a repaint in place
+// (a save, a list landing) does not move.
+function oaPage(sec, html) {
+    let cls = '';
+    if (!__oaStill) {
+        const a = OA_DEPTH[__oaFrom] || 0;
+        const b = OA_DEPTH[sec] || 0;
+        cls = b > a ? ' ga-in' : b < a ? ' ga-in-back' : '';
+        __oaFrom = sec;
+    }
+    return `<div class="ga-page${cls}">${html}</div>`;
+}
+function oaBack(to, label) {
+    return `<button type="button" class="ga-back oa-back" ${chbAttrs('oaGo', to)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>${escapeHtml(label)}</button>`;
+}
+// '' is the Manage index. In a search sheet (the search-first layout) the pages
+// move inside the palette, and the way out of the first one is the sheet's Back.
+function oaGo(sec) {
+    const sh = typeof __cmdkSheet !== 'undefined' ? __cmdkSheet : null;
+    if (sh && OA_DEPTH[sh.section]) {
+        if (!sec) {
+            cmdkSheetClose();
+            return;
+        }
+        __oaFrom = sh.section;
+        cmdkSheetRestore();
+        cmdkSheetOpen(sec, SETTINGS_TITLES[sec] || sec);
+        return;
+    }
+    if (sec) settingsOpen(sec);
+    else settingsShowIndex();
+}
+function oaSwitch(id, on, label, fn) {
+    return `<span class="chb-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''} ${chbChange(fn, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span>`;
+}
+const oaName = () => String(hostVal('host-name') || '').trim();
+const oaPhotoUrl = () => String(hostVal('host-photo') || '');
+function oaAva(big) {
+    const url = oaPhotoUrl();
+    const ini = (oaName().charAt(0) || '?').toUpperCase();
+    return `<span class="ga-ava${big ? ' is-big' : ''}" aria-hidden="true">${url ? `<img src="${escapeHtml(url)}" alt="">` : escapeHtml(ini)}</span>`;
+}
+function oaAvaBtn(big) {
+    return `<button type="button" class="ga-avabtn${big ? ' is-big' : ''}" data-act="oaPhotoSheet" aria-label="${oaPhotoUrl() ? 'Change your photo' : 'Add a photo'}">${oaAva(big)}<span class="ga-cam" aria-hidden="true">${GA_CAM}</span></button>`;
+}
+function oaIndexRowPaint() {
+    const r = document.getElementById('oa-index-row');
+    if (!r) return;
+    const ic = r.querySelector('.oa-ic');
+    const nm = document.getElementById('oa-index-name');
+    if (ic) ic.innerHTML = oaAva(false);
+    if (nm) nm.textContent = oaName() || 'Your account';
+}
+// The pages already drawn are redrawn in place: a new photo or name shows on
+// the account, the profile and the Manage row at once.
+function oaRepaint() {
+    oaIndexRowPaint();
+    __oaStill = true;
+    try {
+        if (document.querySelector('#acct-body .ga-page')) renderOwnerAccount();
+        if (document.querySelector('#host-body .ga-page')) renderHostProfile();
+    } finally {
+        __oaStill = false;
+    }
+}
+
+// ---- The account page ----
+function renderOwnerAccount() {
+    const box = document.getElementById('acct-body');
+    if (!box) return;
+    const first = oaName().split(/\s+/)[0] || '';
+    const badge = String(hostVal('host-badge') || '').trim() || 'Owner';
+    box.innerHTML = oaPage(
+        'acct',
+        oaBack('', 'Manage') +
+            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(badge)}</p></div>${oaAvaBtn(false)}</div>` +
+            gaGroup(
+                [
+                    gaRow({ ic: 'user', t: 'Host profile', s: 'Photo, bio and phone number', act: chbAttrs('oaGo', 'host'), chev: true }),
+                    gaRow({ ic: 'bell', t: 'Notifications', s: oaNotifySub(), act: chbAttrs('oaGo', 'notify'), chev: true, cls: 'oa-r-notify' }),
+                    gaRow({ ic: 'key', t: 'Sign-in & security', s: oaSecuritySub(), act: chbAttrs('oaGo', 'security'), chev: true, cls: 'oa-r-security' }),
+                ],
+                'Account',
+            ) +
+            gaGroup(
+                [
+                    gaRow({ ic: 'moon', t: 'Dark mode', v: oaSwitch('oa-dark', !document.body.classList.contains('light-mode'), 'Dark mode', 'oaDarkMode'), static: true, cls: 'oa-swrow' }),
+                    gaRow({
+                        ic: 'layout',
+                        t: 'Search-first layout',
+                        s: 'Payments and Manage move into Search',
+                        v: oaSwitch('oa-search', backofficeMode() === 'search', 'Search-first layout', 'oaSearchFirst'),
+                        static: true,
+                        cls: 'oa-swrow',
+                    }),
+                ],
+                'On this device',
+            ) +
+            `<div class="ga-group ga-signout">${gaRow({ ic: 'out', t: 'Log out', act: 'data-act="oaLogout"' })}</div>`,
+    );
+    oaPushRefresh();
+    if (__oaKeys === null) loadAdminPasskeys();
+}
+function oaDarkMode(on) {
+    if (!!on !== !document.body.classList.contains('light-mode')) toggleTheme();
+}
+function oaSearchFirst(on) {
+    setBackofficeMode(on ? 'search' : 'classic');
+}
+async function oaLogout() {
+    if (!(await glassConfirm('Sign back in any time with your passkey or password.', 'Log out', { title: 'Log out?' }))) return;
+    await logoutStaff();
+}
+
+// ---- Host profile: one fact per row, each edited in its own small form ----
+// "Where I studied" and "My work" are stored WITH their label, because that is
+// how the cottage page prints them. The row shows the answer and the form takes
+// the answer; the label goes back on when it saves.
+const OA_LINE = { 'host-school': 'Where I studied: ', 'host-work': 'My work: ' };
+function oaLineVal(key) {
+    const v = String(hostVal(key) || '').trim();
+    const p = OA_LINE[key];
+    return v.toLowerCase().startsWith(p.toLowerCase()) ? v.slice(p.length).trim() : v;
+}
+const oaDialSpaced = (d) => {
+    const m = String(d).match(/^\+44(\d{4})(\d{6})$/);
+    return m ? '+44 ' + m[1] + ' ' + m[2] : String(d);
+};
+// What guests see: the cottage page's own host card, which renderHost keeps
+// current, cloned without its ids — so the preview cannot drift from it.
+function oaHostCard() {
+    try {
+        renderHost();
+    } catch (e) {}
+    const src = document.getElementById('host-name');
+    const card = src && src.closest('.host-card');
+    if (!card) return '';
+    const c = /** @type {HTMLElement} */ (card.cloneNode(true));
+    c.querySelectorAll('[id]').forEach((e) => e.removeAttribute('id'));
+    return `<div class="oa-preview">${c.outerHTML}</div>`;
+}
+function renderHostProfile() {
+    const box = document.getElementById('host-body');
+    if (!box) return;
+    const fig = hostReviewFigures();
+    const none = 'Not added yet';
+    const val = (k) => String(hostVal(k) || '').trim() || none;
+    const cp = (siteContent && siteContent['contact-phone']) || {};
+    const dial = String(cp.dial || '').replace(/\s+/g, '');
+    box.innerHTML = oaPage(
+        'host',
+        oaBack('acct', 'Account') +
+            `<h1 class="section-title ga-h1">Host profile</h1><p class="ga-lead">Guests see this on every cottage page.</p>` +
+            `<div class="ga-group ga-hero">${oaAvaBtn(true)}<button type="button" class="ga-link ga-photolink" data-act="oaPhotoSheet">${oaPhotoUrl() ? 'Change photo' : 'Add a photo'}</button></div>` +
+            gaGroup([
+                gaRow({ t: 'Name', s: val('host-name'), act: chbAttrs('oaEdit', 'name'), chev: true }),
+                gaRow({ t: 'Title', s: val('host-badge'), act: chbAttrs('oaEdit', 'badge'), chev: true }),
+                gaRow({ t: 'Hosting for', s: val('host-years'), act: chbAttrs('oaEdit', 'years'), chev: true }),
+                gaRow({ t: 'Where I studied', s: oaLineVal('host-school') || none, act: chbAttrs('oaEdit', 'school'), chev: true }),
+                gaRow({ t: 'My work', s: oaLineVal('host-work') || none, act: chbAttrs('oaEdit', 'work'), chev: true }),
+                gaRow({ t: 'Bio', s: val('host-bio'), act: chbAttrs('oaEdit', 'bio'), chev: true, cls: 'oa-clamp' }),
+            ]) +
+            gaGroup([
+                gaRow({
+                    t: 'Reviews and rating',
+                    s: 'From your published reviews',
+                    v: `<span class="oa-figs">${fig.cnt ? escapeHtml(fig.count + ' · ' + fig.rating) : 'None yet'}</span>`,
+                    static: true,
+                }),
+            ]) +
+            gaGroup(
+                [
+                    gaRow({
+                        ic: 'phone',
+                        t: dial ? String(cp.display || dial) : 'Add a number',
+                        s: dial ? 'Dials ' + oaDialSpaced(dial) : 'Guests see a “Call to discuss” button once it’s set',
+                        act: chbAttrs('oaEdit', 'phone'),
+                        chev: true,
+                    }),
+                ],
+                'Call to discuss',
+            ) +
+            `<p class="ga-note">The number behind the “Call to discuss” button on every booking form.</p>` +
+            `<h2 class="ga-cap">How guests see you</h2>` +
+            oaHostCard(),
+    );
+}
+const OA_EDIT = {
+    name: { key: 'host-name', title: 'Your name', label: 'Name', need: 'Enter the name guests see.', autocomplete: 'name' },
+    badge: { key: 'host-badge', title: 'Your title', label: 'Title', hint: 'Shown under your name, e.g. Owner or Host' },
+    years: { key: 'host-years', title: 'Hosting for', label: 'How long you’ve been hosting', placeholder: 'e.g. 10 years' },
+    school: { key: 'host-school', title: 'Where I studied', label: 'Where you studied', hint: 'Guests read: “Where I studied: …”' },
+    work: { key: 'host-work', title: 'My work', label: 'What you do', hint: 'Guests read: “My work: …”' },
+    bio: { key: 'host-bio', title: 'Your bio', label: 'A few lines about you', area: true },
+};
+// One fact, one form. A refusal keeps the form open with what was typed.
+async function oaEdit(which) {
+    if (which === 'phone') return oaEditPhone();
+    const E = OA_EDIT[which];
+    if (!E) return;
+    const line = !!OA_LINE[E.key];
+    const cur = line ? oaLineVal(E.key) : String(hostVal(E.key) || '').trim();
+    const f = E.area
+        ? { id: 'v', label: E.label, type: 'textarea', rows: 6, def: cur }
+        : { id: 'v', label: E.label, value: cur, placeholder: E.placeholder || '', hint: E.hint || '', autocomplete: E.autocomplete || '' };
+    let msg = '';
+    for (;;) {
+        const v = await glassForm(msg, [f], { title: E.title, okLabel: 'Save' });
+        if (!v) return;
+        const typed = String(v.v || '').trim();
+        if (E.area) f.def = typed;
+        else f.value = typed;
+        if (E.need && !typed) {
+            msg = E.need;
+            continue;
+        }
+        if (await saveHostText(E.key, line && typed ? OA_LINE[E.key] + typed : typed)) {
+            oaRepaint();
+            const card = document.querySelector('#host-body .oa-preview .host-card');
+            if (card) card.classList.add('oa-flash');
+            toast('Saved');
+            return;
+        }
+        msg = "Not saved — that didn't reach the server. Try again.";
+    }
+}
+async function oaEditPhone() {
+    const cp = (siteContent && siteContent['contact-phone']) || {};
+    const fields = [
+        { id: 'dial', label: 'The number we dial', type: 'tel', value: cp.dial || '', placeholder: 'e.g. +44 1263 740512', autocomplete: 'tel', inputmode: 'tel' },
+        { id: 'display', label: 'How guests see it', value: cp.display || '', placeholder: 'e.g. 01263 740512' },
+    ];
+    let msg = '';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Call to discuss', okLabel: 'Save' });
+        if (!v) return;
+        const dial = String(v.dial || '').trim();
+        const display = String(v.display || '').trim();
+        fields[0].value = dial;
+        fields[1].value = display;
+        if (!dial) {
+            msg = 'Enter the number we dial.';
+            continue;
+        }
+        if (!/^\+?[0-9\s]{9,16}$/.test(dial)) {
+            msg = 'Enter the full number, starting +44, e.g. +44 1263 740512.';
+            continue;
+        }
+        const value = { dial: dial.replace(/\s+/g, ''), display: display || dial };
+        try {
+            await saveContent('contact-phone', value);
+        } catch (e) {
+            msg = "Not saved — that didn't reach the server. Try again.";
+            continue;
+        }
+        siteContent['contact-phone'] = value;
+        wireCallButtons();
+        oaRepaint();
+        toast('Number saved');
+        return;
+    }
+}
+// ---- The photo: the guest page's sheet and cropper, saved as the host photo ----
+function oaPhotoSheet() {
+    const o = gaPhotoSheetEl();
+    const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
+    box.innerHTML =
+        `<h2 class="ga-sheet-t" id="ga-photo-title">Your photo</h2><p class="ga-sheet-s">Guests see it beside your name on every cottage page.</p>` +
+        gaGroup(
+            [
+                gaRow({ ic: 'cam', t: 'Take a photo', act: chbAttrs('oaPhotoPick', 'cam') }),
+                gaRow({ ic: 'img', t: 'Choose from library', act: chbAttrs('oaPhotoPick', 'lib') }),
+                oaPhotoUrl() ? gaRow({ ic: 'bin', t: 'Remove photo', act: 'data-act="oaPhotoRemove"', danger: true }) : '',
+            ].filter(Boolean),
+        ) +
+        `<button type="button" class="btn-glass ga-sheet-cancel" data-act="gaPhotoSheetClose">Cancel</button>`;
+    o.classList.remove('closing');
+    o.classList.add('open');
+    overlayHistPush();
+    setTimeout(() => {
+        const f = /** @type {HTMLElement|null} */ (box.querySelector('button'));
+        if (f) f.focus();
+    }, 60);
+}
+function oaPhotoPick(which) {
+    gaPhotoPick(which, oaPhotoUse);
+}
+// The cropper's 512px square goes up like any other site image; the cropper
+// stays open if the upload or the save says no.
+async function oaPhotoUse(cv) {
+    const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.86));
+    if (!blob) {
+        glassAlert("That photo couldn't be prepared — try another.");
+        return false;
+    }
+    let url;
+    try {
+        url = await apiUpload(new File([blob], 'host-photo.jpg', { type: 'image/jpeg' }), 'host-photo');
+    } catch (e) {
+        glassAlert("Couldn't upload the photo: " + (e.message || e));
+        return false;
+    }
+    if (!(await saveHostText('host-photo', url))) return false;
+    oaPhotoLanded('Photo saved');
+    return true;
+}
+async function oaPhotoRemove() {
+    gaPhotoSheetClose();
+    if (await saveHostText('host-photo', '')) oaPhotoLanded('Photo removed — your initial is back');
+}
+function oaPhotoLanded(msg) {
+    oaRepaint();
+    document.querySelectorAll('#acct-body .ga-ava, #host-body .ga-ava').forEach((a) => a.classList.add('ga-land'));
+    toast(msg);
+}
+
+// ---- Notifications: this device, what interrupts you, who gets emailed ----
+// The device's state is ASKED, never assumed: permission granted with no
+// subscription is a device that will receive nothing.
+function oaPushGuess() {
+    if (isAppleTouchDevice() && !isStandalonePwa()) return 'install';
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+    const p = Notification.permission;
+    return p === 'denied' ? 'denied' : p === 'granted' ? 'on' : 'off';
+}
+async function oaPushState() {
+    const g = oaPushGuess();
+    if (g !== 'on') return g;
+    try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+        return sub ? 'on' : 'off';
+    } catch (e) {
+        return 'on'; // couldn't ask: permission granted is the best evidence there is
+    }
+}
+const OA_PUSH_WORDS = { on: 'On for this device', off: 'Off on this device', install: 'Off on this device', denied: 'Blocked on this device', unsupported: 'Not available on this device' };
+function oaNotifySub() {
+    const p = notifyPrefs();
+    return OA_PUSH_WORDS[__oaPush || oaPushGuess()] + (p.quietFrom && p.quietTo ? ' · quiet ' + p.quietFrom + '–' + p.quietTo : '');
+}
+function oaDeviceRows() {
+    const st = __oaPush || oaPushGuess();
+    const rows = [];
+    if (st === 'on') rows.push(gaRow({ ic: 'bell', t: 'Alerts on this device', s: 'New bookings, messages and payments', v: stCap('ok', 'On'), static: true }));
+    else if (st === 'denied') rows.push(gaRow({ ic: 'bell', t: 'Alerts are blocked on this device', s: 'Allow notifications for this site in your browser settings', static: true }));
+    else if (st === 'unsupported') rows.push(gaRow({ ic: 'bell', t: 'Alerts aren’t available here', s: 'This browser can’t show notifications', static: true }));
+    else
+        rows.push(
+            gaRow({
+                ic: 'bell',
+                t: 'Turn on alerts for this device',
+                s: st === 'install' ? 'On iPhone and iPad, add the site to your Home Screen first' : 'Your browser will ask to allow notifications',
+                act: 'data-act="enableOwnerPush"',
+                cls: 'oa-accent',
+            }),
+        );
+    rows.push(gaRow({ ic: 'send', t: 'Send a test alert', s: 'Check one reaches your devices', act: 'data-act="testOwnerPush"' }));
+    return rows;
+}
+// Ask the device, then patch the words where they show. A render never waits
+// on the service worker.
+async function oaPushRefresh() {
+    const before = __oaPush || oaPushGuess();
+    __oaPush = await oaPushState();
+    if (__oaPush === before) return;
+    const s = document.querySelector('#acct-body .oa-r-notify .ga-s');
+    if (s) s.textContent = oaNotifySub();
+    const d = document.getElementById('notify-device');
+    if (d) d.innerHTML = `<div class="ga-group">${oaDeviceRows().join('')}</div>`;
+}
+
+// ---- Sign-in & security ----
+// 'admin-2fa-enabled' is INTERNAL, so the anonymous boot GET never carried it:
+// the private map first (the bacs-details rule), or the switch reads off over a
+// real on.
+function oaTwoStepOn() {
+    const apc = typeof adminPrivateContent === 'object' && adminPrivateContent ? adminPrivateContent : {};
+    return String(apc['admin-2fa-enabled'] !== undefined ? apc['admin-2fa-enabled'] : siteContent['admin-2fa-enabled']) === '1';
+}
+function oaSecuritySub() {
+    const k = Array.isArray(__oaKeys) ? __oaKeys.length : -1;
+    return 'Password' + (k < 0 ? ' and passkeys' : k ? `, ${k} passkey${k === 1 ? '' : 's'}` : ', no passkeys') + (oaTwoStepOn() ? ', two-step on' : '');
+}
+function oaKeyRows() {
+    const keys = __oaKeys;
+    if (keys === null) return [gaRow({ ic: 'face', t: 'Passkeys', s: 'Checking…', static: true })];
+    if (!Array.isArray(keys)) return [gaRow({ ic: 'face', t: 'Couldn’t load your passkeys', s: 'Tap to try again', act: 'data-act="loadAdminPasskeys"' })];
+    const rows = keys.map((k) =>
+        gaRow({
+            ic: 'face',
+            t: k.label || 'Passkey',
+            s: 'Added ' + fmtDate(String(k.created_at || '').split(' ')[0]),
+            v: '<span class="ga-vbtn">Remove</span>',
+            act: chbAttrs('deleteAdminPasskey', k.id),
+        }),
+    );
+    if (passkeysSupported())
+        rows.push(gaRow({ ic: 'plus', t: keys.length ? 'Add another passkey' : 'Add a passkey', s: 'Sign in with Face ID or Touch ID. Your password still works.', act: 'data-act="addAdminPasskey"' }));
+    else if (!keys.length) rows.push(gaRow({ ic: 'face', t: 'No passkeys', s: 'This device or browser can’t make one', static: true }));
+    return rows;
+}
+function renderSecurity() {
+    const box = document.getElementById('security-body');
+    if (!box) return;
+    box.innerHTML = oaPage(
+        'security',
+        oaBack('acct', 'Account') +
+            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">This protects the whole back office: bookings, money and settings.</p>` +
+            gaGroup([gaRow({ ic: 'key', t: 'Change password', act: 'data-act="changeAdminPassword"', chev: true })], 'Password') +
+            `<h2 class="ga-cap">Passkeys</h2><div id="admin-passkey-list"><div class="ga-group">${oaKeyRows().join('')}</div></div>` +
+            `<p class="ga-note">Keep a passkey on two devices, like your phone and your Mac, so you’re never locked out.</p>` +
+            gaGroup(
+                [
+                    gaRow({
+                        ic: 'shield',
+                        t: 'Email me a code on new devices',
+                        s: 'Trusted devices are remembered for 60 days',
+                        v: oaSwitch('admin-2fa-toggle', oaTwoStepOn(), 'Email me a code on new devices', 'oaTwoStep'),
+                        static: true,
+                        cls: 'oa-swrow',
+                    }),
+                ],
+                'Two-step sign-in',
+            ) +
+            `<p class="ga-note">The code goes to your owner email (shown under Notifications). Until there is one it stays off, so you can’t be locked out.</p>`,
+    );
+    loadAdminPasskeys();
+}
+async function oaTwoStep(on) {
+    const v = on ? '1' : '';
+    try {
+        await saveContent('admin-2fa-enabled', v);
+    } catch (e) {
+        // The save alerted; put the switch back to the truth.
+        const el = /** @type {HTMLInputElement|null} */ (document.getElementById('admin-2fa-toggle'));
+        if (el) el.checked = !on;
+        return;
+    }
+    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['admin-2fa-enabled'] = v;
+    siteContent['admin-2fa-enabled'] = v;
+    const s = document.querySelector('#acct-body .oa-r-security .ga-s');
+    if (s) s.textContent = oaSecuritySub();
+    toast(on ? 'Two-step sign-in is on' : 'Two-step sign-in is off');
 }
 
 
@@ -14251,29 +14720,6 @@ async function saveApiKey(which) {
         }
     }
 }
-function fillHostFields() {
-    const setv = (id, key) => {
-        const e = document.getElementById(id);
-        if (e) e.value = hostVal(key);
-    };
-    setv('host-f-name', 'host-name');
-    setv('host-f-badge', 'host-badge');
-    setv('host-f-years', 'host-years');
-    setv('host-f-school', 'host-school');
-    setv('host-f-work', 'host-work');
-    setv('host-f-bio', 'host-bio');
-    const photo = document.getElementById('host-edit-photo');
-    if (photo)
-        photo.style.backgroundImage = hostVal('host-photo')
-            ? `url('${hostVal('host-photo')}')`
-            : '';
-    // Contact number now lives inside the Profile folder.
-    const cp = siteContent['contact-phone'] || {};
-    const dEl = document.getElementById('contact-phone-dial');
-    const sEl = document.getElementById('contact-phone-display');
-    if (dEl) dEl.value = cp.dial || '';
-    if (sEl) sEl.value = cp.display || '';
-}
 // A small "row that drills into a cottage" list for accom + calendar sections.
 function cottageRowsHtml(onclickFn) {
     return Object.keys(propertyMeta)
@@ -15719,34 +16165,38 @@ async function gstInvite(email) {
     gstRender();
 }
 
+// ONE form, like the guest's (it was three pop-ups in a row, and a mistake in
+// the third threw away the first two). A refusal — the server's included —
+// keeps the form open with what was typed.
 async function changeAdminPassword() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
     }
-    const current = await glassPrompt('Enter your current admin password.', '', { password: true, title: 'Change your password', okLabel: 'Continue' });
-    if (current === null) return;
-    const next = await glassPrompt('Enter a new password — at least 12 characters.', '', {
-        password: true, title: 'Change your password', okLabel: 'Continue',
-    });
-    if (next === null) return;
-    if (next.trim().length < 12) {
-        glassAlert('Password must be at least 12 characters.');
-        return;
-    }
-    const confirmNext = await glassPrompt('Re-enter the new password to confirm.', '', {
-        password: true, title: 'Change your password', okLabel: 'Change my password',
-    });
-    if (confirmNext === null) return;
-    if (confirmNext !== next) {
-        glassAlert("The new passwords don't match. Nothing was changed.");
-        return;
-    }
-    try {
-        await apiPost('auth.php', { action: 'admin_change_password', current, next });
-        toast('Admin password updated.');
-    } catch (e) {
-        glassAlert("Couldn't change password: " + e.message);
+    const fields = [
+        { id: 'current', label: 'Current password', type: 'password', autocomplete: 'current-password' },
+        { id: 'next', label: 'New password', type: 'password', autocomplete: 'new-password', placeholder: 'At least 12 characters' },
+        { id: 'confirm', label: 'Confirm new password', type: 'password', autocomplete: 'new-password' },
+    ];
+    let msg = '';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Change password', okLabel: 'Update password' });
+        if (!v) return;
+        fields.forEach((f) => {
+            f.value = v[f.id] || '';
+        });
+        if (!v.current) msg = 'Enter your current password.';
+        else if (!v.next || v.next.trim().length < 12) msg = 'Your new password must be at least 12 characters.';
+        else if (v.next !== v.confirm) msg = 'The new passwords don’t match.';
+        else {
+            try {
+                await apiPost('auth.php', { action: 'admin_change_password', current: v.current, next: v.next });
+                toast('Password updated.');
+                return;
+            } catch (e) {
+                msg = String(e.message || e);
+            }
+        }
     }
 }
 function taxYearLabel(startYear) {
@@ -18647,40 +19097,27 @@ async function addAdminPasskey() {
         glassAlert("Couldn't add passkey: " + (e.message || e));
     }
 }
-function syncAdmin2faToggle() {
-    const el = document.getElementById('admin-2fa-toggle');
-    if (el) el.checked = siteContent['admin-2fa-enabled'] === '1';
-}
+// The list lands in its own group (and the account page's row) — the page around
+// it is not redrawn. A failed ask keeps the last good list.
 async function loadAdminPasskeys() {
-    const box = document.getElementById('admin-passkey-list');
-    if (!box) return;
     try {
         const res = await apiPost('passkeys.php', { action: 'admin_list' });
-        const keys = res.passkeys || [];
-        if (keys.length === 0) {
-            box.innerHTML =
-                '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No passkeys yet. Your password is still your way in.</p>';
-            return;
-        }
-        box.innerHTML = keys
-            .map(
-                (
-                    k,
-                ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:8px;">
-                    <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
-                    <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
-                </div>`,
-            )
-            .join('');
+        __oaKeys = res.passkeys || [];
     } catch (e) {
-        box.innerHTML = '';
+        if (!Array.isArray(__oaKeys)) __oaKeys = 'err';
     }
+    const box = document.getElementById('admin-passkey-list');
+    if (box) box.innerHTML = `<div class="ga-group">${oaKeyRows().join('')}</div>`;
+    const s = document.querySelector('#acct-body .oa-r-security .ga-s');
+    if (s) s.textContent = oaSecuritySub();
 }
 async function deleteAdminPasskey(id) {
-    if (!(await glassConfirm('Remove this passkey? You can still sign in with your password.', 'Remove the passkey', { danger: true })))
-        return;
+    const k = Array.isArray(__oaKeys) ? __oaKeys.find((x) => String(x.id) === String(id)) : null;
+    const title = k && k.label ? `Remove “${k.label}”?` : 'Remove this passkey?';
+    if (!(await glassConfirm('You can still sign in with your password.', 'Remove the passkey', { title, danger: true }))) return;
     try {
         await apiPost('passkeys.php', { action: 'admin_delete', id });
+        toast('Passkey removed');
         loadAdminPasskeys();
     } catch (e) {
         glassAlert("Couldn't remove: " + e.message);
@@ -18757,47 +19194,83 @@ function notifyPrefs() {
     }
     return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, p || {});
 }
+// Each kind of alert is a switch; quiet hours are a row that opens a small form.
 function renderNotifyPrefs() {
     const box = document.getElementById('notify-prefs-body');
     if (!box) return;
     const p = notifyPrefs();
-    const hours = (sel) =>
-        ['<option value="">—</option>']
-            .concat(
-                Array.from({ length: 24 }, (_, h) => {
-                    const v = String(h).padStart(2, '0') + ':00';
-                    return `<option value="${v}"${sel === v ? ' selected' : ''}>${v}</option>`;
-                }),
-            )
-            .join('');
-    // Switch rows in the unified well (the approved realistic demo) — same
-    // checkboxes, same saveNotifyPref, drawn as the keeper's toggle.
     box.innerHTML =
-        `<div class="acr-well">` +
-        NOTIFY_CATS.map(
-            ([k, label]) =>
-                `<div class="acr-row"><span class="acr-lbl">${escapeHtml(label)}</span><span class="chb-switch"><input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`,
+        `<div class="ga-group">` +
+        NOTIFY_CATS.map(([k, label]) =>
+            gaRow({
+                t: label,
+                v: `<span class="chb-switch"><input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span>`,
+                static: true,
+                cls: 'oa-swrow',
+            }),
         ).join('') +
-        `<div class="acr-row"><span class="acr-lbl">Quiet hours<small>urgent alerts always get through</small></span>
-            <span style="display:flex;gap:6px;align-items:center;">
-            <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
-            <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
-            </span></div>
-        </div>`;
+        gaRow({ ic: 'clock', t: 'Quiet hours', s: p.quietFrom && p.quietTo ? `Nothing buzzes from ${p.quietFrom} to ${p.quietTo}` : 'Off', act: 'data-act="oaQuiet"', chev: true }) +
+        `</div>`;
 }
-async function saveNotifyPref(key, value) {
-    const p = notifyPrefs();
-    p[key] = key === 'quietFrom' || key === 'quietTo' ? String(value || '') : !!value;
+// Saves the whole set with one change merged in; says whether it landed.
+async function saveNotifyPrefs(patch) {
+    const p = Object.assign(notifyPrefs(), patch);
     try {
         await saveContent('notify-prefs', p);
-        adminPrivateContent['notify-prefs'] = p;
-        toast('Notification settings saved.');
     } catch (e) {
-        renderNotifyPrefs(); // the save alerted; put the control back to the truth
+        return false; // the save alerted
+    }
+    adminPrivateContent['notify-prefs'] = p;
+    toast('Notification settings saved.');
+    return true;
+}
+async function saveNotifyPref(key, value) {
+    const v = key === 'quietFrom' || key === 'quietTo' ? String(value || '') : !!value;
+    if (!(await saveNotifyPrefs({ [key]: v }))) renderNotifyPrefs(); // put the control back to the truth
+}
+// Both ends or neither: half a quiet window means nothing to the server.
+async function oaQuiet() {
+    const p = notifyPrefs();
+    const hours = [{ value: '', label: 'Off' }].concat(
+        Array.from({ length: 24 }, (_, h) => {
+            const v = String(h).padStart(2, '0') + ':00';
+            return { value: v, label: v };
+        }),
+    );
+    const fields = [
+        { id: 'from', label: 'From', type: 'select', options: hours, value: p.quietFrom || '' },
+        { id: 'to', label: 'Until', type: 'select', options: hours, value: p.quietTo || '' },
+    ];
+    let msg = 'Anything urgent still gets through.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Quiet hours', okLabel: 'Save' });
+        if (!v) return;
+        fields[0].value = v.from;
+        fields[1].value = v.to;
+        if (!!v.from !== !!v.to) msg = 'Choose both times, or Off for both.';
+        else if (v.from && v.from === v.to) msg = 'Choose two different times.';
+        else {
+            if (await saveNotifyPrefs({ quietFrom: v.from, quietTo: v.to })) {
+                renderNotifyPrefs();
+                const s = document.querySelector('#acct-body .oa-r-notify .ga-s');
+                if (s) s.textContent = oaNotifySub();
+            }
+            return;
+        }
     }
 }
 async function enableOwnerPush() {
     try {
+        // iOS ONLY ALLOWS WEB PUSH FROM AN INSTALLED APP — and a Safari tab does not
+        // even expose the push APIs, so this is asked BEFORE the support check, or
+        // the one device that can be fixed would be told it is unsupported.
+        if (isAppleTouchDevice() && !isStandalonePwa()) {
+            glassAlert(
+                'On iPhone and iPad, notifications only work once this site is added to your Home Screen.\n\n' +
+                    'Tap the Share button in Safari, choose “Add to Home Screen”, then open it from there and turn notifications on again.',
+            );
+            return;
+        }
         if (
             !('serviceWorker' in navigator) ||
             !('PushManager' in window) ||
@@ -18806,23 +19279,12 @@ async function enableOwnerPush() {
             glassAlert('This device or browser doesn’t support notifications.');
             return;
         }
-        // iOS ONLY ALLOWS WEB PUSH FROM AN INSTALLED APP. In a Safari tab the
-        // permission prompt either never appears or the subscription silently never
-        // works — and nothing here said so, so the owner would tap Enable, see
-        // nothing, and conclude notifications were broken. Say what to do instead.
-        if (isAppleTouchDevice() && !isStandalonePwa()) {
-            glassAlert(
-                'On iPhone and iPad, notifications only work once this site is added to your Home Screen.\n\n' +
-                    'Tap the Share button in Safari, choose “Add to Home Screen”, then open it from there and turn notifications on again.',
-            );
-            return;
-        }
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
             glassAlert(
                 'Notifications are blocked. Enable them for this site in your browser settings, then try again.',
             );
-            renderNotifySettings();
+            oaPushRefresh();
             return;
         }
         const key = await getVapidKey();
@@ -18843,7 +19305,7 @@ async function enableOwnerPush() {
             });
         await apiPost('push.php', { action: 'subscribe_admin', subscription: sub.toJSON() });
         toast('This device will now receive owner alerts.');
-        renderNotifySettings();
+        oaPushRefresh();
     } catch (e) {
         glassAlert("Couldn't enable notifications: " + (e.message || e));
     }
@@ -18862,7 +19324,7 @@ async function testOwnerPush() {
             toast(`Test alert sent to ${n} device${n === 1 ? '' : 's'} — check your notifications.`);
         } else {
             glassAlert(
-                "No device is set up to receive alerts yet, so nothing was sent. Tap “Enable on this device” above first — and on an iPhone or iPad, add the site to your Home Screen and open it from there, because iOS only allows notifications from an installed app.",
+                "No device is set up to receive alerts yet, so nothing was sent. Tap “Turn on alerts for this device” first — and on an iPhone or iPad, add the site to your Home Screen and open it from there, because iOS only allows notifications from an installed app.",
             );
         }
     } catch (e) {
@@ -18872,42 +19334,19 @@ async function testOwnerPush() {
 function renderNotifySettings() {
     const wrap = document.getElementById('notify-body');
     if (!wrap) return;
-    const supported =
-        'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-    const perm = (window.Notification && Notification.permission) || 'default';
-    const status = !supported
-        ? 'Not supported on this device or browser.'
-        : perm === 'granted'
-          ? 'Notifications are allowed on this browser.'
-          : perm === 'denied'
-            ? 'Notifications are blocked — enable them for this site in your browser settings.'
-            : 'Not enabled yet on this device.';
-    wrap.innerHTML = `<div class="accounts-stat" style="max-width:560px;">
-                <div class="label">Owner alerts on this device</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Get a notification on this device for new enquiries, guest messages, payments, and when a new version of your site goes live. Enable it once on each device (phone, laptop) you want alerts on.</p>
-                <p style="font-size:var(--fs-sub);color:var(--text-light);margin:0 0 14px;">${status}</p>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn-sm btn-edit" data-act="enableOwnerPush">Enable on this device</button>
-                    <button class="btn-sm btn-edit" data-act="testOwnerPush">Send test</button>
-                </div>
-            </div>
-            <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
-                <div class="label">What interrupts you</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Turn off a kind of alert, or set quiet hours, and it stops buzzing your devices — it still lands in the activity log, and anything urgent (a calendar sync that could double-book you) always gets through.</p>
-                <div id="notify-prefs-body">${skelRows(2)}</div>
-            </div>
-            <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
-                <div class="label">Email recipients</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
-                <div id="notify-emails-list">${skelRows(2)}</div>
-                <form data-act-submit="addNotifyEmail" data-pass="event" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-                    <input type="email" id="notify-email-input" class="input-glass field-sm" placeholder="name@example.com" autocomplete="off" style="flex:1;min-width:200px;margin:0;">
-                    <button type="submit" class="btn-sm btn-edit">Add address</button>
-                </form>
-                <p id="notify-email-msg" style="font-size:var(--fs-sub);margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
-            </div>`;
-    loadNotifyEmails();
+    wrap.innerHTML = oaPage(
+        'notify',
+        oaBack('acct', 'Account') +
+            `<h1 class="section-title ga-h1">Notifications</h1><p class="ga-lead">What reaches this device, and who gets an email.</p>` +
+            `<h2 class="ga-cap">This device</h2><div id="notify-device"><div class="ga-group">${oaDeviceRows().join('')}</div></div>` +
+            `<h2 class="ga-cap">What interrupts you</h2><div id="notify-prefs-body"></div>` +
+            `<p class="ga-note">Turning one off stops the buzz. It still lands in your activity log, and anything urgent, like a calendar sync that could double-book you, always gets through.</p>` +
+            `<h2 class="ga-cap">Emailed to</h2><div id="notify-emails-list"><div class="ga-group">${gaRow({ ic: 'mail', t: 'Loading…', static: true })}</div></div>` +
+            `<p class="ga-note">Emails cover new bookings, enquiries, guest messages, payments and reviews.</p>`,
+    );
     renderNotifyPrefs();
+    loadNotifyEmails();
+    oaPushRefresh();
 }
 // Read-only check of the zero-setup reply-by-email: does the mailbox
 // connect, and what did the newest replies do? Nothing is delivered.
@@ -18971,36 +19410,57 @@ async function loadNotifyEmails() {
     try {
         d = await apiPost('notify-recipients.php', { action: 'list' });
     } catch (e) {
-        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger-text);">Couldn't load the list.</p>`;
+        box.innerHTML = `<div class="ga-group">${gaRow({ ic: 'mail', t: 'Couldn’t load the list', s: 'Tap to try again', act: 'data-act="loadNotifyEmails"' })}</div>`;
         return;
     }
     renderNotifyEmails(d.primary, d.extras || []);
 }
-async function addNotifyEmail(ev) {
-    if (ev) ev.preventDefault();
-    const input = document.getElementById('notify-email-input');
-    const msg = document.getElementById('notify-email-msg');
-    const email = (input.value || '').trim();
-    if (!email) return;
-    if (msg) {
-        msg.textContent = '';
-        msg.style.color = '';
+function renderNotifyEmails(primary, extras) {
+    const box = document.getElementById('notify-emails-list');
+    if (!box) return;
+    const rows = [
+        primary
+            ? gaRow({ ic: 'mail', t: primary, s: 'Your owner email', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true })
+            : gaRow({ ic: 'mail', t: 'No owner email set on the server', s: 'Alerts have no main address yet', static: true, cls: 'oa-warn' }),
+    ]
+        .concat((extras || []).map((e) => gaRow({ ic: 'mail', t: e, s: 'Copied on every alert', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) })))
+        .concat([gaRow({ ic: 'plus', t: 'Add someone', s: 'A partner or co-host', act: 'data-act="addNotifyEmail"' })]);
+    box.innerHTML = `<div class="ga-group">${rows.join('')}</div>`;
+}
+// One address, one small form; the server's refusal ("already on the list",
+// "doesn't look like an email") keeps it open with what was typed.
+async function addNotifyEmail() {
+    const fields = [{ id: 'email', label: 'Email address', type: 'email', value: '', placeholder: 'name@example.com', autocomplete: 'off', inputmode: 'email' }];
+    let msg = 'They’re copied on every owner alert from now on.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Email someone else too', okLabel: 'Add' });
+        if (!v) return;
+        const email = String(v.email || '').trim();
+        fields[0].value = email;
+        if (!email) {
+            msg = 'Enter an email address.';
+            continue;
+        }
+        try {
+            const d = await apiPost('notify-recipients.php', { action: 'add', email });
+            if (!d.ok) throw new Error(d.error || 'Could not add that address');
+        } catch (e) {
+            msg = String(e.message || e);
+            continue;
+        }
+        await loadNotifyEmails();
+        toast('Added — copied on every owner alert from now on.');
+        return;
     }
+}
+async function removeNotifyEmail(email) {
+    if (!(await glassConfirm(`${email} will stop getting owner alerts.`, 'Stop emailing them', { title: 'Remove this address?', danger: true }))) return;
     try {
-        const d = await apiPost('notify-recipients.php', { action: 'add', email });
-        if (!d.ok) throw new Error(d.error || 'Could not add that address');
-        const list = await apiPost('notify-recipients.php', { action: 'list' });
-        renderNotifyEmails(list.primary, list.extras || []);
-        input.value = '';
-        if (msg) {
-            msg.textContent = 'Added — copied on all owner alerts from now on.';
-            msg.style.color = 'var(--ok-text)';
-        }
+        await apiPost('notify-recipients.php', { action: 'remove', email });
+        await loadNotifyEmails();
+        toast('Removed');
     } catch (e) {
-        if (msg) {
-            msg.textContent = e.message;
-            msg.style.color = 'var(--danger)';
-        }
+        glassAlert("Couldn't remove that address: " + e.message);
     }
 }
 
@@ -19116,41 +19576,20 @@ async function saveContent(key, value) {
         throw e;
     }
 }
-// Admin: open the Host profile editor and load the current values.
-// "Saved." WHEN IT HAS BEEN SAVED, not when it was sent. saveContent RETHROWS (it
-// shows the owner its own alert either way), and this swallowed that with
-// `.catch(() => {})` while printing "Saved." unconditionally — the fire-and-forget
-// opt-out used on a path that makes a CLAIM. The mirror is still written first so
-// the field keeps what was typed; only the claim waits for the answer.
+// Save one host fact and say whether it LANDED. Every caller makes a claim on
+// the answer — the profile row, the guests' card, the search editor's "Saved ✓"
+// — so a rejected value must not reach the mirror the cottage page reads: it is
+// written only once the server has it. The forms keep what was typed instead.
 async function saveHostText(key, value) {
-    const v = (value || '').trim();
-    siteContent[key] = v;
-    const msg = document.getElementById('host-save-msg');
-    const say = (t, ok) => {
-        if (!msg) return;
-        msg.textContent = t;
-        msg.style.color = ok ? '' : 'var(--warn-text)';
-        clearTimeout(msg.__t);
-        if (ok) msg.__t = setTimeout(() => { msg.textContent = ''; }, 1500);
-    };
-    say('Saving…', true);
+    const v = String(value == null ? '' : value).trim();
     try {
-        await saveContent(key, v);
+        await saveContent(key, v); // alerts the owner itself on a failure
     } catch (e) {
-        say("Not saved — that didn't reach the server.", false);
-        return;
+        return false;
     }
+    siteContent[key] = v;
     renderHost();
-    say('Saved.', true);
-}
-function uploadHostPhoto() {
-    pickAndUpload('host-photo', async (url) => {
-        siteContent['host-photo'] = url;
-        await saveContent('host-photo', url);
-        const a = document.getElementById('host-edit-photo');
-        if (a) a.style.backgroundImage = `url('${url}')`;
-        renderHost();
-    });
+    return true;
 }
 function saveLocalContent(key, value) {
     saveContent(key, value).catch(() => {});
@@ -34297,7 +34736,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable

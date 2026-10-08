@@ -627,6 +627,11 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['admin-inbox-email', "(async()=>{inboxFolder('email');await new Promise(r=>setTimeout(r,700));})()"],
         ['admin-pricing', "(async()=>{await openArea();settingsOpen('pricing');await new Promise(r=>setTimeout(r,600));})()"],
         ['admin-learning', "(async()=>{await openArea();settingsOpen('search-learning');await new Promise(r=>setTimeout(r,600));})()"],
+        // The owner's account pages: rows, switches and the guests' card in its serif.
+        ['admin-acct', "(async()=>{await openArea();settingsOpen('acct');await new Promise(r=>setTimeout(r,600));})()"],
+        ['admin-host', "(async()=>{settingsOpen('host');await new Promise(r=>setTimeout(r,600));})()"],
+        ['admin-notify', "(async()=>{settingsOpen('notify');await new Promise(r=>setTimeout(r,600));})()"],
+        ['admin-security', "(async()=>{settingsOpen('security');await new Promise(r=>setTimeout(r,600));})()"],
         // THE TWO HUBS AND THE LOG — the screens the owner spends most of the day on,
         // and the three richest in headings, controls and dates. They were absent, so
         // the booking hub's ~40 controls, the enquiry hub's action row and the log's

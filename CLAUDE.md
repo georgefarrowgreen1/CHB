@@ -3513,9 +3513,9 @@ reset link). Rows keep `.acw-prow[data-gemail]` for the search reveal.
 Calendar sync) · **Bookings & payments** (Payments, Cancellation policy, Booking terms) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
-**Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) · **Your account** (Profile,
-Notifications, Security, Appearance, Back-office layout) · **System & tools** (Status, Activity log, Integrations,
-Search learning, Test copy, Test centre), then Log out. Rows, ids and acts are unchanged — only order, groups and
+**Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) · **Your account** (ONE row
+now, with the owner's photo and name — see "The owner's account" below; Log out moved onto that page) ·
+**System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Rows, ids and acts were unchanged by the reorder — only order, groups and
 four subtitles moved, so deep links and search are untouched. AI chat used to sit under pricing; "Guests &
 marketing" was nine unrelated rows and "Account & system" mixed your settings with maintenance.
 **And inside them** (second pass): **Status** is health only now — its Maintenance cards moved to where they
@@ -3527,6 +3527,68 @@ answers are ONE page, "Guest chat"** (`sec-chat-away` hosts both editors; `setti
 analytics now" sits on Analytics. Search routes (`toManage('backups')`, `toMng('chat-away')`, the night-quiet
 duty → `mac`) follow; search-test asserts every route targets a registered section. ui-test-nightshift and
 ui-test-hig open `settingsOpen('mac')` for the overnight card.
+
+## The owner's account (approved demo, built)
+
+**Asked for as "make the admin account a similar design to how the guest account is set up".** The five
+Manage rows (Profile, Notifications, Security, Appearance, Back-office layout) and the Log out row are ONE row
+(`#oa-index-row`, photo + name, painted by `oaIndexRowPaint` from `applyAreaFilter`) that opens
+`settingsOpen('acct')`. Four Manage sections now use the guest account's rows and groups (`gaRow` / `gaGroup`,
+app.css `.ga-*`): `acct` (the account page: a hello with the host title, Account, On this device, Log out) and its
+three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block after `settingsBack` in admin.js,
+`.oa-*` at the foot of admin.css.
+- **Each page carries its own back link and h1**, so the panel's pair stands down (`#settings-panel.is-oa`,
+  toggled in `settingsOpen`, removed in `settingsShowIndex`). Every other section keeps the panel's back link and
+  title (gated). The pages slide like the guest's (`ga-in` / `ga-in-back`): `settingsOpen` records where the owner
+  came from (`__oaFrom`, captured BEFORE `__settingsPath` moves) and `OA_DEPTH` decides the direction; a repaint
+  after a save does not move (`__oaStill`, `oaRepaint`).
+- **In the search-first layout** the pages open in the search sheet; `oaGo` swaps the sheet between them, and the
+  account page's own back link is hidden there (the sheet's "Back to results" is the way out).
+- **Every detail is edited on its own** in a small `glassForm` with Save (`oaEdit` / `OA_EDIT`, `oaEditPhone`,
+  `oaQuiet`, `addNotifyEmail`, `changeAdminPassword`). A refusal, the client's or the server's, keeps the form
+  open with what was typed. The password is ONE form (it was three prompts in a row; a mismatch in the third threw
+  away the first two), still ≥12 characters.
+- **"Where I studied:" / "My work:" are stored WITH their label**, because the cottage page prints them that way.
+  The row and the form show only the answer; the label goes back on when it saves (`OA_LINE`). Rows show
+  `hostVal`, i.e. what guests see: an emptied fact falls back to `HOST_DEFAULTS`, as it always did.
+- **`saveHostText` answers whether it landed** and writes the mirror only on success (it used to write the
+  mirror first). That fixed a live bug on the way: the search's inline "Host bio" editor reads a THROW as "not
+  saved", and `saveHostText` swallowed the failure, so a refused save showed "Saved ✓". The field's `set` throws
+  on `false` now (gated).
+- **"How guests see you" is a CLONE of the cottage page's own host card** (`oaHostCard`: `renderHost` first, ids
+  stripped), so the preview cannot drift from it. `.oa-preview` restores the Playfair serif, which owner-mode
+  turns into the sans everywhere else.
+- **The photo uses the guest's sheet and cropper**: `gaPhotoPick(which, use)` / `gaCropOpen(url, use)` take an
+  optional destination. With one, `gaCropSave` hands it the 512px canvas and stays open if it returns false. The
+  owner's `oaPhotoUse` uploads the square through `apiUpload(…, 'host-photo')` and saves the URL. The guest path
+  is unchanged (gated: no `guest_avatar_set` on the owner's flow).
+- **Notifications asks the device**: `oaPushState` checks for a push SUBSCRIPTION, not just permission (granted
+  with no subscription receives nothing). `oaPushRefresh` patches `#notify-device` and the account row in place,
+  so a render never waits on the service worker. **`enableOwnerPush` asks the iPhone-not-installed question
+  FIRST**: a Safari tab does not expose the push APIs, so behind the support check the "add to Home Screen"
+  guidance could never show. Each kind of alert is a switch row (`saveNotifyPref` merges one change through
+  `saveNotifyPrefs`); quiet hours refuse half a window and equal ends.
+- **Two-step reads the PRIVATE map first** (`oaTwoStepOn`): `admin-2fa-enabled` is internal, so the anonymous boot
+  GET never carries it and the old switch could read off over a real on (the bacs-details rule). The switch is the
+  real `#admin-2fa-toggle`, drawn when the page opens; a refused change puts it back.
+- **Dark mode and Search-first layout are switches** (`#oa-dark`, `#oa-search`); `setThemeLabel` and
+  `applyBackofficeMode` keep them in step however the setting changed. **Log out asks first** (`oaLogout`).
+- Removed: `saveContactPhone`, `uploadHostPhoto`, `fillHostFields`, `syncAdmin2faToggle` (stub list and the admin
+  footer list too), and the `.notify-row*`, `.settings-row-logout` and `.host-edit-label` CSS.
+  `renderNotifyEmails` / `removeNotifyEmail` moved from app.js into admin.js (only the back office calls them).
+- Gates: **`ui-test-owneraccount.js`** (86 checks). Twelve break-tests, each failing a named check: the panel
+  flag, the mirror-before-save, the label, the two-step revert and private read, the cropper's destination, the
+  logout confirm, the search bio editor, the half quiet window, the theme switch sync, the named passkey, the sheet
+  back link. Re-aimed: ui-test-manage §6, ui-test-hig §1c (now measures the Google review link's well), e2e 5b,
+  ui-test-poorsignal §9b. layout-test and a11y-test gained the four pages.
+- Budgets: admin.js +7.1KB and admin.css +0.7KB gz (owner-only, immutable-cached); admin-views.html −1.4KB,
+  app.js −0.1KB, app.css −0.3KB.
+- **A FORM IS TYPED INTO ONLY AFTER IT HAS FOCUSED ITSELF.** `glassDialog` focuses its first field on a 60ms
+  timer, and on a loaded machine that timer can fire in the middle of a Playwright `fill` on another field, so the
+  text lands in the first one (measured by sweeping the timer across the fill window: `{a: "firstsecond", b: ""}`
+  3 times in 42; waiting for the dialog's focus first, 0 in 42). That was ui-test-guestaccount §3's flake, present
+  on main at the same rate (2 in 12 runs under CPU contention). Both suites now wait for the dialog's own focus
+  before typing into a multi-field form. No person types within 60ms of a dialog appearing, so the app is fine.
 
 ## The Status page (approved demo, built "exactly like the demo")
 

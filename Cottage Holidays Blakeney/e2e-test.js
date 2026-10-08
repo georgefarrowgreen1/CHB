@@ -259,7 +259,7 @@ async function waitForServer(url, tries = 40) {
           header: (document.querySelector('#view-settings .dashboard-header h1') || {}).textContent || '',
           accom: rowVisible("openAccomThenSec("),
           analytics: rowVisible("settingsOpen('analytics')"),
-          security: rowVisible("settingsOpen('security')"),
+          account: rowVisible("settingsOpen('acct')"),
         };
       });
     };
@@ -273,10 +273,10 @@ async function waitForServer(url, tries = 40) {
     }));
     (inbox.active && inbox.enq && inbox.msgs) ? pass('Inbox is a dedicated screen (enquiries + messages)') : fail('Inbox screen wrong: ' + JSON.stringify(inbox));
     let ar = await areaShows('manage');
-    (ar.onSettings && ar.accom && ar.analytics && ar.security) ? pass('Manage shows cottage + marketing + system rows on one index') : fail('Manage index wrong: ' + JSON.stringify(ar));
+    (ar.onSettings && ar.accom && ar.analytics && ar.account) ? pass('Manage shows cottage + marketing + account rows on one index') : fail('Manage index wrong: ' + JSON.stringify(ar));
     (ar.header === 'Manage') ? pass('Manage header set') : fail('Manage header wrong: ' + ar.header);
     ar = await areaShows('cottages'); // legacy alias (old links/history) still lands on Manage
-    (ar.onSettings && ar.accom && ar.security) ? pass('legacy openArea() args land on the merged index') : fail('legacy openArea broken: ' + JSON.stringify(ar));
+    (ar.onSettings && ar.accom && ar.account) ? pass('legacy openArea() args land on the merged index') : fail('legacy openArea broken: ' + JSON.stringify(ar));
     await page.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
 
     console.log('== 5c. Bookings dashboard (index + docked hub + filters + email) ==');
