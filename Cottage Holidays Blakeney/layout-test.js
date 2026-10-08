@@ -338,6 +338,11 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },
       { key: 'admin-health', open: "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", mustSee: ['#sec-diagnostics'] },
       { key: 'admin-search-learning', open: "(async () => { await openArea('settings'); settingsOpen('search-learning'); })()", mustSee: ['#sec-search-learning'] },
+      // The owner's account and its three pages (the guest account's rows, in Manage).
+      { key: 'admin-acct', open: "(async () => { await openArea(); settingsOpen('acct'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#acct-body .ga-hello', '#oa-dark'] },
+      { key: 'admin-host', open: "(async () => { settingsOpen('host'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#host-body .ga-hero', '#host-body .oa-preview .host-card'] },
+      { key: 'admin-notify', open: "(async () => { settingsOpen('notify'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#notify-device', '#notify-prefs-body .chb-switch'] },
+      { key: 'admin-security', open: "(async () => { settingsOpen('security'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#admin-passkey-list', '#admin-2fa-toggle'] },
       { key: 'admin-mailbox', open: "(async () => { await openInbox(); inboxFolder('email'); })()", mustSee: ['#inbox-folder-email'] },
     ];
     for (const vp of WIDTHS) {

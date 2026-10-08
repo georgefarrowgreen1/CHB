@@ -5402,7 +5402,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    .accounts-stat's own card material. The inner `.acr-well` is the ONE inset. */
 .settings-sec .accounts-stat { box-shadow: none; padding: 14px; }
 .settings-sec .accounts-stat .label { font-size: var(--fs-micro); letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
-.settings-sec .modal-label, .settings-sec .host-edit-label { font-size: var(--fs-caption); color: var(--text-muted); }
+.settings-sec .modal-label { font-size: var(--fs-caption); color: var(--text-muted); }
 /* person-rows inside a well (waitlist, guest accounts): a row + its quiet
    action line as one unit, hairline-separated. */
 .acw-prow + .acw-prow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
@@ -8678,3 +8678,38 @@ body.owner-mode .cal-tools .mo-tool {
 /* The guest's own profile photo beside their name on the booking page (guests add
    it on their Account page; served by avatar.php to the owner only). */
 .bhub-ava { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; align-self: center; }
+
+/* ═══ THE OWNER'S ACCOUNT (approved demo) ════════════════════════════════════
+   The guest account's pages (app.css .ga-*) in Manage: acct and its three pages
+   (host / notify / security). Each carries its own back link and heading, so
+   the panel's pair stands down, and its own slide is the entrance. */
+#settings-panel.is-oa > #settings-back,
+#settings-panel.is-oa > .settings-panel-head { display: none; }
+#settings-panel .settings-sec.oa-sec {
+  max-width: 560px;
+  animation: none;
+  /* The page slides in from 16px; clipped so the slide never widens the page. */
+  overflow-x: clip;
+}
+/* In a search sheet the sheet's own "Back to results" is the way out. */
+.cmdk-sheet-host #sec-acct .oa-back { display: none; }
+/* A switch row is not a button; the switch inside it needs a box of its own. */
+div.ga-row.oa-swrow { cursor: default; }
+.ga-v .chb-switch { display: block; }
+/* A bio is a paragraph; its row shows two lines of it. */
+.oa-clamp .ga-s { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.oa-figs { color: var(--text-light); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ga-row.oa-accent .ga-t { color: var(--accent-text); font-weight: 600; }
+.ga-row.oa-warn .ga-t { color: var(--warn-text); }
+/* The guests' card keeps the guest site's serif: this IS what guests see. */
+.oa-preview { --font-serif: "Playfair Display", serif; }
+.oa-preview .host-card { pointer-events: none; }
+/* Manage: one row with you on it. */
+.settings-row.oa-acctrow { min-height: 76px; }
+.settings-row-ic.oa-ic { width: 48px; height: 48px; }
+.oa-ic .ga-ava { width: 48px; height: 48px; font-size: var(--fs-headline); }
+.oa-acctrow .settings-row-label { font-weight: 600; }
+/* A card just edited says so, once. */
+.oa-flash { animation: oaFlash 1.6s var(--out); }
+@keyframes oaFlash { 0%, 30% { background-color: color-mix(in srgb, var(--accent) 16%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .oa-flash { animation: none; } }

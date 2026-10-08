@@ -64,6 +64,15 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         await page.click(okBtn ? '#glass-dialog-ok' : '#glass-dialog-cancel');
         await page.waitForTimeout(250);
     };
+    // The dialog focuses its first field on a 60ms timer. Typing before that has
+    // landed can lose the race on a loaded machine: the focus moves mid-fill and
+    // the text goes into the first field (measured: "firstsecond" / ""). Wait for
+    // the dialog's own focus before typing into a form of several fields.
+    const settled = (page) =>
+        page.waitForFunction(() => {
+            const f = document.querySelector('#glass-dialog-fields input');
+            return document.activeElement === (f || document.getElementById('glass-dialog-ok'));
+        });
 
     // §1
     console.log('§1 the Account page');
@@ -128,6 +137,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ok(sec.rows.includes('iPhone'), 'passkeys list as rows');
     await page.evaluate(() => { gaPassword(); });
     await page.waitForSelector('#glass-dialog.open');
+    await settled(page);
     await page.fill('#gdf-current', 'oldpass99');
     await page.fill('#gdf-next', 'newpass123');
     await page.fill('#gdf-confirm', 'different1');
@@ -135,6 +145,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.waitForSelector('#glass-dialog.open');
     const say = await page.evaluate(() => document.getElementById('glass-dialog-msg').textContent);
     ok(/do not match/.test(say) && !posts.some((p) => p.body.action === 'guest_change_password'), `a mismatch keeps the form and says why, sending nothing (${say})`);
+    await settled(page); // the reopened form focuses its first field again
     await page.fill('#gdf-next', 'newpass123');
     await page.fill('#gdf-confirm', 'newpass123');
     await answer(page, true);

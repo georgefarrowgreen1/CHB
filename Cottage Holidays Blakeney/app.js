@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 700;
+const ADMIN_BUNDLE_V = 701;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 343;
+const ADMIN_CSS_V = 344;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -141,7 +141,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openAiChat","renderMacChat","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto","draftChatOnMac"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openAiChat","renderMacChat","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","draftChatOnMac"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -2516,10 +2516,10 @@ function setThemeLabel() {
         if (/** @type {any} */ (window.navigator).standalone === true) tc.remove();
         else tc.setAttribute('content', document.body.classList.contains('light-mode') ? '#f5f1e9' : '#121316');
     }
-    // Manage → Appearance row shows the live mode (the footer toggle is hidden
-    // on admin screens, so this row is the back office's switch).
-    const v = document.getElementById('theme-row-value');
-    if (v) v.textContent = document.body.classList.contains('light-mode') ? 'light' : 'dark';
+    // The owner's Dark mode switch (Manage → Your account) follows the theme,
+    // however it was changed (the footer toggle is hidden on admin screens).
+    const sw = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-dark'));
+    if (sw) sw.checked = !document.body.classList.contains('light-mode');
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
     // The switch position/animation is driven by the body.light-mode class in CSS;
@@ -2873,7 +2873,7 @@ function closeLightbox() {
 // surfaces you dwell in — Today · Inbox · Search — and Payments + Manage move
 // entirely inside the ⌘K palette. Nothing is removed: the extra dock buttons are
 // hidden by the `body.search-first` class, so flipping back is instant. Reachable
-// from Manage → Appearance, and (crucially, since Manage's button hides in this
+// from Manage → Your account, and (crucially, since Manage's button hides in this
 // mode) from a ⌘K action, so you can never be stranded.
 function backofficeMode() {
     try { return localStorage.getItem('chb-bo-mode') === 'search' ? 'search' : 'classic'; } catch (e) { return 'classic'; }
@@ -2881,8 +2881,8 @@ function backofficeMode() {
 function applyBackofficeMode() {
     const m = backofficeMode();
     document.body.classList.toggle('search-first', m === 'search');
-    const v = document.getElementById('bomode-row-value');
-    if (v) v.textContent = m === 'search' ? 'search-first' : 'classic';
+    const sw = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-search'));
+    if (sw) sw.checked = m === 'search';
     // The active view's dock button may now be hidden; realign (or hide) the pill.
     try { moveDockIndicator(); } catch (e) {}
     return m;
@@ -3651,13 +3651,14 @@ const gaSvg = (k) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="cu
 const GA_CHEV = '<svg class="ga-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 // One row: a <button> (or an <a> when `href`), icon tile, label + sub, an
 // optional right-hand value, and a chevron only when it OPENS something.
+// `cls` adds classes (the owner's account pages use it for switch rows).
 function gaRow(o) {
     const inner =
         (o.ic ? `<span class="ga-ic${o.danger ? ' is-danger' : ''}">${gaSvg(o.ic)}</span>` : '') +
         `<span class="ga-lb"><span class="ga-t">${escapeHtml(o.t)}</span>${o.s ? `<span class="ga-s">${escapeHtml(o.s)}</span>` : ''}</span>` +
         (o.v ? `<span class="ga-v">${o.v}</span>` : '') +
         (o.chev ? GA_CHEV : '');
-    const cls = 'ga-row' + (o.danger ? ' is-danger' : '');
+    const cls = 'ga-row' + (o.danger ? ' is-danger' : '') + (o.cls ? ' ' + o.cls : '');
     if (o.href) return `<a class="${cls}" href="${escapeHtml(o.href)}">${inner}</a>`;
     if (o.static) return `<div class="${cls}">${inner}</div>`;
     return `<button type="button" class="${cls}" ${o.act}>${inner}</button>`;
@@ -4220,7 +4221,11 @@ function gaPhotoSheetClose() {
 function businessShortName() {
     return (siteContent && typeof siteContent['business-name'] === 'string' && siteContent['business-name']) || 'Cottage Holidays Blakeney';
 }
-function gaPhotoPick(which) {
+// `use` (optional) is where the cropped photo goes: the owner's host photo
+// passes its own; without one it is the guest's avatar.
+let __gaPickUse = null;
+function gaPhotoPick(which, use) {
+    __gaPickUse = typeof use === 'function' ? use : null;
     let inp = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-photo-file'));
     if (!inp) {
         inp = document.createElement('input');
@@ -4238,7 +4243,7 @@ function gaPhotoPick(which) {
                 return;
             }
             const url = URL.createObjectURL(f);
-            gaCropOpen(url);
+            gaCropOpen(url, __gaPickUse);
         });
         document.body.appendChild(inp);
     }
@@ -4250,7 +4255,7 @@ function gaPhotoPick(which) {
 // ---- The cropper: drag to place, slide (or wheel / pinch) to zoom, inside a
 // 280px circle. What is inside the circle is exactly what is saved.
 const GA_CROP = 280;
-let __gaCrop = { x: 0, y: 0, z: 1, base: 1, url: '' };
+let __gaCrop = { x: 0, y: 0, z: 1, base: 1, url: '', use: null };
 function gaCropEl() {
     let o = document.getElementById('ga-crop');
     if (o) return o;
@@ -4322,12 +4327,12 @@ function gaCropEl() {
     });
     return o;
 }
-function gaCropOpen(url) {
+function gaCropOpen(url, use) {
     const o = gaCropEl();
     const im = /** @type {HTMLImageElement} */ (o.querySelector('#ga-crop-img'));
     const zoom = /** @type {HTMLInputElement} */ (o.querySelector('#ga-crop-zoom'));
     if (__gaCrop.url) URL.revokeObjectURL(__gaCrop.url);
-    __gaCrop = { x: 0, y: 0, z: 1, base: 1, url };
+    __gaCrop = { x: 0, y: 0, z: 1, base: 1, url, use: typeof use === 'function' ? use : null };
     zoom.value = '1';
     im.onload = () => {
         __gaCrop.base = GA_CROP / Math.max(1, Math.min(im.naturalWidth, im.naturalHeight));
@@ -4359,23 +4364,34 @@ function gaCropClose() {
     o.classList.remove('open');
 }
 // The circle's square, drawn at 512px — the server makes the 256px it keeps.
-function gaCropDataUrl() {
+function gaCropCanvas() {
     const im = /** @type {HTMLImageElement|null} */ (document.getElementById('ga-crop-img'));
-    if (!im || !im.naturalWidth) return '';
+    if (!im || !im.naturalWidth) return null;
     const S = 512;
     const cv = document.createElement('canvas');
     cv.width = cv.height = S;
     const g = cv.getContext('2d');
-    if (!g) return '';
+    if (!g) return null;
     const k = S / GA_CROP;
     const w = im.naturalWidth * __gaCrop.base * __gaCrop.z * k;
     const h = im.naturalHeight * __gaCrop.base * __gaCrop.z * k;
     g.fillStyle = '#fff';
     g.fillRect(0, 0, S, S);
     g.drawImage(im, S / 2 + __gaCrop.x * k - w / 2, S / 2 + __gaCrop.y * k - h / 2, w, h);
-    return cv.toDataURL('image/jpeg', 0.86);
+    return cv;
+}
+function gaCropDataUrl() {
+    const cv = gaCropCanvas();
+    return cv ? cv.toDataURL('image/jpeg', 0.86) : '';
 }
 async function gaCropSave() {
+    // A caller with its own destination gets the canvas, and the cropper
+    // stays open if that save says no.
+    if (__gaCrop.use) {
+        const cv = gaCropCanvas();
+        if (cv && (await __gaCrop.use(cv))) gaCropClose();
+        return;
+    }
     const data = gaCropDataUrl();
     if (!data) return;
     try {
@@ -8146,34 +8162,6 @@ function startGuestVersionWatch() {
     };
     __gVerTimer = setInterval(check, 60000); // every 60s, gated on idle above
 }
-// Returning-guest welcome offer — shown once a guest has at least one
-// completed stay. Informational: the owner applies the rate on enquiry
-// (mirrors how pricing/overrides already work), so nothing is auto-discounted.
-function renderNotifyEmails(primary, extras) {
-    const box = document.getElementById('notify-emails-list');
-    if (!box) return;
-    const primaryRow = primary
-        ? `<div class="notify-row"><span class="notify-addr">${escapeHtml(primary)}</span><span class="notify-primary-tag">Primary</span></div>`
-        : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No owner email set on the server</span></div>`;
-    const extraRows = (extras || [])
-        .map(
-            (e) =>
-                `<div class="notify-row"><span class="notify-addr">${escapeHtml(e)}</span><button class="notify-remove" ${chbAttrs('removeNotifyEmail', e)} aria-label="Remove ${escapeHtml(e)}" title="Remove">&times;</button></div>`,
-        )
-        .join('');
-    box.innerHTML = primaryRow + extraRows;
-}
-async function removeNotifyEmail(email) {
-    if (!(await glassConfirm(`Stop sending owner alerts to ${email}?`, 'Stop the alerts'))) return;
-    try {
-        await apiPost('notify-recipients.php', { action: 'remove', email });
-        const list = await apiPost('notify-recipients.php', { action: 'list' });
-        renderNotifyEmails(list.primary, list.extras || []);
-    } catch (e) {
-        glassAlert("Couldn't remove that address: " + e.message);
-    }
-}
-
 // ---- Guest dashboard: "review your stay" ----
 let myGuestReviews = {}; // { propKey: {stars, text, status} } for the logged-in guest
 function guestReviewButton(propKey) {
@@ -10192,6 +10180,14 @@ const hostVal = (k) => {
     const v = siteContent[k];
     return v === undefined || v === null || v === '' ? HOST_DEFAULTS[k] : v;
 };
+// Reviews total + rating % from the posted reviews (all cottages) — ONE
+// derivation, read by the cottage page's card and the owner's profile page.
+function hostReviewFigures() {
+    const reviews = allReviews();
+    const cnt = reviews.length;
+    const avg = cnt ? reviews.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt : 0;
+    return { cnt, count: cnt ? String(cnt) : 'New', rating: cnt ? Math.round((avg / 5) * 100) + '%' : '—' };
+}
 // Fill the cottage-page host card from saved content (no longer inline-editable).
 function renderHost() {
     const set = (id) => {
@@ -10199,18 +10195,13 @@ function renderHost() {
         if (e) e.textContent = hostVal(id);
     };
     ['host-name', 'host-badge', 'host-years', 'host-school', 'host-work', 'host-bio'].forEach(set);
-    // Reviews total + rating % are pulled live from the posted reviews (all cottages).
-    const reviews = allReviews();
-    const cnt = reviews.length;
-    const avg = cnt
-        ? reviews.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt
-        : 0;
+    const fig = hostReviewFigures();
     const setText = (id, val) => {
         const e = document.getElementById(id);
         if (e) e.textContent = val;
     };
-    setText('host-reviews', cnt ? String(cnt) : 'New');
-    setText('host-rating', cnt ? Math.round((avg / 5) * 100) + '%' : '—');
+    setText('host-reviews', fig.count);
+    setText('host-rating', fig.rating);
     const photo = document.getElementById('host-photo');
     if (photo)
         photo.style.backgroundImage = hostVal('host-photo')
@@ -21260,7 +21251,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'emaildash1';
+    const BUILD = 'owneracct1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

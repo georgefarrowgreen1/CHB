@@ -237,11 +237,12 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     //      the site while the server had rejected both, and navigated away believing it.
     const claims = await page.evaluate(async () => {
         const out = {};
-        // Host bio: the message element is the whole claim.
-        const msg = document.getElementById('host-save-msg');
-        if (msg) msg.textContent = '';
-        await saveHostText('host-bio', 'A sentence that will not save.');
-        out.host = msg ? msg.textContent : '(no element)';
+        // Host bio: saveHostText ANSWERS whether it landed (every caller — the
+        // profile form, the search editor — makes its claim on that answer), and
+        // the mirror the cottage page reads must not adopt a refused value.
+        const before = siteContent['host-bio'];
+        out.host = await saveHostText('host-bio', 'A sentence that will not save.');
+        out.mirror = siteContent['host-bio'] === before;
         // Website content: the border colour is the claim.
         const el = document.createElement('textarea');
         el.id = 'ce-hero-title';
@@ -261,8 +262,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         el.remove();
         return out;
     });
-    ok(!/^Saved\.$/.test(claims.host) && /not saved|didn/i.test(claims.host),
-        `a rejected host-text save does NOT claim "Saved." (${claims.host})`);
+    ok(claims.host === false && claims.mirror,
+        `a rejected host-text save answers false and the site mirror keeps the old text (${claims.host} / ${claims.mirror})`);
     ok(claims.border !== claims.ok,
         `…and a rejected content save does not flash the success border (${claims.border} vs ok ${claims.ok})`);
     ok(claims.border === claims.danger,

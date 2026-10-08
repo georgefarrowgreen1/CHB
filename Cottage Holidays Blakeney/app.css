@@ -2714,13 +2714,6 @@ a.card {
   line-height: 1.6;
   margin: 0;
 }
-.host-edit-label {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  display: block;
-  margin: 14px 0 5px;
-  font-weight: 600;
-}
 /* Guest photo wall (UGC) */
 .guest-photo-grid {
   display: grid;
@@ -7617,12 +7610,6 @@ body.owner-mode .chat-widget {
   font-size: var(--fs-title);
   line-height: 1;
   flex-shrink: 0;
-}
-.settings-row-logout,
-.settings-row-logout .settings-row-ic {
-  color: var(--danger-text); /* theme-tuned danger (was raw #e5705c, low contrast on light glass) */
-}.settings-row-logout:focus-visible{
-  background: rgba(229, 83, 60, 0.14);
 }
 #settings-panel .accounts-stat {
   margin-bottom: 0;
@@ -12808,55 +12795,6 @@ h2.section-title.text-center::after {
 body.light-mode .hero-scroll-cue {
   color: var(--season-accent, var(--sea));
 }
-
-/* Owner email recipients list (Settings → Notifications) */
-.notify-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--glass-border);
-}
-.notify-row:last-child {
-  border-bottom: none;
-}
-.notify-addr {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-body);
-  color: var(--text-light);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.notify-primary-tag {
-  font-size: var(--fs-micro);
-  color: var(--text-muted);
-  background: var(--glass-hover);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill);
-  padding: 3px 10px;
-  flex-shrink: 0;
-  font-weight: 600;
-}
-.notify-remove {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid var(--glass-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--fs-headline);
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background 0.2s var(--fluid-bezier),
-    color 0.2s var(--fluid-bezier);
-}
-.notify-remove:hover {
-  color: var(--danger-text);
-  border-color: var(--danger);}
 
 /* THE MOTION SYSTEM — shared keyframes + late assignments. Distances on the 4pt
    grid; durations from 80·160·240·280·300·320·400·480. */

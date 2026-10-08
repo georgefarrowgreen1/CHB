@@ -509,25 +509,12 @@
             </div>
             <div class="settings-section-label">Your account</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="bio about phone contact host profile picture" data-act="settingsOpen" data-arg="host">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Your host bio &amp; contact number</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="push alerts phone device notifications" data-act="settingsOpen" data-arg="notify">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="password face id fingerprint passkey sign-in touch id change" data-act="settingsOpen" data-arg="security">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="appearance theme light dark mode colours display" data-act="toggleTheme">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Appearance</span><span class="settings-row-sub">Tap to switch — currently <strong id="theme-row-value">light</strong> mode</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" data-act="toggleBackofficeMode">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong></span></span><span class="settings-row-chev">›</span>
+                <!-- ONE row with you on it (approved demo): the host profile, notifications,
+                     sign-in, the two device settings and Log out live on the account page it
+                     opens. oaIndexRowPaint fills in the photo and name. -->
+                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit" data-act="settingsOpen" data-arg="acct">
+                    <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
+                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub">Host profile, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-section-label">System &amp; tools</div>
@@ -563,13 +550,6 @@
                     <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
-            <!-- Always last: sign out -->
-            <div class="settings-group">
-                <button class="settings-row settings-row-logout" data-kw="sign out exit" data-act="logoutStaff">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 12h9"/><path d="M16 8.5l3.5 3.5L16 15.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Log out</span></span>
-                </button>
-            </div>
         </div>
 
         <!-- DRILL-DOWN PANEL -->
@@ -582,9 +562,13 @@
                 <span id="settings-panel-cap"></span>
             </div>
 
-            <!-- Enquiries -->
-            <!-- Notifications (owner push) -->
-<div class="settings-sec" id="sec-notify" style="display:none;">
+            <!-- THE OWNER'S ACCOUNT (renderOwnerAccount and its three pages, admin.js):
+                 the guest account's rows, rendered by JS. Each page carries its own back
+                 link and heading, so the panel's pair stands down (#settings-panel.is-oa). -->
+            <div class="settings-sec oa-sec" id="sec-acct" style="display:none;">
+                <div id="acct-body"></div>
+            </div>
+            <div class="settings-sec oa-sec" id="sec-notify" style="display:none;">
                 <div id="notify-body"></div>
             </div>
 
@@ -737,37 +721,8 @@
             </div>
 
 
-            <!-- Host profile -->
-            <div class="settings-sec" id="sec-host" style="display:none;">
-                <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: var(--r-lg);">
-                    <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
-                        <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background-color:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
-                        <button type="button" class="btn-sm btn-edit" data-act="uploadHostPhoto">Change photo</button>
-                    </div>
-                    <label class="host-edit-label" for="host-f-name">Name</label>
-                    <input class="input-glass" id="host-f-name" data-act-change="saveHostText" data-arg="host-name" data-pass="value">
-                    <label class="host-edit-label" for="host-f-badge">Your title (shown to guests, e.g. Owner)</label>
-                    <input class="input-glass" id="host-f-badge" data-act-change="saveHostText" data-arg="host-badge" data-pass="value">
-                    <label class="host-edit-label" for="host-f-years">Years of experience</label>
-                    <input class="input-glass" id="host-f-years" data-act-change="saveHostText" data-arg="host-years" data-pass="value">
-                    <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
-                    <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
-                    <input class="input-glass" id="host-f-school" data-act-change="saveHostText" data-arg="host-school" data-pass="value">
-                    <label class="host-edit-label" for="host-f-work">"My work" line</label>
-                    <input class="input-glass" id="host-f-work" data-act-change="saveHostText" data-arg="host-work" data-pass="value">
-                    <label class="host-edit-label" for="host-f-bio">Bio</label>
-                    <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" data-act-change="saveHostText" data-arg="host-bio" data-pass="value"></textarea>
-                    <p id="host-save-msg" style="font-size:var(--fs-sub);color:var(--ok-text);min-height:1em;margin:4px 0 0;"></p>
-                    <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
-                        <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to discuss" buttons</label>
-                        <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                            <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
-                            <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
-                            <button class="btn-sm btn-edit" data-act="saveContactPhone">Save number</button>
-                        </div>
-                    </div>
-                </div>
+            <div class="settings-sec oa-sec" id="sec-host" style="display:none;">
+                <div id="host-body"></div>
             </div>
 
             <!-- Reviews (moderation) -->
@@ -880,24 +835,8 @@
                 </div>
             </div>
 
-            <!-- Security -->
-            <div class="settings-sec" id="sec-security" style="display:none;">
-                <div class="accounts-stat" style="max-width:640px;">
-                    <div class="label">Admin password</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
-                    <button class="btn-sm btn-edit" data-act="changeAdminPassword">Change password</button>
-                </div>
-                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
-                    <div class="label">Passkeys (Face ID / Touch ID)</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">Sign in to the back office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
-                    <button class="btn-sm btn-edit" data-act="addAdminPasskey">Add a passkey</button>
-                    <div id="admin-passkey-list" style="margin-top:14px;"></div>
-                </div>
-                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
-                    <div class="label">Two-step sign-in</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Manage → Notifications) — it stays off until then, so you can't be locked out.</p>
-                    <label class="chb-switch-row" style="margin-bottom:0;"><span class="chb-switch"><input type="checkbox" id="admin-2fa-toggle" data-act-change="saveContentToggle" data-key="admin-2fa-enabled"><span class="chb-switch-track" aria-hidden="true"></span></span><span>Require an email code on new devices</span></label>
-                </div>
+            <div class="settings-sec oa-sec" id="sec-security" style="display:none;">
+                <div id="security-body"></div>
             </div>
 
             <!-- Accommodation preferences (cottage list → per-cottage detail) -->
