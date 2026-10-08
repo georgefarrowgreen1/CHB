@@ -600,420 +600,26 @@ the parsed shape), never in the night brief or world sheet.
   section J auto-dock the wrong enquiry while the stale hidden `.bhub-next`
   shadowed section B's selector.
 
-## The overnight queue — "Ready for you" (migration-115)
+## The AI chat and the Mac assistant were REMOVED (owner's ask: "not very good and quite slow")
 
-**Asked for as "built this, give the option of a turn off/on toggle in settings"**,
-after the night-shift proposal. This is the RECEIVING half and only that: a machine
-on the owner's own network does work while nobody is asking and POSTs what it made;
-the app stores it, shows it once, and lets the owner use it or bin it. Nothing here
-produces anything — with no producer the feature is invisible, which is the point.
-- **DEFAULT OFF** (`night-shift`, INTERNAL — NB not private: `is_private_content_key`
-  matches on PREFIX, which is why `arrival-review` is silently both and encrypted at
-  rest, while this one is plaintext and present in an admin-session `siteContent`).
-  Off is byte-for-byte today's back office: no card, no request at boot, and
-  **ingest is REFUSED with a sentence** rather than stored for later — a machine
-  working every night into a table nobody will look at is the failure that refusal
-  exists to prevent. The switch is in Manage → Mac assistant and shows the address to post
-  to, derived from `window.location` so a staging install is never told to post at
-  production. It never shows the secret.
-- **THREE RULES, each with a precedent already in the app.** *It never sends*: an
-  item is a draft plus a `target` — a screen the owner could already open — and
-  there is deliberately no field a producer can set that emails, charges or writes
-  a content key, so the worst a broken producer can do is put words on a screen
-  (ui-test §5 drives it: every request the whole flow makes is collected and checked
-  against the endpoints that move money). *It never states money*: nothing parses a
-  figure out of `body` and nothing downstream re-derives one. *It is never the only
-  copy*: an un-migrated table, a failed read and a silent producer all render the
-  same nothing.
-- **`ref` UNIQUE + `ON DUPLICATE KEY UPDATE id = id` is the whole exactly-once
-  mechanism** — not the op ledger, because a night item carries no response to
-  replay. `rowCount() === 0` is the correct answer to a retried POST and is not
-  reported as a skip: the item IS in the queue, which is what the producer asked.
-- **THE DEADLINE IS PER KIND, and that is what stops the queue becoming a pile.**
-  reply 3 days / price 7 / answer 14 / note 14 — what goes stale is what was about a
-  MOMENT, and an unknown kind gets the SHORTEST window, not the longest. Stamped at
-  ingest so changing the rule never re-dates a deadline the owner has been shown.
-  `nightLeft()` counts CALENDAR days at UTC midnight, not hours: the server stamps
-  `NOW() + INTERVAL N DAY`, so an hours-based count says "2 days" by teatime for
-  something promised three, which reads as the app losing a day.
-- **IT IS NOT A DUTY.** `chbDuties` drives the Home Screen badge, the search brief
-  and the Needs-you strip; four drafts a night would drown the arrival nobody has
-  sent directions to. A draft is an OFFER — the opportunity-vs-duty distinction
-  `renderNeedsYou` already makes — so it has its own card ABOVE the strip and a
-  deadline instead of a nag. The rows are the house `bhubFoldGrp`, so the fold rule
-  applies: a gate that MEASURES anything must open the fold first.
-- **BINNING IS REVERSIBLE, EXPIRING IS NOT.** `restore` only ever lifts a
-  `dismissed` row (gated 409 on an expired one) — the machine wrote it, so a
-  judgement made in a second deserves a second to change; but the deadline was the
-  point, and an expired draft is exactly what this feature exists to stop the owner
-  acting on.
-- Gates: **test-nightshift.php** (101 checks, pure, CI-wired, deploy-excluded —
-  counter named `nsk()`; the `target` vocabulary gets the most attention because it
-  is the one field that becomes a CLICK) — break-tested four ways; **test-integration
-  §25** (33 checks: the setting as a real door, the secret, exactly-once, the cap,
-  the sweep, and that the public content GET never carries the setting) —
-  break-tested five ways; and **ui-test-nightshift.js** — break-tested five ways.
-  **The off-is-off check needed a HOSTILE fixture to mean anything**: three
-  overlapping guards each sufficed on a cold boot, so deleting any one of them left
-  the gate green. It now serves a boot payload saying `on: 0` with a count of 3 AND
-  a list endpoint that hands the rows over if asked — the one shape where the client
-  has a reason to go and look — and the loader's refusal is the only thing standing.
-  The renderer's own refusal is gated separately by the toggle path.
-- NB PHPStan does not infer `never` from `json_out()`'s `exit()`, so a variable
-  first assigned inside a `try` whose `catch` calls it reads as possibly-undefined;
-  initialise it before the try rather than annotating json_out (which would unmatch
-  baseline entries elsewhere).
-- Budgets raised, and all three are OWNER-ONLY and immutable-cached: admin.js
-  489600 → 496000, admin.css 58700 → 59400, admin-views.html 22000 → 22600. app.js
-  stayed within its budget, which is the one that had to.
-
-## The producer — `mac-app/` (Cottage Holidays Blakeney AI), and the READ half
-
-The overnight queue's receiving half shipped first (above); this is the machine
-that fills it. It lives in `mac-app/` at the REPO ROOT, outside `Cottage Holidays
-Blakeney`, so the deploy (which mirrors that folder only) never touches it. Its
-README covers building and signing; what matters HERE is the site half and the
-rules. Gates throughout: `test-nightshift.php` (pure), `test-integration` §26–§29
-(real endpoints), `mac-app/test/core-test.js` + `ui-test.js` (CI's checks +
-browser-core jobs — ci.yml's path filter includes `mac-app/` or both browser jobs
-skip). NB the mac ui-test resolves playwright RELATIVE to itself, from the
-website's node_modules; an absolute path works locally and silently skips in CI.
-
-**THE NAMES, so they can be grepped.** Site side, all in `nightshift.php` /
-`nightshift-lib.php`: actions `brief` / `chat_tool` / `chat_send` / `chat_say` /
-`chat_poll` / `chat_stop` / `chat_thread` / `chat_import` / `chat_mirror` /
-`chat_photo_store` / `chat_file` / `chat_act_done` / `chat_memory_save` /
-`chat_clear` / `ask_partial` / `asks` / `ask_status` / `handoff_put`; validators
-`night_ownerchat_thread` / `night_ownerchat_payload` / `night_ownerchat_answer_problem`
-/ `night_ownerchat_memories` / `night_ownerchat_memory_texts` / `night_ownerchat_sums` /
-`night_act_problem` / `night_act_resolve` / `night_chat_ref_ok` /
-`night_chat_import_problem` / `night_tool_problem` / `night_mac_presence` /
-`night_world` / `night_tool_coast` and the other `night_tool_*`; row helpers `ownerchat_adopt` / `ownerchat_append` /
-`ownerchat_row_to_msg` / `ownerchat_file_ask`; caps `NIGHT_ACT_KINDS` /
-`NIGHT_TOOLS` / `NIGHT_WORLD_LIST_MAX` / `NIGHT_TOOL_LIST_MAX` / `NIGHT_HANDOFF_FRESH`
-/ `NIGHT_OWNERCHAT_LAST_TURN_CHARS` / `night_poll_slot`. Internal content keys:
-`mac-chat` (the instruction survives here after the row migration), `mac-chat-memory`,
-`mac-chat-sum`, `mac-chat-imports`, `chat-handoff`, `night-shift`,
-`nightshift-app-url`. Mac side: `chat.js` / `chattools.js` / `engine.js` / `guard.js` /
-`webfetch.js` / `bench.js` in `src/core`, with `chatStore` / `chatStream` / `chatStop` /
-`chatLoop` / `chatToolGrammar` / `chatActGrammar` / `chatGroundText` /
-`chatAttachProblem` / `chatExportMd` / `chatSiteMemories` / `chatContinue` /
-`webOwnerHosts`, api.js's `chatSend` / `chatSendToPhone` / `webChat` / `benchModel`, the injectable `ssePost` / `retryMs`, and `CHAT_ACTS`. Phone side
-(admin.js): `openAiChat` / `renderMacChat` / `mcSend` / `mcSendRun` / `mcStop` /
-`mcCollect` / `mcResume` / `mcAttachMsg` / `mcDayHtml` / `acNewChat` / `acClearChat`,
-with `MC_ACTS` / `MC_ACT_NEXT` and the `__mcBusy` / `__mcStamp` / `__mcState.msgs` /
-`__mcActRes` state.
-
-**THE GROUNDING RULE, which everything else hangs off.** The producer QUOTES, it
-never calculates. Every figure travels pre-formatted from the site
-(`night_tool_*`, `night_brief_*` in nightshift-lib.php); `dates_free` is
-true/false/**null**, and null means say nothing about availability — a failed
-clash check must never become a cheerful yes. **No email, phone, address or
-postcode ever travels**, asserted by ABSENCE in the raw payload.
-
-**ONE SWITCH CLOSES BOTH DIRECTIONS.** `night-shift` off refuses the brief and
-the chat doors as well as ingest — a readable door behind an unwritable queue is
-the worst of both. Pre-migration reads fall back; writes REFUSE with the
-run-the-migrations sentence rather than storing where reads no longer look.
-
-**The app's own line is `mac-app/src/core/guard.js`** — a draft that quotes a
-figure the site did not give, claims availability it could not confirm, contains
-a link, claims something is already done, or opens with a greeting (the template
-adds one) is **dropped and named in the night log, never repaired**. Repairing it
-would be the app writing text of its own. The ref is deterministic per enquiry
-per night, so a lost POST is logged UNCERTAIN and tomorrow's identical ref
-settles it.
-
-### The two chats stay two, and meet on purpose
-
-The LOCAL Mac chat is offline-first and private — its words never reach the site
-on their own, so it has no guard (the only reader is the owner). The WEB chat
-(`view-aichat`, ask kind `ownerchat`) is the shared record. The **ACT protocol is
-taught to the web chat ONLY** (gated), so a local reply can never carry a card
-nothing will render.
-
-- **The ask channel is the meeting point** — no tunnel, no open port, no new
-  credential; the Mac only ever dials out. `chat_send`/`chat_say` share
-  `ownerchat_file_ask` (one supersede, one payload, one grounding) or a
-  conversation would mean different things by which keyboard was used.
-- **The append is CLAIMED** ('answered'→'collected' guarded UPDATE), so two
-  devices polling one ask store ONE message. Partials stream via `ask_partial`;
-  `chat_poll` long-polls (≤20s, 250ms grain).
-- **Messages are ROWS** (`ownerchat_msgs`, migration-118/119), so a card is
-  addressed by ID and two devices cannot lose-update each other. `convo` names
-  the conversation and rides the ask as **entity_id**, so the answer lands where
-  it was asked, not where a device happens to be looking. Every row passes
-  `night_ownerchat_thread`'s sanitiser both ways — the table changed WHERE
-  messages live, never what may live in one.
-- **Two bridges, both owner-initiated**: `chat_import` (⇗ "send to my phone" —
-  a local thread becomes a NEW web convo; THINK never travels; exactly-once by
-  ref) and `chat_mirror` (the web rail read-only in the Mac window). `chat_say`
-  makes the mirror's composer live: the Mac appends the OWNER's words to a web
-  convo so a handed-off conversation has ONE record. **The boundary, stated**: a
-  device key can put words in a thread as the owner — a narrowing of what
-  `chat_import` could already do, capped and rate-limited, with every proposed
-  action still confirmed on the phone.
-- **HANDOFF** rides calls both surfaces already make (`handoff_put`, internal key
-  `chat-handoff`, keyed BY DEVICE — the device is decided by HOW the caller
-  authenticated, never taken from the body). RECENCY replaces proximity
-  (`NIGHT_HANDOFF_FRESH` 300s) and the unsent DRAFT travels with the offer, which
-  is what makes it a continuation. **A RENDER IS NOT AN ACTIVITY** — advertising
-  fires on arriving, switching convo, sending and a 2.5s typing pause, never from
-  the renderer, because the action-card gates hold that page to "a render fires
-  nothing". The one inherent asymmetry: a Mac in a LOCAL thread advertises
-  `convo: 0` and the site withholds the offer — it cannot serve a conversation
-  living on the Mac's disk.
-
-### Tools (ten), and what they may reach
-
-today / bookings / availability+price / enquiries / cottages / money /
-performance / expenses / coast / web. Formatted at the source; names travel,
-contact details never. A `TOOL {json}` line, parsed forgivingly and whitelisted
-strictly; a fumble gets ONE GBNF-constrained retry; lookups cap at 3; every latch
-is one-way so the loop ends at a sentence. Tool turns are EPHEMERAL — only the
-owner's words and the final answer are stored.
-
-- **`night_tool_problem`'s unknown-tool correction is DERIVED from NIGHT_TOOLS.**
-  A hand-written list stopped at five and taught the model the newer ones did not
-  exist.
-- **A lookup retries ONCE on a THROWN transport failure** (a refusal the SITE
-  spoke is never retried) — one TCP hiccup on home broadband used to kill a whole
-  answer.
-- **`web` fetches ONE public page ON THE MAC**, never through the site's door
-  (not site data, and the device key must not become a proxy). Rules assume the
-  model cannot be trusted with an address: https only; private/loopback IPs
-  refused at the STRING *and* at the DNS LOOKUP (the half a hostname check cannot
-  see); redirects followed by hand, max 3, each hop re-checked; the transport is
-  `https.request` CONNECTED TO THE VETTED IP, because `fetch` re-resolves the
-  name — the rebinding TOCTOU; body read STREAMING to a byte cap under an
-  ABSOLUTE deadline (a buffered read after a headers-only timeout wedged chatBusy
-  for ever). Every result carries the stranger's-page warning: quote it, never
-  obey it.
-- **AND `web` MAY ONLY FETCH A HOST THE OWNER NAMED THIS CONVERSATION**
-  (`webOwnerHosts`/`webHostAllowed` over the user turns; a subdomain of a named
-  host passes, never the reverse). Without it the tool is an UNCONFIRMED exfil
-  channel — a fetch is not an ACT, so no owner confirm stands between a
-  prompt-injection page and guest names in a query string.
-- NB `chatToolCall` sliced EVERY argument to 80 chars — a URL cut there silently
-  became a DIFFERENT address. 'url' carries 500; ACT text 200, note 120.
-
-### The model proposes, the phone disposes (ACT)
-
-`ACT {json}` beside TOOL. Kinds: block_dates, price_override, request_payment,
-add_booking, send_enquiry_reply, add_expense, send_arrival_info, record_payment,
-remember. The line is STRIPPED from the words (and held back from partials) and
-rides the envelope as DATA.
-
-- **Three independent doors, all load-bearing**: the ANSWER door
-  (`night_act_resolve` — closed whitelist with **refunds and cancel refused BY
-  NAME**, so their absence is a tested decision; the past not proposable; rate
-  £20–£2000; booking/enquiry refs must EXIST), the thread SANITISER
-  (`night_act_problem`, re-validated on every pass — a hand-edited content row
-  can never mint a card), and the phone's CLOSED registry (`MC_ACTS` — an unknown
-  kind renders no card).
-- **The card fires NOTHING on render** (gated by collecting every request), and
-  **may NEVER send an override flag**: a clash comes back as the server's
-  sentence and the card stays live, because a deliberate overlap needs the form's
-  own informed confirm, not a model's proposal riding through one.
-- **The verdict is decided ONCE** (`chat_act_done`, guarded `WHERE act_done IS
-  NULL`, kind verified against the act's own) — confirmed on one phone, inert on
-  every device and reload. A DEAD proposal says why instead of offering a dead
-  button.
-- **DATE SEMANTICS DIFFER PER ACTION ON PURPOSE**: block/price speak
-  first-night/last-night INCLUSIVE (the client converts to the exclusive checkout
-  at exec), while add_booking speaks `check_in`/`check_out`, because guest-speak
-  "the 12th to the 15th" IS arrive/leave — inclusive there would be the
-  off-by-one.
-- **`add_expense` may join while refunds stay refused** because it RECORDS money
-  already spent; a FUTURE date is refused ("a plan is not a fact").
-  `record_payment` opens the modal and claims exactly that — the model never
-  states an amount.
-- **A confirmed card may offer what FOLLOWS** (`MC_ACT_NEXT`) — one quiet chip,
-  never a second proposal. It lives in `__mcActRes`, this session's map only: the
-  stored act may not grow fields or the sanitiser refuses the whole card next
-  read, so after a reload the done state simply has no chip.
-- **A fumbled ACT line gets ONE re-ask** constrained by `chatActGrammar` (cool
-  0.2, the corrected line only). Still bad, or the send was stopped → dropped and
-  NAMED. The words always stand.
-- **What the card did is ATTRIBUTED** (`via_label($in)` in db.php — CLOSED
-  whitelist, only `'ai-chat'` earns " · via AI chat").
-
-### Grounding, memory and the summary
-
-- **Every ownerchat ask carries a WORLD SHEET** (fleet / today / money), composed
-  at chat_send from `night_gather_today`/`_money` — the SAME gatherers the tools
-  read, so a lookup and the pack cannot disagree about one day. `night_world`
-  slims hard: names and formatted figures only, **no contact detail and no `ref`**
-  (gated by absence). The pack rides EVERY ask and pays context for it; the tools
-  stay the way to go deep. Best-effort — a failed gather never blocks the send.
-  Mac-side `chatGroundText` is the ONE place facts become prompt text.
-- **A COUNT OR SUM OVER A CAPPED LIST IS A WRONG NUMBER.** The pack's rows are
-  capped (NIGHT_WORLD_LIST_MAX) but its totals are carried from the FULL set.
-- **MEMORY is the owner's, only ever** (`mac-chat-memory`, internal, 12×200). The
-  app never adds a line; the `remember` ACT lets the model PROPOSE one, and the
-  card's confirm is what makes it a line. Memories are `{t, at}` — the SERVER
-  dates them, keeping the date of any line whose text stood, so retyping never
-  re-dates; legacy strings adopt with `at: ''` because unknown is honest and an
-  invented date defeats the staleness question. `chat_memory_save` has an
-  **ADD-ONE mode** (the remember card uses it) — replace semantics from a stale
-  phone mirror silently deleted lines another device had added.
-- **AND THE MEMORIES TRAVEL**: the night BRIEF carries them so `guard.buildPrompt`
-  binds every overnight draft (a promise taught to the chat was invisible to the
-  drafter), and the asks POLL carries them so the LOCAL chat grounds on the same
-  facts — updated on every ok poll INCLUDING to empty, because a pruned list must
-  be forgotten, not remembered stale.
-- **THE ROLLING SUMMARY, only once the trim is REAL.** Past the 16-turn payload
-  cap, chat_send adds `dropped` and the Mac teaches the SUM protocol (one
-  `SUM {...}` line per reply, stripped like ACT, capped 600, stored per convo in
-  `mac-chat-sum` and handed back as `summary`). A fully-visible thread sends and
-  is asked for NEITHER — a summary of what is already in the payload is paid-for
-  context saying nothing new. A reply that was ONLY its SUM line keeps the raw
-  words; the site refuses a wordless answer.
-
-### Streaming, stopping, attachments, vision
-
-- **Thinking is real or absent**: `<think>` blocks split by `chatThinkSplit` +
-  the stateful `chatThinkStream` (tags cut across chunks are held back), stored
-  on the msg for the fold and **NEVER sent back in history** (reasoning models
-  degrade on their own old thinking).
-- **SEND BECOMES STOP.** `mcSend` is a SYNC wrapper over `mcSendRun` — load-
-  bearing, because the data-act dispatcher DISABLES a button for the life of a
-  returned promise, which would kill the one control a Stop needs. The finally is
-  STAMP-GUARDED so a stopped flight never clears a NEWER send's busy flag. Three
-  layers: the stamp kills the poll; `chat_stop` claims the ask (partial read
-  AFTER the claim so ask_partial cannot grow it underneath) and words already
-  streamed are KEPT marked `stopped`; the Mac learns through `ask_partial`'s
-  `held: false` and aborts locally. **A network blip must never read as a stop —
-  `held` defaults true on any non-ok**, and `held` is a SELECT of the row's
-  status, not the UPDATE's rowCount (MySQL counts CHANGED rows, and streamed text
-  legitimately freezes during a held-back protocol line, so a byte-identical
-  re-post read as "not held" and aborted healthy generations).
-- **A stop before any words stores NOTHING** and the question stays askable. An
-  answer that BEAT the stop is reported `raced` and collected honestly.
-- **`mcCollect` is the ONE collect loop**, budgeted on ELAPSED TIME never
-  iterations (chat_poll returns whenever the partial grows). `renderMacChat`
-  stamp-guards its own fetch and fires `mcResume` when busy — nav-away-and-back
-  used to strand busy forever with the answer stored and never collected.
-- **A refused send speaks the SERVER'S sentence** and takes the optimistic bubble
-  down with the words back in the box (the catch used to swallow 409/503/400 into
-  "Could not reach the site", so the owner checked WiFi for a switch that was off).
-- **Attachments**: a document is fenced into the USER turn (`chatAttachMsg` /
-  `mcAttachMsg`, byte-identical shapes) so the trim can never separate a question
-  from its file; PDFs/Word refused BY NAME, never half-read. **The payload's
-  NEWEST turn travels WHOLE** — the history cap would hand the model half a file
-  and let it answer confidently about the half it saw.
-- **A photo** rides `chat_send` as a ≤1280px JPEG, stored by `chat_photo_store`
-  (the deposit-evidence contract: magic bytes, 2MB, random name); the thread
-  carries only the MINTED ref — the ONE shape `chat_file` will serve back, so a
-  device key never becomes a way to read arbitrary uploads. `img`/`file` must
-  SURVIVE the thread sanitiser or the photo is erased the moment the Mac replies,
-  and `img` rides the FINAL turn only (an old photo must never resurface under a
-  new question). A photo that will not store REFUSES the whole send.
-- **VISION has three honest outcomes and no fourth**: the engine can see
-  (`props().modalities.vision === true`, MEASURED never guessed) → the image
-  joins the newest turn as content parts; text-only → the model never meets the
-  photo and the answer says so; fetch failed → said plainly. `models.projectorFor`
-  pairs a model with ITS OWN `mmproj-*.gguf` by name tokens (a gemma projector on
-  a qwen model is garbage in).
-- NB the attach validator's source must contain the six-character ESCAPE
-  SEQUENCE (backslash, u, 0000) — never the byte it denotes. A literal NUL
-  turns the file into "binary file matches" for every grep. Writing this very
-  note put one into CLAUDE.md, so it is easier to do than it sounds.
-
-### Doors, limits and the things that bit
-
-- **The device-key long-poll doors** (`asks`/`chat_poll`/`ask_status`) each held
-  an FPM worker up to 25s with only a request-COUNT limit, so a key holder could
-  drain the pool. A MySQL-advisory concurrency cap (`night_poll_slot`, 8 slots,
-  the book_lock mechanism) makes a door answer its snapshot NOW rather than hold.
-- **`chat_mirror` is a WIDER read than the ask channel** (every convo title + one
-  convo's messages) — the honest blast radius of a compromised key is the owner's
-  own chat history, never guest PII beyond `brief`.
-- Confirmed NOT problems, so they need not be re-audited: CSRF on every admin
-  door, `night_require_key` failing closed on a corrupt row, `chat_import`
-  stripping act/img/think, the pinned-IP transport closing rebinding incl.
-  cloud-metadata IPs.
-- **`content_set_scalar` json_encodes its value**, so a column holds JSON of a
-  JSON string — a test reading `content.item_value` decodes TWICE.
-- The digest door's number canon forgives trailing zeros only AFTER a decimal
-  point; rtrimming them off INTEGERS grounded £450 on £45 rows.
-- The Keychain write rides `security -i` STDIN, never argv (the key was in the
-  process list).
-- The tray's Run-now goes through the `runNow()` WRAPPER — calling `api.runNow`
-  direct skipped the power assertion and the window refresh.
-- `draftChatOnMac` / `draftEnquiryOnMac` re-check the THREAD after their await,
-  or guest A's draft lands in guest B's box. messages.php files NO draft ask for
-  a photo-only guest message — the pipeline cannot see the image, so the Mac
-  drafted confidently against an empty message.
-- The act cards' `bookingDue` key comes off the booking actually found; passing
-  `findBookingLocation(act.booking)` handed an OBJECT where a prop-key string
-  goes and was always null anyway, so real money read "already settled".
-
-### The day card, the bench, and the look
-
-- **The welcome opens the day like a colleague.** `mcDayHtml` greets with the
-  day's SHAPE whenever there is one ("Morning George — 1 arrival · £340 to
-  collect · nothing else needs you"); only a genuinely empty day stays silent.
-  The shape is `chbOpsParts` over `chbDayTuples` — the Today ops line's own
-  tuple-building extracted, so greeting and ops line cannot disagree.
-- **ONE ASSISTANT — the day is composed ONCE.** `chbDaySentence()` is that
-  sentence and BOTH the search landing (`cmdkDayLine()`) and the chat card read
-  it. `chbNow()` throughout, so a pinned clock moves both. **ONE CHIP**
-  (`.mc-schip` takes `.cmdk-chip`'s spec) and **ONE VOICE** ("Ask anything…").
-- **Two of the six demo ideas did not survive contact, and that is the record**:
-  an "answer frame" would label the only thing on the screen, and promoting the
-  model's prose into a verdict card means PARSING a figure out of its words —
-  the grounding rule inverted; and a worded state capsule for the knot was
-  deliberately REMOVED once already (`CHB_MSTATE_LABEL`), so re-adding it would
-  undo a considered decision rather than fix a drift.
-- **THE CHAT BENCH** (`mac-app/test/chat-bench.js`, core in `src/core/bench.js`,
-  also a Library → Bench button): ~24 committed business questions against the
-  REAL engine, framed byte-for-byte as the ownerchat handler frames, scored on
-  GROUNDING / PROTOCOL / HONESTY (a PROPOSED act on a refuse-case fails hardest).
-  Verdicts: protocol ≥90%, honesty ≥95%, grounding ≥75% → safe. Deliberately a
-  HAND TOOL, never CI — CI has no model, which is the exact gap it closes.
-
-### Shipping the app
-
-- **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check): the SOURCE
-  link always exists; a **Download** button appears only once `nightshift-app-url`
-  is set, because a button offering a download nothing serves is worse than
-  saying nothing is packaged. Owner-written and lands in an `href`, so it is
-  validated `^https://` on the way IN *and* again at RENDER (`nightAppUrl()`) —
-  a value can arrive from an older write or a hand-edited row. Break-tested both
-  ends.
-- **RELEASES ARE NAMED `build-<N>`**, N the workflow's run number. The dated
-  `hand-build-*` tags are RETIRED but stay published (renaming a released tag
-  breaks its .dmg link). The transition is carried by RANK in three places that
-  must stay in step: update.js's `parseVersion` (kind id > build > semver),
-  admin.js's `nightBuildOrd` (a LEXICAL compare told every dated Mac it was up to
-  date against a newer build-N), and self-repair's shape pin (both shapes
-  accepted, or the yardstick freezes).
-- **DISPATCHING: the MCP parameter is `inputs`, not `workflow_inputs`.** The
-  wrong name is silently IGNORED — 204, run queued, publish skipped — measured
-  twice in one afternoon, two full macOS builds that produced no release, and the
-  only tell is the response echoing `"inputs":null` instead of the map. Tag
-  pushes are 403-blocked from a session, so the dispatch is the one route:
-  `actions_run_trigger {method: run_workflow, workflow_id: mac-app.yml, ref:
-  main, inputs: {"publish": "true"}}` — check the echo before walking away.
-- **A .dmg IS BUILT BY GITHUB, ON A MAC, BECAUSE IT CANNOT BE BUILT ANYWHERE
-  ELSE.** `hdiutil` and `lipo` are Apple's and macOS-only, so no Linux box and no
-  session here can produce one. `mac-app.yml` runs on `macos-14`; on this PUBLIC
-  repo the minutes are free. It runs BOTH suites first — a build whose own tests
-  failed is never shipped. It signs and notarises only when the four Apple
-  secrets exist, and the notes say which kind each copy is rather than implying
-  signed. The certificate reaches the runner through an `env:` mapping, never a
-  command line, and the decoded `.p12` is deleted in the same step.
-- **TWO PRE-EXISTING DEFECTS THE DOWNLOAD ROW EXPOSED.** `bump.js` collected
-  BASENAMES with no folder filter, so `mac-app/src/ui/app.css` bumped the
-  WEBSITE's `app.css ?v=` and every visitor re-downloaded 73KB for an unchanged
-  file (check-versions.js had always filtered on the `Cottage Holidays Blakeney/`
-  prefix; bump.js had not). And **`btn-accent` has only ever been styled with
-  `.btn-glass`**, so `btn-sm btn-accent` rendered as a plain outlined pill —
-  which is what the overnight card's "Open it" silently was. `.btn-sm.btn-accent`
-  now exists in admin.css with `--accent-ink` rather than white (white on the
-  light-mode accent measures 2.96:1; this pair is 8.56 dark / 6.23 light), gated
-  by measuring the PAINT of the two pills against each other.
+The overnight queue ("Ready for you"), the web AI chat (`view-aichat`), the Mac app
+(`mac-app/`, its workflow and its releases) and every client and server piece that served
+them are gone. Git history has all of it if it is ever wanted back. What deliberately stays:
+- **Two tombstones**, because the deploy NEVER deletes files on the host: `nightshift.php`
+  answers 410 and nothing else (a Mac app left installed gets a plain refusal, never the old
+  door), and `nightshift-lib.php` is an empty file nothing requires. Both are registered in
+  test-auth-posture; test-integration §51 asserts the 410.
+- **The tables and migrations** (migration-115 onwards: `night_items`, `night_asks`,
+  `ownerchat_msgs` …). A migration is never removed (the ledger keys off filenames) and
+  dropping a table destroys data for no gain. Nothing reads or writes them.
+- **The content-key classifications** in db.php (`night-shift`, `mac-chat`,
+  `mac-chat-memory`, `chat-handoff`, `mac-chat-imports`, `mac-chat-sum`,
+  `nightshift-latest-build`, `nightshift-app-url`, `night-warm-until`) and content.php's
+  exclusion of `apikey-nightshift`: rows already stored hold the owner's chat words and a
+  device secret, so they must never reach the public content GET.
+- **self-repair's week-old `chat-photo-*.jpg` sweep**, which clears the photos the chat left
+  in uploads/ on the host. Nothing writes them now.
+- `via_label()` and the " · via AI chat" activity attribution went with the chat.
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
@@ -1048,7 +654,7 @@ gave-up 30d).
 
 ## The Money area is FIVE ANSWERS, not an index
 
-**CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `nightshift.php` (long polls) and `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.
+**CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.
 
 **TYPE BY ROLE (owner-asked, demo "Type sizes"; supersedes the Payments "one size" rule below):** at the foot of admin.css, scoped to `body.owner-mode` — headline sentence 17, section caption 12 (`.bhub-grpcap`, `.acr-cap`, `.bo-sec-title`, `.status-group-title` are ONE spec, ui-test-hig), row sub-line 13, row figure 17, buttons 15; row titles 15, capsules 12, page titles 28, menu rows 17 unchanged.
 
@@ -1468,17 +1074,8 @@ cottage has — so the tile now opens something that always answers.
 
 Two per-cottage stores (`amenities-<k>`, `houserules-<k>`) had display surfaces and
 nothing else could see them. Found by asking who reads the keys — the answer was
-"only the four renderers".
-- **THE ASSISTANT WAS BLIND TO BOTH.** `night_tool_cottages` handed the model a
-  cottage's name, occupancy, base rate and up to six published Q&A. Asked *"can
-  guests bring a dog to Pimpernel?"* it had nothing to answer from, and its guard
-  correctly DROPS a bluff — so the question every holiday let is asked most got a
-  shrug about a fact the site holds. Both lists ride the tool now, capped at
-  `NIGHT_TOOL_LIST_MAX` (10) and shaped in the pure lib.
-- **THE WORLD SHEET DELIBERATELY DOES NOT CARRY THEM**, and that is asserted as an
-  ABSENCE: the pack rides EVERY ask and pays context for it, so the Q&A, the
-  amenities and the rules are all withheld there and the `cottages` tool is where
-  you go deep — the discipline `night_world` was built with.
+"only the four renderers". (The AI chat's `cottages` tool also read them; it was
+removed with the chat.)
 - **THE GUEST CHAT'S ON-DEVICE ANSWERER GAINED A SECOND TIER** (`guestFactCorpus`,
   consulted only when `guestFaqCorpus` abstains). A rule is ONE entry each — "no
   dogs, sorry" answers the dog question and the quiet-hours rule answers another —
@@ -1515,13 +1112,8 @@ end a stay over a document nobody was ever sent.
 - `TERMS_VERSION` 2026-08a → **2026-08b**.
 - Gates: ui-test-terms §5b/§5c (the absent document, the generated definition, the
   corrected confirmation, the rules in clause 3 and their placement, the empty
-  case), smoke-test's guest-FAQ block (7 new), test-nightshift (4), test-integration
-  §26c (the wiring + the world sheet's absence). Break-tests fired on the corpus
-  precedence, the clause-3 wiring and the endpoint read.
-- **THE HELPER-ONLY GATE MISSED THE WIRING FOR THE THIRD TIME THIS WEEK**: deleting
-  the `content_json` reads from nightshift.php leaves test-nightshift **fully
-  green**, because it drives `night_tool_cottages` with the lists already on its
-  rows. Whenever a pure lib gains a field, gate the ROUTE that fills it.
+  case) and smoke-test's guest-FAQ block (7 new). Break-tests fired on the corpus
+  precedence and the clause-3 wiring.
 
 ## The guest's invoice: ONE document, two presentations
 
@@ -1832,45 +1424,6 @@ capsule, wave, receipts, narration, beat, sent moment).
   beach?" already carries the demo's voice), the steppers (already `.hs-step`),
   and every refusal rule in the picker — this pass is connective tissue and motion
   over the gated logic, not a rebuild of it.
-
-## A switched-off Mac takes its destination with it
-
-**Reported from a phone (screenshot): the AI-chat page with `night-shift` OFF,
-still offering a composer, three starter questions and a spark in the dock.**
-None of it can work — the switch closes the chat DOORS as well as ingest, so
-every one of those meets a server refusal, with a 0.66rem line in the header
-(`mcPresenceHtml`'s off branch) as the only hint.
-- **`body.night-off`, set in `chbFrameSync`** — the function that already keeps
-  `rail-on`/`rail-fold` in step — hides `.admin-dock-btn[data-view='view-aichat']`
-  and `#admin-rail .rail-row[data-view='view-aichat']`. **The same trim
-  `offline-snap` already performs** on its dead destinations, and it has to cover
-  BOTH: the dock is the nav below 1200 and the rail is the nav above it, so
-  trimming one leaves the other still offering it. Driven off `__nightPre`, the
-  flag the boot payload already carries — no request, no new state.
-- **AN UNKNOWN STATE HIDES NOTHING.** `__nightPre` is null until the bootstrap
-  lands, and `!(null && …)` is true — so a naive read would blink the spark out
-  of the dock on every boot and back a moment later. Absent → leave the header
-  alone; only a loaded flag saying off hides anything. (The unloaded-mirror-mints-
-  no-claim rule, in the chrome.)
-- **The Manage toggle calls `chbFrameSync()` itself**: the owner is looking at the
-  switch, and a spark that survives the tap reads as not-saved.
-- **AND THE RESTORE MUST NOT LAND THERE** — the one consequence the trim creates.
-  `maybeRestoreView` refuses a remembered `view-aichat` while off (the day-sheet
-  reasoning: never restore onto a destination the header no longer offers) and
-  **FORGETS** it rather than keeping it, because the switch is a decision, not a
-  passing condition like a lost signal.
-- **Deliberately NOT done, and it is the half worth revisiting**: the page itself
-  is unchanged. Hiding the button does not make `view-aichat` unreachable — a
-  `?open=` link still gets there — so a dead composer is still reachable by that
-  one route. An off-state card for the page was demoed and NOT built, because the
-  ask was the header; say the word and it is a small addition.
-- Gated by **ui-test-railspine §9** (15 checks: the rail and the dock both ways,
-  exactly one row/button fewer with nothing else trimmed, the unloaded flag hiding
-  nothing, and all three restore cases) — break-tested twice, on the body class
-  and on the restore guard, which fire 6 checks between them.
-- Budgets raised: **admin.js +417, admin.css +245** gz shipped. Both owner-only
-  and immutable-cached, which is the trade CLAUDE.md's own rule names as the
-  cheap one; app.css was untouched.
 
 ## Three guest-side repairs, found by looking (approved demo, built)
 
@@ -3278,12 +2831,11 @@ pieces of chrome AROUND the screens, none to the screens; both live in
 **ui-test-railspine.js** (40 checks, five break-tested in isolation).
 - **THE DAY SPINE** (`#day-spine`, JS-built) carries the day onto every admin view
   that doesn't already open with it: one sentence — `cmdkDayLine()`, the SAME
-  derivation the search landing and the AI chat's day card read, gated as EQUALITY —
+  derivation the search landing reads, gated as EQUALITY —
   plus up to two duty chips wearing `chbDuties()`'s own `go` route attributes
   (labels escaped at this render boundary, the needsYouItems contract) and an
   "N more" chip routing to Today. EXCLUDED by name: `view-backoffice` (Today IS the
-  day — header line + Needs-you strip) and `view-aichat` (its welcome card opens the
-  day); it also stands down under `body.offline-snap`, where the day sheet owns the
+  day — header line + Needs-you strip); it also stands down under `body.offline-snap`, where the day sheet owns the
   day. It is IN FLOW, deliberately not sticky: the prototype's sticky spine needed
   scroll-condensing with hysteresis (it oscillated — condensing shortens
   scrollHeight, which clamps scrollTop and re-expands it), and production's header
@@ -3292,8 +2844,8 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   `#booking-hub-content` pattern) so it inherits each view's container width — and
   it carries NO heading element, because a11y §6 scopes the outline to
   `.page-view.active` and a heading here would sit above every view's own h1.
-- **THE RAIL** (`#admin-rail`, JS-built onto `<body>`) is the dock's six
-  destinations plus **Cottages** as a left column from **1200px** — FULL (labels,
+- **THE RAIL** (`#admin-rail`, JS-built onto `<body>`) is the dock's five
+  destinations (Cottages and the AI chat rows have since gone) as a left column from **1200px** — FULL (labels,
   counts, brand, Ask pill, theme) at ≥1440, FOLDED to a 64px icon rail at
   1200–1439 (where the ≥1200 two-pane layouts need the width back: the review
   measured the Inbox reading pane at ~330px beside a 220px rail; the fold costs
@@ -3338,7 +2890,7 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   dead zone wider than the reclaim). The container's top padding moves INTO
   the spine via `:has(> #day-spine:not([hidden]))` — on the container, content
   scrolled visibly through the strip above the sticky spine (screenshot-
-  caught); spineless rail views (Today, AI chat) keep the container's padding.
+  caught); spineless rail views (Today) keep the container's padding.
   **THE FOLD (1200–1439, `body.rail-fold`)** is the prototype's own icon rail:
   64px, labels/counts/brand-words hidden, hot counts surviving as pips —
   every control keeps its name via `aria-label`, because a display:none label
@@ -3567,7 +3119,7 @@ Calendar sync) · **Bookings & payments** (Payments, Cancellation policy — the
 conditions" row was removed at the owner's ask, as nothing on it can be edited; the terms still open from the guest
 site) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
-automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
+automation** (Saved replies, Follow-up emails, Text messages, Guest chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
 **System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Gated by
 ui-test-manage §1 (first child, uncaptioned, the header's gap at 1280 and 18px/22px at 402, "Needs a look" after it,
@@ -3576,17 +3128,16 @@ group). **`manageAccessSync` and `settingsFilter` walk only the index's OWN grou
 a "Needs a look" `.settings-group` of its own, empty until a problem arrives, and the unscoped access sync hid it —
 so a review counted a moment after opening Manage showed "1 thing needs a look" over nothing (ui-test-manage §2).
 Rows, ids and acts were unchanged by the reorder — only order, groups and
-four subtitles moved, so deep links and search are untouched. AI chat used to sit under pricing; "Guests &
+four subtitles moved, so deep links and search are untouched. "Guests &
 marketing" was nine unrelated rows and "Account & system" mixed your settings with maintenance.
 **And inside them** (second pass): **Status** is health only now — its Maintenance cards moved to where they
-belong: **Backups** (`sec-backups`, `renderBackups`, System & tools), **Mac assistant** (`sec-mac`,
-`renderMacSettings`: the overnight-work switch, app download and pairing, beside AI chat) and the hero-photo
+belong: **Backups** (`sec-backups`, `renderBackups`, System & tools) and the hero-photo
 optimiser onto **Home page & menu** (`#hero-opt-host`, `renderHeroOptCard`). **Away auto-reply + Instant chat
 answers are ONE page, "Guest chat"** (`sec-chat-away` hosts both editors; `settingsOpen('chat-answers')` and
 `settingsRenderSection('chat-answers')` alias to it, so old links and recents land). "Email me this week's
-analytics now" sits on Analytics. Search routes (`toManage('backups')`, `toMng('chat-away')`, the night-quiet
-duty → `mac`) follow; search-test asserts every route targets a registered section. ui-test-nightshift and
-ui-test-hig open `settingsOpen('mac')` for the overnight card.
+analytics now" sits on Analytics. Search routes (`toManage('backups')`, `toMng('chat-away')`) follow;
+search-test asserts every route targets a registered section. (The AI chat and Mac assistant rows were removed
+with the assistant.)
 
 ## The owner's account (approved demo, built)
 
@@ -3671,7 +3222,7 @@ notify_prefs; `admin_devices.admin_id` and `push_subscriptions.admin_id`, NULL =
 - **THE AREAS ARE `people-lib.php`'s, and the server decides them on EVERY request.** Full access = everything;
   anyone else = the everyday work (`'all'`: bookings, calendar, enquiries, messages, email, key safes, guests,
   reviews) plus the five switches — Take payments (on by default), Refunds and deposits, Money overview, Prices
-  and cottages, Website and marketing. `'owner'` is full access only (People & access, system, AI chat, the
+  and cottages, Website and marketing. `'owner'` is full access only (People & access, system, the
   activity log). `require_admin()` → `people_enforce()` maps every action CANDIDATE (body, GET and POST — endpoints
   read the action from different places) through `people_cap_for()`; **a file or action not in `PEOPLE_POLICY` is
   `'owner'`, so a new endpoint is closed to a limited person until someone decides otherwise.** The refusal is

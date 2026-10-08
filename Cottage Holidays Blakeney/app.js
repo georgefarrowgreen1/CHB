@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 709;
+const ADMIN_BUNDLE_V = 710;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 349;
+const ADMIN_CSS_V = 350;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -141,7 +141,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openAiChat","renderMacChat","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","draftChatOnMac"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -464,16 +464,16 @@ const CHB_ACT_CAP = {
     money: ['openAccounts', 'accountsOpen', 'cmdkOpenAccounts', 'addExpense', 'deleteExpense', 'editExpense', 'repeatExpense', 'odsExpense', 'exportAccountsCSV', 'pickExpenseReceipt', 'sweepMarkOneTransferred', 'sweepMarkTransferred', 'sweepRefreshPayouts', 'sweepRememberBalance', 'sweepUnmarkTransferred'],
     prices: ['addAccommodationPrompt', 'archiveAccommodation', 'restoreAccommodation', 'setAccommodationPrivate', 'openAccomThenSec', 'settingsOpenAccom', 'settingsOpenAccomSec', 'settingsOpenCalendar', 'addSeasonGridRow', 'saveSeasonGrid', 'openSeasonDates', 'applyPricingSuggestion', 'nyOfferRates', 'prCottage', 'calRemoveFeed'],
     website: ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'loadAnalytics', 'exportAnalyticsCsv', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
-    owner: ['openAiChat', 'connectNightMac', 'newNightKey', 'stopNightDevice', 'nightUse', 'nightDismiss', 'nightTeach', 'draftChatOnMac', 'runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveNightAppUrl', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite'],
+    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite'],
 };
 // Manage sections by area (settingsOpen's argument); 'all' sections are not listed.
 const CHB_SEC_CAP = {
     prices: ['accom', 'seasongrid', 'pricing', 'calendar', 'cancel'],
     website: ['content', 'experiences', 'newsletter', 'analytics'],
-    owner: ['payments', 'follow-ups', 'sms', 'mac', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person'],
+    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person'],
 };
 // The views a dock or rail button opens.
-const CHB_VIEW_CAP = { money: ['view-accounts'], owner: ['view-aichat', 'view-activity-log'] };
+const CHB_VIEW_CAP = { money: ['view-accounts'], owner: ['view-activity-log'] };
 function chbActCap(name) {
     for (const k in CHB_ACT_CAP) if (CHB_ACT_CAP[k].indexOf(name) !== -1) return k;
     return 'all';
@@ -583,10 +583,10 @@ function chbRunAct(el, name, event) {
         // has always received. This was `fn.call(el, el, event)` and nothing
         // else, so `chbAttrs('name', a, b)` — the documented way to pass
         // arguments — silently delivered NOTHING to a chbAct handler while
-        // working perfectly for a plain window global. `stopNightDevice` was
-        // the first registered action ever written with arguments and it read
-        // the EVENT as its first one: Number(event) is NaN, the server saw no
-        // index, and "Stop this Mac" answered 409 for ever. Reported live.
+        // working perfectly for a plain window global. The first registered
+        // action ever written with arguments read the EVENT as its first one:
+        // Number(event) is NaN, the server saw no index, and the action
+        // answered 409 for ever. Reported live.
         //
         // Appending is provably safe rather than merely likely: every other
         // registered action declares (), (el) or (el, event), and JS drops
@@ -1573,11 +1573,11 @@ function apiErr(message, status, code) {
 /** Endpoints answer arbitrary JSON, so the body is `any` — stated, not inferred.
  * @returns {Promise<any>} */
 // THE WORK IS VISIBLE: a thin bar sweeps the top edge while any request is in flight (body.chb-busy, styled in admin.css).
-// Delayed 500ms so a fast load never flashes it, and the two long-poll doors never light it (they are always in flight).
+// Delayed 500ms so a fast load never flashes it, and the version poll never lights it (it is always in flight).
 let __chbBusyN = 0;
 let __chbBusyT = null;
 function chbBusy(d, endpoint) {
-    if (/^(nightshift|version)\.php/.test(endpoint || '')) return;
+    if (/^version\.php/.test(endpoint || '')) return;
     __chbBusyN = Math.max(0, __chbBusyN + d);
     try {
         if (__chbBusyN > 0 && !__chbBusyT && !document.body.classList.contains('chb-busy')) {
@@ -2134,7 +2134,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-keysafe', 'view-aichat'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-keysafe'];
 // Account preview (admin-only, read-only): opening the app with
 // ?acctpreview=<bookingId> — inside a sandboxed iframe the owner launches from the
 // back office — renders THAT customer's account exactly as the customer sees it.
@@ -2405,7 +2405,7 @@ function nav(viewId, anchorId = null) {
     if (isAuthenticated && !PREVIEW_MODE && viewId !== 'view-pay' && !ADMIN_VIEWS.includes(viewId))
         viewId = 'view-backoffice';
     // A screen switched off for the person signed in (Payments without Money
-    // overview; the AI chat and the activity log without full access) is not
+    // overview; the activity log without full access) is not
     // shown from any route — a link, search, a remembered screen. Today instead.
     for (const k in CHB_VIEW_CAP) {
         if (CHB_VIEW_CAP[k].indexOf(viewId) !== -1 && !chbMayUse(k)) {
@@ -2542,11 +2542,6 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-keysafe') {
         try {
             renderKeysafe();
-        } catch (e) {}
-    }
-    if (viewId === 'view-aichat') {
-        try {
-            renderMacChat();
         } catch (e) {}
     }
     if (viewId === 'view-cottages') {
@@ -11724,13 +11719,6 @@ async function loadData() {
         // Customer emails waiting to be read: the count the CRON's poll left behind,
         // so no page ever waits on a mail server.
         /** @type {any} */ (window).__newMailPre = ab.newMail || null;
-        // OVERNIGHT WORK: whether the queue is switched on, and how many items are
-        // waiting. Only those two facts ride here — the rows themselves are prose
-        // and would bloat the one payload every owner screen waits on, so admin.js
-        // fetches them ONLY when this says there is something to fetch. An owner
-        // with the setting off pays nothing at all, which is what "additive by
-        // construction" has to mean at the boot as well as on the screen.
-        /** @type {any} */ (window).__nightPre = ab.night || null;
         /** @type {any} */ (window).__dutyDismissedPre = ab.dismissed || null;
         /** @type {any} */ (window).__sigAt = Date.now();
     }
@@ -13418,18 +13406,6 @@ async function maybeRestoreView(entry) {
             navigator.onLine === false ||
             (typeof __chbNetOff !== 'undefined' && __chbNetOff)
         ) {
-            return false;
-        }
-    } catch (e) {}
-    // …AND NEVER ONTO A DESTINATION THE HEADER NO LONGER OFFERS. With the Mac
-    // switched off the AI-chat spark is trimmed out of the dock and the rail, so
-    // restoring there would land the owner on a screen with no way back to it —
-    // the same reasoning as the day sheet above. The memory is FORGOTTEN rather
-    // than kept: the switch is a decision, not a passing condition.
-    try {
-        const np = /** @type {any} */ (window).__nightPre;
-        if (np && !np.on && String(saved.t) === 'view-aichat') {
-            chbNavForget();
             return false;
         }
     } catch (e) {}
@@ -21486,7 +21462,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'termsrow1';
+    const BUILD = 'rmaichat1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

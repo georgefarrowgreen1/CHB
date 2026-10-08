@@ -3,7 +3,7 @@
 // The claims under test, each of which shipped broken in the prototype phase
 // and was caught only by driving it:
 //   §1 the spine carries the day onto every admin view EXCEPT the two that
-//      already open with it (Today, AI chat), and its sentence IS cmdkDayLine
+//      already open with it (Today), and its sentence IS cmdkDayLine
 //      — equality of derivations, not a copied string;
 //   §2 a duty chip wears the duty's OWN route (the strip's go attributes) and
 //      really lands there; labels are escaped at the render boundary;
@@ -85,9 +85,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.evaluate(async () => { await openAccounts(); });
     await page.waitForTimeout(900);
     await noStrip('Payments carries no strip');
-    await page.evaluate(() => openAiChat());
-    await page.waitForTimeout(700);
-    await noStrip('the AI chat carries no strip');
     await page.evaluate(async () => { await openArea(); });
     await page.waitForTimeout(700);
     await noStrip('Manage carries no strip');
@@ -120,7 +117,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     });
     ok(themed, 'the theme row really flips the theme (and back)');
     const rows = await page.evaluate(() => [...document.querySelectorAll('#admin-rail .rail-row')].map((r) => (r.querySelector('.rail-lbl') || {}).textContent || ''));
-    ok(rows.length === 6 && rows.join('|') === 'Today|Inbox|AI chat|Payments|Key safes|Manage', `six destinations, the dock's own (${rows.join(' · ')})`);
+    ok(rows.length === 5 && rows.join('|') === 'Today|Inbox|Payments|Key safes|Manage', `five destinations, the dock's own (${rows.join(' · ')})`);
     ok(await page.evaluate(() => { const r = document.querySelector('#admin-rail .rail-row[data-view="view-accounts"]'); return !!r && r.getAttribute('aria-current') === 'page'; }), 'Payments is current while Payments is open');
     const counts = await page.evaluate(() => ({
         inbox: (document.getElementById('rail-cnt-inbox') || {}).textContent || '',
@@ -147,7 +144,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         noRow: !document.querySelector('#admin-rail .rail-row[data-rail="cottages"]'),
     }));
     ok(cot.sec && cot.manageCur === 'page' && cot.noRow, 'a cottage page opens under Manage, which stays current (no Cottages row)');
-    for (const [sel, view] of [['[data-view="view-inbox"]', 'view-inbox'], ['[data-view="view-keysafe"]', 'view-keysafe'], ['[data-view="view-aichat"]', 'view-aichat']]) {
+    for (const [sel, view] of [['[data-view="view-inbox"]', 'view-inbox'], ['[data-view="view-keysafe"]', 'view-keysafe']]) {
         await page.click(`#admin-rail .rail-row${sel}`);
         await page.waitForTimeout(700);
         ok(await activeView() === view, `${view} routes from the rail`);
@@ -410,81 +407,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     }), 'and below the rail the centred column is untouched — its own gates still hold');
 
     // ============================================================
-    //  §9 — A SWITCHED-OFF MAC TAKES ITS DESTINATION WITH IT.
-    //  night-shift off closes the chat doors as well as ingest, so the AI-chat
-    //  spark led to a page whose starters, composer and send all meet a server
-    //  refusal. Same trim offline-snap already performs, from the flag the boot
-    //  payload already carries. Both halves are asserted, so this can neither
-    //  erode into "always shown" nor swell into "hidden whenever we don't know".
+    //  §9 — THE AI CHAT IS GONE (owner's ask), from every way in: no rail row,
+    //  no dock button, and a screen remembered from before the removal does not
+    //  restore onto a page that no longer exists.
     // ============================================================
-    const nightState = async () =>
-        page.evaluate(() => ({
-            cls: document.body.classList.contains('night-off'),
-            rail: (() => {
-                const r = document.querySelector("#admin-rail .rail-row[data-view='view-aichat']");
-                return r ? r.getClientRects().length > 0 : null;
-            })(),
-            railRows: [...document.querySelectorAll('#admin-rail .rail-row')].filter((r) => r.getClientRects().length > 0).length,
-        }));
-    const setNight = async (v) => {
-        await page.evaluate((on) => {
-            /** @type {any} */ (window).__nightPre = on === null ? null : { on: on ? 1 : 0, n: 0 };
-            if (on === null) document.body.classList.remove('night-off');
-            window.chbFrameSync();
-        }, v);
-        await page.waitForTimeout(250);
-    };
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);
-    await setNight(true);
-    const nOn = await nightState();
-    ok(nOn.rail === true && !nOn.cls, `the rail offers AI chat while the Mac is ON (${nOn.railRows} rows)`);
-    await setNight(false);
-    const nOff = await nightState();
-    ok(nOff.cls, 'switching it off marks the frame');
-    ok(nOff.rail === false, 'and the rail row goes with it');
-    ok(nOff.railRows === nOn.railRows - 1, `…exactly one row fewer (${nOn.railRows} → ${nOff.railRows}), nothing else trimmed`);
-    await setNight(true);
-    ok((await nightState()).rail === true, 'switching it back on restores the row');
-    // AN UNKNOWN STATE HIDES NOTHING — __nightPre is null until the bootstrap
-    // lands, and treating that as off blinks the spark out on every boot.
-    await setNight(null);
-    const nUnk = await nightState();
-    ok(nUnk.rail === true && !nUnk.cls, 'and an UNLOADED flag hides nothing — absence is not "off"');
-
-    // The header dock is the nav below 1200; the same trim has to reach it.
+    ok(await page.evaluate(() => !document.querySelector("#admin-rail .rail-row[data-view='view-aichat']") && !document.getElementById('view-aichat')),
+        'the rail offers no AI chat, and there is no page for it');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(450);
-    const dockCount = () =>
-        page.evaluate(() => ({
-            ai: (() => {
-                const b = document.querySelector(".admin-dock-btn[data-view='view-aichat']");
-                return b ? b.getClientRects().length > 0 : null;
-            })(),
-            n: [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.getClientRects().length > 0).length,
-        }));
-    await setNight(true);
-    const dOn = await dockCount();
-    await setNight(false);
-    const dOff = await dockCount();
-    ok(dOn.ai === true && dOff.ai === false, 'the header dock hides the spark when the Mac is off');
-    ok(dOff.n === dOn.n - 1, `…and keeps every other destination (${dOn.n} → ${dOff.n})`);
-
-    // …and the view restore must not land on a destination the header no longer
-    // offers. Forgotten rather than kept: the switch is a decision.
+    ok(await page.evaluate(() => !document.querySelector(".admin-dock-btn[data-view='view-aichat']")), 'nor does the header dock');
     const restore = await page.evaluate(async () => {
         const mk = (t) => ({ t, at: Date.now() });
-        /** @type {any} */ (window).__nightPre = { on: 0, n: 0 };
-        const offAi = await window.maybeRestoreView(mk('view-aichat'));
-        const offOther = await window.maybeRestoreView(mk('view-inbox'));
-        /** @type {any} */ (window).__nightPre = { on: 1, n: 0 };
-        const onAi = await window.maybeRestoreView(mk('view-aichat'));
-        return { offAi, offOther, onAi };
+        return { ai: await window.maybeRestoreView(mk('view-aichat')), other: await window.maybeRestoreView(mk('view-inbox')) };
     });
-    ok(restore.offAi === false, 'a reload does NOT restore onto AI chat while the Mac is off');
-    ok(restore.offOther === true, '…and every other remembered screen still restores');
-    ok(restore.onAi === true, '…and AI chat restores normally once it is back on');
-    await setNight(true);
+    ok(restore.ai === false, 'a remembered AI chat screen does not restore');
+    ok(restore.other === true, '…while every other remembered screen still does');
 
     if (errs.length) { console.log('  PAGE ERRORS:\n  ' + errs.join('\n  ')); fails += errs.length; }
     console.log(fails ? `RAILSPINE TEST FAILED ❌ (${fails})` : 'RAILSPINE TEST PASSED ✅');

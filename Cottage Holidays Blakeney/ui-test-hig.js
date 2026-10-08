@@ -322,15 +322,9 @@ const NEST = (rootSel) => {
   await grabCaps(['#sg-count']);
   await open(page, "settingsOpen('diagnostics')", 1300);
   await grabCaps(['#diagnostics-body .sp-cap']);
-  // The overnight-work card moved to its own page (Manage → Mac assistant).
-  await open(page, "settingsOpen('mac')", 900);
-  await grabCaps(['.night-setup > summary']);
-  await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [{ who: 'you', text: 'block jollyboat', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } }] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
-  await grabCaps(['.mc-act-t']);
-  await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);
   const shouty = caps.filter((c) => c.tt !== 'none');
   const tracked = caps.filter((c) => c.ls !== 'normal' && parseFloat(c.ls) > 0.2);
-  ok(caps.length >= 9, `${caps.length} in-container captions painted across five screens: ${caps.map((c) => c.sel.split(' ').pop()).join(', ')} (vacuity guard)`);
+  ok(caps.length >= 7, `${caps.length} in-container captions painted across four screens: ${caps.map((c) => c.sel.split(' ').pop()).join(', ')} (vacuity guard)`);
   ok(shouty.length === 0, `none of them shouts${shouty.length ? ' — ' + shouty.map((c) => c.sel + ' "' + c.t + '"').join(', ') : ''}`);
   ok(tracked.length === 0, `and none of them is tracked${tracked.length ? ' — ' + tracked.map((c) => c.sel + ' ' + c.ls).join(', ') : ''}`);
   // The badge beside the plan caption STAYS (an owner's ask, gated both ways in
@@ -634,23 +628,30 @@ const NEST = (rootSel) => {
       const st = document.createElement('style'); st.id = 'safe-probe-hig'; st.textContent = ':root{--safe-t:59px}'; document.head.appendChild(st);
       const padWithNotch = parseFloat(getComputedStyle(h).paddingTop);
       st.remove();
+      // The column runs through the widest stretch of the bar nothing paints in: a
+      // fixed x landed on a dock icon's stroke the day the dock lost a button.
+      const spans = [...h.querySelectorAll('svg, img, button, a, .logo')].map((e) => e.getBoundingClientRect())
+        .filter((b) => b.width && b.height && b.right > 0 && b.left < window.innerWidth).map((b) => [b.left, b.right]).sort((a, b) => a[0] - b[0]);
+      let colX = 195, best = 0, edge = 0;
+      for (const [l, rr] of spans) { if (l - edge > best) { best = l - edge; colX = Math.round((edge + l) / 2); } edge = Math.max(edge, rr); }
+      if (window.innerWidth - edge > best) colX = Math.round((edge + window.innerWidth) / 2);
       return { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
-        hairline: cs.borderBottomColor, pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height), rest, ground, themeRgb };
+        hairline: cs.borderBottomColor, pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height), rest, ground, themeRgb, colX };
     });
-    // The paint: a pixel column at x=195 (clear of the crown and the icons) from the
+    // The paint: a pixel column at colX (clear of the crown and the icons) from the
     // top of the screen to 50px below the bar, at rest (over the hero) and scrolled
     // deep (over the spacer's flat ground).
     const column = async (y) => {
       await pg.evaluate((y) => window.scrollTo(0, y), y); await pg.waitForTimeout(350);
       const png = await pg.screenshot({ clip: { x: 0, y: 0, width: 390, height: 200 } });
-      return pg.evaluate(async ([src, hh]) => {
+      return pg.evaluate(async ([src, hh, cx]) => {
         const img = new Image(); img.src = 'data:image/png;base64,' + src; await img.decode();
         const k = img.width / 390; const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
-        const n = Math.round((hh + 50) * k); const d = x.getImageData(Math.round(195 * k), 0, 1, n).data;
+        const n = Math.round((hh + 50) * k); const d = x.getImageData(Math.round(cx * k), 0, 1, n).data;
         const px = (i) => [d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]; const l = (p) => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
         let max = 0, at = 0; for (let i = 1; i < n; i++) { const s = Math.abs(l(px(i)) - l(px(i - 1))); if (s > max) { max = s; at = Math.round(i / k); } }
         return { top: px(1), bottom: px(Math.round((hh - 3) * k)), step: +max.toFixed(1), at };
-      }, [png.toString('base64'), facts.rest.h]);
+      }, [png.toString('base64'), facts.rest.h, facts.colX]);
     };
     const atRest = await column(0); const deep = await column(2400);
     await pg.evaluate(async () => { window.scrollTo(0, 0); document.querySelector('.hig-spacer')?.remove(); document.getElementById('hig-fz')?.remove(); await new Promise((r) => setTimeout(r, 150)); });

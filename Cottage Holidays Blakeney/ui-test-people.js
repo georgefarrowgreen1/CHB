@@ -307,7 +307,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         await page.evaluate(() => nav('view-backoffice'));
         await page.waitForTimeout(400);
         const dock = await page.evaluate(() => [...document.querySelectorAll('header .admin-dock-btn')].filter((b) => b.getClientRects().length).map((b) => b.dataset.view));
-        ok(!dock.includes('view-accounts') && !dock.includes('view-aichat'), `the menu leaves out Payments and the AI chat (${dock.join(', ')})`);
+        ok(!dock.includes('view-accounts'), `the menu leaves out Payments (${dock.join(', ')})`);
         ok(dock.includes('view-inbox') && dock.includes('view-keysafe') && dock.includes('view-settings'), '…and keeps the Inbox, Key safes and Manage');
         await page.evaluate(() => openArea());
         await page.waitForTimeout(700);
@@ -319,7 +319,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         }));
         const want = ['Guests', 'Waitlist', 'Reviews', 'Guest photos', 'Saved replies', 'Guest chat'];
         ok(want.every((t) => idx.rows.some((r) => (r || '').indexOf(t) === 0)), `Manage keeps her everyday rows (${idx.rows.join(' · ')})`);
-        const gone = ['Seasonal rates', 'Pricing', 'Calendar sync', 'Cancellation policy', 'Follow-up emails', 'Text messages', 'AI chat', 'Mac assistant', 'Home page & menu', 'Things to do', 'Newsletter', 'Analytics', 'Status', 'Backups', 'Activity log', 'Integrations', 'Search learning'];
+        const gone = ['Seasonal rates', 'Pricing', 'Calendar sync', 'Cancellation policy', 'Follow-up emails', 'Text messages', 'Home page & menu', 'Things to do', 'Newsletter', 'Analytics', 'Status', 'Backups', 'Activity log', 'Integrations', 'Search learning'];
         ok(!gone.some((t) => idx.rows.includes(t)), 'and none of the areas switched off for her');
         ok(!idx.labels.includes('Website & marketing') && !idx.labels.includes('System & tools') && !idx.labels.includes('Cottages & pricing'), `a group left with nothing in it goes too (${idx.labels.join(' · ')})`);
         ok(!idx.summary, 'the system summary row is full access only');

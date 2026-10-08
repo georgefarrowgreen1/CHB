@@ -98,7 +98,7 @@ $c = fn($f, $a, $in = []) => people_cap_for($f, $a, $in);
 ppl('an endpoint nobody listed is full access only (fails CLOSED)', $c('brand-new.php', 'anything') === 'owner');
 ppl('an action nobody listed is full access only', $c('bookings.php', 'something_new') === 'owner');
 ppl('People & access is full access only', $c('people.php', 'list') === 'owner' && $c('people.php', 'invite') === 'owner');
-ppl('set-up and system are full access only', $c('diagnostics.php', 'run') === 'owner' && $c('backup.php', 'run') === 'owner' && $c('migrate.php', '') === 'owner' && $c('square-setup.php', 'setup') === 'owner' && $c('nightshift.php', 'chat_send') === 'owner' && $c('activity-log.php', 'list') === 'owner');
+ppl('set-up and system are full access only', $c('diagnostics.php', 'run') === 'owner' && $c('backup.php', 'run') === 'owner' && $c('migrate.php', '') === 'owner' && $c('square-setup.php', 'setup') === 'owner' && $c('activity-log.php', 'list') === 'owner');
 ppl('the everyday: bookings, enquiries, messages, email, key safes, guests', $c('bookings.php', '') === 'all' && $c('bookings.php', 'update') === 'all' && $c('enquiries.php', 'decline') === 'all' && $c('messages.php', 'send') === 'all' && $c('mailbox.php', 'send') === 'all' && $c('keysafe.php', 'confirm') === 'all' && $c('auth.php', 'guest_crm') === 'all');
 ppl('your own sign-in is always yours', $c('auth.php', 'admin_change_password') === 'all' && $c('passkeys.php', 'admin_register_begin') === 'all' && $c('auth.php', 'admin_notify_set') === 'all');
 ppl('asking for money is Take payments', $c('bookings.php', 'request_payment') === 'payments' && $c('bookings.php', 'set_payment') === 'payments' && $c('bookings.php', 'set_payment_plan') === 'payments' && $c('messages.php', 'send_balance') === 'payments');
@@ -121,7 +121,7 @@ ppl('the home page and its menu are the website', $k('hero-title') === 'website'
 ppl('terms-title is the website, not a cottage text', $k('terms-title') === 'website');
 ppl('cottage pages, rules and rates are prices and cottages', $k('rules-21a') === 'prices' && $k('jollyboat-desc') === 'prices' && $k('images-pimpernel') === 'prices' && $k('21a-cancellation-policy') === 'prices' && $k('pricing-limits') === 'prices' && $k('ops-21a') === 'prices');
 ppl('payment plans are Take payments; moving money out is Money overview', $k('plan-presets') === 'payments' && $k('sweep-moved') === 'money');
-ppl('secrets and set-up are full access only', $k('bacs-details') === 'owner' && $k('apikey-tides') === 'owner' && $k('backup-passphrase') === 'owner' && $k('square-deposit-pct') === 'owner' && $k('night-shift') === 'owner' && $k('notify-emails') === 'owner');
+ppl('secrets and set-up are full access only', $k('bacs-details') === 'owner' && $k('apikey-tides') === 'owner' && $k('backup-passphrase') === 'owner' && $k('square-deposit-pct') === 'owner' && $k('notify-emails') === 'owner');
 ppl('a key nobody listed is full access only', $k('something-new') === 'owner');
 ppl('a write to content.php is decided by its key', people_cap_for('content.php', 'set', ['key' => 'bacs-details']) === 'owner' && people_cap_for('content.php', 'set', ['key' => 'host-bio']) === 'all');
 ppl('reading: a limited person sees the switches the everyday screens need…', people_content_readable($host, 'arrival-review') && people_content_readable($host, 'mailbox-new'));

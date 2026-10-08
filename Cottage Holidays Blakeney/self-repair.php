@@ -70,28 +70,6 @@ try {
 } catch (\Throwable $e) {
 }
 
-// ---- 0c. The Mac app's newest release ----------------------------------------
-// One public GitHub read a day, so Set up a Mac can say "Up to date / Update
-// available" against what each Mac reports (integration step 4) without any
-// page ever fetching it live. A failed read keeps the last good tag — the card
-// then compares against yesterday's newest, which is honest enough for a nudge.
-try {
-    $ctx = stream_context_create(['http' => ['timeout' => 8, 'header' => "User-Agent: CHB-self-repair\r\n"]]);
-    $raw = @file_get_contents('https://api.github.com/repos/georgefarrowgreen1/CHB/releases/latest', false, $ctx);
-    $tag = '';
-    if (is_string($raw) && $raw !== '') {
-        $j = json_decode($raw, true);
-        $tag = is_array($j) && is_string($j['tag_name'] ?? null) ? trim($j['tag_name']) : '';
-    }
-    // Only the shapes the builds actually mint — build-<N> (the current id
-    // convention) or the retired dated form — a rename or a rogue tag must
-    // not become the yardstick every Mac is measured against.
-    if ($tag !== '' && preg_match('/^(?:build-\d+|hand-build-\d{8}-\d{4})$/', $tag)) {
-        content_set_scalar('nightshift-latest-build', $tag);
-    }
-} catch (\Throwable $e) {
-}
-
 // ---- 1. Dead gallery references -------------------------------------------
 // 'images-<prop>' content keys hold JSON arrays of image URLs; locally-uploaded
 // ones are relative 'uploads/<file>'. If the file is gone (manual FTP cleanup,
@@ -329,10 +307,10 @@ try {
         ]);
     }
 
-    // AI-chat photos are EPHEMERAL: the model looked at them, the words are
-    // the record, and a week is longer than any conversation stays live. The
-    // pattern is chat_photo_store's own, so nothing else in uploads/ is ever
-    // touched by this sweep.
+    // The removed AI chat stored its photos as uploads/chat-photo-*.jpg. Nothing
+    // writes them now, and the deploy never deletes files on the host, so this
+    // clears what is left once it is a week old. The pattern is that old one
+    // exactly, so nothing else in uploads/ is ever touched by this sweep.
     $chatPruned = 0;
     if (is_dir($upDir)) {
         foreach (scandir($upDir) ?: [] as $cp) {
@@ -375,17 +353,6 @@ try {
         }
     } catch (\Throwable $e) {
         // pre-migration (no avatar or photo column) — nothing to judge against
-    }
-
-    // The AI chat's conversation rows: the cap is a RETENTION POLICY now,
-    // not a memory limit — ninety days is longer than any thread stays live,
-    // and the guarded try keeps a pre-migration install untouched.
-    try {
-        $n = db()->exec('DELETE FROM ownerchat_msgs WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)');
-        if ($n > 0) {
-            $fixed[] = "pruned $n AI-chat message(s) older than ninety days";
-        }
-    } catch (\Throwable $e) {
     }
 
     if (is_dir($upDir)) {
@@ -466,32 +433,6 @@ try {
     if ($n) {
         $fixed[] = 'seasons:' . $n;
         log_activity('rates', 'selfrepair.seasons', 'Self-repair: cleared ' . $n . ' seasonal rate' . ($n === 1 ? '' : 's') . ' that ended over a year ago', ['actor' => $actor, 'entity' => 'selfrepair']);
-    }
-} catch (\Throwable $e) {
-}
-
-// ---- 4d-ii. The overnight queue: retire what has run out of time ------------
-// The DEADLINE is what stops this queue becoming a pile the owner learns to
-// scroll past, so it has to be enforced by something that runs whether or not
-// anyone opens Today. Two steps, and they are different facts: an OPEN row past
-// its deadline becomes `expired` (so "where did it go?" has an answer for a
-// fortnight), and any row already decided — used, binned or expired — is
-// deleted once it is older than that. Guarded: an un-migrated install has no
-// table, and the whole feature is additive.
-try {
-    require_once __DIR__ . '/nightshift-lib.php';
-    $keep = (int) NIGHT_KEEP_DAYS;
-    $ex = db()->prepare("UPDATE night_items SET status = 'expired', acted_at = NOW() WHERE status = 'open' AND expires_at <= NOW()");
-    $ex->execute();
-    $gone = $ex->rowCount();
-    db()->exec(
-        "DELETE FROM night_items
-          WHERE status <> 'open'
-            AND acted_at IS NOT NULL
-            AND acted_at < DATE_SUB(NOW(), INTERVAL $keep DAY)",
-    );
-    if ($gone > 0) {
-        $fixed[] = "retired $gone overnight item(s) nobody got to in time";
     }
 } catch (\Throwable $e) {
 }

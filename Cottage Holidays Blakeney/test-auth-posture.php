@@ -61,11 +61,6 @@ $REGISTRY = [
     'email-samples.php' => ['admin'],
     'expenses.php' => ['admin'],
     'mailbox.php' => ['admin'],
-    // The machine routes no longer take APP_SECRET directly: they take the
-    // route's OWN key (apikey-nightshift), which falls back to APP_SECRET only
-    // while no scoped key is set. So the marker to insist on is the door check
-    // itself — night_require_key — not the comparison it now delegates to.
-    'nightshift.php' => ['admin', ['night_require_key'], 'the overnight queue: list/act are the owner in a browser, brief/ingest are a machine holding this route\'s own scoped key — both guards must be present'],
     'notify-recipients.php' => ['admin'],
     'optimize-hero.php' => ['admin'],
     'pricing-suggest.php' => ['admin'],
@@ -145,12 +140,13 @@ $REGISTRY = [
     'img.php' => ['public', [], 'image resizer restricted to files under uploads/'],
     'review.php' => ['public', [], 'the public review-request landing page'],
     'sitemap.php' => ['public', [], 'sitemap.xml for crawlers'],
+    'nightshift.php' => ['public', [], 'RETIRED: answers 410 and nothing else, replacing the removed Mac assistant endpoint on the host (the deploy never deletes files)'],
     'square-config.php' => ['public', [], 'the public Square application id the pay page needs'],
     'status.php' => ['public', [], 'public status page (no internals beyond up/down)'],
     'tide-data.php' => ['public', [], 'tide times for the guest pages (public data)'],
     'tides.php' => ['public', [], 'tide widget data (API key stays server-side)'],
     'watchers-lib.php' => ['lib', [], 'pure rules for standing queries (no direct entry)'],
-    'nightshift-lib.php' => ['lib', [], 'the overnight queue’s pure judgements (what a valid item is, the per-kind deadline, the caps); required by nightshift.php, admin-bootstrap.php and self-repair.php'],
+    'nightshift-lib.php' => ['lib', [], 'RETIRED: an empty file that replaces the removed Mac assistant library on the host (the deploy never deletes files)'],
     'keysafe-lib.php' => ['lib', [], 'the key safe keeper’s pure judgements (bad codes, generation, the reveal window); required by keysafe.php and my-bookings.php'],
     'watchers.php' => ['admin', ['require_admin'], "the owner's own standing queries — names cottages and dates"],
     'watchers-run.php' => ['cron', [], 'fires due watchers daily; manual run is POST + require_admin'],

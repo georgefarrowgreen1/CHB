@@ -164,7 +164,7 @@ const stub = (page) => page.route(/\.php/, (r) => {
     check(s.menuHittable, 'and still tappable');
     check(s.dx !== null && Math.abs(s.dx) <= 1, `the pill stays centred once condensed (off by ${s.dx}px)`);
     check(Math.abs(s.indW - s.btnW) <= 1, `and still matches its size (${s.indW} vs ${s.btnW})`);
-    // At 390 the slot between the crown and six dock icons is one character wide
+    // At 390 the slot between the crown and the dock icons was one character wide
     // — it painted "T." for Today. A letter is not a name, so the title STANDS
     // DOWN below 480 (the page's own heading names the screen) and paints where
     // a name fits. Both halves gated: hidden here, named at 480 below.
