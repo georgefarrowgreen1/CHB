@@ -1882,11 +1882,11 @@ chk('a receipt with money owing dates it and offers the link',
     && strpos($eRcM['html'], 'Pay the rest now') !== false);
 // NB target the AMOUNT BLOCK, not the words: email_h() renders the same phrase as
 // the page heading, so 'Payment received' alone passed with the figure block
-// deleted (break-tested). The sentence-case 600 label + the 40px grotesque figure
-// are email_amount's own anatomy (the modern pass — the invoice's figure rules),
-// and that pair is what "headline" actually means here.
+// deleted (break-tested). The sentence-case 600 label + the 34px figure in its
+// inset well are email_amount's own anatomy (the dashboard's key block), and that
+// pair is what "headline" actually means here.
 chk('...and the figure is the headline, not a clause',
-    preg_match('/font-weight:600;color:' . preg_quote(email_muted_ink(), '/') . ';">Payment received<\/div>[\s\S]{0,220}font-size:40px[\s\S]{0,160}£175\.43/', $eRcM['html']) === 1);
+    preg_match('/font-weight:600;color:' . preg_quote(email_muted_ink(), '/') . ';">Payment received<\/div>[\s\S]{0,220}font-size:34px[\s\S]{0,160}£175\.43/', $eRcM['html']) === 1);
 chk('...labelled for the state it is in (a slice is not its stage)',
     strpos(payment_receipt_body(['partial' => true] + $eRc)['html'], '>Part payment received<') !== false
     && strpos(payment_receipt_body(['automatic' => true] + $eRc)['html'], '>Collected<') !== false);
@@ -1979,7 +1979,7 @@ chk('the magic link prints the URL as well as wrapping it in a button',
 // (break-tested) — the plain-text copy was satisfying it.
 chk('...and says it is single-use before they tap it, in both halves',
     preg_match('/function send_magic_link_email[\s\S]{0,1900}"It works once and expires in 30 minutes/', $mlE) === 1
-    && preg_match("/function send_magic_link_email[\s\S]{0,3300}email_footnote\(\s*\n?\s*'It works once and expires in 30 minutes/", $mlE) === 1);
+    && preg_match("/function send_magic_link_email[\s\S]{0,3600}email_footnote\(\s*\n?\s*'It works once and expires in 30 minutes/", $mlE) === 1);
 
 // THE ENQUIRY ACKNOWLEDGEMENT ANSWERS "WHEN DO I HEAR BACK?"
 // Both halves again, for the reason above (break-tested: deleting the HTML one

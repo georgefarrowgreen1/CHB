@@ -269,6 +269,7 @@ $m = owner_digest_body([
     'arrivals' => $arrivals, 'owedCount' => $owedCount, 'owedSum' => $owedSum,
     'pending' => $pending, 'occPct' => $occPct, 'misses' => $misses,
     'actTotal' => $actTotal, 'actAttention' => $actAttention,
+    'openUrl' => site_base_url() . '?open=today',
 ]);
 [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
 

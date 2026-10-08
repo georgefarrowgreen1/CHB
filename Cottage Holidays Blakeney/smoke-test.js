@@ -1400,7 +1400,7 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const pCap = said(part, /^Balance due$/)[0];
             check('PDF: a part-paid invoice leads with "Balance due"', !!pCap);
             // the accent as WORDS takes the accent INK — the rose-gold fill is 2.55:1
-            check('PDF: …in the accent ink, never the accent fill', !!pCap && pCap.ink === '138,90,43',
+            check('PDF: …in the accent ink, never the accent fill', !!pCap && pCap.ink === '150,92,53',
                 pCap ? pCap.ink : 'not drawn');
             check('PDF: …over the figure actually owed',
                 said(part, /^£446\.44$/).length >= 1, said(part, /^£\d/).map((t) => t.s).join(' '));

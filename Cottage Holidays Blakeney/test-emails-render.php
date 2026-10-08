@@ -235,6 +235,7 @@ $JOBS = [
           'misses' => [['t' => 'is there a hot tub', 'n' => 3]],
           'actTotal' => 12,
           'actAttention' => [['summary' => 'A calendar feed has not imported for 2 days', 'severity' => 'warn']],
+          'openUrl' => site_base_url() . '?open=today',
       ])));
   }],
   ['weekly-analytics', 'owner', function () {
@@ -266,7 +267,7 @@ $JOBS = [
   ['hold-request', 'guest', fn() => send_hold_request($B, $PAYURL)],
   ['hold-released', 'guest', fn() => send_hold_released($B)],
   ['owner-new-enquiry', 'owner', fn() => send_owner_enquiry_email($ENQ)],
-  ['owner-payment', 'owner', fn() => send_owner_payment_notice(array_merge($B, ['kind' => 'balance', 'amount' => 452.12, 'status' => 'COMPLETED', 'prop_name' => 'Jollyboat']))],
+  ['owner-payment', 'owner', fn() => send_owner_payment_notice(array_merge($B, ['id' => 42, 'kind' => 'balance', 'amount' => 452.12, 'status' => 'COMPLETED', 'prop_name' => 'Jollyboat']))],
 ];
 
 
@@ -457,7 +458,7 @@ function em_ratio(string $a, string $b): float
 // the palette measured IS the palette served. A class override beats the inline
 // value exactly as the !important media rule does in a dark client; an ink with
 // no mapped class keeps its inline value, which is also what the CSS does.
-function em_scan(string $html, array $inkMap = [], array $bgMap = [], string $root = '#F7F4EE'): array
+function em_scan(string $html, array $inkMap = [], array $bgMap = [], string $root = '#F5F1E9'): array
 {
     $out = [];
     $bg = [$root];
@@ -550,7 +551,7 @@ if (count($below) > 12) {
 // which is also what the CSS does.
 $dInk = [];
 $dBg = [];
-$dRoot = '#171310';
+$dRoot = '#121316';
 foreach (email_dark_palette() as $sel => $props) {
     foreach (preg_split('/\s*,\s*/', (string) $sel) ?: [] as $s) {
         $s = trim($s);
@@ -601,26 +602,27 @@ foreach (array_slice($dBelow, 0, 12) as $b) {
 $shellProbe = email_shell('probe', '<p style="color:#57524A;">probe</p>');
 chk('the shipped shell carries the dark media block',
     strpos($shellProbe, '@media (prefers-color-scheme: dark)') !== false
-    && strpos($shellProbe, '.em-ink{color:#F0E9DC !important;}') !== false);
+    && strpos($shellProbe, '.em-ink{color:#F4F5F7 !important;}') !== false);
 chk('…and declares both colour schemes to the client',
     strpos($shellProbe, 'content="light dark"') !== false);
 
 // The two tokens are the ONE definition each, so they are asserted directly as
 // well — a repointed call site is worthless if the token itself drifts.
-// (The outer ground is #F7F4EE since the modern pass — lighter than the old
-// linen, so these floors only got easier; the tinted panel stays #FAF6EC.)
+// The three grounds an ink really sits on since the emails took the back office's
+// colours: the card #FDFCFA, the inset well #F4F4F2 and the outer ground #F5F1E9.
 chk('email_muted_ink clears AA on all three grounds',
-    em_ratio(email_muted_ink(), '#FFFFFF') >= 4.5
-    && em_ratio(email_muted_ink(), '#FAF6EC') >= 4.5
-    && em_ratio(email_muted_ink(), '#F7F4EE') >= 4.5);
+    em_ratio(email_muted_ink(), '#FDFCFA') >= 4.5
+    && em_ratio(email_muted_ink(), '#F4F4F2') >= 4.5
+    && em_ratio(email_muted_ink(), '#F5F1E9') >= 4.5);
 chk('email_accent_ink clears AA on all three grounds',
-    em_ratio(email_accent_ink(), '#FFFFFF') >= 4.5
-    && em_ratio(email_accent_ink(), '#FAF6EC') >= 4.5
-    && em_ratio(email_accent_ink(), '#F7F4EE') >= 4.5);
-// And the accent stays a FILL: the button's own ink has to clear it. This is the
-// half that makes the ink/fill split coherent rather than just two more colours.
+    em_ratio(email_accent_ink(), '#FDFCFA') >= 4.5
+    && em_ratio(email_accent_ink(), '#F4F4F2') >= 4.5
+    && em_ratio(email_accent_ink(), '#F5F1E9') >= 4.5);
+// And the accent stays a FILL: the button's own ink has to clear it, on the light
+// accent and on the dark twin's. This is the half that makes the ink/fill split
+// coherent rather than just two more colours.
 chk('the accent works as a button fill under its own ink',
-    em_ratio('#3A2E1E', '#C79A64') >= 4.5 && em_ratio('#3A2E1E', '#D6A785') >= 4.5);
+    em_ratio('#1B1208', '#C6885E') >= 4.5 && em_ratio('#1B1208', '#D6A785') >= 4.5);
 
 // ============================================================================
 //  §4  THE OWNER'S "EMAIL ME SAMPLES" BUTTON ACTUALLY SENDS ALL OF THEM
@@ -737,6 +739,18 @@ $RETIRED = [
     '#D6A785' => 'as TEXT it is 2.16:1 — use email_accent_ink() (it stays fine as a FILL)',
     '#ffb74d' => '1.73:1 as 13px text — use email_warn_ink() (fine as a FILL)',
     '#e57373' => '2.99:1 as text — use email_alert_ink() (fine as a FILL)',
+    // The brown palette, retired when the emails took the back office's own colours.
+    // Not contrast failures — a second family of inks beside the dashboard's: §13
+    // reads every email colour against the token it was taken from.
+    '#262320' => 'the old brown title ink — use #1B2A34 (--text-light)',
+    '#2A2622' => 'the old brown title ink — use #1B2A34 (--text-light)',
+    '#2E2A25' => 'the old brown value ink — use #1B2A34 (--text-light)',
+    '#57524A' => 'the old brown body ink — use #1B2A34 (--text-light)',
+    '#5A554C' => 'the old brown body ink — use #1B2A34 (--text-light)',
+    '#655D50' => 'the old brown muted ink — use email_muted_ink()',
+    '#8A5A2B' => 'the old brown accent ink — use email_accent_ink()',
+    '#8A5000' => 'the old warn ink — use email_warn_ink()',
+    '#A3291C' => 'the old alert ink — use email_alert_ink()',
 ];
 $composers = [];
 foreach (glob($APP . '/*.php') as $f) {
@@ -837,15 +851,15 @@ chk('§7 both button urls reach the html', strpos($erH, 'pay=ERTOK') !== false &
 // email_btn's VML arm carries arcsize; email_btn2's cell carries its outline —
 // exactly one of each, so first-filled/rest-outlined holds by construction.
 chk('§7 exactly one FILLED button (email_btn)', substr_count($erH, 'arcsize') === 1);
-chk('§7 exactly one OUTLINED button (email_btn2)', substr_count($erH, 'border:1.5px solid #D8C2A2') === 1);
-chk('§7 the first attached is the filled one', strpos($erH, 'pay=ERTOK') < strpos($erH, 'border:1.5px solid #D8C2A2'));
+chk('§7 exactly one OUTLINED button (email_btn2)', substr_count($erH, 'border-radius:999px;border:1px solid #E2E3E3') === 1);
+chk('§7 the first attached is the filled one', strpos($erH, 'pay=ERTOK') < strpos($erH, 'border-radius:999px;border:1px solid #E2E3E3'));
 chk('§7 the buttons land after the owner\'s words', strpos($erH, 'pay=ERTOK') > strpos($erH, 'lovely to hear from you'));
 $erT = (string) $erB['text'];
 chk('§7 the text half carries each as label + URL', strpos($erT, 'Pay the balance: https://example.test/index.html?pay=ERTOK&b=9') !== false
     && strpos($erT, 'View your invoice: https://example.test/invoice.php?b=9&token=ERINV') !== false);
 $erNone = build_enquiry_reply_email($ENQ, 'About your stay', $replyBody, 'booking', []);
 chk('§7 no actions -> no button markup at all (the markers above measure BUTTONS)',
-    strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], '#D8C2A2') === false);
+    strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], 'border-radius:999px;border:1px solid #E2E3E3') === false);
 
 // ── §8 THE ARRIVAL EMAIL'S REVIEWED MESSAGE ────────────────────────────────
 // When review mode is on the owner edits the email's opening MESSAGE and the
@@ -1111,6 +1125,116 @@ chk('§12 a subject excerpt strips a spoofable reply token and cuts on a word', 
 $nr12 = owner_note_review('Priya', 'Jollyboat', 5, 'Lovely');
 chk('§12 a review note puts rating and cottage in the subject', $nr12['subject'] === "New 5\u{2605} review for Jollyboat — approve?");
 chk('§12 a chat note puts the message in the subject but keeps the routing tag', owner_note_chat_new('Priya', 'p@x.co', 'Is parking free outside?', true, ' [#tok]')['subject'] === 'Priya: “Is parking free outside?” [#tok]');
+
+// ---------------------------------------------------------------------------
+//  §13  THE EMAILS WEAR THE BACK OFFICE'S OWN COLOURS
+//  The ask was "the exact same colour as the admin dashboard", so the claim is a
+//  property of TWO files and is gated as one: every email colour is read against the
+//  app.css token it was taken from, composited onto its real ground where the
+//  dashboard paints it translucent (an email cannot lean on rgba). Move a dashboard
+//  token and this fails until the emails follow — the drift the brown palette was.
+echo "\n== §13 the emails are the dashboard's colours ==\n";
+$cssSrc = (string) file_get_contents($APP . '/app.css');
+$tokens = function (string $block) use ($cssSrc): array {
+    $start = strpos($cssSrc, "\n" . $block . ' {');
+    $end = $start === false ? false : strpos($cssSrc, '}', $start);
+    $out = [];
+    if ($start !== false && $end !== false) {
+        preg_match_all('/--([a-z0-9-]+):\s*([^;]+);/i', substr($cssSrc, $start, $end - $start), $mm, PREG_SET_ORDER);
+        foreach ($mm as $x) {
+            $out[$x[1]] = strtoupper(trim($x[2]));
+        }
+    }
+    return $out;
+};
+$dk = $tokens(':root');
+$lt = $tokens('body.light-mode') + $dk; // light-mode redefines what differs
+// Vacuity guard: a parse that finds nothing would make every equality below compare
+// empty strings — and an empty string equals an empty string.
+chk('§13 read the dashboard tokens from app.css (both themes)',
+    isset($dk['dark-grey'], $dk['glass-bg'], $dk['text-light'], $dk['accent']) && $lt['dark-grey'] !== $dk['dark-grey']);
+// rgba(r, g, b, a) over a solid ground → the solid colour the eye sees.
+$over = function (string $rgba, string $under): string {
+    if (!preg_match('/RGBA\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/i', $rgba, $m) || !preg_match('/^#[0-9A-F]{6}$/i', $under)) {
+        return '?';
+    }
+    $u = [hexdec(substr($under, 1, 2)), hexdec(substr($under, 3, 2)), hexdec(substr($under, 5, 2))];
+    $a = (float) $m[4];
+    return sprintf('#%02X%02X%02X', (int) round($m[1] * $a + $u[0] * (1 - $a)), (int) round($m[2] * $a + $u[1] * (1 - $a)), (int) round($m[3] * $a + $u[2] * (1 - $a)));
+};
+$lCard = $over($lt['glass-bg'] ?? '', $lt['dark-grey'] ?? '');
+$lLine = $over($lt['glass-border'] ?? '', $lCard);
+$shell13 = email_shell('probe', '');
+chk("§13 light: the ground is --dark-grey ({$lt['dark-grey']})", strpos($shell13, 'bgcolor="' . $lt['dark-grey'] . '"') !== false);
+chk("§13 light: the card is the dashboard's glass on that ground ($lCard, edge $lLine)",
+    strpos($shell13, 'background:' . $lCard . ';border:1px solid ' . $lLine . ';border-radius:20px') !== false);
+chk('§13 light: titles are --text-light', strpos(email_h('x'), 'color:' . $lt['text-light'] . ';') !== false);
+chk('§13 light: secondary text is --text-muted', strtoupper(email_muted_ink()) === $lt['text-muted']);
+chk('§13 light: the accent as words is --accent-text', strtoupper(email_accent_ink()) === $lt['accent-text']);
+chk('§13 light: the button is --accent under --accent-ink',
+    strpos(email_btn('https://x.test/', 'Go'), 'background:' . $lt['accent'] . ';color:' . $lt['accent-ink'] . ';') !== false);
+chk('§13 light: warn, alert and done are the status text tokens',
+    strtoupper(email_warn_ink()) === $lt['warn-text'] && strtoupper(email_alert_ink()) === $lt['danger-text']
+    && strpos(email_timeline([['done', '', true]]), 'color:' . $lt['ok-text'] . ';') !== false);
+$dp = email_dark_palette();
+$dCard = $over($dk['glass-bg'] ?? '', $dk['dark-grey'] ?? '');
+$dLine = $over($dk['glass-border'] ?? '', $dCard);
+chk("§13 dark: the ground is --dark-grey ({$dk['dark-grey']})", strtoupper($dp['body, .em-gr']['background'] ?? '') === $dk['dark-grey']);
+chk("§13 dark: the card is the dashboard's glass on that ground ($dCard, edge $dLine)",
+    strtoupper($dp['.em-card']['background'] ?? '') === $dCard && strtoupper($dp['.em-card']['border-color'] ?? '') === $dLine);
+$dInkOk = true;
+foreach (['.em-ink' => 'text-light', '.em-mut' => 'text-muted', '.em-acc' => 'accent-text', '.em-ok' => 'ok-text', '.em-warn' => 'warn-text', '.em-bad' => 'danger-text', '.em-info' => 'info-text'] as $cls => $t) {
+    if (strtoupper($dp[$cls]['color'] ?? '') !== ($dk[$t] ?? '-')) {
+        $dInkOk = false;
+        echo "        $cls is " . ($dp[$cls]['color'] ?? 'unset') . ", --$t is " . ($dk[$t] ?? 'unset') . "\n";
+    }
+}
+chk('§13 dark: every ink is its dashboard token', $dInkOk);
+chk('§13 dark: the button is the dark --accent', strtoupper($dp['.em-btn']['background'] ?? '') === $dk['accent']);
+
+// ONE BUTTON COLOUR. Every filled button in every rendered email is the house accent —
+// the nudges and the rescue used to hand email_btn their cottage colour (3.30:1 on
+// Jollyboat's green), and a button carries WORDS.
+$btnFills = [];
+foreach ($RENDERED as $name => $m) {
+    // The dark hooks put a class on the anchor first, so the shape is matched loosely.
+    if (preg_match_all('/<a\b[^>]*\bstyle="display:block;background:(#[0-9A-Fa-f]{6})/', (string) $m['html'], $bm)) {
+        foreach ($bm[1] as $f) {
+            $btnFills[strtoupper($f)][] = $name;
+        }
+    }
+}
+chk('§13 every filled button in every email is the one accent (' . implode(', ', array_keys($btnFills)) . ')',
+    array_keys($btnFills) === [$lt['accent']] && count($btnFills[$lt['accent']]) >= 15);
+// NO ACCENT BAR: the dashboard's cards carry none, and the bar was three colours.
+$barred = array_keys(array_filter($RENDERED, fn($m) => strpos((string) $m['html'], 'height="3"') !== false));
+chk('§13 no email carries the old 3px accent bar', $barred === []);
+// THE STAY IS A DOT in the cottage's own colour (a fill, so any cottage colour is safe).
+// Looked up by ITERATING: $RENDERED is filled from the capture splice, which static
+// analysis cannot follow, so PHPStan reads a literal offset on it as one on an empty
+// array. The lookup is the same either way.
+$doc13 = function (string $name) use ($RENDERED): array {
+    foreach ($RENDERED as $n => $m) {
+        if ($n === $name) {
+            return $m;
+        }
+    }
+    return ['html' => '', 'text' => ''];
+};
+$pr13 = (string) $doc13('payment-request')['html'];
+chk('§13 a stay email names its cottage with a dot in the cottage colour, above the title',
+    preg_match('/width:8px;height:8px;border-radius:4px;background:#43a047;/i', $pr13) === 1
+    && strpos($pr13, 'width:8px;height:8px') < strpos($pr13, '<h1'));
+// AN OWNER ALERT ENDS WHERE THE OWNER ACTS: the record's own deep link, as the one
+// button in the HTML and as a usable link in the text half.
+$op13 = $doc13('owner-payment');
+$deep = 'https://cottageholidaysblakeney.co.uk/?open=booking-42';
+chk('§13 the payment alert ends in a button to that booking',
+    preg_match('~<a\b[^>]*href="' . preg_quote($deep, '~') . '"[^>]*style="display:block;background:~', (string) $op13['html']) === 1);
+chk('§13 …and its text half carries the same link', strpos((string) $op13['text'], 'Open in the back office: ' . $deep) !== false);
+chk('§13 …a review alert opens moderation, a chat alert the messages folder',
+    strpos(owner_note_review('A', 'B', 5, 'x')['text'], '?open=moderation') !== false
+    && strpos(owner_note_chat_new('A', 'a@x.co', 'x')['text'], '?open=inbox:messages') !== false);
 
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.
