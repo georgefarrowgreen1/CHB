@@ -3509,13 +3509,23 @@ reset link). Rows keep `.acw-prow[data-gemail]` for the search reveal.
 
 ## The Manage index is seven groups (owner-asked "reorder and recategorise")
 
-`#settings-index` in admin-views.html, top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
+`#settings-index` in admin-views.html. **Your account comes FIRST** (owner-asked from Sophia's screen, where it
+sat last): ONE row with the person's photo and name — see "The owner's account" below; Log out lives on that page.
+It is the first GROUP, directly under the summary row, which stays the page's opening line for full access (for a
+limited person the summary is hidden, so the account is the very top). It was tried ABOVE the summary and refused
+on sight: on a phone the uncaptioned status card then reads as part of "Your account", and at ≥900px a group before
+the `column-span: all` summary is laid out in the column flow — narrower than the summary and touching it. Then,
+top-down by use: **Cottages & pricing** (Cottages, Seasonal rates, Pricing,
 Calendar sync) · **Bookings & payments** (Payments, Cancellation policy, Booking terms) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Saved replies, Follow-up emails, Text messages, Away auto-reply, Instant chat answers, AI chat) ·
-**Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) · **Your account** (ONE row
-now, with the owner's photo and name — see "The owner's account" below; Log out moved onto that page) ·
-**System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Rows, ids and acts were unchanged by the reorder — only order, groups and
+**Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
+**System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Gated by
+ui-test-manage §1 (caption first, no group above it, the summary above it) and ui-test-people §B (Sophia's first
+group). **`manageAccessSync` and `settingsFilter` walk only the index's OWN groups (`:scope >`)**: the summary keeps
+a "Needs a look" `.settings-group` of its own, empty until a problem arrives, and the unscoped access sync hid it —
+so a review counted a moment after opening Manage showed "1 thing needs a look" over nothing (ui-test-manage §2).
+Rows, ids and acts were unchanged by the reorder — only order, groups and
 four subtitles moved, so deep links and search are untouched. AI chat used to sit under pricing; "Guests &
 marketing" was nine unrelated rows and "Account & system" mixed your settings with maintenance.
 **And inside them** (second pass): **Status** is health only now — its Maintenance cards moved to where they

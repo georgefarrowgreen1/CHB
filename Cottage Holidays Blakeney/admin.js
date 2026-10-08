@@ -9977,7 +9977,9 @@ function applyAreaFilter() {
 // SOMEONE WITH LIMITED ACCESS SEES ONLY THEIR ROWS. The rows themselves are hidden
 // by the CHB_SEC_CAP / CHB_ACT_CAP style rule (app.js); here the summary row (the
 // state of the whole system: full access), the cottage rows (Prices and cottages),
-// and any group or caption left with nothing in it stand down too.
+// and any group or caption left with nothing in it stand down too. Only the index's
+// OWN groups (`:scope >`): the summary keeps a "Needs a look" group of its own, empty
+// until a problem arrives, and hiding it here left a later problem with nowhere to show.
 function manageAccessSync() {
     const idx = document.getElementById('settings-index');
     if (!idx) return;
@@ -9986,12 +9988,12 @@ function manageAccessSync() {
     if (mv) mv.hidden = !full;
     const co = document.getElementById('cottages-overview');
     if (co) co.hidden = !chbCan('prices');
-    idx.querySelectorAll('.settings-group').forEach((g) => {
+    idx.querySelectorAll(':scope > .settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return;
         const any = Array.from(g.querySelectorAll('.settings-row')).some((r) => getComputedStyle(r).display !== 'none') || (g.querySelector('#cottages-overview') && chbCan('prices'));
         /** @type {HTMLElement} */ (g).style.display = any ? '' : 'none';
     });
-    idx.querySelectorAll('.settings-section-label').forEach((l) => {
+    idx.querySelectorAll(':scope > .settings-section-label').forEach((l) => {
         let n = l.nextElementSibling;
         while (n && !n.classList.contains('settings-group')) n = n.nextElementSibling;
         /** @type {HTMLElement} */ (l).style.display = !n || /** @type {HTMLElement} */ (n).style.display === 'none' ? 'none' : '';
@@ -12449,7 +12451,8 @@ function settingsFilter(q) {
     const idx = document.getElementById('settings-index');
     if (!idx) return;
     let total = 0;
-    idx.querySelectorAll('.settings-group').forEach((g) => {
+    // The index's own groups only — the summary's "Needs a look" list is not a setting.
+    idx.querySelectorAll(':scope > .settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return; // staging-only; JS controls it
         let any = false;
         g.querySelectorAll('.settings-row').forEach((row) => {
@@ -12465,7 +12468,7 @@ function settingsFilter(q) {
         });
         g.style.display = any ? '' : 'none';
     });
-    idx.querySelectorAll('.settings-section-label').forEach((l) => {
+    idx.querySelectorAll(':scope > .settings-section-label').forEach((l) => {
         let n = l.nextElementSibling;
         while (n && !n.classList.contains('settings-group')) n = n.nextElementSibling;
         l.style.display = n && n.style.display !== 'none' ? '' : 'none';
