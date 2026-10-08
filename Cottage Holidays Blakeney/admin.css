@@ -7125,17 +7125,15 @@ body.rail-on.admin-screen .ac-hd {
   color: var(--danger-text);
 }
 /* The two standing dock trims apply to the rail's mirror rows too: search-first
-   collapses Payments+Manage into ⌘K (Cottages is a Manage section, so it goes
-   with them), and the offline day sheet trims the dead destinations. */
+   collapses Payments+Manage into ⌘K, and the offline day sheet trims the dead
+   destinations. */
 body.search-first #admin-rail .rail-row[data-view='view-accounts'],
-body.search-first #admin-rail .rail-row[data-view='view-settings'],
-body.search-first #admin-rail .rail-row[data-rail='cottages'] {
+body.search-first #admin-rail .rail-row[data-view='view-settings'] {
   display: none;
 }
 body.offline-snap #admin-rail .rail-row[data-view='view-inbox'],
 body.offline-snap #admin-rail .rail-row[data-view='view-accounts'],
-body.offline-snap #admin-rail .rail-row[data-view='view-settings'],
-body.offline-snap #admin-rail .rail-row[data-rail='cottages'] {
+body.offline-snap #admin-rail .rail-row[data-view='view-settings'] {
   display: none;
 }
 /* …and the third trim: a switched-off Mac takes its row with it, or the desktop

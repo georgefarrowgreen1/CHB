@@ -10018,16 +10018,14 @@ function renderCottagesOverview() {
             <span class="settings-row-chev" aria-hidden="true">›</span>
         </button>`;
     };
-    // Removed cottages are kept (their history keys off them) and can be restored —
-    // from the full list, which this row is the way to.
-    const gone = (propertyList || []).filter((p) => p.archived).length;
-    const html = keys.map(row).join('') + (gone
-        ? `<button type="button" class="settings-row mg-cot-gone" data-act="settingsOpen" data-arg="accom">
+    // Removed cottages are kept (their history keys off them) and listed here too,
+    // each opening its own page, where Restore is. There is no list page any more.
+    const gone = (propertyList || []).filter((p) => p.archived && p.prop_key);
+    const html = keys.map(row).join('') + gone.map((p) => `<button type="button" class="settings-row mg-cot mg-cot-gone" data-act="openAccomThenSec" data-arg="${escapeHtml(p.prop_key)}">
             <span class="settings-row-ic">${HOUSE}</span>
-            <span class="settings-row-main"><span class="settings-row-label">Removed cottages</span><span class="settings-row-sub">${gone} kept with their history · restore from here</span></span>
+            <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(p.name || p.prop_key)}</span><span class="settings-row-sub">Removed from the site · tap to restore</span></span>
             <span class="settings-row-chev" aria-hidden="true">›</span>
-        </button>`
-        : '');
+        </button>`).join('');
     if (el.dataset.sig === html) return; // unchanged → no repaint, no replayed motion
     el.dataset.sig = html;
     el.innerHTML = html;
@@ -12525,6 +12523,13 @@ function settingsOpen(section) {
         if (sheeted) { sheeted.style.display = ''; try { settingsRenderSection(section); } catch (e) {} }
         return;
     }
+    // THE COTTAGE LIST PAGE IS GONE (owner-asked): Manage lists every cottage, so a
+    // bare open (the search's "Cottages", a help topic's "Open Cottages") lands
+    // there. A cottage's own page is settingsOpenAccom(k).
+    if (section === 'accom') {
+        settingsShowIndex();
+        return;
+    }
     adminHistPush('view-settings', section);
     // Same as accountsOpen: come back to the section, not the index.
     if (section) chbNavRemember('settings:' + section);
@@ -12613,7 +12618,6 @@ function settingsRenderSection(section) {
     else if (section === 'apis') renderApis();
     else if (section === 'security') renderSecurity();
     else if (section === 'payments') renderSquareSettings();
-    else if (section === 'accom') renderAccomList();
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
     else if (section === 'seasongrid') renderSeasonGrid();
@@ -15427,78 +15431,6 @@ async function saveApiKey(which) {
         }
     }
 }
-// A small "row that drills into a cottage" list for accom + calendar sections.
-function cottageRowsHtml(onclickFn) {
-    return Object.keys(propertyMeta)
-        .map(
-            (k) =>
-                `<button class="settings-row" ${chbAttrs(onclickFn, String(k))}>
-                    <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
-                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span></span><span class="settings-row-chev">›</span>
-                </button>`,
-        )
-        .join('');
-}
-async function renderAccomList() {
-    const list = document.getElementById('accom-list');
-    const detail = document.getElementById('accom-detail');
-    if (detail) {
-        detail.style.display = 'none';
-        detail.innerHTML = '';
-    }
-    settingsBackTarget = () => settingsShowIndex();
-    const title = document.getElementById('settings-panel-title');
-    if (title) title.textContent = SETTINGS_TITLES.accom;
-    if (!list) return;
-    list.style.display = '';
-    const emptyHint = Object.keys(propertyMeta).length
-        ? ''
-        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add a cottage” below to create your first one.</p>';
-    list.innerHTML =
-        emptyHint +
-        `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
-    // Add a current-month occupancy donut to each cottage (load bookings if needed).
-    try {
-        if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
-        const occ = cottageMonthOccupancy();
-        list.innerHTML =
-            emptyHint +
-            `<div class="settings-group">${Object.keys(propertyMeta)
-                .map((k) => {
-                    const arch = propertyMeta[k] && propertyMeta[k].archived;
-                    const priv = propertyMeta[k] && propertyMeta[k].unlisted;
-                    const o = occ[k] || { pct: 0, nights: 0, total: 0 };
-                    const sub = arch
-                        ? 'Hidden from your website (tap to bring back)'
-                        : priv
-                          ? `Private · ${o.pct}% booked this month · ${o.nights}/${o.total} nights`
-                          : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
-                    const badge = arch
-                        ? ' <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:600;">· removed</span>'
-                        : priv
-                          ? ' <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:600;">· private</span>'
-                          : '';
-                    return `
-                    <button class="settings-row" ${chbAttrs('settingsOpenAccom', String(k))} ${arch ? 'style="opacity:0.55;"' : ''}>
-                        <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
-                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${badge}</span><span class="settings-row-sub">${sub}</span></span>
-                        <span class="settings-row-chev" style="margin-left:10px;">›</span>
-                    </button>`;
-                })
-                .join('')}</div>${accomAddRowHtml()}`;
-    } catch (e) {
-        /* keep the plain list if booking data isn't available */
-    }
-}
-// The "Add accommodation" action shown under the cottage list in Preferences.
-function accomAddRowHtml() {
-    return `<div class="settings-group" style="margin-top:14px;">
-                <button class="settings-row" data-act="addAccommodationPrompt">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Add a cottage</span><span class="settings-row-sub">Create it, then fill in its details</span></span><span class="settings-row-chev">›</span>
-                </button>
-            </div>`;
-}
 // "Create then fill in": just a name + nightly couple rate. The server
 // generates the key/slug/accent; everything else is completed afterwards in
 // the new cottage's Preferences folders. All booking/payment logic works for
@@ -15547,11 +15479,8 @@ async function addAccommodationPrompt() {
             unlisted: unlisted ? 1 : 0,
         });
         await loadRates();
-        await renderAccomList();
         try { renderCottagesOverview(); } catch (e) {}
-        // The landing's "Add a cottage" sits OUTSIDE #sec-accom, so open that section
-        // first — settingsOpenAccom only fills its (hidden) detail pane.
-        if (res && res.prop_key) { settingsOpen('accom'); settingsOpenAccom(res.prop_key); } // drop straight into "fill in"
+        if (res && res.prop_key) settingsOpenAccom(res.prop_key); // drop straight into "fill in"
         toast(
             unlisted
                 ? `Added private cottage "${name}" — book it from the calendar or Add booking.`
@@ -15574,7 +15503,7 @@ async function setAccommodationPrivate(k, makePrivate) {
     try {
         await apiPost('rates.php', { action: 'set_unlisted', prop_key: k, unlisted: makePrivate ? 1 : 0 });
         await loadRates();
-        await renderAccomList();
+        accomAfterChange(k);
         toast(makePrivate ? `"${name}" is now private (off the website).` : `"${name}" is now public on your website.`);
     } catch (e) {
         glassAlert("Couldn't update it: " + (e && e.message ? e.message : e));
@@ -15587,7 +15516,7 @@ async function archiveAccommodation(k) {
     try {
         await apiPost('rates.php', { action: 'archive', prop_key: k });
         await loadRates();
-        await renderAccomList();
+        accomAfterChange(k, true);
         toast(`"${name}" removed from the site — bookings & history kept.`, undefined, {
             label: 'Undo',
             fn: () => restoreAccommodation(k),
@@ -15601,7 +15530,7 @@ async function restoreAccommodation(k) {
     try {
         await apiPost('rates.php', { action: 'unarchive', prop_key: k });
         await loadRates();
-        await renderAccomList();
+        accomAfterChange(k);
         toast(`"${name}" restored — live on the site again.`);
     } catch (e) {
         glassAlert("Couldn't restore it: " + (e && e.message ? e.message : e));
@@ -15709,11 +15638,29 @@ const ACCOM_SECTIONS = [
         ic: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     },
 ];
+// A cottage's page, opened straight from Manage's cottage rows: there is no list
+// page in between any more, so this shows the panel itself (unless the search
+// sheet is hosting the section) and Back returns to Manage.
+function accomPanelShow() {
+    if (typeof __cmdkSheet !== 'undefined' && __cmdkSheet && __cmdkSheet.section === 'accom') return;
+    const idx = document.getElementById('settings-index');
+    const panel = document.getElementById('settings-panel');
+    const chrome = document.getElementById('settings-chrome');
+    if (!panel) return;
+    if (idx) idx.style.display = 'none';
+    if (chrome) chrome.style.display = 'none';
+    panel.style.display = '';
+    panel.classList.remove('is-oa');
+    panel.querySelectorAll('.settings-sec').forEach((x) => (/** @type {HTMLElement} */ (x).style.display = 'none'));
+    const sec = document.getElementById('sec-accom');
+    if (sec) sec.style.display = '';
+    const cap = document.getElementById('settings-panel-cap');
+    if (cap) cap.innerHTML = '';
+}
 function settingsOpenAccom(k) {
+    accomPanelShow();
     adminHistPush('view-settings', 'accom', { prop: k });
-    const list = document.getElementById('accom-list');
     const detail = document.getElementById('accom-detail');
-    if (list) list.style.display = 'none';
     if (detail) {
         detail.style.display = '';
         const arch = propertyMeta[k] && propertyMeta[k].archived;
@@ -15805,17 +15752,37 @@ function settingsOpenAccom(k) {
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
-    settingsBackTarget = () => settingsOpen('accom');
+    settingsBackTarget = () => settingsShowIndex();
     __settingsPath = { section: 'accom', prop: k };
+    try { chbFrameSync(); } catch (e) {}
     chbScroll(window, { top: 0 });
+}
+// A change made on a cottage's page (private, removed, restored) repaints that page
+// and Manage's cottage rows in place; a removed cottage takes the owner back to
+// Manage, where it now sits under "Removed".
+function accomAfterChange(k, leave) {
+    try { renderCottagesOverview(); } catch (e) {}
+    const sec = document.getElementById('sec-accom');
+    const onPage = !!(__settingsPath && __settingsPath.section === 'accom' && __settingsPath.prop === k && sec && sec.getClientRects().length);
+    if (!onPage) return;
+    if (leave) {
+        settingsShowIndex();
+        return;
+    }
+    const y = window.scrollY;
+    const was = __histReplay;
+    __histReplay = true; // a repaint, not a new step in the history
+    try {
+        settingsOpenAccom(k);
+    } finally {
+        __histReplay = was;
+    }
+    chbScroll(window, { top: y });
 }
 // Jump STRAIGHT to a cottage's section from anywhere (e.g. search) — reveals the
 // Cottages panel and hides the cottage list first, since settingsOpenAccomSec on
 // its own only fills the detail pane and assumes that chrome is already shown.
 function settingsGotoAccomSec(k, sec) {
-    settingsOpen('accom');
-    const list = document.getElementById('accom-list');
-    if (list) list.style.display = 'none';
     settingsOpenAccomSec(k, sec);
 }
 // A section is a FOLD on the cottage's one page now — deep links (search,
@@ -15938,8 +15905,6 @@ function settingsOpenAccomSec(k, sec) {
     // A deep link from ANOTHER section (Pricing's "Extra guests") must open the
     // cottage pages first, or the editor is built into a hidden section and the
     // tap appears to do nothing.
-    const host = document.getElementById('sec-accom');
-    if (!host || !host.getClientRects().length) settingsOpen('accom');
     settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
     const key = 'ac-' + k + '-' + sec;
@@ -23711,8 +23676,6 @@ const CHB_RAIL_ROWS = [
         ic: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>' },
     { view: 'view-accounts', label: 'Payments', act: 'data-act="openAccounts"', cnt: 'money',
         ic: '<circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text>' },
-    { view: '', rail: 'cottages', label: 'Cottages', act: 'data-act="navSettingsSection" data-arg="accom"',
-        ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.8V20h13V9.8"/><path d="M9.5 20v-6h5v6"/>' },
     { view: 'view-keysafe', label: 'Key safes', act: 'data-act="openKeysafe"', cnt: 'keysafe',
         ic: '<circle cx="8" cy="15.5" r="4.5"/><path d="M11.5 12 20.5 3"/><path d="M16 7.5l2.5 2.5"/><path d="M18.5 5l2 2"/>' },
     { view: 'view-settings', label: 'Manage', act: 'data-act="openArea" data-arg="manage"',
@@ -23809,14 +23772,8 @@ function chbRailSync(duties, owed) {
     // ≥1200, so there is ONE alias map, not two that drift.
     const cur = document.querySelector('.admin-dock-btn.current');
     const curView = cur ? cur.getAttribute('data-view') || '' : '';
-    // Cottages refinement: while Manage is showing the cottages section, the
-    // Cottages row is the honest current. Judged on the PAINT
-    // (getClientRects), not a class — the property-is-not-the-pixel rule.
-    const accomSec = document.getElementById('sec-accom');
-    const cottagesOn = curView === 'view-settings' && !!accomSec && accomSec.getClientRects().length > 0;
     rail.querySelectorAll('.rail-row').forEach((r) => {
-        const isCot = r.getAttribute('data-rail') === 'cottages';
-        const on = isCot ? cottagesOn : !cottagesOn && !!r.getAttribute('data-view') && r.getAttribute('data-view') === curView;
+        const on = !!r.getAttribute('data-view') && r.getAttribute('data-view') === curView;
         if (on) r.setAttribute('aria-current', 'page');
         else r.removeAttribute('aria-current');
     });

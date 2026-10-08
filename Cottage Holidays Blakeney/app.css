@@ -12258,9 +12258,8 @@ textarea.input-glass:not(.field-sm) {
     column-span: all;
     margin-bottom: 26px;
   }
-  /* Short sub-lists (the cottage list + staging test centre) read as ONE
-       column — two columns just split a 3-row list from its action row. */
-  #accom-list.settings-index,
+  /* The staging test centre is a short sub-list: ONE column — two just split a
+       3-row list from its action row. */
   #testcentre-list.settings-index {
     column-count: 1;
     max-width: 640px;

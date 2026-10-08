@@ -120,7 +120,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     });
     ok(themed, 'the theme row really flips the theme (and back)');
     const rows = await page.evaluate(() => [...document.querySelectorAll('#admin-rail .rail-row')].map((r) => (r.querySelector('.rail-lbl') || {}).textContent || ''));
-    ok(rows.length === 7 && rows.join('|') === 'Today|Inbox|AI chat|Payments|Cottages|Key safes|Manage', `seven destinations (${rows.join(' · ')})`);
+    ok(rows.length === 6 && rows.join('|') === 'Today|Inbox|AI chat|Payments|Key safes|Manage', `six destinations, the dock's own (${rows.join(' · ')})`);
     ok(await page.evaluate(() => { const r = document.querySelector('#admin-rail .rail-row[data-view="view-accounts"]'); return !!r && r.getAttribute('aria-current') === 'page'; }), 'Payments is current while Payments is open');
     const counts = await page.evaluate(() => ({
         inbox: (document.getElementById('rail-cnt-inbox') || {}).textContent || '',
@@ -137,19 +137,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.waitForTimeout(900);
     ok(await activeView() === 'view-backoffice', 'the Today row routes');
     ok(await page.evaluate(() => { const r = document.querySelector('#admin-rail .rail-row[data-view="view-backoffice"]'); return !!r && r.getAttribute('aria-current') === 'page'; }), 'and takes the current mark with it');
-    await page.click('#admin-rail .rail-row[data-rail="cottages"]');
-    await page.waitForTimeout(900);
+    // No Cottages row any more: it opened a cottage LIST, and Manage lists the
+    // cottages itself. A cottage's own page keeps Manage current.
+    await page.evaluate(() => { nav('view-settings'); settingsOpenAccom(Object.keys(propertyMeta)[0]); });
+    await page.waitForTimeout(600);
     const cot = await page.evaluate(() => ({
-        view: (document.querySelector('.page-view.active') || {}).id,
         sec: (() => { const s = document.getElementById('sec-accom'); return !!s && s.getClientRects().length > 0; })(),
-        cur: (document.querySelector('#admin-rail .rail-row[data-rail="cottages"]') || {}).getAttribute ? document.querySelector('#admin-rail .rail-row[data-rail="cottages"]').getAttribute('aria-current') : null,
         manageCur: document.querySelector('#admin-rail .rail-row[data-view="view-settings"]').getAttribute('aria-current'),
+        noRow: !document.querySelector('#admin-rail .rail-row[data-rail="cottages"]'),
     }));
-    ok(cot.view === 'view-settings' && cot.sec, 'Cottages opens the cottage list (Manage’s accom section, promoted)');
-    ok(cot.cur === 'page' && cot.manageCur !== 'page', 'and Cottages — not Manage — is current, judged on the PAINT of the section');
-    await page.click('#admin-rail .rail-row[data-view="view-settings"]');
-    await page.waitForTimeout(900);
-    ok(await page.evaluate(() => { const m = document.querySelector('#admin-rail .rail-row[data-view="view-settings"]'); const c = document.querySelector('#admin-rail .rail-row[data-rail="cottages"]'); return m.getAttribute('aria-current') === 'page' && c.getAttribute('aria-current') !== 'page'; }), 'the Manage row takes it back at the index');
+    ok(cot.sec && cot.manageCur === 'page' && cot.noRow, 'a cottage page opens under Manage, which stays current (no Cottages row)');
     for (const [sel, view] of [['[data-view="view-inbox"]', 'view-inbox'], ['[data-view="view-keysafe"]', 'view-keysafe'], ['[data-view="view-aichat"]', 'view-aichat']]) {
         await page.click(`#admin-rail .rail-row${sel}`);
         await page.waitForTimeout(700);

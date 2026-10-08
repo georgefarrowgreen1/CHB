@@ -1168,8 +1168,18 @@ animated; the words change at once and only their arrival animates; returning to
 a one-shot halo. **No green pills and no shouted captions on the landing.** The cottages are ROWS in the Cottages &
 pricing group (`#cottages-overview` is `display: contents` inside it): name, "from £x a night", the month's booked
 % counting up beside a filling bar, opening that cottage; the old "Cottages" row became **Add a cottage**
-(`addAccommodationPrompt`) — the full cottage list (archived ones included) is still `settingsOpen('accom')`,
-reached from search. Gated by ui-test-manage §1–§2, ui-test-needs-you §10, ui-test-hig §2 (re-aimed).
+(`addAccommodationPrompt`). Gated by ui-test-manage §1–§2, ui-test-needs-you §10, ui-test-hig §2 (re-aimed).
+**THE COTTAGE LIST PAGE IS GONE** (owner-asked: "can this intermediary page be removed, the cottages are listed on
+the manage page"). Tapping a cottage on Manage opened the list first and then the cottage, so Back landed on a second
+list of what Manage already shows. `settingsOpenAccom(k)` now shows the panel itself (`accomPanelShow`, skipped while
+the search sheet hosts the section) and Back returns to Manage; a bare `settingsOpen('accom')` (search's "Cottages",
+help topics' "Open Cottages", old history entries) lands on the Manage index; REMOVED cottages are rows on Manage
+too ("Removed from the site · tap to restore"), each opening its own page where Restore is; private/remove/restore
+repaint in place (`accomAfterChange` — a removed cottage returns to Manage); `renderAccomList`, `cottageRowsHtml`,
+`accomAddRowHtml` and `#accom-list` are deleted, and the rail's **Cottages** row went with the page (it opened the
+list; Manage stays current on a cottage page). Shipped without running the suites, at the owner's ask:
+ui-test-railspine (six rows, Manage current on a cottage page) and layout-test's admin-accom scene were re-aimed
+but not run.
 
 ## Manage leads with VERDICTS above the untouched toolbox
 
@@ -3311,7 +3321,8 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   keysafe duties in the same list — each gated as equality against the in-page
   derivation. The current row MIRRORS `.admin-dock-btn.current` (nav() maintains
   it, alias map included, even while the dock is display:none) so there is ONE
-  alias map; the Cottages row goes current on the PAINT of `#sec-accom`
+  alias map; (the Cottages row is GONE with the cottage list page — Manage stays current on a cottage page) the
+  Cottages row went current on the PAINT of `#sec-accom`
   (getClientRects, the property-is-not-the-pixel rule), which needs the
   `chbFrameSync()` calls in settingsOpen/settingsShowIndex — settingsOpen doesn't
   nav() when Manage is already up, so the nav() hook alone misses the drill-in.
