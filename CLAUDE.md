@@ -3718,6 +3718,51 @@ Sign-in codes and reset links aren't kinds: they only ever go to the person sign
   fallback, the backup's extras, the must refusal, reply attribution, the lock state, the limited page and the digest
   note.
 
+## Signing in to the back office with an email (reported: "you can only get in with a password reset")
+
+Every path works on a clean server, so none of this showed on a fresh copy. It took a full-stack copy (real
+MariaDB, real `php -S`, real mail caught by a local SMTP sink so the codes are read from the actual emails, two-step on)
+plus the states a real phone carries. Four defects, each confirmed there:
+- **THE PASSWORD STEP FELL THROUGH TO A GUEST LOGIN.** `guestLogin()` tried the password as a GUEST's after any failed
+  back-office one, even after a code had proved the address was a back-office sign-in ("it needs your password too").
+  A wrong password then read "Email or password not recognised". If a GUEST account shared the address (likely for
+  anyone who has tested the guest side), its password signed the person in as that guest. A phone's password manager
+  holds one password per address on a site, so it fills the guest one in. Now: after the code (`AU.via === 'email'`),
+  or for a username, the back office alone is tried. Any back-office error with a `code`, or a status other than a
+  plain 401, is shown as itself and never retried as a guest. With the inbox proven, `admin_login` says exactly what
+  went wrong: `wrong_password`, or `guest_password` ("that's the password for your guest account"). `guest_login`
+  refuses (409 `back_office`) while the address is proven a back-office sign-in, because an old copy of the page
+  cached on a phone still makes that call. `admin_email_proven($row)` is the one test for the proof.
+- **PASSWORD MANAGERS COULD NOT FILE OR FIND THE PASSWORD.** The username on the password step was
+  `<input type="hidden">`, which managers skip, and the invite/reset step had no username at all. So a password a phone
+  saved (its own "Use Strong Password" suggestion included) was filed under no address and not offered back. The person
+  never knew it, and only a reset got them in, every time. Both steps are real `<form>`s now (`data-act-submit`,
+  `display: contents` so the step's gap still spaces them, fields with no `name`, the default stopped first). Each
+  carries a read-only `autocomplete="username"` field (`authIdField`) in the same form as the password: the typed
+  email or username, or on invite/reset the person's own address, which `admin_link_check` now returns as `email`.
+  The button is a submit (`authSubmit`, `data-submit`, not `data-act`, or a click would run the work twice), so Return
+  signs in. Focus skips the read-only field.
+- **THE ADDRESS THAT GETS YOUR CODES MUST BE AN ADDRESS YOU CAN SIGN IN WITH.** The first owner's codes and reset links
+  go to `OWNER_NOTIFY_EMAIL` while their own email column is blank (`admin_contact_email`), but `admin_find()` searched
+  the column alone, so that address went down the guest path. It now falls back to the first owner on exactly that
+  address and backfills the row.
+- **THE CODE SCREEN PROMISED A LINK THE BACK-OFFICE EMAIL DID NOT CARRY** ("Or tap the link in the same email"). The
+  sign-in code email has one now: `?signin=<email>&code=<6 digits>`, handled by `maybeSigninLink()`, which opens the
+  code step with the code filled in and checks it as if typed; the password still follows. It rescues a phone that
+  reloaded the app while the code was fetched from Mail. A new-device code is titled "Your code for a new device", so
+  two codes in one inbox can't be mistaken.
+- Gates: test-integration §51 (wrong password, the guest password named, guest login refused with no guest session,
+  the right password in, the blank-email owner found and backfilled, `admin_link_check`'s email), ui-test-people §C (a
+  real form a password manager can read, the caret in the password, Return submits, the guest password named and
+  never tried as a guest, the invite filing under the address, the one-tap link), test-emails-render §14 (the link in
+  both halves, none on a device code, distinct subjects). ui-test-signin and the full-stack harness were re-aimed to
+  `[data-submit]`. Break-tested six ways in isolation; two are telling. With the guest-login refusal removed, the
+  server signed Sophia into her GUEST account. With the owner-address fallback removed, the owner's own address
+  came back `{new: true}`, a brand-new guest being asked for a name.
+- NB not reproduced: a phone's own password-manager behaviour. No WebKit here, so the filing fix rests on the
+  standard rule that managers read `autocomplete="username"` on a real field in the password's form. If a phone still
+  offers the wrong password after this, the screen now names it.
+
 ## The Status page (approved demo, built "exactly like the demo")
 
 Manage → Status is one run of `diagnostics.php` drawn as: a HEALTH RING (fraction of

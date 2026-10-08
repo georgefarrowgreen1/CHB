@@ -14448,7 +14448,10 @@ body:not(.has-booked):not(.owner-mode) .exp-back { display: none; }
 .ga-who b { display: block; font-size: var(--fs-body); }
 .ga-who span span { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
 .ga-chip { display: flex; align-items: center; gap: 8px; align-self: flex-start; max-width: 100%; padding: 4px 4px 4px 16px; background: var(--well-bg); border-radius: var(--r-pill); }
-.ga-chip span { font-size: var(--fs-sub); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ga-chip input { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; outline: none; color: inherit; font: inherit; font-size: var(--fs-sub); font-weight: 600; text-overflow: ellipsis; field-sizing: content; }
+/* A password step is a real form (what a password manager watches) that lays out
+   as if it were not there, so the step's own gap still spaces its fields. */
+.ga-aform { display: contents; }
 .ga-chip button { min-height: 36px; padding: 0 12px; border-radius: var(--r-pill); border: 0; background: var(--glass-bg); color: var(--accent-text); font: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; position: relative; }
 .ga-chip button::before { content: ''; position: absolute; inset: -4px 0; }
 .ga-code { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }

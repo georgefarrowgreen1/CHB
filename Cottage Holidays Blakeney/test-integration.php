@@ -4973,6 +4973,7 @@ $rootDb->prepare('UPDATE admins SET invite_hash = ? WHERE id = ?')->execute([has
 $soph = [];
 $r = http($soph, 'POST', '/auth.php', ['action' => 'admin_link_check', 'kind' => 'invite', 'link' => "$sId.$tok"]);
 it_check('§51 the invite link greets the person by name and shows their username', $r['code'] === 200 && ($r['json']['first'] ?? '') === 'Sophia' && ($r['json']['username'] ?? '') === 'sophiahart', $r['raw']);
+it_check('§51 …and the address they sign in with (the page files the new password under it)', ($r['json']['email'] ?? '') === 'sophia51@example.com', $r['raw']);
 $r = http($soph, 'POST', '/auth.php', ['action' => 'admin_link_check', 'kind' => 'invite', 'link' => "$sId." . str_repeat('5b', 24)]);
 it_check('§51 a wrong token is a dead link, said in words', $r['code'] === 410 && strpos((string) ($r['json']['error'] ?? ''), 'invite link') !== false, $r['raw']);
 $r = http($soph, 'POST', '/auth.php', ['action' => 'admin_invite_accept', 'link' => "$sId.$tok", 'password' => 'short', 'again' => 'short']);
@@ -5054,8 +5055,34 @@ http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 
 $cSet('sophia51@example.com', '515151');
 $r = http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '515151']);
 it_check('§51 a back-office email\'s code asks for the password next (no guest account is made)', $r['code'] === 200 && ($r['json']['admin'] ?? false) === true && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE email = 'sophia51@example.com'")->fetchColumn() === 0, $r['raw']);
+// THE BACK OFFICE'S PASSWORD STEP IS ITS OWN (reported as "only a password reset gets
+// us in"). A wrong password says so; a GUEST account's password on the same address
+// is named as such and never signs anyone in as that guest — and while this browser
+// has proved the address as a back-office sign-in, the guest login refuses it too,
+// because an older copy of the page still cached on a phone tries it.
+$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'not her password at all']);
+it_check('§51 after the code, a wrong password says so (not "not recognised")', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'wrong_password', $r['raw']);
+$rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Sophia Hart', 'sophia51@example.com', '', '', '', ?, NOW())")->execute([password_hash('her guest password', PASSWORD_DEFAULT)]);
+$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'her guest password']);
+it_check('§51 …her GUEST account\'s password is named as that', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'guest_password', $r['raw']);
+$r = http($emJar, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'sophia51@example.com', 'password' => 'her guest password']);
+$gs = http($emJar, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§51 …and the guest login refuses it while the address is proven a back-office sign-in (no guest session)', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'back_office' && empty($gs['json']['guest']), $r['raw'] . ' / ' . $gs['raw']);
 $r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'sophias own passphrase']);
-it_check('§51 …and with it, they are in as themselves', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
+it_check('§51 …and with the right one, they are in as themselves', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
+$rootDb->exec("DELETE FROM guests WHERE email = 'sophia51@example.com'");
+// THE ADDRESS THAT GETS YOUR CODES IS AN ADDRESS YOU CAN SIGN IN WITH: the first
+// owner's codes go to the config owner address while their own email is blank, so
+// that address must find them, not start a guest sign-in — and it is saved onto
+// their row as it does.
+$rootDb->prepare("UPDATE admins SET email = '' WHERE id = ?")->execute([$ownerId]);
+$owJar = [];
+http($owJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => $ownContact]);
+$cSet($ownContact, '616161');
+$r = http($owJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => $ownContact, 'code' => '616161']);
+$owEmail = (string) $rootDb->query("SELECT email FROM admins WHERE id = $ownerId")->fetchColumn();
+it_check('§51 the owner address their codes go to finds the first owner even with their email blank — and fills it in', $r['code'] === 200 && ($r['json']['admin'] ?? false) === true && $owEmail === $ownContact && (int) $rootDb->query('SELECT COUNT(*) FROM guests WHERE email = ' . $rootDb->quote($ownContact))->fetchColumn() === 0, $owEmail . ' ' . $r['raw']);
+$rootDb->prepare('UPDATE admins SET email = ? WHERE id = ?')->execute([$ownContact, $ownerId]); // as it was, whatever happened above
 // A reset link: a new password, and every other session ends.
 $rtok = str_repeat('7c', 24);
 $r = http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'sophiahart']);

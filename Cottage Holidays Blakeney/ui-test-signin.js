@@ -114,7 +114,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.waitForTimeout(300);
     ok(/Your password/.test(await step()) && sent('guest_code_request').length === before, 'a username with no @ goes straight to a password, no code sent');
     await page.fill('#login-password', 'wrongpass1');
-    await page.click('#ga-auth [data-act="authPasswordGo"]');
+    await page.click('#ga-auth [data-submit="authPasswordGo"]');
     await page.waitForTimeout(500);
     ok(sent('admin_login').length >= 1 && await page.evaluate(() => !document.getElementById('login-error').hidden), 'the password tries the owner first, then says it doesn\'t match');
     verifyMode = 'locked';
