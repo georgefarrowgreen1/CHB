@@ -4939,6 +4939,26 @@ $r = http($sqJar, 'GET', '/my-bookings.php');
 it_check('§50 …and the squatter\'s session is signed out', $r['code'] === 401, $r['raw']);
 $r = http($realJar, 'GET', '/my-bookings.php');
 it_check('§50 …while the real guest sees their stay', $r['code'] === 200 && count($r['json']['bookings'] ?? []) === 1, substr($r['raw'], 0, 120));
+// A CODE IS A WHOLE SIGN-IN, so a DAY's wrong guesses from every IP are capped: at
+// ten, codes for that address pause, the right one included, and no new one is
+// sent. Ten rows from ten other IPs stand in for a distributed guesser (one IP is
+// stopped at five by throttle_check before the day's count matters).
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'code%'");
+$capJar = [];
+http($capJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'cap50@gmail.com']);
+$cSet('cap50@gmail.com', '808080');
+$capIns = $rootDb->prepare("INSERT INTO login_attempts (ip, identifier, success) VALUES (?, 'codev:cap50@gmail.com', 0)");
+for ($i = 0; $i < 10; $i++) {
+    $capIns->execute(['10.9.0.' . $i]);
+}
+$r = http($capJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'cap50@gmail.com', 'code' => '808080']);
+it_check('§50 ten wrong codes in a day, from anywhere, pause the address — the right code included', $r['code'] === 429 && ($r['json']['code'] ?? '') === 'paused', $r['raw']);
+$r = http($capJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'cap50@gmail.com']);
+it_check('§50 …and no new code is sent to it until the day is out', $r['code'] === 429 && ($r['json']['code'] ?? '') === 'paused' && (int) $rootDb->query("SELECT COUNT(*) FROM guest_codes WHERE email = 'cap50@gmail.com'")->fetchColumn() === 1, $r['raw']);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'codev:cap50@gmail.com' AND ip = '10.9.0.9'");
+$r = http($capJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'cap50@gmail.com', 'code' => '808080']);
+it_check('§50 …while nine is still under the line', $r['code'] === 200 && ($r['json']['new'] ?? false) === true, $r['raw']);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'code%'");
 $rootDb->exec("DELETE FROM bookings WHERE email = 'claim50@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email IN ('claim50@gmail.com', 'newbie50@gmail.com')");
 $rootDb->exec("DELETE FROM guest_codes");
@@ -5049,27 +5069,36 @@ $r = http($admin, 'POST', '/people.php', ['action' => 'passkey_remove', 'id' => 
 it_check('§51 …and can remove a lost phone\'s', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM admin_passkeys WHERE admin_id = $sId")->fetchColumn() === 0, $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $ownerId]);
 it_check('§51 you never act on yourself from People & access', $r['code'] === 400, $r['raw']);
-// The email-first path: the code proves the inbox, the password follows.
+// THREE EQUAL WAYS IN: an emailed code, a password, a passkey. The code alone signs
+// in now (it used to be followed by the password), so a back-office code lives 10
+// minutes, not a guest's 30, and the device it was typed on is remembered.
 $emJar = [];
 http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'sophia51@example.com']);
+// expires_at is on the APP's clock (Europe/London, as db.php sets the connection).
+$cExp = (string) $rootDb->query("SELECT expires_at FROM guest_codes WHERE email = 'sophia51@example.com' AND used_at IS NULL ORDER BY id DESC LIMIT 1")->fetchColumn();
+$cLife = (strtotime($cExp . ' Europe/London') - time()) / 60;
+it_check('§51 a back-office email\'s code lives 10 minutes (a guest\'s lives 30)', $cLife > 8.5 && $cLife <= 10.1, $cExp . ' → ' . round($cLife, 1) . ' min');
 $cSet('sophia51@example.com', '515151');
 $r = http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '515151']);
-it_check('§51 a back-office email\'s code asks for the password next (no guest account is made)', $r['code'] === 200 && ($r['json']['admin'] ?? false) === true && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE email = 'sophia51@example.com'")->fetchColumn() === 0, $r['raw']);
-// THE BACK OFFICE'S PASSWORD STEP IS ITS OWN (reported as "only a password reset gets
-// us in"). A wrong password says so; a GUEST account's password on the same address
-// is named as such and never signs anyone in as that guest — and while this browser
-// has proved the address as a back-office sign-in, the guest login refuses it too,
-// because an older copy of the page still cached on a phone tries it.
-$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'not her password at all']);
-it_check('§51 after the code, a wrong password says so (not "not recognised")', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'wrong_password', $r['raw']);
+it_check('§51 the code alone signs her in, as herself (no password asked, no guest account made)', $r['code'] === 200 && ($r['json']['admin'] ?? false) === true && ($r['json']['me']['id'] ?? 0) === $sId && http($emJar, 'GET', '/bookings.php')['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE email = 'sophia51@example.com'")->fetchColumn() === 0, $r['raw']);
+it_check('§51 …and remembers the device, so a password typed on it later needs no second code', !empty($emJar['chb_admin_device']) && (int) $rootDb->query("SELECT COUNT(*) FROM admin_devices WHERE admin_id = $sId")->fetchColumn() >= 1, json_encode(array_keys($emJar)));
+$how = (string) $rootDb->query("SELECT summary FROM activity_log WHERE action IN ('admin.login', 'admin.login_new') ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§51 …and the log says how she got in', strpos($how, 'Sophia Hart signed in with an emailed code') === 0, $how);
+// A GUEST ACCOUNT ON THE SAME ADDRESS is never where the code lands someone: the back
+// office is decided first (reported as "only a password reset gets us in").
 $rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Sophia Hart', 'sophia51@example.com', '', '', '', ?, NOW())")->execute([password_hash('her guest password', PASSWORD_DEFAULT)]);
-$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'her guest password']);
-it_check('§51 …her GUEST account\'s password is named as that', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'guest_password', $r['raw']);
-$r = http($emJar, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'sophia51@example.com', 'password' => 'her guest password']);
-$gs = http($emJar, 'POST', '/auth.php', ['action' => 'guest_status']);
-it_check('§51 …and the guest login refuses it while the address is proven a back-office sign-in (no guest session)', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'back_office' && empty($gs['json']['guest']), $r['raw'] . ' / ' . $gs['raw']);
-$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'sophias own passphrase']);
-it_check('§51 …and with the right one, they are in as themselves', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
+$gJar = [];
+http($gJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'sophia51@example.com']);
+$cSet('sophia51@example.com', '525252');
+$r = http($gJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '525252']);
+$gs = http($gJar, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§51 …even with a guest account on her address, the code opens the back office, never the guest account', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId && empty($gs['json']['guest']), $r['raw'] . ' / ' . $gs['raw']);
+// A PASSWORD STILL WORKS, with her email or her username.
+$pwJar = [];
+$r = http($pwJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'not her password at all']);
+it_check('§51 a password still works with her email: a wrong one is refused, saying nothing more', $r['code'] === 401 && ($r['json']['error'] ?? '') === 'Incorrect username or password' && !isset($r['json']['code']), $r['raw']);
+$r = http($pwJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'sophias own passphrase']);
+it_check('§51 …and the right one signs her in, as herself', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
 $rootDb->exec("DELETE FROM guests WHERE email = 'sophia51@example.com'");
 // THE ADDRESS THAT GETS YOUR CODES IS AN ADDRESS YOU CAN SIGN IN WITH: the first
 // owner's codes go to the config owner address while their own email is blank, so
@@ -5100,12 +5129,24 @@ $r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $sId]);
 it_check('§51 removing someone signs them out everywhere straight away', $r['code'] === 200 && http($rsJar, 'GET', '/bookings.php')['code'] === 401, $r['raw']);
 $r = http($guest, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophiahart', 'password' => 'a brand new passphrase']);
 it_check('§51 …and their sign-in says it has been switched off', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'removed' && strpos((string) ($r['json']['error'] ?? ''), 'switched off') !== false, $r['raw']);
+$rmJar = [];
+http($rmJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'sophia51@example.com']);
+$cSet('sophia51@example.com', '545454');
+$r = http($rmJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '545454']);
+it_check('§51 …an emailed code says the same, and signs nobody in', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'removed' && http($rmJar, 'GET', '/bookings.php')['code'] === 401, $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'list']);
 $sP = array_values(array_filter($r['json']['people'] ?? [], fn($p) => ($p['id'] ?? 0) === $sId));
 it_check('§51 …while they stay listed, so the log can still name them', $sP && ($sP[0]['state'] ?? '') === 'removed', $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'restore', 'id' => $sId]);
 $sRow = $rootDb->query("SELECT * FROM admins WHERE id = $sId")->fetch();
 it_check('§51 giving access back is a fresh invite: no password, a new link', $r['code'] === 200 && $sRow['removed_at'] === null && $sRow['invited_at'] !== null && $sRow['password_hash'] === '' && strlen((string) $sRow['invite_hash']) === 64, json_encode($sRow));
+// Someone invited and not started yet is asked to choose a password; the code
+// proves the inbox but signs nobody in until they have.
+$ivJar = [];
+http($ivJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'sophia51@example.com']);
+$cSet('sophia51@example.com', '535353');
+$r = http($ivJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '535353']);
+it_check('§51 an invited person\'s code asks them to choose a password, signing nobody in yet', $r['code'] === 200 && ($r['json']['choose'] ?? false) === true && empty($r['json']['me']) && http($ivJar, 'GET', '/bookings.php')['code'] === 401, $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'cancel_invite', 'id' => $sId]);
 it_check('§51 an unused invite can be cancelled outright', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM admins WHERE id = $sId")->fetchColumn() === 0, $r['raw']);
 $rootDb->exec("DELETE FROM bookings WHERE id = $bId");

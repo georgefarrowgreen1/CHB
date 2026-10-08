@@ -49,6 +49,25 @@ function guest_code_hash(string $email, string $code): string
 {
     return hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, APP_SECRET);
 }
+// AN EMAILED CODE IS A WHOLE SIGN-IN (a guest's, and the back office's), so wrong
+// guesses are counted over a DAY across every IP, not only the ten minutes
+// throttle_check() watches. Six digits is a million codes: at that check's
+// ceiling (20 wrong per 10 minutes, any number of IPs) a patient guesser had about
+// a 0.3% chance a day. Ten a day makes it about 0.001%. Past it, codes for that
+// address pause until the day is out; a passkey or a password still works. Every
+// address is treated the same, so the pause says nothing about who has a sign-in.
+const CODE_DAILY_FAILS = 10;
+const CODE_PAUSED = 'Too many wrong codes have been tried for this email today, so codes for it are paused until tomorrow. A passkey or a password still works, if you have one.';
+function code_paused(string $email): bool
+{
+    try {
+        $s = db()->prepare('SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND success = 0 AND attempted_at > (NOW() - INTERVAL 1 DAY)');
+        $s->execute(['codev:' . strtolower($email)]);
+        return (int) $s->fetchColumn() >= CODE_DAILY_FAILS;
+    } catch (\Throwable $e) {
+        return false; // no login_attempts table: a missing table never blocks a sign-in
+    }
+}
 
 function throttle_check($identifier)
 {
@@ -223,14 +242,6 @@ function admin_find($ident)
         return null; // no email column yet: only usernames can be looked up
     }
 }
-// Has THIS browser just proved this person's inbox with a code (the email-first
-// path)? Then the password is the back-office one and nothing else, and a
-// failure can be said exactly: the person has shown the inbox is theirs.
-function admin_email_proven($row)
-{
-    $p = $_SESSION['admin_email_proof'] ?? null;
-    return is_array($row) && is_array($p) && (int) ($p['id'] ?? 0) === (int) ($row['id'] ?? -1) && time() - (int) ($p['at'] ?? 0) < 900;
-}
 function admin_switched_off()
 {
     $o = admin_owner_first();
@@ -270,10 +281,10 @@ function admin_backfill_owner($row)
     }
     return $row;
 }
-// Finish a sign-in (the password path, after a code, after an invite or reset,
-// and the staging seat): a new session id, the person's own session, and a note
-// in the log — a warning when the device or place is new to THIS person.
-function admin_complete_login($uid, array $extra = [])
+// Finish a sign-in (a password, an emailed code, a new-device code, an invite or
+// reset, and the staging seat): a new session id, the person's own session, and a
+// note in the log saying how, a warning when the device or place is new to THIS person.
+function admin_complete_login($uid, array $extra = [], string $how = '')
 {
     session_regenerate_id(true); // new session id on login — prevents session fixation
     admin_session_begin((int) $uid);
@@ -300,10 +311,11 @@ function admin_complete_login($uid, array $extra = [])
         } catch (\Throwable $e2) {
         }
     }
+    $how = $how !== '' ? ' ' . $how : '';
     if ($isNew) {
-        log_activity('account', 'admin.login_new', $who . ' signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+        log_activity('account', 'admin.login_new', $who . ' signed in' . $how . ' from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
     } else {
-        log_activity('account', 'admin.login', $who . ' signed in');
+        log_activity('account', 'admin.login', $who . ' signed in' . $how);
     }
     json_out(['ok' => true, 'me' => $row ? admin_me_payload($row) : null, 'ownerFirst' => admin_owner_first()] + $extra);
 }
@@ -429,26 +441,6 @@ switch ($action) {
             } elseif (in_array($fails, [5, 15, 30], true)) {
                 log_activity('account', 'admin.login_burst', $fails . ' failed back-office sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             }
-            // A CODE HAS PROVED THIS INBOX, so the reply can say what went wrong — and
-            // the commonest cause is a GUEST account on the same address: a phone's
-            // password manager holds one password per address, so it offers the guest
-            // one here. Said plainly, it stops being a mystery that only a reset fixes.
-            if ($row && admin_email_proven($row)) {
-                $guestPw = false;
-                try {
-                    $gq = db()->prepare('SELECT password_hash FROM guests WHERE email = ?');
-                    $gq->execute([strpos($username, '@') !== false ? $username : admin_contact_email($row)]);
-                    $gh = (string) ($gq->fetchColumn() ?: '');
-                    $guestPw = $gh !== '' && password_verify($password, $gh);
-                } catch (\Throwable $e) {
-                }
-                json_out(
-                    $guestPw
-                        ? ['error' => 'That’s the password for your guest account. The back office has its own: use that one, or reset it below.', 'code' => 'guest_password']
-                        : ['error' => 'That password isn’t right. Try again, or reset it below.', 'code' => 'wrong_password'],
-                    401,
-                );
-            }
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . $username, true);
@@ -457,16 +449,10 @@ switch ($action) {
         if (!empty($row['removed_at'])) {
             json_out(['error' => admin_switched_off(), 'code' => 'removed'], 403);
         }
-        // An email this browser has JUST proved (the code-first path) is the
-        // second step already: in, and the device remembered.
-        if (admin_email_proven($row)) {
-            admin_trust_this_device((int) $row['id']);
-            admin_complete_login((int) $row['id']);
-        }
         if (admin_twofa_on($row) && !admin_device_trusted((int) $row['id'])) {
             admin_send_device_code($row);
         }
-        admin_complete_login((int) $row['id']);
+        admin_complete_login((int) $row['id'], [], 'with a password');
 
     case 'admin_2fa':
         // Verify the emailed one-time code and finish the held login.
@@ -501,7 +487,7 @@ switch ($action) {
         if (!empty($in['remember'])) {
             admin_trust_this_device((int) $p['uid']);
         }
-        admin_complete_login((int) $p['uid']);
+        admin_complete_login((int) $p['uid'], [], 'with a password and a code to their email');
 
     // A new code for the device step, to the same person (the held sign-in).
     case 'admin_2fa_resend':
@@ -909,16 +895,6 @@ switch ($action) {
     case 'guest_login':
         $email = strtolower(clean($in['email'] ?? ''));
         $pw = $in['password'] ?? '';
-        // A BACK-OFFICE PASSWORD STEP NEVER FALLS THROUGH TO A GUEST ACCOUNT. Once a
-        // code has proved this address as a back-office sign-in, a guest account on
-        // the same address must not be where the person lands: the sheet used to try
-        // the password as a guest's after a failed back-office one, so a phone that
-        // filled in the guest password signed a back-office person in as a GUEST.
-        // The page no longer asks; this refuses a copy of it still cached on a phone.
-        $boRow = strpos($email, '@') !== false ? admin_find($email) : null;
-        if ($boRow && admin_email_proven($boRow)) {
-            json_out(['error' => 'This email signs in to the back office, so it needs your back-office password. Reset it below if you’ve forgotten it.', 'code' => 'back_office'], 409);
-        }
         throttle_check('guest:' . $email);
         $stmt = db()->prepare(
             'SELECT id, name, email, phone, address, postcode, password_hash FROM guests WHERE email = ?',
@@ -1042,16 +1018,25 @@ switch ($action) {
     // One email field. A six-digit code goes to it (with the magic link too, for a
     // known guest). The reply is ALWAYS ok, whether or not an account exists — the
     // same no-probing rule as the link. A code is HMAC'd at rest, works once, for 30
-    // minutes, and dies after 5 wrong tries; asking again retires older codes.
+    // minutes (10 for the back office), and dies after 5 wrong tries; asking again
+    // retires older codes. An address with a day's worth of wrong codes gets none.
     case 'guest_code_request':
         $email = strtolower(clean($in['email'] ?? ''));
         throttle_check('code:' . $email);
         rate_limit('guestcode', 12, 15);
+        if ($email !== '' && code_paused($email)) {
+            json_out(['error' => CODE_PAUSED, 'code' => 'paused'], 429);
+        }
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            // A BACK-OFFICE SIGN-IN'S EMAIL gets its own code email, and the code is
+            // the whole sign-in, so it lives 10 minutes rather than a guest's 30. The
+            // reply below is the same either way: the page never says which emails
+            // have one.
+            $adm = admin_find($email);
             $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             try {
                 db()->prepare('UPDATE guest_codes SET used_at = NOW() WHERE email = ? AND used_at IS NULL')->execute([$email]);
-                db()->prepare('INSERT INTO guest_codes (email, code_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL 30 MINUTE)')->execute([$email, guest_code_hash($email, $code)]);
+                db()->prepare('INSERT INTO guest_codes (email, code_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL ' . ($adm ? 10 : 30) . ' MINUTE)')->execute([$email, guest_code_hash($email, $code)]);
             } catch (\Throwable $e) {
                 json_out(['error' => 'Sign-in codes need the latest database update — ask the owner to run the migrations.'], 503);
             }
@@ -1059,15 +1044,11 @@ switch ($action) {
             $stmt->execute([$email]);
             $g = $stmt->fetch();
             require_once __DIR__ . '/mailer.php';
-            // A BACK-OFFICE SIGN-IN'S EMAIL gets its own code email: the code proves
-            // the inbox and the password follows it. The reply below is the same
-            // either way, so the page never says which emails have one.
-            $adm = admin_find($email);
             if ($adm) {
                 // With a one-tap link, like a guest's: the code screen says "or tap the
                 // link in the same email", and a phone that reloads the app while the
                 // code is fetched from Mail has lost the screen it was typed into. The
-                // link only proves the inbox; the password still follows.
+                // link signs in the device that opens it, exactly as typing the code does.
                 $m = admin_code_body($code, 'signin', people_first_name($adm), site_base_url() . 'index.html?signin=' . rawurlencode($email) . '&code=' . $code);
                 smtp_send($email, people_display_name($adm), $m['subject'], $m['text'], $m['html']);
                 log_activity('account', 'admin.code', 'Sign-in code emailed to ' . people_display_name($adm), ['actor' => 'system']);
@@ -1090,6 +1071,11 @@ switch ($action) {
         $email = strtolower(clean($in['email'] ?? ''));
         $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
         throttle_check('codev:' . $email);
+        // Paused means paused, the right code included: a guess that happens to land
+        // after the tenth wrong one is still a guess.
+        if (code_paused($email)) {
+            json_out(['error' => CODE_PAUSED, 'code' => 'paused'], 429);
+        }
         try {
             $q = db()->prepare('SELECT id, code_hash, tries FROM guest_codes WHERE email = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY id DESC LIMIT 1');
             $q->execute([$email]);
@@ -1115,19 +1101,23 @@ switch ($action) {
         if ($claim->rowCount() < 1) {
             json_out(['error' => 'That code has already been used. Send yourself a new one.', 'code' => 'expired'], 401);
         }
-        // A back-office sign-in's email: the code proved the inbox, and the
-        // password comes next (admin_login reads this proof). Someone invited and
-        // not yet started chooses their password here instead of from the link.
+        throttle_record('codev:' . $email, true); // this browser's own wrong tries are forgiven
+        // A BACK-OFFICE SIGN-IN'S EMAIL: the code proved the inbox, and that is the
+        // whole sign-in. An emailed code, a password and a passkey are three equal
+        // ways in. The device is remembered, so a password typed on it later needs
+        // no second code. Someone invited and not yet started chooses their password
+        // instead; the proof waits in the session for admin_invite_accept.
         $adm = admin_find($email);
         if ($adm) {
             if (!empty($adm['removed_at'])) {
                 json_out(['error' => admin_switched_off(), 'code' => 'removed'], 403);
             }
-            $_SESSION['admin_email_proof'] = ['id' => (int) $adm['id'], 'at' => time()];
             if (!empty($adm['invited_at'])) {
+                $_SESSION['admin_email_proof'] = ['id' => (int) $adm['id'], 'at' => time()];
                 json_out(['ok' => true, 'admin' => true, 'choose' => true, 'first' => people_first_name($adm), 'username' => (string) $adm['username'], 'by' => admin_owner_first()]);
             }
-            json_out(['ok' => true, 'admin' => true]);
+            admin_trust_this_device((int) $adm['id']);
+            admin_complete_login((int) $adm['id'], ['admin' => true], 'with an emailed code');
         }
         $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE email = ?');
         $stmt->execute([$email]);

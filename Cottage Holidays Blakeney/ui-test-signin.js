@@ -4,6 +4,7 @@
 //   §3 the phone remembers who signed in — "Welcome back" — and "Not you?" forgets
 //   §4 a new email needs only a name after the code
 //   §5 a username with no @ (the owner) goes straight to a password; too many tries locks the code
+//   §6 codes paused for a day (auth.php code_paused) are said in words on every step that asks for one
 const { bootBrowser } = require('./ui-test-lib');
 
 let fails = 0;
@@ -16,6 +17,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
     const posts = [];
     let verifyMode = 'ok';
+    let requestMode = 'ok';
     await page.route(/\.php/, (route) => {
         const url = route.request().url();
         const json = (x, st) => route.fulfill({ status: st || 200, contentType: 'application/json', body: JSON.stringify(x) });
@@ -23,7 +25,10 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
         if (route.request().method() === 'POST') posts.push(body);
         if (url.includes('auth.php')) {
-            if (body.action === 'guest_code_request') return json({ ok: true });
+            if (body.action === 'guest_code_request') {
+                if (requestMode === 'paused') return json({ error: 'Too many wrong codes have been tried for this email today, so codes for it are paused until tomorrow. A passkey or a password still works, if you have one.', code: 'paused' }, 429);
+                return json({ ok: true });
+            }
             if (body.action === 'guest_code_verify') {
                 if (body.code === '000000') return json({ error: "That code isn't right. Check the latest email and try again.", code: 'wrong', left: 4 }, 401);
                 if (verifyMode === 'locked') return json({ error: 'Too many tries', code: 'too_many' }, 429);
@@ -125,6 +130,23 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.fill('#ga-code', '111222');
     await page.waitForTimeout(500);
     ok(/Too many tries/.test(await step()), 'too many tries retires the code and offers a new one');
+
+    console.log('§6 paused codes are said in words');
+    // "Too many tries" offers a new code; when the address is paused that refusal must
+    // show there. Neither this step nor "Welcome back" rendered an error at all.
+    requestMode = 'paused';
+    await page.evaluate(() => { AU.cool = 0; }); // the 30-second wait between codes is not what is under test
+    await page.click('#ga-auth [data-act="authResend"]');
+    await page.waitForTimeout(400);
+    const errShown = () => page.evaluate(() => { const e = document.getElementById('login-error'); return !!e && !e.hidden && /paused until tomorrow/.test(e.textContent); });
+    ok(/Too many tries/.test(await step()) && (await errShown()), '"Too many tries" says why no new code came');
+    await page.evaluate(() => { closeGuestAuthModal(); localStorage.setItem('chb-last-guest', JSON.stringify({ first: 'Gwen', email: 'gwen@example.com' })); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => openGuestAuthModal());
+    await page.waitForTimeout(300);
+    await page.click('#ga-auth [data-act="authKnownGo"]');
+    await page.waitForTimeout(400);
+    ok(/Welcome back/.test(await step()) && (await errShown()), '…and so does "Welcome back"');
 
     console.log(fails ? `\n${fails} FAILED` : '\nALL SIGN-IN CHECKS PASSED');
     await done(fails);

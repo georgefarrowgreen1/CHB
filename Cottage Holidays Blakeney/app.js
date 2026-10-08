@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 704;
+const ADMIN_BUNDLE_V = 705;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -4654,12 +4654,13 @@ async function deleteGuestAccount() {
 // known guest). An iPhone opens an emailed link in Safari, not the installed app,
 // so the guest needs something to TYPE where they are; autocomplete="one-time-code"
 // lets iOS offer it straight from Mail. A password still works for anyone who has
-// one — and for the OWNER, whose username has no @ and goes straight there.
+// one — and a back-office USERNAME has no @ and goes straight there.
+// THE BACK OFFICE HAS THREE EQUAL WAYS IN: the emailed code (it alone signs you
+// in), a password, or a passkey.
 // The phone remembers who signed in last (first name + email, nothing else), and a
 // new guest gives only a name: the code has already proved the address.
-// via: how a back-office sign-in got here — 'email' (a code proved the inbox, the
-// password comes next) or 'device' (the password was right on a new device and a
-// code went to the person's own inbox). link/first/username/by: an invite or reset.
+// via: 'device' when the password was right on a new device and a code went to the
+// person's own inbox, else ''. link/first/username/by: an invite or reset.
 // loginId: what an invite or reset files the new password under (see authIdField).
 const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null, loginId: '' };
 const GA_LAST = 'chb-last-guest';
@@ -4721,6 +4722,7 @@ function authPaint() {
     if (AU.step === 'known' && last) {
         h += `<h2 class="ga-ah">Welcome back</h2>
             <div class="ga-who"><span class="ga-who-av">${escapeHtml((last.first || last.email)[0].toUpperCase())}</span><span><b>${escapeHtml(last.first || 'You')}</b><span>${escapeHtml(last.email)}</span></span></div>
+            ${err}
             ${authBig('pri', `Continue as ${escapeHtml(last.first || 'you')}`, 'authKnownGo')}
             <p class="ga-asub">We'll email you a code.</p>
             <button type="button" class="ga-alink is-mute" data-act="authNotYou">Not you? Use another email</button>`;
@@ -4746,11 +4748,10 @@ function authPaint() {
             <button type="button" class="ga-alink" id="ga-resend" data-act="${dev ? 'authDeviceResend' : 'authResend'}"${AU.cool > 0 ? ' disabled' : ''}>${AU.cool > 0 ? `Send a new code in ${AU.cool}s` : 'Send a new code'}</button>
             ${dev ? '' : '<button type="button" class="ga-alink is-mute" data-act="authToPassword">Use a password instead</button>'}`;
     } else if (AU.step === 'password') {
-        // A username (no @), or an email the code has just proved: this is a
-        // back-office sign-in, and a forgotten password is a link to the inbox.
-        const office = AU.via === 'email' || !AU.email.includes('@');
+        // A username (no @) is a back-office sign-in, and a forgotten password is a
+        // link to the inbox. With an email, the code is the way back in.
+        const office = !AU.email.includes('@');
         h += `<h2 class="ga-ah">Your password</h2>
-            ${AU.via === 'email' ? '<p class="ga-al">Your email is confirmed. This is a back-office sign-in, so it needs your password too.</p>' : ''}
             <form class="ga-aform" data-act-submit="authPasswordSubmit" data-pass="event" novalidate>
             <div class="ga-chip">${authIdField('login-email', AU.email)}<button type="button" data-act="authToEmail">Change</button></div>
             <label class="ga-alabel" for="login-password">Password</label>
@@ -4759,7 +4760,7 @@ function authPaint() {
             ${authSubmit('Sign in', 'authPasswordGo')}
             </form>
             ${office ? '<button type="button" class="ga-alink is-mute" data-act="authForgot">Forgotten your password?</button>' : ''}
-            ${AU.email.includes('@') && AU.via !== 'email' ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
+            ${AU.email.includes('@') ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
     } else if (AU.step === 'reset-sent') {
         h += `<h2 class="ga-ah">Check your email</h2>
             <p class="ga-al">If <b>${escapeHtml(AU.email)}</b> has a back-office sign-in, we’ve sent a link to choose a new password. It works for 30 minutes.</p>
@@ -4800,6 +4801,7 @@ function authPaint() {
     } else if (AU.step === 'locked') {
         h += `<h2 class="ga-ah">Too many tries</h2>
             <p class="ga-al">For your security that code has stopped working. We can send you a fresh one.</p>
+            ${err}
             ${authBig('pri', 'Send a new code', 'authResend')}
             <button type="button" class="ga-alink is-mute" data-act="authToEmail">Use a different email</button>`;
     }
@@ -4959,8 +4961,8 @@ async function authVerify(code) {
         return;
     }
     AU.busy = '';
-    // A BACK-OFFICE EMAIL: the code proved the inbox, and the password is next —
-    // or, for someone invited who hasn't started yet, choosing one.
+    // A BACK-OFFICE EMAIL: the code was the whole sign-in, so the back office opens.
+    // Someone invited who hasn't started yet chooses a password first.
     if (res && res.admin) {
         if (res.choose) {
             AU.link = '';
@@ -4970,8 +4972,7 @@ async function authVerify(code) {
             AU.by = res.by || '';
             return authGo('invite');
         }
-        AU.via = 'email';
-        return authGo('password');
+        return authAdminIn(res.me, '', res.ownerFirst);
     }
     if (res && res.new) {
         AU.isNew = true;
@@ -5222,7 +5223,7 @@ async function maybeAdminLink() {
     return true;
 }
 // The back-office code email's one-tap link (?signin=<email>&code=<6 digits>): the
-// code step opens with it filled in and checks it as if typed; the password follows.
+// code step opens with it filled in and checks it as if typed, which signs in.
 function maybeSigninLink() {
     let usp;
     try {
@@ -5333,10 +5334,8 @@ async function guestLogin() {
         showErr('Please enter your email/username and password.');
         return;
     }
-    // After a code has proved a back-office email, or for a USERNAME, the password
-    // is never tried as a guest's: a same-address guest account was where a phone's
-    // filled-in guest password landed the person. See CLAUDE.md.
-    const office = AU.via === 'email' || !id.includes('@');
+    // A USERNAME's password is never tried as a guest's: only the back office has one.
+    const office = !id.includes('@');
 
     // 1) The back office first.
     try {
@@ -21488,7 +21487,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'signinfix2';
+    const BUILD = 'codesignin1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

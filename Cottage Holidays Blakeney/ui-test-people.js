@@ -431,13 +431,13 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
                 if (b.action === 'admin_status') return json({ admin: false });
                 if (b.action === 'admin_login') {
                     if (st.login === 'removed') return json({ error: 'This sign-in has been switched off. Ask George if you need it back.', code: 'removed' }, 403);
-                    if (st.login === 'wrong') return json({ error: 'That’s the password for your guest account. The back office has its own: use that one, or reset it below.', code: 'guest_password' }, 401);
+                    if (st.login === 'wrong') return json({ error: 'Incorrect username or password' }, 401);
                     if (st.login === 'twofa') return json({ ok: true, twofa: true, to: 's•••••@example.com' });
                     return json({ ok: true, me: SOPHIA, ownerFirst: 'George' });
                 }
                 if (b.action === 'admin_2fa') return b.code === '428913' ? json({ ok: true, me: SOPHIA, ownerFirst: 'George' }) : json({ error: 'That code isn’t right. Try again, or send a new one.', code: 'wrong' }, 401);
                 if (b.action === 'guest_code_request' || b.action === 'admin_reset_request') return json({ ok: true });
-                if (b.action === 'guest_code_verify') return json({ ok: true, admin: true });
+                if (b.action === 'guest_code_verify') return json({ ok: true, admin: true, me: SOPHIA, ownerFirst: 'George' });
                 if (b.action === 'admin_link_check') return st.link === 'ok' ? json({ ok: true, first: 'Sophia', username: 'sophiahart', email: 'sophia@example.com', by: 'George' }) : json({ error: 'This invite link has been used or has expired. Ask George to send a new one.', code: 'dead' }, 410);
                 if (b.action === 'admin_invite_accept' || b.action === 'admin_reset_save') return json({ ok: true, me: SOPHIA, ownerFirst: 'George' });
                 if (b.action === 'guest_login') return json({ error: 'That email and password don’t match.' }, 401);
@@ -490,40 +490,61 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(twofa && twofa.b.remember === true && (await inBackOffice()), 'the right code signs her in, and remembers this device');
         ok(/won’t ask for a code again/.test(await page.evaluate(() => document.body.textContent)), 'and says the device is remembered');
 
-        // The email-first path: the code proves the inbox, the password follows.
+        // THREE EQUAL WAYS IN: an emailed code (it alone signs her in), a password,
+        // or a passkey. The code used to be followed by the password.
         await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(900);
         st.login = 'ok';
         await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
         await page.waitForTimeout(300);
+        ok(await page.evaluate(() => !!document.querySelector('#ga-auth [data-act="passkeyLogin"]')), 'the first step offers a passkey');
         await page.fill('#login-email', 'sophia@example.com');
         await page.click('#ga-auth [data-act="authContinue"]');
         await page.waitForTimeout(400);
+        ok(/Check your email/.test(await step()) && /Or tap the link in the same email/.test(await text()) && /Use a password instead/.test(await text()), 'her email gets a code, with a password as the other way');
+        const beforeCode = posts.length;
         await page.fill('#ga-code', '515151');
-        await page.waitForTimeout(600);
-        ok(/Your password/.test(await step()) && /Your email is confirmed\. This is a back-office sign-in, so it needs your password too\./.test(await text()), 'a back-office email\'s code is followed by the password, said plainly');
-        ok(/Forgotten your password\?/.test(await text()) && !/Email me a code instead/.test(await text()), '…with the reset link, not another code');
-        await page.click('#ga-auth [data-act="authForgot"]');
+        await page.waitForTimeout(700);
+        ok((await inBackOffice()) && !/Your password/.test(await step()), 'the code alone signs her in: no password step after it');
+        ok(!posts.slice(beforeCode).some((p) => p.b.action === 'admin_login' || p.b.action === 'guest_login') && (await page.evaluate(() => (window.__me || {}).id === 2)), '…as herself, with nothing more asked of the server');
+
+        // A PASSWORD STILL WORKS, from the code step. With an email, a forgotten
+        // password needs no reset: the code is the way back in.
+        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(900);
+        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
+        await page.waitForTimeout(300);
+        await page.fill('#login-email', 'sophia@example.com');
+        await page.click('#ga-auth [data-act="authContinue"]');
         await page.waitForTimeout(400);
-        ok(posts.some((p) => p.b.action === 'admin_reset_request' && p.b.id === 'sophia@example.com') && /If sophia@example\.com has a back-office sign-in, we’ve sent a link/.test(await text()), 'a forgotten password sends a link — the page never says whether the sign-in exists');
         await page.click('#ga-auth [data-act="authToPassword"]');
         await page.waitForTimeout(300);
-        // THE BACK OFFICE'S PASSWORD STEP IS ITS OWN. A wrong password here — most
-        // often a phone filling in the GUEST account's on the same address — used to
-        // fall through to the guest login: "Email or password not recognised", or
-        // signed in as a guest. It says what happened now, and asks nothing else.
+        ok(/Your password/.test(await step()) && /Email me a code instead/.test(await text()) && !/confirmed/.test(await text()), 'the password is one tap from the code, and the code one tap back');
         st.login = 'wrong';
         const beforeWrong = posts.length;
-        await page.fill('#login-password', 'her guest password');
+        await page.fill('#login-password', 'not her password');
         await page.click('#ga-auth [data-submit="authPasswordGo"]');
         await page.waitForTimeout(600);
-        ok(/That’s the password for your guest account\. The back office has its own/.test(await text()) && !(await inBackOffice()), 'a guest account’s password is named as such, not "not recognised"');
-        ok(!posts.slice(beforeWrong).some((p) => p.b.action === 'guest_login') && (await page.evaluate(() => !currentGuest)), '…and is never tried as a guest sign-in (no landing in the guest site)');
+        ok(/don’t match/.test(await text()) && !(await inBackOffice()) && (await page.evaluate(() => !currentGuest)), 'a wrong password signs nobody in, and says so');
+        ok(posts.slice(beforeWrong).some((p) => p.b.action === 'admin_login' && p.b.username === 'sophia@example.com'), '…having asked the back office first');
         st.login = 'ok';
         await page.fill('#login-password', 'sophias own passphrase');
         await page.click('#ga-auth [data-submit="authPasswordGo"]');
         await page.waitForTimeout(600);
-        ok(await inBackOffice(), 'and with the password, she is in');
+        ok(await inBackOffice(), 'and with the right password, she is in');
+
+        // A forgotten password, from her username: a link to her own inbox, and the
+        // page never says whether the sign-in exists.
+        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(900);
+        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
+        await page.waitForTimeout(300);
+        await page.fill('#login-email', 'sophiahart');
+        await page.click('#ga-auth [data-act="authContinue"]');
+        await page.waitForTimeout(300);
+        await page.click('#ga-auth [data-act="authForgot"]');
+        await page.waitForTimeout(400);
+        ok(posts.some((p) => p.b.action === 'admin_reset_request' && p.b.id === 'sophiahart') && /If sophiahart has a back-office sign-in, we’ve sent a link/.test(await text()), 'a forgotten password sends a link — the page never says whether the sign-in exists');
 
         // A switched-off sign-in says so, and is never tried as a guest.
         await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
@@ -592,13 +613,13 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(/Sign in or create an account/.test(await step()) && /invite link has been used or has expired\. Ask George/.test(await text()), 'a used or expired link says so, and who to ask');
 
         // THE CODE EMAIL'S ONE-TAP LINK. The code screen says "or tap the link in the
-        // same email", and the back-office code email had none: the sheet now opens on
-        // the code, checks it exactly as if typed, and the password follows.
+        // same email": the sheet opens on the code and checks it exactly as if typed,
+        // which signs in the device that opened it.
         const beforeLink = posts.length;
         await page.goto(`${base}/index.html?signin=${encodeURIComponent('sophia@example.com')}&code=515151`, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1400);
         ok(posts.slice(beforeLink).some((p) => p.b.action === 'guest_code_verify' && p.b.email === 'sophia@example.com' && p.b.code === '515151'), 'the code email’s link checks its code, as if typed');
-        ok(/Your password/.test(await step()) && /it needs your password too/.test(await text()) && (await page.evaluate(() => !/signin=|code=/.test(location.search))), '…lands on the password step, and leaves the address bar');
+        ok((await inBackOffice()) && (await page.evaluate(() => !/signin=|code=/.test(location.search))), '…signs her in, and leaves the address bar');
         await page.close();
     }
 

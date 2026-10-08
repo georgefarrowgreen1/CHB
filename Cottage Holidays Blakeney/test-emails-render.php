@@ -1276,6 +1276,11 @@ chk('§14 a sign-in code carries its link as a button in the HTML',
 chk('§14 …and as a usable link in the text half', strpos($sc14['text'], 'https://example.test/index.html?signin=sophia%40example.com&code=428913') !== false);
 chk('§14 a new-device code carries no link', strpos($dv14['html'] . $dv14['text'], 'not-for-a-device') === false);
 chk('§14 the two are told apart by their subjects', $sc14['subject'] !== $dv14['subject'] && stripos($dv14['subject'], 'new device') !== false);
+// The sign-in code is the WHOLE sign-in now: neither half may promise a password
+// step, and it lives 10 minutes (a guest's lives 30). Each half is read on its own.
+chk('§14 a sign-in code promises no password step, in either half', stripos($sc14['text'], 'password') === false && stripos(strip_tags($sc14['html']), 'password') === false);
+chk('§14 …and says it lasts 10 minutes, in both halves', strpos($sc14['text'], '10 minutes') !== false && strpos(strip_tags($sc14['html']), '10 minutes') !== false);
+chk('§14 a new-device code still says to change the password (someone had it)', stripos($dv14['text'], 'changing your password') !== false);
 
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.
