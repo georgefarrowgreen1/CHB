@@ -425,7 +425,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // make these three read the wide box instead.
     __cmdkSel = -1;
     cmdkRender();
-    await new Promise((r) => setTimeout(r, 250));
+    // …and WAIT for it to get there. The box eases its max-width 860 → 520 over
+    // 320ms, and a fixed 250ms sleep sampled it mid-flight on a loaded CI runner
+    // (597px wide, rows 579). Wait on the transition, never a clock.
+    const box = document.querySelector('#cmdk .cmdk-box');
+    const t0 = performance.now();
+    while (box && performance.now() - t0 < 3000 && box.getAnimations().some((a) => a.transitionProperty === 'max-width')) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
   });
   const bleed = await page.evaluate(() => {
     const box = document.querySelector('#cmdk .cmdk-box');
@@ -546,7 +553,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await new Promise((r) => setTimeout(r, 400));
     const idx = __cmdkResults.findIndex((r) => r && r.type === 'booking');
     if (idx >= 0) { __cmdkSel = idx; cmdkRender(); }
-    await new Promise((r) => setTimeout(r, 250));
+    // Wait for the widening (max-width eases 520 → 860 over 320ms) to finish before
+    // measuring: a fixed sleep reads it mid-flight on a loaded runner.
+    await new Promise((r) => setTimeout(r, 60));
+    const bx = document.querySelector('#cmdk .cmdk-box');
+    for (const t0 = performance.now(); bx && performance.now() - t0 < 3000 && bx.getAnimations().some((a) => a.transitionProperty === 'max-width'); ) await new Promise((r) => setTimeout(r, 50));
     const pane = document.querySelector('#cmdk .cmdk-detail');
     const list = document.querySelector('#cmdk .cmdk-split-list');
     const cs = pane && getComputedStyle(pane);
@@ -579,6 +590,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const i = document.getElementById('cmdk-input');
     i.value = 'how do i add a booking'; cmdkSearchCore('how do i add a booking', false);
     await new Promise((r) => setTimeout(r, 450));
+    const bx = document.querySelector('#cmdk .cmdk-box');
+    for (const t0 = performance.now(); bx && performance.now() - t0 < 3000 && bx.getAnimations().some((a) => a.transitionProperty === 'max-width'); ) await new Promise((r) => setTimeout(r, 50));
     return { boxW: Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width),
              wide: document.getElementById('cmdk').classList.contains('cmdk-wide') };
   });
