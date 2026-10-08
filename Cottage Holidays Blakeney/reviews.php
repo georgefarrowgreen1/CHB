@@ -116,10 +116,10 @@ if ($action === 'submit') {
     }
 
     // Best-effort heads-up to the owner (never blocks the submission)
-    if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
+    if (defined('MAIL_ENABLED') && MAIL_ENABLED) {
         try {
             $m = owner_note_review($guest['name'], $propKey, $stars, $text);
-            send_owner($m['subject'], $m['text']);
+            send_people('reviews', $m['subject'], $m['text']);
         } catch (\Throwable $e) {
         }
     }

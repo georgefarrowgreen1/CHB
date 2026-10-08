@@ -393,8 +393,9 @@ function guest_ping_read($guestId, $maxAge = 300)
 // Wake the back office's devices. Each device belongs to the person who turned
 // alerts on there (admin_id; NULL = a device from before people existed, the
 // first owner's). $who decides, per person, whether their phones get this one
-// (null = every device). Dead subscriptions (404/410) are pruned. Returns count.
-function ping_admin_devices($payload = null, $opts = [], $who = null)
+// (null = every device). Dead subscriptions (404/410) are pruned. Returns count;
+// $reached gets how many of EACH person's devices it reached (by person id).
+function ping_admin_devices($payload = null, $opts = [], $who = null, &$reached = [])
 {
     if (!wp_vapid_configured()) {
         return 0;
@@ -422,6 +423,8 @@ function ping_admin_devices($payload = null, $opts = [], $who = null)
         $r = send_webpush($sub['endpoint'], $payload, (string) ($sub['p256dh'] ?? ''), (string) ($sub['auth'] ?? ''), $opts);
         if (!empty($r['ok'])) {
             $sent++;
+            $aid = $sub['admin_id'] === null ? admin_original_owner_id() : (int) $sub['admin_id'];
+            $reached[$aid] = ($reached[$aid] ?? 0) + 1;
         } elseif (in_array($r['status'] ?? 0, [404, 410], true)) {
             try {
                 db()
@@ -534,11 +537,20 @@ function notify_should_push_for($row, $category)
     if ($category === 'urgent') {
         return true;
     }
-    $cap = ['money' => 'payments', 'system' => 'owner'][$category] ?? 'all';
-    if (isset($row['full_access']) && !people_can($row, $cap)) {
+    if (!notify_area_ok($row, $category)) {
         return false;
     }
     return notify_prefs_allow(notify_prefs_for($row), $category);
+}
+// May this person be told about this category at all? (Their areas, not their
+// settings: the email fallback follows this.)
+function notify_area_ok($row, $category)
+{
+    if ($category === 'urgent') {
+        return true;
+    }
+    $cap = ['money' => 'payments', 'system' => 'owner'][$category] ?? 'all';
+    return !isset($row['full_access']) || people_can($row, $cap);
 }
 
 // $opts: url (where a tap lands), category (money|enquiries|messages|system|urgent),
@@ -564,20 +576,54 @@ function alert_owner($title, $body, $opts = [])
     // are per person, and nobody is buzzed about an area switched off for them.
     // 'only' narrows it to one person's devices (their own test alert).
     $only = (int) ($opts['only'] ?? 0);
+    $reached = [];
     $sent = ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400], function ($row) use ($category, $only) {
         return ($only === 0 || (int) $row['id'] === $only) && notify_should_push_for($row, $category);
-    });
+    }, $reached);
     // NOBODY IS LISTENING. alert_owner has always returned the device count and
     // only the test button ever read it — so with permission revoked, the last
     // subscription pruned, or a replaced phone, "Payment received" went nowhere
-    // and nothing said so. Anything that asks for the email fallback now gets one.
-    if ($sent === 0 && !empty($opts['email'])) {
+    // and nothing said so. Anything that asks for the email fallback now gets one —
+    // PER PERSON: if it can't reach your phone, it comes to your email instead.
+    // Muting or quiet hours stop the buzz, not this (nothing is lost by muting);
+    // an area switched off for you takes its alerts, and this, with it.
+    if (!empty($opts['email'])) {
         try {
             require_once __DIR__ . '/mailer.php';
             // The email lands where the notification would have: the push's own target.
             $open = preg_match('/[?&]open=([a-z0-9:-]+)/', (string) ($opts['url'] ?? ''), $om) ? $om[1] : '';
             $m = owner_note_push_fallback($title, $body, $open);
-            send_owner($m['subject'], $m['text']);
+            $people = notify_people();
+            if ($people === null) {
+                if ($sent === 0) {
+                    send_owner($m['subject'], $m['text']); // before people existed
+                }
+            } else {
+                $to = [];
+                foreach ($people as $id => $row) {
+                    if (($reached[$id] ?? 0) === 0 && notify_area_ok($row, $category)) {
+                        $to[] = ['to' => admin_contact_email($row), 'name' => people_display_name($row)];
+                    }
+                }
+                // The extra addresses on Notifications, as before: when it reached no one at all.
+                if ($sent === 0) {
+                    foreach (people_mail_extras() as $e) {
+                        $to[] = ['to' => $e, 'name' => 'Owner'];
+                    }
+                }
+                $seen = [];
+                $msgs = [];
+                foreach ($to as $t) {
+                    $k = strtolower(trim((string) $t['to']));
+                    if ($k !== '' && !isset($seen[$k])) {
+                        $seen[$k] = true;
+                        $msgs[] = ['to' => $k, 'name' => $t['name'], 'subject' => $m['subject'], 'text' => $m['text'], 'html' => owner_alert_text_html($m['subject'], $m['text'])];
+                    }
+                }
+                if ($msgs) {
+                    smtp_send_batch($msgs);
+                }
+            }
         } catch (\Throwable $e) {
         }
     }

@@ -5085,6 +5085,63 @@ $rootDb->exec("DELETE FROM bookings WHERE id = $bId");
 $rootDb->exec("DELETE FROM guest_codes");
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('bacs-details', 'backup-passphrase', 'host-bio')");
 
+echo "\n== §52 Who gets which emails ==\n";
+// Each person chooses which kinds reach them, an area switched off takes its
+// emails with it, the backup never goes to the extra addresses, and an email that
+// must reach someone can't lose its last person. MAIL_ENABLED is off here, so who
+// an email WOULD go to is asked of the app itself, in the app copy (CLI).
+$mailProbe = function ($code) use ($work) {
+    $f = $work . '/it-mail-probe.php';
+    file_put_contents($f, "<?php\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailer.php';\n" . $code);
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    $j = json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+    return is_array($j) ? $j : json_decode(trim($out), true);
+};
+$rcpts = fn() => $mailProbe('echo "\n" . json_encode(["enquiry" => owner_recipients("enquiry"), "ideas" => owner_recipients("ideas"), "backup" => owner_recipients("backup"), "paid" => owner_recipients("paid"), "senders" => people_mail_senders(), "from" => (people_mail_sender_row("ellie52@example.com") ?: ["id" => 0])["id"]]);');
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at) VALUES ('ellie52', 'x', 'Ellie Marsh', 'ellie52@example.com', 0, '{\"payments\":true}', NOW())");
+$eId = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('notify-emails', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode(['co52@example.com'])]);
+$r = http($admin, 'POST', '/auth.php', ['action' => 'admin_status']);
+$ownMail = (string) ($r['json']['me']['contact'] ?? '');
+$R = $rcpts();
+it_check('§52 a new enquiry reaches the owner, the new person and the extra address', is_array($R) && ($R['enquiry'] ?? []) === [$ownMail, 'ellie52@example.com', 'co52@example.com'], json_encode($R));
+it_check('§52 a things-to-do idea skips someone without Website and marketing', ($R['ideas'] ?? []) === [$ownMail, 'co52@example.com'], json_encode($R['ideas'] ?? null));
+it_check('§52 the backup goes to full access only, never to the extra addresses', ($R['backup'] ?? []) === [$ownMail], json_encode($R['backup'] ?? null));
+it_check('§52 a reply by email from her address is allowed, and is hers', in_array('ellie52@example.com', $R['senders'] ?? [], true) && (int) ($R['from'] ?? 0) === $eId, json_encode($R));
+$r = http($admin, 'POST', '/people.php', ['action' => 'list']);
+$eP = array_values(array_filter($r['json']['people'] ?? [], fn($p) => ($p['id'] ?? 0) === $eId))[0] ?? [];
+it_check('§52 the list says what each person gets and may get', ($eP['mail']['enquiry'] ?? null) === true && ($eP['mailCan']['ideas'] ?? null) === false && ($eP['mailCan']['backup'] ?? null) === false && in_array('paid', $eP['mailGets'] ?? [], true) && count($r['json']['mailKinds'] ?? []) === 9 && ($r['json']['mailExtras'] ?? []) === ['co52@example.com'], json_encode($eP));
+// Choosing: the owner stops new enquiries for himself — fine, Ellie still gets them.
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $ownerId, 'kind' => 'enquiry', 'on' => false]);
+$R = $rcpts();
+it_check('§52 you can stop an email for yourself while someone else gets it', $r['code'] === 200 && ($R['enquiry'] ?? []) === ['ellie52@example.com', 'co52@example.com'], $r['raw'] . ' ' . json_encode($R['enquiry'] ?? null));
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'enquiry', 'on' => false]);
+it_check('§52 …but not take it from the last person, said in words', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'must' && strpos((string) ($r['json']['error'] ?? ''), 'a guest is waiting for a reply') !== false, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'ideas', 'on' => true]);
+it_check('§52 an email for an area switched off for her can\'t be switched on', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'locked' && strpos((string) ($r['json']['error'] ?? ''), 'Website and marketing') !== false, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'paid', 'on' => false]);
+$R = $rcpts();
+it_check('§52 switching one off for her stops it reaching her', $r['code'] === 200 && !in_array('ellie52@example.com', $R['paid'] ?? [], true) && in_array($ownMail, $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
+// Her Take payments switched off takes payment emails with it — and back on
+// brings her old choice back (she had chosen them again).
+http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'paid', 'on' => true]);
+http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $eId, 'cap' => 'payments', 'on' => false]);
+$R = $rcpts();
+it_check('§52 an area switched off takes its emails with it', !in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
+http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $eId, 'cap' => 'payments', 'on' => true]);
+$R = $rcpts();
+it_check('§52 …and switching it back on brings her choice back', in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
+// An email that must reach someone is never lost: with nobody choosing it, it
+// falls back to the first owner.
+$rootDb->exec("UPDATE admins SET removed_at = NOW() WHERE id = $eId");
+$R = $rcpts();
+it_check('§52 with its last person gone, a new enquiry falls back to the first owner', ($R['enquiry'] ?? []) === [$ownMail, 'co52@example.com'], json_encode($R['enquiry'] ?? null));
+it_check('§52 …and a removed person can no longer reply by email', !in_array('ellie52@example.com', $R['senders'] ?? [], true), json_encode($R['senders'] ?? null));
+$rootDb->exec("DELETE FROM admins WHERE id = $eId");
+$rootDb->exec("UPDATE admins SET mail_prefs = NULL WHERE id = $ownerId");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

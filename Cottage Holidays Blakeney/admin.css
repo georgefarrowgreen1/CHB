@@ -8719,3 +8719,28 @@ div.ga-row.oa-swrow { cursor: default; }
 .oa-flash { animation: oaFlash 1.6s var(--out); }
 @keyframes oaFlash { 0%, 30% { background-color: color-mix(in srgb, var(--accent) 16%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .oa-flash { animation: none; } }
+/* WHO GETS WHICH EMAILS: a row per email, a photo per person. Lit with a tick =
+   sent; faded with a dashed ring = not sent; faded with a lock = can't be sent to
+   them (the reason comes on tap). Never colour alone: the badge says it. */
+.em-cap { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.em-heads { display: flex; flex: 0 0 auto; padding-right: 8px; }
+.em-heads span { width: 48px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.em-group .em-row { padding: 8px 12px 8px 16px; }
+.em-togs { flex: 0 0 auto; display: flex; }
+.em-tog { position: relative; width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.em-tog::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; border: 2px solid var(--accent); }
+.em-tog .ga-ava { width: 30px; height: 30px; font-size: var(--fs-body); transition: opacity 0.2s var(--out), filter 0.2s var(--out); }
+.em-tog[aria-pressed='false']::before { border: 1.5px dashed var(--text-muted); }
+.em-tog[aria-pressed='false'] .ga-ava, .em-tog.is-locked .ga-ava { opacity: 0.4; filter: grayscale(1); }
+.em-tog.is-locked::before { border: 1.5px solid var(--glass-border); }
+.em-badge { position: absolute; right: 4px; bottom: 4px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--dark-grey); }
+.em-badge .ic { width: 11px; height: 11px; stroke-width: 3.2; }
+.em-badge.is-lock { background: var(--dark-grey); color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--glass-border); }
+.em-badge.is-lock .ic { stroke-width: 2.4; }
+.em-tog:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.em-tog.is-nudge { animation: chbNudge 280ms var(--out); }
+.em-also { color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) {
+  .em-tog .ga-ava { transition: none; }
+  .em-tog.is-nudge { animation: none; }
+}

@@ -226,7 +226,7 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
                     ? ' [#' . msg_reply_token($threadId) . ']'
                     : '';
             $m = owner_note_chat_new($name, $email, $bodyTxt, $replyAddr !== '', $subjTag);
-            send_owner($m['subject'], $m['text'], null, [], $replyAddr ?: null, $msgId);
+            send_people('messages', $m['subject'], $m['text'], null, ['reply_to' => $replyAddr ?: null, 'message_id' => $msgId]);
         }
     } catch (\Throwable $e) {
     }

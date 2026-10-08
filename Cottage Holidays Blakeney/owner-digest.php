@@ -25,6 +25,11 @@ if (!$isCron) {
 }
 
 $force = !empty($_GET['force']);
+// Asked for from the back office ("Send this week's digest now"): it comes to the
+// person who asked, with or without the money as their own copy would be.
+if (!$isCron && $force && function_exists('admin_contact_email') && admin_me()) {
+    people_mail_only(admin_contact_email(admin_me()));
+}
 
 // Only send on Mondays (date('N')===1), unless forced.
 if (!$force && (int) date('N') !== 1) {
@@ -36,9 +41,9 @@ if (!$force && content_value('owner-digest-last') === $today) {
     json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent today']);
 }
 
-// send_owner() also delivers to the Settings co-host list ('notify-emails'),
-// so gate on the full recipient set, not the constant alone.
-if (!owner_recipients()) {
+// Gate on who would actually get it: the people who chose the digest and the
+// extra addresses, not the config constant alone.
+if (!owner_recipients('digest')) {
     json_out(['ok' => false, 'error' => 'No owner email — set OWNER_NOTIFY_EMAIL in config.php or add a recipient in Settings → Notifications']);
 }
 
@@ -264,21 +269,28 @@ $pretty = fn($d) => date('D j M', strtotime($d));
 
 // Composed by owner_digest_body() in mailer.php — one payload, so the template is
 // previewable and render-gated rather than existing only inside this cron run.
-$m = owner_digest_body([
+$digestPayload = [
     'newBookings' => $newBookings, 'newValue' => $newValue, 'received' => $received,
     'arrivals' => $arrivals, 'owedCount' => $owedCount, 'owedSum' => $owedSum,
     'pending' => $pending, 'occPct' => $occPct, 'misses' => $misses,
     'actTotal' => $actTotal, 'actAttention' => $actAttention,
     'openUrl' => site_base_url() . '?open=today',
-]);
+];
+$m = owner_digest_body($digestPayload);
 [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
-
-$res = send_owner($subject, $text, $html);
+// …and once without the money, for whoever gets the digest without Money
+// overview. An extra address gets the owner's copy, as it always did.
+$plain = owner_digest_body($digestPayload + ['noMoney' => true]);
+$res = send_people('digest', $subject, $text, $html, [
+    'compose' => fn($row) => $row === null || people_can($row, 'money') ? [$subject, $text, $html] : [$plain['subject'], $plain['text'], $plain['html']],
+]);
 
 // Stamp on delivered OR queued: a failed morning send that queued to the outbox
 // must still suppress a same-day resend (a noon cron or deploy ping), or the
 // queued copy drains AND the resend delivers — the owner gets the digest twice.
-if (!empty($res['ok']) || $res === true || !empty($res['queued'])) {
+// A copy sent only to the person who asked is not the week's digest: it must not
+// stop Monday's from going to everyone else.
+if (people_mail_only() === '' && (!empty($res['ok']) || $res === true || !empty($res['queued']))) {
     // Record the send so we don't repeat today (store as JSON so content_value reads it back).
     try {
         db()

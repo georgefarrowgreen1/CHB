@@ -282,7 +282,7 @@ function poll_mailbox_replies($force = false, $preview = false)
             $uidls = [];
         } // partial UIDL read → don't act this round
         $known = array_fill_keys($processed, true);
-        $allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
+        $allowed = function_exists('people_mail_senders') ? people_mail_senders() : [];
         krsort($uidls); // newest first
         foreach ($uidls as $no => $uid) {
             // In preview we look at the newest few regardless of the watermark.
@@ -361,7 +361,8 @@ function poll_mailbox_replies($force = false, $preview = false)
             if (($route === 'admin' || $route === 'guest') && !chat_last_message_is($tid, $body)) {
                 try {
                     if ($route === 'admin') {
-                        chat_admin_reply($tid, $body);
+                        $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
+                        chat_admin_reply($tid, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
                     } else {
                         chat_guest_reply($tid, $body);
                     }

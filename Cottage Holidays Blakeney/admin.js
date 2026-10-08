@@ -12378,6 +12378,7 @@ const SETTINGS_TITLES = {
     details: 'Your details',
     people: 'People & access',
     person: 'People & access',
+    emails: 'Who gets which emails',
     reviews: 'Reviews',
     'reviews-import': 'Import reviews',
     'reviews-google': 'Google review link',
@@ -12409,7 +12410,7 @@ const SETTINGS_TITLES = {
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
 // the slide direction, and what each page has learned so far.
-const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3 };
+const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3, emails: 4 };
 let __oaFrom = ''; // the section shown before this one ('' = the Manage index)
 let __oaStill = false; // a repaint in place: no slide, and __oaFrom untouched
 let __oaKeys = null; // the owner's passkeys: null = not asked, 'err' = couldn't ask
@@ -12568,7 +12569,9 @@ function settingsOpen(section) {
         ? () => settingsOpen('reviews')
         : section === 'person'
           ? () => settingsOpen('people')
-          : OA_DEPTH[section] === 2
+          : section === 'emails'
+            ? () => settingsOpen(__oaEmailsFrom)
+            : OA_DEPTH[section] === 2
             ? () => settingsOpen('acct')
             : () => settingsShowIndex();
     settingsRenderSection(section);
@@ -12589,6 +12592,7 @@ function settingsRenderSection(section) {
     else if (section === 'details') renderYourDetails();
     else if (section === 'people') renderPeople();
     else if (section === 'person') renderPerson();
+    else if (section === 'emails') renderEmails();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'reviews-import') rviRender();
     else if (section === 'reviews-google') initGoogleReviewUrl();
@@ -13221,6 +13225,7 @@ async function loadPeople() {
     try {
         const res = await apiPost('people.php', { action: 'list' });
         __oaPeople = res.people || [];
+        oaMailLanded(res);
     } catch (e) {
         if (!Array.isArray(__oaPeople)) __oaPeople = null;
         return;
@@ -13240,17 +13245,24 @@ function oaPeoplePatch() {
     set('#acct-body .oa-r-people .ga-s', others.length ? 'You and ' + listAnd(others) : 'Only you so far');
     set('#details-body .ga-lead', others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.');
     set('#security-body .ga-lead', 'How you get into the back office. ' + (others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.'));
+    set('#notify-body .oa-r-emails .ga-s', oaMailSummary());
     __oaStill = true;
     try {
         if (document.querySelector('#people-body .ga-page')) renderPeople();
         if (document.querySelector('#person-body .ga-page')) renderPerson();
+        if (document.querySelector('#emails-body .ga-page')) renderEmails();
     } finally {
         __oaStill = false;
     }
 }
 function oaPeopleLanded(res) {
     if (res && Array.isArray(res.people)) __oaPeople = res.people;
+    oaMailLanded(res);
     oaPeoplePatch();
+}
+function oaMailLanded(res) {
+    if (res && Array.isArray(res.mailKinds)) __oaMailKinds = res.mailKinds;
+    if (res && Array.isArray(res.mailExtras)) __oaMailExtras = res.mailExtras;
 }
 // "active today at 9:41", "active 3 days ago" — when they were last here.
 function oaSeenWords(p) {
@@ -13370,6 +13382,7 @@ function renderPeople() {
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">People &amp; access</h1><p class="ga-lead">Who can sign in to the back office, and what each of you can do.</p>` +
             gaGroup(rows) +
+            gaGroup([gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' })]) +
             `<p class="ga-note">Everyone signs in with their own password or passkey. Sign-in codes and reset links go to their own email, and the activity log names who did what.</p>`,
     );
     if (!Array.isArray(list)) loadPeople();
@@ -13439,7 +13452,7 @@ function renderPerson() {
                 'What ' + n + ' can do',
             ) +
             gaGroup([gaRow({ ic: 'lock', t: 'Set-up and system', s: 'Payment setup and bank details, integrations, status and backups, the activity log, the Mac assistant and AI chat, and People & access', static: true })], 'Only you') +
-            `<p class="ga-note">A switched-off area disappears from ${escapeHtml(n)}’s menus and Today, and the server refuses it too, so an old link or a stray tap can’t reach it.</p>`;
+            `<p class="ga-note">A switched-off area disappears from ${escapeHtml(n)}’s menus and Today, and the server refuses it too, so an old link or a stray tap can’t reach it. Its emails stop as well.</p>`;
     }
     const keys = OA_PERSON_KEYS[p.id];
     const keyRows = !Array.isArray(keys)
@@ -13455,6 +13468,19 @@ function renderPerson() {
                 }),
             )
           : [gaRow({ ic: 'face', t: 'No passkeys yet', s: n + ' adds them from ' + n + '’s own Sign-in & security', static: true })];
+    html += gaGroup(
+        [
+            gaRow({
+                ic: 'mail',
+                t: 'Emails ' + n + ' gets',
+                s: (p.state === 'invited' ? 'From when ' + n + ' has chosen a password: ' : '') + oaMailList(p, 3),
+                act: chbAttrs('oaEmailsOpen', 'person'),
+                chev: true,
+                cls: 'oa-r-emails',
+            }),
+        ],
+        'Emails',
+    );
     html += gaGroup(
         [gaRow({ ic: 'mail', t: p.contact || 'No email', s: 'Where ' + n + '’s sign-in codes and reset links go', static: true })]
             .concat(keyRows)
@@ -13479,6 +13505,155 @@ const OA_CAPS = {
     prices: ['Prices and cottages', 'Rates, seasons, pricing ideas, cottage pages and calendar sync'],
     website: ['Website and marketing', 'Home page, things to do, newsletter and analytics'],
 };
+
+// ---- Who gets which emails ----
+// A row per email, a photo per person: lit with a tick = it goes to them; faded
+// with a dashed ring = it doesn't; faded with a lock = it can't (an area switched
+// off takes its emails with it — the reason comes on tap). Never colour alone: the
+// badge says it. people-lib.php's PEOPLE_MAILS is the rule and the server decides;
+// these words are only the page's.
+const OA_MAILS = [
+    { k: 'enquiry', when: 'now', t: 'New enquiries', s: 'Who’s asking, the dates and the price, with Approve and Decline buttons' },
+    { k: 'booking', when: 'now', t: 'New bookings', s: 'A copy of the confirmation the guest was sent' },
+    { k: 'paid', when: 'now', t: 'Payments received', s: 'Who paid, how much, and what’s still to collect' },
+    { k: 'messages', when: 'now', t: 'Guest messages', s: 'Website chats you can answer by replying to the email' },
+    { k: 'reviews', when: 'now', t: 'Reviews to approve', s: 'A guest’s review, waiting to go on the site' },
+    { k: 'ideas', when: 'now', t: 'Things-to-do suggestions', s: 'A guest’s idea for the Things to do list' },
+    { k: 'digest', when: 'week', t: 'Weekly digest', s: 'The week ahead, what came in, and anything that needs a look' },
+    { k: 'analytics', when: 'week', t: 'Weekly analytics', s: 'Visitors, enquiries and what people searched for' },
+    { k: 'backup', when: 'week', t: 'Database backup', s: 'Everything on the site, encrypted, so a copy lives off the host' },
+];
+const OA_MAIL_GROUPS = [
+    ['now', 'As it happens'],
+    ['week', 'Every week'],
+];
+let __oaMailKinds = []; // [{k, cap, must}] — the server's word, with the people list
+let __oaMailExtras = []; // the extra addresses copied on every email but the backup
+let __oaEmailsFrom = 'notify'; // which page the emails page goes back to
+const oaMailLit = (p, k) => !!(p && p.mailCan && p.mailCan[k] && p.mail && p.mail[k]);
+const oaMailCount = (p) => OA_MAILS.filter((m) => oaMailLit(p, m.k)).length;
+// What one person gets, in words: "New enquiries, new bookings and 4 more".
+function oaMailList(p, max) {
+    const t = OA_MAILS.filter((m) => oaMailLit(p, m.k)).map((m, i) => (i ? m.t.charAt(0).toLowerCase() + m.t.slice(1) : m.t));
+    if (!t.length) return 'Only sign-in emails';
+    if (max && t.length > max) return t.slice(0, max).join(', ') + ' and ' + (t.length - max) + ' more';
+    return listAnd(t);
+}
+function oaMailSummary() {
+    const list = (__oaPeople || []).filter((p) => p.state !== 'removed');
+    const me = list.find((p) => p.you);
+    if (!me) return 'Choose who gets each email';
+    return [oaMailCount(me) + ' kinds to you'].concat(list.filter((p) => !p.you).map((p) => oaMailCount(p) + ' to ' + p.first)).join(' · ');
+}
+function oaEmailsOpen(from) {
+    __oaEmailsFrom = from === 'person' || from === 'people' ? from : 'notify';
+    oaGo('emails');
+}
+const OA_MAIL_TICK = '<span class="em-badge" aria-hidden="true">' + gaSvg('check') + '</span>';
+const OA_MAIL_LOCK = '<span class="em-badge is-lock" aria-hidden="true">' + gaSvg('lock') + '</span>';
+function oaMailTog(p, m) {
+    const ava = oaAvaOf(p.name, oaPersonPhotoUrl(p), false);
+    if (!(p.mailCan && p.mailCan[m.k])) {
+        return `<button type="button" class="em-tog is-locked" aria-disabled="true" ${chbAttrs('oaMailWhy', m.k, p.id)} aria-label="${escapeHtml(m.t + ': ' + p.first + ' can’t get this')}">${ava}${OA_MAIL_LOCK}</button>`;
+    }
+    const on = oaMailLit(p, m.k);
+    return `<button type="button" class="em-tog" data-mail="${m.k}-${p.id}" aria-pressed="${on}" ${chbAttrs('oaMailSet', m.k, p.id)} aria-label="${escapeHtml('Send ' + m.t.charAt(0).toLowerCase() + m.t.slice(1) + ' to ' + p.first)}">${ava}${on ? OA_MAIL_TICK : ''}</button>`;
+}
+function renderEmails() {
+    const box = document.getElementById('emails-body');
+    if (!box) return;
+    if (!chbFull()) return renderMyEmails(box);
+    const person = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'People') : oaBack('notify', 'Notifications');
+    const head = back + `<h1 class="section-title ga-h1">Who gets which emails</h1><p class="ga-lead">Each email goes to whoever’s photo is lit. Tap a photo to send it or stop it.</p>`;
+    if (!Array.isArray(__oaPeople)) {
+        box.innerHTML = oaPage('emails', head + gaGroup([gaRow({ ic: 'mail', t: 'Loading…', static: true })]));
+        loadPeople();
+        return;
+    }
+    const list = __oaPeople.filter((p) => p.state !== 'removed');
+    let html =
+        head +
+        gaGroup(
+            list.map((p) =>
+                gaRow({
+                    ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'),
+                    t: p.name + (p.you ? ' (you)' : ''),
+                    s: p.state === 'invited' ? (p.contact || '') + ' · emails start once ' + p.first + ' has chosen a password' : p.contact || 'No email yet',
+                    static: true,
+                    cls: 'oa-person',
+                }),
+            ),
+            'Sent to',
+        );
+    OA_MAIL_GROUPS.forEach(([w, label]) => {
+        const heads = list.map((p) => `<span>${escapeHtml(p.first)}</span>`).join('');
+        html +=
+            `<h2 class="ga-cap em-cap"><span>${escapeHtml(label)}</span><span class="em-heads" aria-hidden="true">${heads}</span></h2>` +
+            `<div class="ga-group em-group">${OA_MAILS.filter((m) => m.when === w)
+                .map((m) => {
+                    // The digest is for everyone; a copy for someone without Money
+                    // overview leaves the money out, and the row says whose.
+                    const plain = m.k === 'digest' ? list.filter((p) => oaMailLit(p, 'digest') && !p.full && !(p.caps && p.caps.money)).map((p) => p.first + '’s') : [];
+                    const also = plain.length ? listAnd(plain) + (plain.length > 1 ? ' copies leave' : ' copy leaves') + ' out the money' : '';
+                    return `<div class="ga-row em-row" data-mail="${m.k}"><span class="ga-lb"><span class="ga-t">${escapeHtml(m.t)}</span><span class="ga-s">${escapeHtml(m.s)}</span>${also ? `<span class="ga-s em-also">${escapeHtml(also)}</span>` : ''}</span><span class="em-togs">${list.map((p) => oaMailTog(p, m)).join('')}</span></div>`;
+                })
+                .join('')}</div>`;
+    });
+    html +=
+        `<p class="ga-note">New enquiries, guest messages and the backup always reach someone, so the last person on one can’t be switched off. A switched-off area takes its emails with it.</p>` +
+        `<p class="ga-note">Phone alerts are separate: each of you chooses your own in Notifications. If an alert can’t reach your phone, it comes to your email instead.</p>` +
+        gaGroup(
+            (__oaMailExtras || [])
+                .map((e) => gaRow({ ic: 'mail', t: e, s: 'Copied on every email but the backup', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) }))
+                .concat([gaRow({ ic: 'plus', t: 'Add an address', s: 'Someone without a sign-in, like a co-host', act: 'data-act="addNotifyEmail"' })]),
+            'Also emailed',
+        );
+    box.innerHTML = oaPage('emails', html);
+}
+// Someone without full access reads the emails chosen for them.
+function renderMyEmails(box) {
+    const me = chbMe() || {};
+    const gets = Array.isArray(me.mailGets) ? me.mailGets : [];
+    const by = String(/** @type {any} */ (window).__ownerFirst || '') || 'The owner';
+    let html =
+        oaBack('notify', 'Notifications') +
+        `<h1 class="section-title ga-h1">Emails you get</h1><p class="ga-lead">${escapeHtml(by + ' chooses who gets which emails. Yours come to ' + (me.contact || 'your email') + '.')}</p>`;
+    OA_MAIL_GROUPS.forEach(([w, label]) => {
+        const rows = OA_MAILS.filter((m) => m.when === w && gets.includes(m.k)).map((m) =>
+            gaRow({ t: m.t, s: m.k === 'digest' && !chbCan('money') ? 'The week ahead and anything that needs a look, without the money' : m.s, static: true }),
+        );
+        if (rows.length) html += gaGroup(rows, label);
+    });
+    if (!gets.length) html += gaGroup([gaRow({ ic: 'mail', t: 'Only sign-in emails', s: 'Codes and reset links, to ' + (me.contact || 'your email'), static: true })]);
+    box.innerHTML = oaPage('emails', html);
+}
+// One photo tapped: send it or stop it. The server keeps the rules — an email
+// that must reach someone can't lose its last person, and says why.
+async function oaMailSet(kind, id) {
+    const p = (__oaPeople || []).find((x) => x.id === Number(id));
+    if (!p) return;
+    const on = !oaMailLit(p, kind);
+    try {
+        const res = await apiPost('people.php', { action: 'set_mail', id: p.id, kind, on });
+        oaPeopleLanded(res);
+    } catch (e) {
+        const t = document.querySelector(`#emails-body [data-mail="${kind}-${p.id}"]`);
+        if (t) {
+            t.classList.remove('is-nudge');
+            void (/** @type {HTMLElement} */ (t).offsetWidth);
+            t.classList.add('is-nudge');
+        }
+        toast(e.message || 'That didn’t save. Try again.');
+    }
+}
+function oaMailWhy(kind, id) {
+    const p = (__oaPeople || []).find((x) => x.id === Number(id));
+    if (!p) return;
+    const k = (__oaMailKinds || []).find((x) => x.k === kind);
+    const cap = (k && k.cap) || 'owner';
+    toast(cap === 'owner' ? 'Only someone with full access gets the backup. It’s everything on the site.' : p.first + ' can’t get this yet. Switch on ' + ((OA_CAPS[cap] || [])[0] || cap) + ' on ' + p.first + '’s page first.');
+}
 async function oaPersonKeysLoad(id) {
     try {
         const res = await apiPost('people.php', { action: 'passkeys', id });
@@ -19886,15 +20061,25 @@ function renderNotifySettings() {
             `<h2 class="ga-cap">This device</h2><div id="notify-device"><div class="ga-group">${oaDeviceRows().join('')}</div></div>` +
             `<h2 class="ga-cap">What interrupts you</h2><div id="notify-prefs-body"></div>` +
             `<p class="ga-note">Turning one off stops the buzz. It still lands in the activity log, and anything urgent, like a calendar sync that could double-book you, always gets through.</p>` +
-            (full
-                ? `<h2 class="ga-cap">Emailed to</h2><div id="notify-emails-list"><div class="ga-group">${gaRow({ ic: 'mail', t: 'Loading…', static: true })}</div></div>` +
-                  `<p class="ga-note">Emails cover new bookings, enquiries, guest messages, payments and reviews.</p>`
-                : ''),
+            // Emails are a separate choice from alerts: who gets which is set on one
+            // page (everyone's, for full access; your own list, read-only, otherwise).
+            gaGroup(
+                [
+                    full
+                        ? gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(__oaPeople) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'notify'), chev: true, cls: 'oa-r-emails' })
+                        : gaRow({ ic: 'mail', t: 'Emails you get', s: oaMyMailSub(), act: chbAttrs('oaEmailsOpen', 'notify'), chev: true, cls: 'oa-r-emails' }),
+                ],
+                'Emails',
+            ),
     );
     renderNotifyPrefs();
-    if (full) loadNotifyEmails();
     oaPushRefresh();
     if (full && __oaPeople === null) loadPeople();
+}
+function oaMyMailSub() {
+    const me = chbMe() || {};
+    const n = Array.isArray(me.mailGets) ? me.mailGets.length : 0;
+    return n ? n + (n === 1 ? ' kind' : ' kinds') + ', all to ' + (me.contact || 'your email') : 'Only sign-in emails';
 }
 // Read-only check of the zero-setup reply-by-email: does the mailbox
 // connect, and what did the newest replies do? Nothing is delivered.
@@ -19950,36 +20135,12 @@ async function diagnoseReplyEmail(btn) {
         }
     }
 }
-// ---- Owner email recipients (Manage → Notifications) ----
-async function loadNotifyEmails() {
-    const box = document.getElementById('notify-emails-list');
-    if (!box) return;
-    let d;
-    try {
-        d = await apiPost('notify-recipients.php', { action: 'list' });
-    } catch (e) {
-        box.innerHTML = `<div class="ga-group">${gaRow({ ic: 'mail', t: 'Couldn’t load the list', s: 'Tap to try again', act: 'data-act="loadNotifyEmails"' })}</div>`;
-        return;
-    }
-    renderNotifyEmails(d.primary, d.extras || []);
-}
-function renderNotifyEmails(primary, extras) {
-    const box = document.getElementById('notify-emails-list');
-    if (!box) return;
-    const rows = [
-        primary
-            ? gaRow({ ic: 'mail', t: primary, s: 'Your owner email', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true })
-            : gaRow({ ic: 'mail', t: 'No owner email set on the server', s: 'Alerts have no main address yet', static: true, cls: 'oa-warn' }),
-    ]
-        .concat((extras || []).map((e) => gaRow({ ic: 'mail', t: e, s: 'Copied on every alert', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) })))
-        .concat([gaRow({ ic: 'plus', t: 'Add someone', s: 'A partner or co-host', act: 'data-act="addNotifyEmail"' })]);
-    box.innerHTML = `<div class="ga-group">${rows.join('')}</div>`;
-}
+// ---- The extra addresses (Who gets which emails → Also emailed) ----
 // One address, one small form; the server's refusal ("already on the list",
 // "doesn't look like an email") keeps it open with what was typed.
 async function addNotifyEmail() {
     const fields = [{ id: 'email', label: 'Email address', type: 'email', value: '', placeholder: 'name@example.com', autocomplete: 'off', inputmode: 'email' }];
-    let msg = 'They’re copied on every owner alert from now on.';
+    let msg = 'Someone without a sign-in, like a co-host. They’re copied on every email but the backup.';
     for (;;) {
         const v = await glassForm(msg, fields, { title: 'Email someone else too', okLabel: 'Add' });
         if (!v) return;
@@ -19996,16 +20157,16 @@ async function addNotifyEmail() {
             msg = String(e.message || e);
             continue;
         }
-        await loadNotifyEmails();
-        toast('Added — copied on every owner alert from now on.');
+        await loadPeople();
+        toast('Added — copied on every email but the backup.');
         return;
     }
 }
 async function removeNotifyEmail(email) {
-    if (!(await glassConfirm(`${email} will stop getting owner alerts.`, 'Stop emailing them', { title: 'Remove this address?', danger: true }))) return;
+    if (!(await glassConfirm(`${email} will stop getting the back office’s emails.`, 'Stop emailing them', { title: 'Remove this address?', danger: true }))) return;
     try {
         await apiPost('notify-recipients.php', { action: 'remove', email });
-        await loadNotifyEmails();
+        await loadPeople();
         toast('Removed');
     } catch (e) {
         glassAlert("Couldn't remove that address: " + e.message);

@@ -27,6 +27,10 @@ if (!$isCron) {
 }
 
 $force = !empty($_GET['force']);
+// Asked for from the back office: it comes to the person who asked.
+if (!$isCron && $force && function_exists('admin_contact_email') && admin_me()) {
+    people_mail_only(admin_contact_email(admin_me()));
+}
 
 // Only send on Sundays (date('N')===7), unless forced.
 if (!$force && (int) date('N') !== 7) {
@@ -41,9 +45,9 @@ if (!$force && content_value('analytics-digest-last') === $today) {
 if (!$force && content_value('analytics-digest-off') === '1') {
     json_out(['ok' => true, 'sent' => false, 'reason' => 'opted out']);
 }
-// send_owner() also delivers to the Settings co-host list ('notify-emails'),
-// so gate on the full recipient set, not the constant alone.
-if (!owner_recipients()) {
+// Gate on who would actually get it: the people who chose it and the extra
+// addresses, not the config constant alone.
+if (!owner_recipients('analytics')) {
     json_out(['ok' => false, 'error' => 'No owner email — set OWNER_NOTIFY_EMAIL in config.php or add a recipient in Settings → Notifications']);
 }
 
@@ -95,11 +99,12 @@ $m = weekly_analytics_body([
 ]);
 [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
 
-$res = send_owner($subject, $text, $html);
+$res = send_people('analytics', $subject, $text, $html);
 
 // Stamp on delivered OR queued (see owner-digest.php): a queued copy must
 // suppress a same-day resend, or it delivers twice.
-if (!empty($res['ok']) || $res === true || !empty($res['queued'])) {
+// (A copy only for the person who asked must not stop Sunday's.)
+if (people_mail_only() === '' && (!empty($res['ok']) || $res === true || !empty($res['queued']))) {
     try {
         db()
             ->prepare(

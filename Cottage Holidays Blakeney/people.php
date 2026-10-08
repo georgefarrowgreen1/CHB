@@ -5,11 +5,13 @@
 //  nobody here ever sets or sees a password — adding someone emails them a link
 //  to choose their own, and a reset sends a new link.
 //  POST {action}: list, invite, reinvite, cancel_invite, remove, restore,
-//                 set_full, set_cap, reset_link, passkeys, passkey_remove
+//                 set_full, set_cap, reset_link, passkeys, passkey_remove, set_mail
 //  Two rules hold everywhere: you never act on yourself here (your own details
-//  live on your account page), and there is always someone with full access.
+//  live on your account page) — except set_mail, the emails matrix, which has a
+//  photo for you too — and there is always someone with full access.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/mailer.php'; // the extra addresses (people_mail_extras)
 
 $in = body();
 require_full_access();
@@ -49,6 +51,7 @@ function people_list_payload($myId)
         $p = people_public($r, $myId);
         $p['contact'] = admin_contact_email($r);
         $p['passkeys'] = $counts[(int) $r['id']] ?? 0;
+        $p += people_mail_payload($r);
         $out[] = $p;
     }
     // You first, then everyone else in the order they joined.
@@ -57,7 +60,7 @@ function people_list_payload($myId)
 }
 function people_done(array $extra = [])
 {
-    json_out(['ok' => true, 'people' => people_list_payload((int) $_SESSION['admin_id'])] + $extra);
+    json_out(['ok' => true, 'people' => people_list_payload((int) $_SESSION['admin_id']), 'mailKinds' => people_mail_kinds(), 'mailExtras' => people_mail_extras()] + $extra);
 }
 
 route_actions(
@@ -214,6 +217,42 @@ route_actions(
             $sent = admin_send_link($row, 'reset', $myFirst);
             log_activity('account', 'people.reset', $myFirst . ' sent ' . people_display_name($row) . ' a password reset link', ['entity' => 'admin', 'entity_id' => (string) $row['id']]);
             people_done(['sent' => $sent]);
+        },
+
+        // Who gets which emails: one person, one kind, on or off. You may choose
+        // your own here too. An area switched off for them can't be switched on
+        // (it takes its emails with it), and the last person on an email that must
+        // reach someone can't be switched off.
+        'set_mail' => function () use ($in, $myFirst) {
+            $id = (int) ($in['id'] ?? 0);
+            $row = admin_row($id, true);
+            if (!$row || !empty($row['removed_at'])) {
+                json_out(['error' => 'That person isn’t here any more.', 'code' => 'gone'], 404);
+            }
+            $kind = (string) ($in['kind'] ?? '');
+            if (!isset(PEOPLE_MAILS[$kind])) {
+                json_out(['error' => 'Unknown email'], 400);
+            }
+            $on = !empty($in['on']);
+            if ($on && ($lock = people_mail_lock($row, $kind)) !== '') {
+                json_out(['error' => $lock, 'code' => 'locked'], 409);
+            }
+            if (!$on) {
+                $all = db()->query('SELECT * FROM admins WHERE removed_at IS NULL')->fetchAll();
+                $bad = people_mail_must_problem($all, $id, $kind);
+                if ($bad !== '') {
+                    json_out(['error' => $bad, 'code' => 'must'], 409);
+                }
+            }
+            $mail = people_mail_norm($row);
+            $mail[$kind] = $on;
+            try {
+                db()->prepare('UPDATE admins SET mail_prefs = ? WHERE id = ?')->execute([json_encode($mail), $id]);
+            } catch (\Throwable $e) {
+                json_out(['error' => 'This needs the latest database update — run the migrations first.'], 503);
+            }
+            log_activity('account', 'people.mail', $myFirst . ($on ? ' sent ' : ' stopped ') . PEOPLE_MAILS[$kind]['name'] . ($on ? ' to ' : ' for ') . ((int) $row['id'] === (int) $_SESSION['admin_id'] ? 'themselves' : people_display_name($row)), ['entity' => 'admin', 'entity_id' => (string) $id]);
+            people_done();
         },
 
         // Someone else's passkeys: you can see them and remove a lost phone's,

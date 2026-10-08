@@ -20,8 +20,13 @@ $action = $in['action'] ?? 'run';
 
 if ($action === 'test_email') {
     require_once __DIR__ . '/mailer.php';
-    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
-        json_out(['ok' => false, 'error' => 'No owner email is set in config.php (OWNER_NOTIFY_EMAIL).']);
+    // To the person who asked (their own email), else the config owner address.
+    $to = admin_me() ? admin_contact_email(admin_me()) : '';
+    if ($to === '' && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+        $to = (string) OWNER_NOTIFY_EMAIL;
+    }
+    if ($to === '') {
+        json_out(['ok' => false, 'error' => 'No email to send it to: add yours in Your details.']);
     }
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         json_out(['ok' => false, 'error' => 'Email is switched off (MAIL_ENABLED is false).']);
@@ -29,8 +34,8 @@ if ($action === 'test_email') {
     // Composed by owner_mail_test_body() in mailer.php, so the owner can PREVIEW this
     // one alongside every other template and the render gate can prove it builds.
     $m = owner_mail_test_body();
-    $res = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html']);
-    json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => OWNER_NOTIFY_EMAIL]);
+    $res = smtp_send($to, people_display_name(admin_me() ?: []), $m['subject'], $m['text'], $m['html']);
+    json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => $to]);
 }
 
 // ---- Manage → Text messages --------------------------------------------
@@ -205,17 +210,20 @@ add(
     $mailOn ? '' : 'Fill in the SMTP settings in config.php and set MAIL_ENABLED to true (SETUP-EMAIL.md).',
 );
 
-$ownerEmail =
-    defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && !in_array(OWNER_NOTIFY_EMAIL, $placeholderEmails, true);
+// Who a new enquiry reaches — the one back-office email that must always reach
+// someone (each person chooses theirs; see People & access → Who gets which emails).
+require_once __DIR__ . '/mailer.php';
+$enqTo = array_values(array_filter(owner_recipients('enquiry'), fn($e) => !in_array(strtolower($e), $placeholderEmails, true)));
+$ownerEmail = count($enqTo) > 0;
 add(
     $checks,
     'Email',
     'Owner notifications & weekly digest',
     $ownerEmail ? 'ok' : 'warn',
     $ownerEmail
-        ? 'Owner email set.'
-        : 'OWNER_NOTIFY_EMAIL is unset/placeholder — you won\'t get owner alerts or the Monday digest.',
-    $ownerEmail ? '' : 'Set OWNER_NOTIFY_EMAIL in config.php.',
+        ? 'New enquiries reach ' . count($enqTo) . ' address' . (count($enqTo) === 1 ? '' : 'es') . '.'
+        : 'No real address gets the back office\'s emails — you won\'t get owner alerts or the Monday digest.',
+    $ownerEmail ? '' : 'Add your email in Your details, or set OWNER_NOTIFY_EMAIL in config.php.',
 );
 
 $square = function_exists('square_enabled') && square_enabled();

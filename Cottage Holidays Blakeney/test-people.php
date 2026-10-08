@@ -162,6 +162,65 @@ ppl('a booking edit drops the money for someone without Take payments', substr_c
 $cancel = substr($bk, (int) strpos($bk, "if (\$action === 'cancel') {"), 3200);
 ppl('a cancellation that refunds asks for Refunds and deposits', strpos($cancel, "require_cap('refunds');") !== false);
 
+echo "\n== §12 who gets which emails ==\n";
+// Each person chooses which kinds reach them; an area switched off takes its
+// emails with it; an invite reaches no one; and an email that must reach someone
+// can't lose its last person.
+$allMail = array_fill_keys(array_keys(PEOPLE_MAILS), true);
+ppl('someone with full access gets everything by default (how it worked before people)', people_mail_norm($owner) === $allMail);
+ppl('…and so does a row from before the migration', people_mail_norm($legacy) === $allMail);
+ppl('a new limited person starts with the guest-facing emails', people_mail_norm($host) === PEOPLE_MAIL_LIMITED);
+ppl('a stored choice wins over the default', people_mail_norm(['mail_prefs' => json_encode(['booking' => false])] + $owner)['booking'] === false && people_mail_norm(['mail_prefs' => json_encode(['booking' => false])] + $owner)['enquiry'] === true);
+ppl('garbage in the column is the defaults', people_mail_norm(['mail_prefs' => 'not json'] + $host) === PEOPLE_MAIL_LIMITED);
+ppl('payment emails follow Take payments', people_mail_can($host, 'paid') === true && people_mail_can(['caps' => json_encode(['payments' => false])] + $host, 'paid') === false);
+ppl('website emails need Website and marketing', people_mail_can($host, 'ideas') === false && people_mail_can($host, 'analytics') === false && people_mail_can(['caps' => json_encode(['website' => true])] + $host, 'analytics') === true);
+ppl('the backup is full access only', people_mail_can($host, 'backup') === false && people_mail_can($owner, 'backup') === true);
+ppl('an unknown kind is nobody\'s', people_mail_can($owner, 'nonsense') === false);
+$hostAll = ['mail_prefs' => json_encode($allMail)] + $host;
+ppl('a choice for an area switched off does not reach them (and comes back when it is switched on)', people_mail_gets($hostAll, 'ideas') === false && people_mail_gets(['caps' => json_encode(['website' => true])] + $hostAll, 'ideas') === true);
+ppl('an invite reaches no one yet', people_mail_gets(['invited_at' => '2026-10-01 09:00:00'] + $owner, 'enquiry') === false);
+ppl('a removed person gets nothing', people_mail_gets(['removed_at' => '2026-10-01 09:00:00'] + $owner, 'enquiry') === false);
+ppl('the lock says which switch, on whose page', people_mail_lock($host, 'ideas') === 'Sophia can’t get this yet. Switch on Website and marketing on Sophia’s page first.');
+ppl('…and why the backup is locked', people_mail_lock($host, 'backup') === 'Only someone with full access gets the backup. It’s everything on the site.');
+ppl('…and nothing is locked that can be had', people_mail_lock($host, 'enquiry') === '');
+// The must rule.
+$ownerOff = ['mail_prefs' => json_encode(['enquiry' => false] + $allMail)] + $owner;
+ppl('the last person on new enquiries can\'t be switched off', people_mail_must_problem([$owner, ['mail_prefs' => json_encode(['enquiry' => false])] + $host], 1, 'enquiry') === 'Someone has to get new enquiries — a guest is waiting for a reply.');
+ppl('…but can once someone else gets them', people_mail_must_problem([$owner, $host], 1, 'enquiry') === '');
+ppl('…and an invite does not count as someone', people_mail_must_problem([$owner, ['invited_at' => '2026-10-01 09:00:00'] + $host], 1, 'enquiry') !== '');
+ppl('guest messages and the backup must reach someone too', people_mail_must_problem([$owner], 1, 'messages') !== '' && people_mail_must_problem([$owner, $host], 1, 'backup') === 'Someone has to get the backup — it’s the copy that lives off the host.');
+ppl('an email that need not reach anyone can lose its last person', people_mail_must_problem([$owner], 1, 'analytics') === '' && people_mail_must_problem([$ownerOff], 1, 'booking') === '');
+$pay = people_mail_payload($host);
+ppl('the payload: choices, what may be had, what reaches them', $pay['mail'] === PEOPLE_MAIL_LIMITED && $pay['mailCan']['backup'] === false && $pay['mailCan']['enquiry'] === true && in_array('enquiry', $pay['mailGets'], true) && !in_array('ideas', $pay['mailGets'], true));
+ppl('the kinds travel in page order with their areas', array_column(people_mail_kinds(), 'k') === array_keys(PEOPLE_MAILS) && people_mail_kinds()[0] === ['k' => 'enquiry', 'cap' => 'all', 'must' => true]);
+// The WIRING: every sender names its kind (a sender left on send_owner reaches
+// only the people with full access).
+$mailer = (string) file_get_contents(__DIR__ . '/mailer.php');
+$wired = [
+    ['mailer.php', "send_people('enquiry',"], ['mailer.php', "send_people('booking',"], ['mailer.php', "send_people('paid',"],
+    ['chat-lib.php', "send_people('messages',"], ['messages.php', "send_people('messages',"], ['reviews.php', "send_people('reviews',"],
+    ['leads.php', "send_people('reviews',"], ['experiences.php', "send_people('ideas',"], ['owner-digest.php', "send_people('digest',"],
+    ['weekly-analytics.php', "send_people('analytics',"], ['backup.php', "send_people('backup',"],
+];
+$unwired = [];
+foreach ($wired as [$f, $needle]) {
+    if (strpos((string) file_get_contents(__DIR__ . '/' . $f), $needle) === false) {
+        $unwired[] = "$f ($needle)";
+    }
+}
+ppl('every back-office email names its kind' . ($unwired ? ' — missing: ' . implode(', ', $unwired) : ''), !$unwired);
+$replyWired = [];
+foreach (['inbound-mail.php', 'mailbox-read.php'] as $f) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    if (strpos($src, 'people_mail_senders()') === false || strpos($src, "chat_admin_reply(") === false || strpos($src, "people_mail_sender_row(\$fromAddr)") === false || strpos($src, "'admin:' . (int) \$who['id']") === false) {
+        $replyWired[] = $f;
+    }
+}
+ppl('a reply by email may come from anyone with a sign-in, and is credited to them' . ($replyWired ? ' — not in: ' . implode(', ', $replyWired) : ''), !$replyWired);
+$od = (string) file_get_contents(__DIR__ . '/owner-digest.php');
+ppl('the digest is composed without the money for someone without Money overview', strpos($od, "people_can(\$row, 'money')") !== false && strpos($od, "'noMoney' => true") !== false);
+ppl('a digest asked for from the back office goes only to whoever asked, and does not stop Monday\'s', strpos($od, 'people_mail_only(admin_contact_email(admin_me()))') !== false && strpos($od, "people_mail_only() === ''") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PEOPLE CHECK(S) FAILED ❌\n";

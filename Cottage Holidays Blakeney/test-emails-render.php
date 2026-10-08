@@ -241,6 +241,19 @@ $JOBS = [
           'openUrl' => site_base_url() . '?open=today',
       ])));
   }],
+  // The same week without the money: the copy for someone without Money overview.
+  ['owner-digest-plain', 'owner', function () use ($B) {
+      return send_owner(...array_values(owner_digest_body([
+          'newBookings' => 3, 'newValue' => 1290.0, 'received' => 870.5,
+          'arrivals' => [['check_in' => $B['check_in'], 'name' => 'Wren Hollis', 'prop_key' => 'jollyboat']],
+          'owedCount' => 2, 'owedSum' => 440.0, 'pending' => 1, 'occPct' => 68,
+          'misses' => [['t' => 'is there a hot tub', 'n' => 3]],
+          'actTotal' => 12,
+          'actAttention' => [['summary' => 'A £60.00 refund to Wren did not go through', 'severity' => 'warn']],
+          'openUrl' => site_base_url() . '?open=today',
+          'noMoney' => true,
+      ])));
+  }],
   ['weekly-analytics', 'owner', function () {
       return send_owner(...array_values(weekly_analytics_body([
           'views' => 412, 'uniq' => 318, 'convPct' => 2.4, 'bookings' => 3, 'enquiries' => 7,
@@ -358,6 +371,16 @@ foreach ($JOBS as [$name, $group, $fn]) {
     chk("$name — subject, text half and a full HTML document", $ok);
 }
 chk('every one of the ' . count($JOBS) . ' templates rendered', $missing === []);
+// THE DIGEST WITHOUT THE MONEY says no figure at all — in the subject, the text half
+// or the HTML half (and not the warnings either: their free text can carry one) —
+// while the owner's copy of the same week still does.
+$dPlain = $RENDERED['owner-digest-plain'] ?? null;
+$dFull = $RENDERED['owner-digest'] ?? null;
+chk('the digest without the money has no £ anywhere, in either half',
+    is_array($dPlain) && strpos($dPlain['subject'] . $dPlain['text'] . $dPlain['html'], '£') === false && strpos($dPlain['html'], 'did not go through') === false);
+chk('…while the owner\'s copy of the same week still states it',
+    is_array($dFull) && strpos($dFull['subject'], '£440.00 to collect') !== false && strpos($dFull['text'], 'Money received: £870.50') !== false && strpos($dFull['html'], '£870.50') !== false);
+chk('…and both still carry the week ahead', is_array($dPlain) && strpos($dPlain['text'], 'Wren Hollis') !== false && strpos($dPlain['html'], 'Wren Hollis') !== false);
 
 // The point of the gate is COVERAGE, so it asserts its own reach: every composer
 // mailer.php defines must be exercised here, or the list above has fallen behind
@@ -366,6 +389,7 @@ $mlSrc = (string) file_get_contents($APP . '/mailer.php');
 preg_match_all('/^function (send_[a-z_]+)\(/m', $mlSrc, $mm);
 $EXCLUDE = [
     'send_owner' => 'the transport for every owner email, driven by all of them',
+    'send_people' => 'the per-kind transport under send_owner, driven by every owner email',
     'send_arrival_for_booking' => 'a DB lookup wrapper around send_arrival_email',
     'send_autopay_notice' => 'thin sender over autopay_notice_body, driven below',
     'send_autopay_failure' => 'thin sender over autopay_failure_body, driven below',
@@ -406,6 +430,7 @@ $smpSrc = (string) file_get_contents($APP . '/email-samples.php');
 // it made the check skip the thing it was written to catch. Break-tested.
 $PREVIEW_EXCLUDE = [
     'send_owner' => 'the transport, not an email of its own',
+    'send_people' => 'the per-kind transport, not an email of its own',
     'send_arrival_for_booking' => 'a DB lookup wrapper around send_arrival_email',
     'send_cancellation_email_body' => 'pure builder under send_cancellation_email',
     'send_enquiry_reply_email' => 'previewed live in the enquiry composer itself',

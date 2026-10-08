@@ -203,8 +203,18 @@ $muted = $hostPays;
 $muted['notify_prefs'] = json_encode(['money' => false] + json_decode($allOn, true));
 wpchk("a person's own mute still applies inside their areas", notify_should_push_for($muted, 'money') === false);
 wpchk('a removed person gets nothing but urgent', notify_should_push_for(['removed_at' => '2026-10-01 10:00:00'] + $owner, 'enquiries') === false);
-wpchk('no device reached + email requested → send_owner fallback',
-    strpos($src, '$sent === 0 && !empty($opts[\'email\'])') !== false);
+// THE EMAIL FALLBACK IS PER PERSON: if an alert can't reach YOUR phone it comes to
+// your email, whoever else's phone it reached; the extra addresses only when it
+// reached nobody (as before); before people existed, exactly the old behaviour.
+wpchk('the email fallback is decided person by person',
+    strpos($src, "if ((\$reached[\$id] ?? 0) === 0 && notify_area_ok(\$row, \$category)) {") !== false);
+wpchk('…the extra addresses only when it reached no one',
+    preg_match('/if \(\$sent === 0\) \{\s*foreach \(people_mail_extras\(\)/', $src) === 1);
+wpchk('…and before people existed, the old all-or-nothing fallback',
+    preg_match('/if \(\$people === null\) \{\s*if \(\$sent === 0\) \{\s*send_owner\(/', $src) === 1);
+wpchk('the fallback follows areas, not mutes (muting stops the buzz, not the email)',
+    notify_area_ok($host, 'money') === false && notify_area_ok($hostPays, 'money') === true && notify_area_ok($muted, 'money') === true
+        && notify_area_ok($host, 'urgent') === true && notify_area_ok($hostPays, 'system') === false && notify_area_ok($owner, 'system') === true);
 
 $callers = [
     'enquiries.php' => 'open=enquiry-',

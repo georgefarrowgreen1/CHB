@@ -27,6 +27,17 @@ const SOPHIA = {
     full: false, original: false, caps: { payments: true, refunds: false, money: false, prices: false, website: false }, photo: '', state: 'active',
     seen: '', twofa: true, twofaLive: true, notify: { money: false, enquiries: true, messages: true, checkout: true, system: false, quietFrom: '', quietTo: '' },
 };
+// Who gets which emails (people-lib.php PEOPLE_MAILS): George everything; Sophia the
+// guest-facing six, with the website emails and the backup locked for her.
+const KINDS = ['enquiry', 'booking', 'paid', 'messages', 'reviews', 'ideas', 'digest', 'analytics', 'backup'];
+const ALL = Object.fromEntries(KINDS.map((k) => [k, true]));
+Object.assign(GEORGE, { mail: Object.assign({}, ALL), mailCan: Object.assign({}, ALL), mailGets: KINDS.slice() });
+Object.assign(SOPHIA, {
+    mail: { enquiry: true, booking: true, paid: true, messages: true, reviews: true, ideas: false, digest: true, analytics: false, backup: false },
+    mailCan: Object.assign({}, ALL, { ideas: false, analytics: false, backup: false }),
+    mailGets: ['enquiry', 'booking', 'paid', 'messages', 'reviews', 'digest'],
+});
+const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'website', analytics: 'website', backup: 'owner' }[k] || 'all', must: ['enquiry', 'messages', 'backup'].includes(k) }));
 
 (async () => {
     const { browser, base, done } = await bootBrowser();
@@ -92,10 +103,15 @@ const SOPHIA = {
             if (route.request().method() === 'POST') posts.push({ file, b });
             if (file === 'auth.php' && b.action === 'admin_status') return json({ admin: true, me: GEORGE, ownerFirst: 'George' });
             if (file === 'people.php') {
-                if (b.action === 'list') return json({ ok: true, people: st.people });
+                if (b.action === 'list') return json({ ok: true, people: st.people, mailKinds: MAIL_KINDS, mailExtras: ['co@example.com'] });
+                if (b.action === 'set_mail') {
+                    if (b.kind === 'enquiry' && b.on === false && b.id === 1) return json({ error: 'Someone has to get new enquiries — a guest is waiting for a reply.', code: 'must' }, 409);
+                    st.people = st.people.map((p) => (p.id === b.id ? Object.assign({}, p, { mail: Object.assign({}, p.mail, { [b.kind]: !!b.on }) }) : p));
+                    return json({ ok: true, people: st.people, mailKinds: MAIL_KINDS, mailExtras: ['co@example.com'] });
+                }
                 if (b.action === 'invite') {
                     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email || '')) return json({ error: 'That doesn’t look like an email address.' }, 400);
-                    st.people = st.people.concat([{ id: 3, name: b.name, first: b.name.split(' ')[0], named: true, email: b.email, contact: b.email, username: 'ellie', full: false, caps: { payments: true }, photo: '', state: 'invited', you: false, passkeys: 0 }]);
+                    st.people = st.people.concat([{ id: 3, name: b.name, first: b.name.split(' ')[0], named: true, email: b.email, contact: b.email, username: 'ellie', full: false, caps: { payments: true }, photo: '', state: 'invited', you: false, passkeys: 0, mail: Object.assign({}, SOPHIA.mail), mailCan: Object.assign({}, SOPHIA.mailCan), mailGets: [] }]);
                     return json({ ok: true, sent: true, id: 3, people: st.people });
                 }
                 if (b.action === 'set_cap') {
@@ -140,7 +156,7 @@ const SOPHIA = {
         ok(acct.details === 'George Farrow · george@example.com', `Your details is your own name and email (${acct.details})`);
         await page.click(rowByTitle('#acct-body', 'People & access'));
         await page.waitForTimeout(600);
-        const list = await page.evaluate(() => [...document.querySelectorAll('#people-body .ga-row')].map((r) => ({ t: (r.querySelector('.ga-t') || {}).textContent, s: (r.querySelector('.ga-s') || {}).textContent || '', btn: r.tagName === 'BUTTON' })));
+        const list = await page.evaluate(() => [...document.querySelectorAll('#people-body .ga-group:first-of-type .ga-row')].map((r) => ({ t: (r.querySelector('.ga-t') || {}).textContent, s: (r.querySelector('.ga-s') || {}).textContent || '', btn: r.tagName === 'BUTTON' })));
         ok(list.map((r) => r.t).join() === 'George Farrow,Sophia Hart,Add someone', `the list: you, Sophia, then Add someone (${list.map((r) => r.t).join(' · ')})`);
         ok(/you$/.test(list[0].s) && !list[0].btn, `your own row says it is you and opens nothing (${list[0].s})`);
         ok(/^Host · /.test(list[1].s) && list[1].btn, `Sophia's row says what she is and opens her page (${list[1].s})`);
@@ -168,6 +184,44 @@ const SOPHIA = {
         ok(/Invite sent to ellie@example\.com/.test(await lastToast(page)), 'and says where it went');
         ok(await page.evaluate(() => [...document.querySelectorAll('#people-body .ga-row .ga-s')].some((s) => /Invited · waiting for Ellie to choose a password/.test(s.textContent))), 'the list shows her waiting to choose a password');
 
+        // Who gets which emails: from People.
+        ok((await page.evaluate(() => (document.querySelector('#people-body .oa-r-emails .ga-s') || {}).textContent)) === '9 kinds to you · 6 to Sophia · 6 to Ellie', 'People says who gets which emails, in counts');
+        await page.click(rowByTitle('#people-body', 'Who gets which emails'));
+        await page.waitForTimeout(700);
+        const em = await page.evaluate(() => ({
+            back: (document.querySelector('#emails-body .oa-back') || {}).textContent,
+            sent: [...document.querySelectorAll('#emails-body .oa-person .ga-t')].map((e) => e.textContent),
+            ellie: [...document.querySelectorAll('#emails-body .oa-person .ga-s')].map((e) => e.textContent).pop(),
+            heads: [...document.querySelectorAll('#emails-body .em-cap')].map((c) => [...c.querySelectorAll('.em-heads span')].map((x) => x.textContent).join('+')),
+            rows: [...document.querySelectorAll('#emails-body .em-row')].map((r) => r.dataset.mail),
+            sophia: Object.fromEntries([...document.querySelectorAll('#emails-body .em-row')].map((r) => { const t = r.querySelectorAll('.em-tog')[1]; return [r.dataset.mail, t.classList.contains('is-locked') ? 'lock' : t.getAttribute('aria-pressed')]; })),
+            george: [...document.querySelectorAll('#emails-body .em-row')].every((r) => r.querySelectorAll('.em-tog')[0].getAttribute('aria-pressed') === 'true'),
+            digestNote: ((document.querySelector('#emails-body .em-row[data-mail="digest"] .em-also') || {}).textContent || ''),
+            also: [...document.querySelectorAll('#emails-body .ga-group')].pop().textContent,
+            badges: [...document.querySelectorAll('#emails-body .em-tog[aria-pressed="true"]')].every((t) => !!t.querySelector('.em-badge')),
+        }));
+        ok(em.back === 'People' && em.sent.join() === 'George Farrow (you),Sophia Hart,Ellie Marsh', `it lists who it is sent to, back to People (${em.sent.join(' · ')})`);
+        ok(/emails start once Ellie has chosen a password/.test(em.ellie || ''), 'an invite says the emails start once a password is chosen');
+        ok(em.heads.join() === 'George+Sophia+Ellie,George+Sophia+Ellie' && em.rows.join() === 'enquiry,booking,paid,messages,reviews,ideas,digest,analytics,backup', 'a row per email, a photo per person, as it happens then every week');
+        ok(em.george && em.sophia.enquiry === 'true' && em.sophia.digest === 'true' && em.sophia.ideas === 'lock' && em.sophia.analytics === 'lock' && em.sophia.backup === 'lock', `her photos: lit where she gets it, locked where an area is off (${JSON.stringify(em.sophia)})`);
+        ok(em.badges, 'a lit photo carries a tick, never colour alone');
+        ok(em.digestNote === 'Sophia’s and Ellie’s copies leave out the money', `the digest row says whose copy leaves out the money (${em.digestNote})`);
+        ok(/co@example\.com/.test(em.also) && /Add an address/.test(em.also), 'and the extra addresses sit at the foot, with a way to add one');
+        const before = posts.length;
+        await page.click('#emails-body .em-row[data-mail="ideas"] .em-tog.is-locked', { force: true }); // aria-disabled: a tap explains, it never sends
+        await page.waitForTimeout(300);
+        ok(posts.length === before && /Sophia can’t get this yet\. Switch on Website and marketing on Sophia’s page first\./.test(await lastToast(page)), 'a locked photo says why, and sends nothing');
+        await page.click('#emails-body .em-row[data-mail="digest"] .em-tog:nth-child(2)');
+        await page.waitForTimeout(500);
+        const sm = posts.filter((p) => p.b.action === 'set_mail').pop();
+        ok(sm && sm.b.id === 2 && sm.b.kind === 'digest' && sm.b.on === false, 'tapping her photo stops that one email for her');
+        ok((await page.evaluate(() => document.querySelector('#emails-body .em-row[data-mail="digest"] .em-tog:nth-child(2)').getAttribute('aria-pressed'))) === 'false', '…and the photo fades');
+        await page.click('#emails-body .em-row[data-mail="enquiry"] .em-tog:nth-child(1)');
+        await page.waitForTimeout(500);
+        ok(/Someone has to get new enquiries/.test(await lastToast(page)) && (await page.evaluate(() => document.querySelector('#emails-body .em-row[data-mail="enquiry"] .em-tog:nth-child(1)').getAttribute('aria-pressed'))) === 'true', 'the last person on new enquiries can’t be switched off, and says why');
+        await page.click('#emails-body .oa-back');
+        await page.waitForTimeout(500);
+
         // Sophia's page.
         await page.click(rowByTitle('#people-body', 'Sophia Hart'));
         await page.waitForTimeout(800);
@@ -181,11 +235,17 @@ const SOPHIA = {
             danger: (document.querySelector('#person-body .ga-signout .ga-t') || {}).textContent,
         }));
         ok(pp.h1 === 'Sophia Hart', 'her page is headed with her name');
-        ok(pp.caps.join(' | ') === 'What Sophia can do | Only you | Sign-in', `it says what she can do, what only you can, and her sign-in (${pp.caps.join(' | ')})`);
+        ok(pp.caps.join(' | ') === 'What Sophia can do | Only you | Emails | Sign-in', `it says what she can do, what only you can, her emails and her sign-in (${pp.caps.join(' | ')})`);
         ok(pp.full === false && pp.always, 'full access is off; the everyday work is always hers');
         ok(pp.switches.join() === 'Take payments=true,Refunds and deposits=false,Money overview=false,Prices and cottages=false,Website and marketing=false', `the five switches show her real settings (${pp.switches.join(', ')})`);
         ok(/Passkey on iPhone/.test(pp.sign) && /Send a password reset link/.test(pp.sign), 'her sign-in lists her passkey and a reset link — never a password');
         ok(pp.danger === 'Remove Sophia’s access', 'removing her access is the last, destructive row');
+        ok((await page.evaluate(() => (document.querySelector('#person-body .oa-r-emails .ga-s') || {}).textContent)) === 'New enquiries, new bookings, payments received and 2 more', 'her page names the emails she gets');
+        await page.click('#person-body .oa-r-emails');
+        await page.waitForTimeout(600);
+        ok((await page.evaluate(() => (document.querySelector('#emails-body .oa-back') || {}).textContent)) === 'Sophia', '…opening the same page, which goes back to hers');
+        await page.click('#emails-body .oa-back');
+        await page.waitForTimeout(600);
 
         await page.click('#person-body .oa-cap:has(.ga-t:text-is("Refunds and deposits")) .chb-switch');
         await page.waitForTimeout(400);
@@ -313,12 +373,30 @@ const SOPHIA = {
         ok(await page.evaluate(() => getComputedStyle(document.getElementById('t-req')).display === 'none'), '…and asking for money goes too');
         // Her alerts: never a kind she cannot get.
         await page.evaluate((m) => chbSetMe(m, 'George'), SOPHIA);
-        await page.evaluate(() => settingsOpen('notify'));
+        await page.evaluate(async () => {
+            await openArea();
+            settingsOpen('notify');
+        });
         await page.waitForTimeout(500);
         const kinds = () => page.evaluate(() => [...document.querySelectorAll('#notify-prefs-body .oa-swrow .ga-t')].map((e) => e.textContent));
         const nf = await kinds();
         ok(!nf.some((k) => /system/i.test(k)) && nf.includes('Payments and money') && nf.length === 4, `her alerts: money because she takes payments, never the system notices (${nf.join(' · ')})`);
         ok(!(await page.evaluate(() => !!document.getElementById('notify-emails-list'))), 'and the shared email list is full access only');
+        ok((await page.evaluate(() => (document.querySelector('#notify-body .oa-r-emails .ga-s') || {}).textContent)) === '6 kinds, all to sophia@example.com', 'her Notifications say which emails reach her, and where');
+        await page.click('#notify-body .oa-r-emails');
+        await page.waitForTimeout(600);
+        const mine = await page.evaluate(() => ({
+            h1: (document.querySelector('#emails-body h1') || {}).textContent,
+            lead: (document.querySelector('#emails-body .ga-lead') || {}).textContent,
+            rows: [...document.querySelectorAll('#emails-body .ga-row .ga-t')].map((e) => e.textContent),
+            digest: (([...document.querySelectorAll('#emails-body .ga-row')].find((r) => (r.querySelector('.ga-t') || {}).textContent === 'Weekly digest') || {}).textContent || ''),
+            togs: document.querySelectorAll('#emails-body .em-tog').length,
+        }));
+        ok(mine.h1 === 'Emails you get' && /George chooses who gets which emails\. Yours come to sophia@example\.com\./.test(mine.lead), 'her page says who chooses, and where hers go');
+        ok(mine.rows.join() === 'New enquiries,New bookings,Payments received,Guest messages,Reviews to approve,Weekly digest' && mine.togs === 0, `the emails she gets, read-only (${mine.rows.join(' · ')})`);
+        ok(/without the money/.test(mine.digest), 'her digest says it leaves out the money');
+        await page.click('#emails-body .oa-back');
+        await page.waitForTimeout(500);
         await page.evaluate((m) => chbSetMe(Object.assign({}, m, { caps: Object.assign({}, m.caps, { payments: false }) }), 'George'), SOPHIA);
         await page.evaluate(() => renderNotifyPrefs());
         const nf2 = await kinds();

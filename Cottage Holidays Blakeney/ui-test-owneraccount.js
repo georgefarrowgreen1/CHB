@@ -82,7 +82,13 @@ const ok = (b, m) => {
             return json({ ok: true, me: st.me });
         }
         if (file === 'auth.php' && b.action === 'admin_status') return json({ admin: true, me: st.me, ownerFirst: 'George' });
-        if (file === 'people.php' && b.action === 'list') return json({ ok: true, people: [Object.assign({ you: true }, st.me)] });
+        if (file === 'people.php' && b.action === 'list')
+            return json({
+                ok: true,
+                people: [Object.assign({ you: true, mail: { enquiry: true, booking: true, paid: true, messages: true, reviews: true, ideas: true, digest: true, analytics: true, backup: true }, mailCan: { enquiry: true, booking: true, paid: true, messages: true, reviews: true, ideas: true, digest: true, analytics: true, backup: true } }, st.me)],
+                mailKinds: [{ k: 'enquiry', cap: 'all', must: true }],
+                mailExtras: st.extras,
+            });
         if (file === 'notify-recipients.php') {
             if (b.action === 'add') {
                 if (!/@/.test(b.email || '')) return json({ error: "That doesn't look like a valid email address." }, 400);
@@ -401,13 +407,13 @@ const ok = (b, m) => {
         on: [...document.querySelectorAll('#notify-prefs-body .chb-switch input')].every((i) => i.checked),
         cats: NOTIFY_CATS.length,
         quiet: ((document.querySelector('#notify-prefs-body [data-act="oaQuiet"] .ga-s') || {}).textContent || ''),
-        emails: [...document.querySelectorAll('#notify-emails-list .ga-t')].map((e) => e.textContent),
-        lock: !!document.querySelector('#notify-emails-list .ga-lock'),
+        emails: ((document.querySelector('#notify-body .oa-r-emails .ga-t') || {}).textContent || ''),
+        oldList: !!document.getElementById('notify-emails-list'),
     }));
     ok(nf.device.join() === 'Turn on alerts for this device,Send a test alert', `this device: turn it on, or test (${nf.device.join(' · ')})`);
     ok(nf.switches === nf.cats && nf.on, `every kind of alert is a switch, showing the saved settings (${nf.switches}/${nf.cats})`);
     ok(nf.quiet === 'Nothing buzzes from 22:00 to 07:00', `quiet hours read as a sentence (${nf.quiet})`);
-    ok(nf.emails.join() === 'sophia@example.com,bookings@example.com,Add someone' && nf.lock, 'emailed to: the owner address locked, the extra removable, then Add someone');
+    ok(nf.emails === 'Who gets which emails' && !nf.oldList, 'emails are one row here: who gets which (the old list moved to that page)');
     await page.click('#notify-prefs-body .ga-row:nth-child(2) .chb-switch');
     await page.waitForTimeout(300);
     const np = ownSets('admin_notify_set');
@@ -435,7 +441,15 @@ const ok = (b, m) => {
         await page.evaluate(() => /21:00 to 08:00/.test(document.querySelector('#notify-prefs-body [data-act="oaQuiet"] .ga-s').textContent) && /quiet 21:00–08:00/.test(document.querySelector('#acct-body .oa-r-notify .ga-s').textContent)),
         '…and the row and the account page say the new window',
     );
-    await page.click(rowByTitle('#notify-emails-list', 'Add someone'));
+    await page.click(rowByTitle('#notify-body', 'Who gets which emails'));
+    await page.waitForTimeout(600);
+    const em = await page.evaluate(() => ({
+        h1: (document.querySelector('#emails-body h1') || {}).textContent,
+        back: (document.querySelector('#emails-body .oa-back') || {}).textContent,
+        also: [...document.querySelectorAll('#emails-body .ga-group')].pop().textContent,
+    }));
+    ok(em.h1 === 'Who gets which emails' && em.back === 'Notifications' && /bookings@example\.com/.test(em.also) && /Add an address/.test(em.also), `the emails page, back to Notifications, with the extra addresses at its foot (${em.back})`);
+    await page.click(rowByTitle('#emails-body', 'Add an address'));
     await waitDlg();
     await page.fill('#gdf-email', 'not-an-address');
     await page.click('#glass-dialog-ok');
@@ -445,8 +459,8 @@ const ok = (b, m) => {
     await page.click('#glass-dialog-ok');
     await waitShut();
     await page.waitForTimeout(400);
-    ok(await page.evaluate(() => [...document.querySelectorAll('#notify-emails-list .ga-t')].some((e) => e.textContent === 'co@example.com')), 'a good address joins the list');
-    await page.click('#notify-emails-list .ga-row:has(.ga-t:text-is("co@example.com"))');
+    ok(await page.evaluate(() => [...document.querySelectorAll('#emails-body .ga-t')].some((e) => e.textContent === 'co@example.com')), 'a good address joins the list');
+    await page.click('#emails-body .ga-row:has(.ga-t:text-is("co@example.com"))');
     await waitDlg();
     const rm = await dlg();
     ok(rm.title === 'Remove this address?' && rm.danger && /co@example\.com will stop/.test(rm.msg), 'removing one asks, names it, and wears the destructive style');
@@ -454,6 +468,8 @@ const ok = (b, m) => {
     await waitShut();
     await page.waitForTimeout(400);
     ok(posts.some((p) => p.file === 'notify-recipients.php' && p.b.action === 'remove' && p.b.email === 'co@example.com'), '…then removes it');
+    await page.click('#emails-body .oa-back');
+    await page.waitForTimeout(500);
 
     console.log('§5 sign-in & security');
     await page.click('#notify-body .oa-back');
