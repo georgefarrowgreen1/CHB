@@ -3166,6 +3166,10 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
   mirror first). That fixed a live bug on the way: the search's inline "Host bio" editor reads a THROW as "not
   saved", and `saveHostText` swallowed the failure, so a refused save showed "Saved ✓". The field's `set` throws
   on `false` now (gated).
+- **The Host profile row shows only on the HOST's account** (owner-asked, from George's screen): the person whose
+  first name matches `host-name` (`oaHostRowShown`). When nobody who signs in is the host (none set up yet, or they
+  were removed), full access keeps the row once the people list lands, so the card can always be edited. An empty
+  "The business" group renders nothing. Search's "Host profile" route is unchanged.
 - **"How guests see you" is a CLONE of the cottage page's own host card** (`oaHostCard`: `renderHost` first, ids
   stripped), so the preview cannot drift from it. `.oa-preview` restores the Playfair serif, which owner-mode
   turns into the sans everywhere else.
