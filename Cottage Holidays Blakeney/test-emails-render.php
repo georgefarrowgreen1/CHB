@@ -209,6 +209,7 @@ $JOBS = [
   ['mail-test', 'owner', function () { $m = owner_mail_test_body(); return smtp_send('o@x.co', 'Owner', $m['subject'], $m['text'], $m['html']); }],
   ['admin-code', 'owner', function () { $m = admin_code_body('428 913'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['admin-code-email', 'owner', function () { $m = admin_code_body('428 913', 'email', 'Sophia'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['admin-code-signin', 'owner', function () { $m = admin_code_body('428913', 'signin', 'Sophia', site_base_url() . 'index.html?signin=sophia%40example.com&code=428913'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['admin-invite', 'owner', function () { $m = admin_invite_body('Sophia', 'George', 'sophia', site_base_url() . 'index.html?invite=2.' . str_repeat('a1', 24)); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['admin-reset', 'owner', function () { $m = admin_reset_body('Sophia', 'sophia', site_base_url() . 'index.html?areset=2.' . str_repeat('b2', 24), 'George'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['backup-report', 'owner', function () { $m = backup_report_body('412 KB', 'Photos are archived separately (18.4 MB).'); return send_owner($m['subject'], $m['text'], $m['html']); }],
@@ -1263,6 +1264,18 @@ chk('§13 …and its text half carries the same link', strpos((string) $op13['te
 chk('§13 …a review alert opens moderation, a chat alert the messages folder',
     strpos(owner_note_review('A', 'B', 5, 'x')['text'], '?open=moderation') !== false
     && strpos(owner_note_chat_new('A', 'a@x.co', 'x')['text'], '?open=inbox:messages') !== false);
+
+// §14 THE BACK-OFFICE CODE EMAILS. A sign-in code carries the one-tap link the code
+// screen promises, in BOTH halves; a new-device code carries none; and the two are
+// told apart by their subjects, since they can land minutes apart in one inbox.
+echo "\n§14 the back-office code emails\n";
+$sc14 = admin_code_body('428913', 'signin', 'Sophia', 'https://example.test/index.html?signin=sophia%40example.com&code=428913');
+$dv14 = admin_code_body('428913', 'device', 'Sophia', 'https://example.test/not-for-a-device');
+chk('§14 a sign-in code carries its link as a button in the HTML',
+    preg_match('~<a\b[^>]*href="https://example\.test/index\.html\?signin=sophia%40example\.com&(amp;)?code=428913"~', $sc14['html']) === 1);
+chk('§14 …and as a usable link in the text half', strpos($sc14['text'], 'https://example.test/index.html?signin=sophia%40example.com&code=428913') !== false);
+chk('§14 a new-device code carries no link', strpos($dv14['html'] . $dv14['text'], 'not-for-a-device') === false);
+chk('§14 the two are told apart by their subjects', $sc14['subject'] !== $dv14['subject'] && stripos($dv14['subject'], 'new device') !== false);
 
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.

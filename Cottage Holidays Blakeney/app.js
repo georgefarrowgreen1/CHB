@@ -4660,7 +4660,8 @@ async function deleteGuestAccount() {
 // via: how a back-office sign-in got here — 'email' (a code proved the inbox, the
 // password comes next) or 'device' (the password was right on a new device and a
 // code went to the person's own inbox). link/first/username/by: an invite or reset.
-const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null };
+// loginId: what an invite or reset files the new password under (see authIdField).
+const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null, loginId: '' };
 const GA_LAST = 'chb-last-guest';
 function authLast() {
     try {
@@ -4704,6 +4705,12 @@ function authTypoFix(e) {
     return best ? `${m[1]}@${best}` : '';
 }
 const authBig = (cls, label, act) => `<button type="button" class="ga-big ${cls}${AU.busy === act ? ' is-busy' : ''}" data-act="${act}">${AU.busy === act ? '<span class="ga-spin" aria-hidden="true"></span><span class="sr-only">Working…</span>' : label}</button>`;
+// The password steps are real forms (what a password manager watches; Return
+// works), so their button submits — a click handler too would run twice.
+const authSubmit = (label, act) => `<button type="submit" class="ga-big pri${AU.busy === act ? ' is-busy' : ''}" data-submit="${act}">${AU.busy === act ? '<span class="ga-spin" aria-hidden="true"></span><span class="sr-only">Working…</span>' : label}</button>`;
+// THE USERNAME A PASSWORD MANAGER FILES THE PASSWORD UNDER: a real read-only
+// field, never type="hidden" (managers skip it). See CLAUDE.md.
+const authIdField = (id, val, aria = 'Signing in as') => `<input id="${id}" type="${String(val).includes('@') ? 'email' : 'text'}" autocomplete="username" value="${escapeHtml(val)}" readonly tabindex="-1"${aria ? ` aria-label="${aria}"` : ''} size="${Math.max(4, String(val).length)}">`;
 function authPaint() {
     const host = document.getElementById('ga-auth');
     if (!host) return;
@@ -4744,12 +4751,13 @@ function authPaint() {
         const office = AU.via === 'email' || !AU.email.includes('@');
         h += `<h2 class="ga-ah">Your password</h2>
             ${AU.via === 'email' ? '<p class="ga-al">Your email is confirmed. This is a back-office sign-in, so it needs your password too.</p>' : ''}
-            <div class="ga-chip"><span>${escapeHtml(AU.email)}</span><button type="button" data-act="authToEmail">Change</button></div>
-            <input type="hidden" id="login-email" value="${escapeHtml(AU.email)}">
+            <form class="ga-aform" data-act-submit="authPasswordSubmit" data-pass="event" novalidate>
+            <div class="ga-chip">${authIdField('login-email', AU.email)}<button type="button" data-act="authToEmail">Change</button></div>
             <label class="ga-alabel" for="login-password">Password</label>
             <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-password" type="password" autocomplete="current-password"><button type="button" class="ga-eye" data-act="authEye" data-pass="self" aria-label="Show the password">Show</button></div>
             ${err}
-            ${authBig('pri', 'Sign in', 'authPasswordGo')}
+            ${authSubmit('Sign in', 'authPasswordGo')}
+            </form>
             ${office ? '<button type="button" class="ga-alink is-mute" data-act="authForgot">Forgotten your password?</button>' : ''}
             ${AU.email.includes('@') && AU.via !== 'email' ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
     } else if (AU.step === 'reset-sent') {
@@ -4759,18 +4767,22 @@ function authPaint() {
     } else if (AU.step === 'reset' || AU.step === 'invite') {
         // The person chooses their own password: from an invite (first time) or a
         // reset link. Nobody else ever sets or sees it.
+        // Their sign-in address is the form's username: a saved password is filed under it.
         const inv = AU.step === 'invite';
+        const who = AU.loginId || AU.username;
         h += `${inv ? `<h2 class="ga-ah">Welcome, ${escapeHtml(AU.first || 'there')}</h2>
-            <p class="ga-al">${escapeHtml(AU.by || 'The owner')} has given you a sign-in to the Cottage Holidays Blakeney back office. Choose a password to finish.</p>
-            <label class="ga-alabel">Your username</label>
-            <div class="ga-chip"><span>${escapeHtml(AU.username)}</span></div>` : `<h2 class="ga-ah">Choose a new password</h2>
-            <p class="ga-al">For <b>${escapeHtml(AU.username)}</b>. Saving it signs you out on your other devices.</p>`}
+            <p class="ga-al">${escapeHtml(AU.by || 'The owner')} has given you a sign-in to the Cottage Holidays Blakeney back office. Choose a password to finish.</p>` : `<h2 class="ga-ah">Choose a new password</h2>
+            <p class="ga-al">Saving it signs you out on your other devices.</p>`}
+            <form class="ga-aform" data-act-submit="authNewPasswordSubmit" data-pass="event" novalidate>
+            <label class="ga-alabel" for="ga-user">You sign in with</label>
+            <div class="ga-chip">${authIdField('ga-user', who, '')}</div>
             <label class="ga-alabel" for="ga-new">${inv ? 'Choose a password' : 'New password'}</label>
             <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="ga-new" type="password" autocomplete="new-password" placeholder="At least 12 characters"></div>
             <label class="ga-alabel" for="ga-new2">Type it again</label>
             <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="ga-new2" type="password" autocomplete="new-password"></div>
             ${err}
-            ${authBig('pri', inv ? 'Save and continue' : 'Save and sign in', 'authNewPassword')}
+            ${authSubmit(inv ? 'Save and continue' : 'Save and sign in', 'authNewPassword')}
+            </form>
             ${inv ? '<p class="ga-asmall">Only you know this password. The link works once, for 7 days.</p>' : ''}`;
     } else if (AU.step === 'offer') {
         h += `<h2 class="ga-ah">Sign in with a passkey next time?</h2>
@@ -4804,7 +4816,7 @@ function authGo(step, back) {
     AU.busy = '';
     authPaint();
     setTimeout(() => {
-        const i = /** @type {HTMLInputElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden])'));
+        const i = /** @type {HTMLInputElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden]):not([readonly])'));
         if (i) i.focus();
     }, 60);
 }
@@ -4954,6 +4966,7 @@ async function authVerify(code) {
             AU.link = '';
             AU.first = res.first || '';
             AU.username = res.username || '';
+            AU.loginId = AU.email;
             AU.by = res.by || '';
             return authGo('invite');
         }
@@ -4984,9 +4997,13 @@ async function authCreate() {
         authPaint();
     }
 }
+let __authPwBusy = false;
 async function authPasswordGo() {
+    // One at a time: Return and the button are both a submit now.
+    if (__authPwBusy) return;
+    __authPwBusy = true;
     // Busy IN PLACE: a re-render here would swap the fields guestLogin reads.
-    const b = document.querySelector('#ga-auth [data-act="authPasswordGo"]');
+    const b = document.querySelector('#ga-auth [data-submit="authPasswordGo"]');
     if (b) {
         b.classList.add('is-busy');
         b.setAttribute('aria-busy', 'true');
@@ -4994,11 +5011,22 @@ async function authPasswordGo() {
     try {
         await guestLogin();
     } finally {
+        __authPwBusy = false;
         if (b) {
             b.classList.remove('is-busy');
             b.removeAttribute('aria-busy');
         }
     }
+}
+// The password forms' submits: the default is stopped first (it would reload).
+function authPasswordSubmit(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    return authPasswordGo();
+}
+function authNewPasswordSubmit(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    if (AU.busy === 'authNewPassword') return;
+    return authNewPassword();
 }
 // Every sign-in route ends here: remember the device, land on You.
 async function authSignedIn(g, note) {
@@ -5182,6 +5210,7 @@ async function maybeAdminLink() {
         AU.link = link;
         AU.first = res.first || '';
         AU.username = res.username || '';
+        AU.loginId = res.email || res.username || '';
         AU.by = res.by || '';
         authGo(kind);
     } catch (e) {
@@ -5189,6 +5218,34 @@ async function maybeAdminLink() {
         authGo('email');
         AU.err = (e && e.message) || 'This link has been used or has expired.';
         authPaint();
+    }
+    return true;
+}
+// The back-office code email's one-tap link (?signin=<email>&code=<6 digits>): the
+// code step opens with it filled in and checks it as if typed; the password follows.
+function maybeSigninLink() {
+    let usp;
+    try {
+        usp = new URLSearchParams(window.location.search);
+    } catch (e) {
+        return false;
+    }
+    const email = String(usp.get('signin') || '').trim();
+    const code = String(usp.get('code') || '').replace(/\D/g, '');
+    if (!email) return false;
+    try {
+        history.replaceState(null, '', window.location.pathname);
+    } catch (e) {}
+    if (isAuthenticated || code.length !== 6) return true;
+    openGuestAuthModal();
+    AU.email = email;
+    AU.via = '';
+    AU.isNew = false;
+    authGo('code');
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-code'));
+    if (i) {
+        i.value = code;
+        authCodeInput(i);
     }
     return true;
 }
@@ -5256,10 +5313,10 @@ function switchGuestTab(which) {
     if (which === 'login' || which === 'register') authGo(authLast() && which === 'login' ? 'known' : 'email');
 }
 
-// Single, merged login. The same email/password box signs in either the
-// owner (admin) or a guest: we try the owner credentials first, and if they
-// don't match we treat it as a guest login. Owners go to the dashboard;
-// guests go to My Bookings.
+// Single, merged login. The same email/password box signs in either a person
+// with a back-office sign-in or a guest: the back office is tried first, and only
+// a plain "no such sign-in" goes on to the guest login. Owners go to the
+// dashboard; guests go to My Bookings.
 async function guestLogin() {
     const id = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
@@ -5269,23 +5326,23 @@ async function guestLogin() {
         err.innerText = m;
         err.hidden = false;
         err.style.display = 'block';
+        const w = document.querySelector('#ga-auth #login-password');
+        if (w && w.parentElement) w.parentElement.classList.add('is-bad');
     };
     if (!id || !password) {
         showErr('Please enter your email/username and password.');
         return;
     }
+    // After a code has proved a back-office email, or for a USERNAME, the password
+    // is never tried as a guest's: a same-address guest account was where a phone's
+    // filled-in guest password landed the person. See CLAUDE.md.
+    const office = AU.via === 'email' || !id.includes('@');
 
-    // 1) Owner/admin first (username + password). A failure here (wrong match
-    //    or throttle) simply falls through to the guest attempt below.
+    // 1) The back office first.
     try {
         const res = await apiPost('auth.php', { action: 'admin_login', username: id, password });
-        // 2FA on a NEW device: the password was right but the server held the
-        // login and emailed a code. This guest modal has no code step — hand
-        // over to the admin modal's existing 2FA step. (Previously this path
-        // ignored `twofa` and pretended the sign-in had completed: no code
-        // window, and a half-signed-in state where every admin call failed.)
-        // 2FA on a NEW device: the password was right and a code went to the
-        // person's own inbox. The sheet's own code step takes it from here.
+        // A NEW device: the password was right and a code went to the person's
+        // own inbox. The sheet's own code step takes it from here.
         if (res && res.twofa) {
             AU.via = 'device';
             AU.mask = res.to || '';
@@ -5298,12 +5355,12 @@ async function guestLogin() {
         authAdminIn(res && res.me, '', res && res.ownerFirst);
         return;
     } catch (adminErr) {
-        // The right password for a sign-in that has been switched off: say so.
-        if (adminErr && /** @type {any} */ (adminErr).code === 'removed') {
-            showErr(adminErr.message);
+        // Only a plain "not recognised" is worth a guest attempt; the rest is said as it is.
+        const ae = /** @type {any} */ (adminErr) || {};
+        if (office || ae.code || (ae.status && ae.status !== 401)) {
+            showErr(ae.message || 'That didn’t work. Check your signal and try again.');
             return;
         }
-        /* not a back-office sign-in — try a guest login */
     }
 
     // 2) Guest (email + password).
@@ -9884,6 +9941,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         } // ?invite= / ?areset= → choose your back-office password
+        try {
+            maybeSigninLink();
+        } catch (e) {
+            console.error(e);
+        } // ?signin=&code= → the back-office code email's one-tap link
         try {
             maybeAccountPreview();
         } catch (e) {
@@ -21426,7 +21488,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'manageacct1';
+    const BUILD = 'signinfix2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

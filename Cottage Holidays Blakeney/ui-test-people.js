@@ -431,13 +431,14 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
                 if (b.action === 'admin_status') return json({ admin: false });
                 if (b.action === 'admin_login') {
                     if (st.login === 'removed') return json({ error: 'This sign-in has been switched off. Ask George if you need it back.', code: 'removed' }, 403);
+                    if (st.login === 'wrong') return json({ error: 'That’s the password for your guest account. The back office has its own: use that one, or reset it below.', code: 'guest_password' }, 401);
                     if (st.login === 'twofa') return json({ ok: true, twofa: true, to: 's•••••@example.com' });
                     return json({ ok: true, me: SOPHIA, ownerFirst: 'George' });
                 }
                 if (b.action === 'admin_2fa') return b.code === '428913' ? json({ ok: true, me: SOPHIA, ownerFirst: 'George' }) : json({ error: 'That code isn’t right. Try again, or send a new one.', code: 'wrong' }, 401);
                 if (b.action === 'guest_code_request' || b.action === 'admin_reset_request') return json({ ok: true });
                 if (b.action === 'guest_code_verify') return json({ ok: true, admin: true });
-                if (b.action === 'admin_link_check') return st.link === 'ok' ? json({ ok: true, first: 'Sophia', username: 'sophiahart', by: 'George' }) : json({ error: 'This invite link has been used or has expired. Ask George to send a new one.', code: 'dead' }, 410);
+                if (b.action === 'admin_link_check') return st.link === 'ok' ? json({ ok: true, first: 'Sophia', username: 'sophiahart', email: 'sophia@example.com', by: 'George' }) : json({ error: 'This invite link has been used or has expired. Ask George to send a new one.', code: 'dead' }, 410);
                 if (b.action === 'admin_invite_accept' || b.action === 'admin_reset_save') return json({ ok: true, me: SOPHIA, ownerFirst: 'George' });
                 if (b.action === 'guest_login') return json({ error: 'That email and password don’t match.' }, 401);
                 return json({ ok: true, admin: false, guest: null });
@@ -464,9 +465,20 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         await page.click('#ga-auth [data-act="authContinue"]');
         await page.waitForTimeout(300);
         ok(/Your password/.test(await step()) && /Forgotten your password\?/.test(await text()), 'a username goes to the password, with a way to reset it');
+        // WHAT A PASSWORD MANAGER SEES. The username was a type="hidden" input, which
+        // managers skip, so a phone filed the password under no address and offered
+        // the wrong one back (a guest account's, on the same address) next time.
+        const pmf = await page.evaluate(() => {
+            const u = /** @type {HTMLInputElement} */ (document.getElementById('login-email'));
+            const p = /** @type {HTMLInputElement} */ (document.getElementById('login-password'));
+            return { type: u.type, auto: u.autocomplete, val: u.value, ro: u.readOnly, form: !!p.form && u.form === p.form, pw: p.autocomplete, focus: document.activeElement === p };
+        });
+        ok(pmf.type !== 'hidden' && pmf.auto === 'username' && pmf.val === 'sophiahart' && pmf.ro && pmf.form && pmf.pw === 'current-password', `the password step is a real form a password manager can read: username "${pmf.val}" (${pmf.type}, ${pmf.auto}) beside the password`);
+        ok(pmf.focus, '…and the caret starts in the password, not the read-only name');
         await page.fill('#login-password', 'sophias own passphrase');
-        await page.click('#ga-auth [data-act="authPasswordGo"]');
+        await page.press('#login-password', 'Enter');
         await page.waitForTimeout(500);
+        ok(posts.some((p) => p.b.action === 'admin_login' && p.b.username === 'sophiahart'), 'Return signs in (the form submits)');
         ok(/Check your email/.test(await step()) && /This device is new to your sign-in, so we sent a 6-digit code to s•••••@example\.com/.test(await text()), 'a new device asks for a code, sent to HER inbox (masked)');
         ok(!/Use a password instead/.test(await text()) && !(await page.evaluate(() => !!document.querySelector('.modal-overlay.open:not(#guest-auth-modal)'))), 'in the same sheet, with no detour to another dialog');
         await page.fill('#ga-code', '111111');
@@ -496,8 +508,20 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(posts.some((p) => p.b.action === 'admin_reset_request' && p.b.id === 'sophia@example.com') && /If sophia@example\.com has a back-office sign-in, we’ve sent a link/.test(await text()), 'a forgotten password sends a link — the page never says whether the sign-in exists');
         await page.click('#ga-auth [data-act="authToPassword"]');
         await page.waitForTimeout(300);
+        // THE BACK OFFICE'S PASSWORD STEP IS ITS OWN. A wrong password here — most
+        // often a phone filling in the GUEST account's on the same address — used to
+        // fall through to the guest login: "Email or password not recognised", or
+        // signed in as a guest. It says what happened now, and asks nothing else.
+        st.login = 'wrong';
+        const beforeWrong = posts.length;
+        await page.fill('#login-password', 'her guest password');
+        await page.click('#ga-auth [data-submit="authPasswordGo"]');
+        await page.waitForTimeout(600);
+        ok(/That’s the password for your guest account\. The back office has its own/.test(await text()) && !(await inBackOffice()), 'a guest account’s password is named as such, not "not recognised"');
+        ok(!posts.slice(beforeWrong).some((p) => p.b.action === 'guest_login') && (await page.evaluate(() => !currentGuest)), '…and is never tried as a guest sign-in (no landing in the guest site)');
+        st.login = 'ok';
         await page.fill('#login-password', 'sophias own passphrase');
-        await page.click('#ga-auth [data-act="authPasswordGo"]');
+        await page.click('#ga-auth [data-submit="authPasswordGo"]');
         await page.waitForTimeout(600);
         ok(await inBackOffice(), 'and with the password, she is in');
 
@@ -512,7 +536,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         await page.waitForTimeout(300);
         await page.fill('#login-password', 'sophias own passphrase');
         const before = posts.length;
-        await page.click('#ga-auth [data-act="authPasswordGo"]');
+        await page.click('#ga-auth [data-submit="authPasswordGo"]');
         await page.waitForTimeout(500);
         ok(/This sign-in has been switched off\. Ask George if you need it back\./.test(await text()), 'a switched-off sign-in says so, and who to ask');
         ok(!posts.slice(before).some((p) => p.b.action === 'guest_login'), '…and is never tried as a guest sign-in');
@@ -520,21 +544,29 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         // The invite link: she chooses her own password, then is offered a passkey.
         await page.goto(`${base}/index.html?invite=2.${'a1'.repeat(24)}`, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1200);
-        ok(/Welcome, Sophia/.test(await step()) && /George has given you a sign-in/.test(await text()) && /sophiahart/.test(await text()), 'the invite greets her by name, says who, and shows her username');
+        ok(/Welcome, Sophia/.test(await step()) && /George has given you a sign-in/.test(await text()), 'the invite greets her by name and says who');
+        // The password she chooses (or the phone suggests) is filed under the address
+        // she signs in with, so the phone offers it back at the next sign-in.
+        const inv = await page.evaluate(() => {
+            const u = /** @type {HTMLInputElement} */ (document.getElementById('ga-user'));
+            const p = /** @type {HTMLInputElement} */ (document.getElementById('ga-new'));
+            return { val: u && u.value, auto: u && u.autocomplete, form: !!(u && p && u.form && u.form === p.form), pw: p && p.autocomplete };
+        });
+        ok(inv.val === 'sophia@example.com' && inv.auto === 'username' && inv.form && inv.pw === 'new-password', `…with her sign-in address as the form's username (${inv.val}), so a saved password is filed under it`);
         ok(await page.evaluate(() => !/invite=/.test(location.search)), 'the link leaves the address bar');
         await page.fill('#ga-new', 'short');
         await page.fill('#ga-new2', 'short');
-        await page.click('#ga-auth [data-act="authNewPassword"]');
+        await page.click('#ga-auth [data-submit="authNewPassword"]');
         await page.waitForTimeout(200);
         ok(/at least 12 characters/.test(await text()) && !posts.some((p) => p.b.action === 'admin_invite_accept'), 'a short password is refused before anything is sent');
         await page.fill('#ga-new', 'sophias own passphrase');
         await page.fill('#ga-new2', 'sophias other phrase');
-        await page.click('#ga-auth [data-act="authNewPassword"]');
+        await page.click('#ga-auth [data-submit="authNewPassword"]');
         await page.waitForTimeout(200);
         ok(/don’t match/.test(await text()), 'two that do not match are refused');
         await page.fill('#ga-new', 'sophias own passphrase');
         await page.fill('#ga-new2', 'sophias own passphrase');
-        await page.click('#ga-auth [data-act="authNewPassword"]');
+        await page.click('#ga-auth [data-submit="authNewPassword"]');
         await page.waitForTimeout(500);
         const acc = posts.filter((p) => p.b.action === 'admin_invite_accept').pop();
         ok(acc && acc.b.link === '2.' + 'a1'.repeat(24) && acc.b.password === 'sophias own passphrase', 'saving sends the link and her password');
@@ -549,7 +581,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         ok(/Choose a new password/.test(await step()) && /Saving it signs you out on your other devices/.test(await text()), 'a reset link asks for a new password, saying what saving does');
         await page.fill('#ga-new', 'a brand new passphrase');
         await page.fill('#ga-new2', 'a brand new passphrase');
-        await page.click('#ga-auth [data-act="authNewPassword"]');
+        await page.click('#ga-auth [data-submit="authNewPassword"]');
         await page.waitForTimeout(600);
         ok((await inBackOffice()) && posts.some((p) => p.b.action === 'admin_reset_save'), 'saving it signs her in');
 
@@ -558,6 +590,15 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         await page.goto(`${base}/index.html?invite=2.${'c3'.repeat(24)}`, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1200);
         ok(/Sign in or create an account/.test(await step()) && /invite link has been used or has expired\. Ask George/.test(await text()), 'a used or expired link says so, and who to ask');
+
+        // THE CODE EMAIL'S ONE-TAP LINK. The code screen says "or tap the link in the
+        // same email", and the back-office code email had none: the sheet now opens on
+        // the code, checks it exactly as if typed, and the password follows.
+        const beforeLink = posts.length;
+        await page.goto(`${base}/index.html?signin=${encodeURIComponent('sophia@example.com')}&code=515151`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1400);
+        ok(posts.slice(beforeLink).some((p) => p.b.action === 'guest_code_verify' && p.b.email === 'sophia@example.com' && p.b.code === '515151'), 'the code email’s link checks its code, as if typed');
+        ok(/Your password/.test(await step()) && /it needs your password too/.test(await text()) && (await page.evaluate(() => !/signin=|code=/.test(location.search))), '…lands on the password step, and leaves the address bar');
         await page.close();
     }
 
