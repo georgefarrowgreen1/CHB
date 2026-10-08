@@ -24,6 +24,14 @@ const ok = (b, m) => {
 
 (async () => {
     const { page, base, done } = await boot({ viewport: { width: 390, height: 844 } });
+    // A device that has never been asked: what a fresh phone reports, and the state
+    // these checks are about. CI's headless browser answers 'denied' instead (measured:
+    // "Blocked on this device"), so the permission is pinned rather than inherited.
+    await page.addInitScript(() => {
+        try {
+            Object.defineProperty(Notification, 'permission', { get: () => 'default', configurable: true });
+        } catch (e) {}
+    });
     const posts = [];
     const st = {
         failSet: false, // content.php set answers 500
