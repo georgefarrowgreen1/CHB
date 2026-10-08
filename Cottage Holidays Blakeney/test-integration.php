@@ -4943,6 +4943,148 @@ $rootDb->exec("DELETE FROM bookings WHERE email = 'claim50@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email IN ('claim50@gmail.com', 'newbie50@gmail.com')");
 $rootDb->exec("DELETE FROM guest_codes");
 
+echo "\n== §51 People: separate sign-ins, and what each person can do ==\n";
+// A second person signs in with their own password; the server — not the screens —
+// holds them to the areas switched on for them. MAIL_ENABLED is off here, so an
+// invite or reset is driven by writing a KNOWN token's hash, exactly what the
+// emailed link would carry.
+$rootDb->exec("USE `$DB_NAME`");
+$ownerId = (int) $rootDb->query("SELECT MIN(id) FROM admins")->fetchColumn();
+$r = http($admin, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§51 the owner is told who they are: full access, the first owner', ($r['json']['me']['full'] ?? null) === true && ($r['json']['me']['original'] ?? null) === true && ($r['json']['me']['id'] ?? 0) === $ownerId, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Sophia Hart', 'email' => 'not-an-email']);
+it_check('§51 an invite to something that is not an email is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'email') !== false, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Sophia Hart', 'email' => 'Sophia51@Example.com']);
+$sId = (int) ($r['json']['id'] ?? 0);
+$sRow = $rootDb->query("SELECT * FROM admins WHERE id = $sId")->fetch();
+it_check('§51 inviting someone adds them, waiting for their own password', $r['code'] === 200 && $sId > 0 && count($r['json']['people'] ?? []) === 2 && $sRow['password_hash'] === '' && $sRow['invited_at'] !== null && strlen((string) $sRow['invite_hash']) === 64, $r['raw']);
+it_check('§51 …with the everyday work and Take payments, nothing more', (int) $sRow['full_access'] === 0 && json_decode($sRow['caps'], true) === ['payments' => true, 'refunds' => false, 'money' => false, 'prices' => false, 'website' => false] && $sRow['email'] === 'sophia51@example.com' && $sRow['username'] === 'sophiahart', json_encode($sRow));
+$r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Someone Else', 'email' => 'sophia51@example.com']);
+it_check('§51 an email that already has a sign-in is refused', $r['code'] === 409, $r['raw']);
+// The first sign-in carries the config owner address until its owner sets their
+// own, so inviting whoever used to share that address meets your OWN row.
+$r = http($admin, 'POST', '/auth.php', ['action' => 'admin_status']);
+$ownContact = (string) ($r['json']['me']['contact'] ?? '');
+$r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Shared Inbox', 'email' => $ownContact]);
+it_check('§51 inviting the email on your own sign-in says so, and where to change it', $ownContact !== '' && $r['code'] === 409 && strpos((string) ($r['json']['error'] ?? ''), 'your own sign-in') !== false, $ownContact . ' ' . $r['raw']);
+// The invite link: id.token, only the hash kept.
+$tok = str_repeat('5a', 24);
+$rootDb->prepare('UPDATE admins SET invite_hash = ? WHERE id = ?')->execute([hash('sha256', $tok), $sId]);
+$soph = [];
+$r = http($soph, 'POST', '/auth.php', ['action' => 'admin_link_check', 'kind' => 'invite', 'link' => "$sId.$tok"]);
+it_check('§51 the invite link greets the person by name and shows their username', $r['code'] === 200 && ($r['json']['first'] ?? '') === 'Sophia' && ($r['json']['username'] ?? '') === 'sophiahart', $r['raw']);
+$r = http($soph, 'POST', '/auth.php', ['action' => 'admin_link_check', 'kind' => 'invite', 'link' => "$sId." . str_repeat('5b', 24)]);
+it_check('§51 a wrong token is a dead link, said in words', $r['code'] === 410 && strpos((string) ($r['json']['error'] ?? ''), 'invite link') !== false, $r['raw']);
+$r = http($soph, 'POST', '/auth.php', ['action' => 'admin_invite_accept', 'link' => "$sId.$tok", 'password' => 'short', 'again' => 'short']);
+it_check('§51 a short password is refused, with the length', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), '12 characters') !== false, $r['raw']);
+$r = http($soph, 'POST', '/auth.php', ['action' => 'admin_invite_accept', 'link' => "$sId.$tok", 'password' => 'sophias own passphrase', 'again' => 'sophias other phrase']);
+it_check('§51 two that do not match are refused', $r['code'] === 400, $r['raw']);
+$r = http($soph, 'POST', '/auth.php', ['action' => 'admin_invite_accept', 'link' => "$sId.$tok", 'password' => 'sophias own passphrase', 'again' => 'sophias own passphrase']);
+$sRow = $rootDb->query("SELECT * FROM admins WHERE id = $sId")->fetch();
+it_check('§51 choosing a password signs them in, as themselves, limited', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId && ($r['json']['me']['full'] ?? true) === false, $r['raw']);
+it_check('§51 …the invite is used up and the password is theirs', $sRow['invited_at'] === null && $sRow['invite_hash'] === null && password_verify('sophias own passphrase', $sRow['password_hash']), json_encode($sRow));
+$r = http($guest, 'POST', '/auth.php', ['action' => 'admin_invite_accept', 'link' => "$sId.$tok", 'password' => 'another passphrase!', 'again' => 'another passphrase!']);
+it_check('§51 the link works once', $r['code'] === 410, $r['raw']);
+// What a limited person may and may not do — refused BY THE SERVER, in words.
+$refused = function ($res) {
+    return $res['code'] === 403 && ($res['json']['code'] ?? '') === 'not_allowed' && ($res['json']['error'] ?? '') === 'That’s for Owner to change.';
+};
+it_check('§51 the Payments screens need Money overview', $refused(http($soph, 'GET', '/accounts.php')), '');
+$r = http($soph, 'POST', '/bookings.php', ['action' => 'refund', 'id' => 1, 'amount' => 10]);
+it_check('§51 a refund needs Refunds and deposits (refused before any money moves)', $refused($r), $r['raw']);
+it_check('§51 People & access is full access only', $refused(http($soph, 'POST', '/people.php', ['action' => 'list'])), '');
+it_check('§51 the system check is full access only', $refused(http($soph, 'POST', '/diagnostics.php', ['action' => 'run'])), '');
+it_check('§51 rates are Prices and cottages', $refused(http($soph, 'POST', '/rates.php', ['action' => 'save', 'prop_key' => $propKey, 'couple_rate' => 1])), '');
+it_check('§51 bank details are full access only, written through content.php', $refused(http($soph, 'POST', '/content.php', ['action' => 'set', 'key' => 'bacs-details', 'value' => 'hijacked'])), '');
+it_check('§51 the AI chat is full access only', $refused(http($soph, 'POST', '/nightshift.php', ['action' => 'chat_thread'])), '');
+// An action named in TWO places is judged by both: some endpoints read the query
+// string first, so a body saying something everyday must not carry a query
+// string saying something else past the gate. The stricter one decides.
+$r = http($soph, 'POST', '/bookings.php?action=refund', ['action' => 'set_notes', 'id' => 1, 'notes' => 'x']);
+it_check('§51 an action in the query string is checked too', $refused($r), $r['raw']);
+it_check('§51 the everyday is open: bookings, enquiries, messages, the boot payload', http($soph, 'GET', '/bookings.php')['code'] === 200 && http($soph, 'GET', '/enquiries.php')['code'] === 200 && http($soph, 'POST', '/messages.php', ['action' => 'threads'])['code'] === 200 && http($soph, 'GET', '/admin-bootstrap.php')['code'] === 200, '');
+$r = http($soph, 'POST', '/content.php', ['action' => 'set', 'key' => 'host-bio', 'value' => 'Sophia runs the cottages.']);
+it_check('§51 the host card is everyday (Sophia is the host)', $r['code'] === 200, $r['raw']);
+// The activity log names who did it: a chat reply from her session is hers, not
+// the first owner's (chat_admin_reply used to stamp every reply 'owner').
+$r = http($soph, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $wcDtid, 'body' => 'Sophia here — all set for Friday.']);
+$act = (string) $rootDb->query("SELECT actor FROM activity_log WHERE action = 'message.reply' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§51 her chat reply is logged as hers', $r['code'] === 200 && $act === 'admin:' . $sId, $act . ' ' . $r['raw']);
+$r = http($soph, 'GET', '/admin-bootstrap.php');
+it_check('§51 the boot payload leaves out the set-up and money parts', $r['code'] === 200 && !array_key_exists('cron', $r['json'] ?? []) && array_key_exists('payoutTrouble', $r['json'] ?? []) && $r['json']['payoutTrouble'] === null && ($r['json']['night']['on'] ?? 1) === 0, substr($r['raw'], 0, 200));
+// Reading: a limited person never sees a secret.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'bacs-details', 'value' => 'Sort 12-34-56 · Acc 12345678']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'backup-passphrase', 'value' => 'a very long backup phrase']);
+$oGet = http($admin, 'GET', '/content.php')['json']['content'] ?? [];
+$sGet = http($soph, 'GET', '/content.php')['json']['content'] ?? [];
+it_check('§51 the content read hides bank details from a limited person (the owner still sees them)', array_key_exists('bacs-details', $oGet) && !array_key_exists('bacs-details', $sGet) && ($sGet['host-bio'] ?? '') === 'Sophia runs the cottages.', json_encode(array_keys($sGet)));
+$oAll = http($admin, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
+$sAll = http($soph, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
+it_check('§51 …and the private read hides the backup passphrase', ($oAll['backup-passphrase'] ?? '') === 'a very long backup phrase' && !array_key_exists('backup-passphrase', $sAll) && !array_key_exists('bacs-details', $sAll), json_encode(array_keys($sAll)));
+// A switch takes effect on the next request — no signing out and in.
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $sId, 'cap' => 'money', 'on' => true]);
+it_check('§51 switching on Money overview opens the Payments screens at once', $r['code'] === 200 && http($soph, 'GET', '/accounts.php')['code'] === 200, $r['raw']);
+// A booking edit keeps its money unless the person takes payments.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, price_override) VALUES ('$propKey','Edit Guest','edit51@example.com','2031-03-01','2031-03-04',2,0,'unpaid',0,300,300,0,3,250)");
+$bId = (int) $rootDb->lastInsertId();
+http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $sId, 'cap' => 'payments', 'on' => false]);
+$r = http($soph, 'POST', '/bookings.php', ['action' => 'update', 'id' => $bId, 'notes' => 'Late arrival', 'price_override' => 1, 'payment' => 'paid', 'deposit' => 999, 'op_id' => 'it51-edit-0001']);
+$bRow = $rootDb->query("SELECT notes, price_override, payment, deposit_paid FROM bookings WHERE id = $bId")->fetch();
+it_check('§51 without Take payments, an edit changes the booking and never its money', $r['code'] === 200 && $bRow['notes'] === 'Late arrival' && abs((float) $bRow['price_override'] - 250) < 0.005 && $bRow['payment'] === 'unpaid' && abs((float) $bRow['deposit_paid']) < 0.005, $r['raw'] . json_encode($bRow));
+$r = http($soph, 'POST', '/bookings.php', ['action' => 'request_payment', 'id' => $bId]);
+it_check('§51 …and asking for money is refused', $refused($r), $r['raw']);
+$r = http($soph, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => 1, 'price_override' => 99]);
+it_check('§51 approving an enquiry WITH an agreed price is Take payments', $refused($r), $r['raw']);
+// The activity log names who did what.
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'list']);
+$named = array_values(array_filter($r['json']['events'] ?? ($r['json']['items'] ?? []), fn($e) => ($e['actor'] ?? '') === 'Sophia Hart'));
+it_check('§51 the activity log names Sophia for what Sophia did', $r['code'] === 200 && count($named) > 0, substr($r['raw'], 0, 300));
+// Passkeys: the owner can see and remove someone's, never add or use them.
+$rootDb->prepare("INSERT INTO admin_passkeys (admin_id, credential_id, public_key, label) VALUES (?, 'it51-cred', 'pk', 'iPhone')")->execute([$sId]);
+$r = http($admin, 'POST', '/people.php', ['action' => 'passkeys', 'id' => $sId]);
+$pkId = (int) ($r['json']['passkeys'][0]['id'] ?? 0);
+it_check('§51 the owner sees which devices have Sophia\'s passkeys', $r['code'] === 200 && ($r['json']['passkeys'][0]['label'] ?? '') === 'iPhone', $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'passkey_remove', 'id' => $sId, 'key' => $pkId]);
+it_check('§51 …and can remove a lost phone\'s', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM admin_passkeys WHERE admin_id = $sId")->fetchColumn() === 0, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $ownerId]);
+it_check('§51 you never act on yourself from People & access', $r['code'] === 400, $r['raw']);
+// The email-first path: the code proves the inbox, the password follows.
+$emJar = [];
+http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'sophia51@example.com']);
+$cSet('sophia51@example.com', '515151');
+$r = http($emJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'sophia51@example.com', 'code' => '515151']);
+it_check('§51 a back-office email\'s code asks for the password next (no guest account is made)', $r['code'] === 200 && ($r['json']['admin'] ?? false) === true && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE email = 'sophia51@example.com'")->fetchColumn() === 0, $r['raw']);
+$r = http($emJar, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophia51@example.com', 'password' => 'sophias own passphrase']);
+it_check('§51 …and with it, they are in as themselves', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
+// A reset link: a new password, and every other session ends.
+$rtok = str_repeat('7c', 24);
+$r = http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'sophiahart']);
+it_check('§51 asking for a reset answers the same whoever is asked about', $r['code'] === 200 && $r['raw'] === http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'nobody-here'])['raw'], $r['raw']);
+// On the APP's clock (Europe/London, as db.php sets the connection): this
+// connection's NOW() is the server's, which in BST is an hour behind.
+$rExp = (new DateTime('+30 minutes', new DateTimeZone('Europe/London')))->format('Y-m-d H:i:s');
+$rootDb->prepare('UPDATE admins SET reset_hash = ?, reset_expires = ? WHERE id = ?')->execute([hash('sha256', $rtok), $rExp, $sId]);
+$rsJar = [];
+$r = http($rsJar, 'POST', '/auth.php', ['action' => 'admin_reset_save', 'link' => "$sId.$rtok", 'password' => 'a brand new passphrase', 'again' => 'a brand new passphrase']);
+it_check('§51 a reset link sets a new password and signs in', $r['code'] === 200 && ($r['json']['me']['id'] ?? 0) === $sId, $r['raw']);
+it_check('§51 …and every other session is signed out', http($soph, 'GET', '/bookings.php')['code'] === 401 && http($emJar, 'GET', '/bookings.php')['code'] === 401 && http($rsJar, 'GET', '/bookings.php')['code'] === 200, '');
+// Removing someone: out at once, their password switched off — said in words.
+$r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $sId]);
+it_check('§51 removing someone signs them out everywhere straight away', $r['code'] === 200 && http($rsJar, 'GET', '/bookings.php')['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'sophiahart', 'password' => 'a brand new passphrase']);
+it_check('§51 …and their sign-in says it has been switched off', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'removed' && strpos((string) ($r['json']['error'] ?? ''), 'switched off') !== false, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'list']);
+$sP = array_values(array_filter($r['json']['people'] ?? [], fn($p) => ($p['id'] ?? 0) === $sId));
+it_check('§51 …while they stay listed, so the log can still name them', $sP && ($sP[0]['state'] ?? '') === 'removed', $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'restore', 'id' => $sId]);
+$sRow = $rootDb->query("SELECT * FROM admins WHERE id = $sId")->fetch();
+it_check('§51 giving access back is a fresh invite: no password, a new link', $r['code'] === 200 && $sRow['removed_at'] === null && $sRow['invited_at'] !== null && $sRow['password_hash'] === '' && strlen((string) $sRow['invite_hash']) === 64, json_encode($sRow));
+$r = http($admin, 'POST', '/people.php', ['action' => 'cancel_invite', 'id' => $sId]);
+it_check('§51 an unused invite can be cancelled outright', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM admins WHERE id = $sId")->fetchColumn() === 0, $r['raw']);
+$rootDb->exec("DELETE FROM bookings WHERE id = $bId");
+$rootDb->exec("DELETE FROM guest_codes");
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('bacs-details', 'backup-passphrase', 'host-bio')");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

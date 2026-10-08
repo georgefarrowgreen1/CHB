@@ -138,11 +138,30 @@ CREATE TABLE IF NOT EXISTS bookings (
     INDEX idx_payment_date (payment_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ---------- Admin/staff users (back office login) ----------
+-- ---------- People who sign in to the back office (migration-133) ----------
+-- full_access = everything, including People & access; otherwise `caps` (JSON)
+-- names the areas the person may use. An invite or reset keeps only a token hash.
 CREATE TABLE IF NOT EXISTS admins (
-    id            INT AUTO_INCREMENT PRIMARY KEY,
-    username      VARCHAR(60)  NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    username       VARCHAR(60)  NOT NULL UNIQUE,
+    password_hash  VARCHAR(255) NOT NULL,
+    name           VARCHAR(80)  NOT NULL DEFAULT '',
+    email          VARCHAR(190) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+    full_access    TINYINT(1)   NOT NULL DEFAULT 1,
+    caps           VARCHAR(255) NOT NULL DEFAULT '',
+    twofa          TINYINT(1)   NULL,
+    photo          VARCHAR(40)  NOT NULL DEFAULT '',
+    auth_epoch     INT          NOT NULL DEFAULT 0,
+    invited_at     DATETIME     NULL,
+    invite_hash    CHAR(64)     NULL,
+    invite_expires DATETIME     NULL,
+    reset_hash     CHAR(64)     NULL,
+    reset_expires  DATETIME     NULL,
+    removed_at     DATETIME     NULL,
+    created_at     DATETIME     NULL,
+    last_seen_at   DATETIME     NULL,
+    last_login_fp  VARCHAR(255) NOT NULL DEFAULT '',
+    notify_prefs   TEXT         NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- Editable site content (key -> JSON value) ----------

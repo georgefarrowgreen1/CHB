@@ -512,9 +512,9 @@
                 <!-- ONE row with you on it (approved demo): the host profile, notifications,
                      sign-in, the two device settings and Log out live on the account page it
                      opens. oaIndexRowPaint fills in the photo and name. -->
-                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit" data-act="settingsOpen" data-arg="acct">
+                <button class="settings-row oa-acctrow" id="oa-index-row" data-kw="account me profile host bio about phone contact photo picture push alerts notifications quiet email password face id fingerprint passkey sign-in security two-step 2fa appearance theme light dark mode layout search first classic dock log out sign out exit people access staff team sophia invite add someone user users admins" data-act="settingsOpen" data-arg="acct">
                     <span class="settings-row-ic oa-ic"><span class="ga-ava" aria-hidden="true"></span></span>
-                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub">Host profile, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label" id="oa-index-name">Your account</span><span class="settings-row-sub" id="oa-index-sub">Your details, notifications &amp; sign-in</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-section-label">System &amp; tools</div>
@@ -570,6 +570,17 @@
             </div>
             <div class="settings-sec oa-sec" id="sec-notify" style="display:none;">
                 <div id="notify-body"></div>
+            </div>
+            <!-- People: your own details, and (full access) who else signs in and
+                 what each of them can do. renderYourDetails / renderPeople / renderPerson. -->
+            <div class="settings-sec oa-sec" id="sec-details" style="display:none;">
+                <div id="details-body"></div>
+            </div>
+            <div class="settings-sec oa-sec" id="sec-people" style="display:none;">
+                <div id="people-body"></div>
+            </div>
+            <div class="settings-sec oa-sec" id="sec-person" style="display:none;">
+                <div id="person-body"></div>
             </div>
 
             <!-- Experiences (local things to do + guest suggestions) -->

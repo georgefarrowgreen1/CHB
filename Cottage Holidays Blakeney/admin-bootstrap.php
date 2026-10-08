@@ -183,4 +183,17 @@ foreach ([
         $out[$key] = $val;
     }
 }
+// Someone with limited access gets the parts their areas cover: payout trouble is
+// the Payments screens, the automation and Mac state are set-up, and the calendar
+// feeds' health is Prices and cottages.
+if (!admin_can('money')) {
+    $out['payoutTrouble'] = null;
+}
+if (!admin_can('owner')) {
+    $out['night'] = ['on' => 0, 'n' => 0];
+    unset($out['cron']);
+}
+if (!admin_can('prices')) {
+    $out['feeds'] = [];
+}
 json_out($out);

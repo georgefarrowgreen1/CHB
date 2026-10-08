@@ -3813,6 +3813,12 @@ function chbFeedTrouble() {
 function chbSysLine() {
     const el = /** @type {HTMLButtonElement|null} */ (document.getElementById('cmdk-sys'));
     if (!el) return;
+    // The system's state is full access only: someone else is never sent it, so
+    // the line would be "All systems normal" about things nobody asked.
+    if (!chbFull()) {
+        el.hidden = true;
+        return;
+    }
     let st;
     try { st = chbSystemState(); } catch (e) { el.hidden = true; return; }
     // When all is well the line says so QUIETLY — and on a phone it says nothing at
@@ -9207,10 +9213,11 @@ function cmdkDayLine(pre) {
 function chbDaySentence() {
     const h = chbNow().getHours();
     const greet = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 22 ? 'Evening' : 'Late tonight';
+    // THE PERSON SIGNED IN, never the host on the cottage pages: with two people
+    // signing in, the host name greeted both of them as one.
     let host = '';
     try {
-        host = String((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '')
-            .trim().split(/\s+/)[0];
+        host = oaFirst();
     } catch (e) {}
     let shape = { parts: [], owed: 0 };
     try { shape = chbOpsParts(chbDayTuples()); } catch (e) {}
@@ -9960,12 +9967,36 @@ function applyAreaFilter() {
         manageVerdicts();
     } catch (e) {}
     oaIndexRowPaint();
+    manageAccessSync();
     const h = document.querySelector('#view-settings .dashboard-header h1');
     if (h) h.textContent = 'Manage';
     const s = document.getElementById('settings-search');
     if (s) s.placeholder = 'Search cottages, marketing & settings…';
 }
 
+// SOMEONE WITH LIMITED ACCESS SEES ONLY THEIR ROWS. The rows themselves are hidden
+// by the CHB_SEC_CAP / CHB_ACT_CAP style rule (app.js); here the summary row (the
+// state of the whole system: full access), the cottage rows (Prices and cottages),
+// and any group or caption left with nothing in it stand down too.
+function manageAccessSync() {
+    const idx = document.getElementById('settings-index');
+    if (!idx) return;
+    const full = chbFull();
+    const mv = document.getElementById('manage-verdicts');
+    if (mv) mv.hidden = !full;
+    const co = document.getElementById('cottages-overview');
+    if (co) co.hidden = !chbCan('prices');
+    idx.querySelectorAll('.settings-group').forEach((g) => {
+        if (g.id === 'testcentre-row') return;
+        const any = Array.from(g.querySelectorAll('.settings-row')).some((r) => getComputedStyle(r).display !== 'none') || (g.querySelector('#cottages-overview') && chbCan('prices'));
+        /** @type {HTMLElement} */ (g).style.display = any ? '' : 'none';
+    });
+    idx.querySelectorAll('.settings-section-label').forEach((l) => {
+        let n = l.nextElementSibling;
+        while (n && !n.classList.contains('settings-group')) n = n.nextElementSibling;
+        /** @type {HTMLElement} */ (l).style.display = !n || /** @type {HTMLElement} */ (n).style.display === 'none' ? 'none' : '';
+    });
+}
 // ---- Area overviews: lead each area with its key numbers (iOS-Settings style —
 // the important parts first, then the detail sub-folders below). ----
 function renderCottagesOverview() {
@@ -12344,6 +12375,9 @@ const SETTINGS_TITLES = {
     acct: 'Your account',
     notify: 'Notifications',
     host: 'Host profile',
+    details: 'Your details',
+    people: 'People & access',
+    person: 'People & access',
     reviews: 'Reviews',
     'reviews-import': 'Import reviews',
     'reviews-google': 'Google review link',
@@ -12375,7 +12409,7 @@ const SETTINGS_TITLES = {
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
 // the slide direction, and what each page has learned so far.
-const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2 };
+const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3 };
 let __oaFrom = ''; // the section shown before this one ('' = the Manage index)
 let __oaStill = false; // a repaint in place: no slide, and __oaFrom untouched
 let __oaKeys = null; // the owner's passkeys: null = not asked, 'err' = couldn't ask
@@ -12419,8 +12453,10 @@ function settingsFilter(q) {
         let any = false;
         g.querySelectorAll('.settings-row').forEach((row) => {
             const hay = (row.textContent + ' ' + (row.getAttribute('data-kw') || '')).toLowerCase();
-            const hit = !words.length || words.every((w) => hay.includes(w));
+            let hit = !words.length || words.every((w) => hay.includes(w));
             row.style.display = hit ? '' : 'none';
+            // A row switched off for this person stays hidden whatever matches.
+            if (hit && getComputedStyle(row).display === 'none') hit = false;
             if (hit) {
                 any = true;
                 total++;
@@ -12471,6 +12507,13 @@ function settingsOpen(section) {
     // Instant chat answers and Away auto-reply are ONE page now (Guest chat);
     // old links, history and recents land on it.
     if (section === 'chat-answers') section = 'chat-away';
+    // A section switched off for this person (an old link, a remembered screen)
+    // is not opened: the index, and the sentence the server would give.
+    if (section && !chbMayUse(chbSecCap(section))) {
+        toast(chbRefusal());
+        settingsShowIndex();
+        return;
+    }
     // The email client moved from Manage into the Inbox (comms dashboard) —
     // redirect old links, saved history entries and recents to its new home.
     if (section === 'mailbox') {
@@ -12523,9 +12566,11 @@ function settingsOpen(section) {
     // account's three pages go back to the account.
     settingsBackTarget = /^reviews-/.test(section)
         ? () => settingsOpen('reviews')
-        : OA_DEPTH[section] === 2
-          ? () => settingsOpen('acct')
-          : () => settingsShowIndex();
+        : section === 'person'
+          ? () => settingsOpen('people')
+          : OA_DEPTH[section] === 2
+            ? () => settingsOpen('acct')
+            : () => settingsShowIndex();
     settingsRenderSection(section);
     // The rail's Cottages row goes current the moment the cottages section
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
@@ -12541,6 +12586,9 @@ function settingsRenderSection(section) {
     if (section === 'acct') renderOwnerAccount();
     else if (section === 'notify') renderNotifySettings();
     else if (section === 'host') renderHostProfile();
+    else if (section === 'details') renderYourDetails();
+    else if (section === 'people') renderPeople();
+    else if (section === 'person') renderPerson();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'reviews-import') rviRender();
     else if (section === 'reviews-google') initGoogleReviewUrl();
@@ -12595,7 +12643,15 @@ Object.assign(GA_IC, {
     plus: '<path d="M12 5v14M5 12h14"/>',
     send: '<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    card: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16a3.4 3.4 0 0 1 6.4 0M14 10h4M14 13.5h3"/>',
+    people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
 });
+// "Sophia", "Sophia and Ellie", "Sophia, Ellie and Sam".
+function listAnd(a) {
+    const x = (a || []).filter(Boolean);
+    return x.length <= 1 ? x.join('') : x.slice(0, -1).join(', ') + ' and ' + x[x.length - 1];
+}
 // The page slides forward going deeper and back coming out; a repaint in place
 // (a save, a list landing) does not move.
 function oaPage(sec, html) {
@@ -12628,18 +12684,62 @@ function oaGo(sec) {
     if (sec) settingsOpen(sec);
     else settingsShowIndex();
 }
-function oaSwitch(id, on, label, fn) {
-    return `<span class="chb-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''} ${chbChange(fn, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span>`;
+// `arg`, when given, reaches the handler ahead of the checked state — the
+// dispatcher hands a change handler its data-args and the value, never the
+// element, so a handler serving several switches must be told which one.
+function oaSwitch(id, on, label, fn, arg) {
+    const act = arg === undefined ? chbChange(fn, CHB_CHECKED) : chbChange(fn, arg, CHB_CHECKED);
+    return `<span class="chb-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''} ${act} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span>`;
 }
-const oaName = () => String(hostVal('host-name') || '').trim();
-const oaPhotoUrl = () => String(hostVal('host-photo') || '');
-function oaAva(big) {
-    const url = oaPhotoUrl();
-    const ini = (oaName().charAt(0) || '?').toUpperCase();
-    return `<span class="ga-ava${big ? ' is-big' : ''}" aria-hidden="true">${url ? `<img src="${escapeHtml(url)}" alt="">` : escapeHtml(ini)}</span>`;
+// ---- WHO YOU ARE: the person signed in, never the host on the cottage pages ----
+// The greeting, your account and the Manage row used the public host name, so
+// two people signing in would both have been "Sophia". window.__me is the
+// server's word (admin_status); an unknown me (an offline boot) is the owner,
+// the only kind of person that existed before.
+const chbMe = () => { const m = chbMeRaw(); return typeof m === 'object' ? m : null; };
+const chbFull = () => {
+    const m = chbMe();
+    return !m || m.full !== false;
+};
+// May the person signed in use this area? 'all' is the everyday work, 'owner'
+// full access only, anything else one of the five switches. The server decides
+// again on every request; this only keeps what they can't use off their screens.
+function chbCan(cap) {
+    const m = chbMe();
+    if (!m || m.full !== false || cap === 'all') return true;
+    if (cap === 'owner') return false;
+    return !!(m.caps && m.caps[cap]);
 }
-function oaAvaBtn(big) {
-    return `<button type="button" class="ga-avabtn${big ? ' is-big' : ''}" data-act="oaPhotoSheet" aria-label="${oaPhotoUrl() ? 'Change your photo' : 'Add a photo'}">${oaAva(big)}<span class="ga-cam" aria-hidden="true">${GA_CAM}</span></button>`;
+const oaName = () => {
+    const m = chbMe();
+    return m && m.named ? String(m.name || '').trim() : '';
+};
+const oaFirst = () => oaName().split(/\s+/)[0] || '';
+const oaMyPhotoUrl = () => {
+    const m = chbMe();
+    return m && m.photo ? 'avatar.php?admin=' + encodeURIComponent(String(m.id)) + '&v=' + encodeURIComponent(m.photo) : '';
+};
+const oaHostPhotoUrl = () => String(hostVal('host-photo') || '');
+const oaPersonPhotoUrl = (p) => (p && p.photo ? 'avatar.php?admin=' + encodeURIComponent(String(p.id)) + '&v=' + encodeURIComponent(p.photo) : '');
+function oaAvaOf(name, url, big, cls) {
+    const ini = (String(name || '').trim().charAt(0) || '?').toUpperCase();
+    return `<span class="ga-ava${big ? ' is-big' : ''}${cls ? ' ' + cls : ''}" aria-hidden="true">${url ? `<img src="${escapeHtml(url)}" alt="">` : escapeHtml(ini)}</span>`;
+}
+const oaAva = (big) => oaAvaOf(oaName() || (chbMe() && chbMe().username) || '', oaMyPhotoUrl(), big);
+// Your photo on your account page; the host photo on the host profile.
+function oaAvaBtn(big, which) {
+    const host = which === 'host';
+    const url = host ? oaHostPhotoUrl() : oaMyPhotoUrl();
+    const ava = host ? oaAvaOf(String(hostVal('host-name') || ''), url, big) : oaAva(big);
+    return `<button type="button" class="ga-avabtn${big ? ' is-big' : ''}" ${chbAttrs('oaPhotoSheet', host ? 'host' : 'me')} aria-label="${url ? (host ? 'Change the host photo' : 'Change your photo') : host ? 'Add a host photo' : 'Add a photo'}">${ava}<span class="ga-cam" aria-hidden="true">${GA_CAM}</span></button>`;
+}
+// The role line: what this person is to the back office.
+function oaRoleWords(p) {
+    if (!p) return 'Owner · full access';
+    if (p.state === 'removed') return 'No access';
+    if (p.state === 'invited') return 'Invited';
+    if (p.full) return p.original ? 'Owner · full access' : 'Full access';
+    return 'Host';
 }
 function oaIndexRowPaint() {
     const r = document.getElementById('oa-index-row');
@@ -12657,28 +12757,49 @@ function oaRepaint() {
     try {
         if (document.querySelector('#acct-body .ga-page')) renderOwnerAccount();
         if (document.querySelector('#host-body .ga-page')) renderHostProfile();
+        if (document.querySelector('#details-body .ga-page')) renderYourDetails();
+        if (document.querySelector('#people-body .ga-page')) renderPeople();
+        if (document.querySelector('#person-body .ga-page')) renderPerson();
     } finally {
         __oaStill = false;
     }
 }
+// The server's word on who you are has changed (sign-in, a save): repaint.
+document.addEventListener('chb-me', () => {
+    try {
+        oaRepaint();
+    } catch (e) {}
+});
 
 // ---- The account page ----
 function renderOwnerAccount() {
     const box = document.getElementById('acct-body');
     if (!box) return;
-    const first = oaName().split(/\s+/)[0] || '';
-    const badge = String(hostVal('host-badge') || '').trim() || 'Owner';
+    const me = chbMe();
+    const first = oaFirst();
+    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
+    const hostFirst = String(hostVal('host-name') || '').trim().split(/\s+/)[0] || '';
+    const hostSub = !hostFirst ? 'The card on every cottage page' : hostFirst === first ? 'Your card on every cottage page' : `${hostFirst}’s card on every cottage page`;
     box.innerHTML = oaPage(
         'acct',
         oaBack('', 'Manage') +
-            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(badge)}</p></div>${oaAvaBtn(false)}</div>` +
+            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(oaRoleWords(me))}</p></div>${oaAvaBtn(false, 'me')}</div>` +
             gaGroup(
                 [
-                    gaRow({ ic: 'user', t: 'Host profile', s: 'Photo, bio and phone number', act: chbAttrs('oaGo', 'host'), chev: true }),
+                    gaRow({ ic: 'user', t: 'Your details', s: [oaName() || (me && me.username) || '', (me && me.contact) || ''].filter(Boolean).join(' · ') || 'Your name and email', act: chbAttrs('oaGo', 'details'), chev: true, cls: 'oa-r-details' }),
                     gaRow({ ic: 'bell', t: 'Notifications', s: oaNotifySub(), act: chbAttrs('oaGo', 'notify'), chev: true, cls: 'oa-r-notify' }),
                     gaRow({ ic: 'key', t: 'Sign-in & security', s: oaSecuritySub(), act: chbAttrs('oaGo', 'security'), chev: true, cls: 'oa-r-security' }),
                 ],
                 'Account',
+            ) +
+            gaGroup(
+                [
+                    gaRow({ ic: 'card', t: 'Host profile', s: hostSub, act: chbAttrs('oaGo', 'host'), chev: true, cls: 'oa-r-host' }),
+                    chbFull()
+                        ? gaRow({ ic: 'people', t: 'People & access', s: others.length ? 'You and ' + listAnd(others) : __oaPeople ? 'Only you so far' : 'Who signs in, and what each can do', act: chbAttrs('oaGo', 'people'), chev: true, cls: 'oa-r-people' })
+                        : '',
+                ].filter(Boolean),
+                'The business',
             ) +
             gaGroup(
                 [
@@ -12698,6 +12819,7 @@ function renderOwnerAccount() {
     );
     oaPushRefresh();
     if (__oaKeys === null) loadAdminPasskeys();
+    if (chbFull() && __oaPeople === null) loadPeople();
 }
 function oaDarkMode(on) {
     if (!!on !== !document.body.classList.contains('light-mode')) toggleTheme();
@@ -12749,7 +12871,7 @@ function renderHostProfile() {
         'host',
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">Host profile</h1><p class="ga-lead">Guests see this on every cottage page.</p>` +
-            `<div class="ga-group ga-hero">${oaAvaBtn(true)}<button type="button" class="ga-link ga-photolink" data-act="oaPhotoSheet">${oaPhotoUrl() ? 'Change photo' : 'Add a photo'}</button></div>` +
+            `<div class="ga-group ga-hero">${oaAvaBtn(true, 'host')}<button type="button" class="ga-link ga-photolink" ${chbAttrs('oaPhotoSheet', 'host')}>${oaHostPhotoUrl() ? 'Change photo' : 'Add a photo'}</button></div>` +
             gaGroup([
                 gaRow({ t: 'Name', s: val('host-name'), act: chbAttrs('oaEdit', 'name'), chev: true }),
                 gaRow({ t: 'Title', s: val('host-badge'), act: chbAttrs('oaEdit', 'badge'), chev: true }),
@@ -12784,12 +12906,12 @@ function renderHostProfile() {
     );
 }
 const OA_EDIT = {
-    name: { key: 'host-name', title: 'Your name', label: 'Name', need: 'Enter the name guests see.', autocomplete: 'name' },
-    badge: { key: 'host-badge', title: 'Your title', label: 'Title', hint: 'Shown under your name, e.g. Owner or Host' },
+    name: { key: 'host-name', title: 'Host name', label: 'The name guests see', need: 'Enter the name guests see.', autocomplete: 'name' },
+    badge: { key: 'host-badge', title: 'Host title', label: 'Title', hint: 'Shown under the name, e.g. Owner or Host' },
     years: { key: 'host-years', title: 'Hosting for', label: 'How long you’ve been hosting', placeholder: 'e.g. 10 years' },
     school: { key: 'host-school', title: 'Where I studied', label: 'Where you studied', hint: 'Guests read: “Where I studied: …”' },
     work: { key: 'host-work', title: 'My work', label: 'What you do', hint: 'Guests read: “My work: …”' },
-    bio: { key: 'host-bio', title: 'Your bio', label: 'A few lines about you', area: true },
+    bio: { key: 'host-bio', title: 'Host bio', label: 'A few lines guests read', area: true },
 };
 // One fact, one form. A refusal keeps the form open with what was typed.
 async function oaEdit(which) {
@@ -12858,17 +12980,24 @@ async function oaEditPhone() {
         return;
     }
 }
-// ---- The photo: the guest page's sheet and cropper, saved as the host photo ----
-function oaPhotoSheet() {
+// ---- Photos: the guest page's sheet and cropper. YOUR photo (the back office's,
+// private: avatar.php) or the HOST photo (the cottage pages' host card). ----
+let __oaPhotoFor = 'me';
+function oaPhotoSheet(which) {
+    __oaPhotoFor = which === 'host' ? 'host' : 'me';
+    const host = __oaPhotoFor === 'host';
+    const has = host ? !!oaHostPhotoUrl() : !!oaMyPhotoUrl();
     const o = gaPhotoSheetEl();
     const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
     box.innerHTML =
-        `<h2 class="ga-sheet-t" id="ga-photo-title">Your photo</h2><p class="ga-sheet-s">Guests see it beside your name on every cottage page.</p>` +
+        (host
+            ? `<h2 class="ga-sheet-t" id="ga-photo-title">The host photo</h2><p class="ga-sheet-s">Guests see it beside the host’s name on every cottage page.</p>`
+            : `<h2 class="ga-sheet-t" id="ga-photo-title">Your photo</h2><p class="ga-sheet-s">It shows in the back office, on your account and in People &amp; access.</p>`) +
         gaGroup(
             [
                 gaRow({ ic: 'cam', t: 'Take a photo', act: chbAttrs('oaPhotoPick', 'cam') }),
                 gaRow({ ic: 'img', t: 'Choose from library', act: chbAttrs('oaPhotoPick', 'lib') }),
-                oaPhotoUrl() ? gaRow({ ic: 'bin', t: 'Remove photo', act: 'data-act="oaPhotoRemove"', danger: true }) : '',
+                has ? gaRow({ ic: 'bin', t: 'Remove photo', act: 'data-act="oaPhotoRemove"', danger: true }) : '',
             ].filter(Boolean),
         ) +
         `<button type="button" class="btn-glass ga-sheet-cancel" data-act="gaPhotoSheetClose">Cancel</button>`;
@@ -12883,9 +13012,22 @@ function oaPhotoSheet() {
 function oaPhotoPick(which) {
     gaPhotoPick(which, oaPhotoUse);
 }
-// The cropper's 512px square goes up like any other site image; the cropper
-// stays open if the upload or the save says no.
+// The cropper's 512px square: the host photo goes up like any other site image;
+// yours goes to the server's private store. The cropper stays open if either
+// says no.
 async function oaPhotoUse(cv) {
+    if (__oaPhotoFor !== 'host') {
+        let res;
+        try {
+            res = await apiPost('auth.php', { action: 'admin_avatar_set', data: cv.toDataURL('image/jpeg', 0.86) });
+        } catch (e) {
+            glassAlert("Couldn't save the photo: " + (e.message || e));
+            return false;
+        }
+        chbSetMe(res.me);
+        oaPhotoLanded('Photo saved');
+        return true;
+    }
     const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.86));
     if (!blob) {
         glassAlert("That photo couldn't be prepared — try another.");
@@ -12904,7 +13046,17 @@ async function oaPhotoUse(cv) {
 }
 async function oaPhotoRemove() {
     gaPhotoSheetClose();
-    if (await saveHostText('host-photo', '')) oaPhotoLanded('Photo removed — your initial is back');
+    if (__oaPhotoFor !== 'host') {
+        try {
+            const res = await apiPost('auth.php', { action: 'admin_avatar_remove' });
+            chbSetMe(res.me);
+            oaPhotoLanded('Photo removed — your initial is back');
+        } catch (e) {
+            glassAlert("Couldn't remove the photo: " + (e.message || e));
+        }
+        return;
+    }
+    if (await saveHostText('host-photo', '')) oaPhotoLanded('Photo removed — the initial is back');
 }
 function oaPhotoLanded(msg) {
     oaRepaint();
@@ -12969,10 +13121,12 @@ async function oaPushRefresh() {
 }
 
 // ---- Sign-in & security ----
-// 'admin-2fa-enabled' is INTERNAL, so the anonymous boot GET never carried it:
-// the private map first (the bacs-details rule), or the switch reads off over a
-// real on.
+// Two-step is YOUR switch: the code goes to your own email (window.__me). Before
+// people existed it was one shared setting; the server folds that in for the
+// first owner, so this reads only the server's word.
 function oaTwoStepOn() {
+    const m = chbMe();
+    if (m && typeof m.twofa === 'boolean') return m.twofa;
     const apc = typeof adminPrivateContent === 'object' && adminPrivateContent ? adminPrivateContent : {};
     return String(apc['admin-2fa-enabled'] !== undefined ? apc['admin-2fa-enabled'] : siteContent['admin-2fa-enabled']) === '1';
 }
@@ -13001,13 +13155,21 @@ function oaKeyRows() {
 function renderSecurity() {
     const box = document.getElementById('security-body');
     if (!box) return;
+    const me = chbMe();
+    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
+    const contact = (me && me.contact) || '';
+    const owner = (__oaPeople || []).find((p) => p.original) || null;
     box.innerHTML = oaPage(
         'security',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">This protects the whole back office: bookings, money and settings.</p>` +
+            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">How you get into the back office. ${escapeHtml(others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.')}</p>` +
             gaGroup([gaRow({ ic: 'key', t: 'Change password', act: 'data-act="changeAdminPassword"', chev: true })], 'Password') +
             `<h2 class="ga-cap">Passkeys</h2><div id="admin-passkey-list"><div class="ga-group">${oaKeyRows().join('')}</div></div>` +
-            `<p class="ga-note">Keep a passkey on two devices, like your phone and your Mac, so you’re never locked out.</p>` +
+            `<p class="ga-note">${escapeHtml(
+                chbFull()
+                    ? 'Your passkeys sign in as you, and only you. Keep one on two devices, like your phone and your Mac, so you’re never locked out.'
+                    : 'Your passkeys sign in as you, and only you. ' + ((owner && owner.first) || 'The owner') + ' can see which devices have one and remove a lost phone’s, but can’t use them.',
+            )}</p>` +
             gaGroup(
                 [
                     gaRow({
@@ -13021,27 +13183,389 @@ function renderSecurity() {
                 ],
                 'Two-step sign-in',
             ) +
-            `<p class="ga-note">The code goes to your owner email (shown under Notifications). Until there is one it stays off, so you can’t be locked out.</p>`,
+            `<p class="ga-note">${escapeHtml(contact ? 'The code goes to ' + contact + ', your email in Your details.' : 'Add your email in Your details first. Until then it stays off, so you can’t be locked out.')}</p>`,
     );
     loadAdminPasskeys();
+    if (chbFull() && __oaPeople === null) loadPeople();
 }
 async function oaTwoStep(on) {
-    const v = on ? '1' : '';
+    let res;
     try {
-        await saveContent('admin-2fa-enabled', v);
+        res = await apiPost('auth.php', { action: 'admin_twofa_set', on: !!on });
     } catch (e) {
-        // The save alerted; put the switch back to the truth.
+        // Put the switch back to the truth and say why.
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById('admin-2fa-toggle'));
         if (el) el.checked = !on;
+        glassAlert("Couldn't change two-step sign-in: " + (e.message || e));
         return;
     }
-    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['admin-2fa-enabled'] = v;
-    siteContent['admin-2fa-enabled'] = v;
+    chbSetMe(res.me);
     const s = document.querySelector('#acct-body .oa-r-security .ga-s');
     if (s) s.textContent = oaSecuritySub();
     toast(on ? 'Two-step sign-in is on' : 'Two-step sign-in is off');
 }
 
+
+// ===================================================================
+//  PEOPLE (approved demo): each person signs in with their own password or
+//  passkey, and nobody sets or sees anyone else's. Your details is your own;
+//  People & access (full access only) is who else signs in and what each can
+//  do. people.php answers every change with the whole list, so the pages are
+//  formatters of __oaPeople. The server refuses whatever a switch does not
+//  cover — these pages only decide what is offered.
+// ===================================================================
+let __oaPeople = null; // [people.php list] once asked; null = not yet
+let __oaPerson = 0; // whose page is open
+async function loadPeople() {
+    if (!chbFull()) return;
+    try {
+        const res = await apiPost('people.php', { action: 'list' });
+        __oaPeople = res.people || [];
+    } catch (e) {
+        if (!Array.isArray(__oaPeople)) __oaPeople = null;
+        return;
+    }
+    oaPeoplePatch();
+}
+// The list landing changes a few words on the pages already up (who else signs
+// in). Those words are patched where they stand — redrawing the whole page would
+// cut short the slide it is still making — and only the People pages, whose
+// content IS the list, are drawn again.
+function oaPeoplePatch() {
+    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
+    const set = (sel, text) => {
+        const el = document.querySelector(sel);
+        if (el && el.textContent !== text) el.textContent = text;
+    };
+    set('#acct-body .oa-r-people .ga-s', others.length ? 'You and ' + listAnd(others) : 'Only you so far');
+    set('#details-body .ga-lead', others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.');
+    set('#security-body .ga-lead', 'How you get into the back office. ' + (others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.'));
+    __oaStill = true;
+    try {
+        if (document.querySelector('#people-body .ga-page')) renderPeople();
+        if (document.querySelector('#person-body .ga-page')) renderPerson();
+    } finally {
+        __oaStill = false;
+    }
+}
+function oaPeopleLanded(res) {
+    if (res && Array.isArray(res.people)) __oaPeople = res.people;
+    oaPeoplePatch();
+}
+// "active today at 9:41", "active 3 days ago" — when they were last here.
+function oaSeenWords(p) {
+    if (p.you) return 'you';
+    const t = p.seen ? new Date(String(p.seen).replace(' ', 'T')) : null;
+    if (!t || isNaN(t.getTime())) return 'not signed in yet';
+    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    if (mins < 10) return 'here now';
+    const hm = t.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' }).replace(/^0/, '');
+    const days = Math.floor((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    if (days <= 0) return 'active today at ' + hm;
+    if (days === 1) return 'active yesterday';
+    return 'active ' + (days < 7 ? days + ' days ago' : fmtDate(String(p.seen).split(' ')[0]));
+}
+function oaPersonSub(p) {
+    if (p.state === 'removed') return 'No access · removed ' + fmtDate(String(p.removed || '').split(' ')[0]);
+    if (p.state === 'invited') return 'Invited · waiting for ' + p.first + ' to choose a password';
+    return oaRoleWords(p) + ' · ' + oaSeenWords(p);
+}
+
+// ---- Your details: yours alone ----
+function renderYourDetails() {
+    const box = document.getElementById('details-body');
+    if (!box) return;
+    const me = chbMe() || {};
+    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
+    box.innerHTML = oaPage(
+        'details',
+        oaBack('acct', 'Account') +
+            `<h1 class="section-title ga-h1">Your details</h1><p class="ga-lead">${escapeHtml(others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.')}</p>` +
+            gaGroup([
+                gaRow({ t: 'Name', s: oaName() || 'Add your name', act: chbAttrs('oaMeEdit', 'name'), chev: true }),
+                gaRow({ t: 'Email', s: me.contact || 'Add your email', act: chbAttrs('oaMeEdit', 'email'), chev: true }),
+                gaRow({ t: 'Username', s: me.username || '', act: chbAttrs('oaMeEdit', 'username'), chev: true }),
+            ]) +
+            `<p class="ga-note">Sign-in codes and password reset links go to this email, not anyone else’s. You sign in with the username or the email, or with a passkey.</p>`,
+    );
+    if (chbFull() && __oaPeople === null) loadPeople();
+}
+const OA_ME_EDIT = {
+    name: { title: 'Your name', label: 'Name', autocomplete: 'name' },
+    username: { title: 'Your username', label: 'Username', hint: 'What you type to sign in', autocomplete: 'username' },
+};
+// One fact, one form. The email changes only once a code sent TO it comes back.
+async function oaMeEdit(which) {
+    if (which === 'email') return oaMeEmail();
+    const E = OA_ME_EDIT[which];
+    const me = chbMe() || {};
+    if (!E) return;
+    const f = { id: 'v', label: E.label, value: which === 'name' ? oaName() : me.username || '', hint: E.hint || '', autocomplete: E.autocomplete };
+    let msg = '';
+    for (;;) {
+        const v = await glassForm(msg, [f], { title: E.title, okLabel: 'Save' });
+        if (!v) return;
+        f.value = String(v.v || '').trim();
+        try {
+            const res = await apiPost('auth.php', { action: 'admin_me_set', field: which, value: f.value });
+            chbSetMe(res.me);
+            toast('Saved');
+            return;
+        } catch (e) {
+            msg = e.message || "Not saved — that didn't reach the server. Try again.";
+        }
+    }
+}
+async function oaMeEmail() {
+    const me = chbMe() || {};
+    const f = { id: 'email', label: 'Email', type: 'email', value: me.contact || '', autocomplete: 'email', inputmode: 'email' };
+    let msg = 'We’ll send a code to the new address before it changes.';
+    let to = '';
+    for (;;) {
+        const v = await glassForm(msg, [f], { title: 'Your email', okLabel: 'Send the code' });
+        if (!v) return;
+        f.value = String(v.email || '').trim().toLowerCase();
+        try {
+            const res = await apiPost('auth.php', { action: 'admin_email_begin', email: f.value });
+            to = res.to || f.value;
+            break;
+        } catch (e) {
+            msg = e.message || 'That didn’t send. Try again.';
+        }
+    }
+    const c = { id: 'code', label: 'The 6-digit code', inputmode: 'numeric', autocomplete: 'one-time-code' };
+    msg = 'We sent a code to ' + to + '. It changes once you enter it.';
+    for (;;) {
+        const v = await glassForm(msg, [c], { title: 'Check your email', okLabel: 'Confirm' });
+        if (!v) return;
+        c.value = String(v.code || '').trim();
+        try {
+            const res = await apiPost('auth.php', { action: 'admin_email_finish', code: c.value });
+            chbSetMe(res.me);
+            toast('Email changed. Sign-in codes go to ' + (res.me && res.me.contact) + ' now.');
+            return;
+        } catch (e) {
+            if (e && (e.code === 'expired' || e.code === 'too_many')) return glassAlert(e.message);
+            msg = e.message || 'That code isn’t right. Try again.';
+        }
+    }
+}
+
+// ---- People & access (full access) ----
+function renderPeople() {
+    const box = document.getElementById('people-body');
+    if (!box) return;
+    if (!chbFull()) return oaGo('acct');
+    const list = __oaPeople;
+    const rows = !Array.isArray(list)
+        ? [gaRow({ ic: 'people', t: 'Loading…', static: true })]
+        : list.map((p) =>
+              p.you
+                  ? gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaRoleWords(p) + ' · you', static: true, cls: 'oa-person' })
+                  : gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaPersonSub(p), act: chbAttrs('oaPersonOpen', p.id), chev: true, cls: 'oa-person' + (p.state === 'removed' ? ' oa-dim' : '') }),
+          );
+    rows.push(gaRow({ ic: 'plus', t: 'Add someone', s: 'They choose their own password', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }));
+    box.innerHTML = oaPage(
+        'people',
+        oaBack('acct', 'Account') +
+            `<h1 class="section-title ga-h1">People &amp; access</h1><p class="ga-lead">Who can sign in to the back office, and what each of you can do.</p>` +
+            gaGroup(rows) +
+            `<p class="ga-note">Everyone signs in with their own password or passkey. Sign-in codes and reset links go to their own email, and the activity log names who did what.</p>`,
+    );
+    if (!Array.isArray(list)) loadPeople();
+}
+function oaPersonOpen(id) {
+    __oaPerson = Number(id) || 0;
+    oaGo('person');
+}
+async function oaPeopleAdd() {
+    const fields = [
+        { id: 'name', label: 'Name', value: '', autocomplete: 'off' },
+        { id: 'email', label: 'Email', type: 'email', value: '', placeholder: 'name@example.com', autocomplete: 'off', inputmode: 'email' },
+    ];
+    let msg = 'They get an email with a link to choose their own password. You never see it, and you can change what they can do afterwards.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Add someone', okLabel: 'Send the invite' });
+        if (!v) return;
+        fields[0].value = String(v.name || '').trim();
+        fields[1].value = String(v.email || '').trim().toLowerCase();
+        if (!fields[0].value) {
+            msg = 'Enter their name.';
+            continue;
+        }
+        try {
+            const res = await apiPost('people.php', { action: 'invite', name: fields[0].value, email: fields[1].value });
+            oaPeopleLanded(res);
+            toast(res.sent ? 'Invite sent to ' + fields[1].value + '.' : 'Added, but the email didn’t send. Open their page to send the invite again.');
+            return;
+        } catch (e) {
+            msg = e.message || 'That didn’t save. Try again.';
+        }
+    }
+}
+
+// ---- One person's page ----
+const OA_PERSON_KEYS = {}; // their passkeys, by person id, once asked
+function renderPerson() {
+    const box = document.getElementById('person-body');
+    if (!box) return;
+    if (!chbFull()) return oaGo('acct');
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    if (!p) {
+        if (!Array.isArray(__oaPeople)) loadPeople();
+        box.innerHTML = oaPage('person', oaBack('people', 'People') + `<h1 class="section-title ga-h1">People &amp; access</h1>` + gaGroup([gaRow({ t: 'Loading…', static: true })]));
+        return;
+    }
+    const n = p.first;
+    let html =
+        oaBack('people', 'People') +
+        `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">${escapeHtml(p.name)}</h1><p class="ga-lead">${escapeHtml(oaPersonSub(p))}</p></div>${oaAvaOf(p.name, oaPersonPhotoUrl(p), false)}</div>`;
+    if (p.state === 'removed') {
+        html +=
+            gaGroup([gaRow({ ic: 'send', t: 'Give ' + n + ' access again', s: 'Sends a new invite to ' + p.contact, act: chbAttrs('oaPersonDo', 'restore'), cls: 'oa-accent' })]) +
+            `<p class="ga-note">${escapeHtml(n)} was signed out everywhere when the access was removed. Everything ${escapeHtml(n)} did is still in the activity log under ${escapeHtml(n)}’s name.</p>`;
+        box.innerHTML = oaPage('person', html);
+        return;
+    }
+    html += gaGroup([
+        gaRow({ ic: 'star', t: 'Full access, like you', s: 'Everything, including People & access', v: oaSwitch('oa-full', p.full, 'Full access, like you', 'oaPersonFull'), static: true, cls: 'oa-swrow' }),
+    ]);
+    if (!p.full) {
+        html +=
+            gaGroup(
+                [gaRow({ ic: 'check', t: 'The everyday', s: 'Bookings and the calendar, enquiries, messages, key safes, guests and reviews', v: stCap('ok', 'Always'), static: true })].concat(
+                    Object.keys(OA_CAPS).map((k) => gaRow({ t: OA_CAPS[k][0], s: OA_CAPS[k][1], v: oaSwitch('oa-cap-' + k, !!(p.caps && p.caps[k]), OA_CAPS[k][0], 'oaPersonCap', k), static: true, cls: 'oa-swrow oa-cap' })),
+                ),
+                'What ' + n + ' can do',
+            ) +
+            gaGroup([gaRow({ ic: 'lock', t: 'Set-up and system', s: 'Payment setup and bank details, integrations, status and backups, the activity log, the Mac assistant and AI chat, and People & access', static: true })], 'Only you') +
+            `<p class="ga-note">A switched-off area disappears from ${escapeHtml(n)}’s menus and Today, and the server refuses it too, so an old link or a stray tap can’t reach it.</p>`;
+    }
+    const keys = OA_PERSON_KEYS[p.id];
+    const keyRows = !Array.isArray(keys)
+        ? [gaRow({ ic: 'face', t: 'Passkeys', s: 'Checking…', static: true })]
+        : keys.length
+          ? keys.map((k) =>
+                gaRow({
+                    ic: 'face',
+                    t: 'Passkey on ' + (k.label || 'a device'),
+                    s: 'Added ' + fmtDate(String(k.created_at || '').split(' ')[0]) + (k.last_used_at ? ' · used ' + fmtDate(String(k.last_used_at).split(' ')[0]) : ''),
+                    v: '<span class="ga-vbtn">Remove</span>',
+                    act: chbAttrs('oaPersonKeyRemove', k.id),
+                }),
+            )
+          : [gaRow({ ic: 'face', t: 'No passkeys yet', s: n + ' adds them from ' + n + '’s own Sign-in & security', static: true })];
+    html += gaGroup(
+        [gaRow({ ic: 'mail', t: p.contact || 'No email', s: 'Where ' + n + '’s sign-in codes and reset links go', static: true })]
+            .concat(keyRows)
+            .concat([
+                p.state === 'invited'
+                    ? gaRow({ ic: 'send', t: 'Send the invite again', s: 'The link works for 7 days', act: chbAttrs('oaPersonDo', 'reinvite') })
+                    : gaRow({ ic: 'send', t: 'Send a password reset link', s: n + ' chooses the new password. You never see it.', act: chbAttrs('oaPersonDo', 'reset_link') }),
+            ]),
+        'Sign-in',
+    );
+    if (Array.isArray(keys) && keys.length) html += `<p class="ga-note">Remove a passkey if a phone is lost or sold. ${escapeHtml(n)} can still sign in with the password. You can’t add or use ${escapeHtml(n)}’s passkeys.</p>`;
+    html += `<div class="ga-group ga-signout">${gaRow({ ic: 'bin', t: p.state === 'invited' ? 'Cancel the invite' : 'Remove ' + n + '’s access', act: chbAttrs('oaPersonDo', p.state === 'invited' ? 'cancel_invite' : 'remove'), danger: true })}</div>`;
+    box.innerHTML = oaPage('person', html);
+    if (!Array.isArray(keys) && p.state !== 'invited') oaPersonKeysLoad(p.id);
+    else if (p.state === 'invited') OA_PERSON_KEYS[p.id] = OA_PERSON_KEYS[p.id] || [];
+}
+// The five switches, in the person page's order (people-lib.php's PEOPLE_CAPS).
+const OA_CAPS = {
+    payments: ['Take payments', 'Send payment requests and record cash or bank payments'],
+    refunds: ['Refunds and deposits', 'Give money back: refunds, and returning or keeping deposits'],
+    money: ['Money overview', 'The Payments screens: what’s owed, income and tax, moving money out'],
+    prices: ['Prices and cottages', 'Rates, seasons, pricing ideas, cottage pages and calendar sync'],
+    website: ['Website and marketing', 'Home page, things to do, newsletter and analytics'],
+};
+async function oaPersonKeysLoad(id) {
+    try {
+        const res = await apiPost('people.php', { action: 'passkeys', id });
+        OA_PERSON_KEYS[id] = res.passkeys || [];
+    } catch (e) {
+        OA_PERSON_KEYS[id] = [];
+    }
+    if (__oaPerson === id && document.querySelector('#person-body .ga-page')) {
+        __oaStill = true;
+        try {
+            renderPerson();
+        } finally {
+            __oaStill = false;
+        }
+    }
+}
+async function oaPersonFull(on) {
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    if (!p) return;
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-full'));
+    if (on && !(await glassConfirm(p.first + ' will be able to do everything you can, including adding and removing people.', 'Give full access', { title: 'Give ' + p.first + ' full access?' }))) {
+        if (el) el.checked = false;
+        return;
+    }
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'set_full', id: p.id, on: !!on }));
+        toast(on ? p.first + ' has full access' : p.first + ' has the everyday work and the areas switched on below');
+    } catch (e) {
+        if (el) el.checked = !on;
+        glassAlert(e.message || "That didn't save. Try again.");
+    }
+}
+async function oaPersonCap(k, on) {
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    if (!p || !OA_CAPS[k]) return;
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-cap-' + k));
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'set_cap', id: p.id, cap: k, on: !!on }));
+        toast((on ? 'On: ' : 'Off: ') + OA_CAPS[k][0] + ' for ' + p.first + '.');
+    } catch (e) {
+        if (el) el.checked = !on;
+        glassAlert(e.message || "That didn't save. Try again.");
+    }
+}
+async function oaPersonDo(what) {
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    if (!p) return;
+    const n = p.first;
+    if (what === 'remove' && !(await glassConfirm(n + ' is signed out everywhere straight away and can’t sign in again. Everything ' + n + ' did stays in the activity log.', 'Remove the access', { title: 'Remove ' + n + '’s access?', danger: true }))) return;
+    if (what === 'cancel_invite' && !(await glassConfirm('The link in ' + n + '’s email stops working.', 'Cancel the invite', { title: 'Cancel ' + n + '’s invite?', danger: true, cancelLabel: 'Keep it' }))) return;
+    let res;
+    try {
+        res = await apiPost('people.php', { action: what, id: p.id });
+    } catch (e) {
+        return glassAlert(e.message || "That didn't work. Try again.");
+    }
+    if (what === 'cancel_invite') {
+        oaPeopleLanded(res);
+        toast('Invite cancelled');
+        return oaGo('people');
+    }
+    if (what === 'restore') delete OA_PERSON_KEYS[p.id];
+    oaPeopleLanded(res);
+    const sent = res && res.sent !== false;
+    const say = {
+        remove: n + ' no longer has access',
+        restore: sent ? 'A new invite is on its way to ' + p.contact + '.' : 'Access given back, but the email didn’t send. Try “Send the invite again”.',
+        reinvite: sent ? 'Invite sent again to ' + p.contact + '.' : 'The email didn’t send. Check the address and try again.',
+        reset_link: sent ? 'Reset link sent to ' + p.contact + '. ' + n + ' chooses the new password.' : 'The email didn’t send. Check the address and try again.',
+    }[what];
+    if (say) toast(say);
+}
+async function oaPersonKeyRemove(keyId) {
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    const k = p && (OA_PERSON_KEYS[p.id] || []).find((x) => String(x.id) === String(keyId));
+    if (!p || !k) return;
+    const n = p.first;
+    if (!(await glassConfirm(n + ' won’t be able to sign in with the passkey on ' + (k.label || 'that device') + ' any more. ' + n + '’s password still works, and ' + n + ' can add a new passkey.', 'Remove the passkey', { title: 'Remove ' + n + '’s passkey?', danger: true }))) return;
+    try {
+        const res = await apiPost('people.php', { action: 'passkey_remove', id: p.id, key: k.id });
+        OA_PERSON_KEYS[p.id] = res.passkeys || [];
+        oaPeopleLanded(res);
+        toast(n + '’s passkey on ' + (k.label || 'that device') + ' removed');
+    } catch (e) {
+        glassAlert(e.message || "That didn't work. Try again.");
+    }
+}
 
 // ---- AI chat — its own page -------------------------------------------------
 // The owner talking to the model on their own Mac, FROM ANYWHERE — the ask
@@ -13654,7 +14178,16 @@ async function mcAttachRead(file) {
     __mcAttach = { kind: 'doc', name, content };
     mcAttachChip();
 }
+// A screen switched off for this person (an old link, a remembered screen, a
+// notification): Today instead, with the server's sentence.
+function chbScreenRefused(cap) {
+    if (chbCan(cap)) return false;
+    toast(chbRefusal());
+    nav('view-backoffice');
+    return true;
+}
 async function openAiChat() {
+    if (chbScreenRefused('owner')) return;
     // nav()'s own view-aichat hook calls renderMacChat — calling it here too
     // ran TWO renders concurrently, and the second's presence node was
     // orphaned by the first's swap (measured: outerHTML on a parentless
@@ -16213,6 +16746,7 @@ async function openAccounts() {
         tryAccessBackOffice();
         return;
     }
+    if (chbScreenRefused('money')) return;
     // NAVIGATE FIRST, then load: the tax-year list is a dropdown ON this page,
     // not permission to show it. Awaiting it first meant a poor signal gave 9s
     // of nothing then an alert, still on Today (measured). See CLAUDE.md.
@@ -19179,20 +19713,27 @@ const NOTIFY_CATS = [
     ['checkout', 'Guest check-outs'],
     ['system', 'Site and system notices'],
 ];
+// YOUR alert settings (what buzzes, your quiet hours): the server's word for the
+// person signed in (window.__me.notify). Before people existed it was one shared
+// internal key, which is still the fallback when the server hasn't said.
 function notifyPrefs() {
+    const m = chbMe();
+    if (m && m.notify && typeof m.notify === 'object') return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, m.notify);
     let p = {};
     try {
         // adminPrivateContent FIRST: 'notify-prefs' is an INTERNAL key, so it is
-        // absent from the anonymous content GET that fills siteContent at boot —
-        // reading siteContent alone would render every toggle at its default over
-        // real saved settings, one change away from wiping them (the bacs-details
-        // rule). openArea() refreshes adminPrivateContent before this renders.
+        // absent from the anonymous content GET that fills siteContent at boot.
         const raw = (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent['notify-prefs']) || siteContent['notify-prefs'];
         p = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw || {};
     } catch (e) {
         p = {};
     }
     return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, p || {});
+}
+// The kinds of alert this person can get at all: payment alerts need Take
+// payments and system notices full access (the server holds the same line).
+function notifyCatsFor() {
+    return NOTIFY_CATS.filter(([k]) => (k === 'money' ? chbCan('payments') : k === 'system' ? chbCan('owner') : true));
 }
 // Each kind of alert is a switch; quiet hours are a row that opens a small form.
 function renderNotifyPrefs() {
@@ -19201,7 +19742,7 @@ function renderNotifyPrefs() {
     const p = notifyPrefs();
     box.innerHTML =
         `<div class="ga-group">` +
-        NOTIFY_CATS.map(([k, label]) =>
+        notifyCatsFor().map(([k, label]) =>
             gaRow({
                 t: label,
                 v: `<span class="chb-switch"><input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span>`,
@@ -19212,16 +19753,18 @@ function renderNotifyPrefs() {
         gaRow({ ic: 'clock', t: 'Quiet hours', s: p.quietFrom && p.quietTo ? `Nothing buzzes from ${p.quietFrom} to ${p.quietTo}` : 'Off', act: 'data-act="oaQuiet"', chev: true }) +
         `</div>`;
 }
-// Saves the whole set with one change merged in; says whether it landed.
+// Saves your whole set with one change merged in; says whether it landed.
 async function saveNotifyPrefs(patch) {
     const p = Object.assign(notifyPrefs(), patch);
+    let res;
     try {
-        await saveContent('notify-prefs', p);
+        res = await apiPost('auth.php', { action: 'admin_notify_set', prefs: p });
     } catch (e) {
-        return false; // the save alerted
+        glassAlert("Couldn't save your alerts: " + (e.message || e));
+        return false;
     }
-    adminPrivateContent['notify-prefs'] = p;
-    toast('Notification settings saved.');
+    chbSetMe(res.me);
+    toast('Your alerts are saved.');
     return true;
 }
 async function saveNotifyPref(key, value) {
@@ -19334,19 +19877,24 @@ async function testOwnerPush() {
 function renderNotifySettings() {
     const wrap = document.getElementById('notify-body');
     if (!wrap) return;
+    const others = (__oaPeople || []).filter((p) => !p.you && p.state === 'active').map((p) => p.first);
+    const full = chbFull();
     wrap.innerHTML = oaPage(
         'notify',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Notifications</h1><p class="ga-lead">What reaches this device, and who gets an email.</p>` +
+            `<h1 class="section-title ga-h1">Notifications</h1><p class="ga-lead">${escapeHtml(others.length ? 'Your own alerts. ' + listAnd(others) + (others.length > 1 ? ' choose their own.' : ' chooses theirs.') : 'What reaches this device, and what interrupts you.')}</p>` +
             `<h2 class="ga-cap">This device</h2><div id="notify-device"><div class="ga-group">${oaDeviceRows().join('')}</div></div>` +
             `<h2 class="ga-cap">What interrupts you</h2><div id="notify-prefs-body"></div>` +
-            `<p class="ga-note">Turning one off stops the buzz. It still lands in your activity log, and anything urgent, like a calendar sync that could double-book you, always gets through.</p>` +
-            `<h2 class="ga-cap">Emailed to</h2><div id="notify-emails-list"><div class="ga-group">${gaRow({ ic: 'mail', t: 'Loading…', static: true })}</div></div>` +
-            `<p class="ga-note">Emails cover new bookings, enquiries, guest messages, payments and reviews.</p>`,
+            `<p class="ga-note">Turning one off stops the buzz. It still lands in the activity log, and anything urgent, like a calendar sync that could double-book you, always gets through.</p>` +
+            (full
+                ? `<h2 class="ga-cap">Emailed to</h2><div id="notify-emails-list"><div class="ga-group">${gaRow({ ic: 'mail', t: 'Loading…', static: true })}</div></div>` +
+                  `<p class="ga-note">Emails cover new bookings, enquiries, guest messages, payments and reviews.</p>`
+                : ''),
     );
     renderNotifyPrefs();
-    loadNotifyEmails();
+    if (full) loadNotifyEmails();
     oaPushRefresh();
+    if (full && __oaPeople === null) loadPeople();
 }
 // Read-only check of the zero-setup reply-by-email: does the mailbox
 // connect, and what did the newest replies do? Nothing is delivered.
@@ -19466,64 +20014,16 @@ async function removeNotifyEmail(email) {
 
 async function tryAccessBackOffice() {
     if (!isAuthenticated) {
-        // First sign-in lands on the friendly owner home, not straight into the calendar.
-        openAdminLogin('Owner sign-in', 'Sign in to manage your cottages.', async () => {
-            nav('view-backoffice');
-            adminHistPush('view-backoffice');
-            refreshOwnerHomeBadges();
-        });
+        // ONE sign-in for everyone: the sheet. A back-office sign-in lands on Today
+        // and learns who signed in (and so what they may do); the old owner dialog
+        // did neither, and asked for "your owner email"'s code whoever you were.
+        openGuestAuthModal();
     } else {
         nav('view-backoffice');
         adminHistPush('view-backoffice');
         await initBackOffice();
     }
 }
-async function openAdminLogin(title, sub, onSuccess) {
-    adminLoginOnSuccess = onSuccess || null;
-    const m = document.getElementById('admin-login-modal');
-    document.getElementById('admin-login-title').innerText = title || 'Owner sign-in';
-    document.getElementById('admin-login-sub').innerText = sub || '';
-    document.getElementById('admin-login-user').value = '';
-    document.getElementById('admin-login-pass').value = '';
-    document.getElementById('admin-login-error').style.display = 'none';
-    const status = document.getElementById('admin-login-passkey-status');
-    const pwForm = document.getElementById('admin-login-pw-form');
-    const retry = document.getElementById('admin-login-passkey-retry');
-    const hasPasskey = !!(
-        window.PublicKeyCredential &&
-        navigator.credentials &&
-        navigator.credentials.get
-    );
-    m.classList.add('open');
-    if (hasPasskey) {
-        // Go straight to a passkey attempt — no intermediate screen.
-        status.style.display = 'block';
-        pwForm.style.display = 'none';
-        retry.style.display = 'block'; // the password screen offers a passkey retry
-        try {
-            const ok = await adminPasskeyFirst(true);
-            if (ok) {
-                const cb = adminLoginOnSuccess;
-                closeAdminLogin();
-                if (cb) await cb();
-                return;
-            }
-        } catch (e) {
-            /* unavailable / cancelled / failed — fall through to password */
-        }
-        // Passkey didn't complete → reveal username & password (with a passkey retry).
-        status.style.display = 'none';
-        pwForm.style.display = 'block';
-        setTimeout(() => document.getElementById('admin-login-user').focus(), 60);
-    } else {
-        // No passkey support on this device — straight to username & password.
-        status.style.display = 'none';
-        retry.style.display = 'none';
-        pwForm.style.display = 'block';
-        setTimeout(() => document.getElementById('admin-login-user').focus(), 100);
-    }
-}
-
 async function logoutStaff() {
     try {
         await apiPost('auth.php', { action: 'admin_logout' });
@@ -22521,8 +23021,12 @@ function chbDutyHidden(d) {
     const e = d && d.key ? chbDutyMap()[d.key] : null;
     return !!e && (CHB_DUTY_SEV[d.sev] || 0) <= (CHB_DUTY_SEV[e.sev] || 0);
 }
+// TODAY SHOWS ONLY THE JOBS YOU CAN DO: a duty whose fix lives in an area
+// switched off for this person is not theirs (returning a deposit needs Refunds
+// and deposits, chasing a balance needs Take payments, a stopped cron is set-up).
+const CHB_DUTY_CAP = { balance: 'payments', autopay: 'payments', deposit: 'refunds', payout: 'money', dispute: 'money', feed: 'prices', cron: 'owner', nightquiet: 'owner' };
 function chbDuties() {
-    return chbDutiesAll().filter((d) => !chbDutyHidden(d));
+    return chbDutiesAll().filter((d) => !chbDutyHidden(d) && chbCan(CHB_DUTY_CAP[/** @type {any} */ (d).kind] || 'all'));
 }
 // Mirror first, save after, on a chain that saves the CURRENT map (the pins store's
 // shape). A failed save only means the row is back after a refresh — the safe direction.

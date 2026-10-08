@@ -366,7 +366,6 @@ if ($action === 'send') {
         // Sent ledger appears after the next migrate run; the send itself succeeded.
     }
     log_activity('email', 'email.mailbox_send', 'Email sent from the admin mailbox to ' . $to, [
-        'actor' => 'owner',
         'entity' => 'mailbox',
         'entity_id' => $to,
     ]);
@@ -392,7 +391,6 @@ if ($action === 'delete') {
         json_out(['error' => 'The mailbox refused the delete.'], 502);
     }
     log_activity('email', 'email.mailbox_delete', 'Email deleted from the admin mailbox', [
-        'actor' => 'owner',
         'entity' => 'mailbox',
         'entity_id' => $uid,
     ]);

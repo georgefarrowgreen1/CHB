@@ -129,8 +129,8 @@ wpchk('it falls back to payload-less on 400/413 (never drops the alert)',
     strpos($src, "in_array(\$status, [400, 413], true)") !== false);
 wpchk('Urgency is sent (Apple batches low-urgency pushes)', strpos($src, "'Urgency: ' . \$urgency") !== false);
 wpchk('TTL is per-message, not a flat 28 days', strpos($src, 'TTL: 2419200') === false);
-wpchk('the admin fan-out reads the subscription keys',
-    strpos($src, "SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE role = 'admin'") !== false);
+wpchk('the admin fan-out reads the subscription keys, and whose device it is',
+    strpos($src, "SELECT id, endpoint, p256dh, auth, admin_id FROM push_subscriptions WHERE role = 'admin'") !== false);
 wpchk('alert_owner sends a payload', strpos($src, '$sent = ping_admin_devices($payload,') !== false);
 
 // ---- The stash is READ, not TAKEN (the multi-device bug) --------------------
@@ -184,7 +184,25 @@ wpchk('the tag is per-record, not one shared owner tag',
 wpchk('the stash carries the deep link + tag for the fetch fallback',
     strpos($src, 'function owner_ping_set($title, $body, $reload = false, $url = ') !== false
         && strpos($src, '$tag = ') !== false);
-wpchk('a category can suppress the push', strpos($src, 'if (notify_should_push($category))') !== false);
+wpchk('a category can suppress the push, person by person', strpos($src, '&& notify_should_push_for($row, $category);') !== false);
+
+// ---- EACH PERSON'S OWN ALERTS ------------------------------------------------
+// Nobody is buzzed about an area switched off for them, whatever their settings
+// say; their own mutes apply on top; 'urgent' reaches everyone.
+require_once __DIR__ . '/people-lib.php';
+$allOn = json_encode(['money' => true, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => '']);
+$host = ['id' => 2, 'full_access' => 0, 'caps' => json_encode(['payments' => false]), 'notify_prefs' => $allOn];
+$hostPays = ['id' => 2, 'full_access' => 0, 'caps' => json_encode(['payments' => true]), 'notify_prefs' => $allOn];
+$owner = ['id' => 1, 'full_access' => 1, 'caps' => '', 'notify_prefs' => $allOn];
+wpchk('a payment alert never reaches someone without Take payments', notify_should_push_for($host, 'money') === false);
+wpchk('…and does once they have it', notify_should_push_for($hostPays, 'money') === true);
+wpchk('system notices are for full access only', notify_should_push_for($hostPays, 'system') === false && notify_should_push_for($owner, 'system') === true);
+wpchk('the everyday alerts reach everyone', notify_should_push_for($host, 'enquiries') === true && notify_should_push_for($host, 'messages') === true);
+wpchk('urgent reaches someone without the area too', notify_should_push_for($host, 'urgent') === true);
+$muted = $hostPays;
+$muted['notify_prefs'] = json_encode(['money' => false] + json_decode($allOn, true));
+wpchk("a person's own mute still applies inside their areas", notify_should_push_for($muted, 'money') === false);
+wpchk('a removed person gets nothing but urgent', notify_should_push_for(['removed_at' => '2026-10-01 10:00:00'] + $owner, 'enquiries') === false);
 wpchk('no device reached + email requested → send_owner fallback',
     strpos($src, '$sent === 0 && !empty($opts[\'email\'])') !== false);
 

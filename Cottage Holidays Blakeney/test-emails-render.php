@@ -208,6 +208,9 @@ $JOBS = [
   // send_owner/smtp_send capture as the rest, so §2 measures their colours too.
   ['mail-test', 'owner', function () { $m = owner_mail_test_body(); return smtp_send('o@x.co', 'Owner', $m['subject'], $m['text'], $m['html']); }],
   ['admin-code', 'owner', function () { $m = admin_code_body('428 913'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['admin-code-email', 'owner', function () { $m = admin_code_body('428 913', 'email', 'Sophia'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['admin-invite', 'owner', function () { $m = admin_invite_body('Sophia', 'George', 'sophia', site_base_url() . 'index.html?invite=2.' . str_repeat('a1', 24)); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['admin-reset', 'owner', function () { $m = admin_reset_body('Sophia', 'sophia', site_base_url() . 'index.html?areset=2.' . str_repeat('b2', 24), 'George'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['backup-report', 'owner', function () { $m = backup_report_body('412 KB', 'Photos are archived separately (18.4 MB).'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['guest-chat', 'guest', function () { $m = guest_chat_body('Wren', 'The key safe code is 1066.', 'https://example.test/p/1.jpg', true); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],
   ['guest-message', 'guest', function () { $m = guest_message_body('Wren', 'Your welcome book is ready.'); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],

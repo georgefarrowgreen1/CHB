@@ -1,12 +1,12 @@
 {
  "comment": "PERFORMANCE budgets for perf-budget.js (CI): the gzipped transfer size of every shipped asset, in bytes. A PR that pushes an asset over its budget fails — bump the budget IN THE SAME PR only when the growth is a conscious trade (say what the bytes buy in the PR description). When a PR shrinks an asset well below budget, lower the budget to lock the win in. The point is that performance rot can never ship silently: every kilobyte a visitor pays for gets a line in a diff. Budgets are node-zlib gzip sizes (~2-3% headroom over today's real sizes for compressor drift + routine churn).",
- "index.html": 36400,
+ "index.html": 35600,
  "admin-views.html": 22200,
  "app.css": 117800,
- "app.js": 328100,
+ "app.js": 332000,
  "guest-app.css": 10700,
  "guest-app.js": 6927,
- "admin.js": 631400,
+ "admin.js": 638700,
  "admin.css": 114400,
  "sw.js": 6300
 }

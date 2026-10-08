@@ -3590,6 +3590,78 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
   on main at the same rate (2 in 12 runs under CPU contention). Both suites now wait for the dialog's own focus
   before typing into a multi-field form. No person types within 60ms of a dialog appearing, so the app is fine.
 
+## People: separate sign-ins, and what each person can do (approved demo, built)
+
+**Asked for as "two admin accounts, one for me which needs complete access and one for Sophia who doesn't need as
+many buttons"** (Sophia runs the cottages, George does the website). Every person who signs in is an `admins` row
+(migration-133: name, email, full_access, caps, twofa, photo, auth_epoch, invite/reset token hashes, removed_at,
+notify_prefs; `admin_devices.admin_id` and `push_subscriptions.admin_id`, NULL = the first owner's from before).
+- **THE OWNER NEVER SETS ANYONE'S PASSWORD** (a standing instruction). Add someone = name + email; they get a
+  7-day invite link and choose their own. A forgotten password, or the owner's "Send a password reset link", is a
+  30-minute link to the person's OWN inbox. Links are `<id>.<48 hex>`; only sha256 of the token is stored
+  (`people_link_ok`: an invite only works while invited, a reset only once they have a password). Saving a reset
+  bumps `auth_epoch`, signing them out everywhere else; removing someone keeps the row (the activity log names
+  them), deletes their passkeys, trusted devices and phone subscriptions, and `admin_session_check()` (db.php
+  bootstrap) ends a removed, still-invited or epoch-bumped session on its next request.
+- **EACH PERSON'S SIGN-IN IS THEIR OWN**: the new-device code goes to their email (`admin_contact_email`; the
+  first owner falls back to the old owner address), passkeys and trusted devices are per person, two-step is their
+  switch. The sign-in sheet carries every step in place (password → device code → in; email → code → "this is a
+  back-office sign-in, so it needs your password too"; invite and reset pages; a passkey offer after the invite) —
+  never a detour to another dialog. A switched-off sign-in says so and is never retried as a guest login.
+- **THE AREAS ARE `people-lib.php`'s, and the server decides them on EVERY request.** Full access = everything;
+  anyone else = the everyday work (`'all'`: bookings, calendar, enquiries, messages, email, key safes, guests,
+  reviews) plus the five switches — Take payments (on by default), Refunds and deposits, Money overview, Prices
+  and cottages, Website and marketing. `'owner'` is full access only (People & access, system, AI chat, the
+  activity log). `require_admin()` → `people_enforce()` maps every action CANDIDATE (body, GET and POST — endpoints
+  read the action from different places) through `people_cap_for()`; **a file or action not in `PEOPLE_POLICY` is
+  `'owner'`, so a new endpoint is closed to a limited person until someone decides otherwise.** The refusal is
+  403 `code: 'not_allowed'` with the sentence "That's for George to change."
+  - **Money hides inside everyday actions**, so those are judged by their inputs: a booking add/edit drops the
+    money fields without Take payments (`people_strip_money` — "absent keeps" does the rest), a cancellation that
+    REFUNDS needs Refunds (`require_cap`), an approval carrying a price or plan and an email with a pay button need
+    Take payments. `content.php` writes are decided BY KEY (`people_content_cap`), and its GET and the boot
+    payload are filtered to what the person may read (`people_content_readable`; `PEOPLE_READ_ALSO` lists the
+    switches everyday screens consult — never a secret). Uploads by slot.
+- **THE SCREENS FOLLOW, from the same maps** (app.js `CHB_ACT_CAP` / `CHB_SEC_CAP` / `CHB_VIEW_CAP`): `chbSetMe`
+  stores the server's word as `window.__me` and `chbAccessSync` sets `body.cap-x-<area>` for each area the person
+  lacks; ONE generated style rule hides every button, Manage row and dock/rail destination in that area (the
+  CHB_NEEDS_NET pattern), the dispatcher refuses a stale render's tap in the server's words, `nav()` lands a
+  switched-off screen on Today, `manageAccessSync` drops emptied groups and the system summary, `chbDuties` filters
+  Today's jobs (`CHB_DUTY_CAP`), and alerts follow (`notifyCatsFor`; server `notify_should_push_for`: money needs
+  Take payments, system notices full access, 'urgent' reaches everyone, then each person's own mutes and quiet
+  hours). **An unknown person (no word from the server yet, or an offline boot) is full access**: the server
+  decides, and the hiding is only ever what is offered.
+- **NB the hiding is derived, the switches are not**: a person's areas change on their next sign-in or reload,
+  not live. `#manage-verdicts` needed `[hidden] { display: none }` — its own `display: flex` outranked the
+  attribute (the arrival stand-down trap again). A change handler gets its data-args and the value, never the
+  element, so a handler serving several switches is told which (`oaSwitch`'s `arg`).
+- **The activity log names who** (`actor = 'admin:<id>'`, `admin_actor_label`: "You" for the reader, the name
+  otherwise; legacy `'owner'` rows are the first owner's). NB an explicit `'actor' => 'owner'` OVERRIDES the
+  session — `chat_admin_reply` and the mailbox had one, so every chat reply was credited to the first owner
+  whoever typed it. A session's person is the actor now; only a reply that came in BY EMAIL (no session) is
+  still 'owner' (per-person reply attribution is the email PR's).
+- **THERE IS ONE SIGN-IN.** The old `#admin-login-modal` (username/password + "a code to your owner email") is
+  DELETED: its last route was `tryAccessBackOffice()` while signed out, and it never told the client who had
+  signed in, so a limited person would have been shown every screen. That route opens the sheet now.
+- **The first sign-in inherits `OWNER_NOTIFY_EMAIL`** (`admin_backfill_owner`) until its owner sets their own in
+  Your details (a code to the NEW address proves it). If that address is the person you are about to invite —
+  likely, since it was one shared inbox — the invite refuses with "That's the email on your own sign-in. Change
+  yours in Your details first".
+- **The search window's system line is full access only** (`chbSysLine`): a limited person is never sent the
+  cron state, so the line would have read "All systems normal" about nothing — and `.cmdk-sys[hidden]` needed
+  its own rule (the hidden-vs-display trap, twice in one PR).
+- **Shared, deliberately or not yet**: duty dismissals and search pins are one store for everyone; who gets which
+  EMAIL is still the owner's address (per-person email routing is the next PR).
+- Gates: **test-people.php** (78 checks: the policy, links, names, every action candidate), **test-integration
+  §51** (45 checks against the real endpoints: invite → accept → sign in, a reset signing other sessions out,
+  removal ending a live session, refusals by area including a query-string action, money stripped from an
+  edit, the content read filter, her chat reply logged as hers), **test-webpush** (per-person alerts), and
+  **ui-test-people.js** (70 checks: the People pages, what a limited person is offered and refused, the sign-in
+  steps) — break-tested on the style rule, the
+  duty filter, the nav guard, the dispatcher refusal, the summary row and the switch argument. It found a real
+  bug on its first run: after one refused new password every later try was refused too (`AU.err` was never
+  cleared).
+
 ## The Status page (approved demo, built "exactly like the demo")
 
 Manage → Status is one run of `diagnostics.php` drawn as: a HEALTH RING (fraction of

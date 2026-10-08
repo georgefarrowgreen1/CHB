@@ -191,8 +191,10 @@ if (!function_exists('chat_admin_reply')) {
             ->execute([$threadId]);
         $logBody = $bodyTxt !== '' ? $bodyTxt : '📷 Photo';
         if (function_exists('log_activity')) {
+            // Whoever is signed in replied; a reply that came in by EMAIL has no
+            // session and is the owner's, as it always was.
             log_activity('comms', 'message.reply', 'Replied to a guest chat', [
-                'actor' => 'owner',
+                'actor' => !empty($_SESSION['admin_id']) ? 'admin:' . (int) $_SESSION['admin_id'] : 'owner',
                 'entity' => 'thread',
                 'entity_id' => (string) $threadId,
                 'meta' => ['detail' => mb_substr($logBody, 0, 120)],

@@ -20,6 +20,14 @@ require_admin();
 // EMBED it with the on-device model and run TRUE semantic recall locally
 // (meaning-based, not keyword). Text + a stable per-row handle to open it. No
 // query needed; capped per source to bound the payload.
+// What a result type needs, for someone with limited access: their search never
+// shows an area switched off for them (expenses are the Payments screens; the
+// activity log is full access; subscribers and things to do are the website).
+const SEARCH_TYPE_CAP = ['expense' => 'money', 'activity' => 'owner', 'subscriber' => 'website', 'experience' => 'website'];
+function search_visible(array $rows)
+{
+    return array_values(array_filter($rows, fn($r) => !isset(SEARCH_TYPE_CAP[$r['type'] ?? '']) || admin_can(SEARCH_TYPE_CAP[$r['type']])));
+}
 if (!empty($_GET['corpus']) || !empty(body()['corpus'] ?? null)) {
     $out = [];
     $cap = 300;
@@ -62,7 +70,7 @@ if (!empty($_GET['corpus']) || !empty(body()['corpus'] ?? null)) {
             $add('enquiry', $q2['id'], ($q2['name'] ?? '') . ': ' . $q2['message'], $q2['created_at'], ['name' => $q2['name']]);
         }
     });
-    json_out(['ok' => true, 'corpus' => $out]);
+    json_out(['ok' => true, 'corpus' => search_visible($out)]);
 }
 
 $q = trim((string) ($_GET['q'] ?? (body()['q'] ?? '')));
@@ -230,7 +238,12 @@ if ($deep) {
             }
         });
     }
-    json_out(['ok' => true, 'deep' => true, 'q' => $q, 'results' => $results, 'counts' => (object) $counts]);
+    foreach (SEARCH_TYPE_CAP as $t => $c) {
+        if (!admin_can($c)) {
+            unset($counts[$t]);
+        }
+    }
+    json_out(['ok' => true, 'deep' => true, 'q' => $q, 'results' => search_visible($results), 'counts' => (object) $counts]);
 }
 
 // 1) Bookings — each stay is also its invoice. Name, email, phone, address, notes, ref.
@@ -400,4 +413,4 @@ $src(function () use (&$results, $like, $PER) {
     }
 });
 
-json_out(['ok' => true, 'results' => array_slice($results, 0, 40)]);
+json_out(['ok' => true, 'results' => array_slice(search_visible($results), 0, 40)]);
