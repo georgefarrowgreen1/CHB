@@ -1505,50 +1505,6 @@
         </div>
     </div>
 
-    <!-- ADMIN LOGIN MODAL -->
-    <div id="admin-login-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Owner sign in" data-act="backdropClose" data-close="closeAdminLogin">
-        <div class="modal-box glass-panel">
-            <h2 class="section-title" style="font-size:var(--fs-display);margin-bottom:6px;" id="admin-login-title">Owner sign-in</h2>
-            <p class="lead" style="font-size:var(--fs-sub);margin-bottom:22px;" id="admin-login-sub">Sign in to manage your bookings.</p>
-
-            <!-- We go straight to a passkey attempt (Face ID / Touch ID / device PIN). -->
-            <div id="admin-login-passkey-status" style="display:none;text-align:center;padding:4px 0 2px;">
-                <div style="font-size:var(--fs-hero);line-height:1;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
-                <p style="font-size:var(--fs-body);color:var(--text-muted);margin-top:10px;">Waiting for your passkey…</p>
-            </div>
-
-            <!-- Username & password: shown if a passkey isn't available, is cancelled, or fails -->
-            <div id="admin-login-pw-form" style="display:none;">
-                <label class="modal-label">Username</label>
-                <input type="text" class="input-glass" id="admin-login-user" placeholder="Username" autocomplete="username">
-                <label class="modal-label">Password</label>
-                <input type="password" class="input-glass" id="admin-login-pass" placeholder="Password" autocomplete="current-password"
-                       data-act-keydown="enterCall" data-fn="submitAdminLogin">
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Sign in</button>
-                <div id="admin-login-passkey-retry" style="display:none;margin-top:18px;">
-                    <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;">
-                        <span style="flex:1;height:1px;background:var(--glass-border);"></span>
-                        <span style="font-size:var(--fs-caption);color:var(--text-muted);">or</span>
-                        <span style="flex:1;height:1px;background:var(--glass-border);"></span>
-                    </div>
-                    <button class="btn-sm btn-edit" style="width:100%;" data-act="submitAdminPasskey"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Sign in with a passkey</button>
-                </div>
-            </div>
-
-            <!-- 2FA: emailed one-time code for a new device (only shown when required) -->
-            <div id="admin-login-2fa-form" style="display:none;">
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">We've emailed a 6-digit sign-in code to your owner email. Enter it to finish signing in.</p>
-                <label class="modal-label" for="admin-login-2fa-code">Sign-in code</label>
-                <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="input-glass" id="admin-login-2fa-code" placeholder="123456"
-                       data-act-keydown="enterCall" data-fn="submitAdmin2fa">
-                <label style="display:flex;align-items:center;gap:9px;font-size:var(--fs-sub);margin:12px 0;cursor:pointer;"><input type="checkbox" id="admin-login-2fa-remember" checked> Remember this device (skip the code for 60 days)</label>
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" data-act="submitAdmin2fa">Verify &amp; sign in</button>
-            </div>
-
-            <div id="admin-login-error" role="alert" style="color:var(--danger-text);font-size:var(--fs-sub);margin:12px 0 0;display:none;"></div>
-        </div>
-    </div>
-
     <div id="terms-modal" class="modal-overlay chb-sheet" role="dialog" aria-modal="true" aria-label="Booking terms and conditions">
         <div class="glass-panel terms-modal-box">
             <div class="terms-modal-head">
@@ -1941,7 +1897,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1107"></script>
+    <script defer src="app.js?v=1108"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -18,6 +18,10 @@ function content_public_payload()
     // list-and-skip fails CLOSED against the internal keys below because the
     // GET always excludes both key classes for the public.
     $isAdmin = !empty($_SESSION['admin_id']);
+    // Someone with LIMITED access gets the internal keys their areas cover and
+    // no others (bank details, payout figures and the like stay full-access).
+    $me = $isAdmin ? admin_me() : null;
+    $limited = $me !== null && !people_is_full($me);
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
     // Every other content read in this request can now be answered from memory —
     // this is the ONLY caller that warms the memo, which is what keeps it safe:
@@ -40,6 +44,9 @@ function content_public_payload()
         // deployment fingerprint, alert recipients, cron watermarks, away/2FA
         // toggles): admin only, never public.
         if (!$isAdmin && is_internal_content_key($key)) {
+            continue;
+        }
+        if ($limited && is_internal_content_key($key) && !people_content_readable($me, $key)) {
             continue;
         }
         // Cottage GPS coordinates (geo-<propKey>) ARE exposed publicly so the cottage
@@ -76,8 +83,16 @@ if ($action === 'get_all') {
     // Admin-only: full content including private keys (ical-feeds-*, arrival-*),
     // used by the Settings page editors. Private values are decrypted here.
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    $me = admin_me();
     $out = [];
     foreach ($rows as $r) {
+        // A limited person gets only the private and internal keys their areas
+        // cover: never the backup passphrase, API keys, bank or payout figures.
+        if ($me !== null && !people_is_full($me)
+            && (is_private_content_key($r['item_key']) || is_internal_content_key($r['item_key']))
+            && !people_content_readable($me, $r['item_key'])) {
+            continue;
+        }
         // WRITE-ONLY secrets are never decrypted into the browser payload. The
         // Square webhook signing key is captured + used entirely server-side and
         // has no editor field at all; the Twilio auth token HAS one, but it is

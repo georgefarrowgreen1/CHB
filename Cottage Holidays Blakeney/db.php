@@ -12,6 +12,9 @@
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/config.php';
+// The rules about people (who may do what) — pure, so test-people.php can drive
+// them with no database. Needed before the session check below runs.
+require_once __DIR__ . '/people-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -94,11 +97,6 @@ if (session_status() === PHP_SESSION_NONE) {
         ]);
     }
 }
-// Give a logged-in admin a CSRF token in a JS-readable cookie (the token also lives
-// in the session). The admin UI echoes it back in an X-CSRF-Token header on writes;
-// require_admin() checks they match — defence-in-depth on top of SameSite cookies.
-csrf_issue_cookie();
-
 // ---- CORS (only needed if API is on a different origin) ----
 if (ALLOWED_ORIGIN !== '') {
     header('Access-Control-Allow-Origin: ' . ALLOWED_ORIGIN);
@@ -112,6 +110,15 @@ if (ALLOWED_ORIGIN !== '') {
 }
 
 header('Content-Type: application/json; charset=utf-8');
+
+// A signed-in person's session is checked against their row once per request, so
+// one removed, or signed out everywhere by a password reset, is out on their next
+// request whatever page they are on.
+admin_session_check();
+// Give a logged-in admin a CSRF token in a JS-readable cookie (the token also lives
+// in the session). The admin UI echoes it back in an X-CSRF-Token header on writes;
+// require_admin() checks they match — defence-in-depth on top of SameSite cookies.
+csrf_issue_cookie();
 
 // ---- PDO connection ----
 function db()
@@ -547,6 +554,7 @@ function require_reauth($what = 'this')
 }
 function require_admin()
 {
+    admin_session_check();
     if (empty($_SESSION['admin_id'])) {
         json_out(['error' => 'Not authorised'], 401);
     }
@@ -558,6 +566,244 @@ function require_admin()
             json_out(['error' => 'Your session needs refreshing — please reload the page and try again.'], 403);
         }
     }
+    people_enforce();
+}
+
+// ============================================================================
+//  PEOPLE — each person who signs in to the back office (migration-133).
+//
+//  A session carries the person's id AND the auth_epoch it was minted under.
+//  admin_session_check() ends it the moment the row says otherwise: the person
+//  was removed, or signed out everywhere (a password reset bumps the epoch).
+//  Someone with full access can do everything; anyone else is held to the
+//  areas switched on for them by people_enforce(), on the server, so an old
+//  link or a stray tap is refused rather than merely hidden.
+//  Before the migration (no columns) every rule here changes nothing. The pure
+//  rules themselves live in people-lib.php (required at the top of this file).
+// ============================================================================
+
+// One person's row, cached for the request; null if there is no such person.
+function admin_row($id, $fresh = false)
+{
+    static $cache = [];
+    $id = (int) $id;
+    if ($id <= 0) {
+        return null;
+    }
+    if ($fresh || !array_key_exists($id, $cache)) {
+        try {
+            $q = db()->prepare('SELECT * FROM admins WHERE id = ?');
+            $q->execute([$id]);
+            $cache[$id] = $q->fetch() ?: null;
+        } catch (\Throwable $e) {
+            $cache[$id] = null;
+        }
+    }
+    return $cache[$id];
+}
+// The signed-in person's row, or null.
+function admin_me()
+{
+    $id = (int) ($_SESSION['admin_id'] ?? 0);
+    return $id > 0 ? admin_row($id) : null;
+}
+// Once per request: is this session still good for this person?
+function admin_session_check(): void
+{
+    static $done = false;
+    if ($done || empty($_SESSION['admin_id'])) {
+        return;
+    }
+    $done = true;
+    $row = admin_row((int) $_SESSION['admin_id'], true);
+    if (!$row || !people_session_ok($row, (int) ($_SESSION['admin_epoch'] ?? 0))) {
+        unset($_SESSION['admin_id'], $_SESSION['admin_epoch'], $_SESSION['reauth_at'], $_SESSION['reauth_admin']);
+        return;
+    }
+    // When they were last here, for the People page — at most every five minutes.
+    $seen = isset($row['last_seen_at']) ? strtotime((string) $row['last_seen_at']) : false;
+    if (array_key_exists('last_seen_at', $row) && ($seen === false || $seen < time() - 300)) {
+        try {
+            db()->prepare('UPDATE admins SET last_seen_at = NOW() WHERE id = ?')->execute([(int) $row['id']]);
+        } catch (\Throwable $e) {
+        }
+    }
+}
+// Start a person's session (callers regenerate the session id first). One role
+// at a time: it ends any guest session in this browser.
+function admin_session_begin($id): void
+{
+    $id = (int) $id;
+    $row = admin_row($id, true);
+    $_SESSION['admin_id'] = $id;
+    $_SESSION['admin_epoch'] = $row ? (int) ($row['auth_epoch'] ?? 0) : 0;
+    unset($_SESSION['guest_id'], $_SESSION['guest_epoch']);
+    try {
+        db()->prepare('UPDATE admins SET last_seen_at = NOW() WHERE id = ?')->execute([$id]);
+    } catch (\Throwable $e) {
+    }
+}
+// The person setup.php made: the first owner. Rows from before people existed
+// (trusted devices, push subscriptions, activity 'owner') belonged to them.
+function admin_original_owner_id()
+{
+    static $id = null;
+    if ($id === null) {
+        try {
+            $id = (int) db()->query('SELECT MIN(id) FROM admins')->fetchColumn();
+        } catch (\Throwable $e) {
+            $id = 0;
+        }
+    }
+    return $id;
+}
+// Where a person's sign-in codes and reset links go. The first owner predates
+// the column, so until they set one it is the owner address the server knows.
+function admin_contact_email($row)
+{
+    $e = strtolower(trim((string) ($row['email'] ?? '')));
+    if ($e !== '') {
+        return $e;
+    }
+    if ((int) ($row['id'] ?? 0) === admin_original_owner_id() && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+        return strtolower((string) OWNER_NOTIFY_EMAIL);
+    }
+    return '';
+}
+function admin_is_full()
+{
+    $me = admin_me();
+    return $me !== null && people_is_full($me);
+}
+function admin_can($cap)
+{
+    $me = admin_me();
+    return $me !== null && people_can($me, (string) $cap);
+}
+// The first name of the person with full access a limited person would ask:
+// the oldest one still here.
+function admin_owner_first()
+{
+    try {
+        $q = db()->query('SELECT * FROM admins WHERE removed_at IS NULL AND invited_at IS NULL AND full_access = 1 ORDER BY id LIMIT 1');
+        $row = $q->fetch();
+        return $row ? people_first_name($row) : '';
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+// Refuse what this person's switches do not cover. Full access is never asked.
+function people_enforce(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    $me = admin_me();
+    if ($me === null || people_is_full($me)) {
+        return;
+    }
+    $in = body();
+    $file = basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ($_SERVER['SCRIPT_NAME'] ?? '')));
+    // Endpoints read their action from different places (some the query string
+    // first, some a form field first), so EVERY place one could come from is
+    // checked: the request is allowed only if each candidate is.
+    $cands = [];
+    foreach ([$in['action'] ?? null, $_GET['action'] ?? null, $_POST['action'] ?? null] as $a) {
+        if ($a !== null) {
+            $cands[] = is_scalar($a) ? (string) $a : '?'; // an array 'action' matches nothing: refused
+        }
+    }
+    foreach (array_unique($cands ?: ['']) as $action) {
+        $cap = people_cap_for($file, $action, $in + $_GET + $_POST);
+        if (!people_can($me, $cap)) {
+            json_out(['error' => people_refusal(admin_owner_first()), 'code' => 'not_allowed', 'area' => $cap], 403);
+        }
+    }
+}
+// Require one area here, where the endpoint can only judge it against the
+// stored row (a cancellation that refunds).
+function require_cap($cap)
+{
+    if (!admin_can((string) $cap)) {
+        json_out(['error' => people_refusal(admin_owner_first()), 'code' => 'not_allowed', 'area' => (string) $cap], 403);
+    }
+}
+// Someone without Take payments may add and edit bookings, but the money in
+// them — an agreed price, a payment recorded, the plan — stays as it is: those
+// fields are dropped, and "absent keeps" does the rest.
+function people_strip_money(array &$in): void
+{
+    if (admin_can('payments')) {
+        return;
+    }
+    foreach (['price_override', 'damages_deposit', 'payment', 'deposit', 'payment_date', 'payment_method', 'deposit_collected', 'collected', 'deposit_pct', 'deposit_amount', 'balance_due_date', 'autopay_offer'] as $k) {
+        unset($in[$k]);
+    }
+}
+// Require full access (People & access, and the set-up screens).
+function require_full_access()
+{
+    require_admin();
+    if (!admin_is_full()) {
+        json_out(['error' => people_refusal(admin_owner_first()), 'code' => 'not_allowed', 'area' => 'owner'], 403);
+    }
+}
+// "s•••••@example.com" — enough to recognise your own inbox, no more.
+function admin_mask_email($e)
+{
+    $e = (string) $e;
+    $at = strpos($e, '@');
+    if ($at === false || $at < 1) {
+        return $e;
+    }
+    return mb_substr($e, 0, 1) . str_repeat('•', max(3, $at - 1)) . substr($e, $at);
+}
+// A random link token for an invite or a reset: the link carries id.token and
+// only sha256(token) is kept.
+function admin_link_new($kind, $uid, $minutes)
+{
+    $tok = bin2hex(random_bytes(24));
+    $col = $kind === 'invite' ? 'invite' : 'reset';
+    db()
+        ->prepare("UPDATE admins SET {$col}_hash = ?, {$col}_expires = NOW() + INTERVAL " . (int) $minutes . ' MINUTE WHERE id = ?')
+        ->execute([hash('sha256', $tok), (int) $uid]);
+    return site_base_url() . 'index.html?' . ($kind === 'invite' ? 'invite' : 'areset') . '=' . (int) $uid . '.' . $tok;
+}
+// Email someone the link to choose a password: an invite, or a reset.
+function admin_send_link($row, $kind, $byFirst = '')
+{
+    $url = admin_link_new($kind, (int) $row['id'], $kind === 'invite' ? 7 * 24 * 60 : 30);
+    $to = admin_contact_email($row);
+    if ($to === '') {
+        return false;
+    }
+    require_once __DIR__ . '/mailer.php';
+    $m = $kind === 'invite'
+        ? admin_invite_body(people_first_name($row), $byFirst, (string) $row['username'], $url)
+        : admin_reset_body(people_first_name($row), (string) $row['username'], $url, $byFirst);
+    $r = smtp_send($to, people_display_name($row), $m['subject'], $m['text'], $m['html']);
+    return is_array($r) ? !empty($r['ok']) : (bool) $r;
+}
+// What the activity log shows as WHO: 'owner' for the person reading it (the
+// client says "You"), a first name for anyone else. 'owner' rows predate people
+// and were the first owner's.
+function admin_actor_label($actor)
+{
+    $a = (string) $actor;
+    if (preg_match('/^admin:(\d+)$/', $a, $m)) {
+        $id = (int) $m[1];
+    } elseif ($a === 'owner') {
+        $id = admin_original_owner_id();
+    } else {
+        return $a;
+    }
+    if ($id > 0 && $id === (int) ($_SESSION['admin_id'] ?? 0)) {
+        return 'owner';
+    }
+    $row = admin_row($id);
+    return $row ? people_display_name($row) : 'owner';
 }
 // A GUEST SESSION CAN BE REVOKED (migration-127). Proving an address on an account
 // whose password nobody had proven bumps guests.auth_epoch; a session carrying an
@@ -1546,7 +1792,7 @@ function log_activity($category, $action, $summary, $opts = [])
         $actor = isset($opts['actor']) && $opts['actor'] !== ''
             ? (string) $opts['actor']
             : (!empty($_SESSION['admin_id'])
-                ? 'owner'
+                ? 'admin:' . (int) $_SESSION['admin_id'] // who did it; admin_actor_label() names them
                 : (!empty($_SESSION['guest_id'])
                     ? 'guest:' . (int) $_SESSION['guest_id']
                     : (defined('CHB_CRON') && CHB_CRON

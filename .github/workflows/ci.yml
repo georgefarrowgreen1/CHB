@@ -148,6 +148,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-keysafe.php
 
+      - name: People and what each can do (the access policy, links, alerts per person)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-people.php
+
       - name: Status page judgements (warning verdicts, the week, the daily traces)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-status.php

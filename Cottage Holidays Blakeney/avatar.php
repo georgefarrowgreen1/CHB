@@ -1,11 +1,17 @@
 <?php
 // A guest's profile photo, served to the only two people who may see it: the guest
 // themselves (their own session) and the owner (?email=<the guest's address>).
+// Also the photo of someone who signs in to the back office (?admin=<id>).
 // Never public, never by path — the files sit under a deny-all directory.
 require_once __DIR__ . '/db.php';
 
 $name = '';
-if (isset($_GET['email'])) {
+if (isset($_GET['admin'])) {
+    // A back-office person's own photo: seen inside the back office only.
+    require_admin();
+    $row = admin_row((int) $_GET['admin']);
+    $name = $row ? (string) ($row['photo'] ?? '') : '';
+} elseif (isset($_GET['email'])) {
     require_admin();
     $email = strtolower(trim((string) $_GET['email']));
     try {

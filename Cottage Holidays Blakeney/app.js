@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 701;
+const ADMIN_BUNDLE_V = 702;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 344;
+const ADMIN_CSS_V = 345;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -453,6 +453,68 @@ try {
     st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55;filter:grayscale(.7)}';
     document.head.appendChild(st);
 } catch (e) {}
+// WHAT A LIMITED PERSON'S BUTTONS NEED. Someone without full access has the
+// everyday work plus the areas switched on for them (people-lib.php on the
+// server, which refuses the rest whatever the screen offers). The same map HIDES
+// those buttons (a style rule generated from it, the CHB_NEEDS_NET pattern) and
+// the dispatcher refuses one a stale render still shows, in the server's words.
+// body.cap-x-<area> is set by chbAccessSync for each area the person lacks.
+const CHB_ACT_CAP = {
+    payments: ['requestPayment', 'recordPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'moChaseDue', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset', 'recordSquareOrphan', 'odsPay'],
+    refunds: ['refundPayment', 'hubRefundPicker', 'returnDeposit', 'keepDeposit', 'confirmReturnSettled', 'odsDep'],
+    money: ['openAccounts', 'accountsOpen', 'cmdkOpenAccounts', 'addExpense', 'deleteExpense', 'editExpense', 'repeatExpense', 'odsExpense', 'exportAccountsCSV', 'pickExpenseReceipt', 'sweepMarkOneTransferred', 'sweepMarkTransferred', 'sweepRefreshPayouts', 'sweepRememberBalance', 'sweepUnmarkTransferred'],
+    prices: ['addAccommodationPrompt', 'archiveAccommodation', 'restoreAccommodation', 'setAccommodationPrivate', 'openAccomThenSec', 'settingsOpenAccom', 'settingsOpenAccomSec', 'settingsOpenCalendar', 'addSeasonGridRow', 'saveSeasonGrid', 'openSeasonDates', 'applyPricingSuggestion', 'nyOfferRates', 'prCottage', 'calRemoveFeed'],
+    website: ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'loadAnalytics', 'exportAnalyticsCsv', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
+    owner: ['openAiChat', 'connectNightMac', 'newNightKey', 'stopNightDevice', 'nightUse', 'nightDismiss', 'nightTeach', 'draftChatOnMac', 'runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveNightAppUrl', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite'],
+};
+// Manage sections by area (settingsOpen's argument); 'all' sections are not listed.
+const CHB_SEC_CAP = {
+    prices: ['accom', 'seasongrid', 'pricing', 'calendar', 'cancel'],
+    website: ['content', 'experiences', 'newsletter', 'analytics'],
+    owner: ['payments', 'follow-ups', 'sms', 'mac', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person'],
+};
+// The views a dock or rail button opens.
+const CHB_VIEW_CAP = { money: ['view-accounts'], owner: ['view-aichat', 'view-activity-log'] };
+function chbActCap(name) {
+    for (const k in CHB_ACT_CAP) if (CHB_ACT_CAP[k].indexOf(name) !== -1) return k;
+    return 'all';
+}
+function chbSecCap(sec) {
+    for (const k in CHB_SEC_CAP) if (CHB_SEC_CAP[k].indexOf(sec) !== -1) return k;
+    return 'all';
+}
+// Who is signed in (the server's word, set by chbSetMe), and the sentence a
+// limited person reads for anything that isn't theirs — the server's own words.
+const chbMeRaw = () => /** @type {any} */ (window).__me || null;
+const chbRefusal = () => 'That’s for ' + (String(/** @type {any} */ (window).__ownerFirst || '') || 'the owner') + ' to change.';
+// May the person signed in use this area? An unknown person (no word from the
+// server yet, or an offline boot) is treated as full access: the server decides.
+function chbMayUse(cap) {
+    const m = chbMeRaw();
+    if (!m || m.full !== false || !cap || cap === 'all') return true;
+    if (cap === 'owner') return false;
+    return !!(m.caps && m.caps[cap]);
+}
+try {
+    const st = document.createElement('style');
+    st.textContent = Object.keys(CHB_ACT_CAP)
+        .map((k) => {
+            const sel = CHB_ACT_CAP[k].map((n) => '[data-act="' + n + '"]')
+                .concat((CHB_SEC_CAP[k] || []).map((n) => '[data-act="settingsOpen"][data-arg="' + n + '"],[data-act="navSettingsSection"][data-arg="' + n + '"]'))
+                .concat((CHB_VIEW_CAP[k] || []).map((n) => '[data-view="' + n + '"]'));
+            return 'body.cap-x-' + k + ' :is(' + sel.join(',') + '){display:none!important}';
+        })
+        .join('\n') +
+        // The booking form's money parts: payments recorded, the deposit, an agreed
+        // price and the plan. The server drops them from such a person's save too.
+        '\nbody.cap-x-payments :is(#modal-payment-group,#modal-deposit-group,#modal-override-group,#modal-plan-group){display:none!important}';
+    document.head.appendChild(st);
+} catch (e) {}
+function chbAccessSync() {
+    try {
+        ['payments', 'refunds', 'money', 'prices', 'website', 'owner'].forEach((k) => document.body.classList.toggle('cap-x-' + k, !chbMayUse(k)));
+    } catch (e) {}
+}
 // THE ARGUMENTS ON AN ELEMENT, stated once. Both dispatch branches read this —
 // they each had their own copy of the reading and only one of them had any, which
 // is how a registered action could carry data-args that reached nobody.
@@ -503,6 +565,12 @@ function chbActAllowed(name) {
     }
 }
 function chbRunAct(el, name, event) {
+    if (!chbMayUse(chbActCap(name)) || ((name === 'settingsOpen' || name === 'navSettingsSection') && el && el.dataset && !chbMayUse(chbSecCap(el.dataset.arg || '')))) {
+        try {
+            toast(chbRefusal());
+        } catch (e) {}
+        return;
+    }
     if (__chbNetOff && CHB_NEEDS_NET.indexOf(name) !== -1) {
         try {
             toast('Needs signal — this one charges a card or emails a guest, so it’s never queued and hoped for.');
@@ -2337,6 +2405,17 @@ function nav(viewId, anchorId = null) {
     // admin can open a pay link to test it (staging) or settle on a guest's behalf.
     if (isAuthenticated && !PREVIEW_MODE && viewId !== 'view-pay' && !ADMIN_VIEWS.includes(viewId))
         viewId = 'view-backoffice';
+    // A screen switched off for the person signed in (Payments without Money
+    // overview; the AI chat and the activity log without full access) is not
+    // shown from any route — a link, search, a remembered screen. Today instead.
+    for (const k in CHB_VIEW_CAP) {
+        if (CHB_VIEW_CAP[k].indexOf(viewId) !== -1 && !chbMayUse(k)) {
+            try {
+                toast(chbRefusal());
+            } catch (e) {}
+            viewId = 'view-backoffice';
+        }
+    }
     const target = document.getElementById(viewId);
     if (!target) {
         console.warn(`nav(): unknown view "${viewId}"`);
@@ -3653,8 +3732,10 @@ const GA_CHEV = '<svg class="ga-chev" viewBox="0 0 24 24" fill="none" stroke="cu
 // optional right-hand value, and a chevron only when it OPENS something.
 // `cls` adds classes (the owner's account pages use it for switch rows).
 function gaRow(o) {
+    // o.ava: a ready-made avatar (markup composed and escaped by its caller) in
+    // place of the icon — a row that is a person.
     const inner =
-        (o.ic ? `<span class="ga-ic${o.danger ? ' is-danger' : ''}">${gaSvg(o.ic)}</span>` : '') +
+        (o.ava ? o.ava : o.ic ? `<span class="ga-ic${o.danger ? ' is-danger' : ''}">${gaSvg(o.ic)}</span>` : '') +
         `<span class="ga-lb"><span class="ga-t">${escapeHtml(o.t)}</span>${o.s ? `<span class="ga-s">${escapeHtml(o.s)}</span>` : ''}</span>` +
         (o.v ? `<span class="ga-v">${o.v}</span>` : '') +
         (o.chev ? GA_CHEV : '');
@@ -4576,7 +4657,10 @@ async function deleteGuestAccount() {
 // one — and for the OWNER, whose username has no @ and goes straight there.
 // The phone remembers who signed in last (first name + email, nothing else), and a
 // new guest gives only a name: the code has already proved the address.
-const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null };
+// via: how a back-office sign-in got here — 'email' (a code proved the inbox, the
+// password comes next) or 'device' (the password was right on a new device and a
+// code went to the person's own inbox). link/first/username/by: an invite or reset.
+const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null };
 const GA_LAST = 'chb-last-guest';
 function authLast() {
     try {
@@ -4623,7 +4707,7 @@ const authBig = (cls, label, act) => `<button type="button" class="ga-big ${cls}
 function authPaint() {
     const host = document.getElementById('ga-auth');
     if (!host) return;
-    const back = { code: 'authToEmail', password: 'authToEmail', name: 'authToEmail' }[AU.step];
+    const back = { code: AU.via === 'device' ? 'authToPassword' : 'authToEmail', password: 'authToEmail', name: 'authToEmail', 'reset-sent': 'authToPassword' }[AU.step];
     const err = AU.err ? `<p class="ga-aerr" id="login-error" role="alert">${escapeHtml(AU.err)}</p>` : '<p class="ga-aerr" id="login-error" role="alert" hidden></p>';
     let h = back ? `<button type="button" class="ga-back ga-aback" data-act="${back}">${GA_BACK}Back</button>` : '';
     const last = authLast();
@@ -4644,22 +4728,55 @@ function authPaint() {
             ${passkeysSupported() ? '<button type="button" class="ga-alink" data-act="passkeyLogin">Sign in with a passkey</button>' : ''}
             <p class="ga-asmall">By continuing you agree to our <a href="#" data-act="openTermsModal">booking terms</a> and <a href="#" data-act="authPrivacy">privacy policy</a>.</p>`;
     } else if (AU.step === 'code') {
+        // A NEW DEVICE (the password was right) gets its code at the person's own
+        // inbox, shown masked; the email-first path names the address typed.
+        const dev = AU.via === 'device';
         h += `<h2 class="ga-ah">Check your email</h2>
-            <p class="ga-al">We sent a 6-digit code to <b>${escapeHtml(AU.email)}</b>.</p>
+            <p class="ga-al">${dev ? 'This device is new to your sign-in, so we sent a 6-digit code to' : 'We sent a 6-digit code to'} <b>${escapeHtml(dev ? AU.mask : AU.email)}</b>.</p>
             <div class="ga-code${AU.err ? ' is-bad' : ''}" id="ga-codebox">${Array.from({ length: 6 }, () => '<span class="ga-cell"></span>').join('')}<input id="ga-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="The 6-digit code from the email" data-act-input="authCodeInput" data-pass="self"></div>
             ${err}
-            ${AU.isNew ? '' : '<p class="ga-asub">Or tap the link in the same email.</p>'}
-            <button type="button" class="ga-alink" id="ga-resend" data-act="authResend"${AU.cool > 0 ? ' disabled' : ''}>${AU.cool > 0 ? `Send a new code in ${AU.cool}s` : 'Send a new code'}</button>
-            <button type="button" class="ga-alink is-mute" data-act="authToPassword">Use a password instead</button>`;
+            ${AU.isNew || dev ? '' : '<p class="ga-asub">Or tap the link in the same email.</p>'}
+            <button type="button" class="ga-alink" id="ga-resend" data-act="${dev ? 'authDeviceResend' : 'authResend'}"${AU.cool > 0 ? ' disabled' : ''}>${AU.cool > 0 ? `Send a new code in ${AU.cool}s` : 'Send a new code'}</button>
+            ${dev ? '' : '<button type="button" class="ga-alink is-mute" data-act="authToPassword">Use a password instead</button>'}`;
     } else if (AU.step === 'password') {
+        // A username (no @), or an email the code has just proved: this is a
+        // back-office sign-in, and a forgotten password is a link to the inbox.
+        const office = AU.via === 'email' || !AU.email.includes('@');
         h += `<h2 class="ga-ah">Your password</h2>
+            ${AU.via === 'email' ? '<p class="ga-al">Your email is confirmed. This is a back-office sign-in, so it needs your password too.</p>' : ''}
             <div class="ga-chip"><span>${escapeHtml(AU.email)}</span><button type="button" data-act="authToEmail">Change</button></div>
             <input type="hidden" id="login-email" value="${escapeHtml(AU.email)}">
             <label class="ga-alabel" for="login-password">Password</label>
             <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-password" type="password" autocomplete="current-password"><button type="button" class="ga-eye" data-act="authEye" data-pass="self" aria-label="Show the password">Show</button></div>
             ${err}
             ${authBig('pri', 'Sign in', 'authPasswordGo')}
-            ${AU.email.includes('@') ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
+            ${office ? '<button type="button" class="ga-alink is-mute" data-act="authForgot">Forgotten your password?</button>' : ''}
+            ${AU.email.includes('@') && AU.via !== 'email' ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
+    } else if (AU.step === 'reset-sent') {
+        h += `<h2 class="ga-ah">Check your email</h2>
+            <p class="ga-al">If <b>${escapeHtml(AU.email)}</b> has a back-office sign-in, we’ve sent a link to choose a new password. It works for 30 minutes.</p>
+            <p class="ga-asub">Nobody else can choose it for you.</p>`;
+    } else if (AU.step === 'reset' || AU.step === 'invite') {
+        // The person chooses their own password: from an invite (first time) or a
+        // reset link. Nobody else ever sets or sees it.
+        const inv = AU.step === 'invite';
+        h += `${inv ? `<h2 class="ga-ah">Welcome, ${escapeHtml(AU.first || 'there')}</h2>
+            <p class="ga-al">${escapeHtml(AU.by || 'The owner')} has given you a sign-in to the Cottage Holidays Blakeney back office. Choose a password to finish.</p>
+            <label class="ga-alabel">Your username</label>
+            <div class="ga-chip"><span>${escapeHtml(AU.username)}</span></div>` : `<h2 class="ga-ah">Choose a new password</h2>
+            <p class="ga-al">For <b>${escapeHtml(AU.username)}</b>. Saving it signs you out on your other devices.</p>`}
+            <label class="ga-alabel" for="ga-new">${inv ? 'Choose a password' : 'New password'}</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="ga-new" type="password" autocomplete="new-password" placeholder="At least 12 characters"></div>
+            <label class="ga-alabel" for="ga-new2">Type it again</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="ga-new2" type="password" autocomplete="new-password"></div>
+            ${err}
+            ${authBig('pri', inv ? 'Save and continue' : 'Save and sign in', 'authNewPassword')}
+            ${inv ? '<p class="ga-asmall">Only you know this password. The link works once, for 7 days.</p>' : ''}`;
+    } else if (AU.step === 'offer') {
+        h += `<h2 class="ga-ah">Sign in with a passkey next time?</h2>
+            <p class="ga-al">Add a passkey and this device signs you in with Face ID, Touch ID or its PIN. Nothing to type, and nothing anyone can guess or borrow.</p>
+            ${authBig('pri', 'Add a passkey', 'authOfferPasskey')}
+            <button type="button" class="ga-alink is-mute" data-act="authOfferSkip">Not now</button>`;
     } else if (AU.step === 'name') {
         h += `<h2 class="ga-ah">Nice to meet you</h2>
             <p class="ga-al">Your email is confirmed. What should we call you?</p>
@@ -4692,10 +4809,15 @@ function authGo(step, back) {
     }, 60);
 }
 function authToEmail() {
+    AU.via = '';
     authGo('email', true);
 }
+// Forward from a guest's code step ("Use a password instead"), or BACK from the
+// new-device code and the reset note.
 function authToPassword() {
-    authGo('password');
+    const back = (AU.step === 'code' && AU.via === 'device') || AU.step === 'reset-sent';
+    if (AU.via === 'device') AU.via = '';
+    authGo('password', back);
 }
 function authNotYou() {
     authForget();
@@ -4801,7 +4923,10 @@ function authCodeInput(el) {
             c.classList.toggle('is-cur', k === Math.min(v.length, 5) && v.length < 6);
         });
     }
-    if (v.length === 6) authVerify(v);
+    if (v.length === 6) {
+        if (AU.via === 'device') authDeviceVerify(v);
+        else authVerify(v);
+    }
 }
 async function authVerify(code) {
     if (AU.busy) return;
@@ -4822,6 +4947,19 @@ async function authVerify(code) {
         return;
     }
     AU.busy = '';
+    // A BACK-OFFICE EMAIL: the code proved the inbox, and the password is next —
+    // or, for someone invited who hasn't started yet, choosing one.
+    if (res && res.admin) {
+        if (res.choose) {
+            AU.link = '';
+            AU.first = res.first || '';
+            AU.username = res.username || '';
+            AU.by = res.by || '';
+            return authGo('invite');
+        }
+        AU.via = 'email';
+        return authGo('password');
+    }
     if (res && res.new) {
         AU.isNew = true;
         return authGo('name');
@@ -4874,6 +5012,185 @@ async function authSignedIn(g, note) {
         guestAccountTab();
     } catch (e) {}
     toast(note || `Signed in as ${String((g && g.name) || '').split(/\s+/)[0] || 'you'}.`);
+}
+// THE BACK-OFFICE TWIN of authSignedIn: every way a person signs in to the back
+// office ends here — the password, a new-device code, an invite, a reset, a passkey.
+function authAdminIn(me, note, ownerFirst) {
+    chbSetMe(me || null, ownerFirst);
+    isAuthenticated = true;
+    currentGuest = null;
+    AU.via = '';
+    AU.link = '';
+    setAuthUI();
+    setGuestUI(); // one role at a time
+    closeGuestAuthModal();
+    nav('view-backoffice');
+    refreshOwnerHomeBadges();
+    try {
+        oqRegisterSync();
+        oqFlush();
+    } catch (e) {}
+    if (note) toast(note);
+}
+// A new device: the password was right and a code went to the person's own inbox.
+async function authDeviceVerify(code) {
+    if (AU.busy) return;
+    AU.busy = 'verify';
+    const box = document.getElementById('ga-codebox');
+    if (box) box.classList.add('is-ok');
+    let res;
+    try {
+        res = await apiPost('auth.php', { action: 'admin_2fa', code, remember: true });
+    } catch (e) {
+        AU.busy = '';
+        if (e && (e.code === 'expired' || e.code === 'too_many' || e.code === 'removed')) {
+            AU.via = '';
+            authGo('password', true);
+            AU.err = e.message;
+            return authPaint();
+        }
+        AU.err = (e && e.message) || 'That code didn’t work — try again.';
+        authPaint();
+        const i = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-code'));
+        if (i) i.focus();
+        return;
+    }
+    AU.busy = '';
+    authAdminIn(res && res.me, 'Signed in. This device won’t ask for a code again.', res && res.ownerFirst);
+}
+async function authDeviceResend() {
+    if (AU.cool > 0) return;
+    try {
+        const res = await apiPost('auth.php', { action: 'admin_2fa_resend' });
+        AU.mask = (res && res.to) || AU.mask;
+        authCooldown();
+        toast('A new code is on its way to ' + AU.mask + '.');
+    } catch (e) {
+        AU.via = '';
+        authGo('password', true);
+        AU.err = (e && e.message) || 'That sign-in has expired — please sign in again.';
+        authPaint();
+    }
+}
+// Forgotten password: a link to the person's own inbox. The page says the same
+// thing whether or not such a sign-in exists.
+async function authForgot() {
+    const id = String(AU.email || '').trim();
+    if (!id) return authGo('email');
+    try {
+        await apiPost('auth.php', { action: 'admin_reset_request', id });
+    } catch (e) {
+        AU.err = (e && e.message) || 'We couldn’t send the link — check your signal and try again.';
+        return authPaint();
+    }
+    authGo('reset-sent');
+}
+// Save the password chosen from an invite or a reset link.
+async function authNewPassword() {
+    const a = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-new'));
+    const b = /** @type {HTMLInputElement|null} */ (document.getElementById('ga-new2'));
+    const pw = (a && a.value) || '';
+    const again = (b && b.value) || '';
+    // Each try is judged afresh: the last refusal must not refuse this one.
+    AU.err = '';
+    if (pw.length < 12) AU.err = 'Use at least 12 characters. A short phrase you’ll remember works well.';
+    else if (pw !== again) AU.err = 'Those two don’t match. Type it again.';
+    if (AU.err) return authPaint();
+    const invite = AU.step === 'invite';
+    AU.busy = 'authNewPassword';
+    authPaint();
+    let res;
+    try {
+        res = await apiPost('auth.php', { action: invite ? 'admin_invite_accept' : 'admin_reset_save', link: AU.link, password: pw, again });
+    } catch (e) {
+        AU.busy = '';
+        AU.err = (e && e.message) || 'That didn’t save — try again.';
+        return authPaint();
+    }
+    AU.busy = '';
+    if (!invite) return authAdminIn(res && res.me, 'Password saved. You’re signed in, and signed out everywhere else.', res && res.ownerFirst);
+    // First time in: offer a passkey before the back office opens.
+    AU.me = (res && res.me) || null;
+    chbSetMe(AU.me, res && res.ownerFirst);
+    if (passkeysSupported()) return authGo('offer');
+    authAdminIn(AU.me, 'Signed in. You can add a passkey any time in Sign-in & security.');
+}
+async function authOfferPasskey() {
+    AU.busy = 'authOfferPasskey';
+    authPaint();
+    try {
+        const begin = await apiPost('passkeys.php', { action: 'admin_register_begin' });
+        const publicKey = prepCreateOptions(begin.options.publicKey || begin.options);
+        const cred = /** @type {any} */ (await navigator.credentials.create({ publicKey }));
+        await apiPost('passkeys.php', {
+            action: 'admin_register_finish',
+            label: chbDeviceName(),
+            clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+            attestationObject: bufToB64url(cred.response.attestationObject),
+        });
+        authAdminIn(AU.me, 'Passkey saved. Next time, this device signs you in.');
+    } catch (e) {
+        AU.busy = '';
+        if (e && e.name === 'NotAllowedError') return authPaint(); // they backed out of the sheet
+        AU.err = 'The passkey wasn’t saved: ' + ((e && e.message) || e) + '. You can add one later in Sign-in & security.';
+        authPaint();
+    }
+}
+function authOfferSkip() {
+    authAdminIn(AU.me, 'Signed in. You can add a passkey any time in Sign-in & security.');
+}
+// A short name for this device, for a passkey's label: "iPhone", "Mac" …
+function chbDeviceName() {
+    const ua = navigator.userAgent || '';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'iPad';
+    if (/Macintosh/.test(ua)) return 'Mac';
+    if (/Android/.test(ua)) return 'Android phone';
+    if (/Windows/.test(ua)) return 'Windows PC';
+    if (/CrOS/.test(ua)) return 'Chromebook';
+    return 'Passkey';
+}
+// Who is signed in to the back office: the server's word, kept for the screens
+// that name you (the greeting, your account) and decide what you may do.
+function chbSetMe(me, ownerFirst) {
+    const w = /** @type {any} */ (window);
+    w.__me = me || null;
+    if (ownerFirst !== undefined) w.__ownerFirst = ownerFirst || '';
+    chbAccessSync();
+    try {
+        document.dispatchEvent(new CustomEvent('chb-me'));
+    } catch (e) {}
+}
+// An invite or reset link opened from the email: the sheet greets the person
+// and asks for the password they choose. The link leaves the address bar.
+async function maybeAdminLink() {
+    let usp;
+    try {
+        usp = new URLSearchParams(window.location.search);
+    } catch (e) {
+        return false;
+    }
+    const kind = usp.get('invite') ? 'invite' : usp.get('areset') ? 'reset' : '';
+    if (!kind) return false;
+    const link = usp.get(kind === 'invite' ? 'invite' : 'areset') || '';
+    try {
+        history.replaceState(null, '', window.location.pathname);
+    } catch (e) {}
+    openGuestAuthModal();
+    try {
+        const res = await apiPost('auth.php', { action: 'admin_link_check', kind, link });
+        AU.link = link;
+        AU.first = res.first || '';
+        AU.username = res.username || '';
+        AU.by = res.by || '';
+        authGo(kind);
+    } catch (e) {
+        AU.err = (e && e.message) || 'This link has been used or has expired.';
+        authGo('email');
+        AU.err = (e && e.message) || 'This link has been used or has expired.';
+        authPaint();
+    }
+    return true;
 }
 // PASSKEYS IN THE EMAIL FIELD: the browser offers a saved passkey in the field's
 // own suggestions (WebAuthn "conditional" mediation), so there is no separate
@@ -4967,35 +5284,26 @@ async function guestLogin() {
         // over to the admin modal's existing 2FA step. (Previously this path
         // ignored `twofa` and pretended the sign-in had completed: no code
         // window, and a half-signed-in state where every admin call failed.)
+        // 2FA on a NEW device: the password was right and a code went to the
+        // person's own inbox. The sheet's own code step takes it from here.
         if (res && res.twofa) {
-            err.style.display = 'none';
-            closeGuestAuthModal();
-            adminLoginOnSuccess = () => {
-                nav('view-backoffice');
-                refreshOwnerHomeBadges();
-            };
-            const m = document.getElementById('admin-login-modal');
-            const t = document.getElementById('admin-login-title');
-            const s = document.getElementById('admin-login-sub');
-            if (t) t.innerText = 'Owner sign in';
-            if (s) s.innerText = 'New device — we’ve emailed you a one-time code.';
-            const aerr = document.getElementById('admin-login-error');
-            if (aerr) aerr.style.display = 'none';
-            if (m) m.classList.add('open');
-            showAdmin2faStep();
+            AU.via = 'device';
+            AU.mask = res.to || '';
+            AU.isNew = false;
+            authCooldown();
+            authGo('code');
             return;
         }
-        isAuthenticated = true;
-        setAuthUI();
-        currentGuest = null;
-        setGuestUI(); // one role at a time
         if (err) err.hidden = true;
-        closeGuestAuthModal();
-        nav('view-backoffice');
-        refreshOwnerHomeBadges();
+        authAdminIn(res && res.me, '', res && res.ownerFirst);
         return;
     } catch (adminErr) {
-        /* not the owner — try a guest login */
+        // The right password for a sign-in that has been switched off: say so.
+        if (adminErr && /** @type {any} */ (adminErr).code === 'removed') {
+            showErr(adminErr.message);
+            return;
+        }
+        /* not a back-office sign-in — try a guest login */
     }
 
     // 2) Guest (email + password).
@@ -5201,7 +5509,8 @@ async function passkeyLogin() {
         await passkeyFinish(assertion);
     } catch (e) {
         if (e && e.name === 'NotAllowedError') return; // user cancelled
-        AU.err = 'Passkey sign-in didn’t work: ' + (e.message || e);
+        // A switched-off sign-in says so in its own words.
+        AU.err = e && e.code === 'removed' ? e.message : 'Passkey sign-in didn’t work: ' + (e.message || e);
         authPaint();
     }
 }
@@ -5214,13 +5523,7 @@ async function passkeyFinish(assertion) {
         signature: bufToB64url(assertion.response.signature),
     });
     if (res.role === 'admin') {
-        isAuthenticated = true;
-        setAuthUI();
-        currentGuest = null;
-        setGuestUI(); // one role at a time
-        closeGuestAuthModal();
-        nav('view-backoffice');
-        refreshOwnerHomeBadges();
+        authAdminIn(res.me, '', res.ownerFirst);
     } else {
         authSignedIn(res.guest, '');
     }
@@ -9166,139 +9469,6 @@ function autofillGuestEnquiry() {
     }
 }
 
-// ---- Styled admin login modal ----
-let adminLoginOnSuccess = null;
-function closeAdminLogin() {
-    chbCloseOverlay(document.getElementById('admin-login-modal'));
-    const st = document.getElementById('admin-login-passkey-status');
-    if (st) st.style.display = 'none';
-    // Reset the 2FA step so the next open starts at the password form again.
-    const tf = document.getElementById('admin-login-2fa-form');
-    if (tf) tf.style.display = 'none';
-    adminLoginOnSuccess = null;
-}
-function adminLoginErr(msg) {
-    const err = document.getElementById('admin-login-error');
-    err.innerText = msg;
-    err.style.display = 'block';
-}
-async function submitAdminLogin() {
-    const username = document.getElementById('admin-login-user').value.trim();
-    const password = document.getElementById('admin-login-pass').value;
-    if (!username || !password) {
-        adminLoginErr('Please enter your username and password.');
-        return;
-    }
-    try {
-        const res = await apiPost('auth.php', { action: 'admin_login', username, password });
-        // New device with 2FA on: password was right, but a code was emailed —
-        // switch the modal to the code-entry step instead of completing the login.
-        if (res && res.twofa) {
-            showAdmin2faStep();
-            return;
-        }
-        await adminLoginSucceeded();
-    } catch (e) {
-        adminLoginErr('Access denied: ' + e.message);
-    }
-}
-// Shared post-sign-in steps (used by the direct path and after a 2FA code).
-async function adminLoginSucceeded() {
-    isAuthenticated = true;
-    setAuthUI();
-    currentGuest = null;
-    setGuestUI(); // one role at a time: drop any guest session
-    try {
-        oqRegisterSync();
-        oqFlush();
-    } catch (e) {}
-    const cb = adminLoginOnSuccess;
-    closeAdminLogin();
-    if (cb) await cb();
-}
-function showAdmin2faStep() {
-    const pw = document.getElementById('admin-login-pw-form');
-    const ps = document.getElementById('admin-login-passkey-status');
-    const tf = document.getElementById('admin-login-2fa-form');
-    if (pw) pw.style.display = 'none';
-    if (ps) ps.style.display = 'none';
-    if (tf) tf.style.display = 'block';
-    const code = document.getElementById('admin-login-2fa-code');
-    if (code) {
-        code.value = '';
-        setTimeout(() => code.focus(), 60);
-    }
-}
-async function submitAdmin2fa() {
-    const code = (document.getElementById('admin-login-2fa-code').value || '').trim();
-    const remember = !!(document.getElementById('admin-login-2fa-remember') || {}).checked;
-    if (!code) {
-        adminLoginErr('Enter the 6-digit code from your email.');
-        return;
-    }
-    try {
-        await apiPost('auth.php', { action: 'admin_2fa', code, remember });
-        await adminLoginSucceeded();
-    } catch (e) {
-        adminLoginErr(e.message || 'That code was not accepted.');
-    }
-}
-async function submitAdminPasskey() {
-    try {
-        const ok = await adminPasskeyFirst(true);
-        if (ok) {
-            const cb = adminLoginOnSuccess;
-            closeAdminLogin();
-            if (cb) await cb();
-        }
-    } catch (e) {
-        adminLoginErr('Passkey sign-in failed: ' + (e.message || e));
-    }
-}
-
-// Offer a passkey sign-in before falling back to username/password.
-// Returns true if a passkey login succeeded. Silent if unsupported or declined.
-async function adminPasskeyFirst(skipConfirm) {
-    if (!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get))
-        return false;
-    if (
-        !skipConfirm &&
-        !(await glassConfirm(
-            'Face ID, Touch ID or your device PIN.',
-            'Use a passkey',
-            { title: 'Sign in', cancelLabel: 'Use my password' },
-        ))
-    )
-        return false;
-    try {
-        const begin = await apiPost('passkeys.php', { action: 'admin_login_begin' });
-        const publicKey = prepGetOptions(begin.options.publicKey || begin.options);
-        const assertion = await navigator.credentials.get({ publicKey });
-        await apiPost('passkeys.php', {
-            action: 'admin_login_finish',
-            id: bufToB64url(assertion.rawId),
-            clientDataJSON: bufToB64url(assertion.response.clientDataJSON),
-            authenticatorData: bufToB64url(assertion.response.authenticatorData),
-            signature: bufToB64url(assertion.response.signature),
-        });
-        isAuthenticated = true;
-        setAuthUI();
-        currentGuest = null;
-        setGuestUI(); // one role at a time: drop any guest session
-        return true;
-    } catch (e) {
-        if (e && e.name === 'NotAllowedError') return false; // cancelled
-        if (!skipConfirm)
-            glassAlert(
-                'Passkey sign-in failed: ' +
-                    (e.message || e) +
-                    '\n\nYou can use your username and password instead.',
-            );
-        else throw e;
-        return false;
-    }
-}
-
 // Cache of all content fetched from the backend.
 let siteContent = {};
 
@@ -9709,6 +9879,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         } // ?mlogin=… → passwordless sign in
+        try {
+            maybeAdminLink();
+        } catch (e) {
+            console.error(e);
+        } // ?invite= / ?areset= → choose your back-office password
         try {
             maybeAccountPreview();
         } catch (e) {
@@ -11392,6 +11567,7 @@ function restoreSessions() {
                 const verdict = (async () => {
                     try {
                         const s = await apiPost('auth.php', { action: 'admin_status' });
+                        chbSetMe(s && s.admin ? s.me : null, s && s.ownerFirst);
                         // Remember the VERDICT (not the session): an offline reload must
                         // tell the owner's phone with no signal from "not signed in".
                         try {
@@ -13167,7 +13343,7 @@ async function maybeRestoreView(entry) {
     // An EXPLICIT destination always wins over a remembered one.
     try {
         const usp = new URLSearchParams(window.location.search);
-        if (usp.get('open') || usp.get('unsub') || usp.get('pay') || usp.get('acctpreview')) return false;
+        if (usp.get('open') || usp.get('unsub') || usp.get('pay') || usp.get('acctpreview') || usp.get('invite') || usp.get('areset')) return false;
     } catch (e) {}
     const saved = entry === undefined ? __chbNavAtLoad : entry;
     if (!saved || !saved.t || !saved.at) return false;
@@ -15556,7 +15732,6 @@ document.addEventListener('click', (e) => {
 //      its own keys, and the reviews/faq/details modals are handled above.)
 const MODAL_CLOSERS = {
     'guest-auth-modal': closeGuestAuthModal,
-    'admin-login-modal': closeAdminLogin,
     'terms-modal': closeTermsModal,
     'privacy-modal': closePrivacyModal,
     'enquire-modal': closeEnquireModal,
@@ -21251,7 +21426,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'owneracct1';
+    const BUILD = 'people2adm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

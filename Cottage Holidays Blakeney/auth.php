@@ -2,10 +2,16 @@
 // ============================================================
 //  auth.php — admin & guest authentication.
 //  POST {action: ...}
-//  Admin:  admin_login, admin_logout, admin_change_password, admin_status
+//  Admin:  admin_login (username or email), admin_2fa (+ _resend), admin_logout,
+//          admin_status, admin_change_password, admin_reauth_password,
+//          admin_reset_request / admin_link_check / admin_reset_save /
+//          admin_invite_accept (the links people.php and the sign-in page send),
+//          admin_me_set, admin_email_begin / _finish, admin_twofa_set,
+//          admin_avatar_set / _remove (your own details)
 //  Guest:  guest_register, guest_login, guest_logout, guest_status
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/webpush.php'; // each person's alert settings (notify_prefs_for)
 guest_session_check(); // a revoked guest session (migration-127) is signed out before any action reads it
 
 // ---- Login rate-limiting (5 failures per 10 min, per IP + account) ----
@@ -104,18 +110,13 @@ $action = $in['action'] ?? '';
 // can't be used to probe which usernames/emails are registered.
 const AUTH_DUMMY_HASH = '$2y$12$gemBw4PxmOQPgTk4uUpBPuJz/NsKCsE1dO8f8csjOOGJAwJSbCn3W';
 
-// ---- Admin 2FA: an emailed one-time code on a NOT-yet-trusted device. Opt-in
-// (Settings toggle) AND only active when an owner email + SMTP are configured, so
-// it can never lock the owner out. Trusted devices are remembered ~60 days. ----
-function admin_2fa_active()
+// ---- A NEW DEVICE ASKS FOR A CODE, sent to the person signing in ----
+// Two-step is each person's own switch (people from before the switch moved here
+// follow the old shared setting), and only when a code can actually reach them:
+// mail configured and an address on their row. It can never lock anyone out.
+function admin_mail_ready()
 {
-    if (content_value('admin-2fa-enabled') !== '1') {
-        return false;
-    }
-    // Must actually be able to send the code, or we'd lock the owner out.
-    return defined('OWNER_NOTIFY_EMAIL') &&
-        OWNER_NOTIFY_EMAIL &&
-        defined('MAIL_ENABLED') &&
+    return defined('MAIL_ENABLED') &&
         MAIL_ENABLED &&
         defined('SMTP_USER') &&
         SMTP_USER &&
@@ -123,18 +124,41 @@ function admin_2fa_active()
         SMTP_PASS &&
         SMTP_PASS !== 'CHANGE_ME';
 }
-function admin_device_trusted()
+function admin_twofa_wanted($row)
+{
+    if (is_array($row) && array_key_exists('twofa', $row) && $row['twofa'] !== null) {
+        return (int) $row['twofa'] === 1;
+    }
+    return content_value('admin-2fa-enabled') === '1';
+}
+function admin_twofa_on($row)
+{
+    return admin_twofa_wanted($row) && admin_mail_ready() && admin_contact_email($row) !== '';
+}
+// A trusted device belongs to the person who trusted it. Rows from before
+// people existed have no admin_id and were the first owner's.
+function admin_device_trusted($uid)
 {
     $tok = preg_replace('/[^a-f0-9]/i', '', (string) ($_COOKIE['chb_admin_device'] ?? ''));
     if (strlen($tok) < 32) {
         return false;
     }
+    $uid = (int) $uid;
     try {
-        $s = db()->prepare('SELECT id FROM admin_devices WHERE token_hash = ? LIMIT 1');
-        $s->execute([hash('sha256', $tok)]);
-        $id = (int) ($s->fetchColumn() ?: 0);
-        if ($id > 0) {
-            db()->prepare('UPDATE admin_devices SET last_seen = NOW() WHERE id = ?')->execute([$id]);
+        try {
+            $s = db()->prepare('SELECT id, admin_id FROM admin_devices WHERE token_hash = ? LIMIT 1');
+            $s->execute([hash('sha256', $tok)]);
+            $r = $s->fetch();
+            $owner = $r ? ($r['admin_id'] === null ? admin_original_owner_id() : (int) $r['admin_id']) : 0;
+        } catch (\Throwable $e) {
+            // admin_id not migrated yet: every device was the one owner's
+            $s = db()->prepare('SELECT id FROM admin_devices WHERE token_hash = ? LIMIT 1');
+            $s->execute([hash('sha256', $tok)]);
+            $r = $s->fetch();
+            $owner = $r ? $uid : 0;
+        }
+        if ($r && $owner === $uid) {
+            db()->prepare('UPDATE admin_devices SET last_seen = NOW() WHERE id = ?')->execute([(int) $r['id']]);
             return true;
         }
     } catch (\Throwable $e) {
@@ -142,13 +166,20 @@ function admin_device_trusted()
     }
     return false;
 }
-function admin_trust_this_device()
+function admin_trust_this_device($uid)
 {
     try {
         $tok = bin2hex(random_bytes(20));
-        db()
-            ->prepare('INSERT INTO admin_devices (token_hash, user_agent, last_seen) VALUES (?,?,NOW())')
-            ->execute([hash('sha256', $tok), mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+        $ua = mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
+        try {
+            db()
+                ->prepare('INSERT INTO admin_devices (token_hash, user_agent, last_seen, admin_id) VALUES (?,?,NOW(),?)')
+                ->execute([hash('sha256', $tok), $ua, (int) $uid]);
+        } catch (\Throwable $e) {
+            db()
+                ->prepare('INSERT INTO admin_devices (token_hash, user_agent, last_seen) VALUES (?,?,NOW())')
+                ->execute([hash('sha256', $tok), $ua]);
+        }
         setcookie('chb_admin_device', $tok, [
             'expires' => time() + 60 * 60 * 24 * 60,
             'path' => '/',
@@ -159,33 +190,142 @@ function admin_trust_this_device()
     } catch (\Throwable $e) {
     }
 }
-// Finish an admin sign-in (shared by the direct path and the post-2FA path).
-function admin_complete_login($uid)
+// A person by what they typed: a username, or an email (with an @). Removed and
+// invited people are found too — the callers decide what each may do.
+function admin_find($ident)
+{
+    $ident = strtolower(trim((string) $ident));
+    if ($ident === '') {
+        return null;
+    }
+    try {
+        if (strpos($ident, '@') !== false) {
+            $q = db()->prepare('SELECT * FROM admins WHERE email = ? ORDER BY (removed_at IS NULL) DESC, id LIMIT 1');
+        } else {
+            $q = db()->prepare('SELECT * FROM admins WHERE username = ? LIMIT 1');
+        }
+        $q->execute([$ident]);
+        return $q->fetch() ?: null;
+    } catch (\Throwable $e) {
+        return null; // no email column yet: only usernames can be looked up
+    }
+}
+function admin_switched_off()
+{
+    $o = admin_owner_first();
+    return 'This sign-in has been switched off. Ask ' . ($o !== '' ? $o : 'the owner') . ' if you need it back.';
+}
+// What the browser is told about the person signed in.
+function admin_me_payload($row)
+{
+    $me = people_public($row, (int) $row['id']);
+    $me['contact'] = admin_contact_email($row);
+    $me['twofa'] = admin_twofa_wanted($row);
+    $me['twofaLive'] = admin_twofa_on($row);
+    $me['original'] = (int) $row['id'] === admin_original_owner_id();
+    $me['notify'] = notify_prefs_for($row);
+    return $me;
+}
+// The first owner's row predates the email column: fill it once from the owner
+// address the server already knows, unless someone else is using it.
+function admin_backfill_owner($row)
+{
+    if (!is_array($row) || !array_key_exists('email', $row) || (string) $row['email'] !== '') {
+        return $row;
+    }
+    if ((int) $row['id'] !== admin_original_owner_id() || !defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
+        return $row;
+    }
+    $e = strtolower((string) OWNER_NOTIFY_EMAIL);
+    try {
+        $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE email = ? AND id <> ?');
+        $q->execute([$e, (int) $row['id']]);
+        if ((int) $q->fetchColumn() === 0) {
+            db()->prepare("UPDATE admins SET email = ? WHERE id = ? AND email = ''")->execute([$e, (int) $row['id']]);
+            $row['email'] = $e;
+        }
+    } catch (\Throwable $e2) {
+    }
+    return $row;
+}
+// Finish a sign-in (the password path, after a code, after an invite or reset,
+// and the staging seat): a new session id, the person's own session, and a note
+// in the log — a warning when the device or place is new to THIS person.
+function admin_complete_login($uid, array $extra = [])
 {
     session_regenerate_id(true); // new session id on login — prevents session fixation
-    $_SESSION['admin_id'] = (int) $uid;
-    unset($_SESSION['guest_id']); // one role at a time
-    unset($_SESSION['pending_admin_2fa']);
+    admin_session_begin((int) $uid);
+    unset($_SESSION['pending_admin_2fa'], $_SESSION['admin_email_proof']);
     csrf_issue_cookie();
-    // New device/location? Coarse fingerprint (IP + browser) vs the last sign-in.
+    $row = admin_backfill_owner(admin_row((int) $uid, true));
+    $who = $row ? people_display_name($row) : 'Owner';
     $fp = ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200);
-    $prevFp = content_value('admin-last-login-fp');
+    $prevFp = is_array($row) && array_key_exists('last_login_fp', $row) ? (string) $row['last_login_fp'] : null;
+    if ($prevFp === null || ($prevFp === '' && (int) $uid === admin_original_owner_id())) {
+        $prevFp = content_value('admin-last-login-fp'); // where it lived before people
+    }
     $isNew = $prevFp !== '' && $prevFp !== $fp;
     try {
-        db()
-            ->prepare(
-                "INSERT INTO content (item_key, item_value) VALUES ('admin-last-login-fp', ?)
-                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
-            )
-            ->execute([json_encode($fp)]);
+        db()->prepare('UPDATE admins SET last_login_fp = ? WHERE id = ?')->execute([$fp, (int) $uid]);
     } catch (\Throwable $e) {
+        try {
+            db()
+                ->prepare(
+                    "INSERT INTO content (item_key, item_value) VALUES ('admin-last-login-fp', ?)
+                     ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+                )
+                ->execute([json_encode($fp)]);
+        } catch (\Throwable $e2) {
+        }
     }
     if ($isNew) {
-        log_activity('account', 'admin.login_new', 'Signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+        log_activity('account', 'admin.login_new', $who . ' signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
     } else {
-        log_activity('account', 'admin.login', 'Owner signed in');
+        log_activity('account', 'admin.login', $who . ' signed in');
     }
-    json_out(['ok' => true]);
+    json_out(['ok' => true, 'me' => $row ? admin_me_payload($row) : null, 'ownerFirst' => admin_owner_first()] + $extra);
+}
+// Send a 6-digit code for a new device to the person's own email, and hold the
+// sign-in until it comes back (admin_2fa).
+function admin_send_device_code($row)
+{
+    $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $to = admin_contact_email($row);
+    $_SESSION['pending_admin_2fa'] = [
+        'uid' => (int) $row['id'],
+        'hash' => hash('sha256', $code),
+        'exp' => time() + 600, // 10 minutes
+        'tries' => 0,
+    ];
+    try {
+        require_once __DIR__ . '/mailer.php';
+        if (function_exists('smtp_send')) {
+            // Composed by admin_code_body() in mailer.php, so it can be previewed
+            // and the render gate can prove it builds.
+            $m = admin_code_body($code, 'device', people_first_name($row));
+            smtp_send($to, people_display_name($row), $m['subject'], $m['text'], $m['html']);
+        }
+    } catch (\Throwable $e) {
+    }
+    log_activity('account', 'admin.2fa_sent', 'Sign-in code emailed to ' . people_display_name($row) . ' for a new device', ['actor' => 'system', 'severity' => 'warn']);
+    json_out(['ok' => true, 'twofa' => true, 'to' => admin_mask_email($to)]);
+}
+// Which person a link is for, if it is still good; null otherwise.
+function admin_link_row($link, $kind)
+{
+    $p = people_link_parse((string) $link);
+    if (!$p) {
+        return null;
+    }
+    $row = admin_row($p['id'], true);
+    return people_link_ok($row, $p['token'], $kind, time()) ? $row : null;
+}
+function admin_link_dead($kind)
+{
+    $o = admin_owner_first();
+    return $kind === 'invite'
+        ? 'This invite link has been used or has expired. Ask ' . ($o !== '' ? $o : 'the owner') . ' to send a new one.'
+        : 'This link has been used or has expired. Ask for a new one from the sign-in page.';
 }
 
 // Did this request pass staging-gate.php? Two proofs, matching the gate's own
@@ -226,24 +366,25 @@ function staging_gate_passed()
 switch ($action) {
     // ---------------- ADMIN ----------------
     case 'admin_login':
-        $username = clean($in['username'] ?? '');
+        // What was typed: a username, or the person's own email. Either way the
+        // password decides; a new device then gets a code at the person's inbox.
+        $username = strtolower(clean($in['username'] ?? ''));
         $password = $in['password'] ?? '';
-        throttle_check('admin:' . strtolower($username));
-        $stmt = db()->prepare('SELECT id, password_hash FROM admins WHERE username = ?');
-        $stmt->execute([$username]);
-        $row = $stmt->fetch();
-        if (!password_verify($password, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
-            throttle_record('admin:' . strtolower($username), false);
+        throttle_check('admin:' . $username);
+        $row = admin_find($username);
+        $hash = $row && (string) ($row['password_hash'] ?? '') !== '' ? (string) $row['password_hash'] : AUTH_DUMMY_HASH;
+        if (!password_verify($password, $hash) || !$row || $hash === AUTH_DUMMY_HASH) {
+            throttle_record('admin:' . $username, false);
             // Diagnose WHY for the owner's log — the HTTP reply below stays generic
             // so an attacker learns nothing. The one sign-in form tries owner first
             // and falls back to guest, so a REGISTERED GUEST's email landing here is
             // routine, not an attack: skip the owner-side warning entirely and let
             // the guest attempt that follows log its own real outcome.
-            $reason = $row ? 'wrong password for the owner account' : 'not the owner username';
+            $reason = $row ? 'wrong password for ' . people_display_name($row) : 'not a back-office username';
             if (!$row && strpos($username, '@') !== false) {
                 try {
                     $gq = db()->prepare('SELECT COUNT(*) FROM guests WHERE email = ?');
-                    $gq->execute([strtolower($username)]);
+                    $gq->execute([$username]);
                     if ((int) $gq->fetchColumn() > 0) {
                         json_out(['error' => 'Incorrect username or password'], 401);
                     }
@@ -257,42 +398,34 @@ switch ($action) {
                 $fq = db()->prepare(
                     "SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND success = 0 AND attempted_at > (NOW() - INTERVAL 15 MINUTE)",
                 );
-                $fq->execute(['admin:' . strtolower($username)]);
+                $fq->execute(['admin:' . $username]);
                 $fails = (int) $fq->fetchColumn();
             } catch (\Throwable $e) {
             }
             if ($fails === 1) {
-                log_activity('account', 'admin.login_fail', 'Failed owner sign-in — ' . $reason, ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+                log_activity('account', 'admin.login_fail', 'Failed back-office sign-in — ' . $reason, ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             } elseif (in_array($fails, [5, 15, 30], true)) {
-                log_activity('account', 'admin.login_burst', $fails . ' failed owner sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+                log_activity('account', 'admin.login_burst', $fails . ' failed back-office sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             }
             json_out(['error' => 'Incorrect username or password'], 401);
         }
-        throttle_record('admin:' . strtolower($username), true);
-        // Password is right. If 2FA is on and this device isn't trusted, hold the
-        // login and email a one-time code instead of signing in yet.
-        if (admin_2fa_active() && !admin_device_trusted()) {
-            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $_SESSION['pending_admin_2fa'] = [
-                'uid' => (int) $row['id'],
-                'hash' => hash('sha256', $code),
-                'exp' => time() + 600, // 10 minutes
-                'tries' => 0,
-            ];
-            try {
-                require_once __DIR__ . '/mailer.php';
-                if (function_exists('smtp_send')) {
-                    // Composed by admin_code_body() in mailer.php, so this one can be
-                    // previewed and the render gate can prove it builds.
-                    $m = admin_code_body($code);
-                    smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html']);
-                }
-            } catch (\Throwable $e) {
-            }
-            log_activity('account', 'admin.2fa_sent', 'Sign-in code emailed for a new device', ['actor' => 'system', 'severity' => 'warn']);
-            json_out(['ok' => true, 'twofa' => true]);
+        throttle_record('admin:' . $username, true);
+        // The right password for someone whose access was removed: say so, since
+        // only they could have typed it.
+        if (!empty($row['removed_at'])) {
+            json_out(['error' => admin_switched_off(), 'code' => 'removed'], 403);
         }
-        admin_complete_login($row['id']);
+        // An email this browser has JUST proved (the code-first path) is the
+        // second step already: in, and the device remembered.
+        $proof = $_SESSION['admin_email_proof'] ?? null;
+        if (is_array($proof) && (int) ($proof['id'] ?? 0) === (int) $row['id'] && time() - (int) ($proof['at'] ?? 0) < 900) {
+            admin_trust_this_device((int) $row['id']);
+            admin_complete_login((int) $row['id']);
+        }
+        if (admin_twofa_on($row) && !admin_device_trusted((int) $row['id'])) {
+            admin_send_device_code($row);
+        }
+        admin_complete_login((int) $row['id']);
 
     case 'admin_2fa':
         // Verify the emailed one-time code and finish the held login.
@@ -301,41 +434,62 @@ switch ($action) {
         if (!is_array($p) || (int) ($p['exp'] ?? 0) < time()) {
             unset($_SESSION['pending_admin_2fa']);
             if (is_array($p)) {
-                log_activity('account', 'admin.2fa_fail', 'Owner sign-in code expired before it was used (10-minute window)', ['actor' => 'system', 'severity' => 'warn']);
+                log_activity('account', 'admin.2fa_fail', 'A sign-in code expired before it was used (10-minute window)', ['actor' => 'system', 'severity' => 'warn']);
             }
-            json_out(['error' => 'That code has expired — please sign in again.'], 401);
+            json_out(['error' => 'That code has expired — please sign in again.', 'code' => 'expired'], 401);
         }
         if ((int) ($p['tries'] ?? 0) >= 5) {
             unset($_SESSION['pending_admin_2fa']);
-            log_activity('account', 'admin.2fa_fail', 'Owner sign-in cancelled — 5 wrong one-time codes in a row', ['actor' => 'system', 'severity' => 'action']);
-            json_out(['error' => 'Too many attempts — please sign in again.'], 429);
+            log_activity('account', 'admin.2fa_fail', 'A back-office sign-in was cancelled — 5 wrong one-time codes in a row', ['actor' => 'system', 'severity' => 'action']);
+            json_out(['error' => 'Too many attempts — please sign in again.', 'code' => 'too_many'], 429);
         }
         $_SESSION['pending_admin_2fa']['tries'] = (int) ($p['tries'] ?? 0) + 1;
         $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
         if ($code === '' || !hash_equals((string) ($p['hash'] ?? ''), hash('sha256', $code))) {
             // First typo only (retries are normal) — the cancel above covers persistence.
             if ((int) ($p['tries'] ?? 0) === 0) {
-                log_activity('account', 'admin.2fa_fail', 'Wrong one-time sign-in code entered (owner 2FA)', ['actor' => 'system', 'severity' => 'warn']);
+                log_activity('account', 'admin.2fa_fail', 'Wrong one-time sign-in code entered (two-step)', ['actor' => 'system', 'severity' => 'warn']);
             }
-            json_out(['error' => 'Incorrect code — check the email and try again.'], 401);
+            json_out(['error' => 'That code isn’t right. Try again, or send a new one.', 'code' => 'wrong'], 401);
+        }
+        $two = admin_row((int) $p['uid'], true);
+        if (!$two || !empty($two['removed_at'])) {
+            unset($_SESSION['pending_admin_2fa']);
+            json_out(['error' => admin_switched_off(), 'code' => 'removed'], 403);
         }
         if (!empty($in['remember'])) {
-            admin_trust_this_device();
+            admin_trust_this_device((int) $p['uid']);
         }
         admin_complete_login((int) $p['uid']);
 
+    // A new code for the device step, to the same person (the held sign-in).
+    case 'admin_2fa_resend':
+        rate_limit('admin2fa_resend', 4, 15);
+        $p = $_SESSION['pending_admin_2fa'] ?? null;
+        $two = is_array($p) ? admin_row((int) ($p['uid'] ?? 0), true) : null;
+        if (!$two || !empty($two['removed_at'])) {
+            json_out(['error' => 'That sign-in has expired — please sign in again.', 'code' => 'expired'], 401);
+        }
+        admin_send_device_code($two);
+
     case 'admin_logout':
-        log_activity('account', 'admin.logout', 'Owner signed out');
-        unset($_SESSION['admin_id']);
+        $me = admin_me();
+        log_activity('account', 'admin.logout', ($me ? people_display_name($me) : 'Owner') . ' signed out');
+        unset($_SESSION['admin_id'], $_SESSION['admin_epoch']);
         json_out(['ok' => true]);
 
     case 'admin_status':
-        json_out(['admin' => !empty($_SESSION['admin_id'])]);
+        $me = admin_me();
+        if (!$me) {
+            json_out(['admin' => false]);
+        }
+        $me = admin_backfill_owner($me);
+        json_out(['admin' => true, 'me' => admin_me_payload($me), 'ownerFirst' => admin_owner_first()]);
 
     // STEP-UP by password: prove it is still you, right now, before a refund.
     // Throttled on the SAME identifier as sign-in, so this cannot become a
-    // quieter way to guess the owner's password; a failure is recorded there
-    // too. Never mints or extends a session — it only stamps the window.
+    // quieter way to guess a password; a failure is recorded there too. Never
+    // mints or extends a session — it only stamps the window.
     case 'admin_reauth_password':
         require_admin();
         $pw = $in['password'] ?? '';
@@ -344,7 +498,7 @@ switch ($action) {
         $row = $stmt->fetch();
         $ident = 'admin:' . strtolower((string) ($row['username'] ?? ''));
         throttle_check($ident);
-        if (!$row || !password_verify($pw, $row['password_hash'] ?? AUTH_DUMMY_HASH)) {
+        if (!$row || !password_verify($pw, ($row['password_hash'] ?? '') !== '' ? $row['password_hash'] : AUTH_DUMMY_HASH)) {
             throttle_record($ident, false);
             log_activity('account', 'admin.reauth_fail', 'Confirmation failed before a refund', ['level' => 'warn']);
             json_out(['error' => 'That password did not match.'], 403);
@@ -353,6 +507,8 @@ switch ($action) {
         reauth_stamp();
         json_out(['ok' => true]);
 
+    // Change your own password. Your other sessions are signed out (the epoch
+    // moves); this one is re-stamped so you stay in where you are.
     case 'admin_change_password':
         require_admin();
         $current = $in['current'] ?? '';
@@ -367,11 +523,224 @@ switch ($action) {
             json_out(['error' => 'Current password is incorrect'], 403);
         }
         $hash = password_hash($next, PASSWORD_DEFAULT);
-        db()
-            ->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
-            ->execute([$hash, $_SESSION['admin_id']]);
-        log_activity('account', 'admin.password_change', 'Owner password changed');
+        try {
+            db()->prepare('UPDATE admins SET password_hash = ?, auth_epoch = auth_epoch + 1, reset_hash = NULL, reset_expires = NULL WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
+            $_SESSION['admin_epoch'] = (int) ((admin_row((int) $_SESSION['admin_id'], true) ?: [])['auth_epoch'] ?? 0);
+        } catch (\Throwable $e) {
+            db()->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
+        }
+        $me = admin_me();
+        log_activity('account', 'admin.password_change', ($me ? people_display_name($me) : 'Owner') . ' changed their password');
         json_out(['ok' => true]);
+
+    // ---- Forgotten password: a link to the person's own inbox, never anyone
+    // else's. The reply is the same whether or not such a sign-in exists. ----
+    case 'admin_reset_request':
+        rate_limit('admin_reset', 5, 15);
+        $ident = strtolower(clean($in['id'] ?? ''));
+        throttle_check('areset:' . $ident);
+        $row = admin_find($ident);
+        if ($row && empty($row['removed_at']) && empty($row['invited_at']) && (string) ($row['password_hash'] ?? '') !== '') {
+            if (admin_send_link($row, 'reset')) {
+                log_activity('account', 'admin.reset_sent', 'Password reset link emailed to ' . people_display_name($row), ['actor' => 'system']);
+            }
+        }
+        throttle_record('areset:' . $ident, false);
+        json_out(['ok' => true]);
+
+    // What a link is for, so the page can greet the person before they type.
+    case 'admin_link_check':
+        rate_limit('admin_link', 20, 15);
+        $kind = ($in['kind'] ?? '') === 'invite' ? 'invite' : 'reset';
+        $row = admin_link_row($in['link'] ?? '', $kind);
+        if (!$row) {
+            json_out(['error' => admin_link_dead($kind), 'code' => 'dead'], 410);
+        }
+        json_out(['ok' => true, 'first' => people_first_name($row), 'username' => (string) $row['username'], 'by' => admin_owner_first()]);
+
+    // The invite's last step: the person chooses their own password. The link,
+    // or a code this browser has just proved for their email, is the proof.
+    case 'admin_invite_accept':
+        rate_limit('admin_link', 20, 15);
+        $row = admin_link_row($in['link'] ?? '', 'invite');
+        if (!$row) {
+            $proof = $_SESSION['admin_email_proof'] ?? null;
+            $cand = is_array($proof) && time() - (int) ($proof['at'] ?? 0) < 900 ? admin_row((int) ($proof['id'] ?? 0), true) : null;
+            $row = $cand && !empty($cand['invited_at']) && empty($cand['removed_at']) ? $cand : null;
+        }
+        if (!$row) {
+            json_out(['error' => admin_link_dead('invite'), 'code' => 'dead'], 410);
+        }
+        $bad = people_password_problem($in['password'] ?? '', $in['again'] ?? null);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        db()
+            ->prepare('UPDATE admins SET password_hash = ?, invited_at = NULL, invite_hash = NULL, invite_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
+            ->execute([password_hash((string) $in['password'], PASSWORD_DEFAULT), (int) $row['id']]);
+        log_activity('account', 'admin.invite_accepted', people_display_name($row) . ' chose a password and signed in for the first time', ['actor' => 'admin:' . (int) $row['id']]);
+        admin_trust_this_device((int) $row['id']); // the link came to their inbox: that is the proof
+        admin_complete_login((int) $row['id']);
+
+    // A reset link's last step: a new password, and every other session ends.
+    case 'admin_reset_save':
+        rate_limit('admin_link', 20, 15);
+        $row = admin_link_row($in['link'] ?? '', 'reset');
+        if (!$row) {
+            json_out(['error' => admin_link_dead('reset'), 'code' => 'dead'], 410);
+        }
+        $bad = people_password_problem($in['password'] ?? '', $in['again'] ?? null);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        db()
+            ->prepare('UPDATE admins SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
+            ->execute([password_hash((string) $in['password'], PASSWORD_DEFAULT), (int) $row['id']]);
+        log_activity('account', 'admin.reset_done', people_display_name($row) . ' chose a new password from a reset link — every other session was signed out', ['actor' => 'admin:' . (int) $row['id']]);
+        admin_trust_this_device((int) $row['id']);
+        admin_complete_login((int) $row['id']);
+
+    // ---- Your own details ----
+    case 'admin_me_set':
+        require_admin();
+        $field = (string) ($in['field'] ?? '');
+        $val = trim((string) ($in['value'] ?? ''));
+        $me = admin_me();
+        if ($field === 'name') {
+            $bad = people_name_problem($val);
+            if ($bad !== '') {
+                json_out(['error' => $bad === 'Enter their name.' ? 'Enter your name.' : $bad], 400);
+            }
+            db()->prepare('UPDATE admins SET name = ? WHERE id = ?')->execute([$val, (int) $me['id']]);
+        } elseif ($field === 'username') {
+            $val = strtolower($val);
+            $bad = people_username_problem($val);
+            if ($bad !== '') {
+                json_out(['error' => $bad], 400);
+            }
+            $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE username = ? AND id <> ?');
+            $q->execute([$val, (int) $me['id']]);
+            if ((int) $q->fetchColumn() > 0) {
+                json_out(['error' => 'Someone already signs in with that username.'], 409);
+            }
+            db()->prepare('UPDATE admins SET username = ? WHERE id = ?')->execute([$val, (int) $me['id']]);
+        } else {
+            json_out(['error' => 'Unknown field'], 400);
+        }
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
+
+    // A new email only changes once a code sent TO it comes back.
+    case 'admin_email_begin':
+        require_admin();
+        rate_limit('admin_email', 5, 15);
+        $email = strtolower(trim((string) ($in['email'] ?? '')));
+        $bad = people_email_problem($email);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        $me = admin_me();
+        $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE email = ? AND id <> ?');
+        $q->execute([$email, (int) $me['id']]);
+        if ((int) $q->fetchColumn() > 0) {
+            json_out(['error' => 'Someone else signs in with that email.'], 409);
+        }
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $_SESSION['admin_email_change'] = ['email' => $email, 'hash' => hash('sha256', $code), 'exp' => time() + 1800, 'tries' => 0];
+        require_once __DIR__ . '/mailer.php';
+        $m = admin_code_body($code, 'email', people_first_name($me));
+        $r = smtp_send($email, people_display_name($me), $m['subject'], $m['text'], $m['html']);
+        if (is_array($r) && empty($r['ok'])) {
+            json_out(['error' => 'The code couldn’t be sent to that address. Check it and try again.'], 502);
+        }
+        json_out(['ok' => true, 'to' => admin_mask_email($email)]);
+
+    case 'admin_email_finish':
+        require_admin();
+        $p = $_SESSION['admin_email_change'] ?? null;
+        if (!is_array($p) || (int) ($p['exp'] ?? 0) < time()) {
+            unset($_SESSION['admin_email_change']);
+            json_out(['error' => 'That code has expired. Start again to send a new one.', 'code' => 'expired'], 401);
+        }
+        if ((int) ($p['tries'] ?? 0) >= 5) {
+            unset($_SESSION['admin_email_change']);
+            json_out(['error' => 'Too many tries. Start again to send a new code.', 'code' => 'too_many'], 429);
+        }
+        $_SESSION['admin_email_change']['tries'] = (int) ($p['tries'] ?? 0) + 1;
+        $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
+        if ($code === '' || !hash_equals((string) $p['hash'], hash('sha256', $code))) {
+            json_out(['error' => 'That code isn’t right. Check the latest email and try again.', 'code' => 'wrong'], 401);
+        }
+        $me = admin_me();
+        db()->prepare('UPDATE admins SET email = ? WHERE id = ?')->execute([(string) $p['email'], (int) $me['id']]);
+        unset($_SESSION['admin_email_change']);
+        log_activity('account', 'admin.email_change', people_display_name($me) . ' changed their sign-in email');
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
+
+    // Two-step on your own sign-in.
+    case 'admin_twofa_set':
+        require_admin();
+        $me = admin_me();
+        $on = !empty($in['on']) ? 1 : 0;
+        try {
+            db()->prepare('UPDATE admins SET twofa = ? WHERE id = ?')->execute([$on, (int) $me['id']]);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'This needs the latest database update — run the migrations first.'], 503);
+        }
+        log_activity('account', 'admin.twofa', people_display_name($me) . ' turned two-step sign-in ' . ($on ? 'on' : 'off'));
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
+
+    // Your own alert settings: what buzzes and your quiet hours. Nobody else's.
+    case 'admin_notify_set':
+        require_admin();
+        $me = admin_me();
+        $p = is_array($in['prefs'] ?? null) ? $in['prefs'] : [];
+        $out = [];
+        foreach (['money', 'enquiries', 'messages', 'checkout', 'system'] as $k) {
+            if (array_key_exists($k, $p)) {
+                $out[$k] = (bool) $p[$k];
+            }
+        }
+        foreach (['quietFrom', 'quietTo'] as $k) {
+            $v = (string) ($p[$k] ?? '');
+            $out[$k] = preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $v) ? $v : '';
+        }
+        if (($out['quietFrom'] === '') !== ($out['quietTo'] === '')) {
+            json_out(['error' => 'Choose both ends of the quiet hours, or neither.'], 400);
+        }
+        try {
+            db()->prepare('UPDATE admins SET notify_prefs = ? WHERE id = ?')->execute([json_encode(array_merge(notify_prefs_for($me), $out)), (int) $me['id']]);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'This needs the latest database update — run the migrations first.'], 503);
+        }
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
+
+    // Your own photo: private to the back office, served by avatar.php.
+    case 'admin_avatar_set':
+        require_admin();
+        rate_limit('admin_avatar', 12, 60);
+        $me = admin_me();
+        $name = avatar_store($in['data'] ?? '');
+        if ($name === '') {
+            json_out(['error' => 'That photo couldn’t be saved. Try another, or a smaller one.'], 400);
+        }
+        try {
+            db()->prepare('UPDATE admins SET photo = ? WHERE id = ?')->execute([$name, (int) $me['id']]);
+        } catch (\Throwable $e) {
+            avatar_delete($name);
+            json_out(['error' => 'This needs the latest database update — run the migrations first.'], 503);
+        }
+        avatar_delete((string) ($me['photo'] ?? ''));
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
+
+    case 'admin_avatar_remove':
+        require_admin();
+        $me = admin_me();
+        try {
+            db()->prepare("UPDATE admins SET photo = '' WHERE id = ?")->execute([(int) $me['id']]);
+        } catch (\Throwable $e) {
+        }
+        avatar_delete((string) ($me['photo'] ?? ''));
+        json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
 
     // ---------------- GUEST ----------------
     case 'guest_register':
@@ -636,6 +1005,17 @@ switch ($action) {
             $stmt->execute([$email]);
             $g = $stmt->fetch();
             require_once __DIR__ . '/mailer.php';
+            // A BACK-OFFICE SIGN-IN'S EMAIL gets its own code email: the code proves
+            // the inbox and the password follows it. The reply below is the same
+            // either way, so the page never says which emails have one.
+            $adm = admin_find($email);
+            if ($adm) {
+                $m = admin_code_body($code, 'signin', people_first_name($adm));
+                smtp_send($email, people_display_name($adm), $m['subject'], $m['text'], $m['html']);
+                log_activity('account', 'admin.code', 'Sign-in code emailed to ' . people_display_name($adm), ['actor' => 'system']);
+                throttle_record('code:' . $email, false);
+                json_out(['ok' => true]);
+            }
             if ($g) {
                 $ts = time();
                 $url = site_base_url() . 'index.html?mlogin=' . (int) $g['id'] . '&t=' . $ts . '&k=' . login_token($g['id'], $ts);
@@ -676,6 +1056,20 @@ switch ($action) {
         $claim->execute([(int) $c['id']]);
         if ($claim->rowCount() < 1) {
             json_out(['error' => 'That code has already been used. Send yourself a new one.', 'code' => 'expired'], 401);
+        }
+        // A back-office sign-in's email: the code proved the inbox, and the
+        // password comes next (admin_login reads this proof). Someone invited and
+        // not yet started chooses their password here instead of from the link.
+        $adm = admin_find($email);
+        if ($adm) {
+            if (!empty($adm['removed_at'])) {
+                json_out(['error' => admin_switched_off(), 'code' => 'removed'], 403);
+            }
+            $_SESSION['admin_email_proof'] = ['id' => (int) $adm['id'], 'at' => time()];
+            if (!empty($adm['invited_at'])) {
+                json_out(['ok' => true, 'admin' => true, 'choose' => true, 'first' => people_first_name($adm), 'username' => (string) $adm['username'], 'by' => admin_owner_first()]);
+            }
+            json_out(['ok' => true, 'admin' => true]);
         }
         $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE email = ?');
         $stmt->execute([$email]);

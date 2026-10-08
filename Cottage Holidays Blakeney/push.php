@@ -25,7 +25,9 @@ if ($action === 'key') {
 // generic). Guest device -> the check-in message. No session -> safe default.
 if ($action === 'sw_notify') {
     if (!empty($_SESSION['admin_id'])) {
-        $p = owner_ping_read();
+        // The stash is the last alert for the BUSINESS; someone with limited
+        // access gets the generic line (their real alerts carry their own text).
+        $p = admin_is_full() ? owner_ping_read() : null;
         if ($p) {
             json_out([
                 'title' => $p['title'] ?: 'Cottage Holidays Blakeney',
@@ -86,11 +88,20 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
             db()
                 ->prepare('DELETE FROM push_subscriptions WHERE endpoint = ?')
                 ->execute([$endpoint]);
-            db()
-                ->prepare(
-                    "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at) VALUES (NULL, 'admin', ?, ?, ?, NOW())",
-                )
-                ->execute([$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? '')]);
+            // The device belongs to whoever turned alerts on here.
+            try {
+                db()
+                    ->prepare(
+                        "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id) VALUES (NULL, 'admin', ?, ?, ?, NOW(), ?)",
+                    )
+                    ->execute([$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? ''), (int) $_SESSION['admin_id']]);
+            } catch (\Throwable $e) {
+                db()
+                    ->prepare(
+                        "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at) VALUES (NULL, 'admin', ?, ?, ?, NOW())",
+                    )
+                    ->execute([$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? '')]);
+            }
         } catch (\Throwable $e) {
             json_out(['error' => 'Could not save — run migrate.php (migration-push2-admin.sql).'], 500);
         }
@@ -112,7 +123,8 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
     if (!wp_vapid_configured()) {
         json_out(['error' => 'VAPID keys not set in config.php yet'], 400);
     }
-    $sent = alert_owner('Test alert', 'Owner push is working 🎉', ['category' => 'urgent', 'tag' => 'test']);
+    // Your own devices only: a test is yours, not everyone's.
+    $sent = alert_owner('Test alert', 'Alerts are working on your devices 🎉', ['category' => 'urgent', 'tag' => 'test', 'only' => (int) $_SESSION['admin_id']]);
     json_out(['ok' => true, 'sent' => $sent]);
 }
 

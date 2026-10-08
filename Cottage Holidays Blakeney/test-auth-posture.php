@@ -56,6 +56,7 @@ $REGISTRY = [
     'cron-status.php' => ['admin'],
     'customers.php' => ['admin'],
     'keysafe.php' => ['admin'],
+    'people.php' => ['admin', ['require_full_access(']], // People & access: full access only
     'diagnostics.php' => ['admin'],
     'email-samples.php' => ['admin'],
     'expenses.php' => ['admin'],
@@ -180,6 +181,7 @@ $REGISTRY = [
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
+    'people-lib.php' => ['lib', [], 'who may do what: the pure rules db.php enforces (no routes of its own)'],
     'status-lib.php' => ['lib', [], 'status_week()/status_warn_kind() — the Status page\'s pure judgements'],
     'db.php' => ['lib', [], 'the bootstrap every endpoint includes (defines the auth helpers themselves)'],
     'enquiry-actions.php' => ['lib', [], 'shared approve/decline logic'],
@@ -231,8 +233,11 @@ foreach ($REGISTRY as $file => $entry) {
     $reason = $entry[2] ?? '';
     $src = (string) file_get_contents(__DIR__ . '/' . $file);
     // require_guest_proven() (db.php) is require_guest() plus the email-proof check —
-    // it satisfies the guest marker.
-    $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false && !($m === $GUEST && strpos($src, 'require_guest_proven(') !== false)));
+    // it satisfies the guest marker. require_full_access() (db.php) is require_admin()
+    // plus the full-access check — it satisfies the admin marker.
+    $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false
+        && !($m === $GUEST && strpos($src, 'require_guest_proven(') !== false)
+        && !($m === $ADMIN && strpos($src, 'require_full_access(') !== false)));
     if ($missing) {
         ap_check("$file [$kind] — MISSING guard marker(s): " . implode(', ', $missing), false);
         continue;

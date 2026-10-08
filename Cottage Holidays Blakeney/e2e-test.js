@@ -212,16 +212,18 @@ async function waitForServer(url, tries = 40) {
       return guestLogin();
     });
     await page.waitForTimeout(600);
-    (await page.evaluate(() => document.getElementById('admin-login-modal').classList.contains('open') && document.getElementById('admin-login-2fa-form').style.display !== 'none'))
-      ? pass('2FA code window appears for a new device') : fail('2FA code window did not appear');
+    // The code step is in the SAME sheet (each person's code goes to their own inbox) —
+    // never a detour to the old owner dialog.
+    (await page.evaluate(() => /Check your email/.test((document.querySelector('#ga-auth .ga-ah') || {}).textContent || '') && !!document.getElementById('ga-code') && !document.querySelector('.modal-overlay.open:not(#guest-auth-modal)')))
+      ? pass('the code step appears in the sign-in sheet for a new device') : fail('the code step did not appear');
     (await page.evaluate(() => !isAuthenticated)) ? pass('not signed in until the code is entered') : fail('client claimed sign-in before the code');
-    await page.evaluate(() => { document.getElementById('admin-login-2fa-code').value = '000000'; return submitAdmin2fa(); });
-    await page.waitForTimeout(400);
-    (await page.evaluate(() => !isAuthenticated && document.getElementById('admin-login-error').style.display !== 'none'))
+    await page.fill('#ga-code', '000000');
+    await page.waitForTimeout(500);
+    (await page.evaluate(() => !isAuthenticated && /Incorrect code/.test(document.getElementById('ga-auth').textContent)))
       ? pass('wrong code rejected with a visible error') : fail('wrong code was not rejected');
-    await page.evaluate(() => { document.getElementById('admin-login-2fa-code').value = '123456'; return submitAdmin2fa(); });
-    await page.waitForTimeout(600);
-    (await page.evaluate(() => isAuthenticated && !document.getElementById('admin-login-modal').classList.contains('open')))
+    await page.fill('#ga-code', '123456');
+    await page.waitForTimeout(700);
+    (await page.evaluate(() => isAuthenticated && !document.getElementById('guest-auth-modal').classList.contains('open')))
       ? pass('correct code completes the owner sign-in') : fail('correct code did not complete the sign-in');
     // Reset to a signed-out guest state for the sections that follow.
     await page.evaluate(() => { isAuthenticated = false; document.body.classList.remove('owner-mode'); setAuthUI(); nav('view-main'); });

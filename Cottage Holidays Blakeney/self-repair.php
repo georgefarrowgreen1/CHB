@@ -356,6 +356,9 @@ try {
         $avDir = __DIR__ . '/' . AVATAR_DIR;
         if (is_dir($avDir)) {
             $keep = array_flip(db()->query('SELECT avatar FROM guests WHERE avatar IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN));
+            // …and the back office's own people keep their photos in the same folder.
+            // Not migrated yet (no column) → the query throws and nothing is swept.
+            $keep += array_flip(db()->query("SELECT photo FROM admins WHERE photo <> ''")->fetchAll(PDO::FETCH_COLUMN));
             $avPruned = 0;
             foreach (scandir($avDir) ?: [] as $af) {
                 if (!avatar_name_ok($af) || isset($keep[$af])) {
@@ -371,7 +374,7 @@ try {
             }
         }
     } catch (\Throwable $e) {
-        // pre-migration (no avatar column) — nothing to judge against
+        // pre-migration (no avatar or photo column) — nothing to judge against
     }
 
     // The AI chat's conversation rows: the cap is a RETENTION POLICY now,

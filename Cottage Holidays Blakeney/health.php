@@ -14,7 +14,7 @@ header('X-Robots-Tag: noindex, nofollow');
 // to a logged-in admin OR when no admin exists yet (the genuine first-time setup
 // case). Once the site is set up, anonymous visitors get a minimal status only,
 // so this file can't be left up and leak internal details.
-$isAdmin = !empty($_SESSION['admin_id']);
+$isAdmin = !empty($_SESSION['admin_id']) && admin_is_full(); // the full report is set-up detail: full access only
 $adminExists = false;
 try {
     $adminExists = ((int) db()->query('SELECT COUNT(*) c FROM admins')->fetch()['c']) > 0;

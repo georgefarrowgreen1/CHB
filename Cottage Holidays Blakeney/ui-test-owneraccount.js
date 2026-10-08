@@ -41,6 +41,13 @@ const ok = (b, m) => {
             { id: 2, label: 'MacBook Air', created_at: '2026-05-02 10:00:00' },
         ],
         extras: ['bookings@example.com'],
+        // The person signed in: George, the first owner. The HOST on the cottage
+        // pages is someone else (Sophia) — the account must never confuse the two.
+        me: {
+            id: 1, name: 'George Farrow', first: 'George', named: true, email: 'george@example.com', contact: 'george@example.com', username: 'george',
+            full: true, original: true, caps: {}, photo: '', state: 'active', twofa: true, twofaLive: true,
+            notify: { money: true, enquiries: true, messages: true, checkout: true, system: true, quietFrom: '22:00', quietTo: '07:00' },
+        },
     };
     await page.route(/\.php/, (route) => {
         const url = route.request().url();
@@ -63,6 +70,19 @@ const ok = (b, m) => {
         if (file === 'auth.php' && b.action === 'admin_change_password')
             return st.pwRefuse ? json({ error: 'Current password is incorrect' }, 403) : json({ ok: true });
         if (file === 'auth.php' && b.action === 'admin_logout') return json({ ok: true });
+        // Your own settings now live on your person (people): alerts and two-step.
+        if (file === 'auth.php' && b.action === 'admin_notify_set') {
+            if (st.failSet) return json({ error: 'Database is down' }, 500);
+            st.me = Object.assign({}, st.me, { notify: Object.assign({}, st.me.notify, b.prefs || {}) });
+            return json({ ok: true, me: st.me });
+        }
+        if (file === 'auth.php' && b.action === 'admin_twofa_set') {
+            if (st.failSet) return json({ error: 'Database is down' }, 500);
+            st.me = Object.assign({}, st.me, { twofa: !!b.on });
+            return json({ ok: true, me: st.me });
+        }
+        if (file === 'auth.php' && b.action === 'admin_status') return json({ admin: true, me: st.me, ownerFirst: 'George' });
+        if (file === 'people.php' && b.action === 'list') return json({ ok: true, people: [Object.assign({ you: true }, st.me)] });
         if (file === 'notify-recipients.php') {
             if (b.action === 'add') {
                 if (!/@/.test(b.email || '')) return json({ error: "That doesn't look like a valid email address." }, 400);
@@ -82,6 +102,7 @@ const ok = (b, m) => {
         return json({ ok: true, bookings: [], enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], reviews: [] });
     });
     const sets = (key) => posts.filter((p) => p.file === 'content.php' && p.b.action === 'set' && p.b.key === key);
+    const ownSets = (action) => posts.filter((p) => p.file === 'auth.php' && p.b.action === action);
     const dlgOpen = () => page.evaluate(() => document.getElementById('glass-dialog').classList.contains('open'));
     // A wait that times out is a FAILED CHECK, named for what it waited on — a
     // refusal that never appears must read as that refusal missing, not a crash.
@@ -133,6 +154,7 @@ const ok = (b, m) => {
         document.body.classList.add('owner-mode');
         siteContent['contact-phone'] = { dial: '+441263740512', display: '01263 740512' };
     });
+    await page.evaluate((me) => chbSetMe(me, 'George'), st.me);
     await page.evaluate(() => window.loadAdminBundle());
     await page.waitForTimeout(700);
     await page.evaluate(async () => {
@@ -151,8 +173,8 @@ const ok = (b, m) => {
             gone: ['[data-arg="host"]', '[data-arg="notify"]', '[data-arg="security"]', '[data-act="toggleTheme"]', '[data-act="toggleBackofficeMode"]', '[data-act="logoutStaff"]'].filter((s) => document.querySelector('#settings-index ' + s)),
         };
     });
-    ok(idx.row && idx.name === 'Sophia' && idx.ini === 'S', `the row names the owner and wears their initial (${idx.name} / ${idx.ini})`);
-    ok(/Host profile, notifications & sign-in/.test(idx.sub || ''), 'its sub says what is inside');
+    ok(idx.row && idx.name === 'George Farrow' && idx.ini === 'G', `the row names the PERSON signed in, never the host, and wears their initial (${idx.name} / ${idx.ini})`);
+    ok(/Your details, notifications & sign-in/.test(idx.sub || ''), 'its sub says what is inside');
     ok(idx.gone.length === 0, `the five old rows and Log out are gone from the index (${idx.gone.join(', ') || 'none left'})`);
     for (const q of ['password', 'dark mode', 'log out', 'notifications']) {
         const hit = await page.evaluate((x) => {
@@ -179,7 +201,7 @@ const ok = (b, m) => {
             isOa: panel.classList.contains('is-oa'),
         };
     });
-    ok(acct.onAcct && acct.h1 === 'Hi, Sophia' && acct.lead === 'Owner', `it opens the account page: "${acct.h1}" over the host title (${acct.lead})`);
+    ok(acct.onAcct && acct.h1 === 'Hi, George' && acct.lead === 'Owner · full access', `it opens the account page: "${acct.h1}" over what they are to the back office (${acct.lead})`);
     ok(acct.slide, 'the page slides in, the way the guest account does');
     ok(acct.isOa && acct.panelBack === 0 && acct.panelTitle === 0, "the panel's own back link and title stand down (the page carries its own)");
 
@@ -197,9 +219,12 @@ const ok = (b, m) => {
             logout: [...document.querySelectorAll('#acct-body .ga-signout .ga-t')].map((e) => e.textContent).join(),
         };
     });
-    ok(rows.caps.join(' | ') === 'Account | On this device', `two groups, captioned (${rows.caps.join(' | ')})`);
+    ok(rows.caps.join(' | ') === 'Account | The business | On this device', `three groups, captioned (${rows.caps.join(' | ')})`);
+    const accTitles = await page.evaluate(() => [...[...document.querySelectorAll('#acct-body .ga-group')][0].querySelectorAll('.ga-t')].map((e) => e.textContent));
+    ok(accTitles.join() === 'Your details,Notifications,Sign-in & security', `the account group is yours: details, alerts, sign-in (${accTitles.join(' · ')})`);
+    ok(await page.evaluate(() => [...document.querySelectorAll('#acct-body .ga-group')][1].textContent.includes('Host profile') && [...document.querySelectorAll('#acct-body .ga-group')][1].textContent.includes('People & access')), 'the business group holds the host card and People & access');
     ok(/Off on this device · quiet 22:00–07:00/.test(rows.notify), `Notifications states this device and the quiet hours (${rows.notify})`);
-    ok(rows.sec === 'Password, 2 passkeys, two-step on', `Sign-in & security counts the passkeys and reads two-step from the PRIVATE setting (${rows.sec})`);
+    ok(rows.sec === 'Password, 2 passkeys, two-step on', `Sign-in & security counts the passkeys and reads two-step from YOUR own setting (${rows.sec})`);
     ok(rows.dark === true && rows.search === false, 'the switches show the truth: dark on, search-first off');
     ok(rows.logout === 'Log out', 'Log out is its own group at the foot');
     await page.click('#acct-body .oa-swrow:has(#oa-dark) .chb-switch');
@@ -257,7 +282,7 @@ const ok = (b, m) => {
     await page.click(rowByTitle('#host-body', 'Name'));
     await waitDlg();
     let f = await dlg();
-    ok(f.title === 'Your name' && f.ok === 'Save' && f.fields.length === 1 && f.fields[0].value === 'Sophia', `one fact, one form, prefilled (${f.title}: ${f.fields.map((x) => x.value)})`);
+    ok(f.title === 'Host name' && f.ok === 'Save' && f.fields.length === 1 && f.fields[0].value === 'Sophia', `one fact, one form, prefilled (${f.title}: ${f.fields.map((x) => x.value)})`);
     await page.fill('#gdf-v', '   ');
     await page.click('#glass-dialog-ok');
     await waitDlg(/Enter the name guests see/);
@@ -276,7 +301,7 @@ const ok = (b, m) => {
     }));
     ok(sets('host-name').length === 1 && sets('host-name')[0].b.value === 'Sophia Farrow', 'Save posts the one fact');
     ok(nm.row && nm.card === 'Sophia Farrow' && nm.mirror === 'Sophia Farrow', 'the row, the guests\' card and the site mirror all follow');
-    ok(nm.index === 'Sophia Farrow' && nm.hello === 'Hi, Sophia', `…and so do the Manage row and the account's hello (${nm.index} / ${nm.hello})`);
+    ok(nm.index === 'George Farrow' && nm.hello === 'Hi, George', `…while YOUR name stays yours: the Manage row and the hello are George's (${nm.index} / ${nm.hello})`);
     ok(nm.flash, 'the card says it changed, once');
 
     // Where I studied: the answer goes in, the label goes back on.
@@ -354,7 +379,8 @@ const ok = (b, m) => {
     ok(up.length === 1, 'Use photo uploads the cropped square as a site image');
     ok(sets('host-photo').length === 1 && sets('host-photo')[0].b.value === 'crown.png' && photo.mirror === 'crown.png', 'and saves it as the host photo');
     ok(photo.guestUntouched, '…never as a guest avatar (the cropper took the caller\'s destination)');
-    ok(photo.rowImg === 'crown.png' && photo.idxImg === 'crown.png' && /crown\.png/.test(photo.card), 'the photo shows on the page, the Manage row and the guests\' card');
+    ok(photo.rowImg === 'crown.png' && /crown\.png/.test(photo.card), 'the host photo shows on the host page and the guests\' card');
+    ok(photo.idxImg === '', '…and never as YOUR photo on the Manage row (that is your own)');
     ok(photo.link === 'Change photo', 'the link now changes it');
     await page.click('#host-body .ga-photolink');
     await page.waitForSelector('#ga-photo-sheet.open');
@@ -384,8 +410,9 @@ const ok = (b, m) => {
     ok(nf.emails.join() === 'sophia@example.com,bookings@example.com,Add someone' && nf.lock, 'emailed to: the owner address locked, the extra removable, then Add someone');
     await page.click('#notify-prefs-body .ga-row:nth-child(2) .chb-switch');
     await page.waitForTimeout(300);
-    const np = sets('notify-prefs');
-    ok(np.length === 1 && np[0].b.value.enquiries === false && np[0].b.value.money === true && np[0].b.value.quietFrom === '22:00', 'one switch saves the whole set with that one change');
+    const np = ownSets('admin_notify_set');
+    ok(np.length === 1 && np[0].b.prefs.enquiries === false && np[0].b.prefs.money === true && np[0].b.prefs.quietFrom === '22:00', 'one switch saves YOUR whole set with that one change');
+    ok(!sets('notify-prefs').length, '…on your own sign-in, never the old shared setting');
     await page.click('#notify-prefs-body [data-act="oaQuiet"]');
     await waitDlg();
     f = await dlg();
@@ -393,7 +420,7 @@ const ok = (b, m) => {
     await page.selectOption('#gdf-to', '');
     await page.click('#glass-dialog-ok');
     await waitDlg(/both times/);
-    ok(sets('notify-prefs').length === 1, 'half a window is refused before anything is sent');
+    ok(ownSets('admin_notify_set').length === 1, 'half a window is refused before anything is sent');
     await page.selectOption('#gdf-to', '22:00');
     await page.click('#glass-dialog-ok');
     await waitDlg(/two different times/);
@@ -402,8 +429,8 @@ const ok = (b, m) => {
     await page.click('#glass-dialog-ok');
     await waitShut();
     await page.waitForTimeout(300);
-    const nq = sets('notify-prefs');
-    ok(nq.length === 2 && nq[1].b.value.quietFrom === '21:00' && nq[1].b.value.quietTo === '08:00' && nq[1].b.value.enquiries === false, 'both ends save together, keeping the switch changed earlier');
+    const nq = ownSets('admin_notify_set');
+    ok(nq.length === 2 && nq[1].b.prefs.quietFrom === '21:00' && nq[1].b.prefs.quietTo === '08:00' && nq[1].b.prefs.enquiries === false, 'both ends save together, keeping the switch changed earlier');
     ok(
         await page.evaluate(() => /21:00 to 08:00/.test(document.querySelector('#notify-prefs-body [data-act="oaQuiet"] .ga-s').textContent) && /quiet 21:00–08:00/.test(document.querySelector('#acct-body .oa-r-notify .ga-s').textContent)),
         '…and the row and the account page say the new window',
@@ -438,7 +465,7 @@ const ok = (b, m) => {
         twofa: (document.querySelector('#security-body .chb-switch #admin-2fa-toggle') || {}).checked,
     }));
     ok(sec.keys.join() === 'iPhone,MacBook Air,Add another passkey', `each passkey is a row, then add another (${sec.keys.join(' · ')})`);
-    ok(sec.twofa === true, 'two-step is the switch on the real toggle, ON from the private setting');
+    ok(sec.twofa === true, 'two-step is the switch on the real toggle, ON from your own setting');
     await page.click(rowByTitle('#security-body', 'Change password'));
     await waitDlg();
     f = await dlg();
@@ -488,8 +515,8 @@ const ok = (b, m) => {
     st.failSet = false;
     await page.click('#security-body .oa-swrow .chb-switch');
     await page.waitForTimeout(300);
-    const tf = sets('admin-2fa-enabled');
-    ok(tf.length === 2 && tf[1].b.value === '' && (await page.evaluate(() => !/two-step on/.test(document.querySelector('#acct-body .oa-r-security .ga-s').textContent))), 'turning it off saves, and the account row stops saying "two-step on"');
+    const tf = ownSets('admin_twofa_set');
+    ok(tf.length === 2 && tf[1].b.on === false && !sets('admin-2fa-enabled').length && (await page.evaluate(() => !/two-step on/.test(document.querySelector('#acct-body .oa-r-security .ga-s').textContent))), 'turning it off saves YOUR setting, and the account row stops saying "two-step on"');
 
     console.log('§6 navigation');
     await page.click('#security-body .oa-back');

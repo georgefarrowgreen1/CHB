@@ -390,19 +390,35 @@ function guest_ping_read($guestId, $maxAge = 300)
     }
 }
 
-// Wake every admin device. Dead subscriptions (404/410) are pruned. Returns count.
-function ping_admin_devices($payload = null, $opts = [])
+// Wake the back office's devices. Each device belongs to the person who turned
+// alerts on there (admin_id; NULL = a device from before people existed, the
+// first owner's). $who decides, per person, whether their phones get this one
+// (null = every device). Dead subscriptions (404/410) are pruned. Returns count.
+function ping_admin_devices($payload = null, $opts = [], $who = null)
 {
     if (!wp_vapid_configured()) {
         return 0;
     }
     try {
-        $rows = db()->query("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
+        try {
+            $rows = db()->query("SELECT id, endpoint, p256dh, auth, admin_id FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
+        } catch (\Throwable $e) {
+            $rows = db()->query("SELECT id, endpoint, p256dh, auth, NULL AS admin_id FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
+        }
     } catch (\Throwable $e) {
         return 0;
     }
+    $people = notify_people();
     $sent = 0;
     foreach ($rows as $sub) {
+        if ($who !== null) {
+            $aid = $sub['admin_id'] === null ? admin_original_owner_id() : (int) $sub['admin_id'];
+            // Before the people migration there is one owner and every device is theirs.
+            $row = $people === null ? ['id' => $aid] : ($people[$aid] ?? null);
+            if (!$row || !$who($row)) {
+                continue;
+            }
+        }
         $r = send_webpush($sub['endpoint'], $payload, (string) ($sub['p256dh'] ?? ''), (string) ($sub['auth'] ?? ''), $opts);
         if (!empty($r['ok'])) {
             $sent++;
@@ -417,12 +433,35 @@ function ping_admin_devices($payload = null, $opts = [])
     }
     return $sent;
 }
+// The people whose phones may be woken (signed-in kind: not removed, not still
+// invited), by id. null when the people columns are not migrated yet.
+function notify_people()
+{
+    static $people = false;
+    if ($people !== false) {
+        return $people;
+    }
+    try {
+        $people = [];
+        foreach (db()->query('SELECT * FROM admins WHERE removed_at IS NULL AND invited_at IS NULL')->fetchAll() as $r) {
+            $people[(int) $r['id']] = $r;
+        }
+    } catch (\Throwable $e) {
+        $people = null;
+    }
+    return $people;
+}
 // Convenience: set the owner alert text AND wake their devices.
-// ---- Owner notification preferences ----------------------------------------
-// Stored as ONE internal content key so there is nothing to migrate. Absent or
-// unparseable = everything on, which is the behaviour before this existed.
-//   { money:bool, enquiries:bool, messages:bool, system:bool,
+// ---- Alert settings ----------------------------------------------------------
+// Each person's own: what interrupts them and their quiet hours, in their row
+// (admins.notify_prefs). The first owner's predate that and lived in ONE internal
+// content key, which is still their settings until they change one. Absent or
+// unparseable = everything on, which is the behaviour before any of this existed.
+//   { money:bool, enquiries:bool, messages:bool, checkout:bool, system:bool,
 //     quietFrom:'HH:MM', quietTo:'HH:MM' }
+const NOTIFY_DEFAULTS = ['money' => true, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => ''];
+// Someone added later starts with the guest-facing alerts on.
+const NOTIFY_DEFAULTS_LIMITED = ['money' => false, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'system' => false, 'quietFrom' => '', 'quietTo' => ''];
 function notify_prefs()
 {
     static $cache = null;
@@ -442,20 +481,23 @@ function notify_prefs()
         }
     } catch (\Throwable $e) {
     }
-    $cache = $d + ['money' => true, 'enquiries' => true, 'messages' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => ''];
+    $cache = $d + NOTIFY_DEFAULTS;
     return $cache;
 }
-
-// Should a PUSH be sent for this category right now? A muted category or a quiet
-// hour suppresses the push ONLY — the activity log and the email fallback are
-// untouched, so nothing is lost, it just doesn't buzz. 'urgent' ignores both:
-// a failing calendar sync that will double-book you is worth the interruption.
-function notify_should_push($category)
+function notify_prefs_for($row)
 {
-    if ($category === 'urgent') {
-        return true;
+    $own = is_array($row) && isset($row['notify_prefs']) && $row['notify_prefs'] !== '' ? json_decode((string) $row['notify_prefs'], true) : null;
+    if (is_array($own)) {
+        return $own + (people_is_full($row) ? NOTIFY_DEFAULTS : NOTIFY_DEFAULTS_LIMITED);
     }
-    $p = notify_prefs();
+    if (!is_array($row) || (int) ($row['id'] ?? 0) === admin_original_owner_id()) {
+        return notify_prefs();
+    }
+    return people_is_full($row) ? NOTIFY_DEFAULTS : NOTIFY_DEFAULTS_LIMITED;
+}
+// Is $p muting this category, or inside its quiet hours, right now?
+function notify_prefs_allow($p, $category)
+{
     if (isset($p[$category]) && !$p[$category]) {
         return false;
     }
@@ -476,6 +518,28 @@ function notify_should_push($category)
     $quiet = $a < $b ? ($now >= $a && $now < $b) : ($now >= $a || $now < $b);
     return !$quiet;
 }
+// Should a PUSH be sent for this category right now (the old shared settings)?
+// A muted category or a quiet hour suppresses the push ONLY — the activity log
+// and the email fallback are untouched, so nothing is lost. 'urgent' ignores
+// both: a failing calendar sync that will double-book you is worth it.
+function notify_should_push($category)
+{
+    return $category === 'urgent' || notify_prefs_allow(notify_prefs(), $category);
+}
+// …and for one person: never an area switched off for them (payment alerts need
+// Take payments, system notices full access), then their own settings. 'urgent'
+// reaches everyone, whatever is switched off.
+function notify_should_push_for($row, $category)
+{
+    if ($category === 'urgent') {
+        return true;
+    }
+    $cap = ['money' => 'payments', 'system' => 'owner'][$category] ?? 'all';
+    if (isset($row['full_access']) && !people_can($row, $cap)) {
+        return false;
+    }
+    return notify_prefs_allow(notify_prefs_for($row), $category);
+}
 
 // $opts: url (where a tap lands), category (money|enquiries|messages|system|urgent),
 // tag (per-record, so distinct alerts STACK instead of replacing each other),
@@ -492,14 +556,17 @@ function alert_owner($title, $body, $opts = [])
     $reload = !empty($opts['reload']);
 
     owner_ping_set($title, $body, $reload, $url, $tag);
-    $sent = 0;
-    if (notify_should_push($category)) {
-        $payload = json_encode(
-            ['title' => (string) $title, 'body' => (string) $body, 'url' => $url, 'tag' => $tag, 'reload' => $reload],
-            JSON_UNESCAPED_UNICODE,
-        );
-        $sent = ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400]);
-    }
+    $payload = json_encode(
+        ['title' => (string) $title, 'body' => (string) $body, 'url' => $url, 'tag' => $tag, 'reload' => $reload],
+        JSON_UNESCAPED_UNICODE,
+    );
+    // EACH PERSON'S PHONES, BY THEIR OWN SETTINGS: muted categories and quiet hours
+    // are per person, and nobody is buzzed about an area switched off for them.
+    // 'only' narrows it to one person's devices (their own test alert).
+    $only = (int) ($opts['only'] ?? 0);
+    $sent = ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400], function ($row) use ($category, $only) {
+        return ($only === 0 || (int) $row['id'] === $only) && notify_should_push_for($row, $category);
+    });
     // NOBODY IS LISTENING. alert_owner has always returned the device count and
     // only the test button ever read it — so with permission revoked, the last
     // subscription pruned, or a replaced phone, "Payment received" went nowhere

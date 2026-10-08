@@ -4652,20 +4652,107 @@ function owner_mail_test_body()
 // and returns ['subject','text','html'] — no DB, no SMTP, no globals.
 
 /** The one-time code that finishes an owner sign-in on a new device. */
-function admin_code_body($code)
+/**
+ * A back-office sign-in code, to the person signing in and nobody else.
+ * 'device' — a new phone or computer, after the password (10 minutes).
+ * 'signin' — the email-first path: the code proves the inbox, the password follows.
+ * 'email'  — confirming a new sign-in address before it changes.
+ */
+function admin_code_body($code, $purpose = 'device', $first = '')
 {
+    $mins = $purpose === 'device' ? 10 : 30;
+    $leads = [
+        'device' => 'Use this code to finish signing in to the back office on a new device.',
+        'signin' => 'Use this code to sign in to the back office. Your password comes next.',
+        'email' => 'Use this code to make this your sign-in email for the back office.',
+    ];
+    $lead = $leads[$purpose] ?? $leads['device'];
+    $title = $purpose === 'email' ? 'Confirm your new email' : 'Your sign-in code';
+    $first = trim((string) $first);
+    $hello = $first !== '' ? 'Hello ' . $first . ",\n\n" : '';
+    $ignore = $purpose === 'email'
+        ? 'If you didn’t just change your email, ignore this one: nothing changes until the code is used.'
+        : 'If you didn’t just try to sign in, ignore this email and consider changing your password.';
     return [
-        'subject' => 'Your sign-in code — Cottage Holidays Blakeney',
-        'text' =>
-            'Your one-time sign-in code is: ' . $code .
-            "\n\nIt expires in 10 minutes. If you didn't just try to sign in to your back office, " .
-            'ignore this email and consider changing your password.',
+        'subject' => ($purpose === 'email' ? 'Confirm your new email' : 'Your sign-in code') . ' — Cottage Holidays Blakeney',
+        'text' => $hello . $lead . "\n\n" . 'Your code: ' . $code . "\n\n" . 'It expires in ' . $mins . ' minutes. ' . $ignore,
         'html' => email_shell(
-            'Your one-time sign-in code',
-            email_h('Your sign-in code') .
-                email_lead('Use this code to finish signing in to your back office on a new device.') .
-                email_code('Your code', $code, 'Expires in 10 minutes.') .
-                email_footnote('If you didn&rsquo;t just try to sign in, ignore this email and consider changing your password.'),
+            $purpose === 'email' ? 'Your code to confirm the new address' : 'Your one-time sign-in code',
+            email_h($title) .
+                ($first !== '' ? email_p('Hello ' . htmlspecialchars($first, ENT_QUOTES, 'UTF-8') . ',') : '') .
+                email_lead(htmlspecialchars($lead, ENT_QUOTES, 'UTF-8')) .
+                email_code('Your code', $code, 'Expires in ' . $mins . ' minutes.') .
+                email_footnote(htmlspecialchars($ignore, ENT_QUOTES, 'UTF-8')),
+        ),
+    ];
+}
+
+/**
+ * An invite to the back office: a link to choose their own password. Nobody else
+ * ever sets or sees it — the owner included — so the email says so.
+ */
+function admin_invite_body($first, $byFirst, $username, $url)
+{
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $by = trim((string) $byFirst) !== '' ? trim((string) $byFirst) : 'The owner';
+    $first = trim((string) $first) !== '' ? trim((string) $first) : 'there';
+    return [
+        'subject' => $by . ' has given you a sign-in — Cottage Holidays Blakeney',
+        'text' =>
+            "Hello {$first},\n\n" .
+            "{$by} has given you a sign-in to the Cottage Holidays Blakeney back office. Choose your password to finish:\n" .
+            $url . "\n\n" .
+            "Your username is {$username}.\n" .
+            "The link works once, for 7 days. Only you will know the password you choose.\n\n" .
+            'Cottage Holidays Blakeney',
+        'html' => email_shell(
+            'Choose your password to finish — the link works once, for 7 days',
+            email_h('Choose your password') .
+                email_p('Hello ' . $esc($first) . ',') .
+                email_lead($esc($by) . ' has given you a sign-in to the Cottage Holidays Blakeney back office.') .
+                email_btn($url, 'Choose your password') .
+                email_rows([['Your username', '<b>' . $esc($username) . '</b>']]) .
+                email_footnote(
+                    'Button not working, or reading this on another device? Copy this link into your browser:<br>' .
+                        '<a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>',
+                ) .
+                email_footnote('The link works once, for 7 days. Only you will know the password you choose — ' . $esc($by === 'The owner' ? 'the owner' : $by) . ' included.'),
+        ),
+    ];
+}
+
+/**
+ * A link to choose a new back-office password: asked for from the sign-in page,
+ * or sent by the owner from People & access. Saving it signs out every other
+ * session, which the email says before the person taps.
+ */
+function admin_reset_body($first, $username, $url, $byFirst = '')
+{
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $first = trim((string) $first) !== '' ? trim((string) $first) : 'there';
+    $by = trim((string) $byFirst);
+    $why = $by !== '' ? $by . ' sent you this link.' : 'You asked to reset your back-office password.';
+    return [
+        'subject' => 'Choose a new password — Cottage Holidays Blakeney',
+        'text' =>
+            "Hello {$first},\n\n" .
+            $why . " Choose a new password for {$username} here:\n" .
+            $url . "\n\n" .
+            "Saving it signs you out on your other devices. The link works once and expires in 30 minutes.\n" .
+            "If you didn't ask for this, ignore it: your password hasn't changed.\n\n" .
+            'Cottage Holidays Blakeney',
+        'html' => email_shell(
+            'Choose a new password — the link works once, for 30 minutes',
+            email_h('Choose a new password') .
+                email_p('Hello ' . $esc($first) . ',') .
+                email_lead($esc($why) . ' Saving a new password signs you out on your other devices.') .
+                email_btn($url, 'Choose a new password') .
+                email_rows([['Your username', '<b>' . $esc($username) . '</b>']]) .
+                email_footnote(
+                    'Button not working, or reading this on another device? Copy this link into your browser:<br>' .
+                        '<a href="' . $esc($url) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($url) . '</a>',
+                ) .
+                email_footnote('The link works once and expires in 30 minutes. If you didn&rsquo;t ask for this, ignore it: your password hasn&rsquo;t changed.'),
         ),
     ];
 }

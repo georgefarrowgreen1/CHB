@@ -4644,6 +4644,9 @@ body.cmdk-open {
 .cmdk-sys:not(:disabled) {
   cursor: pointer;
 }
+.cmdk-sys[hidden] {
+  display: none;
+}
 .cmdk-sys-dot {
   width: 7px;
   height: 7px;
@@ -5217,7 +5220,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    verdict list: the landing rhythm again — one flex column, 12px gaps, and
    the verdicts span both desktop columns of the settings index. ---- */
 #manage-verdicts { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); margin: 0 0 14px; }
-#manage-verdicts:empty { display: none; }
+#manage-verdicts:empty, #manage-verdicts[hidden] { display: none; }
 #manage-verdicts .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
 #manage-verdicts .mo-pulse { margin: 2px 0 0; }
 #manage-verdicts .bhub-fold-grp { width: 100%; }
@@ -8700,6 +8703,9 @@ div.ga-row.oa-swrow { cursor: default; }
 .oa-clamp .ga-s { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .oa-figs { color: var(--text-light); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ga-row.oa-accent .ga-t { color: var(--accent-text); font-weight: 600; }
+/* People & access: a person's row leads with their photo, at the icon's place. */
+.ga-row .ga-ava.oa-pava { width: 40px; height: 40px; flex: 0 0 auto; font-size: var(--fs-headline); }
+.ga-row.oa-dim .ga-t { color: var(--text-muted); }
 .ga-row.oa-warn .ga-t { color: var(--warn-text); }
 /* The guests' card keeps the guest site's serif: this IS what guests see. */
 .oa-preview { --font-serif: "Playfair Display", serif; }

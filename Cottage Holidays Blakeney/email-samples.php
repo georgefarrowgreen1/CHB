@@ -251,9 +251,23 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
             },
         ],
         'admin_code' => [
-            'Owner sign-in code (new device)',
+            'Back-office sign-in code (new device)',
             function () {
                 $m = admin_code_body('428 913');
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'admin_invite' => [
+            'Back-office invite (choose your password)',
+            function () {
+                $m = admin_invite_body('Sophia', 'George', 'sophia', site_base_url() . 'index.html?invite=2.' . str_repeat('a1', 24));
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'admin_reset' => [
+            'Back-office password reset link',
+            function () {
+                $m = admin_reset_body('Sophia', 'sophia', site_base_url() . 'index.html?areset=2.' . str_repeat('b2', 24), 'George');
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],

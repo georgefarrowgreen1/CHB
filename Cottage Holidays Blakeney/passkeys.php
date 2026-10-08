@@ -174,19 +174,44 @@ if ($action === 'delete') {
 }
 
 // ==================== ADMIN PASSKEYS (back office) ====================
+// A PASSKEY IS ITS PERSON: it signs in as whoever saved it, with no username or
+// code. A person whose access was removed keeps the passkey on their phone, and
+// it is switched off here — the one place every admin passkey sign-in ends.
+function pk_admin_sign_in($cred, $data, array $extra = [])
+{
+    $row = admin_row((int) $cred['admin_id'], true);
+    if (!$row) {
+        json_out(['error' => 'Passkey not recognised'], 401);
+    }
+    if (!empty($row['removed_at']) || !empty($row['invited_at'])) {
+        $o = admin_owner_first();
+        json_out(['error' => 'This sign-in has been switched off. Ask ' . ($o !== '' ? $o : 'the owner') . ' if you need it back.', 'code' => 'removed'], 403);
+    }
+    $newCount = is_object($data) && isset($data->signCount) ? (int) $data->signCount : (int) $cred['sign_count'];
+    db()
+        ->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
+        ->execute([$newCount, $cred['id']]);
+    session_regenerate_id(true); // new session id on login — prevents session fixation
+    admin_session_begin((int) $cred['admin_id']); // one role at a time: ends any guest session
+    csrf_issue_cookie();
+    log_activity('account', 'admin.login', people_display_name($row) . ' signed in with a passkey');
+    $me = people_public($row, (int) $row['id']);
+    json_out(['ok' => true, 'me' => $me, 'ownerFirst' => admin_owner_first()] + $extra);
+}
+
 // Mirror of the guest flow, but for the admin account. The admin PASSWORD
 // always remains a working fallback — these are an additional way in.
 
 if ($action === 'admin_register_begin') {
     require_admin();
     $aid = (int) $_SESSION['admin_id'];
-    $a = db()->prepare('SELECT id, username FROM admins WHERE id = ?');
+    $a = db()->prepare('SELECT * FROM admins WHERE id = ?');
     $a->execute([$aid]);
     $admin = $a->fetch();
     if (!$admin) {
         json_out(['error' => 'Admin not found'], 404);
     }
-    $args = $wa->getCreateArgs((string) $admin['id'], $admin['username'], $admin['username'], 30, false, 'none');
+    $args = $wa->getCreateArgs((string) $admin['id'], $admin['username'], people_display_name($admin), 30, false, 'none');
     $_SESSION['pk_admin_challenge'] = b64url_encode($wa->getChallenge()->getBinaryString());
     json_out(['options' => normalize_args($args)]);
 }
@@ -213,7 +238,7 @@ if ($action === 'admin_register_finish') {
         )
         ->execute([$aid, $credId, $data->credentialPublicKey, $label, (int) ($data->signCount ?? 0)]);
     unset($_SESSION['pk_admin_challenge']);
-    log_activity('account', 'passkey.admin_register', 'Admin passkey added — ' . mb_substr($label, 0, 60), ['entity' => 'passkey']);
+    log_activity('account', 'passkey.admin_register', people_display_name(admin_me() ?: []) . ' added a passkey — ' . mb_substr($label, 0, 60), ['entity' => 'passkey']);
     json_out(['ok' => true]);
 }
 
@@ -244,15 +269,8 @@ if ($action === 'admin_login_finish') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Passkey verification failed: ' . $e->getMessage()], 401);
     }
-    $newCount = is_object($data) && isset($data->signCount) ? (int) $data->signCount : (int) $cred['sign_count'];
-    db()
-        ->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
-        ->execute([$newCount, $cred['id']]);
-    session_regenerate_id(true); // new session id on login — prevents session fixation
-    $_SESSION['admin_id'] = (int) $cred['admin_id'];
-    unset($_SESSION['guest_id']); // one role at a time: signing in as admin ends any guest session
     unset($_SESSION['pk_admin_login_challenge']);
-    json_out(['ok' => true]);
+    pk_admin_sign_in($cred, $data);
 }
 
 // STEP-UP by passkey: the same assertion the owner signs in with, asked for
@@ -354,15 +372,8 @@ if ($action === 'any_login_finish') {
         } catch (\Throwable $e) {
             json_out(['error' => 'Passkey verification failed: ' . $e->getMessage()], 401);
         }
-        $newCount = is_object($data) && isset($data->signCount) ? (int) $data->signCount : (int) $cred['sign_count'];
-        db()
-            ->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
-            ->execute([$newCount, $cred['id']]);
-        session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['admin_id'] = (int) $cred['admin_id'];
-        unset($_SESSION['guest_id']); // one role at a time
         unset($_SESSION['pk_any_login_challenge']);
-        json_out(['ok' => true, 'role' => 'admin']);
+        pk_admin_sign_in($cred, $data, ['role' => 'admin']);
     }
 
     // 2) Otherwise treat it as a GUEST passkey.
