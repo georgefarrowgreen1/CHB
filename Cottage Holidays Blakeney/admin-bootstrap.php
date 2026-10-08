@@ -119,35 +119,6 @@ $part = function (string $fn) {
         return null;
     }
 };
-// Overnight work: whether the queue is on, and how many items are waiting.
-// Two integers on a payload the back office already fetches, the same trade
-// $feeds makes — so Today can render (or, far more often, NOT render) the
-// "Ready for you" card with no request of its own, and admin.js only asks for
-// the rows when this says there are rows. Wrapped because an un-migrated
-// install has no table and that is not an error the owner needs to see.
-$night = ['on' => 0, 'n' => 0];
-try {
-    require_once __DIR__ . '/nightshift-lib.php';
-    $night = night_summary(db(), content_value('night-shift') === '1');
-    // HOW LONG THE MAC HAS BEEN QUIET, on the payload loadData already makes,
-    // so the duty costs no request of its own (the $feeds precedent). -1 when
-    // the question does not apply: nothing paired, or nothing has run yet.
-    $night['quiet'] = -1;
-    if (!empty($night['on'])) {
-        $raw = content_secret_json('apikey-nightshift', null);
-        if ($raw === null) {
-            $raw = trim((string) content_value('apikey-nightshift'));
-        }
-        $devs = night_devices($raw);
-        $night['quiet'] = night_quiet_problem($devs, time());
-        // Live presence for the Draft-on-your-Mac buttons — free, the same
-        // devices read (the $feeds precedent: never a request of its own).
-        $night['mac'] = night_mac_presence($devs, time());
-    }
-} catch (\Throwable $e) {
-    $night = ['on' => 0, 'n' => 0];
-}
-
 // Which Needs-you rows the owner has swiped away. Their own record of what they
 // have already seen, kept server-side so a dismissal made on the phone holds on the
 // Mac — and carried HERE, on the payload the strip already waits on, because an
@@ -167,7 +138,6 @@ try {
 $out = [
     'ok' => true,
     'feeds' => $feeds,
-    'night' => $night,
     'dismissed' => (object) $dismissed,
     'payoutTrouble' => $payoutTrouble,
     'newMail' => $newMail,
@@ -184,13 +154,12 @@ foreach ([
     }
 }
 // Someone with limited access gets the parts their areas cover: payout trouble is
-// the Payments screens, the automation and Mac state are set-up, and the calendar
+// the Payments screens, the automation state is set-up, and the calendar
 // feeds' health is Prices and cottages.
 if (!admin_can('money')) {
     $out['payoutTrouble'] = null;
 }
 if (!admin_can('owner')) {
-    $out['night'] = ['on' => 0, 'n' => 0];
     unset($out['cron']);
 }
 if (!admin_can('prices')) {

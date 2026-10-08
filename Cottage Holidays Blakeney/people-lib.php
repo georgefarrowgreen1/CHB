@@ -359,7 +359,7 @@ function people_content_cap($key)
 }
 // Private and internal keys a limited person may READ although only full access
 // changes them: switches the everyday screens consult. Never a secret.
-const PEOPLE_READ_ALSO = ['arrival-review', 'thankyou-email', 'enquiry-nudge-off', 'anniversary-nudge-off', 'mailbox-new', 'mailbox-seen', 'mail-sent-days', 'weather-cache', 'night-shift'];
+const PEOPLE_READ_ALSO = ['arrival-review', 'thankyou-email', 'enquiry-nudge-off', 'anniversary-nudge-off', 'mailbox-new', 'mailbox-seen', 'mail-sent-days', 'weather-cache'];
 function people_content_readable($row, $key)
 {
     if (people_is_full($row)) {

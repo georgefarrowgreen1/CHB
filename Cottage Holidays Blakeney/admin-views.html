@@ -40,15 +40,6 @@
              the answer appears inline. Injected by chbAssistBar() (admin.js)
              so guests never download any of it. -->
 
-        <!-- READY FOR YOU — the overnight queue (nightshift.php), rendered by
-             renderNightReady() (admin.js). Above the Needs-you strip because it
-             is the newest thing on the page, and SEPARATE from it because a
-             draft is an offer, not a duty: folding four of them into the strip
-             would drown the arrival nobody has sent directions to. Hidden
-             entirely unless the setting is on and something is waiting — with
-             it off, this element never has any content at all. -->
-        <div id="night-ready" style="display:none;"></div>
-
         <!-- NEEDS YOU — the one prioritised to-do list: everything across the
              back office that's waiting on the owner (automation warnings,
              enquiries, balances to chase, deposits to return, chats,
@@ -246,43 +237,6 @@
              moved to Manage → Messages (#sec-chat-answers / #sec-chat-away /
              #sec-follow-ups). -->
     </template>
-
-<template data-view="view-aichat">
-        <div class="ac-page">
-            <div class="ac-hd">
-                <!-- The dock's spark and the condensed header carry the page's
-                     identity — this strip is presence and the … only. The
-                     heading survives for the screen-reader outline. -->
-                <h1 class="sr-only">AI chat</h1>
-                <span class="mc-pres" id="ac-pres"></span>
-                <button class="ac-more" type="button" data-act="acSheetOpen" aria-label="More" aria-haspopup="true">⋯</button>
-            </div>
-            <!-- The conversations rail — one chip per conversation, filled by
-                 renderMacChat, hidden while there is only one to be in. -->
-            <div class="mc-rail" id="mc-rail" role="tablist" aria-label="Conversations" hidden></div>
-            <div class="mc-log" id="mc-log" aria-live="polite"></div>
-            <div class="ac-composer">
-                <!-- A pending attachment (one at a time) sits ABOVE the input
-                     row until the send carries it — never silently attached. -->
-                <div class="ac-pend" id="mc-pend" hidden></div>
-                <button class="ac-clip" type="button" data-act="mcAttachPick" aria-label="Attach a photo or document"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-                <input type="file" id="mc-file" accept="image/*,.txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" hidden aria-hidden="true" tabindex="-1">
-                <input type="text" id="mc-in" placeholder="Ask anything…" aria-label="Message" autocomplete="off" data-act-input="mcTyped">
-                <button class="ac-send" type="button" id="mc-send" data-act="mcSend" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 12l6-6 6 6"/></svg></button>
-            </div>
-            <!-- The ... sheet — where Clear went: destructive things live behind
-                 a deliberate second tap, never as the loudest button on the page. -->
-            <div class="ac-sheet" id="ac-sheet" data-act="acSheetClose" hidden>
-                <div class="ac-sheet-card" role="menu">
-                    <button type="button" data-act="acNewChat" role="menuitem">New conversation</button>
-                    <button type="button" data-act="acInstrEdit" role="menuitem">Standing instruction…</button>
-                    <button type="button" data-act="acMemoryEdit" role="menuitem">Memory…</button>
-                    <button type="button" class="ac-quiet" data-act="acClearChat" role="menuitem">Clear this conversation</button>
-                    <button type="button" class="ac-quiet" data-act="acSheetClose" role="menuitem">Cancel</button>
-                </div>
-            </div>
-        </div>
-</template>
 
 <template data-view="view-keysafe">
         <div class="dashboard-header">
@@ -485,14 +439,6 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest chat</span><span class="settings-row-sub">Away reply &amp; instant answers to quick questions</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="ai chat mac model ask assistant remote phone llm talk" data-act="openAiChat">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">AI chat</span><span class="settings-row-sub">Ask the assistant on your Mac, from your phone</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="mac overnight night shift app pair connect key assistant ready for you" data-act="settingsOpen" data-arg="mac">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Mac assistant</span><span class="settings-row-sub">Overnight work &amp; connecting your Mac</span></span><span class="settings-row-chev">›</span>
-                </button>
             </div>
             <div class="settings-section-label">Website &amp; marketing</div>
             <div class="settings-group">
@@ -603,10 +549,6 @@
             <!-- Backups (renderBackups) — moved out of Status -->
             <div class="settings-sec" id="sec-backups" style="display:none;">
                 <div id="backups-body"></div>
-            </div>
-            <!-- Mac assistant (renderMacSettings) — overnight work + pairing, moved out of Status -->
-            <div class="settings-sec" id="sec-mac" style="display:none;">
-                <div id="mac-body"></div>
             </div>
             <!-- Messages → Follow-up emails (enquiry + anniversary nudges) -->
             <div class="settings-sec" id="sec-follow-ups" style="display:none;">

@@ -405,40 +405,6 @@ function guest_avatar_v($gid)
     return $n === '' ? '' : substr($n, 0, 10);
 }
 
-// A photo attached to an AI-chat message — the deposit-evidence contract
-// applied to the chat: JPEG data URIs only (the client re-encodes), magic
-// bytes checked, 2MB cap, random name so nothing in uploads/ is guessable.
-// Returns the stored relative path or '' and never throws; the shape it mints
-// is the ONE shape night_chat_ref_ok accepts, so the two must move together.
-// Ephemeral by design: self-repair prunes these after 7 days — the photo
-// exists to be looked at by the model, the WORDS are the record.
-function chat_photo_store($dataUri)
-{
-    try {
-        if (!is_string($dataUri) || strncmp($dataUri, 'data:image/jpeg;base64,', 23) !== 0) {
-            return '';
-        }
-        $raw = base64_decode(substr($dataUri, 23), true);
-        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 2 * 1024 * 1024) {
-            return '';
-        }
-        if (substr($raw, 0, 2) !== "\xFF\xD8") {
-            return '';
-        }
-        $dir = __DIR__ . '/uploads';
-        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
-            return '';
-        }
-        $name = 'chat-photo-' . bin2hex(random_bytes(6)) . '.jpg';
-        if (@file_put_contents($dir . '/' . $name, $raw) === false) {
-            return '';
-        }
-        return 'uploads/' . $name;
-    } catch (\Throwable $e) {
-        return '';
-    }
-}
-
 // ---- JSON helpers ----
 // THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
 // says, and a device clock can be wrong by accident or on purpose — reported
@@ -1397,43 +1363,11 @@ function is_internal_content_key($key)
                      // An operating decision about their own follow-ups — a guest has
                      // no business reading it. Default OFF.
     }
-    if ($key === 'night-warm-until') {
-        return true; // the search-open warm hint the Mac's poll reads
-    }
-    if ($key === 'mac-chat') {
-        return true; // the owner's web chat with their own Mac (nightshift.php
-                     // chat_* actions) — their words and the model's, admin-only
-    }
-    if ($key === 'mac-chat-memory') {
-        return true; // the chat's owner-curated memories — facts the OWNER wrote
-                     // ("never dogs"), riding every ownerchat ask; admin-only
-    }
-    if ($key === 'chat-handoff') {
-        return true; // what each surface is doing right now, so the other can
-                     // offer to continue it — the owner's own activity
-    }
-    if ($key === 'mac-chat-imports') {
-        return true; // chat continuity's exactly-once ledger — import ref →
-                     // the conversation it became, so a retried POST lands once
-    }
-    if ($key === 'mac-chat-sum') {
-        return true; // per-conversation rolling summaries — the model's condensed
-                     // memory of turns the payload cap has cut; admin-only
-    }
-    if ($key === 'nightshift-latest-build') {
-        return true; // the newest Mac-app release tag, fetched daily by self-repair
-    }
-    if ($key === 'nightshift-app-url') {
-        return true; // where the owner's own Mac app downloads from (Manage →
-                     // System check). Their infrastructure, not site content —
-                     // a guest has no business reading it, and it is only ever
-                     // rendered into a link on a page that is signed in as them
-    }
-    if ($key === 'night-shift') {
-        return true; // whether the overnight queue is switched on (nightshift.php).
-                     // An operating decision about the owner's own machinery, and
-                     // it gates an INGEST route — a guest reading whether the door
-                     // is open is the one thing they must not learn from the app
+    // The removed AI chat and Mac assistant kept these. Nothing writes them any more,
+    // but rows already stored hold the owner's chat words and machinery, so they stay
+    // classified and never reach the public content GET.
+    if (in_array($key, ['night-warm-until', 'mac-chat', 'mac-chat-memory', 'chat-handoff', 'mac-chat-imports', 'mac-chat-sum', 'nightshift-latest-build', 'nightshift-app-url', 'night-shift'], true)) {
+        return true;
     }
     if ($key === 'search-pins') {
         return true; // the owner's pinned landing questions (chbPinAdd) — their own
@@ -1776,15 +1710,6 @@ function log_comms_outcome($action, $label, $result, $bookingId, $propKey = '')
     }
     $why = isset($result['error']) ? (string) $result['error'] : 'unknown error';
     log_activity('comms', $action, $label . ' FAILED to send — ' . $why, $opts + ['severity' => 'warn']);
-}
-// A write the AI chat's action card executed says so in the activity log —
-// the owner reading "Booking created" a week later deserves to know whether
-// they typed it or confirmed a model's proposal. CLOSED whitelist: the one
-// recognised value earns the suffix, anything else earns nothing, so the
-// client can never invent an attribution string that lands in the log.
-function via_label($in)
-{
-    return (($in['via'] ?? '') === 'ai-chat') ? ' · via AI chat' : '';
 }
 function log_activity($category, $action, $summary, $opts = [])
 {

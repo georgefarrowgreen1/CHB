@@ -512,36 +512,6 @@ const reachOk = (name, list, floor, axis) => {
     ok(opened.min >= 44, `photos 390 · every item in it reaches 44 (${opened.min}px)`);
     await page.close();
   }
-  {
-    // The AI chat page keeps its own page — it needs the night-shift switch on.
-    const page = await newPage(390, 'owner');
-    await run(page, "(async () => { await window.loadAdminBundle(); window.__nightPre = { on: 1 }; nav('view-aichat'); })()", 1500);
-    // INJECTED AFTER THE PAGE HAS SETTLED — renderMacChat rewrites #mc-log on
-    // its own clock, and an injection racing it is silently swept away (three
-    // of the six controls vanished on the gate's first run). These six markups
-    // are admin.js's own, quoted; what is being measured is the STYLESHEET.
-    await run(page, `(() => {
-      const log = document.getElementById('mc-log');
-      log.insertAdjacentHTML('beforeend',
-        '<div class="mc-rail"><button class="mc-rail-chip">New conversation</button><button class="mc-rail-chip">Yesterday</button></div>' +
-        '<div class="mc-day"><div class="mc-day-t">Today</div><div class="mc-day-r"><span class="mc-day-l">Key safe</span><button class="mc-day-go">Rotate</button></div></div>' +
-        '<details class="mc-think"><summary>Thought about it</summary><div class="mc-think-b">\u2026</div></details>' +
-        '<div class="mc-act"><div class="mc-act-t">Proposal</div><div><button class="mc-act-go">Block the dates</button><button class="mc-act-no">Dismiss</button></div></div>' +
-        '<button class="ac-more" aria-label="More">\u22ef</button>');
-    })()`, 500);
-    reachOk('chat 390 · the day card, rail, thinking fold and act buttons',
-      await page.evaluate(REACH, '#view-aichat .mc-day-go, #view-aichat .mc-rail-chip, #view-aichat .mc-think > summary, #view-aichat .mc-act-go, #view-aichat .mc-act-no'), 6, 'y');
-    reachOk('chat 390 · the ⋯', await page.evaluate(REACH, '#view-aichat .ac-more'), 1, 'both');
-    const phantom = await page.evaluate(() => {
-      const d = document.createElement('div'); d.className = 'mc-chip'; d.textContent = 'Checked the website';
-      document.querySelector('#view-aichat').appendChild(d);
-      const cs = getComputedStyle(d, '::before'); const out = cs.content;
-      d.remove(); return out;
-    });
-    ok(phantom === 'none', `chat 390 · .mc-chip gets NO region — it is a plain <div>, and one there would be a phantom target (${phantom})`);
-    await page.close();
-  }
-
   // =====================================================================
   console.log('§3 the changeover card does not paint over the assistant');
   {

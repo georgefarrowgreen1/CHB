@@ -2,7 +2,7 @@
 
 Working files for the proposed back-office frame, published as a Claude Design
 canvas. Nothing here is deployed: the deploy mirrors `Cottage Holidays Blakeney/`
-only, the same way `mac-app/` sits outside it.
+only.
 
 - `*.dc.html` — one file per artboard. `Main.dc.html` is Today.
 - `canvas.json` — the layout: positions, the two pages, the sticky notes.

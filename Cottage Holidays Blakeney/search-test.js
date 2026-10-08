@@ -975,18 +975,8 @@ if (typeof ctx.chbNlgFallback === 'function') {
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
         const fb = ctx.cmdkBuildResults('what is the meaning of life');
         check('dead-end question → nlg-fallback answer row', !!(fb && fb.results && fb.results[0] && fb.results[0].id === 'nlg-fallback'));
-        // THE HANDOFF ROW: the dead end offers "Ask your Mac" ONLY while the
-        // night-shift switch is on — a closed door is never offered — and it
-        // rides BELOW the fallback (index 0 stays the answer, pinned above).
-        check('…with no Ask-your-Mac row while the switch is off',
+        check('…and nothing hands the dead end on to a removed assistant',
             !(fb.results || []).some((r) => r.id === 'ask-mac'));
-        vm.runInContext("siteContent['night-shift']='1';", ctx);
-        const fbOn = ctx.cmdkBuildResults('what is the meaning of life');
-        const askRow = (fbOn.results || []).find((r) => r.id === 'ask-mac');
-        check('switch on → the dead end carries the question to the AI chat',
-            !!askRow && typeof askRow.run === 'function'
-            && fbOn.results[0].id === 'nlg-fallback');
-        vm.runInContext("delete siteContent['night-shift'];", ctx);
         const rq = ctx.cmdkBuildResults('who owes me money');
         check('a real question does NOT get the fallback', !(rq && rq.results && rq.results[0] && rq.results[0].id === 'nlg-fallback'));
         // A procedural "how do I…" leads with the GENERATED how-to answer (Top Hit),
@@ -3290,51 +3280,6 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
                 recs <= 2, String(recs));
         }
     }
-
-    // ---- 45. Search × Mac: every menu entry really answers ------------------
-    //  The recovery tier sends chbCanonList() to the Mac as the MENU its model
-    //  may choose from; a correct pick is then computed by cmdkIntent. So a
-    //  menu entry cmdkIntent cannot answer turns a right choice into a silent
-    //  dead end — the exact rot this section exists to stop. Seeded modestly
-    //  (one booking, expenses tried) because the recovery runs against live
-    //  stores; a family whose ZERO state is a real sentence still counts as
-    //  answering, which is the honest bar (the engine spoke).
-    if (typeof ctx.chbCanonList === 'function' && typeof ctx.cmdkIntent === 'function') {
-        console.log('\n== 45. search × Mac: the recovery menu answers ==');
-        const menu45 = ctx.chbCanonList();
-        check('the menu exists and fits the ask channel\'s cap', Array.isArray(menu45) && menu45.length > 10 && menu45.length <= 40, String(menu45.length));
-        check('every entry fits the server\'s per-option cap (an over-long one is DROPPED there, silently shrinking the menu)',
-            menu45.every((c) => typeof c === 'string' && c.length > 3 && c.length <= 120),
-            menu45.filter((c) => typeof c !== 'string' || c.length > 120).join(' ; '));
-        check('the corpus canonicals all ride the menu',
-            vm.runInContext('CHB_NLU.corpus.every((c) => chbCanonList().includes(c.canonical))', ctx) === true);
-        vm.runInContext(`
-            Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
-            dbBookings['21a'] = [{ id: 'c45', dbId: 945, propKey: '21a', name: 'Menu Probe', email: 'menu@x.co',
-                checkIn: '${ctx.todayDashed()}', checkOut: '${(() => { const d = ctx.dpParse(ctx.todayDashed()); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); })()}',
-                adults: 2, children: 0, guests: '2 adults', payment: 'deposit', depositPaid: 100,
-                agreedPrice: { total: 400 }, holdStatus: 'none' }];
-            allExpenses = []; __expTried = true; __cmdkCustomers = null;
-        `, ctx);
-        const dud45 = [];
-        menu45.forEach((q) => {
-            let rows = null;
-            try { rows = ctx.cmdkIntent(q); } catch (e) { rows = null; }
-            if (!rows || !rows.length) dud45.push(q);
-        });
-        check('EVERY menu entry produces an answer through cmdkIntent (zero-state sentences count)',
-            dud45.length === 0, 'dead: ' + dud45.join(' ; '));
-        vm.runInContext('Object.keys(dbBookings).forEach((k)=>{dbBookings[k]=[];}); __expTried = false; __cmdkCustomers = null;', ctx);
-        // The WIRING: the abstain branch must actually fire the recovery — the
-        // helper alone proves nothing (the helper-tested-alone trap).
-        // (window widened past the Ask-your-Mac handoff block that now sits between)
-        const fbBlock = (adminScript.match(/nlg-fallback[\s\S]{0,3000}/) || [''])[0];
-        check('the fallback branch kicks chbMacIntentRecover', /chbMacIntentRecover\(ql\)/.test(fbBlock), fbBlock.slice(0, 200));
-        // …and the semantic merge kicks the ANALYST with the rows that landed
-        // (ui-test-searchpage §24 owns the behaviour; this owns the wiring).
-        const semBlock = (adminScript.match(/async function cmdkSemanticHistory[\s\S]{0,2600}/) || [''])[0];
-        check('the semantic merge kicks chbMacDigest with its fresh rows', /chbMacDigest\(ql, fresh\)/.test(semBlock), semBlock.slice(-200));
-    } else fail('chbCanonList / cmdkIntent missing from the bundle');
 
     // ---- §44 The round-3 audit fixes ----
     console.log('\n== §44 Round-3 audit fixes ==');

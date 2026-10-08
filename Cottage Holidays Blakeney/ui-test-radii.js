@@ -16,7 +16,7 @@
 //    §5 the system check's mark is a 28px symbol, Re-run is a text button,
 //       the income headline has no stripe
 //    §6 THE SWEEP: every painted corner on view-pay, the assistant (three
-//       states), the AI chat and the Manage landing is 12, 20, a pill or
+//       states) and the Manage landing is 12, 20, a pill or
 //       --r-panel on a sheet — read COMPUTED, so a var() cannot hide a fourth
 //       step (--r-md, 16px, was painting on 65 rules)
 //  Break-tested: the token edit (§1), the picker padding (§2), the field height
@@ -217,14 +217,6 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   ok(qa > 0, `a selected record shows its quick actions (${qa} row(s)) — the state that renders .cmdk-qa`);
   ok(s6.bad.length === 0, `…and they are cells inside a card${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
   await open(page, 'closeCmdK()', 400);
-
-  // The AI chat — the act card is the one that wore the 16px.
-  await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [ { who: 'you', text: 'block jollyboat for the boiler', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those dates.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04', note: 'boiler' } } ] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
-await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);
-    const act = await page.evaluate(() => document.querySelectorAll('#mc-log .mc-act').length);
-  s6 = await sweepScope(page, '#view-aichat');
-  ok(act > 0, `the chat's action card renders (${act})`);
-  ok(s6.bad.length === 0, `the AI chat's corners are on the scale${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);
 
   // Manage's landing — the toolbox cards and the cottage tiles.
   await open(page, "(async () => { await openArea('settings'); })()", 1500);

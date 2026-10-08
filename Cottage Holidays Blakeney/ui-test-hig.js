@@ -322,12 +322,6 @@ const NEST = (rootSel) => {
   await grabCaps(['#sg-count']);
   await open(page, "settingsOpen('diagnostics')", 1300);
   await grabCaps(['#diagnostics-body .sp-cap']);
-  // The overnight-work card moved to its own page (Manage → Mac assistant).
-  await open(page, "settingsOpen('mac')", 900);
-  await grabCaps(['.night-setup > summary']);
-  await open(page, "(async () => { openAiChat(); window.__realPost = window.apiPost; window.apiPost = async (file, body) => { if (body.action === 'chat_thread') return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [{ who: 'you', text: 'block jollyboat', at: '12:00' }, { who: 'mac', id: 501, text: 'I can hold those.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } }] }; return { ok: true }; }; await renderMacChat(); })()", 1200);
-  await grabCaps(['.mc-act-t']);
-  await open(page, '(() => { if (window.__realPost) window.apiPost = window.__realPost; })()', 200);
   const shouty = caps.filter((c) => c.tt !== 'none');
   const tracked = caps.filter((c) => c.ls !== 'normal' && parseFloat(c.ls) > 0.2);
   ok(caps.length >= 9, `${caps.length} in-container captions painted across five screens: ${caps.map((c) => c.sel.split(' ').pop()).join(', ')} (vacuity guard)`);
