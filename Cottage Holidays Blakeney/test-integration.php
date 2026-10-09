@@ -40,6 +40,10 @@ if (!$HTTP_PORT) {
     $HTTP_PORT = (int) explode(':', stream_socket_get_name($sock, false))[1];
     fclose($sock);
 }
+// §54's fake Monzo API listens here (the app copy's config points MONZO_API_BASE at it).
+$sock = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+$MONZO_PORT = (int) explode(':', stream_socket_get_name($sock, false))[1];
+fclose($sock);
 $DB_NAME = 'chb_it_test';
 $SECRET = 'chb-integration-secret-0123456789abcdef';
 $BASE = "http://127.0.0.1:$HTTP_PORT";
@@ -131,6 +135,7 @@ $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUA
 // Staging-sandbox constants so §20 can drive the seat endpoint + Test-centre
 // seeder for real. These gate NOTHING else: every staging action also demands
 // a staging.* Host header, which no other section sends.
+$cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MONZO_AUTH_BASE', 'http://127.0.0.1:$MONZO_PORT/auth/');\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
@@ -3531,6 +3536,163 @@ it_check('§53 stopping keeps every payment already added', $r['code'] === 200 &
 $rootDb->exec('DELETE FROM bank_lines');
 $rootDb->exec('DELETE FROM bank_imports');
 $rootDb->exec("DELETE FROM content WHERE item_key = 'bank-statements'");
+
+echo "\n== §54 The Monzo Business live link, against a fake Monzo ==\n";
+// The real monzo.php, monzo-callback.php and monzo-sync.php, talking to a fake
+// Monzo on its own port (MONZO_API_BASE in this copy's config). Connect, the
+// single-use return, approval in the app, the business account only, the sync
+// into the statements' table (once, sharing their keys), token refresh, a
+// revoked link, and disconnecting. Nothing here reaches the real Monzo.
+$mzDir = sys_get_temp_dir() . '/chb-it-monzo-' . getmypid();
+@mkdir($mzDir, 0777, true);
+$mzRouter = <<<'FAKE'
+<?php
+$st = __DIR__ . '/state.json';
+$S = json_decode((string) @file_get_contents($st), true) ?: [];
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+parse_str((string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY), $q);
+$auth = preg_replace('/^Bearer /', '', $_SERVER['HTTP_AUTHORIZATION'] ?? '');
+file_put_contents(__DIR__ . '/log.txt', json_encode(['m' => $_SERVER['REQUEST_METHOD'], 'p' => $path, 'q' => $q, 'post' => $_POST, 'auth' => $auth]) . "\n", FILE_APPEND);
+header('Content-Type: application/json');
+$out = function ($code, $b) { http_response_code($code); echo json_encode($b); exit; };
+$save = function () use (&$S, $st) { file_put_contents($st, json_encode($S)); };
+if ($path === '/oauth2/token') {
+    if (($_POST['grant_type'] ?? '') === 'authorization_code') {
+        if (($_POST['code'] ?? '') !== 'good-code' || ($_POST['client_secret'] ?? '') !== 'mnzconf.it-secret-0001') { $out(400, ['error' => 'invalid_grant']); }
+        $S['access'] = 'acc-1'; $S['refresh'] = 'ref-1'; $save();
+        $out(200, ['access_token' => 'acc-1', 'refresh_token' => 'ref-1', 'expires_in' => 200, 'user_id' => 'user_it']);
+    }
+    if (!empty($S['refuse_refresh']) || ($_POST['refresh_token'] ?? '') !== ($S['refresh'] ?? '')) { $out(401, ['error' => 'invalid_grant']); }
+    $S['access'] = 'acc-2'; $S['refresh'] = 'ref-2'; $save();
+    $out(200, ['access_token' => 'acc-2', 'refresh_token' => 'ref-2', 'expires_in' => 21600, 'user_id' => 'user_it']);
+}
+if ($path === '/oauth2/logout') { $out(200, []); }
+if ($auth === '' || $auth !== ($S['access'] ?? '') || !empty($S['revoked'])) { $out(401, ['code' => 'unauthorized.bad_access_token']); }
+if (empty($S['approved'])) { $out(403, ['code' => 'forbidden.insufficient_permissions']); }
+if ($path === '/accounts') { $out(200, ['accounts' => $S['accounts'] ?? []]); }
+if ($path === '/pots') { $out(200, ['pots' => [['id' => 'pot_tax', 'name' => 'Tax']]]); }
+if ($path === '/balance') { $out(200, ['balance' => 125706, 'total_balance' => 188850, 'currency' => 'GBP']); }
+if ($path === '/transactions') {
+    $all = $S['txs'] ?? [];
+    usort($all, fn($a, $b) => strcmp($a['created'], $b['created']));
+    $since = (string) ($q['since'] ?? '');
+    if (strpos($since, 'tx_') === 0) {
+        $i = array_search($since, array_column($all, 'id'), true);
+        $all = $i === false ? [] : array_slice($all, $i + 1);
+    } elseif ($since !== '') {
+        $all = array_values(array_filter($all, fn($t) => strtotime($t['created']) >= strtotime($since)));
+    }
+    $out(200, ['transactions' => array_slice($all, 0, (int) ($q['limit'] ?? 30))]);
+}
+$out(404, ['code' => 'not_found']);
+FAKE;
+file_put_contents($mzDir . '/router.php', $mzRouter);
+$mzState = function (array $patch) use ($mzDir) {
+    $s = json_decode((string) @file_get_contents($mzDir . '/state.json'), true) ?: [];
+    file_put_contents($mzDir . '/state.json', json_encode(array_merge($s, $patch)));
+};
+$mzLog = function () use ($mzDir) {
+    return array_values(array_filter(array_map(fn($l) => json_decode($l, true), file($mzDir . '/log.txt', FILE_IGNORE_NEW_LINES) ?: [])));
+};
+$iso = fn($daysAgo, $h = 12) => gmdate('Y-m-d\TH:i:s\Z', strtotime(gmdate('Y-m-d') . " $h:00:00 UTC") - $daysAgo * 86400);
+$mzState([
+    'approved' => false,
+    'accounts' => [['id' => 'acc_personal', 'type' => 'uk_retail', 'closed' => false, 'account_number' => '11112222']],
+    'txs' => [
+        ['id' => 'tx_it54_in', 'created' => $iso(5), 'amount' => 37750, 'currency' => 'GBP', 'description' => 'M HILL', 'notes' => 'CHB-000006', 'scheme' => 'payport_faster_payments', 'settled' => $iso(5), 'counterparty' => ['name' => 'Marcus Hill'], 'account_balance' => 195000],
+        ['id' => 'tx_it54_sq', 'created' => $iso(4), 'amount' => 61240, 'currency' => 'GBP', 'description' => 'SQ *PAYOUT', 'scheme' => 'payport_faster_payments', 'settled' => $iso(4), 'counterparty' => ['name' => 'SQUARE EUROPE LTD']],
+        ['id' => 'tx_it54_pot', 'created' => $iso(3), 'amount' => -63144, 'currency' => 'GBP', 'description' => 'pot_tax', 'scheme' => 'uk_retail_pot', 'settled' => $iso(3), 'metadata' => ['pot_id' => 'pot_tax']],
+        ['id' => 'tx_it54_card', 'created' => $iso(2), 'amount' => -2310, 'currency' => 'GBP', 'description' => 'TESCO STORES 2231', 'scheme' => 'mastercard', 'settled' => $iso(1), 'merchant' => ['name' => 'Tesco']],
+        ['id' => 'tx_it54_declined', 'created' => $iso(2, 13), 'amount' => -9900, 'currency' => 'GBP', 'decline_reason' => 'INSUFFICIENT_FUNDS', 'scheme' => 'mastercard'],
+        ['id' => 'tx_it54_pending', 'created' => $iso(0, 9), 'amount' => -1500, 'currency' => 'GBP', 'scheme' => 'mastercard', 'settled' => '', 'merchant' => ['name' => 'Shell']],
+        ['id' => 'tx_it54_eur', 'created' => $iso(1, 9), 'amount' => -1200, 'currency' => 'EUR', 'settled' => $iso(1, 9)],
+    ],
+]);
+$mzServer = proc_open("exec php -S 127.0.0.1:$MONZO_PORT " . escapeshellarg($mzDir . '/router.php') . ' 2>/dev/null', [], $mzPipes);
+register_shutdown_function(function () use ($mzServer, $mzDir) {
+    if (is_resource($mzServer)) {
+        proc_terminate($mzServer);
+    }
+    exec('rm -rf ' . escapeshellarg($mzDir));
+});
+for ($i = 0; $i < 50; $i++) {
+    usleep(100000);
+    if (@file_get_contents("http://127.0.0.1:$MONZO_PORT/oauth2/logout", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]])) !== false) {
+        break;
+    }
+}
+$mzLines = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM bank_lines WHERE ext_key LIKE 'm:tx_it54_%'")->fetchColumn();
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'status']);
+it_check('§54 before anything: off, and the redirect address to paste into Monzo is this site\'s callback', $r['code'] === 200 && ($r['json']['live']['state'] ?? '') === 'off' && substr((string) ($r['json']['live']['redirect'] ?? ''), -19) === '/monzo-callback.php', $r['raw']);
+$r = http($stAnon, 'POST', '/monzo.php', ['action' => 'status']);
+it_check('§54 a visitor is refused', $r['code'] === 401, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'save_client', 'client_id' => 'oauth2client_it54', 'client_secret' => 'mnzpub.it-public-0001']);
+it_check('§54 a non-confidential client is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'Confidential') !== false, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'save_client', 'client_id' => 'oauth2client_it54', 'client_secret' => 'mnzconf.it-secret-0001']);
+$stored = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-client'")->fetchColumn();
+it_check('§54 the client is saved encrypted, and never sent back', $r['code'] === 200 && ($r['json']['live']['state'] ?? '') === 'ready' && strpos($stored, 'enc1:') === 0 && strpos($r['raw'], 'it-secret') === false, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'connect']);
+$url = (string) ($r['json']['url'] ?? '');
+parse_str((string) parse_url($url, PHP_URL_QUERY), $cq);
+it_check('§54 connecting sends the owner to Monzo with the client, the callback and a state', strpos($url, "http://127.0.0.1:$MONZO_PORT/auth/?") === 0 && ($cq['client_id'] ?? '') === 'oauth2client_it54' && substr((string) ($cq['redirect_uri'] ?? ''), -19) === '/monzo-callback.php' && strlen((string) ($cq['state'] ?? '')) === 32, $url);
+$mzAnon = [];
+$r = http($mzAnon, 'GET', '/monzo-callback.php?state=' . str_repeat('0', 32) . '&code=good-code');
+it_check('§54 a return with the wrong state changes nothing', strpos($r['raw'], 'That link has expired') !== false && (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn() === '', mb_substr($r['raw'], 0, 120));
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'connect']);
+parse_str((string) parse_url((string) ($r['json']['url'] ?? ''), PHP_URL_QUERY), $cq);
+$r = http($mzAnon, 'GET', '/monzo-callback.php?state=' . urlencode((string) $cq['state']) . '&code=good-code');
+$authRow = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn();
+it_check('§54 the right return, in a browser with no session, exchanges the code and asks for approval in the app', $r['code'] === 200 && strpos($r['raw'], 'approve it in the Monzo app') !== false && strpos($authRow, 'enc1:') === 0 && strpos($authRow, 'acc-1') === false, mb_substr($r['raw'], 0, 200));
+$r = http($mzAnon, 'GET', '/monzo-callback.php?state=' . urlencode((string) $cq['state']) . '&code=good-code');
+it_check('§54 …and the same return twice is refused: the state is single-use', strpos($r['raw'], 'That link has expired') !== false, mb_substr($r['raw'], 0, 120));
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'check']);
+it_check('§54 not approved in the app yet: still waiting, nothing fetched', ($r['json']['live']['state'] ?? '') === 'approve' && $mzLines() === 0, $r['raw']);
+$refreshed = array_values(array_filter($mzLog(), fn($e) => ($e['p'] ?? '') === '/oauth2/token' && ($e['post']['grant_type'] ?? '') === 'refresh_token'));
+it_check('§54 a token about to lapse is refreshed first, with the refresh token Monzo gave', count($refreshed) === 1 && ($refreshed[0]['post']['refresh_token'] ?? '') === 'ref-1', json_encode($refreshed));
+$mzState(['approved' => true]);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'check']);
+it_check('§54 Monzo shared only a personal account: said, and its payments are NOT taken', ($r['json']['live']['state'] ?? '') === 'no_business' && strpos((string) ($r['json']['live']['say'] ?? ''), 'a personal account') !== false && $mzLines() === 0, $r['raw']);
+$usedNew = array_values(array_filter($mzLog(), fn($e) => ($e['p'] ?? '') === '/accounts'));
+it_check('§54 …and every call after the refresh carried the new token', $usedNew && end($usedNew)['auth'] === 'acc-2', json_encode(end($usedNew)));
+$mzState(['accounts' => [['id' => 'acc_personal', 'type' => 'uk_retail', 'closed' => false], ['id' => 'acc_biz', 'type' => 'uk_business', 'closed' => false, 'account_number' => '87654471']]]);
+http($admin, 'POST', '/monzo.php', ['action' => 'disconnect']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'connect']);
+parse_str((string) parse_url((string) ($r['json']['url'] ?? ''), PHP_URL_QUERY), $cq);
+http($mzAnon, 'GET', '/monzo-callback.php?state=' . urlencode((string) $cq['state']) . '&code=good-code');
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'check']);
+$sum = $r['json']['sync'] ?? [];
+it_check('§54 with the business account shared, approval fetches its payments at once', ($r['json']['live']['state'] ?? '') === 'live' && ($r['json']['live']['account'] ?? '') === 'Business account ending 4471' && ($sum['added'] ?? 0) === 4 && ($sum['auto'] ?? 0) === 2, $r['raw']);
+$txq = array_values(array_filter($mzLog(), fn($e) => ($e['p'] ?? '') === '/transactions'));
+$tyStart = (date('m-d') < '04-06' ? (int) date('Y') - 1 : (int) date('Y')) . '-04-06T00:00:00Z';
+it_check('§54 …asking from the start of the tax year, inside Monzo\'s first five minutes, for the business account only', $txq && ($txq[0]['q']['since'] ?? '') === $tyStart && !array_filter($txq, fn($e) => ($e['q']['account_id'] ?? '') !== 'acc_biz'), json_encode($txq[0] ?? null));
+$rows = $rootDb->query("SELECT ext_key, kind, name, amount, sorted_as FROM bank_lines WHERE ext_key LIKE 'm:tx_it54_%' ORDER BY ext_key")->fetchAll(PDO::FETCH_ASSOC);
+$byK = array_column($rows, null, 'ext_key');
+it_check('§54 declined, pending and foreign-currency payments are left out', !isset($byK['m:tx_it54_declined']) && !isset($byK['m:tx_it54_pending']) && !isset($byK['m:tx_it54_eur']), json_encode(array_keys($byK)));
+it_check('§54 the pot is named and sorts itself, the Square payout too, and the rest wait for the owner',
+    ($byK['m:tx_it54_pot']['name'] ?? '') === 'To Tax pot' && ($byK['m:tx_it54_pot']['sorted_as'] ?? '') === 'pot' && ($byK['m:tx_it54_sq']['sorted_as'] ?? '') === 'square'
+    && isset($byK['m:tx_it54_in']) && $byK['m:tx_it54_in']['sorted_as'] === null && ($byK['m:tx_it54_in']['name'] ?? '') === 'Marcus Hill' && abs((float) ($byK['m:tx_it54_card']['amount'] ?? 0) + 23.10) < 0.001, json_encode($rows));
+it_check('§54 the balance is Monzo\'s, dated', abs((float) ($r['json']['live']['balance'] ?? 0) - 1257.06) < 0.001 && abs((float) ($r['json']['live']['total'] ?? 0) - 1888.50) < 0.001 && ($r['json']['live']['balance_at'] ?? 0) > time() - 120, $r['raw']);
+it_check('§54 no token or secret ever reaches the page', strpos($r['raw'], 'acc-') === false && strpos($r['raw'], 'ref-') === false && strpos($r['raw'], 'it-secret') === false, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'sync']);
+it_check('§54 syncing again adds nothing already here', ($r['json']['sync']['ok'] ?? false) === true && ($r['json']['sync']['added'] ?? -1) === 0 && $mzLines() === 4, $r['raw']);
+$csv = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Balance,Balance currency\n"
+    . 'tx_it54_in,' . gmdate('d/m/Y', strtotime($iso(5))) . ",12:00:00,Faster payment,M HILL,,General,377.50,GBP,377.50,GBP,,,,CHB-000006,,1950.00,GBP\n";
+$r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $csv, 'filename' => 'monzo.csv']);
+it_check('§54 a statement holding a payment the link already brought finds it already here', ($r['json']['summary']['already'] ?? 0) === 1 && ($r['json']['summary']['adding'] ?? -1) === 0, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+it_check('§54 the statements answer carries the link, so the page needs one request', ($r['json']['live']['state'] ?? '') === 'live', mb_substr($r['raw'], 0, 160));
+$mzState(['revoked' => true]);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'sync']);
+it_check('§54 a link Monzo stopped accepting says so', ($r['json']['live']['state'] ?? '') === 'reconnect' && strpos((string) ($r['json']['live']['say'] ?? ''), 'Connect again') !== false, $r['raw']);
+$mzState(['revoked' => false]);
+$before = count($mzLog());
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'sync']);
+it_check('§54 …and its token is dropped: nothing more is asked of Monzo until the owner connects again', count($mzLog()) === $before && ($r['json']['live']['state'] ?? '') === 'reconnect', $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'disconnect']);
+$lout = array_filter($mzLog(), fn($e) => ($e['p'] ?? '') === '/oauth2/logout' && ($e['m'] ?? '') === 'POST');
+it_check('§54 disconnecting keeps every payment already added, keeps the client for next time, and tells Monzo when there was a token', ($r['json']['live']['state'] ?? '') === 'ready' && $mzLines() === 4 && count($lout) >= 1, $r['raw']);
+$rootDb->exec("DELETE FROM bank_lines WHERE ext_key LIKE 'm:tx_it54_%'");
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('monzo-client', 'monzo-auth', 'monzo-link')");
 
 echo "\n== Summary ==\n";
 if ($fail) {

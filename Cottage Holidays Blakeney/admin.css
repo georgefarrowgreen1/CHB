@@ -9522,6 +9522,9 @@ body.pm-sheet-open { overflow: hidden; }
 .pm-sheet .pm-skv > span { color: var(--text-muted); }
 .pm-sheet .pm-skv b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .pm-sheet .pm-serr { color: var(--danger-text); font-weight: 600; }
+.pm-sheet .pm-howto .pm-url { color: var(--text-light); word-break: break-all; user-select: all; margin-top: 4px; }
+.pm-sheet .pm-copy { position: relative; margin-top: 8px; min-height: 36px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pm-pill-edge); background: none; font-size: var(--fs-sub); font-weight: 600; }
+.pm-sheet .pm-copy::after { content: ""; position: absolute; inset: -4px 0; }
 
 /* ── Computer: the page and the details beside it ── */
 body.owner-mode #pm.is-wide { display: flex; border: 1px solid var(--pm-edge); border-radius: var(--r-lg); overflow: hidden; background: var(--dark-grey); }

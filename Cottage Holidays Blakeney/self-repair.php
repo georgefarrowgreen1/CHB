@@ -83,7 +83,18 @@ try {
         $stLast = db()->query('SELECT MAX(to_date) FROM bank_imports')->fetchColumn() ?: null;
     }
     $stToday = date('Y-m-d');
-    if (statement_reminder_due($stSet, $stLast, $stToday)) {
+    // ---- the live link: fetch the day's payments, and while it is live no
+    // statement is asked for. A failure is kept on the link for the page to say.
+    $stLive = false;
+    try {
+        require_once __DIR__ . '/monzo-sync.php';
+        if (monzo_client()['id'] !== '' && !empty(monzo_auth()['access'])) {
+            monzo_sync();
+        }
+        $stLive = monzo_is_live(['state' => monzo_status()['state']]);
+    } catch (\Throwable $e) {
+    }
+    if (statement_reminder_due($stSet, $stLast, $stToday, $stLive)) {
         $stDue = statement_due($stLast, $stToday);
         require_once __DIR__ . '/webpush.php';
         alert_owner(

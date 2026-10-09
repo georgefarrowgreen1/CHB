@@ -1322,7 +1322,12 @@ function is_private_content_key($key)
         // reasoning as ops- — these open the cottages — and its one guest
         // surface (my-bookings.php's door-code reveal) degrades to "no code"
         // on a failed decrypt via keysafe_read, never to garbage.
-        strpos($key, 'keysafe-') === 0;
+        strpos($key, 'keysafe-') === 0 ||
+        // The Monzo Business live link (monzo-sync.php): the owner's developer
+        // client secret and the access + refresh tokens that read their business
+        // bank account. Encrypted at rest; a failed decrypt reads as "not
+        // connected", which the owner fixes by connecting again.
+        $key === 'monzo-client' || $key === 'monzo-auth';
 }
 
 // Operational/internal content keys: written by server code (never the content
@@ -1344,6 +1349,11 @@ function is_internal_content_key($key)
     if ($key === 'mail-sent-days') {
         return true; // Status → Email's per-day sent count (mailer.php) — the
                      // owner's own mail volume, never public
+    }
+    if ($key === 'monzo-link') {
+        return true; // the Monzo Business live link's state (monzo-sync.php): which
+                     // account, when it last synced, the balance — never public.
+                     // Its token and the developer client are PRIVATE (below).
     }
     if ($key === 'bank-statements') {
         return true; // whether the business bank's statements are on, the monthly

@@ -300,10 +300,11 @@ function statement_due(?string $lastTo, string $today): array
 }
 
 // Send the monthly reminder? Once a month at most, only while statements are on
-// and the reminder is wanted, and only when one is actually due.
-function statement_reminder_due(array $settings, ?string $lastTo, string $today): bool
+// and the reminder is wanted, and only when one is actually due. Never while the
+// live link is bringing the payments in by itself ($live).
+function statement_reminder_due(array $settings, ?string $lastTo, string $today, bool $live = false): bool
 {
-    if (empty($settings['on'])) {
+    if ($live || empty($settings['on'])) {
         return false;
     }
     if (array_key_exists('remind', $settings) && empty($settings['remind'])) {

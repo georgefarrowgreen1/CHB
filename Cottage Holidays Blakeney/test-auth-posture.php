@@ -63,6 +63,9 @@ $REGISTRY = [
     'expenses.php' => ['admin'],
     'statements.php' => ['admin'], // the business bank account, read from exported statements
     'statement-lib.php' => ['lib', [], 'pure statement parsing + the reminder rule (no direct entry)'],
+    'monzo.php' => ['admin'], // the Monzo Business live link
+    'monzo-lib.php' => ['lib', [], 'pure decisions for the Monzo live link (no direct entry)'],
+    'monzo-sync.php' => ['lib', [], 'the Monzo live link\'s API calls and storage (no direct entry)'],
     'mailbox.php' => ['admin'],
     'notify-recipients.php' => ['admin'],
     'optimize-hero.php' => ['admin'],
@@ -131,6 +134,7 @@ $REGISTRY = [
     'ical-export.php' => ['token'],
     'invoice.php' => ['token'],
     'pay.php' => ['token', [$RATE]], // pay_token authorises paying THIS booking only
+    'monzo-callback.php' => ['token', [$RATE]], // the single-use connect state (sha256, 15 min) authorises it, not a session
 
     // ---- Webhooks (shared secret / signature) ----------------------------
     'inbound-mail.php' => ['webhook', ['INBOUND_SECRET', $TOKEN]],

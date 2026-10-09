@@ -12,7 +12,13 @@
 // next payment from that payee remembered, tax and a platform payout, the kind
 // sheet, Undo of an expense, a recorded transfer offering Open rather than Undo,
 // the reminder switch, Needs you, the same file adding nothing, and a due
-// statement asking on the landing.
+// statement asking on the landing. And the LIVE LINK to Monzo (monzo.php, stubbed;
+// the real flow against a fake Monzo is test-integration §54): set up in three
+// steps with the redirect address to copy, a non-confidential client refused in
+// the server's words, connecting, waiting for approval in the app (polled, then
+// the payments arriving), live on the landing with the statement ask standing
+// down and Monzo's balance leading, syncing, disconnecting behind a confirm, and
+// a person without full access offered no setup.
 const APP = __dirname;
 const { boot } = require('./ui-test-lib');
 const { execFileSync } = require('child_process');
@@ -46,6 +52,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     ];
     // ── statements.php, kept as state the way the real tables would be ──
     const S = { on: false, remind: true, imports: [], lines: [], nextId: 1, nextExp: 900 };
+    // The live link, as monzo.php would report it.
+    const LIVE = { state: 'off', say: '', client: false, client_fixed: false, redirect: 'https://chb.example/monzo-callback.php', account: '', connected_at: 0, full_until: 0, last_ok: 0, last_error: '', added: 0, balance: null, total: null, balance_at: 0 };
+    let checks = 0;
     const status = () => {
         const last = S.imports.slice().sort((a, b) => (a.to < b.to ? 1 : -1))[0] || null;
         const withBal = S.imports.filter((i) => i.balance != null).sort((a, b) => (a.balance_at < b.balance_at ? 1 : -1))[0];
@@ -54,7 +63,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         const learnMap = {};
         S.lines.filter((l) => ['expense', 'platform', 'ignore', 'tax', 'income'].includes(l.as) && l.name).forEach((l) => { const k = l.name + '|' + l.as + '|' + l.label; learnMap[k] = { name: l.name, as: l.as, label: l.label }; });
         return {
-            ok: true, ready: true, on: S.on, remind: S.remind,
+            ok: true, ready: true, on: S.on, remind: S.remind, live: Object.assign({}, LIVE),
             last: last ? { from: last.from, to: last.to, rows: last.rows, added: last.added, skipped: last.rows - last.added, at: '' } : null,
             balance: withBal ? withBal.balance : null, balance_at: withBal ? withBal.balance_at : '',
             first: S.lines.length ? S.lines.map((l) => l.date).sort()[0] : '', uploads: S.imports.length,
@@ -106,6 +115,24 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
                 if (b.action === 'settings') { S.remind = !!b.remind; return json({ ok: true, remind: S.remind }); }
                 if (b.action === 'remove') { S.on = false; return json({ ok: true }); }
             }
+            if (b.__url === 'monzo.php') {
+                const now = Math.floor(Date.now() / 1000);
+                if (b.action === 'save_client') {
+                    if (/^mnzpub/.test(b.client_secret || '')) return json({ error: 'That client isn’t confidential, so Monzo won’t keep it connected. Make it again as Confidential.' }, 400);
+                    Object.assign(LIVE, { client: true, state: 'ready', say: 'Not connected yet.' });
+                    return json({ ok: true, live: LIVE });
+                }
+                if (b.action === 'connect') return json({ ok: true, url: 'https://auth.monzo.test/?client_id=oauth2client_0000Abc&state=x', live: LIVE });
+                if (b.action === 'check') {
+                    checks++;
+                    if (checks < 2) return json({ ok: true, sync: null, live: LIVE });
+                    Object.assign(LIVE, { state: 'live', say: '', account: 'Business account ending 4471', last_ok: now, balance: 1880.25, total: 2511.69, balance_at: now });
+                    return json({ ok: true, sync: { ok: true, added: 3, auto: 1 }, live: LIVE });
+                }
+                if (b.action === 'sync') return json({ ok: true, sync: { ok: true, added: 0, auto: 0 }, live: LIVE });
+                if (b.action === 'disconnect') { Object.assign(LIVE, { state: 'ready', account: '', last_ok: 0, balance: null }); return json({ ok: true, live: LIVE }); }
+                return json({ ok: true, live: LIVE });
+            }
             if (b.__url === 'expenses.php' && b.action === 'add') return json({ ok: true, id: S.nextExp++ });
             if (b.__url === 'expenses.php' && b.action === 'list') return json({ ok: true, expenses: [] });
             if (b.__url === 'money.php') {
@@ -122,15 +149,19 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
         return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [] });
     });
+    await page.route('https://auth.monzo.test/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Monzo</title><p>Monzo sign in</p>' }));
+    const enterApp = async () => {
+        await page.waitForTimeout(1300);
+        await page.evaluate((th) => { isAuthenticated = true; document.body.classList.add('owner-mode'); if (th === 'light') document.body.classList.add('light-mode'); else document.body.classList.remove('light-mode'); squareAdminEnabled = true; }, theme);
+        await page.evaluate(() => window.loadAdminBundle());
+        await page.waitForTimeout(600);
+        await page.evaluate(() => loadData());
+        await page.waitForTimeout(600);
+        await page.evaluate(() => openAccounts());
+        await page.waitForTimeout(1500);
+    };
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1300);
-    await page.evaluate((th) => { isAuthenticated = true; document.body.classList.add('owner-mode'); if (th === 'light') document.body.classList.add('light-mode'); else document.body.classList.remove('light-mode'); squareAdminEnabled = true; }, theme);
-    await page.evaluate(() => window.loadAdminBundle());
-    await page.waitForTimeout(600);
-    await page.evaluate(() => loadData());
-    await page.waitForTimeout(600);
-    await page.evaluate(() => openAccounts());
-    await page.waitForTimeout(1500);
+    await enterApp();
         const shot = async () => {};
     const list = () => page.evaluate(() => document.getElementById('pm-list').textContent.replace(/\s+/g, ' '));
     const detail = () => page.evaluate(() => (document.getElementById('pm-detail') || {}).textContent.replace(/\s+/g, ' '));
@@ -139,7 +170,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const clickText = (scope, text) => page.evaluate(([sc, t]) => { const e = [...document.querySelectorAll(sc + ' button')].find((b) => b.textContent.trim() === t); if (!e) throw new Error('no button ' + t); e.click(); }, [scope, text]);
 
     await shot('1-landing');
-    ok(/Add your Monzo Business statements/.test(await list()), 'the landing offers the way in');
+    ok(/Bring in your Monzo Business account/.test(await list()), 'the landing offers the way in');
     const owed = await page.evaluate(() => pmOwed().map((r) => [r.b.name, r.dg.balance]));
     const marcus = owed.find((o) => o[0] === 'Marcus Hill');
     ok(!!marcus, 'Marcus owes ' + JSON.stringify(owed));
@@ -267,6 +298,71 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const L2 = await list();
     ok(/Time for .*statement/.test(L2), 'a due statement asks on the landing: ' + (L2.match(/Time for [^.]*statement/) || [''])[0]);
     await shot('13-due');
+
+    // ── THE LIVE LINK ──
+    await click('[data-pm="bank"]');
+    await page.waitForTimeout(500);
+    ok(/Live from Monzo\s*Payments arrive by themselves/.test(await detail()) && await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]')), 'the bank page offers the live link');
+    await click('#pm-detail [data-pm="mz-setup"]');
+    await page.waitForTimeout(400);
+    let sh = await sheet();
+    ok(/Create a client in Monzo/.test(sh) && /chb\.example\/monzo-callback\.php/.test(sh) && /Confidential/.test(sh), 'step 1 shows the redirect address to paste and asks for a confidential client');
+    await shot('14-mz-create');
+    await clickText('#pm-sheet', 'I’ve made it');
+    await page.waitForTimeout(300);
+    await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
+    await page.fill('#pm-mz-secret', 'mnzpub.notconfidential');
+    await clickText('#pm-sheet', 'Save');
+    await page.waitForFunction(() => /isn’t confidential/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
+    ok(/isn’t confidential/.test(await sheet()), 'a non-confidential client is refused in the server’s words');
+    await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
+    await page.fill('#pm-mz-secret', 'mnzconf.secret-value-123');
+    await clickText('#pm-sheet', 'Save');
+    await page.waitForFunction(() => /Connect to Monzo/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
+    sh = await sheet();
+    ok(/Connect to Monzo/.test(sh) && /first five minutes/.test(sh), 'step 3 says what happens next, and why to approve at once');
+    const saved = posts.filter((p) => p.__url === 'monzo.php' && p.action === 'save_client').pop();
+    ok(saved && saved.client_secret === 'mnzconf.secret-value-123', 'the client is sent to be saved');
+    await shot('15-mz-connect');
+    await clickText('#pm-sheet', 'Connect to Monzo');
+    await page.waitForURL(/auth\.monzo\.test/, { timeout: 6000 }).catch(() => {});
+    ok(/auth\.monzo\.test\/\?client_id=oauth2client_0000Abc/.test(page.url()), 'Connect sends the owner to Monzo');
+    // Back from Monzo (the callback page links to Payments): waiting for approval in the app.
+    Object.assign(LIVE, { state: 'approve', say: 'Approve access in the Monzo app.', connected_at: Math.floor(Date.now() / 1000) });
+    await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await enterApp();
+    ok(/Approve access in the Monzo app/.test(await list()), 'the landing asks for approval in the app');
+    await click('[data-pm="bank"]');
+    await page.waitForTimeout(400);
+    ok(/Approve in the Monzo app/.test(await detail()), 'the bank page says it is waiting');
+    await shot('16-mz-approve');
+    await page.waitForFunction(() => /Live from Monzo/.test(document.getElementById('pm-detail').textContent), null, { timeout: 15000 }).catch(() => {});
+    ok(checks >= 2, 'it asks again by itself while waiting (' + checks + ' checks)');
+    const dt2 = await detail();
+    ok(/Live from Monzo/.test(dt2) && /Business account ending 4471/.test(dt2), 'approval lands: live, named by its last four digits');
+    ok(/Balance now\s*£1,880\.25/.test(dt2) && /£2,511\.69 with pots/.test(dt2), 'Monzo’s own balance leads, with the pots beside it');
+    ok(/Not needed/.test(dt2) && !/Remind me on the 1st/.test(dt2), 'while live, no statement is needed and no reminder is offered');
+    await shot('17-mz-live');
+    await page.evaluate(() => { const b = document.querySelector('#pm-detail [data-pm="close"]'); if (b && b.offsetParent) b.click(); });
+    await page.waitForTimeout(400);
+    const L3 = await list();
+    ok(/Monzo Business\s*Live · synced \d+:\d\d/.test(L3) && !/Time for .*statement/.test(L3), 'the landing says live, and the due statement stands down: ' + (L3.match(/Monzo Business[^£]{0,40}/) || [''])[0]);
+    await click('[data-pm="bank"]');
+    await page.waitForTimeout(400);
+    await click('#pm-detail [data-pm="mz-sync"]');
+    await page.waitForTimeout(600);
+    ok(posts.some((p) => p.__url === 'monzo.php' && p.action === 'sync'), 'Sync asks Monzo for new payments');
+    await click('#pm-detail [data-pm="mz-disconnect"]');
+    await page.waitForTimeout(400);
+    ok(/Disconnect Monzo\?/.test(await page.evaluate(() => document.getElementById('glass-dialog-msg').textContent)), 'disconnecting asks first');
+    await page.evaluate(() => document.getElementById('glass-dialog-ok').click());
+    await page.waitForTimeout(800);
+    ok(posts.some((p) => p.__url === 'monzo.php' && p.action === 'disconnect') && /Client saved · not connected/.test(await detail()), 'disconnected: the client stays for next time');
+    // A person without full access sees the link but is offered no setup.
+    Object.assign(LIVE, { state: 'off', client: false });
+    await page.evaluate(() => { window.__me = { full: false, caps: { money: true } }; pmRenderDetail(); });
+    ok(!(await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]'))), 'someone without full access is offered no setup');
+    await page.evaluate(() => { window.__me = null; });
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(ov <= 0, 'no sideways scroll (' + ov + ')');
     ok(!errors.length, 'no page errors ' + JSON.stringify(errors));

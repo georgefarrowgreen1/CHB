@@ -750,6 +750,47 @@ at developers.monzo.com; nothing here assumes it.
   **ui-test-statements.js** (the screens, with the REAL parser run through the php CLI behind a stubbed endpoint;
   also driven by hand at 360/1280 in both themes). Budgets: admin.js +9.5KB, admin.css +0.5KB gz (owner-only).
 
+## The live link to Monzo Business (built and pushed to main without a PR or CI, at the owner's ask)
+
+**Asked for as "add the live link".** Monzo's developer API documents only `uk_retail` / `uk_retail_joint`, so
+whether it shares a BUSINESS account is Monzo's call: the link takes only an account whose type says business
+(`monzo_pick_account`) and otherwise says "Monzo shared a personal account, not the business account.
+Statements stay the way in" (`no_business`). **A personal account's payments must never land in the business
+books.** The statements route is untouched and still works alongside.
+- **Files**: `monzo-lib.php` (pure — the connect URL, the client refusal, token reading, refresh-due, the account
+  choice, `monzo_since`, `monzo_line`, `monzo_health`), `monzo-sync.php` (IO lib — `monzo_http`, `monzo_token`
+  with one-time refresh rotation, `monzo_check`, `monzo_sync` under `GET_LOCK('chb_monzo_sync')`),
+  `monzo.php` (admin: status / save_client / connect / check / sync / disconnect; people-lib gives status, check
+  and sync to `money`, the rest is full access), `monzo-callback.php` (Monzo's redirect).
+- **Stores**: `monzo-client` and `monzo-auth` are PRIVATE (encrypted; a config const `MONZO_CLIENT_ID` /
+  `MONZO_CLIENT_SECRET` wins); `monzo-link` is internal. Payments land in `bank_lines` with `import_id 0`, keyed
+  `m:<Monzo transaction id>` — the SAME key a statement's Transaction ID makes, so a payment that arrives both ways
+  is one payment. `monzo_line` skips declined, still-pending (`settled === ''`), £0 and non-GBP transactions, names
+  pots from `/pots`, and dates in London time. `statement_auto` sorts the Square payouts and pot moves exactly as
+  for a statement.
+- **The callback is authorised by a single-use state, not the session** (sha256 in `monzo-link.pending`, 15
+  minutes, removed before the code is exchanged): Monzo's sign-in arrives by email, and on a phone that link opens
+  in the browser rather than the installed app, which has its own cookies. The page it shows says what is left
+  (approve in the Monzo app) and links back to `?open=accounts:bank`. Posture `token` + rate limit.
+- **The five-minute window**: Monzo shares full history only in the first five minutes after authentication, then
+  the last 90 days. The page polls `check` every 5s (ten minutes) while waiting for approval, and the check that
+  sees the business account syncs at once from the start of the tax year; later syncs ask from ten days behind the
+  newest live payment (`MONZO_OVERLAP_DAYS`, so a card payment that settled late arrives), never older than 89 days.
+- **Freshness**: the daily self-repair syncs and passes `$live` to `statement_reminder_due`, which stands down
+  while live (`monzo_is_live`); a page visit kicks a quiet sync when the last is over an hour old (nothing waits on
+  Monzo). The statements status carries `live`, so the page makes one request. Live: Monzo's balance leads the
+  bank page ("Balance now", with pots), the landing row says "Live · synced 13:51", the due-statement card and the
+  reminder row stand down. A refresh Monzo refuses, or a 401, drops the token and shows "Connect Monzo again".
+- **A client must be CONFIDENTIAL** (secrets starting `mnzpub` are refused: Monzo gives a non-confidential client
+  no refresh token, so it would stop every six hours). Monzo's API errors reach the page through `chbActErrSay`,
+  which only passes a sentence of **≤120 characters** — the first refusal was longer and read as a generic
+  failure.
+- Gates written: `test-monzo.php` (51, CI-wired, deploy-excluded, counter `mzc()`), test-integration **§54** (the
+  real endpoints against a FAKE Monzo started on its own port — `MONZO_API_BASE` / `MONZO_AUTH_BASE` are defined
+  only in the harness's config copy), and the live half of `ui-test-statements.js`. Break-tested on the account
+  choice, the declined skip and the five-minute window. §54 passed in full once before a final edit to its
+  null-check; after that, at the owner's ask, nothing more was run before pushing.
+
 ## The Money area is FIVE ANSWERS, not an index
 
 **CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.

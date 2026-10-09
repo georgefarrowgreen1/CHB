@@ -18522,6 +18522,8 @@ function pmBankLoad() {
         __pmBankQ = null;
         pmRenderList();
         if (__pmOpen === 'bank') pmRenderDetail();
+        pmMzWatch();
+        pmMzKick();
     })();
     return __pmBankQ;
 }
@@ -18601,61 +18603,114 @@ function pmBankRow(l) {
         ${n > 1 ? `<div class="pm-bsame"><button type="button" class="pm-linkbtn" data-pm="bank-all" data-arg="${l.id}|${escapeHtml(s.same)}">Do the same for all ${n} from ${escapeHtml(l.name)}</button></div>` : ''}
     </div>`;
 }
-// On the landing: the way in, the monthly ask, or the account in one row.
+// The live link to Monzo (monzo.php), as the statements answer carries it.
+const pmLive = () => (__pmBank && __pmBank.live) || { state: 'off' };
+const pmLiveOk = () => pmLive().state === 'live';
+// Connected in some way (a token held, whatever its state).
+const pmLiveOn = () => ['approve', 'syncing', 'live', 'stale', 'error', 'no_business'].includes(pmLive().state);
+// "10:42" today, "yesterday", else the date.
+function pmWhen(sec) {
+    if (!sec) return '';
+    const t = sec * 1000;
+    const n = pmDaysFrom(t);
+    if (n === 0) { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; }
+    return n === -1 ? 'yesterday' : pmDm(t);
+}
+// On the landing: the way in, what needs the owner, or the account in one row.
 function pmBankCardHtml() {
     const B = __pmBank;
     if (!B || !B.ready) return '';
-    if (!B.on) {
+    const L = pmLive();
+    const card = (attn, ic, title, sub, acts, label) => `<section class="pm-bankcard${attn ? ' is-attn' : ''}" aria-label="${escapeHtml(label)}">
+        <div class="pm-bc-top"><span class="pm-mic ${attn ? 'out' : 'pay'}" aria-hidden="true">${ic}</span><span class="pm-main"><span class="pm-t">${title}</span><span class="pm-s">${sub}</span></span></div>
+        <div class="pm-acts-row">${acts}</div></section>`;
+    if (L.state === 'approve') {
+        return card(true, PM_IC.bank, 'Approve access in the Monzo app', 'Monzo sent a notification asking you to allow it. Once you do, the payments come in by themselves.',
+            '<button type="button" class="pm-btn primary" data-pm="bank">Open Monzo Business</button>', 'Monzo is waiting for approval');
+    }
+    if (L.state === 'reconnect' || L.state === 'stale' || L.state === 'error') {
+        return card(true, PM_IC.alert, L.state === 'reconnect' ? 'Connect Monzo again' : 'Monzo hasn’t synced', escapeHtml(L.say || ''),
+            '<button type="button" class="pm-btn primary" data-pm="bank">Open Monzo Business</button>', 'The Monzo link needs you');
+    }
+    if (!B.on && !pmLiveOn()) {
         if (pmBankHidden()) return '';
-        return `<section class="pm-bankcard" aria-label="Your business bank account">
-            <div class="pm-bc-top"><span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span><span class="pm-main"><span class="pm-t">Add your Monzo Business statements</span><span class="pm-s">Every payment in and out of the business account, matched to bookings. About a minute a month.</span></span></div>
-            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="bank-hide">Not now</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add a statement</button></div></section>`;
+        return card(false, PM_IC.bank, 'Bring in your Monzo Business account', 'Every payment in and out of the business account, matched to bookings: live from Monzo, or a statement a month.',
+            '<button type="button" class="pm-btn second" data-pm="bank-hide">Not now</button><button type="button" class="pm-btn primary" data-pm="bank">Set up</button>', 'Your business bank account');
     }
     const d = B.due || {};
-    if (d.due) {
-        return `<section class="pm-bankcard is-attn" aria-label="A bank statement is due">
-            <div class="pm-bc-top"><span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span><span class="pm-main"><span class="pm-t">${d.month ? `Time for ${escapeHtml(d.month)}’s statement` : 'Time for a new statement'}</span><span class="pm-s">Export from ${pmDm(pmIso(d.from))} in the Monzo app and add it here. About a minute.</span></span></div>
-            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="bank">Your bank</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add statement</button></div></section>`;
+    if (d.due && !pmLiveOk()) {
+        return card(true, PM_IC.bank, d.month ? `Time for ${escapeHtml(d.month)}’s statement` : 'Time for a new statement', `Export from ${pmDm(pmIso(d.from))} in the Monzo app and add it here. About a minute.`,
+            '<button type="button" class="pm-btn second" data-pm="bank">Your bank</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add statement</button>', 'A bank statement is due');
     }
     const last = B.last;
-    return `<div class="pm-rows pm-bankstrip"><button type="button" class="pm-mrow" data-pm="bank" aria-label="Monzo Business, ${last ? 'statements up to ' + pmDm(pmIso(last.to)) : 'no statement yet'}">
+    const sub = pmLiveOk() ? 'Live · synced ' + pmWhen(L.last_ok) : L.state === 'syncing' ? 'Fetching your payments…' : last ? 'Statements up to ' + pmDm(pmIso(last.to)) : 'No statement yet';
+    return `<div class="pm-rows pm-bankstrip"><button type="button" class="pm-mrow" data-pm="bank" aria-label="Monzo Business, ${escapeHtml(sub)}">
         <span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span>
-        <span class="pm-main"><span class="pm-t">Monzo Business</span><span class="pm-s">${last ? 'Statements up to ' + pmDm(pmIso(last.to)) : 'No statement yet'}</span></span>
+        <span class="pm-main"><span class="pm-t">Monzo Business</span><span class="pm-s">${escapeHtml(sub)}</span></span>
         <span class="pm-r">${PM_IC.chev}</span></button></div>`;
 }
 // The Needs-you row: payments the owner hasn't said what they were.
 function pmBankNeedHtml() {
-    if (!pmBankOn() || !(__pmBank.unsorted > 0)) return '';
+    if (!(pmBankOn() || pmLiveOn()) || !(__pmBank.unsorted > 0)) return '';
     const n = __pmBank.unsorted;
     return `<div class="pm-needrow">
         <span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span>
-        <button type="button" class="pm-main pm-plain" data-pm="bank"><span class="pm-t">${n} bank payment${n === 1 ? '' : 's'} to sort</span><span class="pm-s">from your Monzo Business statement</span></button>
+        <button type="button" class="pm-main pm-plain" data-pm="bank"><span class="pm-t">${n} bank payment${n === 1 ? '' : 's'} to sort</span><span class="pm-s">from your Monzo Business account</span></button>
         <span class="pm-r">${pmCap('warn', String(n))}</span></div>`;
+}
+// The live link as one row of the bank page: what it is doing and the one thing to do.
+function pmLiveRowHtml() {
+    const L = pmLive();
+    const owner = chbMayUse('owner');
+    const mini = (act, label, ok) => `<button type="button" class="pm-mini${ok ? ' ok' : ''}" data-pm="${act}">${label}</button>`;
+    const row = (ic, tone, t, sub, right, wrap) => `<div class="pm-needrow${wrap ? ' pm-wrow' : ''}"><span class="pm-mic ${tone}" aria-hidden="true">${ic}</span><span class="pm-main"><span class="pm-t">${t}</span><span class="pm-s">${sub}</span></span><span class="pm-r">${right}</span></div>`;
+    switch (L.state) {
+        case 'off': return row(PM_IC.bank, '', 'Live from Monzo', 'Payments arrive by themselves', owner ? mini('mz-setup', 'Set up') : '');
+        case 'ready': return row(PM_IC.bank, '', 'Live from Monzo', 'Client saved · not connected', owner ? mini('mz-connect', 'Connect', true) : '');
+        case 'approve': return row(PM_IC.clock, 'out', 'Approve in the Monzo app', 'Allow access when Monzo asks', `${pmCap('warn', 'Waiting')}${mini('mz-check', 'Check')}`, true);
+        case 'syncing': return row(PM_IC.bank, 'pay', 'Live from Monzo', 'Fetching your payments…', pmCap('info', 'Starting'));
+        case 'no_business': return row(PM_IC.alert, 'out', 'No business account shared', escapeHtml(L.say || ''), owner ? mini('mz-disconnect', 'Disconnect') : '', true);
+        case 'live': return row(PM_IC.bank, 'in', 'Live from Monzo', `${escapeHtml(L.account || 'Business account')} · synced ${pmWhen(L.last_ok)}`, `${pmCap('ok', 'Live')}${mini('mz-sync', 'Sync')}`, true);
+        case 'reconnect': return row(PM_IC.alert, 'bad', 'Connect Monzo again', escapeHtml(L.say || ''), owner ? mini('mz-connect', 'Connect', true) : '', true);
+        default: return row(PM_IC.alert, 'out', 'Monzo hasn’t synced', escapeHtml(L.say || ''), mini('mz-sync', 'Try again'), true);
+    }
 }
 function pmBankPage() {
     const B = __pmBank;
-    const head = pmHead('Monzo Business', 'Business account · from your statements');
+    const L = pmLive();
+    const sub = pmLiveOk() ? 'Business account · live from Monzo' : B && B.on ? 'Business account · from your statements' : 'Business account';
+    const head = pmHead('Monzo Business', sub);
     if (!B) return head + '<div class="pm-dbody"><p class="pm-note">Loading…</p></div>';
     if (!B.ready) return head + '<div class="pm-dbody"><p class="pm-note">Bank statements need a database update first. Open Manage, then Status, and run the updates.</p></div>';
     const lines = pmBankLines();
-    const add = `<div class="pm-acts"><button type="button" class="pm-btn primary" data-pm="bank-add">${PM_IC.plus}Add a statement</button></div>`;
-    if (!B.last && !lines.length) {
-        return head + `<div class="pm-dbody"><section class="pm-hero"><div class="pm-hero-top"><span>No statement yet</span></div>
-            <div class="pm-hero-sub">Export a CSV from Monzo Business and add it here. Every payment in and out is then matched to bookings and expenses, and a reminder on the 1st asks for the next one.</div></section>${add}</div>`;
-    }
     const d = B.due || {};
-    const balAt = B.balance_at ? pmIso(B.balance_at) : 0;
     const toSort = lines.filter((l) => !l.as);
     const done = lines.filter((l) => l.as).slice(0, 60);
-    let h = `<section class="pm-hero"><div class="pm-hero-top"><span>${B.balance != null ? 'Balance on ' + pmDm(balAt) : 'Balance'}</span><b>${B.balance != null ? gbp(B.balance) : '—'}</b></div>
-        <div class="pm-hero-sub">${B.balance != null ? 'From your statement. The next one brings it up to date.' : 'Your statement didn’t include a balance.'}</div></section>`;
-    h += `<div class="pm-rows">
-        <div class="pm-needrow"><span class="pm-mic pay" aria-hidden="true">${PM_IC.receipt}</span><span class="pm-main"><span class="pm-t">Statements</span><span class="pm-s">${B.first && B.last ? escapeHtml(pmDm(pmIso(B.first)) + ' to ' + pmDm(pmIso(B.last.to))) : ''}${B.uploads ? ` · ${B.uploads} added` : ''}</span></span>
-            <span class="pm-r">${d.due ? pmCap('warn', d.month ? d.month + ' due' : 'Due') : pmCap('ok', 'Up to date')}</span></div>
-        <div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.clock}</span><span class="pm-main"><span class="pm-t">Remind me on the 1st</span><span class="pm-s">On your phone, or by email</span></span>
-            <span class="pm-r"><label class="chb-switch"><input type="checkbox" data-pm="bank-remind"${B.remind ? ' checked' : ''} aria-label="Remind me on the 1st of each month"><span class="chb-switch-track" aria-hidden="true"></span></label></span></div>
-        <div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.plus}</span><span class="pm-main"><span class="pm-t">Add a statement</span><span class="pm-s">${d.due ? 'From ' + pmDm(pmIso(d.from)) + ' to today' : 'A CSV, any dates'}</span></span>
-            <span class="pm-r"><button type="button" class="pm-mini${d.due ? ' ok' : ''}" data-pm="bank-add">Add</button></span></div></div>`;
+    // The newer of the two balances: Monzo's own, or the statement's closing one.
+    const liveBal = L.balance != null && L.balance_at ? { v: L.balance, at: L.balance_at * 1000, total: L.total } : null;
+    const stmtBal = B.balance != null ? { v: B.balance, at: pmIso(B.balance_at) } : null;
+    const bal = liveBal && (!stmtBal || liveBal.at >= stmtBal.at) ? liveBal : stmtBal;
+    let h = '';
+    if (bal) {
+        const isLive = bal === liveBal;
+        h += `<section class="pm-hero"><div class="pm-hero-top"><span>${isLive ? (pmDaysFrom(bal.at) === 0 ? 'Balance now' : 'Balance on ' + pmDm(bal.at)) : 'Balance on ' + pmDm(bal.at)}</span><b>${gbp(bal.v)}</b></div>
+            <div class="pm-hero-sub">${isLive ? `From Monzo at ${pmWhen(bal.at / 1000)}${liveBal.total != null && liveBal.total > bal.v + 0.005 ? ` · ${gbp(liveBal.total)} with pots` : ''}.` : 'From your statement. The next one brings it up to date.'}</div></section>`;
+    } else if (!lines.length) {
+        h += `<section class="pm-hero"><div class="pm-hero-top"><span>Not set up yet</span></div>
+            <div class="pm-hero-sub">Connect Monzo and every payment in and out of the business account comes in by itself, matched to bookings and expenses. Or add a statement a month.</div></section>`;
+    }
+    const rows = [pmLiveRowHtml()];
+    if (B.on || B.last) {
+        rows.push(`<div class="pm-needrow"><span class="pm-mic pay" aria-hidden="true">${PM_IC.receipt}</span><span class="pm-main"><span class="pm-t">Statements</span><span class="pm-s">${B.first && B.last ? escapeHtml(pmDm(pmIso(B.first)) + ' to ' + pmDm(pmIso(B.last.to))) : ''}${B.uploads ? ` · ${B.uploads} added` : ''}</span></span>
+            <span class="pm-r">${pmLiveOk() ? pmCap('unk', 'Not needed') : d.due ? pmCap('warn', d.month ? d.month + ' due' : 'Due') : pmCap('ok', 'Up to date')}</span></div>`);
+    }
+    if (B.on && !pmLiveOk()) {
+        rows.push(`<div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.clock}</span><span class="pm-main"><span class="pm-t">Remind me on the 1st</span><span class="pm-s">On your phone, or by email</span></span>
+            <span class="pm-r"><label class="chb-switch"><input type="checkbox" data-pm="bank-remind"${B.remind ? ' checked' : ''} aria-label="Remind me on the 1st of each month"><span class="chb-switch-track" aria-hidden="true"></span></label></span></div>`);
+    }
+    rows.push(`<div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.plus}</span><span class="pm-main"><span class="pm-t">Add a statement</span><span class="pm-s">${pmLiveOk() ? 'For anything older' : d.due ? 'From ' + pmDm(pmIso(d.from)) + ' to today' : 'A CSV, any dates'}</span></span>
+        <span class="pm-r"><button type="button" class="pm-mini${d.due && !pmLiveOk() ? ' ok' : ''}" data-pm="bank-add">Add</button></span></div>`);
+    h += `<div class="pm-rows">${rows.join('')}</div>`;
     if (toSort.length) {
         h += `<div class="pm-dcap is-attn">To sort · ${B.unsorted || toSort.length}</div><div class="pm-rows">${toSort.slice(0, __pmBankShown).map(pmBankRow).join('')}</div>`;
         if (toSort.length > __pmBankShown) h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-more">Show ${Math.min(40, toSort.length - __pmBankShown)} more</button></div>`;
@@ -18670,8 +18725,11 @@ function pmBankPage() {
             return cap + pmBankRow(l);
         }).join('')}</div>`;
     }
-    h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-remove">Stop adding statements</button></div>
-        <p class="pm-note">A statement is read once and kept as payments. The app never signs in to your bank, and a payment already here is never added twice.</p>`;
+    const foot = [];
+    if (pmLiveOn() && chbMayUse('owner')) foot.push('<button type="button" class="pm-linkbtn" data-pm="mz-disconnect">Disconnect Monzo</button>');
+    if (B.on) foot.push('<button type="button" class="pm-linkbtn" data-pm="bank-remove">Stop adding statements</button>');
+    if (foot.length) h += `<div class="pm-acts">${foot.join('')}</div>`;
+    h += `<p class="pm-note">${pmLiveOn() ? 'The link only reads your payments: this app never moves money. ' : 'A statement is read once and kept as payments. '}A payment already here is never added twice.</p>`;
     return head + `<div class="pm-dbody">${h}</div>`;
 }
 
@@ -18957,6 +19015,151 @@ async function pmBankRemove() {
     }
 }
 
+// ── The live link: set up once, then it looks after itself ──
+let __pmMzPoll = 0;
+let __pmMzPollUntil = 0;
+let __pmMzKicked = false;
+// Waiting for approval in the app: ask every five seconds while the page is open,
+// for ten minutes. Monzo shares the whole history only in the first five, and
+// 'check' fetches it the moment approval lands.
+function pmMzWatch() {
+    const L = pmLive();
+    if (L.state !== 'approve') { clearTimeout(__pmMzPoll); __pmMzPoll = 0; return; }
+    if (__pmMzPoll) return;
+    if (!__pmMzPollUntil) __pmMzPollUntil = Date.now() + 600000;
+    if (Date.now() > __pmMzPollUntil) return;
+    __pmMzPoll = setTimeout(async () => {
+        __pmMzPoll = 0;
+        const v = document.getElementById('view-accounts');
+        if (!v || !v.classList.contains('active')) return;
+        await pmMzCheck(true);
+    }, 5000);
+}
+// A live link a while since its last sync fetches quietly once per visit; the
+// page shows what it has meanwhile (nothing waits on Monzo).
+function pmMzKick() {
+    const L = pmLive();
+    if (__pmMzKicked || L.state !== 'live' || Date.now() / 1000 - (L.last_ok || 0) < 3600) return;
+    __pmMzKicked = true;
+    pmMzSync(true);
+}
+function pmMzAdopt(r) {
+    if (__pmBank && r && r.live) __pmBank.live = r.live;
+}
+async function pmMzCheck(quiet) {
+    try {
+        const r = await apiPost('monzo.php', { action: 'check' });
+        pmMzAdopt(r);
+        if (r && r.sync && r.sync.ok) {
+            await pmBankLoad();
+            toast(r.sync.added ? `Monzo connected: ${r.sync.added} payment${r.sync.added === 1 ? '' : 's'} brought in.` : 'Monzo connected.', 'success');
+            return;
+        }
+        if (!quiet && pmLive().state === 'approve') toast('Not approved yet. Open the Monzo app and allow access.');
+    } catch (e) {
+        if (!quiet) toast('Couldn’t check. ' + chbActErrSay(e), 'error');
+    }
+    pmRenderList();
+    pmRenderDetail();
+    pmMzWatch();
+}
+async function pmMzSync(quiet) {
+    try {
+        const r = await apiPost('monzo.php', { action: 'sync' });
+        pmMzAdopt(r);
+        const s = (r && r.sync) || {};
+        await pmBankLoad();
+        if (!quiet) toast(s.ok ? (s.added ? `${s.added} new payment${s.added === 1 ? '' : 's'} from Monzo.` : 'Up to date: nothing new.') : (s.error || 'Couldn’t sync.'), s.ok ? 'success' : 'error');
+    } catch (e) {
+        if (!quiet) toast('Couldn’t sync. ' + chbActErrSay(e), 'error');
+    }
+}
+async function pmMzConnect() {
+    try {
+        const r = await apiPost('monzo.php', { action: 'connect' });
+        if (r && r.url) { location.href = r.url; return; }
+    } catch (e) {
+        glassAlert('Couldn’t start connecting. ' + chbActErrSay(e));
+    }
+}
+async function pmMzDisconnect() {
+    const ok = await glassConfirm('Disconnect Monzo?\n\nNo more payments come in by themselves. Those already here, and everything recorded from them, stay as they are. You can connect again any time.', 'Disconnect');
+    if (!ok) return;
+    try {
+        const r = await apiPost('monzo.php', { action: 'disconnect' });
+        pmMzAdopt(r);
+        toast('Monzo disconnected.');
+        await pmBankLoad();
+    } catch (e) {
+        glassAlert('Couldn’t disconnect. ' + chbActErrSay(e));
+    }
+}
+// Setting up: make a client at developers.monzo.com, paste it here, connect.
+function pmMzSheet() {
+    const L = pmLive();
+    const st = { step: L.client ? 3 : 1, err: '', busy: false, copied: false };
+    const steps = () => `<div class="pm-steps" aria-hidden="true">${['Create', 'Paste', 'Connect'].map((t, i) => `<span class="${i + 1 < st.step ? 'done' : i + 1 === st.step ? 'now' : ''}"><i></i>${t}</span>`).join('')}</div>`;
+    const draw = () => {
+        let html = '';
+        let save = null;
+        if (st.step === 1) {
+            html = `${steps()}<h3>Create a client in Monzo</h3>
+                <ol class="pm-howto">
+                    <li><span><b>Sign in at developers.monzo.com</b><small>With the email your Monzo Business account uses</small></span></li>
+                    <li><span><b>Choose Clients, then New OAuth client</b><small>Name it Cottage Holidays Blakeney</small></span></li>
+                    <li><span><b>Redirect URL</b><small class="pm-url">${escapeHtml(L.redirect || '')}</small><button type="button" class="pm-copy" data-pms="copy">${st.copied ? '✓ Copied' : 'Copy'}</button></span></li>
+                    <li><span><b>Confidentiality: Confidential</b><small>So Monzo keeps the link connected</small></span></li>
+                </ol>
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">I’ve made it</button></div>`;
+            save = () => { st.step = 2; st.err = ''; draw(); };
+        } else if (st.step === 2) {
+            html = `${steps()}<h3>Paste the client</h3><p>From the client you just made at developers.monzo.com. The secret is kept encrypted.</p>
+                <div class="pm-field"><label class="pm-flabel" for="pm-mz-id">Client ID</label><input id="pm-mz-id" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="oauth2client_…"></div>
+                <div class="pm-field"><label class="pm-flabel" for="pm-mz-secret">Client secret</label><input id="pm-mz-secret" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="mnzconf.…"></div>
+                ${st.err ? `<p class="pm-serr" role="alert">${escapeHtml(st.err)}</p>` : ''}
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="back">Back</button><button type="button" class="pm-btn primary" data-pms="save"${st.busy ? ' disabled' : ''}>${st.busy ? 'Saving…' : 'Save'}</button></div>`;
+            save = async () => {
+                const id = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-mz-id'));
+                const sec = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-mz-secret'));
+                const cid = id ? id.value.trim() : '';
+                const csec = sec ? sec.value.trim() : '';
+                if (!cid || !csec) { st.err = 'Paste both the client ID and the client secret.'; draw(); return; }
+                st.busy = true;
+                st.err = '';
+                draw();
+                try {
+                    const r = await apiPost('monzo.php', { action: 'save_client', client_id: cid, client_secret: csec });
+                    pmMzAdopt(r);
+                    st.step = 3;
+                } catch (e) {
+                    st.err = chbActErrSay(e);
+                }
+                st.busy = false;
+                draw();
+            };
+        } else {
+            html = `${steps()}<h3>Connect to Monzo</h3>
+                <ol class="pm-howto">
+                    <li><span><b>Monzo emails you a link</b><small>Open it on this phone or computer</small></span></li>
+                    <li><span><b>Approve access in the Monzo app</b><small>Do it straight away: Monzo shares this year’s payments only in the first five minutes, then the last 90 days</small></span></li>
+                    <li><span><b>Come back here</b><small>The payments come in by themselves from then on</small></span></li>
+                </ol>
+                <p>The link only reads your payments: this app never moves money.</p>
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Not now</button><button type="button" class="pm-btn primary" data-pms="save">Connect to Monzo</button></div>`;
+            save = () => { pmSheetClose(); pmMzConnect(); };
+        }
+        const s = pmSheet(html, save);
+        /** @type {any} */ (s).__pick = (k) => {
+            if (k === 'back') { st.step = 1; st.err = ''; draw(); }
+            else if (k === 'copy') {
+                const done = () => { st.copied = true; draw(); };
+                try { navigator.clipboard.writeText(L.redirect || '').then(done, () => toast('Couldn’t copy. Select the address and copy it.')); } catch (e) { toast('Couldn’t copy. Select the address and copy it.'); }
+            }
+        };
+    };
+    draw();
+}
+
 /* ── What a tap does ── */
 const PM_ACT = {
     menu() { const m = document.getElementById('pm-menu'); pmMenuShow(!!(m && m.hidden)); },
@@ -19037,6 +19240,11 @@ const PM_ACT = {
     'bank-more'() { __pmBankShown += 40; pmRenderDetail(); },
     'bank-remind'(a, el) { pmBankRemind(!!(el && /** @type {HTMLInputElement} */ (el).checked)); },
     'bank-remove'() { pmBankRemove(); },
+    'mz-setup'() { pmMzSheet(); },
+    'mz-connect'() { pmMzSheet(); },
+    'mz-check'() { pmMzCheck(false); },
+    'mz-sync'() { pmMzSync(false); },
+    'mz-disconnect'() { pmMzDisconnect(); },
 };
 function pmWire() {
     const v = /** @type {any} */ (document.getElementById('view-accounts'));

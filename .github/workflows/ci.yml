@@ -212,6 +212,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-statements.php
 
+      - name: Monzo live link — the business account only, never a token on the page
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-monzo.php
+
       - name: Calendar sync — a bad feed must never empty the calendar
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php

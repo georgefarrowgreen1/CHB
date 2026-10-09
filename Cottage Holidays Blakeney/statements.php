@@ -23,6 +23,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/statement-lib.php';
+require_once __DIR__ . '/monzo-sync.php';
 require_admin();
 
 const STMT_MAX_BYTES = 4000000;
@@ -151,7 +152,7 @@ route_actions([
     'status' => function ($in) {
         $set = stmt_settings();
         if (!stmt_ready()) {
-            json_out(['ok' => true, 'ready' => false, 'on' => false]);
+            json_out(['ok' => true, 'ready' => false, 'on' => false, 'live' => monzo_status()]);
         }
         $last = db()->query('SELECT * FROM bank_imports ORDER BY to_date DESC, id DESC LIMIT 1')->fetch() ?: null;
         $bal = db()->query('SELECT closing_balance, closing_at FROM bank_imports WHERE closing_balance IS NOT NULL ORDER BY closing_at DESC, id DESC LIMIT 1')->fetch() ?: null;
@@ -184,6 +185,8 @@ route_actions([
             'due' => statement_due($lastTo, date('Y-m-d')),
             'lines' => array_map('stmt_row', array_merge($toSort, $sorted)),
             'learned' => array_map(fn($r) => ['name' => (string) $r['name'], 'as' => (string) $r['sorted_as'], 'label' => (string) $r['sorted_label']], $learn),
+            // The live link, when there is one, rides the same answer (monzo-sync.php).
+            'live' => monzo_status(),
         ]);
     },
 
