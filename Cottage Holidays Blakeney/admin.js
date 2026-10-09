@@ -18077,10 +18077,12 @@ function pmLiveRowHtml() {
     switch (L.state) {
         case 'off': return row(PM_IC.bank, '', 'Live from Monzo', 'Payments arrive by themselves', owner ? mini('mz-setup', 'Set up') : '');
         case 'ready': return row(PM_IC.bank, '', 'Live from Monzo', 'Client saved · not connected', owner ? mini('mz-connect', 'Connect', true) : '');
-        case 'approve': return row(PM_IC.clock, 'out', 'Approve in the Monzo app', 'Allow access when Monzo asks', `${pmCap('warn', 'Waiting')}${mini('mz-check', 'Check')}`, true);
+        case 'approve': return row(PM_IC.clock, 'out', 'Approve in the Monzo app', 'Allow access when Monzo asks', mini('mz-check', 'Check'), true);
         case 'syncing': return row(PM_IC.bank, 'pay', 'Live from Monzo', 'Fetching your payments…', pmCap('info', 'Starting'));
         case 'no_business': return row(PM_IC.alert, 'out', 'No business account shared', escapeHtml(L.say || ''), owner ? mini('mz-disconnect', 'Disconnect') : '', true);
-        case 'live': return row(PM_IC.bank, 'in', 'Live from Monzo', `${escapeHtml(L.account || 'Business account')} · synced ${pmWhen(L.last_ok)}`, `${pmCap('ok', 'Live')}${mini('mz-sync', 'Sync')}`, true);
+        // The title and the green tile already say it is live, so the one thing on the
+        // right is Sync; "Business account ending 2842" shortens so the line fits a phone.
+        case 'live': return row(PM_IC.bank, 'in', 'Live from Monzo', `${escapeHtml(String(L.account || '').replace(/^business account ending /i, 'Ending ') || 'Business account')} · synced ${pmWhen(L.last_ok)}`, mini('mz-sync', 'Sync'), true);
         case 'reconnect': return row(PM_IC.alert, 'bad', 'Connect Monzo again', escapeHtml(L.say || ''), owner ? mini('mz-connect', 'Connect', true) : '', true);
         default: return row(PM_IC.alert, 'out', 'Monzo hasn’t synced', escapeHtml(L.say || ''), mini('mz-sync', 'Try again'), true);
     }
