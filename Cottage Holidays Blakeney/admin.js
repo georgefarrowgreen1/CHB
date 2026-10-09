@@ -10196,10 +10196,8 @@ function inboxFolder(which) {
 // the same counts the folder chips show (enquiries live; chats/emails read
 // from their chips so this never re-fetches anything).
 function inboxSubline() {
-    // The verdicts render here; the sentence under the page title is NOT touched. It used to
-    // restate the counts ("2 enquiries waiting", "All caught up…", "2 declined enquiries…") and so
-    // changed under the reader's eyes while the answers beneath it already carried every count.
-    // It stays the one line the page ships with.
+    // The verdicts render here. There is no sentence under the page title any more
+    // (the one look carries no explanation lines); the answers beneath carry every count.
     inboxVerdicts();
 }
 // The landing's verdicts + exceptions — composed from the SAME stores and
@@ -10242,10 +10240,13 @@ function inboxVerdicts() {
             : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
     }
     // Messages — unread count from the same chip loadAdminMessages writes.
+    // Read is not answered: a conversation the guest is still waiting on keeps the
+    // folder amber after it has been opened (the list's own "Needs reply" test).
     const msgN = chip('ifold-count-msg');
-    fig('iv-sum-messages', msgN ? 'warn' : 'ok', msgN ? `${msgN} unread` : 'All read');
     const threads = Array.isArray(__msgThreads) ? __msgThreads : [];
-    const unreadT = threads.find((t) => (t.unread || 0) > 0) || threads[0];
+    const needT = threads.filter(msgNeedsReply);
+    fig('iv-sum-messages', msgN || needT.length ? 'warn' : 'ok', msgN ? `${msgN} unread` : needT.length ? `${needT.length} to answer` : 'All read');
+    const unreadT = threads.find((t) => (t.unread || 0) > 0) || needT[0] || threads[0];
     sub('iv-sub-messages', unreadT
         ? `${unreadT.name || unreadT.email || 'Visitor'} · ${(unreadT.last_body || '').slice(0, 60)}`
         : 'guest chat lands here');
@@ -10268,6 +10269,11 @@ function inboxVerdicts() {
             fig('iv-sum-email', 'unk', 'not checked yet');
             sub('iv-sub-email', 'tap to check the mailbox');
         }
+    } else if (__mbxFailed) {
+        // A mailbox that did not answer has not been checked: "Nothing new" there
+        // would be the unchecked assertion the not-checked-yet state exists to avoid.
+        fig('iv-sum-email', 'unk', 'couldn’t check');
+        sub('iv-sub-email', 'the mailbox didn’t answer');
     } else {
         const mbxN = chip('ifold-count-mbx');
         fig('iv-sum-email', mbxN ? 'warn' : 'ok', mbxN ? `${mbxN} new` : 'Nothing new');
@@ -12119,20 +12125,23 @@ function renderBookingHub() {
     hubWatchSticky(el);
 }
 let __hubDrewId = null;
-let __hubStickyIO = null;
 // The sticky bar repeats the decision card's button, so it only exists while that card is OFF screen.
 // Default (no observer, no card, old engine) is SHOWN — the observer can only ever add `.is-away`.
+// One observer per hub (keyed on its node), so the booking and enquiry hubs never unhook each other.
+const __hubStickyIO = new WeakMap();
 function hubWatchSticky(el) {
     try {
-        if (__hubStickyIO) __hubStickyIO.disconnect();
-        __hubStickyIO = null;
+        const was = __hubStickyIO.get(el);
+        if (was) was.disconnect();
+        __hubStickyIO.delete(el);
         const card = el.querySelector('.bhub-next'), bar = el.querySelector('.bhub-sticky');
         if (!card || !bar || typeof IntersectionObserver !== 'function') return;
-        __hubStickyIO = new IntersectionObserver((es) => {
+        const io = new IntersectionObserver((es) => {
             const e = es[es.length - 1];
             bar.classList.toggle('is-away', !!e && e.isIntersecting && e.intersectionRatio >= 0.9);
         }, { threshold: [0, 0.9, 1] });
-        __hubStickyIO.observe(card);
+        io.observe(card);
+        __hubStickyIO.set(el, io);
     } catch (e) {}
 }
 // (hubChipsHtml — the header's five-fact status-chip row — is REMOVED: the
@@ -24419,18 +24428,21 @@ function renderMessagesList() {
         .slice()
         .sort((a, b) => (msgNeedsReply(b) ? 1 : 0) - (msgNeedsReply(a) ? 1 : 0));
     const needCount = threads.filter(msgNeedsReply).length;
-    // The archived toggle docks to the RIGHT of the "Guest messages" heading
-    // (#messages-head-actions), not inline in the controls row — set just after
-    // the list renders below.
+    // With no conversations there are no controls, so the way between active and
+    // archived docks beside the "Guest messages" heading (#messages-head-actions).
     const toggle = `<button class="btn-sm msg-archived-toggle" data-act="toggleArchivedMessages">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+    // With conversations on screen the archive is one more filter, a chip beside
+    // "Needs reply" under the search; with none, the heading slot keeps the way out.
+    const archChip = `<button class="msg-filter-chip msg-archived-toggle${__msgShowArchived ? ' on' : ''}" aria-pressed="${__msgShowArchived}" data-act="toggleArchivedMessages">Archived</button>`;
     const controls = threads.length
         ? `<div class="msg-inbox-controls">
                 <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search messages" aria-label="Search by name, email or message text" value="${escapeHtml(__msgSearch)}" data-act-input="onMsgSearch" data-pass="value" autocomplete="off">
-                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button><button class="btn-sm msg-archived-toggle" data-act="markAllMessagesRead" title="Mark every guest message as read">Mark all read</button>` : ''}
+                <div class="msg-chips">${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" aria-pressed="${__msgUnansweredOnly}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button>` : ''}${archChip}${needCount && !__msgShowArchived ? `<button class="msg-markread" data-act="markAllMessagesRead" title="Mark every guest message as read">Mark all read</button>` : ''}</div>
            </div>`
         : '';
     const rows = threads.length
-        ? threads
+        ? '<div class="msg-threads">' +
+          threads
               .map((t) => {
                   const needs = msgNeedsReply(t);
                   const hay = (
@@ -24452,14 +24464,14 @@ function renderMessagesList() {
                 </button>`;
               })
               .join('') +
+          '</div>' +
           `<p id="msg-noresults" class="msg-noresults" style="display:none;">No conversations match.</p>`
         : `<p style="font-size:var(--fs-sub);color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
     list.innerHTML = controls + rows;
-    // Dock the Show-archived toggle to the right of the "Guest messages" heading
-    // (frees the controls row; reads better on mobile). Guard: the slot only
-    // exists in the Inbox → Messages folder, not in any other render context.
+    // The heading slot carries the archive toggle only when the list is empty.
+    // Guard: the slot only exists in the Inbox → Messages folder.
     const headActions = document.getElementById('messages-head-actions');
-    if (headActions) headActions.innerHTML = toggle;
+    if (headActions) headActions.innerHTML = threads.length ? '' : toggle;
     applyMsgFilter();
     if (hadFocus) {
         const s = document.getElementById('msg-search');
@@ -24478,7 +24490,10 @@ function onMsgSearch(v) {
 function toggleUnansweredOnly() {
     __msgUnansweredOnly = !__msgUnansweredOnly;
     const chip = document.getElementById('msg-unanswered');
-    if (chip) chip.classList.toggle('on', __msgUnansweredOnly);
+    if (chip) {
+        chip.classList.toggle('on', __msgUnansweredOnly);
+        chip.setAttribute('aria-pressed', String(__msgUnansweredOnly));
+    }
     applyMsgFilter();
 }
 // Filter the inbox purely by toggling row visibility (no rebuild → no focus loss).
@@ -24498,6 +24513,9 @@ function applyMsgFilter() {
     });
     const none = document.getElementById('msg-noresults');
     if (none) none.style.display = rows.length && shown === 0 ? 'block' : 'none';
+    // An emptied list card is an empty box; the sentence below says why.
+    const card = /** @type {HTMLElement|null} */ (list.querySelector('.msg-threads'));
+    if (card) card.style.display = shown === 0 ? 'none' : '';
 }
 // Owner-editable instant answers for the chat quick chips.
 function renderChatAnswersEditor() {
@@ -30551,6 +30569,8 @@ function renderEnquiryHub() {
         ${gbPauseRow}
         <div class="bhub-grid">${msgCard}${quoteGrp}${intelGrp}${factsGrp}</div>
         ${sticky}`;
+    // The dock repeats the state card's own button, so it stands down while that card is on screen.
+    hubWatchSticky(el);
 }
 
 // ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
@@ -32352,6 +32372,7 @@ let __mbxSent = [];
 let __mbxTab = 'inbox';
 let __mbxQuery = '';
 let __mbxHasMore = false;
+let __mbxFailed = false; // the last load of the mailbox did not answer
 // The site's own notifications (the alerts it sends the owner land in the same
 // inbox it sends from) are filtered SERVER-side; mailbox.php still returns the
 // count it set aside, and the client deliberately does not render it. The owner
@@ -32630,14 +32651,17 @@ async function loadMailbox() {
         __mbxMessages = inbox.messages || [];
         __mbxHasMore = !!inbox.hasMore;
         __mbxSent = sent.messages || [];
+        __mbxFailed = false;
         // NO TAB/QUERY RESET. This is a DATA refresh and its own Refresh button reaches
         // it, so resetting threw the owner from Sent back to Inbox and wiped their search
         // (measured: sent → inbox, "old" → ""). On a first open both are already at their
         // declared defaults, so nothing about that changes.
         renderMailboxList();
     } catch (e) {
+        __mbxFailed = true;
         el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
             <div class="bhub-btn-row"><button class="btn-sm btn-edit" data-act="loadMailbox">Try again</button></div>`;
+        try { inboxVerdicts(); } catch (e2) {}
     }
 }
 async function mailboxOlder() {
@@ -33243,7 +33267,7 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 try { chbFrameSync(); } catch (e) {}
 // The back office's buttons take their kind from here on (oneLookButtons) — Manage
 // first, then each area as it joined the one look.
-try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
+try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

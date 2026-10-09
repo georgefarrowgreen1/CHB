@@ -185,10 +185,12 @@ const NEST = (rootSel) => {
       const bodyOfCard = name === 'Today bookings';
       // A screen that has joined the one look draws its run of rows as ONE list
       // card, so the run's ends take the CARD radius; elsewhere they keep the cell's.
-      const oneLook = await page.evaluate((sel) => !!(document.querySelector(sel) || document.body).closest('.one-look'), host);
+      // Inside an open fold the run is the card's own INSET panel, on the cell radius.
+      const where = await page.evaluate((sel) => { const h = document.querySelector(sel) || document.body; return { oneLook: !!h.closest('.one-look'), inFold: !!h.closest('.bhub-fold') }; }, host);
+      const oneLook = where.oneLook && !where.inFold;
       const end = oneLook ? card : cell;
       ok((bodyOfCard ? r.firstTL === 0 && r.lastBL === card : r.firstTL === end && r.lastBL === end) && r.firstBL === 0 && r.lastTL === 0,
-        `${w} ${name}: the outer corners are the ${oneLook ? 'one look\'s CARD' : 'CELL'} radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, end ${end})`);
+        `${w} ${name}: the outer corners are the ${oneLook ? 'one look\'s CARD' : where.inFold ? 'inset panel\'s CELL' : 'CELL'} radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, end ${end})`);
       ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
       ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),
         `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')})`);

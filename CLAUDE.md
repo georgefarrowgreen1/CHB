@@ -803,6 +803,21 @@ guard removed, the window scope removed — each fails its own checks).
   are `.xp-row` now: a caption per tax year with its total, one list card, a line per expense (what, then date ·
   cottage, the amount, its tools as 32px glyphs whose reach is 44 and never overlaps), and "Add an expense" is the
   row at the foot that opens the form in place.
+- **THE INBOX JOINS NEXT** (section 16). The sentence under the title went (the answers carry every count); the
+  folder chevrons are the drawn one; inside an open fold a list is the card's own INSET panel (inset ground, no edge,
+  the cell radius on the run's ends), while at ≥1200 the same lists are list cards on the card radius. The guest
+  conversations are wrapped in ONE `.msg-threads` card — a wrapper, not per-row corners, because `applyMsgFilter`
+  hides rows by `display` and `:has(+ …)` corners would square the wrong ends of a filtered run. Under ONE search:
+  the filters are chips ("Needs reply · N", "Archived" with `aria-pressed`) and "Mark all read" is the small
+  outlined pill after them; the heading slot carries the archive toggle only when the list is EMPTY (the way back out
+  of an empty archive). The thread sheet names its own entry point (`data-focus=".modal-box"`): focusInto's
+  first-field heuristic landed on the Quick-replies `<select>`, painting a focus ring on a picker nobody chose.
+- **TWO INBOX VERDICTS CLAIMED MORE THAN THEY KNEW.** A mailbox load that FAILED read "✓ Nothing new" (the fetched-
+  once branch never asked whether the fetch worked) — `__mbxFailed` makes it "couldn't check · the mailbox didn't
+  answer". And the Messages folder read "✓ All read" over a conversation still waiting on a reply: read is not
+  answered, so a `msgNeedsReply` thread keeps it amber ("1 to answer"). And the enquiry hub's dock repeated the state
+  card's Approve while the card was on screen — `hubWatchSticky` now runs for both hubs, its observers kept in a
+  WeakMap per hub node so one hub never unhooks the other's.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
@@ -814,8 +829,11 @@ guard removed, the window scope removed — each fails its own checks).
   one-look screen ends on the CARD radius; elsewhere the cell's), ui-test-onelook §7 (the outside-the-scope probe
   sits on a guest view now) and **§8** (Payments and Key safes: tools as rows, one caption tier, the named back
   link, an expense as one line in one card, the key-safe list a shadowless card — break-tested on the key-safe
-  scope), search-test (the occupancy check went with the
-  function).
+  scope), **§9** (the Inbox: no sentence under the title, the drawn chevron, one conversations card, the chips, the
+  empty archive's way back, and the three honest-verdict fixes — each break-tested), ui-test-hig (a run inside an open
+  fold is the inset panel on the CELL radius), ui-test-mailbox (no sentence under the title; the declined row's
+  buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down), search-test (the occupancy
+  check went with the function).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 

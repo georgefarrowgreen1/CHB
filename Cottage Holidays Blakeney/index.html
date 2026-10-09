@@ -1128,7 +1128,7 @@
 
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
     <!-- ================= INBOX (dedicated back-office screen) ================= -->
-    <main id="view-inbox" class="page-view container wide">
+    <main id="view-inbox" class="page-view container wide one-look">
     </main>
 
     <!-- one-look: the Manage screens share one set of parts (admin.css "ONE LOOK ACROSS MANAGE"). -->
@@ -1199,8 +1199,8 @@
     <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
     <!-- A SHEET ≤640 like the rest of the family. The max-width moved into a
          :where() rule in app.css — an inline one outranks the sheet. -->
-    <div id="messages-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" data-act="backdropClose" data-close="closeMessagesModal">
-        <div class="modal-box glass-panel">
+    <div id="messages-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" data-focus=".modal-box" data-act="backdropClose" data-close="closeMessagesModal">
+        <div class="modal-box glass-panel" tabindex="-1">
             <div class="msg-head">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:var(--fs-title);">Messages</h3>
                 <div class="msg-head-acts">
@@ -1888,7 +1888,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1125"></script>
+    <script defer src="app.js?v=1126"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

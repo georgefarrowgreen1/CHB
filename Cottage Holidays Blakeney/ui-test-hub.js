@@ -1988,6 +1988,19 @@ let approveWill409 = false;
   ok(clash.noApprove && /Edit the dates/.test(clash.sticky),
     `Approve is withdrawn everywhere; the dock offers Edit the dates instead (${clash.sticky})`);
   ok(clash.attn && clash.attnActs, 'the blocker is a Needs-attention row routing to their booking');
+  // The dock repeats the state card's own button, so — the booking hub's rule — it stands down while
+  // that card is on screen. This hub never had the observer: two "Approve booking" a screen apart.
+  const enqAway = await page.evaluate(async () => {
+    await window.openEnquiryHub('e7');
+    window.scrollTo(0, 0);
+    for (let i = 0; i < 40; i++) {
+      const b = document.querySelector('#enquiry-hub-content .bhub-sticky');
+      if (b && b.classList.contains('is-away')) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  });
+  ok(enqAway, 'the enquiry hub\u2019s dock stands down while its own Approve card is on screen');
 
   // …AND A REFUSAL FROM THE SERVER PUTS THE PAGE RIGHT, rather than leaving it
   // asserting the old fact. Approval RE-CHECKS the calendar under book_lock, so the

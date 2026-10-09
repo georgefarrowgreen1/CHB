@@ -15,7 +15,10 @@
 //   §7 one caption tier on Manage, the old tracked capitals left alone outside it;
 //   §8 Payments and Key safes joined: tools as rows, one caption tier, a back link
 //      that names Payments, an expense as one line in one card (its rows were
-//      wearing the guest Things-to-do class, whose display:flex broke the grid).
+//      wearing the guest Things-to-do class, whose display:flex broke the grid);
+//   §9 the Inbox joined: no sentence under the title, one chevron, the conversations
+//      one list card under one search with chips, and two verdicts that no longer
+//      claim more than they know (a read-but-unanswered chat, a mailbox that failed).
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -271,6 +274,75 @@ async function open(browser, base, width) {
   ok(pay.add, 'adding an expense is the row at the foot of the list');
   ok(pay.kinds === 0, `no Payments button keeps an old look class (${pay.kinds})`);
   ok(pay.ksRadius === '20px' && pay.ksShadow === 'none', `the key safes list is a card on the one radius, no shadow (${pay.ksRadius}, ${pay.ksShadow})`);
+
+  console.log('§9 the Inbox wears the same parts');
+  // The mailbox answers with an error, so the Email verdict's failed state is driven for real.
+  await page.route(/mailbox\.php/, (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Connect failed' }) }));
+  const ib = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await openInbox();
+    await wait(400);
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // A conversation already READ but still waiting on a reply, beside one that was answered.
+    __msgThreads = [
+      { thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Can we check in early?', last_at: now, last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
+      { thread_id: 'b2', name: 'Mark Ellis', email: 'm@example.com', last_body: 'No dogs, sorry.', last_at: now, last_role: 'admin', unread: 0, archived: 0, is_guest: 0 },
+    ];
+    __msgShowArchived = false;
+    document.getElementById('messages-list').dataset.loaded = '1';
+    inboxFolder('messages');
+    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
+    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
+    renderMessagesList();
+    inboxVerdicts();
+    await wait(120);
+    const list = document.getElementById('messages-list');
+    const cards = list.querySelectorAll('.msg-threads');
+    const rowsIn = cards[0] ? cards[0].querySelectorAll('.msg-thread-row').length : 0;
+    const search = document.getElementById('msg-search').getBoundingClientRect();
+    const ctl = list.querySelector('.msg-inbox-controls').getBoundingClientRect();
+    const chips = [...list.querySelectorAll('.msg-chips button')].map((b) => b.textContent.trim());
+    const head = document.getElementById('messages-head-actions').children.length;
+    const verdict = document.getElementById('iv-sum-messages').textContent.trim();
+    const chev = [...document.querySelectorAll('#inbox-landing .bhub-fold-row .bhub-chev')];
+    const chevSvg = chev.filter((c) => c.querySelector('svg')).length;
+    // The archive is a chip; an empty archive keeps a way back beside the heading.
+    const arch = [...list.querySelectorAll('.msg-chips button')].find((b) => /^Archived$/.test(b.textContent.trim()));
+    __msgShowArchived = true;
+    __msgThreads = [];
+    renderMessagesList();
+    await wait(60);
+    const back = document.getElementById('messages-head-actions').textContent.trim();
+    __msgShowArchived = false;
+    // Email: a mailbox that did not answer has not been checked.
+    inboxFolder('email');
+    await wait(900);
+    const email = document.getElementById('iv-sum-email').textContent.trim();
+    return {
+      subline: !!document.getElementById('inbox-subline'), cards: cards.length, rowsIn,
+      searchFull: Math.round(search.width) >= Math.round(ctl.width) - 1, chips, head, verdict,
+      chev: chev.length, chevSvg, archPressed: arch ? arch.getAttribute('aria-pressed') : '', back, email,
+    };
+  });
+  ok(!ib.subline, 'no sentence under the Inbox title');
+  ok(ib.chev >= 3 && ib.chevSvg === ib.chev, `every folder row ends in the one chevron (${ib.chevSvg} of ${ib.chev} are the drawn chevron)`);
+  ok(ib.cards === 1 && ib.rowsIn === 2, `the conversations are one list card (${ib.cards} card, ${ib.rowsIn} rows inside)`);
+  ok(ib.searchFull, 'the search is the one field, on its own line');
+  ok(ib.chips.join('|') === 'Needs reply · 1|Archived|Mark all read', `the filters are chips under it, the action last (${ib.chips.join(' · ')})`);
+  ok(ib.head === 0, 'with conversations on screen the heading carries no second archive control');
+  ok(ib.archPressed === 'false', `the archive chip says whether it is on (aria-pressed ${ib.archPressed})`);
+  ok(/Active conversations/.test(ib.back), `an empty archive keeps the way back beside the heading ("${ib.back}")`);
+  ok(/1 to answer/.test(ib.verdict), `a conversation read but not answered keeps the folder amber ("${ib.verdict}")`);
+  ok(/couldn.t check/i.test(ib.email) && !/Nothing new/.test(ib.email), `a mailbox that did not answer is not "Nothing new" ("${ib.email}")`);
+  const focus = await page.evaluate(async () => {
+    openMessageThread('a1');
+    await new Promise((r) => setTimeout(r, 500));
+    const a = document.activeElement;
+    const r = { id: a && a.id, box: !!(a && a.matches('#messages-modal .modal-box')) };
+    try { closeMessagesModal(); } catch (e) {}
+    return r;
+  });
+  ok(focus.box && focus.id !== 'msg-canned', `the thread sheet takes focus itself, not the quick-replies picker (${focus.id || (focus.box ? 'the sheet' : '?')})`);
 
   await page.close();
   await t.done(fails);
