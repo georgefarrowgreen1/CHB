@@ -150,7 +150,7 @@ const subsOk = (name, list, floor) => {
     const page = await newPage(w, false);
     await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1500);
     if (w !== 1280) subsOk(`Today ${w}`, await page.evaluate(SUBS, '#needs-you-list .ny-sub'), 2);
-    if (w === 390) reachOk('Today money line', await page.evaluate(REACH, '#bookings-owed .bk-owed'), 1);
+    if (w === 390) reachOk('Today money line', await page.evaluate(REACH, '#bookings-owed .head-pill'), 1);
     // §4 the lane
     const lane = await page.evaluate(() => {
       const l = [...document.querySelectorAll('.tl-label')].find((el) => /Jollyboat/.test(el.getAttribute('title') || ''));

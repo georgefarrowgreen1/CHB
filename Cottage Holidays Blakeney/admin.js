@@ -9776,11 +9776,45 @@ function manageStatusPill(tone) {
         pill.style.display = 'none';
         return;
     }
-    pill.className = 'cron-pill ' + m[0];
+    pill.className = 'cron-pill head-pill ' + m[0];
     pill.dataset.tone = tone;
     if (pill.textContent !== m[1]) pill.innerHTML = `<span class="cron-pill-dot" aria-hidden="true"></span>${escapeHtml(m[1])}`;
     pill.setAttribute('aria-label', m[1] + '. Open Status');
     pill.style.display = '';
+}
+// EVERY PAGE STATES ITS STATUS THE SAME WAY: one pill beside its title, the
+// Manage pill's own look (owner-asked, from three screenshots of the same idea in
+// three looks — a card row, green words, a tinted panel). The dot is the tone;
+// the words are the page's own. A pill that leads somewhere is a button, one that
+// only states is a status. '' tone or text renders nothing, so a page that does
+// not know yet claims nothing.
+const HEAD_PILL_TONE = { ok: 'ok', warn: 'warn', bad: 'danger', unk: 'unk' };
+function headPill(tone, text, opts) {
+    const cls = HEAD_PILL_TONE[tone];
+    if (!cls || !text) return '';
+    const o = opts || {};
+    const inner = `<span class="cron-pill-dot" aria-hidden="true"></span>${escapeHtml(text)}`;
+    const lab = o.label ? ` aria-label="${escapeHtml(o.label)}"` : '';
+    return o.act
+        ? `<button type="button" class="cron-pill head-pill ${cls}" data-tone="${tone}" ${o.act}${lab}>${inner}</button>`
+        : `<span class="cron-pill head-pill is-static ${cls}" data-tone="${tone}" role="status"${lab}>${inner}</span>`;
+}
+// Writes a pill into its slot only when it changed, so a repaint never restarts
+// anything or drops focus from a pill the owner is on. Two memos because innerHTML
+// normalises on write (the Today ops-line lesson); the second also notices a slot
+// something else emptied.
+function headPillSet(slot, html) {
+    const el = /** @type {any} */ (typeof slot === 'string' ? document.getElementById(slot) : slot);
+    if (!el || (el.__pillHtml === html && el.innerHTML === el.__pillDom)) return false;
+    const was = el.textContent || '';
+    el.innerHTML = html;
+    el.__pillHtml = html;
+    el.__pillDom = el.innerHTML;
+    // A pill whose words CHANGED settles (3px, no scale — it was already on screen);
+    // the first paint stays still.
+    const p = el.firstElementChild;
+    if (p && was && was !== (el.textContent || '')) p.classList.add('bk-verdict-settle');
+    return true;
 }
 function manageVerdicts() {
     const host = document.getElementById('manage-verdicts');
@@ -10460,44 +10494,27 @@ function renderBookings() {
         // says Bookings (and the longer form once wrapped beside the verdict capsule).
         sum.textContent = rows.length ? `· ${rows.length} ${label}` : '';
     }
-    // WHO OWES IS SAID ONCE, IN ONE QUIET LINE under the caption row. It used to be
-    // a count on a Needs payment tab, which was a fact dressed as a place: nobody
-    // goes to a list of who owes them nothing. Same predicate as the filter, so the
-    // line and the list it opens cannot disagree. Silence from ignorance is refused:
-    // with no bookings loaded at all it claims nothing either way.
-    const owedEl = document.getElementById('bookings-owed');
-    if (owedEl) {
-        const owers = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b));
-        let html = '';
-        if (owers.length) {
-            const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay"><span class="bk-owed-ic" aria-hidden="true">£</span><span class="bk-owed-tx"><b>£${Math.round(sumOwed).toLocaleString('en-GB')} to collect</b> <small>from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}</small></span><span class="bk-owed-go">View ${BHUB_CHEV}</span></button>`;
-        } else if (allRows.length) {
-            // The count rides this row's right edge (it is the header of the card that holds the
-            // list), so the empty and the full versions answer the same question in the same place.
-            const nWord = !q && (f === 'upcoming' || f === 'past') ? `<span class="bk-owed-n">${rows.length} ${f}</span>` : '';
-            // "Nobody owes you anything" is a claim about EVERYONE. A guest paying the
-            // owner directly (owner-arranged) still owes — say that, not "nobody".
-            const arranged = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && bookingOwnerArranged(b) && !hasCheckedOut(b));
-            const arrSum = arranged.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-            const clearTx = arranged.length
-                ? `Nothing to chase · £${Math.round(arrSum).toLocaleString('en-GB')} arranged with ${arranged.length === 1 ? '1 guest' : arranged.length + ' guests'}`
-                : 'Nobody owes you anything';
-            html = '<p class="bk-owed is-clear"><span class="bk-owed-tick" aria-hidden="true">✓</span>' + clearTx + nWord + '</p>';
-            if (nWord && sum) sum.textContent = '';
-        }
-        if (owedEl.innerHTML !== html) {
-            // A figure that CHANGED settles (3px, no scale — it was already on screen); the first
-            // paint and an unchanged repaint stay still. Compared as WORDS.
-            const was = owedEl.textContent || '';
-            owedEl.innerHTML = html;
-            const el = owedEl.firstElementChild;
-            if (el && was && was !== (owedEl.textContent || '')) {
-                void (/** @type {HTMLElement} */ (el)).offsetWidth;
-                el.classList.add('bk-verdict-settle');
-            }
-        }
+    // WHO OWES IS SAID ONCE, as Today's status pill beside its title (the Manage
+    // pill's look). It used to be a count on a Needs payment tab, then the header
+    // row of the bookings card. Same predicate as the filter, so the pill and the
+    // list it opens cannot disagree. Silence from ignorance is refused: with no
+    // bookings loaded at all it claims nothing either way.
+    const owers = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b));
+    let owedPill = '';
+    if (owers.length) {
+        const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
+        const fig = `£${Math.round(sumOwed).toLocaleString('en-GB')} to collect`;
+        owedPill = headPill('warn', fig, { act: 'data-act="openBookingsNeedsPay"', label: `${fig} from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}. Show who` });
+    } else if (allRows.length) {
+        // "Nobody owes you anything" is a claim about EVERYONE. A guest paying the
+        // owner directly (owner-arranged) still owes — say that, not "nobody".
+        const arranged = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && bookingOwnerArranged(b) && !hasCheckedOut(b));
+        const arrSum = arranged.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
+        owedPill = arranged.length
+            ? headPill('ok', 'Nothing to chase', { label: `Nothing to chase. £${Math.round(arrSum).toLocaleString('en-GB')} arranged with ${arranged.length === 1 ? '1 guest' : arranged.length + ' guests'}` })
+            : headPill('ok', 'Nobody owes you anything');
     }
+    headPillSet('bookings-owed', owedPill);
     if (!rows.length) {
         // THE STANDARD EMPTY STATE: a mark, a title that says what is true, one line on
         // what fills it. No action — the + in the month row is the way to add one.
@@ -14918,32 +14935,34 @@ function renderCalendarList() {
     settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.calendar;
+    headPillSet('settings-panel-cap', calListPill());
+}
+// The page's status is the pill beside its title (the Manage pill's look). With no
+// calendar linked at all it says so — "all up to date" about nothing is a claim.
+function calListPill() {
+    const keys = Object.keys(propertyMeta).filter((k) => !(propertyMeta[k] && propertyMeta[k].archived));
+    const vs = keys.map((k) => calVerdict(k));
+    const bad = vs.filter((v) => v.tone === 'bad').length;
+    const warn = vs.filter((v) => v.tone === 'warn').length;
+    const known = !!__calOv || !!(/** @type {any} */ (window).__feedStatusPre);
+    if (!known) return headPill('unk', 'Checking…');
+    if (bad) return headPill('bad', `${bad} not syncing`, { label: `${bad} calendar${bad === 1 ? ' isn’t' : 's aren’t'} syncing` });
+    if (warn) return headPill('warn', `${warn} behind`, { label: `${warn} calendar${warn === 1 ? ' is' : 's are'} behind` });
+    if (!vs.some((v) => v.linked)) return headPill('unk', 'None linked', { label: 'No calendars linked' });
+    return headPill('ok', 'Up to date', { label: 'All calendars up to date' });
 }
 function calListHtml() {
     const keys = Object.keys(propertyMeta).filter((k) => !(propertyMeta[k] && propertyMeta[k].archived));
     const vs = keys.map((k) => ({ k, v: calVerdict(k) }));
-    const bad = vs.filter((x) => x.v.tone === 'bad').length;
-    const warn = vs.filter((x) => x.v.tone === 'warn').length;
-    const known = !!__calOv || !!(/** @type {any} */ (window).__feedStatusPre);
-    const state = !known ? 'unk' : bad || warn ? 'warn' : 'ok';
-    const t = !known ? 'Checking your calendars'
-        : bad ? `${bad} calendar${bad === 1 ? ' isn’t' : 's aren’t'} syncing`
-          : warn ? `${warn} calendar${warn === 1 ? ' is' : 's are'} behind`
-            : 'All calendars up to date';
     const linked = vs.filter((x) => x.v.linked).length;
     const ages = vs.map((x) => x.v.age).filter((a) => a != null);
     const newest = ages.length ? Math.min(...ages) : null;
     const s = (__calOv ? `${linked} of ${keys.length} cottages linked` : `${linked} cottage${linked === 1 ? '' : 's'} importing`)
         + (newest != null ? ' · newest ' + (newest < 1.5 ? 'just now' : calAgo(newest) + ' ago') : '');
     const summary = `<div class="cal-top">
-        <div class="mg-sum cal-sum" data-state="${state}">
-          <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
-            <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-            <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
-            <span class="mg-q">?</span>
-          </span>
-          <span class="mg-txt"><span class="mg-t">${escapeHtml(t)}</span><span class="mg-s">${escapeHtml(s)}</span></span>
-          <button type="button" class="btn-sm btn-accent cal-all" ${__calSyncAll ? 'disabled' : ''} ${chbAttrs('calSyncAll')}>${__calSyncAll ? '<span class="mg-spin" aria-hidden="true"></span>Syncing' : 'Sync all'}</button>
+        <div class="mg-sum cal-sum">
+          <span class="mg-txt"><span class="mg-s">${escapeHtml(s)}</span></span>
+          ${linked ? `<button type="button" class="btn-sm btn-accent cal-all" ${__calSyncAll ? 'disabled' : ''} ${chbAttrs('calSyncAll')}>${__calSyncAll ? '<span class="mg-spin" aria-hidden="true"></span>Syncing' : 'Sync all'}</button>` : ''}
         </div></div>`;
     const probs = calProblems();
     const probHtml = probs.length ? `<div class="bhub-grpcap">Needs a look</div>` + probs.map((x) => {
@@ -15089,6 +15108,7 @@ async function settingsOpenCalendar(k) {
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
+    headPillSet('settings-panel-cap', ''); // the list's pill is not this cottage's
     settingsSetBack(() => settingsOpen('calendar'), SETTINGS_TITLES.calendar);
     __settingsPath = { section: 'calendar', prop: k };
     await loadCalendarSyncProp(k);
@@ -15212,11 +15232,11 @@ function calendarPropBoxHtml(key, label, data) {
     const ats = linked.map((p) => calHoursSince(status[p.source] && status[p.source].at)).filter((h) => h != null);
     const newest = ats.length ? Math.min(...ats) : null;
     const stays = linked.reduce((n, p) => n + ((status[p.source] && status[p.source].events) || 0), 0);
-    const state = !linked.length ? 'unk' : failing.length ? 'warn' : 'ok';
-    const t = !linked.length ? 'No platforms linked yet'
-        : failing.length ? `${calPlat(failing[0].source).name} isn’t responding`
-          : newest == null ? 'Linked — not synced yet'
-            : 'Synced ' + (newest < 1 / 60 ? 'just now' : calAgo(newest) + ' ago');
+    // Its status is the title's pill, set by loadCalendarSyncProp once this is on screen.
+    __calPropPill = !linked.length ? headPill('unk', 'Not linked', { label: 'No platforms linked yet' })
+        : failing.length ? headPill('warn', `${calPlat(failing[0].source).name} not responding`)
+          : newest == null ? headPill('unk', 'Not synced yet')
+            : headPill('ok', 'Synced ' + (newest < 1 / 60 ? 'just now' : calAgo(newest) + ' ago'));
     const s = !linked.length ? 'Paste a platform’s calendar link below'
         : `${stays} stay${stays === 1 ? '' : 's'} imported · ${linked.length} of ${SYNC_SOURCES.length} platforms linked`;
     const rows = SYNC_SOURCES.map((p) => {
@@ -15241,13 +15261,8 @@ function calendarPropBoxHtml(key, label, data) {
           </div>`;
     }).join('');
     return `<div class="cal-detail">
-        <div class="mg-sum cal-sum" data-state="${state}">
-          <span class="mg-mark" aria-hidden="true"><span class="mg-halo"></span>
-            <svg class="mg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-            <svg class="mg-bang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg>
-            <span class="mg-q">?</span>
-          </span>
-          <span class="mg-txt"><span class="mg-t">${escapeHtml(t)}</span><span class="mg-s">${escapeHtml(s)}</span></span>
+        <div class="mg-sum cal-sum">
+          <span class="mg-txt"><span class="mg-s">${escapeHtml(s)}</span></span>
           ${linked.length ? `<button type="button" class="btn-sm btn-accent cal-all" ${chbAttrs('runSync', String(key))}>Sync now</button>` : ''}
         </div>
         <div class="bhub-grpcap">Platforms</div>
@@ -15345,7 +15360,9 @@ async function loadCalendarSyncProp(key) {
         return;
     }
     box.innerHTML = calendarPropBoxHtml(key, label, data);
+    if (settingsShowing('calendar') && box.style.display !== 'none') headPillSet('settings-panel-cap', __calPropPill);
 }
+let __calPropPill = '';
 // Legacy: render all cottages stacked into #calendar-sync-box (if present).
 async function loadCalendarSync() {
     if (!isAuthenticated) {
@@ -17805,12 +17822,11 @@ function renderMoneyOverview() {
         `<span id="mo-move-fig" class="mo-run">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut mo-run" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
-    // CALM IS ONE LINE, NOT A ROW EACH: "To collect" with nothing owed and "To give back" with nothing
-    // held used to take a full row apiece to say "all clear". They render only when there is something to
-    // do; otherwise `#mo-calm` says so once. The deposits group is filled in by moAsyncFill when it finds
-    // held money (it is the only one that needs the payout/ledger fetch).
-    __moCalmState = { collect: !(collectTotal > 0.005) && !overdueRows.length, back: null };
-    __moHead = { collect: collectTotal + overdueSum, over: overdueRows.length, move: null, held: null, unk: 0 };
+    // CALM IS NOT A ROW EACH: "To collect" with nothing owed and "To give back" with nothing held used to
+    // take a full row apiece to say "all clear". They render only when there is something to do; the
+    // page's status pill says the rest. The deposits group is filled in by moAsyncFill when it finds held
+    // money (it is the only one that needs the payout/ledger fetch).
+    __moHead = { collect: collectTotal + overdueSum, due: dueNowSum, over: overdueRows.length, move: null, held: null, unk: 0 };
     const backGrp = '<div id="mo-back-slot"></div>';
     // A row TITLE stays in ink; the trailing figure carries the state (the
     // capsule-is-state rule, applied to the landing's own labels).
@@ -17839,7 +17855,6 @@ function renderMoneyOverview() {
                 <h2 class="mo-headline" id="mo-headline"></h2>
                 <div class="mo-pulse">${pulse}</div>
                 ${attn}
-                <div class="mo-calm" id="mo-calm" hidden></div>
                 <span class="bhub-grpcap">Your money</span>
                 ${collectGrp}${moveGrp}${backGrp}${booksGrp}${recentGrp}${trendsGrp}`;
     moHeadline();
@@ -17856,8 +17871,7 @@ function renderMoneyOverview() {
 // (never a second derivation): what is yours to move, who owes you, what is held, and how many things need
 // a look. Parts that are still loading are left out rather than guessed, so it never claims "no deposits
 // are held" before the ledger has answered.
-let __moHead = { collect: 0, over: 0, move: null, held: null, unk: 0 };
-let __moCalmState = { collect: false, back: null };
+let __moHead = { collect: 0, due: 0, over: 0, move: null, held: null, unk: 0 };
 function moHeadline() {
     const h = document.getElementById('mo-headline');
     if (!h) return;
@@ -17869,14 +17883,14 @@ function moHeadline() {
     parts.push(owes + (held ? ' and ' + held : ''));
     if (H.unk > 0) parts.push(`<b>${H.unk === 1 ? 'One charge' : H.unk + ' charges'}</b> ${H.unk === 1 ? 'needs' : 'need'} a look`);
     h.innerHTML = parts.join('. ') + '.';
-    const calm = document.getElementById('mo-calm');
-    if (calm) {
-        const c = [];
-        if (__moCalmState.collect) c.push('nothing to collect');
-        if (__moCalmState.back === true) c.push('no deposits to give back');
-        calm.hidden = !c.length;
-        calm.innerHTML = c.length ? `<span class="st-tick" aria-hidden="true">✓</span> ${c.join(' · ').replace(/^./, (x) => x.toUpperCase())}` : '';
-    }
+    // THE PAGE'S STATUS, the Manage pill's look beside the title: overdue money is the one
+    // fault, money due now the one chase, and anything else is in order — owed later is not late.
+    const due = H.due || 0;
+    headPillSet('mo-pill', H.over
+        ? headPill('bad', `${H.over} overdue`, { label: `${H.over} ${H.over === 1 ? 'payment is' : 'payments are'} overdue` })
+        : due > 0.005
+          ? headPill('warn', `${gbp(due).replace(/\.00$/, '')} due now`)
+          : headPill('ok', H.collect > 0.005 ? 'Nothing due yet' : 'Nothing to collect'));
 }
 // Rows the landing's chase-all acts on (set by renderMoneyOverview).
 let __moOwedRows = [];
@@ -17950,7 +17964,7 @@ function moAsyncFill() {
             __moHead.move = P && P.known > 0 ? Number(P.inBank) || 0 : null;
             moLand(moveFig, 0);
             moLand(moveRows, 0);
-            // To give back — only exists when a deposit is held; otherwise the calm line says so.
+            // To give back — only exists when a deposit is held; otherwise the headline says so.
             const slot = document.getElementById('mo-back-slot');
             if (slot && L && !L.error) {
                 // The ring fence (L) is SQUARE money only. A deposit paid in cash or by
@@ -17968,7 +17982,6 @@ function moAsyncFill() {
                 const cashSum = cashItems.reduce((n, it) => n + it.net, 0);
                 const backNet = Number(L.net || 0) + cashSum;
                 __moHead.held = items.length ? backNet : 0;
-                __moCalmState.back = !items.length;
                 if (items.length) {
                     const today2 = todayDashed();
                     const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return') + (it.cash ? ' · paid ' + (/^by /.test(it.cash) ? it.cash : 'by ' + it.cash) : '');
@@ -17979,8 +17992,6 @@ function moAsyncFill() {
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
                     moLand(document.getElementById('mo-back-fig'), 1);
                 }
-            } else if (slot) {
-                __moCalmState.back = null;
             }
             // The books — the SERVER'S net (rental + kept − fees − expenses),
             // replacing the client's fee-less estimate.
@@ -19381,7 +19392,7 @@ function renderSquareSettings() {
     // The title's capsule (Manage → Payments only): whether guests can pay by card.
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-payments');
-    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = squareAdminEnabled ? stCap('ok', 'Taking cards') : stCap('unk', 'Cards off');
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, squareAdminEnabled ? headPill('ok', 'Taking cards') : headPill('unk', 'Cards off'));
     const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('sq-deposit-pct'));
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
@@ -21240,7 +21251,7 @@ function renderPricing() {
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-pricing');
     const nIdeas = items.length + prSearchCount(pk) + liveProfit.length;
-    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = nIdeas ? stCap('warn', `${nIdeas} idea${nIdeas === 1 ? '' : 's'}`) : '';
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, nIdeas ? headPill('warn', `${nIdeas} idea${nIdeas === 1 ? '' : 's'}`) : '');
     prLoadSearch();
     // The calendar: this week's Monday → six weeks.
     const t = new Date(today + 'T12:00:00Z');
@@ -22956,12 +22967,14 @@ function renderKeysafe() {
     const host = document.getElementById('keysafe-body');
     if (!host) return;
     if (!__keysafe) {
+        headPillSet('ks-pill', '');
         host.innerHTML = '<p class="lead" style="text-align:left;">' + (__keysafeLoading ? 'Loading the safes…' : 'Couldn’t load the safes just now — check your signal and reopen this page.') + '</p>';
         return;
     }
     const e = escapeHtml;
     const views = Object.keys(__keysafe).filter((pk) => (__keysafe[pk] || {}).enabled !== false).map(keysafeView);
     if (!views.length) {
+        headPillSet('ks-pill', '');
         host.innerHTML = '<p class="lead" style="text-align:left;">No key safes switched on. Turn one on in Manage → the cottage → Private notes.</p>';
         return;
     }
@@ -22970,9 +22983,10 @@ function renderKeysafe() {
     const todos = views.filter((v) => v.needs || !v.rec.code);
     const isRed = (v) => (v.due && !v.d0.dep) || (!v.rec.code && !!v.next);
     const anyRed = todos.some(isRed);
-    const status = todos.length
-        ? '<div class="ks-status ' + (anyRed ? 'is-bad' : 'is-warn') + '" role="status"><span class="ks-status-dot" aria-hidden="true">!</span>' + (todos.length === 1 ? '1 safe needs a new code' : todos.length + ' safes need a new code') + '</div>'
-        : '<div class="ks-status is-ok" role="status"><span class="ks-status-dot" aria-hidden="true">✓</span>' + (views.length === 1 ? 'The safe is ready' : 'All ' + views.length + ' safes are ready') + '</div>';
+    // The page's status is the pill beside its title (the Manage pill's look).
+    headPillSet('ks-pill', todos.length
+        ? headPill(anyRed ? 'bad' : 'warn', todos.length === 1 ? '1 code to set' : todos.length + ' codes to set', { label: (todos.length === 1 ? '1 safe needs' : todos.length + ' safes need') + ' a new code' })
+        : headPill('ok', views.length === 1 ? 'Ready' : 'All ' + views.length + ' ready', { label: views.length === 1 ? 'The safe is ready' : 'All ' + views.length + ' safes are ready' }));
     const todoHtml = todos.map((v) => {
         const n = v.next;
         const head = !v.rec.code
@@ -23017,7 +23031,7 @@ function renderKeysafe() {
             + '<span class="ks-row-code' + (code ? '' : ' is-none') + '" aria-hidden="true">' + e(code || '—') + '</span>' + BHUB_CHEV + '</button>';
     }).join('');
     __ksFlash = null;
-    host.innerHTML = status + todoHtml + '<span class="ks-cap">On the safes now</span><div class="ks-list glass-panel">' + rows + '</div>';
+    host.innerHTML = todoHtml + '<span class="ks-cap">On the safes now</span><div class="ks-list glass-panel">' + rows + '</div>';
 }
 function keysafeSheetEl() {
     let el = document.getElementById('ks-sheet');
@@ -27743,7 +27757,7 @@ async function loadGuestReviewModeration() {
     const waiting = pending.length + leads;
     const sec = document.getElementById('sec-reviews');
     if (cap && sec && sec.style.display !== 'none')
-        cap.innerHTML = waiting ? stCap('warn', `${waiting} waiting`) : stCap('ok', 'All caught up');
+        headPillSet(cap, waiting ? headPill('warn', `${waiting} waiting`) : headPill('ok', 'All caught up'));
 }
 // The Google row's capsule says whether the link is set — the page it opens
 // is where it is changed.
@@ -28442,7 +28456,7 @@ function sgSyncExtras(cards, changes) {
     if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-seasongrid');
-    if (cap && sec && sec.style.display !== 'none') cap.innerHTML = stCap('unk', `${cards.length} coming up`);
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', `${cards.length} coming up`));
     const bar = document.getElementById('sg-savebar');
     if (bar) bar.hidden = !changes;
 }
@@ -28890,7 +28904,9 @@ function alPaintWeek() {
         const lab = i === sum.days.length - 1 ? 'Today' : new Date(d.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' });
         return `<button type="button" class="al-wbar${on ? ' is-on' : ''}${sel && !on ? ' is-dim' : ''}" ${chbAttrs('alDay', d.date)} aria-pressed="${on}" aria-label="${escapeHtml(lab)}: ${d.n} event${d.n === 1 ? '' : 's'}${d.warn ? ', with a warning' : ''}"><i style="height:${Math.max(6, Math.round((d.n / mx) * 46))}px;animation-delay:${200 + i * 50}ms">${d.warn ? '<b aria-hidden="true"></b>' : ''}</i><span>${escapeHtml(lab)}</span></button>`;
     }).join('');
-    host.innerHTML = `<div class="al-wtop"><span class="al-wbig"><b>${sum.total} event${sum.total === 1 ? '' : 's'}</b><span>in the last 7 days</span></span>${stCap(needs ? 'warn' : 'ok', needs ? `${needs} need${needs === 1 ? 's' : ''} a look` : 'Nothing needs you')}</div><div class="al-wbars">${bars}</div>`;
+    host.innerHTML = `<div class="al-wtop"><span class="al-wbig"><b>${sum.total} event${sum.total === 1 ? '' : 's'}</b><span>in the last 7 days</span></span></div><div class="al-wbars">${bars}</div>`;
+    // The page's status is the pill beside its title, not a capsule inside the week's card.
+    headPillSet('al-pill', needs ? headPill('warn', `${needs} need${needs === 1 ? 's' : ''} a look`) : headPill('ok', 'All clear', { label: 'Nothing needs you' }));
 }
 function alPaintNeeds() {
     const host = document.getElementById('al-needs');

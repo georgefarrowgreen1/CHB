@@ -91,16 +91,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/Marcus Ellery arrives/.test(body), 'the next guest is named');
   ok(/sees the new code on their booking page once you confirm/.test(body), 'and the reveal waits on the confirm');
 
-  console.log('§2b the simpler anatomy — status line, to-do, one list, a sheet');
+  console.log('§2b the simpler anatomy — status pill, to-do, one list, a sheet');
   const anat = await page.evaluate(() => {
     const host = document.getElementById('keysafe-body');
     const todo = host.querySelector('.ks-todo');
     const rows = [...host.querySelectorAll('.ks-list .ks-row')];
     const r21 = rows.find((r) => r.dataset.pk === '21a');
     return {
-      status: (host.querySelector('.ks-status') || {}).textContent || '',
-      statusBad: !!host.querySelector('.ks-status.is-bad'),
-      firstChild: host.firstElementChild && host.firstElementChild.classList.contains('ks-status'),
+      status: (document.querySelector('#ks-pill .head-pill') || {}).textContent || '',
+      statusLabel: (document.querySelector('#ks-pill .head-pill') || { getAttribute: () => '' }).getAttribute('aria-label') || '',
+      statusBad: (document.querySelector('#ks-pill .head-pill') || { dataset: {} }).dataset.tone === 'bad',
+      // The status is the title's pill now, so the page itself opens on the to-do.
+      firstChild: !!host.firstElementChild && host.firstElementChild.classList.contains('ks-todo'),
+      pillBesideTitle: (() => {
+          const p = document.querySelector('#ks-pill .head-pill'), h = document.querySelector('#view-keysafe h1'), i = document.querySelector('#view-keysafe .ks-info');
+          if (!p || !h || !i) return false;
+          const pr = p.getBoundingClientRect(), hr = h.getBoundingClientRect(), ir = i.getBoundingClientRect();
+          return pr.left > ir.right && ir.left > hr.right && Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)) <= 2;
+      })(),
       todoIs21a: !!(todo && todo.dataset.pk === '21a' && todo.classList.contains('is-bad')),
       todoBtn: todo ? todo.querySelector('.ks-rotate.is-primary').textContent : '',
       btn44: todo ? todo.querySelector('.ks-rotate').getBoundingClientRect().height >= 44 : false,
@@ -115,7 +123,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       info: !!document.querySelector('#view-keysafe .ks-info[data-act="keysafeHow"]'),
     };
   });
-  ok(anat.firstChild && /safes? needs? a new code/.test(anat.status) && anat.statusBad, `ONE status line leads, in red (${anat.status})`);
+  ok(/^\d+ codes? to set$/.test(anat.status) && /safes? needs? a new code/.test(anat.statusLabel) && anat.statusBad, `the status is ONE red pill (${anat.status} — "${anat.statusLabel}")`);
+  ok(anat.pillBesideTitle, '…beside the title, after the ⓘ, on the title\'s line — the Manage pill\'s place');
+  ok(anat.firstChild, 'the page opens on the to-do, with no status line of its own');
   ok(anat.todoIs21a && /Set a new code for Marcus/.test(anat.todoBtn) && anat.btn44, `the to-do card names the work and carries the one button (${anat.todoBtn})`);
   ok(anat.rows === anat.safes && anat.rows >= 2 && anat.row44, `every safe is a row of ONE list (${anat.rows})`);
   ok(anat.r21code === '9265' && /Still Hannah’s code · Marcus arrives/.test(anat.r21sub) && anat.r21bad, `the row: code on the right, one red line (${anat.r21sub})`);

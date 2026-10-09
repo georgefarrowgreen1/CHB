@@ -30,12 +30,17 @@
 //      outlined, the enquiry quote sits in the inset panel, the conversation sheet takes the
 //      window's title and the one field;
 //  §14 the booking form and the email composer are bottom sheets on a phone with the window's parts;
-//  §15 the offline day sheet wears the online Today's parts (no rail, joined runs, capsules, corners).
+//  §15 the offline day sheet wears the online Today's parts (no rail, joined runs, capsules, corners);
+//  §16 every page states its status the Manage way: ONE pill, the Manage pill's own look, right of the
+//      title on its line — Today, Key safes, Payments, the Activity log and the Manage pages that carry
+//      one — and none of the three looks it replaced (a card row, green words, a tinted panel) is left.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 const OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
 
+// §16 serves its owing booking through the fixture, so a background refresh keeps it.
+let liveBookings = [];
 async function open(browser, base, width) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
@@ -53,10 +58,12 @@ async function open(browser, base, width) {
       { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 150, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 2 },
     ], seasons: {}, occupancy: {} });
     if (url.includes('reviews.php')) return json({ ok: true, reviews: [{ id: 1, status: 'pending', prop: '21a', name: 'Margaret', text: 'Lovely.' }] });
+    if (url.includes('ical-import.php') && b.action === 'overview') return json({ ok: true, props: { '21a': { feeds: [], status: { sources: {} } }, jollyboat: { feeds: [], status: { sources: {} } } } });
     if (url.includes('ical-import.php')) return json({ ok: true, feeds: [], blocks: [] });
+    if (url.includes('activity-log.php') && b.action === 'summary') return json({ ok: true, total: 3, needs: [], days: Array.from({ length: 7 }, (_, i) => ({ date: '2026-10-0' + (i + 1), n: i % 2, warn: 0 })) });
     if (url.includes('keysafe.php')) return json({ ok: true, safes: { '21a': { code: '4821', setAt: '2026-09-01T10:00:00Z', forBooking: 0, history: [], enabled: true }, 'jollyboat': { code: '', history: [], enabled: true } }, revealDays: 2 });
     if (route.request().method() === 'POST' && b.action === 'admin_status') return json({ ok: true, admin: true });
-    return json({ ok: true, bookings: [], enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
+    return json({ ok: true, bookings: liveBookings, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
   });
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
@@ -686,6 +693,65 @@ async function open(browser, base, width) {
   ok(ods.cap, 'a booking\'s paid state is the house capsule, not bare text');
   ok(ods.chev !== false, `a duty's "Open" ends in the drawn chevron (${ods.chev === null ? 'no duty on screen' : 'drawn'})`);
   ok(ods.tl === '20px' && (ods.mark === '' || ods.mark === '12px'), `the timeline is a card and the banner a cell on the house corners (${ods.tl} / ${ods.mark || 'no banner'})`);
+
+  console.log('§16 every page\'s status is the Manage pill, beside its title');
+  // One booking that owes, so Today has something to say. The fixture serves it too: its
+  // background refresh would otherwise empty dbBookings, and the pill would rightly say nothing.
+  const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  liveBookings = [{ id: 401, prop_key: '21a', name: 'Owes Olive', email: 'olive@example.com', check_in: iso(6), check_out: iso(9), adults: 2, children: 0,
+    payment: 'unpaid', deposit_paid: 0, agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, hold_status: 'none' }];
+  const SEED = `dbBookings['21a'] = [mapBookingFromApi(${JSON.stringify(liveBookings[0])})];`;
+  const PAGES = [
+    ['Manage', "await openArea(); settingsShowIndex(); manageVerdicts();"],
+    ['Today', "nav('view-backoffice'); " + SEED + " renderBookings();"],
+    ['Key safes', 'await openKeysafe();'],
+    ['Payments', 'await openAccounts();'],
+    ['Activity log', "nav('view-activity-log');"],
+    ['Calendar sync', "await openArea(); settingsOpen('calendar');"],
+    ['Reviews', "await openArea(); settingsOpen('reviews');"],
+    ['Seasonal rates', "await openArea(); settingsOpen('seasongrid');"],
+    ['Payments settings', "await openArea(); settingsOpen('payments');"],
+  ];
+  const pills = [];
+  for (const [name, go] of PAGES) {
+    let m = null;
+    for (let i = 0; i < 6 && !(m && m.found && m.text && !/…$/.test(m.text)); i++) {
+      await page.evaluate(`(async () => { ${go} })()`);
+      await page.waitForTimeout(500);
+      m = await page.evaluate(() => {
+        const v = document.querySelector('.page-view.active');
+        const p = [...v.querySelectorAll('.head-pill')].find((e) => e.getClientRects().length);
+        if (!p) return { found: false };
+        const row = p.closest('.dashboard-header, .settings-panel-head');
+        const h = row && [...row.querySelectorAll('h1, h2')].find((e) => e.getClientRects().length);
+        const pr = p.getBoundingClientRect(), hr = h ? h.getBoundingClientRect() : null, rr = row.getBoundingClientRect();
+        const cs = getComputedStyle(p), dot = p.querySelector('.cron-pill-dot');
+        return {
+          found: true, text: p.textContent.trim(), tone: p.dataset.tone || (p.id === 'health-pill' ? 'manage' : ''),
+          cls: ['cron-pill', 'head-pill'].every((c) => p.classList.contains(c)) && ['ok', 'warn', 'danger', 'unk'].some((c) => p.classList.contains(c)),
+          look: [Math.round(pr.height), cs.borderTopLeftRadius, cs.fontSize, cs.fontWeight, cs.paddingLeft, dot ? Math.round(dot.getBoundingClientRect().width) : 0].join(' '),
+          after: !!hr && pr.left > hr.right, dy: hr ? Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)) : 99,
+          edge: Math.abs(rr.right - parseFloat(getComputedStyle(row).paddingRight || '0') - pr.right),
+        };
+      });
+    }
+    pills.push(Object.assign({ name }, m));
+  }
+  const ref = pills[0] || {};
+  ok(pills.every((x) => x.found), `each page carries its status pill (${pills.filter((x) => !x.found).map((x) => x.name).join(', ') || 'all ' + pills.length})`);
+  ok(pills.every((x) => !x.found || x.cls), 'each is the Manage pill\'s own classes and one of its four tones');
+  ok(pills.every((x) => !x.found || x.look === ref.look), `…and its own look — height, corners, type, padding, dot (${[...new Set(pills.map((x) => x.look))].join(' | ')})`);
+  ok(pills.every((x) => !x.found || (x.after && x.dy <= 2 && x.edge <= 1)), `right of the title, on its line, at the row's right edge (${pills.filter((x) => x.found && !(x.after && x.dy <= 2 && x.edge <= 1)).map((x) => x.name + ' Δ' + (x.dy || 0).toFixed(1) + '/' + (x.edge || 0).toFixed(1)).join(', ') || 'all'})`);
+  const said = Object.fromEntries(pills.map((x) => [x.name, (x.tone || '') + ':' + (x.text || '')]));
+  ok(/^warn:£[\d,]+ to collect$/.test(said.Today), `Today's pill is who owes you (${said.Today})`);
+  ok(/^(bad|warn):\d+ codes? to set$|^ok:All \d+ ready$/.test(said['Key safes']), `Key safes' pill is the safes' state (${said['Key safes']})`);
+  ok(/^unk:None linked$/.test(said['Calendar sync']), `with no calendar linked, Calendar sync says so — never "up to date" about nothing (${said['Calendar sync']})`);
+  ok(/^ok:All clear$/.test(said['Activity log']), `the Activity log's verdict left the week card for the title (${said['Activity log']})`);
+  const gone = await page.evaluate(() => ({
+    rowsLeft: document.querySelectorAll('.ks-status, .bk-owed, #mo-calm, .mo-calm, .mg-mark, #settings-panel-cap .st-cap, .al-wtop .st-cap').length,
+    weekCap: !!document.querySelector('#al-week .st-cap'),
+  }));
+  ok(gone.rowsLeft === 0 && !gone.weekCap, `none of the old status looks is left — no card row, green line, tinted panel or capsule beside a title (${gone.rowsLeft})`);
 
   await page.close();
   await t.done(fails);

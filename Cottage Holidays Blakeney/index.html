@@ -1108,7 +1108,10 @@
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
     <main id="view-activity-log" class="page-view container one-look">
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="openArea" data-arg="manage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Manage</span></span>
-        <h1 class="section-title al-h1">Activity log</h1>
+        <div class="settings-panel-head">
+            <h1 class="section-title al-h1">Activity log</h1>
+            <span id="al-pill"></span>
+        </div>
         <div id="act-log-app"><!-- the whole page is built by renderActivityLog() (admin.js) --></div>
     </main>
 
@@ -1888,7 +1891,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1130"></script>
+    <script defer src="app.js?v=1131"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
