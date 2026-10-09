@@ -8256,6 +8256,8 @@ body.owner-mode .cal-tools .mo-tool {
 .al-search input { flex: 1 1 auto; min-width: 0; height: 44px; border: none; outline: none; background: none; color: var(--text-light); font: 400 var(--fs-headline) var(--font-sans); }
 .al-search input::-webkit-search-cancel-button { display: none; }
 .al-clear { flex: none; width: 32px; height: 32px; border-radius: 50%; border: none; background: color-mix(in srgb, var(--text-light) 10%, transparent); color: var(--text-light); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+/* its own display outranked the hidden attribute, so it showed with nothing typed */
+.al-clear[hidden] { display: none; }
 .al-tabs { --al-i: 0; position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 4px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 5%, transparent); animation: alRise 480ms var(--out) 140ms both; }
 .al-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 5); border-radius: var(--r-pill); background: var(--accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 25%, transparent); transform: translateX(calc(var(--al-i) * 100%)); transition: transform 380ms var(--sheet); }
 .al-tab { position: relative; min-height: 48px; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: var(--r-pill); color: var(--text-muted); cursor: pointer; transition: color 220ms var(--out); }
@@ -8626,6 +8628,14 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look .settings-sec .pay-in { height: var(--u-h-field); }
 :is(main, div).one-look :is(.settings-sec .input-glass[type="search"], .gst-search .input-glass) { padding-left: 40px; }
 :is(main, div).one-look :is(.al-search, .sg-nameline) { background: var(--u-field); border: 1px solid var(--u-edge); border-radius: var(--u-r-cell); min-height: var(--u-h-field); }
+/* The Activity log search is ONE outlined box: the field rule above also dressed the
+   input inside it, so it painted a second box within the first. The input is bare
+   text now, the outline takes the accent while typing, and the clear is a plain
+   cross that shows only once there is something to clear. */
+:is(main, div).one-look .al-search { gap: 10px; padding: 0 4px 0 16px; }
+:is(main, div).one-look .al-search input { min-height: 0; height: 46px; padding: 0; margin: 0; background: none !important; border: 0; border-radius: 0; box-shadow: none; }
+:is(main, div).one-look .al-search:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+:is(main, div).one-look .al-search .al-clear { width: 40px; height: 40px; background: none; color: var(--text-muted); }
 :is(main, div).one-look .sg-nameline { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 0; overflow: hidden; }
 :is(main, div).one-look .sg-nameline .sg-name { flex: 1 1 auto; min-width: 0; background: none; border: 0; }
 /* Selects that sit in a row keep to their content. */
