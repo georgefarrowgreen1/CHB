@@ -835,6 +835,12 @@ function layoutSentinelRun() {
             report(`Layout: page ${pageOver}px wider than the ${vw}px screen on ${view}` + (worst ? ` (widest: ${worst} to ${Math.round(wr)}px)` : ''));
         }
         const els = document.querySelectorAll('.page-view.active *, .modal-overlay.open *');
+        // A sheet mid-slide is partly off the screen by design (the Inbox conversation
+        // reported "h2.ib-hname overhangs" while sliding in): skip anything inside an
+        // element that is animating, and measure the resting layout on the next pass.
+        const moving = new Set();
+        try { document.getAnimations().forEach((a) => { const t = a.effect && /** @type {any} */ (a.effect).target; if (t) moving.add(t); }); } catch (e) {}
+        const inMotion = (el) => { for (let a = el; a && a !== document.body; a = a.parentElement) if (moving.has(a)) return true; return false; };
         let checked = 0;
         for (const el of els) {
             if (++checked > 2500) break; // stay cheap on huge pages
@@ -849,6 +855,7 @@ function layoutSentinelRun() {
                 (el.childElementCount === 0 && (el.textContent || '').trim() !== '');
             if (!hasContent) continue;
             if (isClippedOrScrollable(el)) continue;
+            if (inMotion(el)) continue;
             const who = el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + String(el.className).split(' ')[0];
             report(`Layout: ${who} overhangs the screen (right=${Math.round(b.right)}, vw=${vw}) on ${view}`);
             break; // one offender per pass is enough to flag the screen
@@ -21475,7 +21482,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'inboxdonefold2';
+    const BUILD = 'inboxsheetlay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
