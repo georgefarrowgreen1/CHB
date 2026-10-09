@@ -762,6 +762,17 @@ is no new endpoint and no migration.
 - **A transfer to the owner's own name is an offer, never assumed**: "A transfer to you. Moving money to your own
   account?" → Moved to my account (`ignore`, labelled "Moved to your own account", not a cost) or An expense. The
   name is the split holder's, else the signed-in person's (`pmOwnName`).
+- **A sorted bank payment is one plain row that opens its own page** (`data-pm="line"` → `pmOpen('line:<id>')` →
+  `pmLinePage`, laid out like the stay page). Undo lives on that page, not in the row: "Undo, and sort it again". A
+  payment recorded on a booking offers Open the booking instead. The page shows:
+  - the amount, with a Sorted capsule;
+  - What it was: the cottage or booking, whether the books count it (`pmBankBooksSay` — the books read only booking
+    payments and expenses, so everything else is "Left out" or "Not in the books"), and when it was sorted;
+  - From your bank: payee, reference, type, the bank's category, the balance after, and how it came in.
+
+  After an undo the page stays open and asks again with the list's own buttons, placed under the question.
+  statements.php's `stmt_row` sends `via` (import 0 = live), `sorted_at` and `balance` for it. `pmBankWhat` is the one
+  wording for what a payment was. "Moved out" rows still open nothing.
 - **NAMING: the connection is "Open Banking"**, the account stays "Monzo Business". Every connect/disconnect/sync
   string, toast, sheet title and + menu item says Open Banking. The Monzo developer-client steps still say Monzo,
   because that is what the owner types into. smoke-test's Title Case allowlist gained Open, Banking and User.
