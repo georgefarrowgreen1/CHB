@@ -4,26 +4,66 @@
 //  PURE: no database, no session, no clock beyond what is passed in, so
 //  test-people.php drives every rule directly. db.php requires it.
 //
-//  Someone with full access can do everything, including People & access. Anyone
-//  else always has the everyday work (bookings and the calendar, enquiries,
-//  messages and email, key safes, guests and reviews) plus the areas the owner
-//  switches on for them. Each request is checked against those switches on the
-//  server (people_cap_for → people_can), so an old link or a stray tap gets a
-//  sentence instead of the screen.
+//  Two roles. A Super User (full_access = 1) can do everything, Permissions
+//  included. A Host starts with bookings, guests, key safes and the money, and
+//  each of the 23 permissions below can be switched on or off for them one by
+//  one. Each request is checked against those permissions on the server
+//  (people_cap_for → people_can), so an old link or a stray tap gets a sentence
+//  instead of the screen.
 // ============================================================
 
-// The five switches, in the order the person page shows them.
+// Every permission, in plain words, grouped the way the app's menu is.
+// [label, group, fixed]: 'always' is on for everyone, 'super' is a Super User's only.
+const PEOPLE_PERMS = [
+    'bk.see' => ['See bookings and the calendar', 'bk', 'always'],
+    'bk.edit' => ['Add and change bookings', 'bk', ''],
+    'bk.cancel' => ['Cancel bookings', 'bk', ''],
+    'bk.block' => ['Block dates', 'bk', ''],
+    'gu.reply' => ['Reply to enquiries and messages', 'gu', ''],
+    'gu.approve' => ['Approve or decline enquiries', 'gu', ''],
+    'gu.reviews' => ['Approve reviews and photos', 'gu', ''],
+    'ks.see' => ['See door codes', 'ks', ''],
+    'ks.change' => ['Change door codes', 'ks', ''],
+    'mo.ask' => ['Ask guests to pay', 'mo', ''],
+    'mo.record' => ['Record payments', 'mo', ''],
+    'mo.refund' => ['Give refunds', 'mo', ''],
+    'mo.deposit' => ['Return or keep deposits', 'mo', ''],
+    'mo.view' => ['See the Payments page and the books', 'mo', ''],
+    'mo.exp' => ['Add expenses', 'mo', ''],
+    'co.prices' => ['Change prices and seasons', 'co', ''],
+    'co.pages' => ['Edit cottage pages', 'co', ''],
+    'co.sync' => ['Calendar sync', 'co', ''],
+    'we.content' => ['Home page and things to do', 'we', ''],
+    'we.news' => ['Send the newsletter', 'we', ''],
+    'we.stats' => ['See analytics', 'we', ''],
+    'su.perm' => ['Permissions', 'su', 'super'],
+    'su.sys' => ['Backups, status and integrations', 'su', 'super'],
+];
+const PEOPLE_PERM_GROUPS = ['bk' => 'Bookings', 'gu' => 'Guests & messages', 'ks' => 'Key safes', 'mo' => 'Money', 'co' => 'Cottages & prices', 'we' => 'Website', 'su' => 'Set-up'];
+// What a plain Host has: bookings, guests, key safes and the money.
+const PEOPLE_HOST_GROUPS = ['bk', 'gu', 'ks', 'mo'];
+// The old five areas, said as permissions: an area is "any of" its permissions.
+// Older callers (search, alerts) still ask by area; new code asks by permission.
+const PEOPLE_AREA_PERMS = [
+    'payments' => ['mo.ask', 'mo.record'],
+    'refunds' => ['mo.refund', 'mo.deposit'],
+    'money' => ['mo.view'],
+    'prices' => ['co.prices', 'co.pages', 'co.sync'],
+    'website' => ['we.content', 'we.news', 'we.stats'],
+];
+
+// The five switches people had before permissions. Read only to carry a person's
+// old choices over (people_perms_from_caps); nothing writes them now.
 const PEOPLE_CAPS = [
     'payments' => ['Take payments', 'Send payment requests and record cash or bank payments'],
     'refunds' => ['Refunds and deposits', 'Give money back: refunds, and returning or keeping deposits'],
-    'money' => ['Money overview', 'The Payments screens: what’s owed, income and tax, moving money out'],
+    'money' => ['Money overview', 'The Payments screens: what’s owed, income and tax'],
     'prices' => ['Prices and cottages', 'Rates, seasons, pricing ideas, cottage pages and calendar sync'],
     'website' => ['Website and marketing', 'Home page, things to do, newsletter and analytics'],
 ];
-// A new person starts with the everyday work and taking payments.
 const PEOPLE_CAPS_DEFAULT = ['payments' => true, 'refunds' => false, 'money' => false, 'prices' => false, 'website' => false];
 
-// The switches as stored (JSON) or given, as exactly the five booleans.
+// The old switches as stored (JSON) or given, as exactly the five booleans.
 function people_caps_norm($v)
 {
     if (is_string($v)) {
@@ -36,27 +76,113 @@ function people_caps_norm($v)
     return $out;
 }
 
-// Full access: everything, including adding and removing people. A row from
-// before people existed has no column and is the owner.
+// A Super User: everything, Permissions included. A row from before people
+// existed has no column and is the owner.
 function people_is_full($row)
 {
     return is_array($row) && (!array_key_exists('full_access', $row) || (int) $row['full_access'] === 1);
 }
 
-// May this person use this area? 'all' is the everyday work, 'owner' is full
-// access only, anything else is one of the five switches.
+// A plain Host's permissions.
+function people_host_perms()
+{
+    $out = [];
+    foreach (PEOPLE_PERMS as $k => $p) {
+        $out[$k] = $p[2] === 'always' || ($p[2] === '' && in_array($p[1], PEOPLE_HOST_GROUPS, true));
+    }
+    return $out;
+}
+// Someone set up before permissions: the everyday work (bookings, guests, key
+// safes) was always theirs, and each old switch becomes the permissions it covered.
+function people_perms_from_caps($caps)
+{
+    $c = people_caps_norm($caps);
+    $out = [];
+    foreach (PEOPLE_PERMS as $k => $p) {
+        $out[$k] = $p[2] === 'always' || in_array($p[1], ['bk', 'gu', 'ks'], true);
+    }
+    $out['mo.ask'] = $out['mo.record'] = $c['payments'];
+    $out['mo.refund'] = $out['mo.deposit'] = $c['refunds'];
+    $out['mo.view'] = $out['mo.exp'] = $c['money'];
+    $out['co.prices'] = $out['co.pages'] = $out['co.sync'] = $c['prices'];
+    $out['we.content'] = $out['we.news'] = $out['we.stats'] = $c['website'];
+    return $out;
+}
+// Everything this person may do, as exactly the 23 booleans. A Super User has
+// all of them. A Host's `perms` column holds only how they differ from a plain
+// Host ({} = a plain Host); NULL means they predate permissions, so their old
+// switches decide. 'always' is on and 'super' off for every Host, whatever is stored.
+function people_perms($row)
+{
+    $out = [];
+    if (people_is_full($row)) {
+        foreach (PEOPLE_PERMS as $k => $_) {
+            $out[$k] = true;
+        }
+        return $out;
+    }
+    $raw = is_array($row) && array_key_exists('perms', $row) ? $row['perms'] : null;
+    $own = $raw === null || $raw === '' ? null : json_decode((string) $raw, true);
+    $base = is_array($own) ? people_host_perms() : people_perms_from_caps($row['caps'] ?? '');
+    $own = is_array($own) ? $own : [];
+    foreach (PEOPLE_PERMS as $k => $p) {
+        $v = array_key_exists($k, $own) && is_bool($own[$k]) ? $own[$k] : $base[$k];
+        $out[$k] = $p[2] === 'always' ? true : ($p[2] === 'super' ? false : $v);
+    }
+    return $out;
+}
+// How a Host differs from a plain Host, as stored: only the permissions that differ.
+function people_perms_diff(array $perms)
+{
+    $host = people_host_perms();
+    $out = [];
+    foreach (PEOPLE_PERMS as $k => $p) {
+        if ($p[2] === '' && isset($perms[$k]) && (bool) $perms[$k] !== $host[$k]) {
+            $out[$k] = (bool) $perms[$k];
+        }
+    }
+    return $out;
+}
+// How many permissions differ from a plain Host (a Super User: 0, nothing to compare).
+function people_perm_changes($row)
+{
+    return people_is_full($row) ? 0 : count(people_perms_diff(people_perms($row)));
+}
+
+// May this person do this? 'all' is anyone signed in, 'owner' a Super User only,
+// a permission key ('mo.refund') is that switch, two joined by '+' need both, and
+// an old area name ('payments') is any of its permissions.
 function people_can($row, $cap)
 {
     if (!is_array($row) || !empty($row['removed_at'])) {
         return false;
     }
+    $cap = (string) $cap;
     if (people_is_full($row) || $cap === 'all') {
         return true;
     }
-    if ($cap === 'owner' || !isset(PEOPLE_CAPS[$cap])) {
+    // 'gu.reply+mo.ask': every one of them.
+    if (strpos($cap, '+') !== false) {
+        foreach (explode('+', $cap) as $one) {
+            if (!people_can($row, $one)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if ($cap === 'owner') {
         return false;
     }
-    return people_caps_norm($row['caps'] ?? '')[$cap];
+    $perms = people_perms($row);
+    if (isset($perms[$cap])) {
+        return $perms[$cap];
+    }
+    foreach (PEOPLE_AREA_PERMS[$cap] ?? [] as $k) {
+        if ($perms[$k]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Is a session minted under $epoch still good for this row?
@@ -88,7 +214,7 @@ function people_first_name($row)
     return $parts && $parts[0] !== '' ? $parts[0] : 'Someone';
 }
 
-// The refusal a limited person reads.
+// The refusal a Host reads.
 function people_refusal($ownerFirst)
 {
     $o = trim((string) $ownerFirst);
@@ -192,7 +318,11 @@ function people_public($row, $viewerId = 0)
         'email' => (string) ($row['email'] ?? ''),
         'username' => (string) ($row['username'] ?? ''),
         'full' => people_is_full($row),
-        'caps' => people_caps_norm($row['caps'] ?? ''),
+        'role' => people_is_full($row) ? 'super' : 'host',
+        'perms' => people_perms($row),
+        'changes' => people_perm_changes($row),
+        // The old areas, said from the permissions, for anything still asking by area.
+        'caps' => array_combine(array_keys(PEOPLE_AREA_PERMS), array_map(fn($a) => people_can(['removed_at' => null] + $row, $a), array_keys(PEOPLE_AREA_PERMS))),
         'photo' => preg_match('/^[a-f0-9]{32}\.jpg$/', (string) ($row['photo'] ?? '')) ? substr((string) $row['photo'], 0, 10) : '',
         'state' => $state,
         'you' => (int) ($row['id'] ?? 0) === (int) $viewerId,
@@ -202,51 +332,60 @@ function people_public($row, $viewerId = 0)
     ];
 }
 
-// ---- The policy: which area each request needs ----
-// Every back-office request is 'all' (the everyday work), one of the five
-// switches, or 'owner' (full access only). A file or action NOT listed is
-// 'owner': a new endpoint is closed to a limited person until someone decides
-// otherwise, which is the safe way round. '' is a request with no action (most
-// endpoints' GET list); '*' covers every action of a file.
+// ---- The policy: which permission each request needs ----
+// Every back-office request is 'all' (anyone signed in), a permission key, or
+// 'owner' (a Super User only). A file or action NOT listed is 'owner': a new
+// endpoint is closed to a Host until someone decides otherwise, which is the safe
+// way round. '' is a request with no action (most endpoints' GET list); '*'
+// covers every action of a file not listed by name.
 const PEOPLE_POLICY = [
-    // The day-to-day work.
+    // Anyone signed in: reading the day's work, and your own account.
     'admin-bootstrap.php' => ['*' => 'all'],
     'avatar.php' => ['*' => 'all'],
-    'chat-upload.php' => ['*' => 'all'],
+    'chat-upload.php' => ['*' => 'gu.reply'],
     'customers.php' => ['directory' => 'all', 'audit' => 'all'],
-    'keysafe.php' => ['state' => 'all', 'confirm' => 'all', 'set_enabled' => 'all'],
-    'mailbox.php' => ['new' => 'all', 'list' => 'all', 'read' => 'all', 'attachment' => 'all', 'mark_unread' => 'all', 'sent' => 'all', 'send' => 'all', 'delete' => 'all', 'delete_sent' => 'all'],
     'my-bookings.php' => ['*' => 'all'], // the read-only preview of a guest's account
     'search.php' => ['*' => 'all'],
     'watchers.php' => ['list' => 'all', 'set' => 'all', 'stop' => 'all'],
-    'waitlist.php' => ['' => 'all', 'list' => 'all', 'notify' => 'all', 'delete' => 'all'],
-    'photos.php' => ['list_admin' => 'all', 'approve' => 'all', 'reject' => 'all', 'delete' => 'all'],
-    'reviews.php' => ['list_admin' => 'all', 'set_status' => 'all', 'delete' => 'all'],
     'leads.php' => ['list' => 'all', 'set_status' => 'all', 'rate_guest' => 'all', 'delete' => 'all'],
+    // Key safes.
+    'keysafe.php' => ['state' => 'ks.see', 'confirm' => 'ks.change', 'set_enabled' => 'ks.change'],
+    // Guests & messages: reading is anyone's; writing to a guest is a permission.
+    'mailbox.php' => [
+        'new' => 'all', 'list' => 'all', 'read' => 'all', 'attachment' => 'all', 'mark_unread' => 'all', 'sent' => 'all',
+        'send' => 'gu.reply', 'delete' => 'gu.reply', 'delete_sent' => 'gu.reply',
+    ],
     'messages.php' => [
-        '' => 'all', 'threads' => 'all', 'thread' => 'all', 'typing' => 'all', 'send' => 'all', 'unread' => 'all',
-        'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all', 'delete' => 'all', 'send_arrival' => 'all',
-        'send_balance' => 'payments',
+        '' => 'all', 'threads' => 'all', 'thread' => 'all', 'unread' => 'all', 'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all',
+        'typing' => 'gu.reply', 'send' => 'gu.reply', 'delete' => 'gu.reply', 'send_arrival' => 'gu.reply',
+        'send_balance' => 'mo.ask',
     ],
-    'ical-import.php' => ['sync' => 'all', 'blocks' => 'all', 'add_block' => 'all', 'delete_block' => 'all', 'list' => 'all', 'overview' => 'all', 'save_feeds' => 'prices'],
+    'waitlist.php' => ['' => 'all', 'list' => 'all', 'notify' => 'gu.reply', 'delete' => 'gu.reply'],
+    'photos.php' => ['list_admin' => 'all', 'approve' => 'gu.reviews', 'reject' => 'gu.reviews', 'delete' => 'gu.reviews'],
+    'reviews.php' => ['list_admin' => 'all', 'set_status' => 'gu.reviews', 'delete' => 'gu.reviews'],
     'enquiries.php' => [
-        '' => 'all', 'submit' => 'all', 'declined' => 'all', 'seen' => 'all', 'decline' => 'all', 'restore' => 'all', 'undecline' => 'all', 'delete' => 'all',
-        'approve_preview' => 'all', 'approve' => 'all', 'email_preview' => 'all', 'email_guest' => 'all',
-        'set_terms' => 'payments',
+        '' => 'all', 'submit' => 'all', 'declined' => 'all', 'seen' => 'all',
+        'decline' => 'gu.approve', 'restore' => 'gu.approve', 'undecline' => 'gu.approve', 'delete' => 'gu.approve',
+        'approve_preview' => 'gu.approve', 'approve' => 'gu.approve',
+        'email_preview' => 'gu.reply', 'email_guest' => 'gu.reply',
+        'set_terms' => 'mo.ask',
     ],
+    // Bookings.
+    'ical-import.php' => ['sync' => 'all', 'blocks' => 'all', 'list' => 'all', 'overview' => 'all', 'add_block' => 'bk.block', 'delete_block' => 'bk.block', 'save_feeds' => 'co.sync'],
     'bookings.php' => [
-        '' => 'all', 'delete' => 'all', 'add' => 'all', 'update' => 'all', 'set_notes' => 'all', 'send_arrival' => 'all',
-        'arrival_preview' => 'all', 'send_confirmation' => 'all', 'email_preview' => 'all', 'email_guest' => 'all',
-        'rate_guest' => 'all', 'cancel' => 'all', 'email_logs' => 'all', 'hub_bundle' => 'all', 'history' => 'all',
-        'email_render' => 'all', 'deposit_card' => 'all', 'deposit_returns' => 'all', 'payments' => 'all',
-        // Taking payments: asking for money and recording money that came in.
-        'set_payment' => 'payments', 'request_payment' => 'payments', 'set_payment_plan' => 'payments', 'pay_link' => 'payments',
-        'hold_capture' => 'payments', 'record_square_payment' => 'payments',
+        '' => 'all', 'email_logs' => 'all', 'hub_bundle' => 'all', 'history' => 'all', 'email_render' => 'all', 'deposit_card' => 'all',
+        'deposit_returns' => 'all', 'payments' => 'all', 'rate_guest' => 'all',
+        'add' => 'bk.edit', 'update' => 'bk.edit', 'set_notes' => 'bk.edit',
+        'cancel' => 'bk.cancel', 'delete' => 'bk.cancel',
+        'send_arrival' => 'gu.reply', 'arrival_preview' => 'gu.reply', 'send_confirmation' => 'gu.reply', 'email_preview' => 'gu.reply', 'email_guest' => 'gu.reply',
+        // Money coming in: asking for it, and recording it.
+        'request_payment' => 'mo.ask', 'set_payment_plan' => 'mo.ask', 'pay_link' => 'mo.ask',
+        'set_payment' => 'mo.record', 'hold_capture' => 'mo.record', 'record_square_payment' => 'mo.record',
         // Money going back out.
-        'refund' => 'refunds', 'return_deposit' => 'refunds', 'keep_deposit' => 'refunds', 'confirm_return_settled' => 'refunds',
-        'hold_release' => 'refunds',
+        'refund' => 'mo.refund', 'hold_release' => 'mo.refund',
+        'return_deposit' => 'mo.deposit', 'keep_deposit' => 'mo.deposit', 'confirm_return_settled' => 'mo.deposit',
         // The Payments screens.
-        'recent_payments' => 'money',
+        'recent_payments' => 'mo.view',
     ],
     'auth.php' => [
         // Your own sign-in and details.
@@ -254,38 +393,38 @@ const PEOPLE_POLICY = [
         'admin_me_set' => 'all', 'admin_email_begin' => 'all', 'admin_email_finish' => 'all', 'admin_twofa_set' => 'all',
         'admin_avatar_set' => 'all', 'admin_avatar_remove' => 'all', 'admin_notify_set' => 'all',
         // Guests.
-        'guest_list' => 'all', 'guest_send_reset' => 'all', 'guest_crm' => 'all', 'guest_reinvite' => 'all',
+        'guest_list' => 'all', 'guest_send_reset' => 'all', 'guest_crm' => 'all', 'guest_reinvite' => 'gu.reply',
     ],
     'passkeys.php' => [
         'admin_register_begin' => 'all', 'admin_register_finish' => 'all', 'admin_reauth_begin' => 'all', 'admin_reauth_finish' => 'all',
         'admin_list' => 'all', 'admin_delete' => 'all',
     ],
     'push.php' => ['subscribe_admin' => 'all', 'unsubscribe_admin' => 'all', 'test_admin' => 'all'],
-    // The Payments screens.
-    'accounts.php' => ['*' => 'money'],
-    'money.php' => ['*' => 'money'],
-    'expenses.php' => ['*' => 'money'],
-    'statements.php' => ['*' => 'money'],
-    // The Monzo live link: checking and syncing are the money area's; adding the
-    // developer client, connecting and disconnecting are full access only.
-    'monzo.php' => ['status' => 'money', 'check' => 'money', 'sync' => 'money'],
-    // Whose money is whose: the figures are the money area's; who hosts what, and
-    // which name is whose, are full access only.
-    'split.php' => ['status' => 'money'],
-    'square-setup.php' => ['payouts_refresh' => 'money'],
-    // Prices and cottages.
-    'rates.php' => ['*' => 'prices'],
-    'pricing-suggest.php' => ['*' => 'prices'],
-    // Website and marketing.
-    'experiences.php' => ['*' => 'website'],
-    'newsletter.php' => ['*' => 'website'],
-    'optimize-hero.php' => ['*' => 'website'],
-    'track.php' => ['*' => 'website'],
+    // The Payments page and the books.
+    'accounts.php' => ['*' => 'mo.view'],
+    'money.php' => ['*' => 'mo.view'],
+    'statements.php' => ['*' => 'mo.view'],
+    'expenses.php' => ['' => 'mo.view', 'add' => 'mo.exp', 'update' => 'mo.exp', 'delete' => 'mo.exp', '*' => 'mo.view'],
+    // The Monzo live link: checking and syncing are the Payments page's; adding
+    // the developer client, connecting and disconnecting are a Super User's.
+    'monzo.php' => ['status' => 'mo.view', 'check' => 'mo.view', 'sync' => 'mo.view'],
+    // Whose money is whose: the figures are the Payments page's; who hosts what,
+    // and whose account it lands in, are a Super User's.
+    'split.php' => ['status' => 'mo.view'],
+    'square-setup.php' => ['payouts_refresh' => 'mo.view'],
+    // Cottages & prices.
+    'rates.php' => ['create' => 'co.pages', 'set_unlisted' => 'co.pages', 'archive' => 'co.pages', 'unarchive' => 'co.pages', '*' => 'co.prices'],
+    'pricing-suggest.php' => ['*' => 'co.prices'],
+    // Website.
+    'experiences.php' => ['*' => 'we.content'],
+    'optimize-hero.php' => ['*' => 'we.content'],
+    'newsletter.php' => ['*' => 'we.news'],
+    'track.php' => ['*' => 'we.stats'],
 ];
 
-// The area one request needs. $in is the request's parameters, for the few
-// actions whose money parts decide it (the endpoint re-checks those it can only
-// judge against the stored row, e.g. a booking edit or a cancellation's refund).
+// The permission one request needs. $in is the request's parameters, for the
+// few actions whose money parts decide it (the endpoint re-checks those it can
+// only judge against the stored row, e.g. a booking edit or a cancellation's refund).
 function people_cap_for($file, $action, array $in = [])
 {
     $file = (string) $file;
@@ -306,20 +445,20 @@ function people_cap_for($file, $action, array $in = [])
     if ($file === 'mailbox-read.php') {
         return !empty($in['debug']) ? 'owner' : 'all';
     }
-    // An enquiry approved WITH an agreed price or plan is a money decision.
+    // An enquiry approved WITH an agreed price or plan is a money decision too.
     if ($file === 'enquiries.php' && $action === 'approve') {
         foreach (['price_override', 'deposit_pct', 'deposit_amount', 'balance_due_date'] as $k) {
             if (isset($in[$k]) && $in[$k] !== '' && $in[$k] !== null && $in[$k] !== false) {
-                return 'payments';
+                return 'gu.approve+mo.ask';
             }
         }
-        return 'all';
+        return 'gu.approve';
     }
     // A pay button in an email is asking for money.
     if (($file === 'bookings.php' || $file === 'enquiries.php') && $action === 'email_guest') {
         $btn = $in['buttons'] ?? ($in['button'] ?? []);
         $btn = is_array($btn) ? $btn : [$btn];
-        return in_array('pay', array_map('strval', $btn), true) ? 'payments' : 'all';
+        return in_array('pay', array_map('strval', $btn), true) ? 'gu.reply+mo.ask' : 'gu.reply';
     }
     $map = PEOPLE_POLICY[$file] ?? null;
     if ($map === null) {
@@ -335,12 +474,12 @@ function people_cap_for($file, $action, array $in = [])
 function people_content_cap($key)
 {
     $k = (string) $key;
-    // Website and marketing: the home page, its cards and the menu.
+    // Website: the home page, its cards and the menu.
     if (in_array($k, ['site-logo', 'hero-bg', 'terms-title'], true) || preg_match('/^(hero|nav|mnav)-/', $k) || preg_match('/^card(\d+-|-title-|-meta-|-img-)/', $k)) {
-        return 'website';
+        return 'we.content';
     }
-    // The everyday: the host card, saved replies, guest chat, reviews, and what
-    // the back office itself remembers as you work (dismissed duties, search).
+    // Anyone: the host card, saved replies, guest chat, reviews, and what the
+    // back office itself remembers as you work (dismissed duties, search).
     $everyday = [
         'host-name', 'host-badge', 'host-years', 'host-school', 'host-work', 'host-bio', 'host-photo', 'contact-phone',
         'email-templates', 'reviews', 'google-review-url',
@@ -350,23 +489,28 @@ function people_content_cap($key)
         return 'all';
     }
     if ($k === 'plan-presets') {
-        return 'payments';
+        return 'mo.ask';
     }
     if ($k === 'sweep-moved' || $k === 'sweep-landed' || $k === 'sweep-balance') {
-        return 'money';
+        return 'mo.view';
     }
-    // Prices and cottages: rates, rules, the cottage pages and their private notes.
-    if (preg_match('/^(rules|occupancy|ota-price|images|amenities|houserules|safety|geo|access|faqs|welcome|arrival|ops)-/', $k)
+    // Prices and seasons: rates, the rules that price and limit a stay, the
+    // cancellation policy.
+    if (preg_match('/^(rules|occupancy|ota-price)-/', $k)
         || preg_match('/^pricing-(limits|smart-off|changeover|hidden)$/', $k)
-        || preg_match('/-cancellation-policy$/', $k)
+        || preg_match('/-cancellation-policy$/', $k)) {
+        return 'co.prices';
+    }
+    // The cottage pages and their private notes.
+    if (preg_match('/^(images|amenities|houserules|safety|geo|access|faqs|welcome|arrival|ops)-/', $k)
         || preg_match('/^[a-z0-9_]+-(title|subtitle|tagline|desc|location)$/', $k)
         || $k === 'darkskies') {
-        return 'prices';
+        return 'co.pages';
     }
     return 'owner';
 }
-// Private and internal keys a limited person may READ although only full access
-// changes them: switches the everyday screens consult. Never a secret.
+// Private and internal keys a Host may READ although only a Super User changes
+// them: switches the everyday screens consult. Never a secret.
 const PEOPLE_READ_ALSO = ['arrival-review', 'thankyou-email', 'enquiry-nudge-off', 'anniversary-nudge-off', 'mailbox-new', 'mailbox-seen', 'mail-sent-days', 'weather-cache'];
 function people_content_readable($row, $key)
 {
@@ -383,34 +527,34 @@ function people_upload_cap($slot)
         return 'all';
     }
     if (strpos($s, 'gallery-') === 0) {
-        return 'prices'; // a cottage's photos
+        return 'co.pages'; // a cottage's photos
     }
     if (strpos($s, 'content-') === 0 || $s === 'experience') {
-        return 'website';
+        return 'we.content';
     }
     return 'owner';
 }
 
 // ---- Who gets which emails ----
 // Every email the back office sends its people, in the order the page shows
-// them. cap: who MAY get it ('all' anyone, a switch, or 'owner' full access
-// only) — an area switched off takes its emails with it. must: the reason one
+// them. cap: who MAY get it ('all' anyone, a permission, or 'owner' a Super
+// User only) — a permission switched off takes its emails with it. must: the reason one
 // always has to reach someone, so the last person on it can't be switched off.
 // Sign-in codes and reset links aren't here: they only ever go to the person
 // signing in, so there is nothing to choose.
 const PEOPLE_MAILS = [
-    'enquiry' => ['cap' => 'all', 'must' => 'a guest is waiting for a reply', 'name' => 'new enquiries'],
+    'enquiry' => ['cap' => 'gu.reply', 'must' => 'a guest is waiting for a reply', 'name' => 'new enquiries'],
     'booking' => ['cap' => 'all', 'must' => '', 'name' => 'new bookings'],
-    'paid' => ['cap' => 'payments', 'must' => '', 'name' => 'payments received'],
-    'messages' => ['cap' => 'all', 'must' => 'guests are waiting for an answer', 'name' => 'guest messages'],
-    'reviews' => ['cap' => 'all', 'must' => '', 'name' => 'reviews to approve'],
-    'ideas' => ['cap' => 'website', 'must' => '', 'name' => 'things-to-do suggestions'],
+    'paid' => ['cap' => 'mo.record', 'must' => '', 'name' => 'payments received'],
+    'messages' => ['cap' => 'gu.reply', 'must' => 'guests are waiting for an answer', 'name' => 'guest messages'],
+    'reviews' => ['cap' => 'gu.reviews', 'must' => '', 'name' => 'reviews to approve'],
+    'ideas' => ['cap' => 'we.content', 'must' => '', 'name' => 'things-to-do suggestions'],
     'digest' => ['cap' => 'all', 'must' => '', 'name' => 'the weekly digest'],
-    'analytics' => ['cap' => 'website', 'must' => '', 'name' => 'the weekly analytics'],
+    'analytics' => ['cap' => 'we.stats', 'must' => '', 'name' => 'the weekly analytics'],
     'backup' => ['cap' => 'owner', 'must' => 'it’s the copy that lives off the host', 'name' => 'the backup'],
 ];
-// Someone added later starts with the guest-facing emails; someone with full
-// access gets everything, which is how it worked before people existed.
+// A Host starts with the guest-facing emails; a Super User gets everything,
+// which is how it worked before people existed.
 const PEOPLE_MAIL_LIMITED = ['enquiry' => true, 'booking' => true, 'paid' => true, 'messages' => true, 'reviews' => true, 'ideas' => false, 'digest' => true, 'analytics' => false, 'backup' => false];
 
 // A person's choices, as exactly the nine booleans (their own over the defaults).
@@ -425,7 +569,7 @@ function people_mail_norm($row)
     return $out;
 }
 // May this person get this email at all? (Their choice is a separate question,
-// so switching an area back on brings their old choice back.)
+// so switching a permission back on brings their old choice back.)
 function people_mail_can($row, $kind)
 {
     return isset(PEOPLE_MAILS[$kind]) && people_can($row, PEOPLE_MAILS[$kind]['cap']);
@@ -447,9 +591,9 @@ function people_mail_lock($row, $kind)
     }
     $cap = PEOPLE_MAILS[$kind]['cap'] ?? 'owner';
     if ($cap === 'owner') {
-        return 'Only someone with full access gets the backup. It’s everything on the site.';
+        return 'Only a Super User gets the backup. It’s everything on the site.';
     }
-    return $n . ' can’t get this yet. Switch on ' . (PEOPLE_CAPS[$cap][0] ?? $cap) . ' on ' . $n . '’s page first.';
+    return $n . ' can’t get this yet. Switch on ' . (PEOPLE_PERMS[$cap][0] ?? $cap) . ' in What ' . $n . ' can do first.';
 }
 // Switching $kind off for person $id: refused when it is an email that must
 // reach someone and nobody else would get it ('' = fine). $rows is everyone.

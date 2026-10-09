@@ -3739,7 +3739,48 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
   on main at the same rate (2 in 12 runs under CPU contention). Both suites now wait for the dialog's own focus
   before typing into a multi-field form. No person types within 60ms of a dialog appearing, so the app is fine.
 
-## People: separate sign-ins, and what each person can do (approved demo, built)
+## Permissions: two roles and 23 switches (approved demo v7, built and pushed to main without CI or tests)
+
+**Supersedes the five area switches below** ("full access" is now **Super User**, everyone else a **Host**, and
+"People & access" is **Permissions**). Asked for as "completely reimagine this page and subpages, call it Permissions",
+simplified over six demo rounds.
+- **THE MODEL IS `people-lib.php`'s `PEOPLE_PERMS`**: 23 keys in seven groups (bk / gu / ks / mo / co / we / su), each
+  `[label, group, fixed]`. `bk.see` is `'always'` (on for everyone); `su.perm` and `su.sys` are `'super'` (a Super User's
+  only — they stand for the existing `'owner'` cap). A plain Host has every bk/gu/ks/mo permission.
+- **STORED AS A DIFFERENCE**: `admins.perms` (migration-137, TEXT) holds only how a Host differs from a plain Host (`{}` =
+  plain Host), so a permission added later follows the Host default. **NULL = someone from before permissions**: their old
+  `caps` decide (`people_perms_from_caps`: everyday → bk/gu/ks, payments → mo.ask+mo.record, refunds → mo.refund+mo.deposit,
+  money → mo.view+mo.exp, prices → co.*, website → we.*) until the first change is saved, so nobody's access moved on
+  deploy. Sophia's existing row reads "Host · 4 changes" for exactly that reason.
+- **`people_can($row, $cap)`** takes a permission key, `'a+b'` (both — an approve with a price is `gu.approve+mo.ask`, an
+  email with a pay button `gu.reply+mo.ask`), `'all'`, `'owner'`, or an OLD AREA NAME as "any of" (`PEOPLE_AREA_PERMS`;
+  `money` is `mo.view` only), so search/webpush and anything not yet re-aimed keep working. `PEOPLE_POLICY`, the content
+  and upload caps and `PEOPLE_MAILS` are re-keyed by permission; a file or action not listed is still `'owner'`.
+  `people_strip_money` drops payment fields without `mo.record` and price/plan fields without `mo.ask`; a cancellation
+  that refunds needs `mo.refund` for the typed sum and `mo.deposit` for the deposit it returns.
+- **people.php**: `set_full` is the ROLE (becoming a Host resets to a plain Host; "There must always be a Super User"),
+  `set_perm` {id, perm, on} refuses fixed permissions and Super Users, `reset_perms`, `invite` takes `role`. `set_cap` is
+  gone. Every answer carries `permDefs` + `permGroups`, so the page never keeps a second copy of the words.
+  `people_public` adds `role`, `perms`, `changes`, and `caps` derived from the permissions.
+- **The client** (app.js): `CHB_ACT_CAP` / `CHB_SEC_CAP` / `CHB_VIEW_CAP` are keyed by permission, plus `CHB_PART_CAP`
+  for parts that are not data-act buttons (the Inbox's reply box and decisions via `data-ib`, the booking form's money
+  groups). The class is `cap-x-` + the key with the dot as a dash (`cap-x-mo-refund`); `chbAccessSync` walks
+  `CHB_CAP_KEYS`. `chbCan` (admin.js) is `chbMayUse`. Key safes is a view now (`ks.see`).
+- **The pages** (admin.js): Permissions = people rows ("Host · 1 change · active today at 12:51", a Waiting capsule for
+  an invite), Add someone (name, email, role select — a glassForm select has no default, so the chosen role is put first
+  on a retry), and one "Cottages & money" row. A person = hero (photo, name, email, when seen), Role (the one switcher,
+  Host | Super User — yours is said, not switched), "What X can do" (→ `perms` section, depth 4), an Emails fold (only the
+  emails their permissions allow, a switch each), Passkeys (only when they have one — kept beyond the demo so a lost
+  phone's passkey can still be removed without removing the person), reset link, Remove. The perms page: a "N changes
+  from Host · Reset" row, captions with "n of m" or "Super User only", a switch per permission with a dot where it differs
+  from Host (Undo on the toast), a tick for always-on and for every row of a Super User, a lock for set-up. Cottages &
+  money = the account holder as the one switcher, a face picker per cottage, one sentence per paid-out host, and the
+  linked bank names kept only so one linked by mistake can be unlinked. The emails matrix page stays (from Notifications).
+- **Not run, at the owner's ask**: every gate. test-people.php, test-integration §51/§52, ui-test-people and
+  ui-test-owneraccount still assert the five switches and "People & access" and need re-aiming. Checked by hand: php -l,
+  the JS parse, and the pages rendered headless at 390px in both themes with no page errors or overflow.
+
+## People: separate sign-ins, and what each person can do (approved demo, built — its five switches SUPERSEDED by Permissions above)
 
 **Asked for as "two admin accounts, one for me which needs complete access and one for Sophia who doesn't need as
 many buttons"** (Sophia runs the cottages, George does the website). Every person who signs in is an `admins` row

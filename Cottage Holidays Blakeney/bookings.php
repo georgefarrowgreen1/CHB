@@ -550,7 +550,7 @@ if ($action === 'add') {
     // ledger instead of double-adding the booking. Warn/clash/error exits
     // below store nothing — a refusal must re-run (the op-ledger rule).
     $opTok = op_claim($in);
-    people_strip_money($in); // without Take payments: the booking, never its money
+    people_strip_money($in); // without the money permissions: the booking, never its money
     $propKey = clean($in['prop_key'] ?? '');
     $rate = get_rate($propKey);
     if (!$rate) {
@@ -731,7 +731,7 @@ if ($action === 'update') {
     // retry being ANSWERED (with `material` intact) instead of re-walking the
     // whole warn ladder against the row it already changed.
     $opTok = op_claim($in);
-    people_strip_money($in); // without Take payments: the booking, never its money
+    people_strip_money($in); // without the money permissions: the booking, never its money
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -2250,8 +2250,16 @@ if ($action === 'cancel') {
     // step-up is asked for only when this one actually SENDS MONEY BACK, either
     // the typed refund or the damages deposit the block below returns
     // automatically. Cancelling a booking nobody has paid for stays one tap.
-    if ($refundAmount > 0.005 || (float) damages_collected($b) > 0.005) {
-        require_cap('refunds'); // money going back out: Refunds and deposits
+    $depositBack = (float) damages_collected($b) > 0.005;
+    if ($refundAmount > 0.005 || $depositBack) {
+        // Money going back out: Give refunds for the typed sum, Return or keep
+        // deposits for the deposit the block below returns.
+        if ($refundAmount > 0.005) {
+            require_cap('mo.refund');
+        }
+        if ($depositBack) {
+            require_cap('mo.deposit');
+        }
         require_reauth('refunding as part of this cancellation');
     }
     $refundedByCard = 0.0;

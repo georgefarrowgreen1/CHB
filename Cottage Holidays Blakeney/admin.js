@@ -9929,13 +9929,13 @@ function manageAccessSync() {
     const mv = document.getElementById('manage-verdicts');
     if (mv) mv.hidden = !full;
     const co = document.getElementById('cottages-overview');
-    if (co) co.hidden = !chbCan('prices');
+    if (co) co.hidden = !chbCan('co.pages');
     // "More tools" stands down when none of the rows folded under it is this person's.
     const mt = document.getElementById('mt-row');
     if (mt) mt.style.display = Array.from(document.querySelectorAll('#mt-fold .settings-row')).some((r) => getComputedStyle(r).display !== 'none') ? '' : 'none';
     idx.querySelectorAll(':scope > .settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return;
-        const any = Array.from(g.querySelectorAll('.settings-row')).some((r) => getComputedStyle(r).display !== 'none') || (g.querySelector('#cottages-overview') && chbCan('prices'));
+        const any = Array.from(g.querySelectorAll('.settings-row')).some((r) => getComputedStyle(r).display !== 'none') || (g.querySelector('#cottages-overview') && chbCan('co.pages'));
         /** @type {HTMLElement} */ (g).style.display = any ? '' : 'none';
     });
     idx.querySelectorAll(':scope > .settings-section-label').forEach((l) => {
@@ -12264,9 +12264,10 @@ const SETTINGS_TITLES = {
     notify: 'Notifications',
     host: 'Host profile',
     details: 'Your details',
-    people: 'People & access',
-    person: 'People & access',
-    split: 'Cottages and the bank',
+    people: 'Permissions',
+    person: 'Permissions',
+    perms: 'What they can do',
+    split: 'Cottages & money',
     emails: 'Who gets which emails',
     reviews: 'Reviews',
     'reviews-import': 'Import reviews',
@@ -12298,7 +12299,7 @@ const SETTINGS_TITLES = {
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
 // the slide direction, and what each page has learned so far.
-const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3, split: 3, emails: 4 };
+const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3, split: 3, perms: 4, emails: 4 };
 let __oaFrom = ''; // the section shown before this one ('' = the Manage index)
 let __oaStill = false; // a repaint in place: no slide, and __oaFrom untouched
 let __oaKeys = null; // the owner's passkeys: null = not asked, 'err' = couldn't ask
@@ -12465,7 +12466,9 @@ function settingsOpen(section) {
         ? 'reviews'
         : section === 'person' || section === 'split'
           ? 'people'
-          : section === 'emails'
+          : section === 'perms'
+            ? 'person'
+            : section === 'emails'
             ? __oaEmailsFrom
             : OA_DEPTH[section] === 2
               ? 'acct'
@@ -12489,6 +12492,7 @@ function settingsRenderSection(section) {
     else if (section === 'details') renderYourDetails();
     else if (section === 'people') renderPeople();
     else if (section === 'person') renderPerson();
+    else if (section === 'perms') renderPerms();
     else if (section === 'emails') renderEmails();
     else if (section === 'split') renderSplitSettings();
     else if (section === 'reviews') loadGuestReviewModeration();
@@ -12674,14 +12678,10 @@ const chbFull = () => {
     const m = chbMe();
     return !m || m.full !== false;
 };
-// May the person signed in use this area? 'all' is the everyday work, 'owner'
-// full access only, anything else one of the five switches. The server decides
-// again on every request; this only keeps what they can't use off their screens.
+// May the person signed in do this? app.js's chbMayUse, said once. The server
+// decides again on every request; this only keeps what they can't use off their screens.
 function chbCan(cap) {
-    const m = chbMe();
-    if (!m || m.full !== false || cap === 'all') return true;
-    if (cap === 'owner') return false;
-    return !!(m.caps && m.caps[cap]);
+    return chbMayUse(cap);
 }
 const oaName = () => {
     const m = chbMe();
@@ -12706,13 +12706,11 @@ function oaAvaBtn(big, which) {
     const ava = host ? oaAvaOf(String(hostVal('host-name') || ''), url, big) : oaAva(big);
     return `<button type="button" class="ga-avabtn${big ? ' is-big' : ''}" ${chbAttrs('oaPhotoSheet', host ? 'host' : 'me')} aria-label="${url ? (host ? 'Change the host photo' : 'Change your photo') : host ? 'Add a host photo' : 'Add a photo'}">${ava}<span class="ga-cam" aria-hidden="true">${GA_CAM}</span></button>`;
 }
-// The role line: what this person is to the back office.
+// The role line: what this person is to the back office ("Host · 2 changes").
 function oaRoleWords(p) {
-    if (!p) return 'Owner · full access';
-    if (p.state === 'removed') return 'No access';
-    if (p.state === 'invited') return 'Invited';
-    if (p.full) return p.original ? 'Owner · full access' : 'Full access';
-    return 'Host';
+    if (p && p.state === 'removed') return 'No access';
+    const n = oaChanges(p);
+    return oaRoleName(p) + (n ? ' · ' + oaChangeWords(n) : '');
 }
 function oaIndexRowPaint() {
     const r = document.getElementById('oa-index-row');
@@ -12767,7 +12765,7 @@ function renderOwnerAccount() {
     const bizRows = [
         oaHostRowShown() ? gaRow({ ic: 'card', t: 'Host profile', s: hostSub, act: chbAttrs('oaGo', 'host'), chev: true, cls: 'oa-r-host' }) : '',
         chbFull()
-            ? gaRow({ ic: 'people', t: 'People & access', s: others.length ? 'You and ' + listAnd(others) : __oaPeople ? 'Only you so far' : 'Who signs in, and what each can do', act: chbAttrs('oaGo', 'people'), chev: true, cls: 'oa-r-people' })
+            ? gaRow({ ic: 'people', t: 'Permissions', s: others.length ? 'You and ' + listAnd(others) : __oaPeople ? 'Only you so far' : 'Who signs in, and what each can do', act: chbAttrs('oaGo', 'people'), chev: true, cls: 'oa-r-people' })
             : '',
     ].filter(Boolean);
     box.innerHTML = oaPage(
@@ -13184,7 +13182,7 @@ async function oaTwoStep(on) {
 // ===================================================================
 //  PEOPLE (approved demo): each person signs in with their own password or
 //  passkey, and nobody sets or sees anyone else's. Your details is your own;
-//  People & access (full access only) is who else signs in and what each can
+//  Permissions (Super Users only) is who else signs in and what each can
 //  do. people.php answers every change with the whole list, so the pages are
 //  formatters of __oaPeople. The server refuses whatever a switch does not
 //  cover — these pages only decide what is offered.
@@ -13220,6 +13218,8 @@ function oaPeoplePatch() {
         if (document.querySelector('#acct-body .ga-page') && !!document.querySelector('#acct-body .oa-r-host') !== oaHostRowShown()) renderOwnerAccount();
         if (document.querySelector('#people-body .ga-page')) renderPeople();
         if (document.querySelector('#person-body .ga-page')) renderPerson();
+        if (document.querySelector('#perms-body .ga-page')) renderPerms();
+        if (document.querySelector('#split-body .ga-page')) renderSplitSettings();
         if (document.querySelector('#emails-body .ga-page')) renderEmails();
     } finally {
         __oaStill = false;
@@ -13233,6 +13233,8 @@ function oaPeopleLanded(res) {
 function oaMailLanded(res) {
     if (res && Array.isArray(res.mailKinds)) __oaMailKinds = res.mailKinds;
     if (res && Array.isArray(res.mailExtras)) __oaMailExtras = res.mailExtras;
+    if (res && Array.isArray(res.permDefs)) __oaPermDefs = res.permDefs;
+    if (res && res.permGroups && typeof res.permGroups === 'object') __oaPermGroups = res.permGroups;
 }
 // "active today at 9:41", "active 3 days ago" — when they were last here.
 function oaSeenWords(p) {
@@ -13247,10 +13249,10 @@ function oaSeenWords(p) {
     if (days === 1) return 'active yesterday';
     return 'active ' + (days < 7 ? days + ' days ago' : fmtDate(String(p.seen).split(' ')[0]));
 }
+// "Host · 2 changes · active today at 9:41": the role, then where they are.
 function oaPersonSub(p) {
     if (p.state === 'removed') return 'No access · removed ' + fmtDate(String(p.removed || '').split(' ')[0]);
-    if (p.state === 'invited') return 'Invited · waiting for ' + p.first + ' to choose a password';
-    return oaRoleWords(p) + ' · ' + oaSeenWords(p);
+    return oaRoleWords(p) + ' · ' + (p.state === 'invited' ? 'invite sent' : oaSeenWords(p));
 }
 
 // ---- Your details: yours alone ----
@@ -13331,7 +13333,14 @@ async function oaMeEmail() {
     }
 }
 
-// ---- People & access (full access) ----
+// ---- Permissions (Super Users): who signs in, what each can do, whose money is whose ----
+let __oaPermDefs = []; // [{k, t, g, fixed, host}] — the server's words, with the people list
+let __oaPermGroups = {}; // group key → its caption
+let __oaFold = ''; // the fold open on a person's page: '<id>:mail' or '<id>:keys'
+const oaRoleName = (p) => (p && p.full === false ? 'Host' : 'Super User');
+// How far a Host has been moved from a plain one (a Super User has everything).
+const oaChanges = (p) => (p && p.full === false ? Number(p.changes) || 0 : 0);
+const oaChangeWords = (n) => n + ' change' + (n === 1 ? '' : 's');
 function renderPeople() {
     const box = document.getElementById('people-body');
     if (!box) return;
@@ -13340,47 +13349,60 @@ function renderPeople() {
     const rows = !Array.isArray(list)
         ? [gaRow({ ic: 'people', t: 'Loading…', static: true })]
         : list.map((p) =>
-              p.you
-                  ? gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaRoleWords(p) + ' · you', static: true, cls: 'oa-person' })
-                  : gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaPersonSub(p), act: chbAttrs('oaPersonOpen', p.id), chev: true, cls: 'oa-person' + (p.state === 'removed' ? ' oa-dim' : '') }),
+              gaRow({
+                  ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'),
+                  t: p.name,
+                  s: oaPersonSub(p),
+                  v: p.state === 'invited' ? stCap('warn', 'Waiting') : '',
+                  act: chbAttrs('oaPersonOpen', p.id),
+                  chev: true,
+                  cls: 'oa-person' + (p.state === 'removed' ? ' oa-dim' : ''),
+              }),
           );
     rows.push(gaRow({ ic: 'plus', t: 'Add someone', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }));
     box.innerHTML = oaPage(
         'people',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">People &amp; access</h1>` +
+            `<h1 class="section-title ga-h1">Permissions</h1>` +
             gaGroup(rows) +
-            gaGroup([
-                gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' }),
-                gaRow({ ic: 'bank', t: 'Cottages and the bank', s: oaSplitSummary(), act: chbAttrs('oaGo', 'split'), chev: true, cls: 'oa-r-split' }),
-            ]),
+            gaGroup([gaRow({ ic: 'bank', t: 'Cottages & money', s: oaSplitSummary(), act: chbAttrs('oaGo', 'split'), chev: true, cls: 'oa-r-split' })]),
     );
     if (__split === null && !__splitBusy) splitLoad();
     if (!Array.isArray(list)) loadPeople();
 }
 function oaPersonOpen(id) {
     __oaPerson = Number(id) || 0;
+    __oaFold = '';
     oaGo('person');
 }
+// Add someone: name, email and role. They choose their own password from the email.
 async function oaPeopleAdd() {
+    const ROLES = [
+        { value: 'host', label: 'Host' },
+        { value: 'super', label: 'Super User' },
+    ];
     const fields = [
         { id: 'name', label: 'Name', value: '', autocomplete: 'off' },
         { id: 'email', label: 'Email', type: 'email', value: '', placeholder: 'name@example.com', autocomplete: 'off', inputmode: 'email' },
+        { id: 'role', label: 'Role', type: 'select', options: ROLES },
     ];
-    let msg = 'They get an email with a link to choose their own password. You never see it, and you can change what they can do afterwards.';
+    let msg = 'They choose their own password from the email.';
     for (;;) {
         const v = await glassForm(msg, fields, { title: 'Add someone', okLabel: 'Send the invite' });
         if (!v) return;
         fields[0].value = String(v.name || '').trim();
         fields[1].value = String(v.email || '').trim().toLowerCase();
+        const role = v.role === 'super' ? 'super' : 'host';
+        // A select has no default, so the role chosen comes first if asked again.
+        fields[2].options = role === 'super' ? [ROLES[1], ROLES[0]] : ROLES;
         if (!fields[0].value) {
             msg = 'Enter their name.';
             continue;
         }
         try {
-            const res = await apiPost('people.php', { action: 'invite', name: fields[0].value, email: fields[1].value });
+            const res = await apiPost('people.php', { action: 'invite', name: fields[0].value, email: fields[1].value, role });
             oaPeopleLanded(res);
-            toast(res.sent ? 'Invite sent to ' + fields[1].value + '.' : 'Added, but the email didn’t send. Open their page to send the invite again.');
+            toast(res.sent ? 'Invite sent to ' + fields[1].value : 'Added, but the email didn’t send. Open their page to send the invite again.');
             return;
         } catch (e) {
             msg = e.message || 'That didn’t save. Try again.';
@@ -13388,51 +13410,65 @@ async function oaPeopleAdd() {
     }
 }
 
-// ---- Cottages and the bank: whose money is whose (split.php) ----
-// One line for the People page: who holds the account, and who is paid out.
+// ---- Cottages & money: whose account the money lands in, and whose each cottage's is (split.php) ----
 function oaSplitSummary() {
     const S = __split;
-    if (!S || !S.ready) return 'Whose bank account, and who hosts each cottage';
-    const ppl = S.people || [];
-    const first = (id) => ((ppl.find((p) => p.id === Number(id)) || {}).first || '');
-    if (!S.holder) return 'Not set up · all the money stays in one place';
-    const paid = [...new Set(Object.values(S.hosts || {}).map(Number).filter((id) => id !== Number(S.holder)))];
-    return `${first(S.holder)}’s account` + (paid.length ? ' · ' + listAnd(paid.map(first)) + ' paid out' : '');
+    if (!S || !S.ready) return 'Whose account the money lands in';
+    const h = (S.people || []).find((p) => p.id === Number(S.holder));
+    return h ? `Money lands in ${h.first}’s account` : 'All the money stays in one place';
+}
+// A face to pick, with the person's photo when the people list has it.
+function oaSplitFace(p) {
+    const full = (__oaPeople || []).find((x) => x.id === Number(p.id));
+    return oaAvaOf(p.name, full ? oaPersonPhotoUrl(full) : '', false, 'oa-face');
 }
 function renderSplitSettings() {
     const box = document.getElementById('split-body');
     if (!box) return;
     if (!chbFull()) return oaGo('acct');
     const S = __split;
-    const head = oaBack('people', 'People') + '<h1 class="section-title ga-h1">Cottages and the bank</h1><p class="ga-lead">Every guest pays into one bank account. Whoever hosts a cottage gets its money: the account’s holder keeps theirs and sends the rest on.</p>';
+    const head = oaBack('people', 'Permissions') + '<h1 class="section-title ga-h1">Cottages &amp; money</h1>';
     if (!S || !S.ready) {
         box.innerHTML = oaPage('split', head + gaGroup([gaRow({ ic: 'bank', t: !S ? 'Loading…' : 'This needs a database update first', s: S ? 'Open Status and run the updates' : '', static: true })]));
         if (!S && !__splitBusy) splitLoad();
         return;
     }
-    const ppl = S.people || [];
+    if (__oaPeople === null) loadPeople();
+    // Someone still to accept an invite can't hold the account or a cottage yet.
+    const ppl = (S.people || []).filter((p) => {
+        const f = (__oaPeople || []).find((x) => x.id === p.id);
+        return !f || f.state === 'active' || p.id === Number(S.holder);
+    });
     const person = (id) => ppl.find((p) => p.id === Number(id)) || null;
     const holder = person(S.holder);
-    let html = head + gaGroup([gaRow({ ic: 'bank', t: holder ? `${holder.name}’s account` : 'Whose account is it?', s: 'Every guest payment lands here', act: 'data-act="oaSplitHolder"', chev: true })], 'The bank account');
-    html += gaGroup(
-        (S.cottages || []).map((c) => {
-            const h = person((S.hosts || {})[c.k]);
-            const out = !!(h && holder && h.id !== holder.id);
-            return gaRow({ ic: 'home', t: c.name, s: h ? `${h.name} · ${out ? holder.first + ' sends its money on' : 'its money stays in the account'}` : holder ? `${holder.name} · its money stays in the account` : 'Nobody yet', act: chbAttrs('oaSplitHost', c.k), chev: true });
-        }),
-        'Who hosts each cottage',
-    );
-    const paid = holder ? [...new Set(Object.values(S.hosts || {}).map(Number).filter((id) => id !== holder.id))].map(person).filter(Boolean) : [];
-    paid.forEach((p) => {
-        const names = ((S.payees || {})[p.id] || []);
-        html += gaGroup(
-            names
-                .map((n) => gaRow({ ic: 'send', t: n, s: `Payments to this name count as paid to ${p.first}`, v: '<span class="ga-vbtn">Unlink</span>', act: chbAttrs('oaSplitUnlink', p.id, n) }))
-                .concat([gaRow({ ic: 'plus', t: 'Add the name the bank shows', act: chbAttrs('oaSplitLinkAsk', p.id), cls: 'oa-accent' })]),
-            `Paid to ${p.first} as`,
-        );
+    const hi = Math.max(0, ppl.findIndex((p) => holder && p.id === holder.id));
+    let html =
+        head +
+        `<h2 class="ga-cap">Guest money lands in</h2>` +
+        `<div class="u-seg oa-seg" role="radiogroup" aria-label="Whose account" style="--i:${hi};--n:${Math.max(1, ppl.length)}">` +
+        ppl.map((p) => `<button type="button" role="radio" aria-checked="${!!holder && holder.id === p.id}" class="${holder && holder.id === p.id ? 'is-on' : ''}" ${chbAttrs('oaSplitHolder', p.id)}>${escapeHtml(p.first)}’s account</button>`).join('') +
+        `</div>`;
+    const hostOf = (k) => person((S.hosts || {})[k]) || holder;
+    html +=
+        `<h2 class="ga-cap">Each cottage’s money goes to</h2><div class="ga-group">` +
+        (S.cottages || [])
+            .map((c) => {
+                const h = hostOf(c.k);
+                const faces = ppl
+                    .map((p) => `<button type="button" class="oa-wb" role="radio" aria-checked="${!!h && h.id === p.id}" aria-label="${escapeHtml(p.first)}" ${chbAttrs('oaSplitHost', c.k, p.id)}>${oaSplitFace(p)}</button>`)
+                    .join('');
+                return `<div class="ga-row oa-crow"><span class="ga-lb"><span class="ga-t"><i class="cot-dot" style="background:var(--prop-${escapeHtml(c.k)}, var(--accent))" aria-hidden="true"></i>${escapeHtml(c.name)}</span></span><span class="oa-who" role="radiogroup" aria-label="${escapeHtml(c.name)}">${faces}</span></div>`;
+            })
+            .join('') +
+        `</div>`;
+    // Who the holder sends money on to, in one sentence each.
+    const out = holder ? ppl.filter((p) => p.id !== holder.id).map((p) => [p, (S.cottages || []).filter((c) => hostOf(c.k) && hostOf(c.k).id === p.id).map((c) => c.name)]).filter((x) => x[1].length) : [];
+    if (out.length) html += `<p class="ga-note oa-split-note">${out.map(([p, cs]) => `${escapeHtml(holder.first)} sends ${escapeHtml(p.first)} ${escapeHtml(listAnd(cs))}’s money. Payments shows how much.`).join(' ')}</p>`;
+    // Names the bank shows for a paid-out person, kept so one linked by mistake can be undone.
+    out.forEach(([p]) => {
+        const names = (S.payees || {})[p.id] || [];
+        if (names.length) html += gaGroup(names.map((n) => gaRow({ ic: 'send', t: n, v: '<span class="ga-vbtn">Unlink</span>', act: chbAttrs('oaSplitUnlink', p.id, n) })), `Paid to ${p.first} as`);
     });
-    if (holder && !paid.length) html += '<p class="ga-note oa-split-note">Nobody is paid out: every cottage’s money stays in the account.</p>';
     box.innerHTML = oaPage('split', html);
 }
 async function oaSplitSave(body, said) {
@@ -13446,29 +13482,18 @@ async function oaSplitSave(body, said) {
     __oaStill = true;
     try { renderSplitSettings(); } finally { __oaStill = false; }
 }
-// A pick-one list with the current answer first (glassForm's select has no default).
-function oaSplitPeopleOpts(cur, none) {
-    const ppl = (__split && __split.people) || [];
-    const opts = ppl.map((p) => ({ value: String(p.id), label: p.name }));
-    if (none) opts.push({ value: '0', label: none });
-    const i = opts.findIndex((o) => o.value === String(cur || 0));
-    if (i > 0) opts.unshift(opts.splice(i, 1)[0]);
-    return opts;
-}
-async function oaSplitHolder() {
+const oaSplitFirst = (id) => (((__split && __split.people) || []).find((p) => p.id === Number(id)) || {}).first || '';
+async function oaSplitHolder(id) {
     const S = __split;
-    if (!S) return;
-    const v = await glassForm('The person whose bank account the guests pay into.', [{ id: 'who', label: 'The account is', type: 'select', options: oaSplitPeopleOpts(S.holder, 'Nobody: no split') }], { title: 'The bank account', okLabel: 'Save' });
-    if (!v) return;
-    await oaSplitSave({ holder: Number(v.who) || 0 }, 'Saved.');
+    if (!S || Number(S.holder) === Number(id)) return;
+    await oaSplitSave({ holder: Number(id) || 0 }, `Guest money lands in ${oaSplitFirst(id)}’s account now`);
 }
-async function oaSplitHost(k) {
+async function oaSplitHost(k, id) {
     const S = __split;
     if (!S) return;
     const c = (S.cottages || []).find((x) => x.k === k);
-    const v = await glassForm(`Who hosts ${c ? c.name : 'this cottage'}? Its money goes to them.`, [{ id: 'who', label: 'Hosted by', type: 'select', options: oaSplitPeopleOpts((S.hosts || {})[k], 'The account holder') }], { title: c ? c.name : 'Cottage', okLabel: 'Save' });
-    if (!v) return;
-    await oaSplitSave({ hosts: { [k]: Number(v.who) || 0 } }, 'Saved.');
+    if (Number((S.hosts || {})[k] || S.holder) === Number(id)) return;
+    await oaSplitSave({ hosts: { [k]: Number(id) || 0 } }, `${c ? c.name : 'That cottage'}’s money goes to ${oaSplitFirst(id)}`);
 }
 async function oaSplitLinkAsk(id) {
     await pmSplitLinkAsk(id);
@@ -13490,8 +13515,24 @@ async function oaSplitUnlink(id, name) {
     try { renderSplitSettings(); } finally { __oaStill = false; }
 }
 
-// ---- One person's page ----
+// ---- One person's page: their role, what they can do, their emails ----
 const OA_PERSON_KEYS = {}; // their passkeys, by person id, once asked
+const OA_TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+// A row that opens in place: its body is drawn only while open.
+function oaFoldRow(p, key, ic, t, sub, body) {
+    const open = __oaFold === p.id + ':' + key;
+    return `<div class="oa-fold${open ? ' is-open' : ''}">${gaRow({ ic, t, s: sub, act: chbAttrs('oaFoldToggle', p.id + ':' + key) + ` aria-expanded="${open}"`, chev: true })}${open ? `<div class="oa-foldbody">${body()}</div>` : ''}</div>`;
+}
+function oaFoldToggle(k) {
+    __oaFold = __oaFold === k ? '' : k;
+    __oaStill = true;
+    try { renderPerson(); } finally { __oaStill = false; }
+}
+function oaPermsSub(p) {
+    if (p.full !== false) return 'Everything';
+    const n = oaChanges(p);
+    return n ? oaChangeWords(n) + ' from Host' : 'As a Host';
+}
 function renderPerson() {
     const box = document.getElementById('person-body');
     if (!box) return;
@@ -13499,82 +13540,166 @@ function renderPerson() {
     const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
     if (!p) {
         if (!Array.isArray(__oaPeople)) loadPeople();
-        box.innerHTML = oaPage('person', oaBack('people', 'People') + `<h1 class="section-title ga-h1">People &amp; access</h1>` + gaGroup([gaRow({ t: 'Loading…', static: true })]));
+        box.innerHTML = oaPage('person', oaBack('people', 'Permissions') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
         return;
     }
     const n = p.first;
+    const who = p.you ? 'you' : n;
+    const seen = oaSeenWords(p);
+    const status = p.state === 'removed' ? 'No access · removed ' + fmtDate(String(p.removed || '').split(' ')[0]) : p.state === 'invited' ? 'Invited · waiting for them to sign in' : p.you ? '' : seen.charAt(0).toUpperCase() + seen.slice(1);
     let html =
-        oaBack('people', 'People') +
-        `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">${escapeHtml(p.name)}</h1><p class="ga-lead">${escapeHtml(oaPersonSub(p))}</p></div>${oaAvaOf(p.name, oaPersonPhotoUrl(p), false)}</div>`;
+        oaBack('people', 'Permissions') +
+        `<div class="oa-hero">${oaAvaOf(p.name, oaPersonPhotoUrl(p), true)}<div class="oa-hero-t"><h1 class="section-title ga-h1">${escapeHtml(p.name)}</h1><span>${escapeHtml(p.contact || 'No email yet')}</span>${status ? `<span>${escapeHtml(status)}</span>` : ''}</div></div>`;
     if (p.state === 'removed') {
-        html +=
-            gaGroup([gaRow({ ic: 'send', t: 'Give ' + n + ' access again', s: 'Sends a new invite to ' + p.contact, act: chbAttrs('oaPersonDo', 'restore'), cls: 'oa-accent' })]);
+        html += gaGroup([gaRow({ ic: 'send', t: 'Give ' + n + ' access again', s: 'Sends a new invite to ' + p.contact, act: chbAttrs('oaPersonDo', 'restore'), cls: 'oa-accent' })]);
         box.innerHTML = oaPage('person', html);
         return;
     }
-    html += gaGroup([
-        gaRow({ ic: 'star', t: 'Full access, like you', v: oaSwitch('oa-full', p.full, 'Full access, like you', 'oaPersonFull'), static: true, cls: 'oa-swrow' }),
-    ]);
-    if (!p.full) {
-        html +=
-            gaGroup(
-                [gaRow({ ic: 'check', t: 'The everyday', v: stCap('ok', 'Always'), static: true })].concat(
-                    Object.keys(OA_CAPS).map((k) => gaRow({ t: OA_CAPS[k][0], v: oaSwitch('oa-cap-' + k, !!(p.caps && p.caps[k]), OA_CAPS[k][0], 'oaPersonCap', k), static: true, cls: 'oa-swrow oa-cap' })),
-                ),
-                'What ' + n + ' can do',
-            ) +
-            gaGroup([gaRow({ ic: 'lock', t: 'Set-up and system', static: true })], 'Only you');
-    }
+    // The role: you can't change your own, so yours is just said.
+    const sup = p.full !== false;
+    html +=
+        `<h2 class="ga-cap">Role</h2>` +
+        (p.you
+            ? `<div class="oa-rolebox">Super User</div>`
+            : `<div class="u-seg oa-seg" role="radiogroup" aria-label="Role" style="--i:${sup ? 1 : 0};--n:2">` +
+              [['host', 'Host'], ['super', 'Super User']]
+                  .map(([k, t]) => `<button type="button" role="radio" aria-checked="${(k === 'super') === sup}" class="${(k === 'super') === sup ? 'is-on' : ''}" ${chbAttrs('oaRoleSet', k)}>${t}</button>`)
+                  .join('') +
+              `</div>`);
+    const kinds = (__oaMailKinds || []).map((m) => m.k);
+    const allowed = OA_MAILS.filter((m) => p.mailCan && p.mailCan[m.k] && (!kinds.length || kinds.includes(m.k)));
+    const lit = allowed.filter((m) => oaMailLit(p, m.k)).length;
     const keys = OA_PERSON_KEYS[p.id];
-    const keyRows = !Array.isArray(keys)
-        ? [gaRow({ ic: 'face', t: 'Passkeys', s: 'Checking…', static: true })]
-        : keys.length
-          ? keys.map((k) =>
-                gaRow({
-                    ic: 'face',
-                    t: 'Passkey on ' + (k.label || 'a device'),
-                    s: 'Added ' + fmtDate(String(k.created_at || '').split(' ')[0]) + (k.last_used_at ? ' · used ' + fmtDate(String(k.last_used_at).split(' ')[0]) : ''),
-                    v: '<span class="ga-vbtn">Remove</span>',
-                    act: chbAttrs('oaPersonKeyRemove', k.id),
-                }),
-            )
-          : [gaRow({ ic: 'face', t: 'No passkeys yet', static: true })];
     html += gaGroup(
         [
-            gaRow({
-                ic: 'mail',
-                t: 'Emails ' + n + ' gets',
-                s: (p.state === 'invited' ? 'From when ' + n + ' has chosen a password: ' : '') + oaMailList(p, 3),
-                act: chbAttrs('oaEmailsOpen', 'person'),
-                chev: true,
-                cls: 'oa-r-emails',
-            }),
-        ],
-        'Emails',
+            gaRow({ ic: 'check', t: 'What ' + who + ' can do', s: oaPermsSub(p), act: chbAttrs('oaGo', 'perms'), chev: true, cls: 'oa-r-perms' }),
+            oaFoldRow(p, 'mail', 'mail', 'Emails', p.state === 'invited' ? 'Once they’ve signed in' : lit + ' of ' + allowed.length, () =>
+                allowed.length
+                    ? allowed.map((m) => gaRow({ t: m.t, v: oaSwitch('oa-mail-' + m.k, oaMailLit(p, m.k), m.t, 'oaPersonMail', m.k), static: true, cls: 'oa-swrow' })).join('')
+                    : gaRow({ t: 'Only sign-in emails', static: true }),
+            ),
+        ].concat(
+            // A lost phone's passkey can be taken off without removing the person.
+            !p.you && p.passkeys > 0
+                ? [
+                      oaFoldRow(p, 'keys', 'face', 'Passkeys', p.passkeys + (p.passkeys === 1 ? ' passkey' : ' passkeys'), () =>
+                          !Array.isArray(keys)
+                              ? gaRow({ t: 'Checking…', static: true })
+                              : keys
+                                    .map((k) =>
+                                        gaRow({
+                                            t: k.label || 'A device',
+                                            s: 'Added ' + fmtDate(String(k.created_at || '').split(' ')[0]),
+                                            v: '<span class="ga-vbtn">Remove</span>',
+                                            act: chbAttrs('oaPersonKeyRemove', k.id),
+                                        }),
+                                    )
+                                    .join(''),
+                      ),
+                  ]
+                : [],
+        ),
     );
-    html += gaGroup(
-        [gaRow({ ic: 'mail', t: p.contact || 'No email', static: true })]
-            .concat(keyRows)
-            .concat([
-                p.state === 'invited'
-                    ? gaRow({ ic: 'send', t: 'Send the invite again', s: 'The link works for 7 days', act: chbAttrs('oaPersonDo', 'reinvite') })
-                    : gaRow({ ic: 'send', t: 'Send a password reset link', act: chbAttrs('oaPersonDo', 'reset_link') }),
-            ]),
-        'Sign-in',
-    );
-    html += `<div class="ga-group ga-signout">${gaRow({ ic: 'bin', t: p.state === 'invited' ? 'Cancel the invite' : 'Remove ' + n + '’s access', act: chbAttrs('oaPersonDo', p.state === 'invited' ? 'cancel_invite' : 'remove'), danger: true })}</div>`;
+    if (!p.you) {
+        html += gaGroup([
+            p.state === 'invited'
+                ? gaRow({ ic: 'send', t: 'Send the invite again', act: chbAttrs('oaPersonDo', 'reinvite') })
+                : gaRow({ ic: 'send', t: 'Send a password reset link', act: chbAttrs('oaPersonDo', 'reset_link') }),
+            gaRow({ ic: 'bin', t: p.state === 'invited' ? 'Cancel the invite' : 'Remove ' + n, act: chbAttrs('oaPersonDo', p.state === 'invited' ? 'cancel_invite' : 'remove'), danger: true }),
+        ]);
+    }
     box.innerHTML = oaPage('person', html);
-    if (!Array.isArray(keys) && p.state !== 'invited') oaPersonKeysLoad(p.id);
-    else if (p.state === 'invited') OA_PERSON_KEYS[p.id] = OA_PERSON_KEYS[p.id] || [];
+    if (__oaFold === p.id + ':keys' && !Array.isArray(keys)) oaPersonKeysLoad(p.id);
 }
-// The five switches, in the person page's order (people-lib.php's PEOPLE_CAPS).
-const OA_CAPS = {
-    payments: ['Take payments', 'Send payment requests and record cash or bank payments'],
-    refunds: ['Refunds and deposits', 'Give money back: refunds, and returning or keeping deposits'],
-    money: ['Money overview', 'The Payments screens: what’s owed, income and tax, moving money out'],
-    prices: ['Prices and cottages', 'Rates, seasons, pricing ideas, cottage pages and calendar sync'],
-    website: ['Website and marketing', 'Home page, things to do, newsletter and analytics'],
-};
+// ---- What one person can do: every permission, a switch each ----
+function renderPerms() {
+    const box = document.getElementById('perms-body');
+    if (!box) return;
+    if (!chbFull()) return oaGo('acct');
+    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
+    if (!p || !__oaPermDefs.length) {
+        if (!Array.isArray(__oaPeople) || !__oaPermDefs.length) loadPeople();
+        box.innerHTML = oaPage('perms', oaBack('person', p ? (p.you ? 'You' : p.first) : 'Back') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
+        return;
+    }
+    const sup = p.full !== false;
+    const who = p.you ? 'you' : p.first;
+    const n = oaChanges(p);
+    let html = oaBack('person', p.you ? 'You' : p.first) + `<h1 class="section-title ga-h1">What ${escapeHtml(who)} can do</h1>`;
+    if (n) html += `<div class="oa-permreset"><span><i class="oa-chg" aria-hidden="true"></i>${oaChangeWords(n)} from Host</span><button type="button" class="oa-mini" data-act="oaPermsReset">Reset</button></div>`;
+    Object.keys(__oaPermGroups).forEach((g) => {
+        const items = __oaPermDefs.filter((d) => d.g === g);
+        if (!items.length) return;
+        const on = items.filter((d) => p.perms && p.perms[d.k]).length;
+        const superOnly = !sup && items.every((d) => d.fixed === 'super');
+        html += `<h2 class="ga-cap oa-pcap"><span>${escapeHtml(__oaPermGroups[g])}</span><span>${superOnly ? 'Super User only' : on + ' of ' + items.length}</span></h2><div class="ga-group">`;
+        items.forEach((d) => {
+            const has = !!(p.perms && p.perms[d.k]);
+            const changed = !sup && !d.fixed && has !== !!d.host;
+            const v =
+                sup || d.fixed === 'always'
+                    ? `<span class="oa-fixed is-on" role="img" aria-label="${d.fixed === 'always' ? 'Always on' : 'On'}">${OA_TICK}</span>`
+                    : d.fixed === 'super'
+                      ? `<span class="oa-fixed" role="img" aria-label="Super User only">${gaSvg('lock')}</span>`
+                      : oaSwitch('oa-perm-' + d.k.replace('.', '-'), has, d.t, 'oaPermSet', d.k);
+            html += `<div class="ga-row oa-swrow oa-prow${changed ? ' is-changed' : ''}"><span class="ga-lb"><span class="ga-t">${escapeHtml(d.t)}${changed ? '<i class="oa-chg" role="img" aria-label="changed from Host"></i>' : ''}</span></span><span class="ga-v">${v}</span></div>`;
+        });
+        html += '</div>';
+    });
+    box.innerHTML = oaPage('perms', html);
+}
+const oaPersonNow = () => (__oaPeople || []).find((x) => x.id === __oaPerson) || null;
+const oaPermLabel = (k) => ((__oaPermDefs || []).find((d) => d.k === k) || {}).t || k;
+async function oaPermSet(k, on, undoing) {
+    const p = oaPersonNow();
+    if (!p) return;
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-perm-' + String(k).replace('.', '-')));
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'set_perm', id: p.id, perm: k, on: !!on }));
+        if (!undoing) toast(oaPermLabel(k) + ': ' + (on ? 'on' : 'off') + ' for ' + p.first, 'success', { label: 'Undo', fn: () => oaPermSet(k, !on, true) });
+    } catch (e) {
+        if (el) el.checked = !on;
+        glassAlert(e.message || "That didn't save. Try again.");
+    }
+}
+async function oaPermsReset() {
+    const p = oaPersonNow();
+    if (!p) return;
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'reset_perms', id: p.id }));
+        toast(p.first + ' is a plain Host again');
+    } catch (e) {
+        glassAlert(e.message || "That didn't save. Try again.");
+    }
+}
+// The role. Becoming a Super User is everything, Permissions included, so it asks first.
+async function oaRoleSet(role) {
+    const p = oaPersonNow();
+    if (!p || p.you) return;
+    const sup = role === 'super';
+    if (sup === (p.full !== false)) return;
+    if (sup && !(await glassConfirm(p.first + ' will be able to do everything you can, including Permissions.', 'Make ' + p.first + ' a Super User', { title: 'Make ' + p.first + ' a Super User?' }))) return;
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'set_full', id: p.id, on: sup }));
+        toast(p.first + ' is a ' + (sup ? 'Super User' : 'Host') + ' now');
+    } catch (e) {
+        glassAlert(e.message || "That didn't save. Try again.");
+    }
+}
+// One email, on or off, for the person whose page this is.
+async function oaPersonMail(kind, on) {
+    const p = oaPersonNow();
+    if (!p) return;
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-mail-' + kind));
+    try {
+        oaPeopleLanded(await apiPost('people.php', { action: 'set_mail', id: p.id, kind, on: !!on }));
+        const m = OA_MAILS.find((x) => x.k === kind);
+        toast((m ? m.t : 'Those emails') + (on ? ' now go to ' : ' no longer go to ') + (p.you ? 'you' : p.first));
+    } catch (e) {
+        if (el) el.checked = !on;
+        toast(e.message || 'That didn’t save. Try again.');
+    }
+}
 
 // ---- Who gets which emails ----
 // A row per email, a photo per person: lit with a tick = it goes to them; faded
@@ -13662,9 +13787,9 @@ function renderEmails() {
             `<h2 class="ga-cap em-cap"><span>${escapeHtml(label)}</span><span class="em-heads" aria-hidden="true">${heads}</span></h2>` +
             `<div class="ga-group em-group">${OA_MAILS.filter((m) => m.when === w)
                 .map((m) => {
-                    // The digest is for everyone; a copy for someone without Money
-                    // overview leaves the money out, and the row says whose.
-                    const plain = m.k === 'digest' ? list.filter((p) => oaMailLit(p, 'digest') && !p.full && !(p.caps && p.caps.money)).map((p) => p.first + '’s') : [];
+                    // The digest is for everyone; a copy for someone who can't see the
+                    // Payments page leaves the money out, and the row says whose.
+                    const plain = m.k === 'digest' ? list.filter((p) => oaMailLit(p, 'digest') && !p.full && !(p.perms && p.perms['mo.view'])).map((p) => p.first + '’s') : [];
                     const also = plain.length ? listAnd(plain) + (plain.length > 1 ? ' copies leave' : ' copy leaves') + ' out the money' : '';
                     return `<div class="ga-row em-row" data-mail="${m.k}"><span class="ga-lb"><span class="ga-t">${escapeHtml(m.t)}</span>${also ? `<span class="ga-s em-also">${escapeHtml(also)}</span>` : ''}</span><span class="em-togs">${list.map((p) => oaMailTog(p, m)).join('')}</span></div>`;
                 })
@@ -13689,7 +13814,7 @@ function renderMyEmails(box) {
         `<h1 class="section-title ga-h1">Emails you get</h1><p class="ga-lead">${escapeHtml(by + ' chooses who gets which emails. Yours come to ' + (me.contact || 'your email') + '.')}</p>`;
     OA_MAIL_GROUPS.forEach(([w, label]) => {
         const rows = OA_MAILS.filter((m) => m.when === w && gets.includes(m.k)).map((m) =>
-            gaRow({ t: m.t, s: m.k === 'digest' && !chbCan('money') ? 'The week ahead and anything that needs a look, without the money' : m.s, static: true }),
+            gaRow({ t: m.t, s: m.k === 'digest' && !chbCan('mo.view') ? 'The week ahead and anything that needs a look, without the money' : m.s, static: true }),
         );
         if (rows.length) html += gaGroup(rows, label);
     });
@@ -13720,7 +13845,7 @@ function oaMailWhy(kind, id) {
     if (!p) return;
     const k = (__oaMailKinds || []).find((x) => x.k === kind);
     const cap = (k && k.cap) || 'owner';
-    toast(cap === 'owner' ? 'Only someone with full access gets the backup. It’s everything on the site.' : p.first + ' can’t get this yet. Switch on ' + ((OA_CAPS[cap] || [])[0] || cap) + ' on ' + p.first + '’s page first.');
+    toast(cap === 'owner' ? 'Only a Super User gets the backup. It’s everything on the site.' : p.first + ' can’t get this yet. Switch on ' + oaPermLabel(cap) + ' in What ' + p.first + ' can do first.');
 }
 async function oaPersonKeysLoad(id) {
     try {
@@ -13736,34 +13861,6 @@ async function oaPersonKeysLoad(id) {
         } finally {
             __oaStill = false;
         }
-    }
-}
-async function oaPersonFull(on) {
-    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
-    if (!p) return;
-    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-full'));
-    if (on && !(await glassConfirm(p.first + ' will be able to do everything you can, including adding and removing people.', 'Give full access', { title: 'Give ' + p.first + ' full access?' }))) {
-        if (el) el.checked = false;
-        return;
-    }
-    try {
-        oaPeopleLanded(await apiPost('people.php', { action: 'set_full', id: p.id, on: !!on }));
-        toast(on ? p.first + ' has full access' : p.first + ' has the everyday work and the areas switched on below');
-    } catch (e) {
-        if (el) el.checked = !on;
-        glassAlert(e.message || "That didn't save. Try again.");
-    }
-}
-async function oaPersonCap(k, on) {
-    const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
-    if (!p || !OA_CAPS[k]) return;
-    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('oa-cap-' + k));
-    try {
-        oaPeopleLanded(await apiPost('people.php', { action: 'set_cap', id: p.id, cap: k, on: !!on }));
-        toast((on ? 'On: ' : 'Off: ') + OA_CAPS[k][0] + ' for ' + p.first + '.');
-    } catch (e) {
-        if (el) el.checked = !on;
-        glassAlert(e.message || "That didn't save. Try again.");
     }
 }
 async function oaPersonDo(what) {
@@ -18732,7 +18829,7 @@ function pmPaidLinkHtml(me, who) {
     const like = Array.isArray(c.like) ? c.like : [];
     const full = chbFull();
     const ask = (name) => (full ? `<button type="button" class="pm-btn primary" data-pm="split-link" data-arg="${escapeHtml(name)}">Yes, they’re mine</button>` : '');
-    const note = full ? 'After this, every payment to that name counts as yours by itself.' : 'Someone with full access can say so, in People & access.';
+    const note = full ? 'After this, every payment to that name counts as yours by itself.' : 'A Super User can say so, in Permissions.';
     if (ex.count > 0) {
         return `<section class="pm-bankcard is-attn"><div class="pm-bc-top">${pmAva(me.name)}<span class="pm-main"><span class="pm-t">${escapeHtml(who)} has sent ${ex.count} payment${ex.count === 1 ? '' : 's'} to ${escapeHtml(ex.name)}</span><span class="pm-s">${gbp(ex.total)} in all. Are they yours?</span></span></div>
             <div class="pm-acts-row">${ask(ex.name)}</div><p class="pm-note">${note}</p></section>`;
@@ -19729,7 +19826,7 @@ function notifyPrefs() {
 // The kinds of alert this person can get at all: payment alerts need Take
 // payments and system notices full access (the server holds the same line).
 function notifyCatsFor() {
-    return NOTIFY_CATS.filter(([k]) => (k === 'money' ? chbCan('payments') : k === 'system' ? chbCan('owner') : true));
+    return NOTIFY_CATS.filter(([k]) => (k === 'money' ? chbCan('mo.record') : k === 'system' ? chbCan('owner') : true));
 }
 // Each kind of alert is a switch; quiet hours are a row that opens a small form.
 function renderNotifyPrefs() {
@@ -22973,7 +23070,7 @@ function chbDutyHidden(d) {
 // TODAY SHOWS ONLY THE JOBS YOU CAN DO: a duty whose fix lives in an area
 // switched off for this person is not theirs (returning a deposit needs Refunds
 // and deposits, chasing a balance needs Take payments, a stopped cron is set-up).
-const CHB_DUTY_CAP = { balance: 'payments', autopay: 'payments', deposit: 'refunds', payout: 'money', dispute: 'money', feed: 'prices', cron: 'owner' };
+const CHB_DUTY_CAP = { balance: 'mo.ask', autopay: 'mo.ask', deposit: 'mo.deposit', payout: 'mo.view', dispute: 'mo.view', feed: 'co.sync', keysafe: 'ks.change', 'arrival-review': 'gu.reply', cron: 'owner' };
 function chbDuties() {
     return chbDutiesAll().filter((d) => !chbDutyHidden(d) && chbCan(CHB_DUTY_CAP[/** @type {any} */ (d).kind] || 'all'));
 }

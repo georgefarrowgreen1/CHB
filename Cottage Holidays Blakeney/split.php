@@ -323,7 +323,7 @@ route_actions([
 
     'settings' => function ($in) {
         if (!admin_is_full()) {
-            json_out(['error' => 'Only full access changes whose money is whose.', 'code' => 'not_allowed'], 403);
+            json_out(['error' => 'Only a Super User changes whose money is whose.', 'code' => 'not_allowed'], 403);
         }
         if (!split_cols_ready()) {
             json_out(['error' => 'This needs a database update first. Open Manage → Status and run the updates.'], 409);
@@ -362,7 +362,7 @@ route_actions([
 
     'link' => function ($in) {
         if (!admin_is_full()) {
-            json_out(['error' => 'Only full access links a name to someone.', 'code' => 'not_allowed'], 403);
+            json_out(['error' => 'Only a Super User links a name to someone.', 'code' => 'not_allowed'], 403);
         }
         if (!split_cols_ready()) {
             json_out(['error' => 'This needs a database update first. Open Manage → Status and run the updates.'], 409);
@@ -397,7 +397,7 @@ route_actions([
 
     'unlink' => function ($in) {
         if (!admin_is_full()) {
-            json_out(['error' => 'Only full access unlinks a name.', 'code' => 'not_allowed'], 403);
+            json_out(['error' => 'Only a Super User unlinks a name.', 'code' => 'not_allowed'], 403);
         }
         $cfg = split_cfg();
         $id = (int) ($in['admin_id'] ?? 0);

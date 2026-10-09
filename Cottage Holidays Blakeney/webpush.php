@@ -530,7 +530,7 @@ function notify_should_push($category)
     return $category === 'urgent' || notify_prefs_allow(notify_prefs(), $category);
 }
 // …and for one person: never an area switched off for them (payment alerts need
-// Take payments, system notices full access), then their own settings. 'urgent'
+// Record payments, system notices a Super User), then their own settings. 'urgent'
 // reaches everyone, whatever is switched off.
 function notify_should_push_for($row, $category)
 {
@@ -549,7 +549,7 @@ function notify_area_ok($row, $category)
     if ($category === 'urgent') {
         return true;
     }
-    $cap = ['money' => 'payments', 'system' => 'owner'][$category] ?? 'all';
+    $cap = ['money' => 'mo.record', 'system' => 'owner'][$category] ?? 'all';
     return !isset($row['full_access']) || people_can($row, $cap);
 }
 

@@ -166,16 +166,16 @@ foreach ([
         $out[$key] = $val;
     }
 }
-// Someone with limited access gets the parts their areas cover: payout trouble is
-// the Payments screens, the automation state is set-up, and the calendar
-// feeds' health is Prices and cottages.
-if (!admin_can('money')) {
+// A Host gets the parts their permissions cover: payout trouble is the Payments
+// page, the automation state is set-up, and the calendar feeds' health is
+// Calendar sync.
+if (!admin_can('mo.view')) {
     $out['payoutTrouble'] = null;
 }
 if (!admin_can('owner')) {
     unset($out['cron']);
 }
-if (!admin_can('prices')) {
+if (!admin_can('co.sync')) {
     $out['feeds'] = [];
 }
 json_out($out);

@@ -1,14 +1,15 @@
 <?php
 // ============================================================
-//  people.php — People & access (Manage → Your account → People & access).
-//  Full access only. Each person signs in with their own password or passkey;
+//  people.php — Permissions (Manage → Your account → Permissions).
+//  Super Users only. Each person signs in with their own password or passkey;
 //  nobody here ever sets or sees a password — adding someone emails them a link
 //  to choose their own, and a reset sends a new link.
 //  POST {action}: list, invite, reinvite, cancel_invite, remove, restore,
-//                 set_full, set_cap, reset_link, passkeys, passkey_remove, set_mail
+//                 set_full (the role), set_perm, reset_perms, reset_link,
+//                 passkeys, passkey_remove, set_mail
 //  Two rules hold everywhere: you never act on yourself here (your own details
-//  live on your account page) — except set_mail, the emails matrix, which has a
-//  photo for you too — and there is always someone with full access.
+//  live on your account page) — except set_mail, the emails, which you choose
+//  for yourself too — and there is always a Super User.
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php'; // the extra addresses (people_mail_extras)
@@ -32,7 +33,7 @@ function people_target(array $in, $myId)
     }
     return $row;
 }
-// How many people have full access and can still sign in, other than this one.
+// How many Super Users can still sign in, other than this one.
 function people_other_full($id)
 {
     $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE id <> ? AND full_access = 1 AND removed_at IS NULL AND invited_at IS NULL');
@@ -58,17 +59,45 @@ function people_list_payload($myId)
     usort($out, fn($a, $b) => ($b['you'] <=> $a['you']) ?: ($a['id'] <=> $b['id']));
     return $out;
 }
+// Every permission, in page order, so the screen never keeps a second copy of the words.
+function people_perm_defs()
+{
+    $out = [];
+    foreach (PEOPLE_PERMS as $k => $p) {
+        $out[] = ['k' => $k, 't' => $p[0], 'g' => $p[1], 'fixed' => $p[2], 'host' => people_host_perms()[$k]];
+    }
+    return $out;
+}
 function people_done(array $extra = [])
 {
-    json_out(['ok' => true, 'people' => people_list_payload((int) $_SESSION['admin_id']), 'mailKinds' => people_mail_kinds(), 'mailExtras' => people_mail_extras()] + $extra);
+    json_out(
+        [
+            'ok' => true,
+            'people' => people_list_payload((int) $_SESSION['admin_id']),
+            'mailKinds' => people_mail_kinds(),
+            'mailExtras' => people_mail_extras(),
+            'permDefs' => people_perm_defs(),
+            'permGroups' => PEOPLE_PERM_GROUPS,
+        ] + $extra,
+    );
+}
+// Store a Host's permissions as how they differ from a plain Host.
+function people_perms_save($id, array $perms)
+{
+    try {
+        db()->prepare('UPDATE admins SET perms = ? WHERE id = ?')->execute([json_encode((object) people_perms_diff($perms)), (int) $id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Permissions need the latest database update — run the migrations first.'], 503);
+    }
 }
 
 route_actions(
     [
         'list' => fn() => people_done(),
 
-        // Add someone: their name and email. They start with the everyday work and
-        // taking payments; the owner switches more on afterwards.
+        // Add someone: their name, email and role. A Host starts as a plain Host
+        // (bookings, guests, key safes and the money); each permission can be
+        // changed afterwards. They choose their own password from the email.
         'invite' => function () use ($in, $myId, $myFirst) {
             rate_limit('people_invite', 10, 60);
             $name = trim((string) ($in['name'] ?? ''));
@@ -98,21 +127,22 @@ route_actions(
                     409,
                 );
             }
+            $super = ($in['role'] ?? 'host') === 'super';
             $taken = array_map('strval', db()->query('SELECT username FROM admins')->fetchAll(PDO::FETCH_COLUMN));
             $username = people_username_from($name, $taken);
             try {
                 db()
                     ->prepare(
-                        "INSERT INTO admins (username, password_hash, name, email, full_access, caps, twofa, invited_at, created_at)
-                         VALUES (?, '', ?, ?, 0, ?, 1, NOW(), NOW())",
+                        "INSERT INTO admins (username, password_hash, name, email, full_access, caps, perms, twofa, invited_at, created_at)
+                         VALUES (?, '', ?, ?, ?, '', '{}', 1, NOW(), NOW())",
                     )
-                    ->execute([$username, $name, $email, json_encode(PEOPLE_CAPS_DEFAULT)]);
+                    ->execute([$username, $name, $email, $super ? 1 : 0]);
             } catch (\Throwable $e) {
-                json_out(['error' => 'People & access needs the latest database update — run the migrations first.'], 503);
+                json_out(['error' => 'Permissions need the latest database update — run the migrations first.'], 503);
             }
             $row = admin_row((int) db()->lastInsertId(), true);
             $sent = $row ? admin_send_link($row, 'invite', $myFirst) : false;
-            log_activity('account', 'people.invite', $myFirst . ' invited ' . $name . ' to the back office', ['entity' => 'admin', 'entity_id' => (string) ($row['id'] ?? '')]);
+            log_activity('account', 'people.invite', $myFirst . ' invited ' . $name . ' to the back office as a ' . ($super ? 'Super User' : 'Host'), ['severity' => $super ? 'warn' : 'info', 'entity' => 'admin', 'entity_id' => (string) ($row['id'] ?? '')]);
             people_done(['sent' => $sent, 'id' => (int) ($row['id'] ?? 0)]);
         },
 
@@ -149,7 +179,7 @@ route_actions(
                 people_done();
             }
             if (people_is_full($row) && people_other_full((int) $row['id']) === 0) {
-                json_out(['error' => 'There must always be someone with full access.'], 409);
+                json_out(['error' => 'There must always be a Super User.'], 409);
             }
             db()
                 ->prepare(
@@ -183,27 +213,56 @@ route_actions(
             people_done(['sent' => $sent]);
         },
 
+        // The role: a Super User can do everything; a Host has what their
+        // permissions say. Becoming a Host starts as a plain Host.
         'set_full' => function () use ($in, $myId, $myFirst) {
             $row = people_target($in, $myId);
             $on = !empty($in['on']);
-            if (!$on && people_is_full($row) && people_other_full((int) $row['id']) === 0) {
-                json_out(['error' => 'There must always be someone with full access.'], 409);
+            if ($on === people_is_full($row)) {
+                people_done();
+            }
+            if (!$on && people_other_full((int) $row['id']) === 0) {
+                json_out(['error' => 'There must always be a Super User.'], 409);
             }
             db()->prepare('UPDATE admins SET full_access = ? WHERE id = ?')->execute([$on ? 1 : 0, (int) $row['id']]);
-            log_activity('account', 'people.full', $myFirst . ($on ? ' gave ' . people_display_name($row) . ' full access' : ' limited ' . people_display_name($row) . ' to the everyday work and chosen areas'), ['severity' => $on ? 'warn' : 'info', 'entity' => 'admin', 'entity_id' => (string) $row['id']]);
+            if (!$on) {
+                people_perms_save((int) $row['id'], people_host_perms());
+            }
+            log_activity('account', 'people.role', $myFirst . ' made ' . people_display_name($row) . ($on ? ' a Super User' : ' a Host'), ['severity' => $on ? 'warn' : 'info', 'entity' => 'admin', 'entity_id' => (string) $row['id']]);
             people_done();
         },
 
-        'set_cap' => function () use ($in, $myId, $myFirst) {
+        // One permission, on or off, for a Host.
+        'set_perm' => function () use ($in, $myId, $myFirst) {
             $row = people_target($in, $myId);
-            $cap = (string) ($in['cap'] ?? '');
-            if (!isset(PEOPLE_CAPS[$cap])) {
-                json_out(['error' => 'Unknown area'], 400);
+            $k = (string) ($in['perm'] ?? '');
+            if (!isset(PEOPLE_PERMS[$k])) {
+                json_out(['error' => 'Unknown permission'], 400);
             }
-            $caps = people_caps_norm($row['caps'] ?? '');
-            $caps[$cap] = !empty($in['on']);
-            db()->prepare('UPDATE admins SET caps = ? WHERE id = ?')->execute([json_encode($caps), (int) $row['id']]);
-            log_activity('account', 'people.cap', $myFirst . ' turned ' . PEOPLE_CAPS[$cap][0] . ($caps[$cap] ? ' on' : ' off') . ' for ' . people_display_name($row), ['entity' => 'admin', 'entity_id' => (string) $row['id']]);
+            if (people_is_full($row)) {
+                json_out(['error' => people_first_name($row) . ' is a Super User, so can do everything already.'], 409);
+            }
+            if (PEOPLE_PERMS[$k][2] === 'always') {
+                json_out(['error' => 'Everyone can ' . lcfirst(PEOPLE_PERMS[$k][0]) . '.'], 409);
+            }
+            if (PEOPLE_PERMS[$k][2] === 'super') {
+                json_out(['error' => PEOPLE_PERMS[$k][0] . ' is for a Super User only.'], 409);
+            }
+            $perms = people_perms($row);
+            $perms[$k] = !empty($in['on']);
+            people_perms_save((int) $row['id'], $perms);
+            log_activity('account', 'people.perm', $myFirst . ' turned ' . PEOPLE_PERMS[$k][0] . ($perms[$k] ? ' on' : ' off') . ' for ' . people_display_name($row), ['entity' => 'admin', 'entity_id' => (string) $row['id']]);
+            people_done();
+        },
+
+        // Back to a plain Host: every permission as the role has it.
+        'reset_perms' => function () use ($in, $myId, $myFirst) {
+            $row = people_target($in, $myId);
+            if (people_is_full($row)) {
+                json_out(['error' => people_first_name($row) . ' is a Super User.'], 409);
+            }
+            people_perms_save((int) $row['id'], people_host_perms());
+            log_activity('account', 'people.perm_reset', $myFirst . ' put ' . people_display_name($row) . ' back to a plain Host', ['entity' => 'admin', 'entity_id' => (string) $row['id']]);
             people_done();
         },
 
@@ -220,9 +279,9 @@ route_actions(
         },
 
         // Who gets which emails: one person, one kind, on or off. You may choose
-        // your own here too. An area switched off for them can't be switched on
-        // (it takes its emails with it), and the last person on an email that must
-        // reach someone can't be switched off.
+        // your own here too. An email whose permission is off for them can't be
+        // switched on (the permission takes its emails with it), and the last
+        // person on an email that must reach someone can't be switched off.
         'set_mail' => function () use ($in, $myFirst) {
             $id = (int) ($in['id'] ?? 0);
             $row = admin_row($id, true);

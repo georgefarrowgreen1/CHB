@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 739;
+const ADMIN_BUNDLE_V = 740;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 376;
+const ADMIN_CSS_V = 377;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -452,28 +452,58 @@ try {
     st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55;filter:grayscale(.7)}';
     document.head.appendChild(st);
 } catch (e) {}
-// WHAT A LIMITED PERSON'S BUTTONS NEED. Someone without full access has the
-// everyday work plus the areas switched on for them (people-lib.php on the
-// server, which refuses the rest whatever the screen offers). The same map HIDES
-// those buttons (a style rule generated from it, the CHB_NEEDS_NET pattern) and
-// the dispatcher refuses one a stale render still shows, in the server's words.
-// body.cap-x-<area> is set by chbAccessSync for each area the person lacks.
+// WHAT A HOST'S BUTTONS NEED. A Super User can do everything; a Host has the
+// permissions switched on for them (people-lib.php on the server, which refuses
+// the rest whatever the screen offers). The same map HIDES those buttons (a
+// style rule generated from it, the CHB_NEEDS_NET pattern) and the dispatcher
+// refuses one a stale render still shows, in the server's words.
+// body.cap-x-<permission, dot as dash> is set by chbAccessSync for each one the
+// person lacks; 'owner' is a Super User's only.
 const CHB_ACT_CAP = {
-    payments: ['requestPayment', 'recordPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'moChaseDue', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset', 'recordSquareOrphan', 'odsPay'],
-    refunds: ['refundPayment', 'hubRefundPicker', 'returnDeposit', 'keepDeposit', 'odsDep'],
-    money: ['openAccounts', 'accountsOpen', 'cmdkOpenAccounts', 'addExpense', 'deleteExpense', 'editExpense', 'repeatExpense', 'odsExpense', 'exportAccountsCSV', 'pickExpenseReceipt'],
-    prices: ['addAccommodationPrompt', 'archiveAccommodation', 'restoreAccommodation', 'setAccommodationPrivate', 'openAccomThenSec', 'settingsOpenAccom', 'settingsOpenAccomSec', 'settingsOpenCalendar', 'addSeasonGridRow', 'saveSeasonGrid', 'openSeasonDates', 'applyPricingSuggestion', 'nyOfferRates', 'prCottage', 'calRemoveFeed'],
-    website: ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'loadAnalytics', 'exportAnalyticsCsv', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
+    'bk.edit': ['openAddBooking', 'bhubEdit', 'saveBookingNote'],
+    'bk.cancel': ['bhubCancel', 'bhubDelete'],
+    'bk.block': ['openBlockDates', 'tlBlockTap'],
+    'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'enqReplyDraft', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'chatSendArrival', 'notifyWaitlist', 'deleteWaitlist', 'deleteCurrentThread', 'gstInvite', 'gstResend'],
+    'gu.approve': ['approveEnquiry', 'declineEnquiry', 'openEditEnquiry'],
+    'gu.reviews': ['setReviewStatus', 'moderatePhoto'],
+    'ks.see': ['openKeysafe', 'keysafeOpen'],
+    'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe'],
+    'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'moChaseDue', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
+    'mo.record': ['recordPayment', 'recordSquareOrphan', 'captureHold', 'odsPay'],
+    'mo.refund': ['refundPayment', 'hubRefundPicker', 'releaseHold'],
+    'mo.deposit': ['returnDeposit', 'keepDeposit', 'odsDep'],
+    'mo.view': ['openAccounts', 'accountsOpen', 'cmdkOpenAccounts', 'exportAccountsCSV', 'downloadYearStatement'],
+    'mo.exp': ['addExpense', 'deleteExpense', 'editExpense', 'repeatExpense', 'odsExpense', 'pickExpenseReceipt'],
+    'co.prices': ['addSeasonGridRow', 'saveSeasonGrid', 'openSeasonDates', 'applyPricingSuggestion', 'nyOfferRates', 'nyGapOffer', 'prCottage', 'settingsOpenCancel', 'setCancelPolicy'],
+    'co.pages': ['addAccommodationPrompt', 'archiveAccommodation', 'restoreAccommodation', 'setAccommodationPrivate', 'openAccomThenSec', 'settingsOpenAccom', 'settingsOpenAccomSec'],
+    'co.sync': ['settingsOpenCalendar', 'calRemoveFeed', 'calLinkOpen', 'calLinkSave'],
+    'we.content': ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
+    'we.news': ['sendBroadcast'],
+    'we.stats': ['loadAnalytics', 'exportAnalyticsCsv'],
     owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite', 'oaSplitHolder', 'oaSplitHost', 'oaSplitLinkAsk', 'oaSplitUnlink'],
 };
-// Manage sections by area (settingsOpen's argument); 'all' sections are not listed.
+// Manage sections by permission (settingsOpen's argument); sections anyone may open are not listed.
 const CHB_SEC_CAP = {
-    prices: ['accom', 'seasongrid', 'pricing', 'calendar', 'cancel'],
-    website: ['content', 'experiences', 'newsletter', 'analytics'],
-    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person', 'split'],
+    'co.prices': ['seasongrid', 'pricing', 'cancel'],
+    'co.pages': ['accom'],
+    'co.sync': ['calendar'],
+    'we.content': ['content', 'experiences'],
+    'we.news': ['newsletter'],
+    'we.stats': ['analytics'],
+    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person', 'perms', 'split'],
 };
 // The views a dock or rail button opens.
-const CHB_VIEW_CAP = { money: ['view-accounts'], owner: ['view-activity-log'] };
+const CHB_VIEW_CAP = { 'mo.view': ['view-accounts'], 'ks.see': ['view-keysafe'], owner: ['view-activity-log'] };
+// Parts of screens that are not data-act buttons: the Inbox's reply box and
+// decisions, and the booking form's money parts (the server drops those from a
+// save without the permission too).
+const CHB_PART_CAP = {
+    'gu.reply': ['#ib .ib-comp', '#ib .ib-sugg', '[data-ib="delete"]', '[data-ib="decline-write"]'],
+    'gu.approve': ['[data-ib="approve"]', '[data-ib="decline"]', '[data-ib="offer"]', '[data-ib="decline-quiet"]'],
+    'mo.record': ['#modal-payment-group', '#modal-deposit-group'],
+    'mo.ask': ['#modal-override-group', '#modal-plan-group', '[data-ib="remind"]'],
+};
+const chbCapCls = (k) => 'cap-x-' + String(k).replace(/\./g, '-');
 function chbActCap(name) {
     for (const k in CHB_ACT_CAP) if (CHB_ACT_CAP[k].indexOf(name) !== -1) return k;
     return 'all';
@@ -482,36 +512,41 @@ function chbSecCap(sec) {
     for (const k in CHB_SEC_CAP) if (CHB_SEC_CAP[k].indexOf(sec) !== -1) return k;
     return 'all';
 }
-// Who is signed in (the server's word, set by chbSetMe), and the sentence a
-// limited person reads for anything that isn't theirs — the server's own words.
+// Who is signed in (the server's word, set by chbSetMe), and the sentence a Host
+// reads for anything that isn't theirs — the server's own words.
 const chbMeRaw = () => /** @type {any} */ (window).__me || null;
 const chbRefusal = () => 'That’s for ' + (String(/** @type {any} */ (window).__ownerFirst || '') || 'the owner') + ' to change.';
-// May the person signed in use this area? An unknown person (no word from the
-// server yet, or an offline boot) is treated as full access: the server decides.
+// May the person signed in do this? A permission key ('mo.refund'), two joined by
+// '+' (both), 'owner' (a Super User only) or an old area name ('payments'). An
+// unknown person (no word from the server yet, or an offline boot) is treated as
+// a Super User: the server decides.
 function chbMayUse(cap) {
     const m = chbMeRaw();
     if (!m || m.full !== false || !cap || cap === 'all') return true;
     if (cap === 'owner') return false;
+    if (String(cap).indexOf('+') !== -1) return String(cap).split('+').every(chbMayUse);
+    if (m.perms && cap in m.perms) return !!m.perms[cap];
     return !!(m.caps && m.caps[cap]);
 }
 try {
     const st = document.createElement('style');
-    st.textContent = Object.keys(CHB_ACT_CAP)
+    const keys = Object.keys(CHB_ACT_CAP).concat(Object.keys(CHB_SEC_CAP), Object.keys(CHB_VIEW_CAP), Object.keys(CHB_PART_CAP)).filter((k, i, a) => a.indexOf(k) === i);
+    st.textContent = keys
         .map((k) => {
-            const sel = CHB_ACT_CAP[k].map((n) => '[data-act="' + n + '"]')
+            const sel = (CHB_ACT_CAP[k] || []).map((n) => '[data-act="' + n + '"]')
                 .concat((CHB_SEC_CAP[k] || []).map((n) => '[data-act="settingsOpen"][data-arg="' + n + '"],[data-act="navSettingsSection"][data-arg="' + n + '"]'))
-                .concat((CHB_VIEW_CAP[k] || []).map((n) => '[data-view="' + n + '"]'));
-            return 'body.cap-x-' + k + ' :is(' + sel.join(',') + '){display:none!important}';
+                .concat((CHB_VIEW_CAP[k] || []).map((n) => '[data-view="' + n + '"]'))
+                .concat(CHB_PART_CAP[k] || []);
+            return 'body.' + chbCapCls(k) + ' :is(' + sel.join(',') + '){display:none!important}';
         })
-        .join('\n') +
-        // The booking form's money parts: payments recorded, the deposit, an agreed
-        // price and the plan. The server drops them from such a person's save too.
-        '\nbody.cap-x-payments :is(#modal-payment-group,#modal-deposit-group,#modal-override-group,#modal-plan-group){display:none!important}';
+        .join('\n');
     document.head.appendChild(st);
 } catch (e) {}
+// Every key the screens hide by, so a class is set for each one the person lacks.
+const CHB_CAP_KEYS = ['owner', 'bk.edit', 'bk.cancel', 'bk.block', 'gu.reply', 'gu.approve', 'gu.reviews', 'ks.see', 'ks.change', 'mo.ask', 'mo.record', 'mo.refund', 'mo.deposit', 'mo.view', 'mo.exp', 'co.prices', 'co.pages', 'co.sync', 'we.content', 'we.news', 'we.stats'];
 function chbAccessSync() {
     try {
-        ['payments', 'refunds', 'money', 'prices', 'website', 'owner'].forEach((k) => document.body.classList.toggle('cap-x-' + k, !chbMayUse(k)));
+        CHB_CAP_KEYS.forEach((k) => document.body.classList.toggle(chbCapCls(k), !chbMayUse(k)));
     } catch (e) {}
 }
 // THE ARGUMENTS ON AN ELEMENT, stated once. Both dispatch branches read this —
@@ -21482,7 +21517,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bankrow2';
+    const BUILD = 'permsv1a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

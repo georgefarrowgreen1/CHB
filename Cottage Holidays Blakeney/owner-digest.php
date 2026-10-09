@@ -282,7 +282,7 @@ $m = owner_digest_body($digestPayload);
 // overview. An extra address gets the owner's copy, as it always did.
 $plain = owner_digest_body($digestPayload + ['noMoney' => true]);
 $res = send_people('digest', $subject, $text, $html, [
-    'compose' => fn($row) => $row === null || people_can($row, 'money') ? [$subject, $text, $html] : [$plain['subject'], $plain['text'], $plain['html']],
+    'compose' => fn($row) => $row === null || people_can($row, 'mo.view') ? [$subject, $text, $html] : [$plain['subject'], $plain['text'], $plain['html']],
 ]);
 
 // Stamp on delivered OR queued: a failed morning send that queued to the outbox

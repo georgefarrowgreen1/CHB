@@ -138,9 +138,11 @@ CREATE TABLE IF NOT EXISTS bookings (
     INDEX idx_payment_date (payment_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ---------- People who sign in to the back office (migration-133, -134) ----------
--- full_access = everything, including People & access; otherwise `caps` (JSON)
--- names the areas the person may use. An invite or reset keeps only a token hash.
+-- ---------- People who sign in to the back office (migration-133, -134, -137) ----------
+-- full_access = a Super User (everything, Permissions included); otherwise a Host,
+-- whose `perms` (JSON) holds how they differ from a plain Host. `caps` is the old
+-- five switches, read only for someone whose perms are still NULL. An invite or
+-- reset keeps only a token hash.
 CREATE TABLE IF NOT EXISTS admins (
     id             INT AUTO_INCREMENT PRIMARY KEY,
     username       VARCHAR(60)  NOT NULL UNIQUE,
@@ -149,6 +151,7 @@ CREATE TABLE IF NOT EXISTS admins (
     email          VARCHAR(190) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
     full_access    TINYINT(1)   NOT NULL DEFAULT 1,
     caps           VARCHAR(255) NOT NULL DEFAULT '',
+    perms          TEXT         NULL,
     twofa          TINYINT(1)   NULL,
     photo          VARCHAR(40)  NOT NULL DEFAULT '',
     auth_epoch     INT          NOT NULL DEFAULT 0,

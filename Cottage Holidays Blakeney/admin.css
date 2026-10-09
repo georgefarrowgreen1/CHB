@@ -9544,3 +9544,43 @@ body.owner-mode #pm.is-wide .pm-dbody { padding: 20px 24px 40px; }
   #pm [data-fig].is-changed, #pm .pm-mrow.is-new { animation: none; }
   #pm .pm-prog i { transition: none; }
 }
+
+/* ---------- PERMISSIONS (approved demo): roles, the 23 permissions, cottages & money ---------- */
+.oa-hero { display: flex; align-items: center; gap: 16px; margin: 4px 0 4px; }
+.oa-hero .ga-ava.is-big { width: 64px; height: 64px; font-size: var(--fs-headline); }
+.oa-hero-t { display: grid; gap: 2px; min-width: 0; }
+:is(main, div).one-look .oa-hero-t .ga-h1 { margin: 0; font-size: var(--fs-title); line-height: 1.25; overflow-wrap: anywhere; }
+.oa-hero-t span { font-size: var(--fs-sub); color: var(--text-muted); overflow-wrap: anywhere; }
+/* Host | Super User, and whose account: the one switcher, its sides equal. */
+:is(main, div).one-look .u-seg.oa-seg > button { flex: 1 1 0 !important; min-width: 0; }
+.oa-rolebox { padding: 14px 16px; border: 1px solid var(--glass-border); border-radius: var(--r-sm); background: var(--glass-bg); font-weight: 600; }
+.oa-seg + .ga-group, .oa-rolebox + .ga-group { margin-top: 24px; }
+/* A row that opens in place. */
+.oa-fold { border-top: 1px solid var(--glass-border); }
+.ga-group > .oa-fold:first-child { border-top: 0; }
+.oa-fold .ga-chev { transition: rotate 0.24s var(--out); }
+.oa-fold.is-open > .ga-row .ga-chev { rotate: 90deg; }
+.oa-foldbody > .ga-row { padding-left: 60px; min-height: 52px; }
+.oa-foldbody > .ga-row:first-child { border-top: 1px solid var(--glass-border); }
+/* What one person can do. */
+.oa-pcap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.oa-prow { min-height: 52px; }
+.oa-prow .ga-t { display: inline-flex; align-items: center; gap: 8px; }
+.oa-chg { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+.oa-fixed { display: inline-flex; align-items: center; color: var(--text-muted); }
+.oa-fixed svg { width: 16px; height: 16px; }
+.oa-fixed.is-on { color: var(--ok-text); }
+.oa-fixed .ic { width: 16px; height: 16px; }
+.oa-permreset { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 0; padding: 8px 8px 8px 16px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); background: var(--glass-bg); font-size: var(--fs-sub); font-weight: 600; }
+.oa-permreset > span { display: inline-flex; align-items: center; gap: 8px; }
+.oa-mini { position: relative; min-height: 32px; padding: 0 12px; border: 1px solid var(--u-pill-edge, var(--glass-border)); border-radius: var(--r-pill); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
+.oa-mini::after { content: ''; position: absolute; inset: -6px -2px; }
+/* Cottages & money: a face per person beside each cottage, the chosen one ringed. */
+.oa-crow { min-height: 60px; }
+.oa-crow .ga-t { display: inline-flex; align-items: center; gap: 8px; }
+.oa-who { display: flex; gap: 8px; flex: none; }
+.oa-wb { position: relative; border: 0; background: none; padding: 2px; border-radius: 50%; opacity: 0.35; cursor: pointer; transition: opacity 0.2s var(--out), box-shadow 0.2s var(--out); }
+.oa-wb::after { content: ''; position: absolute; inset: -6px; }
+.oa-wb[aria-checked="true"] { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.oa-wb .ga-ava.oa-face { width: 30px; height: 30px; font-family: var(--font-sans); font-size: var(--fs-micro); }
+@media (prefers-reduced-motion: reduce) { .oa-fold .ga-chev, .oa-wb { transition: none; } }

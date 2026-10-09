@@ -646,8 +646,7 @@ function admin_can($cap)
     $me = admin_me();
     return $me !== null && people_can($me, (string) $cap);
 }
-// The first name of the person with full access a limited person would ask:
-// the oldest one still here.
+// The first name of the Super User a Host would ask: the oldest one still here.
 function admin_owner_first()
 {
     try {
@@ -658,7 +657,7 @@ function admin_owner_first()
         return '';
     }
 }
-// Refuse what this person's switches do not cover. Full access is never asked.
+// Refuse what this person's permissions do not cover. A Super User is never asked.
 function people_enforce(): void
 {
     static $done = false;
@@ -688,7 +687,7 @@ function people_enforce(): void
         }
     }
 }
-// Require one area here, where the endpoint can only judge it against the
+// Require one permission here, where the endpoint can only judge it against the
 // stored row (a cancellation that refunds).
 function require_cap($cap)
 {
@@ -696,19 +695,24 @@ function require_cap($cap)
         json_out(['error' => people_refusal(admin_owner_first()), 'code' => 'not_allowed', 'area' => (string) $cap], 403);
     }
 }
-// Someone without Take payments may add and edit bookings, but the money in
-// them — an agreed price, a payment recorded, the plan — stays as it is: those
-// fields are dropped, and "absent keeps" does the rest.
+// A Host may add and edit bookings without the money permissions, but the money
+// in them stays as it is: without Record payments the payment fields are dropped,
+// and without Ask guests to pay the agreed price, the deposit and the plan are.
+// "Absent keeps" does the rest.
 function people_strip_money(array &$in): void
 {
-    if (admin_can('payments')) {
-        return;
+    if (!admin_can('mo.record')) {
+        foreach (['payment', 'deposit', 'payment_date', 'payment_method', 'deposit_collected', 'collected'] as $k) {
+            unset($in[$k]);
+        }
     }
-    foreach (['price_override', 'damages_deposit', 'payment', 'deposit', 'payment_date', 'payment_method', 'deposit_collected', 'collected', 'deposit_pct', 'deposit_amount', 'balance_due_date', 'autopay_offer'] as $k) {
-        unset($in[$k]);
+    if (!admin_can('mo.ask')) {
+        foreach (['price_override', 'damages_deposit', 'deposit_pct', 'deposit_amount', 'balance_due_date', 'autopay_offer'] as $k) {
+            unset($in[$k]);
+        }
     }
 }
-// Require full access (People & access, and the set-up screens).
+// Require a Super User (Permissions, and the set-up screens).
 function require_full_access()
 {
     require_admin();

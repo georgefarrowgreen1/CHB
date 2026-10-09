@@ -23,7 +23,7 @@ require_admin();
 // What a result type needs, for someone with limited access: their search never
 // shows an area switched off for them (expenses are the Payments screens; the
 // activity log is full access; subscribers and things to do are the website).
-const SEARCH_TYPE_CAP = ['expense' => 'money', 'activity' => 'owner', 'subscriber' => 'website', 'experience' => 'website'];
+const SEARCH_TYPE_CAP = ['expense' => 'mo.view', 'activity' => 'owner', 'subscriber' => 'we.news', 'experience' => 'we.content'];
 function search_visible(array $rows)
 {
     return array_values(array_filter($rows, fn($r) => !isset(SEARCH_TYPE_CAP[$r['type'] ?? '']) || admin_can(SEARCH_TYPE_CAP[$r['type']])));
