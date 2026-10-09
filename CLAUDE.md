@@ -874,6 +874,17 @@ guard removed, the window scope removed — each fails its own checks).
   38 and 44), the key-safe sheet's title is the window's 17/600, and its lone "Got it" the accent answer as
   glassAlert's OK is. Gated in ui-test-onelook §14 (break-tested: removing the section fails 6 of 7; the desktop
   card check rightly survives).
+- **THE OFFLINE DAY SHEET JOINS** (section 22) — it lives inside Today's `<main>`, so the button kinds and caption
+  tier already reached it, and the rest had been left behind: every row carried the 3px coloured rail the HIG pass
+  removed everywhere else, each row was its own card 10px from the next, the cottage tag stretched the whole row,
+  the Bookings rows said "Balance due" as BARE text (`.bhub-chip`'s CSS went with the hub chips long ago — the class
+  survived only because ui-test-offline reads it), the duties ended "Open ›" in a glyph, and the banner, timeline
+  and private notes sat on a 16px corner that is not one of the three. Now: no rail, each run of rows is ONE card
+  (radii on the run's ends, hairlines between), the tag keeps to its name, the paid state is `stCap` (the
+  `bhub-chip` class kept beside it for the suite), a duty's action is the online strip's own `ny-act` + drawn
+  chevron, the call/text buttons are the outlined icon circle, the timeline is a card and the banner a cell. Gated
+  in ui-test-onelook §15 (break-tested: removing the section fails the four CSS checks; the capsule and chevron are
+  markup and rightly survive).
 - **A FIXTURE ON A SCREEN THAT REFRESHES ITSELF IS RE-LAID UNTIL THE SCREEN SHOWS IT.** ui-test-onelook §9/§10/§12
   failed once in CI and one run in six locally: the Inbox's own message fetch, or a data refresh, landed after the
   fixture and repainted the hub/list empty. Each now re-seeds and re-opens (≤5 tries) until the rendered screen carries

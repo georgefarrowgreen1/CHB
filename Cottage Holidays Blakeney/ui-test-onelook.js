@@ -28,7 +28,9 @@
 //  §13 the last stragglers: every remaining "›" / "❮ ❯" glyph is the drawn chevron, both
 //      hubs' call / email / ⋯ are one outlined circle, the card's second choice is
 //      outlined, the enquiry quote sits in the inset panel, the conversation sheet takes the
-//      window's title and the one field.
+//      window's title and the one field;
+//  §14 the booking form and the email composer are bottom sheets on a phone with the window's parts;
+//  §15 the offline day sheet wears the online Today's parts (no rail, joined runs, capsules, corners).
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -643,6 +645,47 @@ async function open(browser, base, width) {
   const desk = await longWin(1280);
   ok(!desk.book.edge && desk.book.corners === '20px/20px', `on a computer the booking form stays a card in the middle (${desk.book.corners})`);
   await page.setViewportSize({ width: 390, height: 844 });
+
+  console.log('§15 the offline day sheet wears the online Today\'s parts');
+  const ods = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const mk = (id, name, ci, co, paid) => mapBookingFromApi({ id, prop_key: '21a', name, email: name.split(' ')[0].toLowerCase() + '@example.com', phone: '07700 900001',
+      address: '1 Lane', postcode: 'NR25 7AB', check_in: iso(ci), check_out: iso(co), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+      payment: paid ? 'paid' : 'deposit', deposit_paid: paid ? 440 : 100, agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390,
+      agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(-5), hold_status: 'none' });
+    nav('view-backoffice');
+    await wait(300);
+    dbBookings['21a'] = [mk(301, 'Ann Staying', -1, 2, false), mk(302, 'Bea Later', 10, 13, false), mk(303, 'Cal Later', 20, 23, true), mk(304, 'Dee Later', 30, 33, false)];
+    renderOfflineDaySheet();
+    await wait(300);
+    const sheet = document.getElementById('offline-daysheet');
+    const rows = [...sheet.querySelectorAll('.ods-row')];
+    const runs = rows.filter((r, i) => i > 0 && r.previousElementSibling === rows[i - 1]);
+    const tag = sheet.querySelector('.ods-row .prop-tag');
+    const duty = sheet.querySelector('.ods-duty .ny-chev');
+    const cap = sheet.querySelector('.ods-row .st-cap');
+    const c = (sel, p) => { const e = sheet.querySelector(sel); return e ? getComputedStyle(e)[p] : ''; };
+    const out = {
+      rows: rows.length,
+      rail: rows.filter((r) => parseFloat(getComputedStyle(r).borderLeftWidth) > 1).length,
+      joined: runs.length > 0 && runs.every((r) => Math.abs(r.getBoundingClientRect().top - r.previousElementSibling.getBoundingClientRect().bottom) <= 1),
+      tagHugs: !!tag && tag.getBoundingClientRect().width < tag.closest('.ods-row').getBoundingClientRect().width / 2,
+      cap: !!cap && /Balance due|Paid/.test(cap.textContent) && cap.classList.contains('bhub-chip'),
+      chev: duty ? /url\(/.test(getComputedStyle(duty).maskImage || getComputedStyle(duty).webkitMaskImage || '') : null,
+      tl: c('.ods-tl', 'borderTopLeftRadius'), mark: c('.ods-mark', 'borderTopLeftRadius'),
+    };
+    sheet.remove();
+    document.body.classList.remove('offline-snap');
+    return out;
+  });
+  ok(ods.rows >= 3, `the sheet renders its stays and bookings as rows (${ods.rows}; vacuity guard)`);
+  ok(ods.rail === 0, `no row carries the old 3px rail — the capsule says the state (${ods.rail} with one)`);
+  ok(ods.joined, 'a run of rows is ONE card: each row starts where the one above ends');
+  ok(ods.tagHugs, 'the cottage tag keeps to its name, not the row\'s width');
+  ok(ods.cap, 'a booking\'s paid state is the house capsule, not bare text');
+  ok(ods.chev !== false, `a duty's "Open" ends in the drawn chevron (${ods.chev === null ? 'no duty on screen' : 'drawn'})`);
+  ok(ods.tl === '20px' && (ods.mark === '' || ods.mark === '12px'), `the timeline is a card and the banner a cell on the house corners (${ods.tl} / ${ods.mark || 'no banner'})`);
 
   await page.close();
   await t.done(fails);

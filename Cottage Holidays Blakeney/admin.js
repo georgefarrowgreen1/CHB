@@ -23477,7 +23477,7 @@ function odsDutiesHtml(rows) {
     return '<h2 class="bo-sec-title">Needs you <span class="inbox-badge">' + out.length + '</span></h2>'
         + out.map((d) => '<button type="button" class="ny-row glass-panel ods-duty ' + d.sev + '" ' + d.act + '>'
             + '<span class="ny-main"><span class="ny-label">' + e(d.l) + '</span><span class="ny-sub">' + e(d.s) + '</span></span>'
-            + '<span class="ods-duty-go">Open ›</span></button>').join('');
+            + '<span class="ny-act">Open<span class="ny-chev"> ›</span></span></button>').join('');
 }
 // The timeline, BOUNDED: lanes and bars across only the days the rows vouch
 // for (today + tomorrow — the snapshot window's guaranteed-complete nights).
@@ -23528,7 +23528,7 @@ function odsUpcomingHtml(up, total) {
             + '<span class="prop-tag tag-' + e(u.pk) + '">' + e(u.cot) + '</span>'
             + '<span class="ny-label">' + e(u.nm) + '</span>'
             + '<span class="ny-sub">' + e(fmtStayRange(u.ci, u.co)) + (u.party ? ' · ' + e(u.party) : '') + '</span>'
-            + '</span><span class="bhub-chip' + (u.paid ? ' is-ok' : ' is-warn') + '">' + (u.paid ? 'Paid' : 'Balance due') + '</span></div>').join('');
+            + '</span>' + stCap(u.paid ? 'ok' : 'warn', u.paid ? 'Paid' : 'Balance due').replace('class="st-cap', 'class="bhub-chip st-cap') + '</div>').join('');
 }
 // The read-only HUB CARD — the booking hub's grouped-row anatomy from the
 // day's rows: tap a guest's name, get the record this phone holds, honestly
