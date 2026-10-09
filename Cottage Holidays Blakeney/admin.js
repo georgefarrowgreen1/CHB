@@ -34098,7 +34098,6 @@ function cmpOpen(t, restore) {
     const signer = cmpSigner();
     const sign = document.getElementById('cmp-sign');
     if (sign) sign.innerHTML = signer ? `${escapeHtml(signer)}<small>· signed as you</small>` : 'Cottage Holidays Blakeney';
-    set('cmp-reply-note', `When ${f.first} replies, it comes back to your Inbox.`);
     cmpSay(restore && restore.err ? restore.err : '');
     set('cmp-file-err', '');
     const saved = document.getElementById('cmp-saved');

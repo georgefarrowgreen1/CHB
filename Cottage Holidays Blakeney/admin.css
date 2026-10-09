@@ -9584,7 +9584,6 @@ button.cmp-row { cursor: pointer; }
 .cmp-row .chb-switch input:disabled + .chb-switch-track { opacity: 0.5; }
 .cmp-x { flex: none; width: 44px; height: 44px; margin-right: -12px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; }
 .cmp-x svg { width: 16px; height: 16px; }
-.cmp-note { margin: 12px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); }
 /* The arrival review: its own email greets and signs, and adds its own facts. */
 #enq-email-modal.cmp-arrival :is(#cmp-adds-wrap, #cmp-greet, #cmp-sign) { display: none; }
 #enq-email-modal.cmp-arrival .cmp-letter-foot { justify-content: flex-end; }
