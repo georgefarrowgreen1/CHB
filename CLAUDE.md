@@ -770,6 +770,8 @@ is no new endpoint and no migration.
     payments and expenses, so everything else is "Left out" or "Not in the books"), and when it was sorted;
   - From your bank: payee, reference, type, the bank's category, the balance after, and how it came in.
 
+  The top card is a centred receipt (`.pm-lhero`): the direction icon, the figure, Paid out / Paid in, and one
+  capsule — ✓ what it was, or an amber To sort.
   After an undo the page stays open and asks again with the list's own buttons, placed under the question.
   statements.php's `stmt_row` sends `via` (import 0 = live), `sorted_at` and `balance` for it. `pmBankWhat` is the one
   wording for what a payment was. "Moved out" rows still open nothing.

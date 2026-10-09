@@ -18304,8 +18304,10 @@ function pmLinePage(id) {
             <div class="pm-acts">${s.acts.map((a) => `<button type="button" class="pm-btn ${a.primary ? 'primary' : 'second'}" data-pm="bank-do" data-arg="${l.id}|${escapeHtml(a.k)}">${escapeHtml(a.label)}</button>`).join('')}</div>`;
     }
     return pmHead(escapeHtml(name), `${pmDdm(pmIso(l.date))}${time} · Monzo Business`) + `<div class="pm-dbody">
-        <section class="pm-hero"><div class="pm-hero-top"><span>${out ? 'Paid out' : 'Paid in'}</span><b>${out ? '−' : '+'}${gbp(Math.abs(l.amount))}</b></div>
-            <div class="pm-hero-sub">${l.as ? `${pmCap('ok', 'Sorted')} <span>${escapeHtml(pmBankWhat(l))}</span>` : `<span class="pm-warnword">Not sorted yet</span>`}</div></section>
+        <section class="pm-hero pm-lhero"><span class="pm-mic ${out ? 'out' : 'in'}" aria-hidden="true">${out ? PM_IC.out : PM_IC.in}</span>
+            <b class="pm-lh-fig${out ? '' : ' plus'}">${out ? '−' : '+'}${gbp(Math.abs(l.amount))}</b>
+            <span class="pm-lh-cap">${out ? 'Paid out' : 'Paid in'}</span>
+            ${l.as ? `<span class="pm-cap ok">${PM_IC.tick}${escapeHtml(pmBankWhat(l))}</span>` : pmCap('warn', 'To sort')}</section>
         ${what}
         <div class="pm-dcap">From your bank</div>
         <div class="pm-kvs">${bank}</div>

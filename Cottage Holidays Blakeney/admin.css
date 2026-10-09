@@ -9426,6 +9426,15 @@ body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
 #pm .pm-hero-sub { font-size: var(--fs-caption); color: var(--text-muted); }
 #pm .pm-hero-sub:empty { display: none; }
 #pm .pm-warnword { color: var(--warn-text); font-weight: 600; }
+/* A bank payment's page opens like a transaction receipt: the direction, the figure, what it was. */
+#pm .pm-lhero { align-items: center; text-align: center; gap: 4px; padding: 24px 16px 20px; }
+#pm .pm-lhero > .pm-mic { width: 44px; height: 44px; margin-bottom: 8px; }
+#pm .pm-lhero > .pm-mic svg { width: 20px; height: 20px; }
+#pm .pm-lh-fig { font-size: var(--fs-hero); font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; }
+#pm .pm-lh-fig.plus { color: var(--ok-text); }
+#pm .pm-lh-cap { font-size: var(--fs-sub); color: var(--text-muted); }
+#pm .pm-lhero > .pm-cap { margin-top: 12px; gap: 4px; white-space: normal; }
+#pm .pm-lhero > .pm-cap svg { width: 12px; height: 12px; flex: none; }
 #pm .pm-okword { color: var(--ok-text); }
 #pm .pm-bar { height: 6px; border-radius: 3px; background: var(--pm-well); overflow: hidden; }
 #pm .pm-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
