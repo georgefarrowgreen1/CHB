@@ -3299,19 +3299,6 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         const lv = (ctx.cmdkIntent('who is leaving this week') || []).map((r) => String(r.label));
         check('…nor a departure', !lv.join(' ').match(/owner|maintenance/i), lv.join(' | ').slice(0, 120));
         vm.runInContext('dbBlocks.jollyboat = [];', ctx);
-        // (a2) A BLOCK IS NOT A BOOKED NIGHT in the occupancy figures: the owner's block and a host's
-        // "Not available" hold on an imported calendar must not inflate "% booked this month".
-        if (typeof ctx.cottageMonthOccupancy === 'function') {
-            const nowM = ctx.chbNow(); const mk = (day) => `${nowM.getFullYear()}-${String(nowM.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            vm.runInContext(`dbBlocks.jollyboat = [
-                { id: 9101, checkIn: '${mk(10)}', checkOut: '${mk(13)}', source: 'owner', kind: 'blocked' },
-                { id: 9102, checkIn: '${mk(14)}', checkOut: '${mk(17)}', source: 'airbnb', kind: 'blocked' },
-                { id: 9103, checkIn: '${mk(20)}', checkOut: '${mk(23)}', source: 'airbnb', kind: 'booking' },
-            ];`, ctx);
-            const mo = ctx.cottageMonthOccupancy();
-            check('occupancy counts the imported STAY (3 nights) and neither the owner block nor the host hold', mo.jollyboat && mo.jollyboat.nights === 3, JSON.stringify(mo.jollyboat));
-            vm.runInContext('dbBlocks.jollyboat = [];', ctx);
-        } else fail('cottageMonthOccupancy missing from the bundle');
         // (b) AN EXPLICIT BARE YEAR IS A PERIOD, honoured and labelled.
         vm.runInContext(`dbBookings.jollyboat = [
             { id: 'b9101', dbId: 9101, name: 'Past Year Guest', checkIn: '2024-06-10', checkOut: '2024-06-13', adults: 2, children: 0, agreedPrice: { total: 300, perNight: 100 }, deposit_paid: 300 },

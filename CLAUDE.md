@@ -732,6 +732,68 @@ the click is guarded).
 - The Move-money-out screen itself was deliberately left as-is this pass — it already
   had its answer-first rebuild (see the sweep notes).
 
+## One look across Manage (approved "One look for Manage" demo, built: #1365 + the content PR)
+
+Every Manage page, sub-page and window opened from one uses ONE set of parts, taken from the account pages
+(`ga-*`), which already looked like this. Measured before (the demo's audit): fifteen button looks, ten cards,
+seven captions, three back links, seven fields, four switchers, five stat tiles, four window shapes. After: three
+kinds of button, two card surfaces (the card and the inset panel), one of each of the rest. Gated by
+**`ui-test-onelook.js`** (26 checks), break-tested three ways (the button pass removed, a background repaint's
+guard removed, the window scope removed — each fails its own checks).
+- **THE STYLES ARE ONE BLOCK** at the foot of admin.css ("ONE LOOK ACROSS MANAGE"), every value a `--u-*` token
+  defined on `body.owner-mode`. **Scope**: page rules hang off `:is(main, div).one-look` — the class sits on
+  `#view-settings`, `#view-activity-log` (index.html shells) and the search sheet's `#cmdk-sheet-host`, and the
+  selector is (0,1,1), the same weight as the `body.owner-mode` rules it has to follow on order. Window rules hang
+  off `body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet))` — a glass dialog, the photo sheet,
+  the QR window or the date picker opened FROM Manage is a bottom sheet on a phone; the same window over Today keeps
+  its own shape (gated both ways). Nothing outside Manage moves.
+- **THREE KINDS OF BUTTON, decided at one choke point** (`oneLookButtons`/`oneLookWatch`, admin.js): an observer
+  over the Manage views strips the old look classes (`ONE_LOOK_OLD`) and adds `u-btn1` (accent — the one thing a
+  card is for), `u-btn2` (outlined) or `u-btn3` (outlined, danger ink), read from the LABEL
+  (`ONE_LOOK_PRIMARY`/`ONE_LOOK_DANGER`). A choke point because forty renderers carried fifteen looks — the
+  email_dark_hooks rule: a class you have to remember is one the next renderer forgets. It runs on the observer's
+  microtask, so the kind lands before the next paint; a test that reads a class in the SAME tick as the render
+  reads the old one (wait a tick). A button keeps its kind once given one ("Save" passing through "Saving…" does
+  not change shape). The busy/copied/sent/settled states the old classes carried are restated on the kinds. Code
+  and tests must find Manage buttons by `data-act`, never by `btn-sm`/`pay-btn`/`sp-fix`/`mo-tool` etc.
+- **THE BACK LINK NAMES WHERE IT GOES** — "‹ Manage", "‹ Reviews", "‹ Calendar sync", "‹ Price ideas" — through
+  ONE helper, `settingsSetBack(fn, label)`; nothing assigns `settingsBackTarget` directly. **A list that repaints in
+  the background must not retitle the page the owner moved to**: `renderCalendarList`, `renderCancelList`,
+  `renderTestCentreList` and `renderPricing` set the title and back link only while `settingsShowing(section)` —
+  before this, the calendar overview landing late renamed the Price ideas page "Calendar sync" and pointed its back
+  link at Manage (found by the gate, present before the one look).
+- **ADDING IS A ROW AT THE FOOT OF ITS LIST** (`uAddRow(label, attrs, first)` — an accent "+" tile and the words),
+  never one more pill among the actions: Write a new reply, Add something to do, Link a platform, Add a season, and
+  the cottage editors' Add a photo / amenity / rule / item / question / section, each above its Save row.
+- **The content is the simpler format**: a menu row says where it goes (no sub-lines; Status has no row — the pill is
+  the way in; Backups, Integrations, Search learning and Test copy fold under **More tools**, `mgMoreTools`); the
+  explanation notes, tips and caption sub-lines went from every page (`ga-note`, `acr-note`, `acr-capsub`,
+  `acw-tip`, `sl-note`, `pr-swhy`, `sp-tsub`… — their dead CSS with them); a hint under a field stays only when it is
+  a unit or a limit ("per night, on top", "0 = no limit"). Renamed so the row and the page say the same thing:
+  **Seasonal rates**, **Price ideas** (was Pricing), **Guest list** (was Guests). Things to do is a list of rows
+  (name over category) each opening its labelled editor; Analytics keeps its figures and chart open and folds its
+  four deeper sections; Newsletter's figures are stat tiles; Price ideas folds what it has learned and what guests
+  searched for; Changeovers has ONE header ("‹ Price ideas", then its own title).
+- **DELIBERATE DEPARTURES FROM THE DEMO**, each a fact the demo's blanket rule would have deleted: a season's DATES
+  stay under its name on the cottage page (a value, not a hint); Backups keeps one line — keep the passphrase
+  somewhere other than your inbox, or the backup can't be opened; Changeovers keeps the shared-changeover figure
+  ("5 changeovers on 5 days — 2 already share a drive"), a documented feature; the security page keeps the note that
+  two-step stays off until you add an email (it unblocks something); the search-learning "Most-taught answers" line
+  stays (data). The cottage rows lost the month's booked figure, and `cottageMonthOccupancy` went with it.
+- Also fixed on the way: the account page's slide-in no longer snaps when the people list lands mid-slide (`oaPage`
+  carries a running slide on through a repaint with a negative `animation-delay`); the SMS token's saved state rides
+  the field's placeholder (its note went); the review QR and Square location windows end in their answers (Done /
+  Copy link, Cancel), not a corner ✕.
+- Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
+  line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
+  ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
+  is the one tier, sentence case), ui-test-people (rows carry no sub; the reset row and no password box; the
+  renamed rows), ui-test-legibility (no explanation line under the editors' captions; §3 now asserts one-line Manage rows with no
+  description, the orphan it measured having nowhere left to happen), ui-test-sms (the token's placeholder),
+  ui-test-money (the search weeks are a fold row), ui-test-replies (the starters are the library, each editable, no
+  caption calling them starters), search-test (the occupancy check went with the
+  function).
+
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
 **Supersedes the summary row below.** The status is said once, by `#health-pill` beside the Manage title, its dot
@@ -772,8 +834,8 @@ capsule is `mgRunSync` — spin, re-read admin-bootstrap, the row folds away whe
 to do waiting (`__nyMod`), and searches to teach. Rows are keyed (`.mg-wrap[data-id]`) so they arrive and leave
 animated; the words change at once and only their arrival animates; returning to all-clear redraws the tick with
 a one-shot halo. **No green pills and no shouted captions on the landing.** The cottages are ROWS in the Cottages &
-pricing group (`#cottages-overview` is `display: contents` inside it): name, "from £x a night", the month's booked
-% counting up beside a filling bar, opening that cottage; the old "Cottages" row became **Add a cottage**
+pricing group (`#cottages-overview` is `display: contents` inside it): name and "from £x a night", opening that
+cottage (the month's booked figure left with the one look, below); the old "Cottages" row became **Add a cottage**
 (`addAccommodationPrompt`). Gated by ui-test-manage §1–§2, ui-test-needs-you §10, ui-test-hig §2 (re-aimed).
 **THE COTTAGE LIST PAGE IS GONE** (owner-asked: "can this intermediary page be removed, the cottages are listed on
 the manage page"). Tapping a cottage on Manage opened the list first and then the cottage, so Back landed on a second
@@ -1804,14 +1866,13 @@ BOOKED must count direct bookings plus imported platform STAYS and nothing else:
 host's "Not available" hold on an imported calendar (`kind: 'blocked'`, migration-124) are availability, not
 occupancy. The shared rule is `isOtaBlock` (client) / `source <> 'owner' AND kind <> 'blocked'` (server).
 Swept: the pulse, insights, price model, owner digest, day sheet, assistant answers and the books caveat
-already followed it; **two did not** — `cottageMonthOccupancy` (the "% booked" on Manage → Cottages and the
-cottage verdicts) and the projected-occupancy table (`renderProjection`-area, admin.js ~17606) counted every
+already followed it; **two did not** — `cottageMonthOccupancy` (the "% booked" on Manage → Cottages; the
+function went with that figure in the one look) and the projected-occupancy table (`renderProjection`-area, admin.js ~17606) counted every
 block, so a month the owner had held back read as nearly full. Both fixed. DELIBERATELY unchanged: every
 AVAILABILITY surface (timeline, free-window scans, clash checks, gap brief, `pricing-suggest.php`'s
 is_booked_date, the assistant's "is it free" tool) — a block makes a night unavailable, which is the point.
 An imported event with no recognisable label ('unknown') still counts as a stay, as it always did.
-Gated by search-test §44 (a2) (3 nights from the stay, none from the owner block or the host hold;
-break-tested: 9 without the filter).
+(search-test §44 (a2) gated it until the function went.)
 - **AND search-test HAD BEEN ENDING EARLY, SILENTLY, FOR EVERY SECTION AFTER §40.** The dismissal block's
   `release()` ran before the queue's `.then` had assigned it (a microtask), released a no-op, and
   `await settle()` hung on a promise nothing would resolve — node then exits 0 with the event loop empty, so
@@ -3121,7 +3182,9 @@ site) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Saved replies, Follow-up emails, Text messages, Guest chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
-**System & tools** (Status, Activity log, Integrations, Search learning, Test copy, Test centre). Gated by
+**System & tools** (Activity log, then **More tools** folding Backups, Integrations, Search learning and Test copy;
+Test centre on staging) — there is no Status row: the pill beside the title is the way in (the one look, below).
+Gated by
 ui-test-manage §1 (first child, uncaptioned, the header's gap at 1280 and 18px/22px at 402, "Needs a look" after it,
 spanning on two columns; four break-tests) and ui-test-people §B (Sophia's first
 group). **`manageAccessSync` and `settingsFilter` walk only the index's OWN groups (`:scope >`)**: the summary keeps

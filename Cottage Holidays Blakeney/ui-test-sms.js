@@ -77,7 +77,7 @@ const OFF = { on: false, ready: false, sid_set: false, sid_tail: '', token_set: 
       shown: !!sec && getComputedStyle(sec).display !== 'none',
       state: (document.getElementById('sms-state') || {}).textContent || '',
       token: (document.getElementById('sms-token') || {}).value,
-      tokenNote: (document.getElementById('sms-token-state') || {}).textContent || '',
+      tokenNote: (document.getElementById('sms-token') || {}).placeholder || '',
       sidPlaceholder: (document.getElementById('sms-sid') || {}).placeholder || '',
       from: (document.getElementById('sms-from') || {}).value,
       on: (document.getElementById('sms-on') || {}).checked,
@@ -93,7 +93,7 @@ const OFF = { on: false, ready: false, sid_set: false, sid_tail: '', token_set: 
   // content.php refuses to decrypt it into any browser payload, so the page has
   // no value to show — and must not pretend otherwise.
   ok(v.token === '', 'the token field is empty even when a token is stored');
-  ok(/A token is saved/.test(v.tokenNote), `…and the page says one is saved (${v.tokenNote.slice(0, 48)})`);
+  ok(/^Saved — blank keeps it$/.test(v.tokenNote), `…and the field says one is saved (${v.tokenNote.slice(0, 48)})`);
   ok(/••••\s*abcd/.test(v.sidPlaceholder), `the SID shows only its tail, to identify the account (${v.sidPlaceholder})`);
 
   console.log('3. saving with the token blank KEEPS the stored one');

@@ -94,7 +94,7 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
       };
     });
     ok(/is-ok/.test(s1.tone) && s1.title === 'All systems running', `the hero says it plainly ("${s1.title}")`);
-    ok(s1.sub === '9 checks passed. Nothing needs you.', `…and counts what passed, never the switched-off one ("${s1.sub}")`);
+    ok(s1.sub === '9 checks passed', `…and counts what passed, never the switched-off one ("${s1.sub}")`);
     ok(s1.off === 0, `the ring is full (${s1.off})`);
     ok(s1.vitals.join('|') === 'Daily jobs|Calendars|Email|Backups', `four vitals (${s1.vitals.join(', ')})`);
     ok(s1.bars === 28, `each carries a seven-day trace (${s1.bars} bars)`);
