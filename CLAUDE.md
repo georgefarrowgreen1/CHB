@@ -1181,7 +1181,58 @@ gated in ui-test-manage §8 and break-tested:
 - The price input needs `min-height: 40px` INSIDE its 42px pill or a11y §5
   fails it at 21px (the pill is not the control; the input is).
 
-## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
+## The Inbox is ONE LIST OF PEOPLE (the approved "One Inbox" demo, built without CI at the owner's ask)
+
+**Supersedes the three-answers section below and the folder switch.** Enquiries, guest chat and email
+are one row per PERSON, their conversation in time order across every channel, the stay beside it.
+Code: the "THE INBOX IS ONE LIST OF PEOPLE" block in admin.js (`ib*`), `#ib` in admin-views.html,
+the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37 checks).
+- **IT READS THE STORES, IT DOES NOT OWN THEM.** `enquiries`, `__msgThreads`, `__mbxMessages`,
+  `__mbxSent`, `__declinedEnq`, `bookingEmailLogs` and `dbBookings` are still filled by their own
+  loaders (renderInbox, loadAdminMessages, loadMailbox, loadBookingEmailLogs); each calls `ibSoon()`
+  and the render coalesces to one frame. Their old list markup sits HIDDEN in `#inbox-legacy`
+  because `loadAdminMessages` returns before setting the store when `#messages-list` is absent,
+  and the badges, search and notifications still count from those stores. `inboxFolder()` is a shim:
+  every caller that asks for a folder lands on the one list. `#inbox-detail-pane` is gone, so
+  `inboxSplitWide()` is false and the enquiry hub always opens as its own page.
+- **ONE ROW PER PERSON, never by a name** (`ibKeyOf`: email, else phone — chbCustomerKey's rule).
+  An address that matches nobody but whose display name matches one guest exactly is an
+  `unlinked` row with a "Yes, this is X" card; the link is stored, never inferred.
+- **KINDS**: guest (booking, enquiry or declined enquiry), auto (`IB_AUTO_RE`: no-reply family,
+  platforms, payment processors — quiet, never waits, no reply box), unlinked, lead (stay words in
+  what they sent), other.
+- **WAITING IS WORKED OUT**: a pending enquiry, a "write to them?" after a decline, a reminder that
+  came back, or they spoke last and nothing cleared it. Staying guests first, then the longest wait.
+  **THE FIRST OPEN DRAWS A LINE** (`inbox-state.since`): mail and chat already READ before the new
+  Inbox existed do not wait, or launch would have filled the list with old mail answered elsewhere.
+- **THE OWNER'S RECORD is the internal content key `inbox-state`** {since, done, remind, reminded,
+  unread, cleared, links} — classified in db.php, allowed for everyday staff in people-lib, riding
+  the admin boot payload as `inbox` (`window.__inboxStatePre`) like `duty-dismissed`, saved
+  mirror-first on a chain (`ibStateSave`). Done holds until they write again; drafts are per device
+  (localStorage `chb-ib-draft:<key>`).
+- **A REPLY OR AN APPROVAL WAITS FIVE SECONDS with Undo on the message** (`ibHoldInline`); leaving
+  the page sends what is waiting (pagehide / hidden), never loses it. A failed send puts the words
+  back and says so. Routes: chat → messages.php `send`; email → bookings.php `email_guest` for a
+  booking, enquiries.php `email_guest` for an enquirer, else mailbox.php `send`. The approval is held
+  as `__ibApproving` so the person keeps their row inside the window.
+- **ONE FIGURE**: `enquiryAskFigures(e)` was lifted out of renderEnquiryHub so the Inbox's Approve
+  and the enquiry page quote the same deposit (or the full amount inside the balance window).
+- **ONE NUMBER**: the dock pip and the rail say people waiting (app.js `inboxCount()` →
+  `ibWaitingCount()`), no longer unseen enquiries.
+- **Server**: mailbox.php `list` adds a `preview` (TOP 40 lines, the parser, quoted history and
+  signatures dropped, never fatal); `sent` returns 200 rows; enquiries.php `email_guest` writes the
+  sent log so the reply shows in the thread.
+- **Layout follows the room the Inbox has**, not the window: `ibLayout` sets `is-wide` (880px) and
+  `is-triple` (1180px) on `#ib`. On a phone the conversation is fixed below the header
+  (`--ib-top`); the toast is placed where it covers nothing (`ibToastPlace`).
+- **Markup uses `data-ib`, never `data-act`**, and `ib-` classes, so the app's dispatcher and the
+  one-look restyler leave it alone.
+- **NOT re-aimed, by the owner's "merge without CI"**: ui-test-mailbox, ui-test-onelook (§9 crashes on
+  the missing folders), ui-test-needs-you (the enquiry row now opens the conversation; the pip counts
+  waiting), ui-test-resume (folder places), ui-test-hub (no auto-dock in the Inbox),
+  ui-test-ownerday. They test the folder Inbox and need moving to the one list.
+
+## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched (SUPERSEDED by the one list above)
 
 Stacked, the folder switch hides and each folder becomes a verdict fold group
 (`#inbox-landing` in admin-views.html; summaries by `inboxVerdicts()`, which RIDES

@@ -154,6 +154,44 @@ function mbx_parse_attachments($body, $ctype)
     return $out;
 }
 // Fetch one raw message by UIDL (shared by read / attachment).
+// The first words of a message, for the Inbox row: TOP fetches the headers and a
+// few dozen body lines, the tested MIME parser decodes them, and the reply's own
+// words are kept (quoted history and signatures dropped). Never fatal: a
+// message that does not parse this way simply has no preview.
+function mbx_preview($fp, $no)
+{
+    try {
+        fwrite($fp, "TOP {$no} 40\r\n");
+        $first = fgets($fp, 1024);
+        if (!is_string($first) || $first === '' || $first[0] !== '+') {
+            return '';
+        }
+        $clean = false;
+        $raw = pop3_multiline($fp, $clean, 96 * 1024);
+        if (!$clean) {
+            return '';
+        }
+        $parsed = parse_email_message($raw);
+        $body = str_replace("\r\n", "\n", (string) ($parsed['body'] ?? ''));
+        $keep = [];
+        foreach (explode("\n", $body) as $line) {
+            $t = trim($line);
+            if ($t === '') {
+                continue;
+            }
+            if ($t[0] === '>' || preg_match('/^(On .{6,200} wrote:|-{2,}\s*Original Message|From:\s|Sent from my |--\s*$)/i', $t)) {
+                break;
+            }
+            $keep[] = $t;
+            if (strlen(implode(' ', $keep)) > 200) {
+                break;
+            }
+        }
+        return mb_substr(implode(' ', $keep), 0, 180);
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
 function mbx_retr($uid)
 {
     [$fp, $uidl] = mbx_open_listed();
@@ -232,6 +270,7 @@ if ($action === 'list') {
         }
         $out[] = [
             'uid' => $uidl[$no],
+            'preview' => mbx_preview($fp, $no),
             'from' => $fromAddr,
             'fromRaw' => mailbox_decode_subject(mbx_header($head, 'From')),
             'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')) ?: '(no subject)',
@@ -321,7 +360,7 @@ if ($action === 'mark_unread') {
 if ($action === 'sent') {
     try {
         $rows = db()
-            ->query('SELECT id, to_email, cc_email, subject, body, sent_at FROM mail_sent ORDER BY sent_at DESC, id DESC LIMIT 50')
+            ->query('SELECT id, to_email, cc_email, subject, body, sent_at FROM mail_sent ORDER BY sent_at DESC, id DESC LIMIT 200')
             ->fetchAll();
     } catch (\Throwable $e) {
         // Table appears after the next migrate run — an empty Sent beats a 500.

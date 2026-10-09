@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 724;
+const ADMIN_BUNDLE_V = 725;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 363;
+const ADMIN_CSS_V = 364;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3340,6 +3340,18 @@ async function maybeAccountPreview() {
 function unseenEnquiries() {
     if (!Array.isArray(enquiries)) return 0;
     return enquiries.filter(function (e) { return !(e && e.seenAt); }).length;
+}
+// THE INBOX'S NUMBER: people waiting on you (the list's own "Waiting on you"
+// group, admin.js ibWaitingCount), read by the dock pip and the rail alike.
+// Before the back office has loaded, the unseen enquiries stand in.
+function inboxCount() {
+    try {
+        if (/** @type {any} */ (window).__ADMIN_LOADED && typeof (/** @type {any} */ (window).ibWaitingCount) === 'function') {
+            const n = /** @type {any} */ (window).ibWaitingCount();
+            if (typeof n === 'number') return n;
+        }
+    } catch (e) {}
+    return unseenEnquiries();
 }
 // Keep the dock's count badges live. ONE WRITER: this used to paint
 // #dock-badge-enquiries itself, a second derivation of a number
@@ -11720,6 +11732,7 @@ async function loadData() {
         // so no page ever waits on a mail server.
         /** @type {any} */ (window).__newMailPre = ab.newMail || null;
         /** @type {any} */ (window).__dutyDismissedPre = ab.dismissed || null;
+        /** @type {any} */ (window).__inboxStatePre = ab.inbox || null;
         /** @type {any} */ (window).__sigAt = Date.now();
     }
 
@@ -19484,7 +19497,7 @@ function dockBadgePop(el, n) {
     el.classList.add('dock-badge-pop');
 }
 function refreshInboxBadge() {
-    const n = unseenEnquiries();
+    const n = inboxCount();
     const badge = document.getElementById('inbox-badge');
     if (badge) {
         badge.innerText = n;
@@ -19516,7 +19529,7 @@ function refreshInboxBadge() {
     if (dock) {
         dock.textContent = n;
         dock.style.display = n > 0 ? '' : 'none';
-        pipName(dock, n, 'unseen');
+        pipName(dock, n, 'waiting');
         dockBadgePop(dock, n);
     }
     // THE TODAY PIP COUNTS DUTIES, NOT ENQUIRIES — one fact, one number. It read
@@ -21462,7 +21475,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'joinwin1009';
+    const BUILD = 'oneinbox1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

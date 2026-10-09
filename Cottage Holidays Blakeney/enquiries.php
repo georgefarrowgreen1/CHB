@@ -766,6 +766,15 @@ if ($action === 'email_guest') {
     if (empty($r['ok'])) {
         json_out(['error' => $r['error'] ?? 'Could not send the email'], 400);
     }
+    // Into the sent log, so the Inbox shows it in the enquirer's conversation (the
+    // booking composer's emails ride the activity log's meta instead).
+    try {
+        db()
+            ->prepare('INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES (?, NULL, ?, ?)')
+            ->execute([$row['email'], $subject !== '' ? $subject : 'Your enquiry', $message]);
+    } catch (\Throwable $e) {
+        // The sent log appears after the next migrate run; the email itself went.
+    }
     log_activity('comms', 'enquiry.email', 'Emailed enquirer — ' . ($row['name'] ?: $row['email']), [
         'entity' => 'enquiry',
         'entity_id' => (string) $id,

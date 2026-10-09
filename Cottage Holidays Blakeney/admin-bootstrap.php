@@ -135,10 +135,23 @@ try {
     $dismissed = [];
 }
 
+// The Inbox's own record (done, reminders, linked addresses), for the same reason:
+// the list paints from it, and a done row must not flash back while it loads.
+$inboxState = null;
+try {
+    $iv = content_json('inbox-state', null);
+    if (is_array($iv)) {
+        $inboxState = $iv;
+    }
+} catch (\Throwable $e) {
+    $inboxState = null;
+}
+
 $out = [
     'ok' => true,
     'feeds' => $feeds,
     'dismissed' => (object) $dismissed,
+    'inbox' => $inboxState,
     'payoutTrouble' => $payoutTrouble,
     'newMail' => $newMail,
     'blocks' => ['ok' => true, 'blocks' => $blocks],
