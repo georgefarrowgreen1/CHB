@@ -8617,34 +8617,34 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look .sg-acts button { flex: 0 0 auto; white-space: nowrap; }
 :is(main, div).one-look [data-act="runSelfRepair"] { align-self: flex-start; justify-self: start; }
 /* A row's own trailing action, and a suggestion inside a field: the outlined pill, small. */
-:is(main, div).one-look :is(.sp-on, .sg-usesug) {
+:is(main, div).one-look :is(.sp-on, .sg-usesug, .msg-markread) {
   min-height: var(--u-h-small); padding: 0 16px; border-radius: var(--r-pill); white-space: nowrap;
   background: transparent; border: 1px solid var(--u-pill-edge); color: var(--text-light);
   font-size: var(--fs-sub); font-weight: 600;
 }
 
 /* ---------- 8. SWITCHER: one pill track ---------- */
-:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) {
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg, .inbox-sort.seg:not(#inbox-folders)) {
   display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control); align-items: stretch;
   background: var(--u-track); border: 0; border-radius: var(--r-pill); box-shadow: none; backdrop-filter: none;
 }
-:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button {
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg, .inbox-sort.seg:not(#inbox-folders)) > button {
   flex: 1 1 auto; min-height: var(--u-h-small); padding: 0 12px; border: 0; border-radius: var(--r-pill); white-space: nowrap;
   background: transparent; color: var(--text-light);
   font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; box-shadow: none;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button:is(.is-on, .on, .is-active, [aria-pressed="true"], [aria-selected="true"]) {
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg, .inbox-sort.seg:not(#inbox-folders)) > button:is(.is-on, .on, .is-active, [aria-pressed="true"], [aria-selected="true"]) {
   background: var(--accent) !important; color: var(--accent-ink) !important;
 }
-:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .rvi-chips) .chb-pill { display: none; }
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .rvi-chips, .inbox-sort.seg:not(#inbox-folders)) .chb-pill { display: none; }
 /* Choices that wrap: the same item, outlined until chosen. */
-:is(main, div).one-look .rvi-chip {
+:is(main, div).one-look :is(.rvi-chip, .msg-filter-chip) {
   min-height: var(--u-h-small); padding: 0 16px; border-radius: var(--r-pill);
   border: 1px solid var(--u-pill-edge); background: transparent; color: var(--text-light);
   font-size: var(--fs-sub); font-weight: 600;
 }
-:is(main, div).one-look .rvi-chip:is([aria-pressed="true"], .is-on) { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: transparent !important; }
+:is(main, div).one-look :is(.rvi-chip, .msg-filter-chip):is([aria-pressed="true"], .is-on, .on) { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: transparent !important; }
 :is(main, div).one-look .u-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---------- 9. STAT TILE: a figure over its name ---------- */
@@ -8662,7 +8662,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look .u-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* ---------- 10. FIELD: one, always under its label ---------- */
-:is(main, div).one-look :is(.settings-sec, .accounts-sec) :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
+:is(main, div).one-look :is(.settings-sec, .accounts-sec, .msg-inbox-controls, .mbx-toolbar) :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
 :is(main, div).one-look .al-search input, body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-box .input-glass {
   min-height: var(--u-h-field); height: auto; padding: 12px 16px; margin: 0;
   background: var(--u-field) !important; border: 1px solid var(--u-edge);
@@ -8856,3 +8856,24 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .sweep-acts { padding-top: 8px; }
 /* A caption over the list of safes: the page is a flex column with its own gap. */
 :is(main, div).one-look #view-keysafe .ks-cap { margin: 8px 4px -8px; }
+
+/* ---------- 16. THE INBOX ---------- */
+/* Inside an open fold a list is the card's own inset panel, not a card within the
+   card: the inset ground, no edge, the cell radius on the run's ends, one hairline
+   between rows (the joins already square the inner corners and drop the top edge). */
+:is(main, div).one-look .bhub-fold .bk-row { background: var(--u-inset); border-color: transparent; box-shadow: none; border-radius: var(--u-r-cell); }
+:is(main, div).one-look .bhub-fold :is(.bk-row + .bk-row, .mbx-item + .mbx-item > .bk-row) { border-top-left-radius: 0; border-top-right-radius: 0; }
+:is(main, div).one-look .bhub-fold .bk-row:has(+ .bk-row) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: var(--u-edge); }
+/* Conversations are one list card (a wrapper, so a filtered-out row can never
+   leave a squared corner behind), an inset panel inside a fold. */
+:is(main, div).one-look .msg-threads { display: flex; flex-direction: column; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--u-r-card); }
+:is(main, div).one-look .bhub-fold .msg-threads { background: var(--u-inset); border-color: transparent; border-radius: var(--u-r-cell); }
+:is(main, div).one-look .msg-threads .msg-thread-row { margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none; min-height: var(--u-h-row); padding: 12px var(--u-pad); }
+:is(main, div).one-look .msg-threads .msg-thread-row + .msg-thread-row { border-top: 1px solid var(--u-edge); }
+/* A folder's own icon is the one icon tile. */
+:is(main, div).one-look .iv-lic { flex: 0 0 32px; width: 32px; height: 32px; padding: 8px; margin: 0; box-sizing: border-box; border-radius: var(--u-r-cell); background: var(--well-bg); color: var(--accent-text); }
+/* The message search row: the one field, then its filter chips and its one action. */
+:is(main, div).one-look .msg-inbox-controls { gap: 8px; margin: 0 0 12px; }
+:is(main, div).one-look .msg-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+:is(main, div).one-look .msg-markread { font-family: var(--font-sans); cursor: pointer; }
+:is(main, div).one-look #messages-head-actions:empty { display: none; }

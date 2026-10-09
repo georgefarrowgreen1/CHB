@@ -515,7 +515,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       lead: !!document.querySelector('.enq-declined-lead'),
       heading: head ? head.textContent.replace(/\s+/g, ' ').trim() : '',
       badgeShown: badge ? getComputedStyle(badge).display !== 'none' : true,
-      subline: (document.getElementById('inbox-subline') || {}).textContent || '',
+      subline: document.getElementById('inbox-subline') ? document.getElementById('inbox-subline').textContent : null,
       // The archived read must NOT come from container opacity: that composites
       // every ink toward the ground and took the quoted message to 3.05:1.
       bodyOpacity: q('.bk-row-body') ? getComputedStyle(q('.bk-row-body')).opacity : '',
@@ -528,7 +528,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(dec.lead, 'the drawer explains itself once, above the rows');
   ok(/^Enquiries/.test(dec.heading) && !/Declined enquiries/.test(dec.heading), `the heading keeps ONE title on both tabs — the switch, its counts and the capsule say which list ("${dec.heading}")`);
   ok(!dec.badgeShown, 'the WAITING count is not shown over the declined list');
-  ok(/every conversation in one place/.test(dec.subline) && !/declined|waiting|caught up/i.test(dec.subline), `the sentence under the title never changes with the tab ("${dec.subline}")`);
+  ok(dec.subline === null, `no sentence under the title restates the tab — the switch, its counts and the capsule say which list (${JSON.stringify(dec.subline)})`);
   ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);
 
   // THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES. Reported from
@@ -1081,7 +1081,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const tight = await page.evaluate(() => {
     const row = document.querySelector('.enq-declined-row');
     const tag = row.querySelector('.prop-tag');
-    const btns = [...row.querySelectorAll('.btn-sm')];
+    const btns = [...row.querySelectorAll('.enq-declined-email, .enq-declined-restore')];
     return {
       clipped: tag.scrollWidth > tag.clientWidth + 1,
       tagW: Math.round(tag.getBoundingClientRect().width), tagNeeds: tag.scrollWidth,
