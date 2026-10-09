@@ -144,7 +144,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   await page.setViewportSize({ width: 1280, height: 950 });
   await page.waitForTimeout(400);
-  ok(onPhone.lineGap === 18 && onPhone.capGap === 22, `on a phone: 18px under the line, "${onPhone.cap}" 22px below (${onPhone.lineGap}px, ${onPhone.capGap}px)`);
+  // One caption tier (the one look): every caption stands the section gap (24px) above its group.
+  ok(onPhone.lineGap === 18 && onPhone.capGap === 24, `on a phone: 18px under the line, "${onPhone.cap}" 24px below (${onPhone.lineGap}px, ${onPhone.capGap}px)`);
 
   console.log('§2 the pill follows the real stores, both ways');
   feedsStalled = false;
@@ -334,7 +335,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       minMain: Math.min(...rows.map((r) => r.querySelector('.cal-pmain').getBoundingClientRect().width)),
       maxBtn: Math.max(...rows.map((r) => r.querySelector('button').getBoundingClientRect().width)),
       titleLines: t ? Math.round(t.getBoundingClientRect().height / lh) : 0,
-      tiles: [...document.querySelectorAll('#bhub-fold-cal-21a .cal-tools .mo-tool')].map((b) => {
+      tiles: [...document.querySelectorAll('#bhub-fold-cal-21a .cal-tools button')].map((b) => {
         const sp = b.querySelector('span'), ic = b.querySelector('.ic');
         return { icTop: Math.round(ic.getBoundingClientRect().top), lines: Math.round(sp.getBoundingClientRect().height / (parseFloat(getComputedStyle(sp).lineHeight) || 16)), clipped: sp.scrollWidth > sp.clientWidth + 1, h: Math.round(b.getBoundingClientRect().height) };
       }),
@@ -342,8 +343,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(phone.n === 2 && phone.minMain >= 180, `at 390px each platform's words get a real column (${Math.round(phone.minMain)}px)`);
   ok(phone.maxBtn < 120, `…and Replace stays a small button (${Math.round(phone.maxBtn)}px)`);
-  ok(phone.tiles.length === 4 && new Set(phone.tiles.map((x) => x.icTop)).size === 1 && new Set(phone.tiles.map((x) => x.h)).size === 1,
-    `the fold's four action tiles are one size with their icons on one line (${JSON.stringify(phone.tiles.map((x) => [x.icTop, x.h]))})`);
+  ok(phone.tiles.length === 4 && new Set(phone.tiles.map((x) => x.h)).size === 1 && phone.tiles.every((x) => !x.clipped && x.lines === 1),
+    `the fold's four tools are pills of one height, each on one line, none cut off (${JSON.stringify(phone.tiles.map((x) => [x.h, x.lines]))})`);
   ok(phone.tiles.every((x) => x.lines === 1 && !x.clipped), 'every tile label sits on one line, uncut');
   await page.screenshot({ path: '/tmp/claude-0/-home-user-CHB/e820a22c-cfa5-5535-94d0-f1835c6df202/scratchpad/cal390c.png', clip: { x: 0, y: 700, width: 390, height: 450 } });
   ok(phone.titleLines === 1, `the summary title stays on one line beside its mark (${phone.titleLines})`);
@@ -353,7 +354,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(c1.probs === 1 && /21A Westgate · Airbnb/.test(c1.probTxt) && /Still using the 4 Airbnb stays/.test(c1.probTxt), 'the failing platform leads, saying what it still has');
   ok(c1.badDot && c1.okDot && c1.cap21, 'each platform wears its own dot; the cottage reads failing');
   ok(!c1.explain, 'the explanation line is gone');
-  await page.click('.cal-prob .btn-accent');
+  await page.click('.cal-prob .u-btn1');
   await page.waitForSelector('#cal-link-in');
   await page.fill('#cal-link-in', 'not a link');
   const bad = await page.evaluate(() => ({ dis: document.getElementById('cal-link-go').disabled, hint: document.getElementById('cal-link-hint').className }));
@@ -372,7 +373,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(c2.probs === 0 && /All calendars up to date/.test(c2.t), `fixed → the problem card leaves and the summary clears (${c2.t})`);
   // Sync all walks the cottages, each row showing its own spinner.
   calPosts.length = 0; calSyncHold = true;
-  await page.click('#calendar-list .cal-all');
+  await page.click('#calendar-list [data-act="calSyncAll"]');
   await page.waitForTimeout(250);
   const spin = await page.evaluate(() => document.querySelectorAll('#calendar-list .bhub-fold-grp .st-cap .mg-spin').length);
   ok(spin === 1, `Sync all runs one cottage at a time (${spin} spinning)`);
@@ -879,7 +880,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       qrow: !!document.querySelector('#guest-review-moderation .acw-qrow'),
       // The waiting count rides the TITLE's capsule now (the approved Reviews demo).
       cap: !!document.querySelector('#settings-panel-cap .st-cap.is-warn'),
-      pills: !!document.querySelector('#guest-review-moderation .acw-modacts .mod-ok') && !!document.querySelector('#guest-review-moderation .acw-modacts .mod-no'),
+      pills: !!document.querySelector('#guest-review-moderation .acw-modacts .u-btn1') && !!document.querySelector('#guest-review-moderation .acw-modacts .u-btn2'),
     };
     return { ca, wl, ga, rv };
   });
@@ -961,7 +962,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await wait(400);
     const keys = bookableCottageKeys();
     const rows = document.querySelectorAll('#review-links .rv-row').length;
-    const copies = document.querySelectorAll('#review-links .rv-copy').length;
+    const copies = document.querySelectorAll('#review-links [data-act="copyReviewLink"]').length;
     const k = keys[0];
     const btn = document.getElementById('revcopy-' + k);
     const r = btn.getBoundingClientRect();
@@ -978,15 +979,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       return Math.abs((t.top + t.bottom) / 2 - (cr.top + cr.bottom) / 2);
     })();
     const noOldFold = !document.querySelector('#sec-reviews details') && !document.querySelector('#sec-reviews #bulk-rev-text');
-    // The layout: name on its own line, the actions an even row under it, no URL
-    // line and no explanatory sentences.
+    // The layout (the one look): the cottage and its two actions on ONE row, the
+    // actions on the right at the 44px floor; no URL line, no explanatory sentences.
     const row0 = document.querySelector('#review-links .rv-row');
     const nameBox = row0.querySelector('.rv-name').getBoundingClientRect();
     const actsBox = row0.querySelector('.rv-acts').getBoundingClientRect();
-    const acts = [...row0.querySelectorAll('.rv-acts .rv-act')].map((b) => Math.round(b.getBoundingClientRect().width));
-    const layout = { below: actsBox.top >= nameBox.bottom - 1, even: acts.length >= 2 && Math.max(...acts) - Math.min(...acts) <= 1, noUrl: !/cottageholidaysblakeney/.test(document.getElementById('review-links').textContent), noSub: !document.querySelector('#sec-reviews .acr-capsub') && !document.getElementById('rv-intro') && !document.querySelector('#sec-reviews .rv-go .rv-sub') };
+    const acts = [...row0.querySelectorAll('.rv-acts button')].map((b) => b.getBoundingClientRect());
+    const layout = { below: actsBox.top < nameBox.bottom && actsBox.left > nameBox.right, even: acts.length >= 2 && acts.every((a) => Math.round(a.height) >= 44), noUrl: !/cottageholidaysblakeney/.test(document.getElementById('review-links').textContent), noSub: !document.querySelector('#sec-reviews .acr-capsub') && !document.getElementById('rv-intro') && !document.querySelector('#sec-reviews .rv-go .rv-sub') };
     // The QR window: the cottage's name and a code for ITS link, nothing else.
-    row0.querySelector('.rv-act[data-act="reviewQrOpen"]').click();
+    row0.querySelector('[data-act="reviewQrOpen"]').click();
     await wait(200);
     const ov = document.getElementById('rv-qr-modal');
     const M = chbQr(reviewLinkUrl(k) + '?from=qr');
@@ -999,7 +1000,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       cells: svg ? (svg.querySelector('path').getAttribute('d').match(/M/g) || []).length : 0,
       dark, n: M ? M.length : 0,
       finder: M && M[0][0] && M[0][6] && M[6][0] && !M[1][1] && M[3][3],
-      only: ov ? ov.querySelectorAll('button').length === 1 && !/http|camera|review link/i.test(ov.textContent) : false,
+      only: ov ? [...ov.querySelectorAll('button')].map((b) => b.textContent.trim()).join('|') === 'Done|Copy link' && !/http|camera|review link/i.test(ov.textContent) : false,
       wantName: (propertyMeta[k] || {}).name || k,
     };
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -1022,11 +1023,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(rv2.rows === rv2.keys && rv2.copies === rv2.keys && rv2.keys >= 1, `every cottage is a row with its own Copy button (${rv2.rows}/${rv2.copies}/${rv2.keys})`);
   ok(rv2.h >= 44, `Copy is a 44px target (${rv2.h})`);
-  ok(rv2.layout.below && rv2.layout.even, `each cottage: the name on its own line, the actions an even row beneath it`);
+  ok(rv2.layout.below && rv2.layout.even, `each cottage: one row, the name then its two actions on the right, each 44px`);
   ok(rv2.layout.noUrl && rv2.layout.noSub, 'no link written out and no explanatory sentences on the Reviews page');
   ok(rv2.qr.open && rv2.qr.title === rv2.qr.wantName, `QR opens a window titled with just the cottage's name (${rv2.qr.title})`);
   ok(rv2.qr.n >= 21 && rv2.qr.size === `0 0 ${rv2.qr.n} ${rv2.qr.n}` && rv2.qr.cells === rv2.qr.dark && rv2.qr.finder, `the code drawn is the encoder's matrix for that cottage's ?from=qr link (${rv2.qr.n}×${rv2.qr.n})`);
-  ok(rv2.qr.only, 'the window carries the code and a close button — no link, no instructions, no other buttons');
+  ok(rv2.qr.only, 'the window carries the code and its two answers, Done and Copy link — no link text, no instructions');
   ok(rv2.qr.closed, 'Escape closes it');
   ok(rv2.copied.cls && /Copied/.test(rv2.copied.txt) && rv2.copied.clip === rv2.wantUrl, `tapping Copy puts THAT cottage's link on the clipboard and says Copied (${rv2.copied.txt} · ${rv2.copied.clip})`);
   ok(rv2.otherStill, "only the tapped cottage's button flips");
@@ -1536,13 +1537,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       costsRow: !!document.getElementById('pr-costs-row'),
       holdNoTrip: !prTurnovers(sh(33)).includes('jollyboat') && prTurnovers(sh(29)).includes('jollyboat'),
     };
-    const click = (idea) => { const c = pb.querySelector(`.pr-pcard[data-idea="${idea}"] .pay-btn`); if (c) c.click(); return !!c; };
+    const click = (idea) => { const c = pb.querySelector(`.pr-pcard[data-idea="${idea}"] .pr-ideaacts > button:first-child`); if (c) c.click(); return !!c; };
     // Raise the busy week → a dated override labelled as the owner's own.
     out.raised = click('raise');
     await wait(150);
     out.raisePost = posts.find((x) => x.action === 'seasons_save');
     // Not now hides the weather card, keyed to its numbers, and says so.
-    const nn = document.querySelector('#pricing-body .pr-pcard[data-idea="weather"] .pay-btn2');
+    const nn = document.querySelector('#pricing-body .pr-pcard[data-idea="weather"] [data-act="prHide"]');
     if (nn) nn.click();
     await wait(80);
     out.hiddenSaved = posts.some((x) => x.key === 'pricing-hidden' && Object.keys(x.value || {}).some((k) => k === 'jollyboat|weather'));
@@ -1554,12 +1555,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     out.feeSaved = posts.some((x) => x.action === 'save' && Number(x.short_fee) > 0);
     // Gap fits turn on through the rules save, and the minimum-stay row is honest.
     const before = posts.length;
-    pb.querySelector('.pr-pcard[data-idea="mindate"] .pay-btn') && document.querySelector('#pricing-body .pr-pcard[data-idea="mindate"] .pay-btn').click();
+    pb.querySelector('.pr-pcard[data-idea="mindate"] .pr-ideaacts > button:first-child') && document.querySelector('#pricing-body .pr-pcard[data-idea="mindate"] .pr-ideaacts > button:first-child').click();
     await wait(150);
     out.rulesSaved = posts.slice(before).some((x) => x.key === 'rules-jollyboat' && x.value && x.value.gapFitDays === 10);
     out.gapSwitch = !!(document.getElementById('pr-gapfit') || {}).checked;
     // Write to Sarah opens the composer with the offer written in.
-    const ex = document.querySelector('#pricing-body .pr-pcard[data-idea="extend"] .pay-btn');
+    const ex = document.querySelector('#pricing-body .pr-pcard[data-idea="extend"] .pr-ideaacts > button:first-child');
     if (ex) ex.click();
     await wait(200);
     out.offer = { subj: (document.getElementById('enq-email-subject') || {}).value || '', body: (document.getElementById('enq-email-body') || {}).value || '' };

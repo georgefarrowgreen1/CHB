@@ -76,7 +76,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const c = document.querySelector('#pricing-body .pr-pcard[data-idea="extend"]');
     const t = c ? c.querySelector('.pr-stitle').textContent : '';
     const gapShown = [...document.querySelectorAll('#pricing-body .ny-row')].some((r) => /night gap on/.test(r.textContent));
-    if (c) c.querySelector('.pay-btn2').click();
+    if (c) c.querySelector('[data-act="prHide"]').click();
     return { t, gapShown };
   });
   ok(/Offer Bob 3 more nights/.test(ext.t) && !ext.gapShown, `the gap is offered to the guest already there first (${ext.t})`);

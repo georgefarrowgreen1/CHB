@@ -1106,8 +1106,8 @@
     </main>
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
-    <main id="view-activity-log" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="openArea" data-arg="manage">← Back to Manage</span>
+    <main id="view-activity-log" class="page-view container one-look">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="openArea" data-arg="manage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Manage</span></span>
         <h1 class="section-title al-h1">Activity log</h1>
         <div id="act-log-app"><!-- the whole page is built by renderActivityLog() (admin.js) --></div>
     </main>
@@ -1131,7 +1131,8 @@
     <main id="view-inbox" class="page-view container wide">
     </main>
 
-    <main id="view-settings" class="page-view container">
+    <!-- one-look: the Manage screens share one set of parts (admin.css "ONE LOOK ACROSS MANAGE"). -->
+    <main id="view-settings" class="page-view container one-look">
     </main>
 
     <!-- ================= MONEY (Apple-style grouped index + drill-down) ================= -->
@@ -1887,7 +1888,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1119"></script>
+    <script defer src="app.js?v=1121"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

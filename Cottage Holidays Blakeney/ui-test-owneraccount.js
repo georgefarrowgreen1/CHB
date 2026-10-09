@@ -363,7 +363,7 @@ const ok = (b, m) => {
     ok(await page.evaluate(() => [...document.querySelectorAll('#host-body .ga-row')].some((r) => /01263 740599/.test(r.textContent))), '…and the row says so');
 
     // The photo: the guest's sheet, then the cropper, then a site upload.
-    await page.click('#host-body .ga-photolink');
+    await page.click('#host-body .ga-hero button[data-act="oaPhotoSheet"]:not(.ga-avabtn)');
     await page.waitForSelector('#ga-photo-sheet.open');
     let sheet = await page.evaluate(() => [...document.querySelectorAll('#ga-photo-sheet .ga-t')].map((e) => e.textContent));
     ok(sheet.join() === 'Take a photo,Choose from library', `the sheet offers take / choose, and no remove yet (${sheet.join(' · ')})`);
@@ -379,7 +379,7 @@ const ok = (b, m) => {
         rowImg: (document.querySelector('#host-body .ga-hero .ga-ava img') || { getAttribute: () => '' }).getAttribute('src'),
         idxImg: (document.querySelector('#oa-index-row .ga-ava img') || { getAttribute: () => '' }).getAttribute('src'),
         card: (document.querySelector('#host-body .oa-preview .host-photo') || { style: {} }).style.backgroundImage,
-        link: (document.querySelector('#host-body .ga-photolink') || {}).textContent,
+        link: (document.querySelector('#host-body .ga-hero button[data-act="oaPhotoSheet"]:not(.ga-avabtn)') || {}).textContent,
     }));
     photo.guestUntouched = !posts.some((p) => p.b.action === 'guest_avatar_set');
     ok(up.length === 1, 'Use photo uploads the cropped square as a site image');
@@ -388,7 +388,7 @@ const ok = (b, m) => {
     ok(photo.rowImg === 'crown.png' && /crown\.png/.test(photo.card), 'the host photo shows on the host page and the guests\' card');
     ok(photo.idxImg === '', '…and never as YOUR photo on the Manage row (that is your own)');
     ok(photo.link === 'Change photo', 'the link now changes it');
-    await page.click('#host-body .ga-photolink');
+    await page.click('#host-body .ga-hero button[data-act="oaPhotoSheet"]:not(.ga-avabtn)');
     await page.waitForSelector('#ga-photo-sheet.open');
     sheet = await page.evaluate(() => [...document.querySelectorAll('#ga-photo-sheet .ga-t')].map((e) => e.textContent));
     ok(sheet.includes('Remove photo'), 'with a photo, the sheet offers to remove it');

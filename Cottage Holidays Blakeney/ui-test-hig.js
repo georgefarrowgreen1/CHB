@@ -23,7 +23,7 @@
 //    §3 ONE CAPTION TIER — in-card captions are sentence case; §3b sweeps the
 //       ten in-container rules that were still tracked caps (the modal sections,
 //       the plan caption, the act card, the stat tiles, the season count) across
-//       five screens, and pins that the OUTSIDE-container tier still shouts.
+//       five screens; on Manage the caption above a card is the same one tier.
 //    §4 THE CHEVRON IS A SYMBOL.
 //    §5 THE PHONE'S CHROME — the spine is a sentence + ONE scrolling chip row
 //       ≤640, every chip still routes; the condensed title stands down <480.
@@ -329,12 +329,11 @@ const NEST = (rootSel) => {
   ok(tracked.length === 0, `and none of them is tracked${tracked.length ? ' — ' + tracked.map((c) => c.sel + ' ' + c.ls).join(', ') : ''}`);
   // The badge beside the plan caption STAYS (an owner's ask, gated both ways in
   // ui-test-hub) — only its own 0.1em track went, so caption and chip read as one.
-  // …and the OUTSIDE-container tier is untouched: a section header still shouts.
-  // (Manage's landing no longer carries an outside caption — its summary is one
-  // row — so the tier is read where it still lives: a settings page's section cap.)
+  // …and on Manage the caption ABOVE a card is the same tier (the one look): sentence
+  // case at 600, never tracked capitals — one caption across every Manage page.
   await open(page, "(async () => { await openArea('settings'); settingsOpen('follow-ups'); })()", 1200);
-  const outside = await page.evaluate("(() => { const el = [...document.querySelectorAll('#sec-follow-ups .acr-cap')].filter((e) => e.getClientRects().length)[0]; return el ? { tt: getComputedStyle(el).textTransform, t: el.textContent.trim().slice(0, 24) } : null; })()");
-  ok(outside && outside.tt === 'uppercase', `the OUTSIDE-container tier still shouts ("${outside && outside.t}")`);
+  const outside = await page.evaluate("(() => { const el = [...document.querySelectorAll('#sec-follow-ups .acr-cap')].filter((e) => e.getClientRects().length)[0]; return el ? { tt: getComputedStyle(el).textTransform, fw: getComputedStyle(el).fontWeight, t: el.textContent.trim().slice(0, 24) } : null; })()");
+  ok(outside && outside.tt === 'none' && outside.fw === '600', `Manage's section caption is the one tier, sentence case at 600 ("${outside && outside.t}")`);
 
   console.log('§2 Payments — row titles in ink, the capsule carries the state');
   await open(page, "(async () => { await openAccounts(); })()", 1200);
