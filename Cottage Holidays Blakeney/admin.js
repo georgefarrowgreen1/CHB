@@ -10100,7 +10100,7 @@ let __mbxOpenedOnce = false;
 // across the refresh the app performs on itself when a new build ships. ONE definition:
 // the folder switch, the Inbox|Sent switch and openInbox() all have to agree.
 function inboxRemember() {
-    chbNavRemember('inbox:' + __inboxFolder + (__inboxFolder === 'email' && __mbxTab === 'sent' ? ':sent' : ''));
+    chbNavRemember('inbox:' + (__ibFolder === 'done' ? 'done' : __inboxFolder + (__inboxFolder === 'email' && __mbxTab === 'sent' ? ':sent' : '')));
 }
 // Stacked (<1200px) the Inbox is THE THREE ANSWERS: the folder switch hides,
 // each #inbox-folder-* div re-parents INTO its landing fold (the
@@ -10128,8 +10128,9 @@ function stCap(tone, text) {
 // new layout — the same live re-parenting the hubs' panes already do.
 try {
     window.matchMedia('(min-width: 1200px)').addEventListener('change', () => {
-        if ((document.querySelector('.page-view.active') || {}).id === 'view-inbox') inboxFolder(__inboxFolder);
-        else inboxLayoutSync();
+        // a width change is not a request for a folder: it must not take the owner out of Done
+        inboxLayoutSync();
+        if ((document.querySelector('.page-view.active') || {}).id === 'view-inbox') ibSoon();
     });
 } catch (e) {}
 function inboxLayoutSync() {
@@ -10166,6 +10167,8 @@ function inboxFolder(which) {
     // caller that still asks for a folder — search, help, notifications, a
     // remembered place — lands on that list, and asking wakes its loaders.
     __inboxFolder = 'enquiries';
+    // The one folder there is: Done (a remembered place). Any other name is the Inbox.
+    if (which === 'done' || __ibFolder === 'done') ibSetFolder(which === 'done' ? 'done' : 'inbox', { instant: true, quiet: true });
     try { ibLoadAll(); } catch (e) {}
     ibSoon();
 }
@@ -30260,7 +30263,7 @@ const IB_LEAD_RE = /\b(availab\w*|book(ing)?|stay|nights?|weekend|week|dates?|co
 
 let __ibOpen = null; // person key on screen
 let __ibQ = '';
-let __ibShowDone = false;
+let __ibFolder = 'inbox'; // the folder on show: 'inbox' or 'done'
 let __ibCtxOpen = false;
 let __ibMenuOpen = false;
 let __ibJump = null;
@@ -30607,7 +30610,10 @@ function ibCurrentStay(p) {
 }
 const ibIsStaying = (p) => p.bookings.some((x) => ibStayState(x.b) === 'staying');
 function ibTag(p, mode) {
-    if (mode === 'done') return { tone: 'unk', text: 'Done' };
+    // Inside Done every row is done, so none says so; a search reaches both folders,
+    // and there the word is what tells a done row from one still in the Inbox.
+    if (mode === 'done') return null;
+    if (ibDone(p)) return { tone: 'unk', text: 'Done' };
     if (mode === 'snoozed') return { tone: 'unk', text: ibWhenShort(ibState().remind[p.key]) };
     if (ibReminded(p)) return { tone: 'info', text: 'Reminder' };
     if (ibPendingEnq(p)) return { tone: 'warn', text: 'Decide' };
@@ -30739,7 +30745,7 @@ function ibListShell() {
     const lp = /** @type {any} */ (document.getElementById('ib-list'));
     if (!lp || lp.__ibShell) return;
     lp.__ibShell = true;
-    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search people, cottages, messages" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div id="ib-rows"></div>`;
+    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search people, cottages, messages" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div class="ib-folders-wrap" id="ib-folders-wrap"><div><div class="ib-folders" id="ib-folders" data-on="${__ibFolder}" role="group" aria-label="Folder"><span class="ib-folders-pill" aria-hidden="true"></span><button type="button" id="ib-f-inbox" data-ib="folder" data-arg="inbox" aria-pressed="${__ibFolder === 'inbox'}">Inbox</button><button type="button" id="ib-f-done" data-ib="folder" data-arg="done" aria-pressed="${__ibFolder === 'done'}">Done</button></div></div></div><div id="ib-rows"></div>`;
     const q = /** @type {HTMLInputElement} */ (document.getElementById('ib-q'));
     const clr = /** @type {HTMLButtonElement} */ (document.getElementById('ib-q-clear'));
     q.addEventListener('input', () => { __ibQ = q.value.trim(); clr.hidden = !__ibQ; ibRenderList(); });
@@ -30769,7 +30775,7 @@ function ibRowHtml(p, mode) {
     const unread = ibUnread(p) && !quiet;
     const label = [p.name, tag && tag.text, d >= 1 && `waiting ${d} day${d === 1 ? '' : 's'}`, unread && 'unread', draft.trim() && 'draft saved'].filter(Boolean).join(', ');
     return `<div class="ib-rowwrap${__ibFresh.has(p.key) ? ' is-new' : ''}" data-key="${ibEsc(p.key)}">
-        <div class="ib-reveal" aria-hidden="true">${ibSized(IB_IC.check, 18)} Done</div>
+        ${ibDone(p) ? `<div class="ib-reveal is-back" aria-hidden="true">${ibSized(IB_IC.back, 18)} Inbox</div>` : `<div class="ib-reveal" aria-hidden="true">${ibSized(IB_IC.check, 18)} Done</div>`}
         <button type="button" class="ib-row${unread ? ' is-unread' : ''}${quiet ? ' is-quiet' : ''}${__ibOpen === p.key ? ' is-open' : ''}" data-ib="open" data-arg="${ibEsc(p.key)}" aria-label="${ibEsc(label)}"${__ibOpen === p.key ? ' aria-current="true"' : ''}>
             ${ibAva(p)}
             <span class="ib-name">${__ibQ ? ibHighlight(p.name, __ibQ) : ibEsc(p.name)}</span>
@@ -30793,6 +30799,86 @@ function ibFireReminders() {
     if (n) ibStateSave();
     return n;
 }
+// THE DONE FOLDER. The switch's state is set the moment it is tapped, so its pill
+// is already travelling while the list crosses over; a search reaches both folders,
+// so the switch steps aside while one is typed.
+const IB_MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const IB_DONE_PAGE = 60;
+let __ibDoneMax = IB_DONE_PAGE;
+let __ibCross = 0;
+const ibCalm = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+const ibInFolder = (p) => (__ibFolder === 'done' ? ibDone(p) : !ibDone(p));
+function ibFoldersSync() {
+    const f = document.getElementById('ib-folders');
+    if (!f) return;
+    f.setAttribute('data-on', __ibFolder);
+    const a = document.getElementById('ib-f-inbox'), b = document.getElementById('ib-f-done');
+    if (a) a.setAttribute('aria-pressed', String(__ibFolder === 'inbox'));
+    if (b) b.setAttribute('aria-pressed', String(__ibFolder === 'done'));
+    const w = document.getElementById('ib-folders-wrap');
+    if (w) w.classList.toggle('is-away', !!__ibQ);
+    const lp = document.getElementById('ib-list');
+    if (lp) lp.setAttribute('aria-label', __ibFolder === 'done' ? 'Done' : 'Inbox');
+}
+// A tap moves the pill at once; the list steps 8px away from the direction of travel
+// and fades, then the other folder arrives from 14px on its own side (Done from the
+// right, the Inbox from the left). A newer tap supersedes an older crossing.
+function ibSetFolder(which, opts) {
+    const o = opts || {};
+    const next = which === 'done' ? 'done' : 'inbox';
+    if (next === __ibFolder && !o.force) return;
+    const dir = next === 'done' ? 1 : -1;
+    __ibFolder = next;
+    __ibMenuOpen = false;
+    if (next === 'inbox') __ibDoneMax = IB_DONE_PAGE;
+    ibFoldersSync();
+    if (!o.quiet) inboxRemember();
+    const me = ++__ibCross;
+    const host = document.getElementById('ib-rows');
+    const land = () => {
+        if (me !== __ibCross) return;
+        if (host) host.getAnimations().forEach((a) => a.cancel());
+        // On a computer the reading pane follows the folder: it keeps the person on
+        // screen if they belong here, else opens the newest row of this folder.
+        if (ibWide() && !o.keepOpen) {
+            const cur = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+            if (!cur || !ibInFolder(cur)) { __ibOpen = null; ibAutoOpen(); }
+        }
+        ibRenderAll();
+        const lp = document.getElementById('ib-list');
+        if (lp && ibWide()) lp.scrollTop = 0;
+        if (ibCalm() || !host || o.instant) return;
+        host.animate([{ opacity: 0, transform: `translateX(${14 * dir}px)` }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        const conv = document.getElementById('ib-conv');
+        if (conv && ibWide()) conv.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+    };
+    if (!host || ibCalm() || o.instant) { land(); return; }
+    host.getAnimations().forEach((a) => a.cancel());
+    host.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-8 * dir}px)` }], { duration: 130, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' })
+        .finished.then(land, land);
+}
+// A ROW THAT LEAVES FOLDS AWAY rather than vanishing: it slides toward its new folder
+// while its height closes, so the rows below rise into the gap; then the list is
+// rebuilt for real. A row already swiped off only closes.
+function ibFoldAway(key, then) {
+    const wrap = /** @type {HTMLElement|null} */ (document.querySelector(`#ib-rows .ib-rowwrap[data-key="${CSS.escape(key)}"]`));
+    if (!wrap || ibCalm() || !wrap.getClientRects().length) { then(); return; }
+    const h = wrap.getBoundingClientRect().height;
+    const row = /** @type {HTMLElement|null} */ (wrap.querySelector('.ib-row'));
+    const t = row ? row.style.translate : '';
+    const slid = !!t && t !== '0 0' && t !== 'none' && t !== '0px 0px';
+    if (row && !slid) row.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-24px)', opacity: 0 }], { duration: 220, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    wrap.animate([{ height: h + 'px' }, { height: '0px', borderTopColor: 'transparent' }], { duration: 300, delay: slid ? 0 : 120, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' })
+        .finished.then(then, then);
+}
+// The folder a row lands in gives a small settle, so you see where it went.
+function ibNudge(which) {
+    const b = document.getElementById(which === 'inbox' ? 'ib-f-inbox' : 'ib-f-done');
+    if (!b || ibCalm()) return;
+    b.classList.remove('is-landed');
+    void b.offsetWidth;
+    b.classList.add('is-landed');
+}
 function ibRenderList() {
     const host = document.getElementById('ib-rows');
     if (!host) return;
@@ -30801,8 +30887,9 @@ function ibRenderList() {
     const wait = live.filter(ibWaiting).sort(ibSortWaiting);
     const rest = live.filter((p) => !ibWaiting(p)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 60);
     const later = all.filter((p) => !ibDone(p) && ibSnoozed(p)).sort((a, b) => ibState().remind[a.key] - ibState().remind[b.key]);
-    const done = all.filter(ibDone).sort((a, b) => b.lastAt - a.lastAt).slice(0, 60);
+    const done = all.filter(ibDone).sort((a, b) => b.lastAt - a.lastAt);
     ibPill(wait);
+    ibFoldersSync();
     __ibOrder = [];
     const group = (cap, list, mode, attn) => {
         if (!list.length) return '';
@@ -30814,17 +30901,39 @@ function ibRenderList() {
         const hits = all.filter((p) => ibMatches(p, __ibQ)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 80);
         html = hits.length
             ? group(`${hits.length} found`, hits, null)
-            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and every message, done or not.</div>`;
+            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and every message, in the Inbox and in Done.</div>`;
     } else if (!all.length && !__ibLoaded) {
         html = skelRows(4);
+    } else if (__ibFolder === 'done') {
+        // Grouped by the month of the last message, the time each row shows, so a
+        // caption and the times under it never disagree. A long Done grows by a page.
+        const shown = done.slice(0, __ibDoneMax);
+        const months = [];
+        const thisYear = new Date(ibNow()).getFullYear();
+        shown.forEach((p) => {
+            const d = new Date(p.lastAt);
+            const k = d.getFullYear() * 12 + d.getMonth();
+            let m = months[months.length - 1];
+            if (!m || m.k !== k) { m = { k, cap: IB_MONTH[d.getMonth()] + (d.getFullYear() !== thisYear ? ' ' + d.getFullYear() : ''), list: [] }; months.push(m); }
+            m.list.push(p);
+        });
+        html = done.length
+            ? months.map((m) => group(m.cap, m.list, 'done')).join('')
+            : `<div class="ib-empty is-card"><span class="ib-empty-mark">${ibSized(IB_IC.check, 22)}</span><b>Nothing in Done yet</b>Tap the tick in a conversation, or swipe a row left, and it moves here.</div>`;
+        html += '<div class="ib-foot">';
+        if (done.length > shown.length) html += `<button type="button" class="ib-linkbtn" data-ib="done-more">Show older (${done.length - shown.length})</button>`;
+        if (done.length) html += '<p class="ib-note is-quiet">Anyone in Done who writes again goes straight back to your Inbox.</p>';
+        html += '<p class="ib-kbd"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>E</kbd> back to Inbox · <kbd>R</kbd> reply · <kbd>/</kbd> search · <kbd>Z</kbd> undo</p></div>';
     } else {
         html += group('Waiting on you', wait, null, true);
         html += group(wait.length ? 'Earlier' : 'Recent', rest, null);
         html += group('Reminders', later, 'snoozed');
-        if (__ibShowDone) html += group('Done', done, 'done');
-        if (!wait.length && !rest.length && !later.length) html += '<div class="ib-empty"><b>Nothing here yet</b>Enquiries, chats and emails arrive here, one row per person.</div>';
+        if (!wait.length && !rest.length && !later.length) {
+            html += all.length
+                ? `<div class="ib-empty is-card"><span class="ib-empty-mark">${ibSized(IB_IC.check, 22)}</span><b>Nothing waiting on you</b>New enquiries, chats and emails arrive here.</div>`
+                : '<div class="ib-empty"><b>Nothing here yet</b>Enquiries, chats and emails arrive here, one row per person.</div>';
+        }
         html += '<div class="ib-foot">';
-        if (done.length) html += `<button type="button" class="ib-linkbtn" data-ib="toggle-done" aria-expanded="${__ibShowDone}">${__ibShowDone ? 'Hide' : 'Show'} ${done.length} done</button>`;
         if (__mbxFailed) html += '<p class="ib-note">The mailbox didn’t answer, so emails may be missing. <button type="button" class="ib-linkbtn" data-ib="retry-mail">Try again</button></p>';
         html += '<p class="ib-kbd"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>E</kbd> done · <kbd>R</kbd> reply · <kbd>/</kbd> search · <kbd>Z</kbd> undo</p></div>';
     }
@@ -31090,14 +31199,14 @@ function ibRenderConv() {
     const done = ibDone(p);
     pane.innerHTML = `
         <div class="ib-head">
-            <button type="button" class="ib-back" data-ib="close">${IB_IC.back}Inbox</button>
+            <button type="button" class="ib-back" data-ib="close">${IB_IC.back}${__ibFolder === 'done' && !__ibQ ? 'Done' : 'Inbox'}</button>
             <div class="ib-title">
                 <h2 class="ib-hname">${ibEsc(p.name)}</h2>
                 <button type="button" class="ib-stayline" data-ib="ctx" aria-expanded="${__ibCtxOpen}" aria-controls="ib-ctxdrop"><span class="ib-txt">${ibStayLine(p)}</span>${IB_IC.chev}</button>
             </div>
             <div class="ib-acts">
                 ${canCall ? `<a class="ib-iconbtn" href="tel:${ibEsc(String(p.phone).replace(/[^0-9+]/g, ''))}" aria-label="Call ${ibEsc(p.phone)}" title="Call">${IB_IC.phone}</a>` : ''}
-                <button type="button" class="ib-iconbtn${done ? ' is-on' : ''}" data-ib="${done ? 'undone' : 'done'}" aria-label="${done ? 'Done. Put back in the list' : 'Done: leave the list until they write again'}" title="Done (E)">${IB_IC.check}</button>
+                <button type="button" class="ib-iconbtn${done ? ' is-on' : ''}" data-ib="${done ? 'undone' : 'done'}" aria-label="${done ? 'In Done. Move back to the Inbox' : 'Done: move to Done until they write again'}" title="${done ? 'Move back to the Inbox (E)' : 'Done (E)'}">${IB_IC.check}</button>
                 <button type="button" class="ib-iconbtn" data-ib="menu" aria-label="More" aria-haspopup="menu" aria-expanded="${__ibMenuOpen}">${IB_IC.dots}</button>
                 ${__ibMenuOpen ? ibMenuHtml(p) : ''}
             </div>
@@ -31212,7 +31321,9 @@ function ibLoadAll(force) {
 }
 function ibAutoOpen() {
     const live = __ibPeople.filter(ibInList);
-    const top = live.filter(ibWaiting).sort(ibSortWaiting)[0] || live.sort((a, b) => b.lastAt - a.lastAt)[0];
+    const top = __ibFolder === 'done'
+        ? __ibPeople.filter(ibDone).sort((a, b) => b.lastAt - a.lastAt)[0]
+        : live.filter(ibWaiting).sort(ibSortWaiting)[0] || live.sort((a, b) => b.lastAt - a.lastAt)[0];
     if (top) ibOpen(top.key, { quiet: true });
 }
 // On a computer the panes fill the screen below the page title; on a phone the
@@ -31306,14 +31417,33 @@ function ibClose() {
 function ibNextWaiting(skip) {
     return __ibPeople.filter((p) => ibInList(p) && p.key !== skip).filter(ibWaiting).sort(ibSortWaiting)[0] || null;
 }
-function ibLeave(p) {
+// A row leaving the folder on show: a phone slides the conversation away first and
+// the row folds out of the list underneath; a computer opens the next row in the same
+// folder (the next person waiting, in the Inbox) at once while the old row folds.
+function ibLeave(p, after) {
     __ibMenuOpen = false;
-    if (__ibOpen === p.key) {
-        if (ibWide()) { const n = ibNextWaiting(p.key); __ibOpen = n ? n.key : null; }
-        else { const root = ibRoot(); if (root) root.classList.remove('is-conv'); document.body.classList.remove('ib-conv-open'); __ibOpen = null; }
+    const finish = () => { ibBuild(); ibRenderAll(); if (after) after(); };
+    if (__ibOpen === p.key && !ibWide()) {
+        const root = ibRoot();
+        if (root) root.classList.remove('is-conv');
+        document.body.classList.remove('ib-conv-open');
+        ibToastPlace();
+        setTimeout(() => { if (__ibOpen === p.key) __ibOpen = null; ibFoldAway(p.key, finish); }, 360);
+        return;
     }
-    ibBuild();
-    ibRenderAll();
+    if (__ibOpen === p.key) {
+        let n = null;
+        if (__ibFolder === 'done') {
+            const i = __ibOrder.indexOf(p.key);
+            n = __ibPeopleMap.get(__ibOrder[i + 1]) || __ibPeopleMap.get(__ibOrder[i - 1]) || null;
+            if (n && !ibDone(n)) n = null;
+        } else n = ibNextWaiting(p.key);
+        __ibOpen = n ? n.key : null;
+        ibBuild();
+        ibRenderConv();
+        ibRenderCtx();
+    }
+    ibFoldAway(p.key, finish);
 }
 
 /* ── The toast: placed where it covers nothing you are using ── */
@@ -31466,14 +31596,32 @@ function ibMarkDone(key) {
     delete st.reminded[key];
     delete st.remind[key];
     ibStateSave();
-    ibLeave(p);
-    ibToast(`Done. Nothing sent; ${ibFirst(p)} comes back if they write again.`, {
+    if (__ibQ) { ibBuild(); ibRenderAll(); } else ibLeave(p, () => ibNudge('done'));
+    ibToast(`${ibFirst(p)} moved to Done. Nothing was sent.`, {
         undo: () => {
             const s2 = ibState();
             if (was.done) s2.done[key] = was.done; else delete s2.done[key];
             if (was.reminded) s2.reminded[key] = was.reminded;
             if (was.remind) s2.remind[key] = was.remind;
             ibStateSave();
+            __ibFresh.add(key);
+            ibBuild();
+            ibRenderAll();
+        },
+    });
+}
+function ibMoveBack(key) {
+    const p = __ibPeopleMap.get(key);
+    if (!p) return;
+    const st = ibState();
+    const was = st.done[key];
+    delete st.done[key];
+    ibStateSave();
+    if (__ibFolder === 'done' && !__ibQ) ibLeave(p, () => ibNudge('inbox'));
+    else { ibBuild(); ibRenderAll(); }
+    ibToast(`${ibFirst(p)} is back in your Inbox.`, {
+        undo: () => {
+            if (was) { ibState().done[key] = was; ibStateSave(); }
             __ibFresh.add(key);
             ibBuild();
             ibRenderAll();
@@ -31492,7 +31640,8 @@ const IB_ACT = {
         ibOpen(arg, { focusRow: ibWide() && kbd, kbd });
     },
     close() { ibClose(); },
-    'toggle-done'() { __ibShowDone = !__ibShowDone; ibRenderList(); },
+    folder(arg) { ibSetFolder(arg); },
+    'done-more'() { __ibDoneMax += IB_DONE_PAGE; ibRenderList(); },
     'retry-mail'() { __mbxFailed = false; ibLoadAll(true); },
     quote(qid, el) {
         const q = document.getElementById(qid);
@@ -31548,15 +31697,7 @@ const IB_ACT = {
         });
     },
     done() { if (__ibOpen) ibMarkDone(__ibOpen); },
-    undone() {
-        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
-        if (!p) return;
-        delete ibState().done[p.key];
-        ibStateSave();
-        ibBuild();
-        ibRenderAll();
-        ibToast(`${ibFirst(p)} is back in the list.`);
-    },
+    undone() { if (__ibOpen) ibMoveBack(__ibOpen); },
     unread() {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
         if (!p) return;
@@ -31810,14 +31951,14 @@ function ibWire(root) {
         const fn = IB_ACT[act];
         if (fn) fn(arg, el);
     });
-    // Swipe a row left: done.
+    // Swipe a row left: Done in the Inbox, back to the Inbox in Done.
     let drag = null;
     root.addEventListener('pointerdown', (e) => {
         const row = e.target instanceof Element ? e.target.closest('.ib-row') : null;
         if (!row) return;
         const wrap = row.closest('.ib-rowwrap');
         const p = wrap ? __ibPeopleMap.get(wrap.getAttribute('data-key') || '') : null;
-        if (!p || ibDone(p) || __ibQ || ibSnoozed(p)) return;
+        if (!p || __ibQ || ibSnoozed(p)) return;
         drag = { row, key: p.key, x: e.clientX, y: e.clientY, dx: 0, on: false, pid: e.pointerId };
     });
     root.addEventListener('pointermove', (e) => {
@@ -31841,7 +31982,10 @@ function ibWire(root) {
         __ibSwallow = d.key;
         setTimeout(() => { if (__ibSwallow === d.key) __ibSwallow = null; }, 500);
         const w = d.row.getBoundingClientRect().width;
-        if (d.dx < -Math.min(110, w * 0.3)) { d.row.style.translate = `${-w}px 0`; setTimeout(() => ibMarkDone(d.key), 220); }
+        if (d.dx < -Math.min(110, w * 0.3)) {
+            d.row.style.translate = `${-w}px 0`;
+            setTimeout(() => { const p = __ibPeopleMap.get(d.key); if (p && ibDone(p)) ibMoveBack(d.key); else ibMarkDone(d.key); }, 220);
+        }
         else d.row.style.translate = '0 0';
     };
     root.addEventListener('pointerup', end);
@@ -31877,7 +32021,8 @@ document.addEventListener('keydown', (e) => {
         if (next && next !== __ibOpen) ibOpen(next, { focusRow: true });
     } else if (k === 'e' && __ibOpen) {
         e.preventDefault();
-        ibMarkDone(__ibOpen);
+        const p = __ibPeopleMap.get(__ibOpen);
+        if (p && ibDone(p)) ibMoveBack(__ibOpen); else ibMarkDone(__ibOpen);
         const r = /** @type {HTMLElement|null} */ (__ibOpen && document.querySelector(`#ib-rows .ib-rowwrap[data-key="${CSS.escape(__ibOpen)}"] .ib-row`));
         if (r) r.focus();
     } else if (k === 'r' && __ibOpen) {
@@ -31910,7 +32055,11 @@ function ibOpenWhen(test) {
     let tries = 0;
     const go = () => {
         const p = __ibPeople.find(test);
-        if (p) { ibOpen(p.key); return; }
+        if (p) {
+            if (!__ibQ && ibInFolder(p) === false) ibSetFolder(ibDone(p) ? 'done' : 'inbox', { instant: true, keepOpen: true });
+            ibOpen(p.key);
+            return;
+        }
         if (++tries < 40) setTimeout(go, 150);
     };
     go();

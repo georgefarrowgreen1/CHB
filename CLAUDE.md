@@ -1227,6 +1227,18 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   (`--ib-top`); the toast is placed where it covers nothing (`ibToastPlace`).
 - **Markup uses `data-ib`, never `data-act`**, and `ib-` classes, so the app's dispatcher and the
   one-look restyler leave it alone.
+- **DONE IS A FOLDER** (approved demo, built without CI at the owner's ask). An Inbox | Done switch
+  (the one switcher, its accent pill travelling on `--sheet`) sits under the search; `__ibFolder`
+  decides what `ibRenderList` shows. Inbox = Waiting / Earlier / Reminders, a calm card when nothing
+  waits; Done = every `ibDone` person under MONTH captions (`IB_MONTH`, by last message), paged by 60
+  ("Show older"), no Done capsule per row — the capsule shows only in SEARCH results, which reach both
+  folders while the switch steps aside (`is-away`). `ibSetFolder` crosses the list (8px out, 14px in
+  from the folder's side, stamp-superseded, cancelling the held fade-out in the same task or the list
+  stays invisible); `ibFoldAway` folds a leaving row before the rebuild (a phone slides the
+  conversation off first, 360ms); `ibMoveBack` + a swipe in Done + E return a row; `ibNudge` settles
+  the destination label. The folder is a place (`inbox:done` in chbOpenTarget/inboxRemember); a
+  width change must not reset it, and `ibOpenWhen` lands in the person's folder. Gated by
+  ui-test-inbox §8–§9.
 - **DELETE CONVERSATION is the last item of the ⋯ menu** (`ibDeletePlan` decides, `IB_ACT.delete`
   acts). It asks first (`glassConfirm`, danger) naming what goes, and has **NO Undo** — the
   mailbox cannot restore a deleted email. What GOES: their chats (messages.php `delete`), the

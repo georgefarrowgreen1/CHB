@@ -9062,12 +9062,26 @@ body.owner-mode.light-mode #ib {
 #ib .ib-search input::-webkit-search-cancel-button { display: none; }
 #ib .ib-clear { position: absolute; right: 4px; top: 50%; translate: 0 -50%; width: 40px; height: 40px; border: 0; background: none; color: var(--text-muted); border-radius: 50%; display: grid; place-items: center; }
 #ib .ib-clear svg { width: 16px; height: 16px; }
+/* THE DONE FOLDER: the app's one switcher (section 8 of the one look) under the search,
+   its accent pill TRAVELLING between the two sides on the --sheet spring (0.5% past the
+   mark and back). The switch steps aside, a 0fr fold, while a search reaches both folders. */
+#ib .ib-folders-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.28s var(--out), visibility 0s linear 0s; }
+#ib .ib-folders-wrap > div { min-height: 0; overflow: hidden; }
+#ib .ib-folders-wrap.is-away { grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.28s var(--out), visibility 0s linear 0.28s; }
+#ib .ib-folders { position: relative; isolation: isolate; display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control, 44px); margin-top: 12px; background: var(--ib-well); border-radius: var(--r-pill); }
+#ib .ib-folders > button { flex: 1 1 0; min-height: var(--u-h-small, 36px); padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--text-light); font-size: var(--fs-sub); font-weight: 600; white-space: nowrap; transition: color 0.3s var(--out) 0.06s; }
+#ib .ib-folders > button[aria-pressed="true"] { color: var(--accent-ink); }
+#ib .ib-folders-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 6px); border-radius: var(--r-pill); background: var(--accent); z-index: -1; pointer-events: none; transition: translate 0.46s var(--sheet); }
+#ib .ib-folders[data-on="done"] .ib-folders-pill { translate: calc(100% + 4px) 0; }
+#ib .ib-folders > button.is-landed { animation: ibLanded 0.5s var(--out); }
+@keyframes ibLanded { 35% { scale: 1.06; } }
 #ib .ib-capline { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin: 24px 4px 8px; }
 #ib .ib-capline.is-attn { color: var(--warn-text); }
 #ib .ib-rows { border: 1px solid var(--ib-edge); background: var(--ib-card); border-radius: var(--r-lg); overflow: hidden; }
 #ib .ib-rowwrap { position: relative; overflow: hidden; }
 #ib .ib-rowwrap + .ib-rowwrap { border-top: 1px solid var(--ib-edge); }
 #ib .ib-reveal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: 24px; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); font-weight: 600; font-size: var(--fs-sub); }
+#ib .ib-reveal.is-back { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-text); }
 #ib .ib-row { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; width: 100%; text-align: left; padding: 12px 16px 12px 20px; border: 0; border-radius: 0; background: var(--ib-ground); background-image: linear-gradient(var(--ib-card), var(--ib-card)); touch-action: pan-y; transition: translate 0.28s var(--out); }
 #ib .ib-row.is-dragging { transition: none; }
 #ib .ib-row.is-open { background-image: linear-gradient(var(--ib-well), var(--ib-well)); }
@@ -9103,6 +9117,9 @@ body.owner-mode.light-mode #ib {
 #ib .ib-kbd { display: none; font-size: var(--fs-caption); color: var(--text-muted); text-align: center; margin: 4px 0 0; }
 #ib .ib-empty { text-align: center; color: var(--text-muted); padding: 32px 20px; font-size: var(--fs-sub); }
 #ib .ib-empty b { display: block; color: var(--text-light); font-size: var(--fs-body); margin-bottom: 4px; font-weight: 600; }
+#ib .ib-empty.is-card { margin-top: 24px; border: 1px solid var(--ib-edge); background: var(--ib-card); border-radius: var(--r-lg); padding: 32px 24px; text-wrap: balance; }
+#ib .ib-empty-mark { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 50%; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+#ib .ib-note.is-quiet { font-size: var(--fs-caption); text-wrap: balance; margin: 4px 16px 0; }
 #ib .ib-rowwrap.is-new { animation: ibRowIn 0.6s var(--out); }
 @keyframes ibRowIn { from { opacity: 0; translate: 0 -10px; } }
 
@@ -9284,7 +9301,8 @@ body.owner-mode #ib.is-wide.is-triple .ib-stayline { pointer-events: none; }
 body.owner-mode #ib.is-wide.is-triple .ib-stayline .ib-chev, body.owner-mode #ib.is-wide.is-triple .ib-ctxdrop { display: none; }
 body.owner-mode #ib.is-wide.is-triple .ib-side { display: block; flex: none; width: 300px; border-left: 1px solid var(--ib-edge); overflow-y: auto; padding: 20px 16px; }
 @media (prefers-reduced-motion: reduce) {
-  #ib .ib-conv, #ib .ib-row, #ib .ib-ctxdrop { transition: none !important; }
+  #ib .ib-conv, #ib .ib-row, #ib .ib-ctxdrop, #ib .ib-folders-pill, #ib .ib-folders-wrap { transition: none !important; }
+  #ib .ib-folders > button.is-landed { animation: none; }
   #ib .ib-msg.is-pending .ib-bub { animation: none; opacity: 0.7; }
   #ib .ib-msg.is-new, #ib .ib-rowwrap.is-new, #ib .ib-msg.is-flash .ib-bub { animation: none; }
 }
