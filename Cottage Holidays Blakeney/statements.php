@@ -24,10 +24,11 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/statement-lib.php';
 require_once __DIR__ . '/monzo-sync.php';
+require_once __DIR__ . '/split-store.php';
 require_admin();
 
 const STMT_MAX_BYTES = 4000000;
-const STMT_SORTS = ['payment', 'expense', 'platform', 'ignore', 'tax', 'income'];
+const STMT_SORTS = ['payment', 'expense', 'platform', 'ignore', 'tax', 'income', 'person'];
 
 function stmt_settings(): array
 {
@@ -74,6 +75,8 @@ function stmt_row(array $r): array
         'booking_id' => $r['booking_id'] !== null ? (int) $r['booking_id'] : null,
         'expense_id' => $r['expense_id'] !== null ? (int) $r['expense_id'] : null,
         'label' => (string) ($r['sorted_label'] ?? ''),
+        'admin_id' => isset($r['admin_id']) ? (int) $r['admin_id'] : null,
+        'prop' => isset($r['prop_key']) ? (string) $r['prop_key'] : '',
     ];
 }
 // The text of the uploaded file, refused in words when it is not one.
@@ -215,20 +218,11 @@ route_actions([
                     $p['money_in'], $p['money_out'], $p['balance'], $p['balance_at'] ?: null, (int) ($_SESSION['admin_id'] ?? 0) ?: null,
                 ]);
             $importId = (int) $pdo->lastInsertId();
-            $ins = $pdo->prepare('INSERT IGNORE INTO bank_lines (ext_key, import_id, txn_date, txn_time, kind, name, category, description, notes, amount, balance, sorted_as, sorted_label, sorted_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $payees = split_payees_now();
             foreach ($new as $l) {
-                $a = statement_auto($l);
-                $ins->execute([
-                    $l['ext_key'], $importId, $l['date'], $l['time'], $l['type'], $l['name'], $l['category'], $l['description'], $l['notes'],
-                    $l['amount'], $l['balance'], $a ? $a[0] : null, $a ? $a[1] : null, $a ? date('Y-m-d H:i:s') : null,
-                ]);
-                if ($ins->rowCount() > 0) {
-                    $added++;
-                    if ($a) {
-                        $auto++;
-                    }
-                }
+                [$in1, $a1] = split_bank_insert($l, $importId, $payees);
+                $added += $in1 ? 1 : 0;
+                $auto += $a1 ? 1 : 0;
             }
             $pdo->prepare('UPDATE bank_imports SET added = ?, skipped = ? WHERE id = ?')->execute([$added, count($p['lines']) - $added, $importId]);
             $pdo->commit();
@@ -259,8 +253,25 @@ route_actions([
             json_out(['error' => 'Say which booking the payment was for.'], 400);
         }
         $label = mb_substr(clean((string) ($in['label'] ?? '')), 0, 160);
-        $q = db()->prepare('UPDATE bank_lines SET sorted_as = ?, booking_id = ?, expense_id = ?, sorted_label = ?, sorted_at = NOW() WHERE id = ?');
-        $q->execute([$as, $bid ?: null, $eid ?: null, $label, $id]);
+        // Paid to a person: only someone the split pays out (split.php).
+        $who = 0;
+        $prop = '';
+        if ($as === 'person') {
+            $who = (int) ($in['admin_id'] ?? 0);
+            if (!split_cols_ready() || !in_array($who, split_paid_out(split_cfg()), true)) {
+                json_out(['error' => 'Nobody is paid out like that yet.'], 400);
+            }
+        }
+        if ($as === 'platform' && split_cols_ready()) {
+            $prop = preg_replace('/[^a-z0-9_]/', '', strtolower((string) ($in['prop'] ?? '')));
+        }
+        if (split_cols_ready()) {
+            $q = db()->prepare('UPDATE bank_lines SET sorted_as = ?, booking_id = ?, expense_id = ?, sorted_label = ?, sorted_at = NOW(), admin_id = ?, prop_key = ? WHERE id = ?');
+            $q->execute([$as, $bid ?: null, $eid ?: null, $label, $who ?: null, $prop !== '' ? $prop : null, $id]);
+        } else {
+            $q = db()->prepare('UPDATE bank_lines SET sorted_as = ?, booking_id = ?, expense_id = ?, sorted_label = ?, sorted_at = NOW() WHERE id = ?');
+            $q->execute([$as, $bid ?: null, $eid ?: null, $label, $id]);
+        }
         $has = db()->prepare('SELECT 1 FROM bank_lines WHERE id = ?');
         $has->execute([$id]);
         if ($q->rowCount() === 0 && !$has->fetchColumn()) {
@@ -276,6 +287,9 @@ route_actions([
             json_out(['error' => 'Which payment?'], 400);
         }
         db()->prepare('UPDATE bank_lines SET sorted_as = NULL, booking_id = NULL, expense_id = NULL, sorted_label = NULL, sorted_at = NULL WHERE id = ?')->execute([$id]);
+        if (split_cols_ready()) {
+            db()->prepare('UPDATE bank_lines SET admin_id = NULL, prop_key = NULL WHERE id = ?')->execute([$id]);
+        }
         json_out(['ok' => true]);
     },
 

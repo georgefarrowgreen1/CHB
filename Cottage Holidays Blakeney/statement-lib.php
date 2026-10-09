@@ -265,13 +265,22 @@ function statement_parse(string $csv, string $filename = ''): array
 
 // What needs no question. A Square payout is card money already in the books
 // (counting it again would count it twice); a move to or from a pot is the
-// owner's own money changing places. Returns [as, label] or null.
-function statement_auto(array $line): ?array
+// owner's own money changing places; money out to a name a paid-out host has
+// confirmed is theirs is their cottages' money reaching them (split-lib.php).
+// $payees is split_payee_map(): [normalised name => person]. Returns
+// [as, label] or [as, label, person] or null.
+function statement_auto(array $line, array $payees = []): ?array
 {
     $type = strtolower((string) ($line['type'] ?? ''));
     $name = strtolower((string) ($line['name'] ?? ''));
     $desc = strtolower((string) ($line['description'] ?? ''));
     $amt = (float) ($line['amount'] ?? 0);
+    if ($payees && $amt < 0) {
+        $who = $payees[(string) preg_replace('/[^a-z]/', '', $name)] ?? 0;
+        if ($who > 0) {
+            return ['person', 'Paid to ' . trim((string) ($line['name'] ?? '')), (int) $who];
+        }
+    }
     if (preg_match('/\bpot\b/', $type) || preg_match('/^(from|to) .*pot$|\bpot transfer\b/', $name . ' ' . $desc)) {
         return ['pot', $amt > 0 ? 'From a pot' : 'To a pot'];
     }

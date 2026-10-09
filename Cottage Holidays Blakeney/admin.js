@@ -12304,6 +12304,7 @@ const SETTINGS_TITLES = {
     details: 'Your details',
     people: 'People & access',
     person: 'People & access',
+    split: 'Cottages and the bank',
     emails: 'Who gets which emails',
     reviews: 'Reviews',
     'reviews-import': 'Import reviews',
@@ -12335,7 +12336,7 @@ const SETTINGS_TITLES = {
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
 // the slide direction, and what each page has learned so far.
-const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3, emails: 4 };
+const OA_DEPTH = { acct: 1, host: 2, notify: 2, security: 2, details: 2, people: 2, person: 3, split: 3, emails: 4 };
 let __oaFrom = ''; // the section shown before this one ('' = the Manage index)
 let __oaStill = false; // a repaint in place: no slide, and __oaFrom untouched
 let __oaKeys = null; // the owner's passkeys: null = not asked, 'err' = couldn't ask
@@ -12500,7 +12501,7 @@ function settingsOpen(section) {
     // account's three pages go back to the account.
     const backTo = /^reviews-/.test(section)
         ? 'reviews'
-        : section === 'person'
+        : section === 'person' || section === 'split'
           ? 'people'
           : section === 'emails'
             ? __oaEmailsFrom
@@ -12527,6 +12528,7 @@ function settingsRenderSection(section) {
     else if (section === 'people') renderPeople();
     else if (section === 'person') renderPerson();
     else if (section === 'emails') renderEmails();
+    else if (section === 'split') renderSplitSettings();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'reviews-import') rviRender();
     else if (section === 'reviews-google') initGoogleReviewUrl();
@@ -12641,6 +12643,8 @@ Object.assign(GA_IC, {
     card: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16a3.4 3.4 0 0 1 6.4 0M14 10h4M14 13.5h3"/>',
     people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    bank: '<path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+    home: '<path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/>',
 });
 // "Sophia", "Sophia and Ellie", "Sophia, Ellie and Sam".
 function listAnd(a) {
@@ -13384,8 +13388,12 @@ function renderPeople() {
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">People &amp; access</h1>` +
             gaGroup(rows) +
-            gaGroup([gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' })]),
+            gaGroup([
+                gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' }),
+                gaRow({ ic: 'bank', t: 'Cottages and the bank', s: oaSplitSummary(), act: chbAttrs('oaGo', 'split'), chev: true, cls: 'oa-r-split' }),
+            ]),
     );
+    if (__split === null && !__splitBusy) splitLoad();
     if (!Array.isArray(list)) loadPeople();
 }
 function oaPersonOpen(id) {
@@ -13416,6 +13424,108 @@ async function oaPeopleAdd() {
             msg = e.message || 'That didn’t save. Try again.';
         }
     }
+}
+
+// ---- Cottages and the bank: whose money is whose (split.php) ----
+// One line for the People page: who holds the account, and who is paid out.
+function oaSplitSummary() {
+    const S = __split;
+    if (!S || !S.ready) return 'Whose bank account, and who hosts each cottage';
+    const ppl = S.people || [];
+    const first = (id) => ((ppl.find((p) => p.id === Number(id)) || {}).first || '');
+    if (!S.holder) return 'Not set up · all the money stays in one place';
+    const paid = [...new Set(Object.values(S.hosts || {}).map(Number).filter((id) => id !== Number(S.holder)))];
+    return `${first(S.holder)}’s account` + (paid.length ? ' · ' + listAnd(paid.map(first)) + ' paid out' : '');
+}
+function renderSplitSettings() {
+    const box = document.getElementById('split-body');
+    if (!box) return;
+    if (!chbFull()) return oaGo('acct');
+    const S = __split;
+    const head = oaBack('people', 'People') + '<h1 class="section-title ga-h1">Cottages and the bank</h1><p class="ga-lead">Every guest pays into one bank account. Whoever hosts a cottage gets its money: the account’s holder keeps theirs and sends the rest on.</p>';
+    if (!S || !S.ready) {
+        box.innerHTML = oaPage('split', head + gaGroup([gaRow({ ic: 'bank', t: !S ? 'Loading…' : 'This needs a database update first', s: S ? 'Open Status and run the updates' : '', static: true })]));
+        if (!S && !__splitBusy) splitLoad();
+        return;
+    }
+    const ppl = S.people || [];
+    const person = (id) => ppl.find((p) => p.id === Number(id)) || null;
+    const holder = person(S.holder);
+    let html = head + gaGroup([gaRow({ ic: 'bank', t: holder ? `${holder.name}’s account` : 'Whose account is it?', s: 'Every guest payment lands here', act: 'data-act="oaSplitHolder"', chev: true })], 'The bank account');
+    html += gaGroup(
+        (S.cottages || []).map((c) => {
+            const h = person((S.hosts || {})[c.k]);
+            const out = !!(h && holder && h.id !== holder.id);
+            return gaRow({ ic: 'home', t: c.name, s: h ? `${h.name} · ${out ? holder.first + ' sends its money on' : 'its money stays in the account'}` : holder ? `${holder.name} · its money stays in the account` : 'Nobody yet', act: chbAttrs('oaSplitHost', c.k), chev: true });
+        }),
+        'Who hosts each cottage',
+    );
+    const paid = holder ? [...new Set(Object.values(S.hosts || {}).map(Number).filter((id) => id !== holder.id))].map(person).filter(Boolean) : [];
+    paid.forEach((p) => {
+        const names = ((S.payees || {})[p.id] || []);
+        html += gaGroup(
+            names
+                .map((n) => gaRow({ ic: 'send', t: n, s: `Payments to this name count as paid to ${p.first}`, v: '<span class="ga-vbtn">Unlink</span>', act: chbAttrs('oaSplitUnlink', p.id, n) }))
+                .concat([gaRow({ ic: 'plus', t: 'Add the name the bank shows', act: chbAttrs('oaSplitLinkAsk', p.id), cls: 'oa-accent' })]),
+            `Paid to ${p.first} as`,
+        );
+    });
+    if (holder && !paid.length) html += '<p class="ga-note oa-split-note">Nobody is paid out: every cottage’s money stays in the account.</p>';
+    box.innerHTML = oaPage('split', html);
+}
+async function oaSplitSave(body, said) {
+    try {
+        await apiPost('split.php', Object.assign({ action: 'settings' }, body));
+        toast(said);
+    } catch (e) {
+        glassAlert('That didn’t save. ' + chbActErrSay(e));
+    }
+    await splitLoad();
+    __oaStill = true;
+    try { renderSplitSettings(); } finally { __oaStill = false; }
+}
+// A pick-one list with the current answer first (glassForm's select has no default).
+function oaSplitPeopleOpts(cur, none) {
+    const ppl = (__split && __split.people) || [];
+    const opts = ppl.map((p) => ({ value: String(p.id), label: p.name }));
+    if (none) opts.push({ value: '0', label: none });
+    const i = opts.findIndex((o) => o.value === String(cur || 0));
+    if (i > 0) opts.unshift(opts.splice(i, 1)[0]);
+    return opts;
+}
+async function oaSplitHolder() {
+    const S = __split;
+    if (!S) return;
+    const v = await glassForm('The person whose bank account the guests pay into.', [{ id: 'who', label: 'The account is', type: 'select', options: oaSplitPeopleOpts(S.holder, 'Nobody: no split') }], { title: 'The bank account', okLabel: 'Save' });
+    if (!v) return;
+    await oaSplitSave({ holder: Number(v.who) || 0 }, 'Saved.');
+}
+async function oaSplitHost(k) {
+    const S = __split;
+    if (!S) return;
+    const c = (S.cottages || []).find((x) => x.k === k);
+    const v = await glassForm(`Who hosts ${c ? c.name : 'this cottage'}? Its money goes to them.`, [{ id: 'who', label: 'Hosted by', type: 'select', options: oaSplitPeopleOpts((S.hosts || {})[k], 'The account holder') }], { title: c ? c.name : 'Cottage', okLabel: 'Save' });
+    if (!v) return;
+    await oaSplitSave({ hosts: { [k]: Number(v.who) || 0 } }, 'Saved.');
+}
+async function oaSplitLinkAsk(id) {
+    await pmSplitLinkAsk(id);
+    __oaStill = true;
+    try { renderSplitSettings(); } finally { __oaStill = false; }
+}
+async function oaSplitUnlink(id, name) {
+    const ok = await glassConfirm(`Stop counting payments to ${name} as paid to this person? Any already counted go back to sort.`, 'Unlink');
+    if (!ok) return;
+    try {
+        await apiPost('split.php', { action: 'unlink', admin_id: Number(id), name });
+        toast('Unlinked.');
+    } catch (e) {
+        glassAlert('That didn’t save. ' + chbActErrSay(e));
+    }
+    await splitLoad();
+    pmBankLoad();
+    __oaStill = true;
+    try { renderSplitSettings(); } finally { __oaStill = false; }
 }
 
 // ---- One person's page ----
@@ -17676,32 +17786,6 @@ function pmArrives(iso) {
     const n = pmDaysFrom(t);
     return n <= 0 ? 'arrives today' : n === 1 ? 'arrives tomorrow' : n < 7 ? 'arrives ' + PM_DAY[new Date(t).getDay()] : 'arrives ' + pmDm(t);
 }
-function pmFlowHtml(rows) {
-    const owed = rows.reduce((s, r) => s + r.dg.balance, 0);
-    const owers = rows.length;
-    const P = __pm && __pm.position;
-    const bad = !!(P && P.error);
-    const fig = (v) => (!P ? '…' : bad ? '—' : gbp(v));
-    const wait = !P ? (__pmErr ? 'couldn’t check' : 'working it out') : bad ? 'couldn’t work it out' : '';
-    // Money Square has not reported a payout for, a week after it was taken, is not
-    // fairly "in the next payout": the subtitle says so and the page asks the owner.
-    const waySub = wait || (P.unreported_count > 0 ? `Square hasn’t reported ${P.unreported_count}` : P.next_arrival ? pmArrives(P.next_arrival) : P.with_square > 0.005 ? 'in the next payout' : 'nothing on its way');
-    const bankSub = wait || (P.last_moved ? 'since ' + pmDm(P.last_moved * 1000) : 'not moved out yet');
-    const stop = (cls, ic, k, v, s, act, label) =>
-        `<button type="button" class="pm-stop ${cls}" data-pm="${act}" aria-label="${escapeHtml(label)}"><span class="pm-stop-dot" aria-hidden="true">${ic}</span><span class="pm-stop-k">${k}</span><span class="pm-stop-v">${v}</span><span class="pm-stop-s">${escapeHtml(s)}</span></button>`;
-    const readySub = !P || bad ? (wait || '') : P.held > 0.005 ? `after ${gbp(P.held)} of guests’ deposits` : 'no guest deposits held';
-    return `<section class="pm-flow" aria-label="Where your money is">
-        <div class="pm-flow-stops">
-            ${stop('owed', PM_IC.clock, 'Owed to you', gbp(owed), owers ? `${owers} guest${owers === 1 ? '' : 's'}` : 'nobody', 'to-coming', `Owed to you ${gbp(owed)} from ${owers} guest${owers === 1 ? '' : 's'}`)}
-            ${stop('way', PM_IC.card, 'With Square', fig(P && P.with_square), waySub, 'to-way', `With Square ${fig(P && P.with_square)}, ${waySub}`)}
-            ${stop('bank', PM_IC.bank, 'In your bank', fig(P && P.in_bank), bankSub, 'move', `Paid into your bank ${bankSub}: ${fig(P && P.in_bank)}`)}
-        </div>
-        <button type="button" class="pm-ready" data-pm="move" aria-label="Ready to move out ${fig(P && P.ready)}">
-            <span><b>Ready to move out</b><small>${escapeHtml(readySub)}</small></span>
-            <span class="pm-ready-v">${fig(P && P.ready)}</span>${PM_IC.chev}
-        </button>
-    </section>`;
-}
 function pmNeedsHtml(rows) {
     const out = [];
     const P = __pm && __pm.position;
@@ -17721,21 +17805,8 @@ function pmNeedsHtml(rows) {
             <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="to-way">Check them</button></div>
         </div>`);
     }
-    rows.filter((r) => r.overdue).forEach((r) => {
-        const id = escapeHtml(String(r.b.id));
-        const canAsk = !r.arranged && squareAdminEnabled && r.b.email;
-        const ask = canAsk
-            ? (r.asked
-                ? `<button type="button" class="pm-btn second" data-pm="remind" data-arg="${id}">Send a reminder</button>`
-                : `<button type="button" class="pm-btn second" data-pm="askone" data-arg="${id}">Ask to pay</button>`)
-            : '';
-        out.push(`<div class="pm-needrow">
-            <span class="pm-mic bad" aria-hidden="true">${PM_IC.alert}</span>
-            <button type="button" class="pm-main pm-plain" data-pm="stay" data-arg="${id}"><span class="pm-t">${escapeHtml(r.b.name || 'Guest')}</span><span class="pm-s">${pmDot(r.pk)}${escapeHtml(pmProp(r.pk))} · ${escapeHtml(pmPlan(r).sub)}</span></button>
-            <span class="pm-v">${gbp(r.dg.balance)}</span>
-            <div class="pm-acts-row">${ask}<button type="button" class="pm-btn primary" data-pm="record" data-arg="${id}">Record a payment</button></div>
-        </div>`);
-    });
+    // An overdue guest is in the owed card above, with its capsule: said once.
+    out.push(...pmPayRowsHtml());
     pmDepsBack().forEach((d) => {
         const id = escapeHtml(String(d.b.id));
         out.push(`<div class="pm-needrow">
@@ -17748,17 +17819,6 @@ function pmNeedsHtml(rows) {
     const bank = pmBankNeedHtml();
     if (bank) out.push(bank);
     return out.length ? `<div class="pm-capline is-attn"><span>Needs you</span></div><div class="pm-rows">${out.join('')}</div>` : '';
-}
-function pmComingHtml(rows) {
-    const list = rows.filter((r) => !r.overdue);
-    if (!list.length) return '';
-    const sum = list.reduce((s, r) => s + r.dg.balance, 0);
-    return `<div class="pm-capline" id="pm-coming"><span>Coming in</span><span class="pm-capn">${gbp(sum)}</span></div><div class="pm-rows">${list.map((r) => {
-        const p = pmPlan(r);
-        return `<button type="button" class="pm-mrow" data-pm="stay" data-arg="${escapeHtml(String(r.b.id))}" aria-label="${escapeHtml(r.b.name || 'Guest')}, ${gbp(r.dg.balance)}, ${escapeHtml(p.cap)}">
-            ${pmAva(r.b.name)}<span class="pm-main"><span class="pm-t">${escapeHtml(r.b.name || 'Guest')}</span><span class="pm-s">${pmDot(r.pk)}${escapeHtml(pmProp(r.pk))} · ${escapeHtml(p.sub)}</span></span>
-            <span class="pm-r"><span class="pm-v">${gbp(r.dg.balance)}</span>${pmCap(p.tone, p.cap)}</span></button>`;
-    }).join('')}</div>`;
 }
 // One movement as a row: what it is, who, and the figure.
 function pmKind(e) {
@@ -17785,6 +17845,8 @@ function pmKind(e) {
     }
 }
 function pmKeep(e) {
+    // An expense on a cottage someone else is paid out for is theirs to pay, not the holder's.
+    if (e.kind === 'expense' && e.prop && pmView() === 'holder' && pmPaidOutKeys().has(e.prop)) return false;
     const f = __pmFilter;
     return f === 'all'
         || (f === 'in' && (e.kind === 'in' || e.kind === 'kept'))
@@ -17846,18 +17908,32 @@ function pmBooksCardHtml() {
 function pmRenderList() {
     const lp = document.getElementById('pm-list');
     if (!lp) return;
-    const rows = pmOwed();
+    const view = pmView();
+    const rows = pmRowsFor(pmOwed());
     pmPill(rows);
     const keep = lp.scrollTop;
-    lp.innerHTML = pmFlowHtml(rows) + pmBankCardHtml() + pmNeedsHtml(rows) + pmComingHtml(rows) + pmActivityHtml() + pmBooksCardHtml();
+    let html;
+    if (__split === null && __splitBusy) {
+        // Whose money is whose is still being asked: nothing is shown that might be someone else's.
+        html = '<div class="pm-empty">Loading…</div>';
+    } else if (view === 'paid') {
+        html = pmPaidHtml(rows);
+    } else {
+        const n = rows.length;
+        const mine = view === 'holder' ? listAnd((__split.mine || []).map((c) => c.name)) : '';
+        const sub = `${n} guest${n === 1 ? '' : 's'}${mine ? ' · ' + mine : ''}`;
+        const whole = __pmWhole ? '<div class="pm-whole"><span>The whole business</span><button type="button" class="pm-linkbtn" data-pm="split-mine">Back to yours</button></div>' : '';
+        html = whole + pmOwedCardHtml(rows, 'Guests still to pay', sub) + pmBankCardHtml() + pmNeedsHtml(rows) + pmActivityHtml() + (view === 'holder' ? pmSplitBooksHtml() : pmBooksCardHtml());
+    }
+    lp.innerHTML = html;
     lp.scrollTop = keep;
     // A figure that changed settles, so the owner sees what moved; the first paint stays still.
-    const P = __pm && __pm.position;
-    const figs = { owed: rows.reduce((s, r) => s + r.dg.balance, 0), way: P ? P.with_square : null, bank: P ? P.in_bank : null };
+    const figs = {};
+    lp.querySelectorAll('[data-fig]').forEach((el) => { figs[view + '|' + el.getAttribute('data-fig')] = el.textContent; });
     if (__pmFig) {
         Object.keys(figs).forEach((k) => {
-            if (figs[k] == null || __pmFig[k] == null || Math.abs(figs[k] - __pmFig[k]) < 0.005) return;
-            const el = lp.querySelector(`.pm-stop.${k}`);
+            if (__pmFig[k] == null || __pmFig[k] === figs[k]) return;
+            const el = lp.querySelector(`[data-fig="${k.split('|')[1]}"]`);
             if (el) el.classList.add('is-changed');
         });
     }
@@ -18093,14 +18169,15 @@ function pmBooksPage() {
 function pmRenderDetail() {
     const pane = document.getElementById('pm-detail');
     if (!pane) return;
-    const key = __pmOpen || (pmWide() ? 'books' : null);
+    // A paid-out host's computer opens on what is still to come, never the business's books.
+    const key = __pmOpen || (pmWide() ? (pmView() === 'paid' ? 'due' : 'books') : null);
     if (!key) { pane.innerHTML = ''; return; }
     const i = key.indexOf(':');
     const k = i < 0 ? key : key.slice(0, i);
     const arg = i < 0 ? '' : key.slice(i + 1);
     const body = pane.querySelector('.pm-dbody');
     const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
-    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : pmBooksPage();
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : k === 'due' ? pmSplitDuePage() : pmBooksPage();
     pane.__pmKey = key;
     const nb = pane.querySelector('.pm-dbody');
     if (nb) nb.scrollTop = keepTop;
@@ -18135,6 +18212,7 @@ function pmRefresh() {
 async function pmLoad(expectNew) {
     const stamp = ++__pmStamp;
     pmBankLoad();
+    splitLoad();
     const before = new Set(__pmAct.map((e) => e.id));
     try {
         const r = await apiPost('money.php', { action: 'summary' });
@@ -18487,7 +18565,7 @@ let __pmBankShown = 20;
 const PM_BANK_HIDE = 'chb-pm-bank-hide';
 /** @type {Array<[RegExp, string]>} */
 const PM_BANK_PLATFORMS = [[/airbnb/i, 'Airbnb'], [/booking\.?com/i, 'Booking.com'], [/vrbo|expedia|homeaway/i, 'Vrbo']];
-const PM_BANK_AS = { payment: 'A guest’s payment', expense: 'Expense', platform: 'Platform payout', ignore: 'Not the business', tax: 'Tax · left out of costs', income: 'Other income', square: 'Square payout', pot: 'Pot' };
+const PM_BANK_AS = { payment: 'A guest’s payment', expense: 'Expense', platform: 'Platform payout', ignore: 'Not the business', tax: 'Tax · left out of costs', income: 'Other income', square: 'Square payout', pot: 'Pot', person: 'Paid to a host' };
 // Words in a bank reference that say nothing about who paid.
 const PM_BANK_STOP = new Set(['THE', 'AND', 'LTD', 'MRS', 'MISS', 'FOR', 'FROM', 'PAYMENT', 'FASTER', 'TRANSFER', 'BALANCE', 'DEPOSIT', 'BOOKING', 'REF', 'STAY', 'HOLIDAY', 'COTTAGE', 'BLAKENEY', 'CHB']);
 // A first guess at what an expense was, from the payee. Only ever a suggestion.
@@ -18555,6 +18633,8 @@ function pmBankGuest(l) {
 }
 // What the owner is offered for one payment: a sentence and the taps that answer it.
 function pmBankSuggest(l) {
+    const sp = pmSplitSuggest(l);
+    if (sp) return sp;
     const text = `${l.name} ${l.description}`;
     const was = pmBankLearned(l.name);
     if (l.amount > 0) {
@@ -18861,7 +18941,7 @@ function pmBankSheet() {
 async function pmBankMark(l, as, label, extra, quiet) {
     const body = Object.assign({ action: 'mark', id: l.id, as, label }, extra || {});
     await apiPost('statements.php', body);
-    Object.assign(l, { as, label, booking_id: (extra && extra.booking_id) || null, expense_id: (extra && extra.expense_id) || null });
+    Object.assign(l, { as, label, booking_id: (extra && extra.booking_id) || null, expense_id: (extra && extra.expense_id) || null, admin_id: (extra && extra.admin_id) || null, prop: (extra && extra.prop) || '' });
     if (__pmBank) {
         __pmBank.unsorted = Math.max(0, (__pmBank.unsorted || 0) - 1);
         if (Array.isArray(__pmBank.learned) && as !== 'payment' && l.name) __pmBank.learned.unshift({ name: l.name, as, label });
@@ -18870,7 +18950,9 @@ async function pmBankMark(l, as, label, extra, quiet) {
 }
 async function pmBankUnmark(l) {
     await apiPost('statements.php', { action: 'unmark', id: l.id });
-    Object.assign(l, { as: null, label: '', booking_id: null, expense_id: null });
+    const was = l.as;
+    Object.assign(l, { as: null, label: '', booking_id: null, expense_id: null, admin_id: null, prop: '' });
+    if (was === 'person' || was === 'platform') splitLoad();
     if (__pmBank) __pmBank.unsorted = (__pmBank.unsorted || 0) + 1;
     pmRenderList();
     pmRenderDetail();
@@ -18918,12 +19000,53 @@ function pmBankBooksChanged() {
     pmLoad(true);
 }
 const PM_BANK_SAID = { ignore: 'Not the business', income: 'Other income', tax: 'Tax · left out of costs' };
+// The matching engine's answers (pmSplitSuggest): true when it handled the tap.
+async function pmBankDoSplit(l, k) {
+    const undo = { label: 'Undo', fn: () => pmBankUnmark(l) };
+    if (k.indexOf('person:') === 0) {
+        const p = pmPaidPeople().find((x) => x.id === Number(k.slice(7)));
+        if (!p) return false;
+        await pmBankMark(l, 'person', 'Paid to ' + (l.name || p.name), { admin_id: p.id });
+        toast(`${gbp(Math.abs(l.amount))} counted as paid to ${p.first}.`, 'success', undo);
+        splitLoad();
+        return true;
+    }
+    if (k.indexOf('depback:') === 0) {
+        const b = findBookingById(k.slice(8));
+        await pmBankMark(l, 'ignore', 'Damage deposit back · ' + ((b && b.name) || 'a guest'));
+        toast('A deposit going back. Not counted as a cost.', 'success', undo);
+        return true;
+    }
+    if (k.indexOf('same:') === 0) {
+        const b = findBookingById(k.slice(5));
+        if (!b) return false;
+        await pmBankMark(l, 'payment', `${b.name || 'Guest'} · already recorded`, { booking_id: b.dbId });
+        toast('The same money. Counted once.', 'success', undo);
+        return true;
+    }
+    if (k === 'cashin') {
+        await pmBankMark(l, 'ignore', 'Cash paid in · already recorded');
+        toast('Cash paid in. Counted once.', 'success', undo);
+        return true;
+    }
+    if (k.indexOf('platpick:') === 0) { pmBankPlatSheet(l, k.slice(9)); return true; }
+    if (k.indexOf('plat:') === 0) {
+        const [pk, ...lab] = k.slice(5).split('|');
+        const label = lab.join('|') || 'Platform payout';
+        await pmBankMark(l, 'platform', label, { prop: pk });
+        toast(`${label} counted for ${pmProp(pk)}.`, 'success', undo);
+        splitLoad();
+        return true;
+    }
+    return false;
+}
 async function pmBankDo(id, k) {
     const l = pmBankLines().find((x) => x.id === id);
     if (!l || l.as) return;
     try {
         if (k.indexOf('pay:') === 0) { await pmBankPay(l, k.slice(4)); return; }
         if (k === 'guest') { pmBankGuestSheet(l); return; }
+        if (await pmBankDoSplit(l, k)) return;
         if (k === 'cat') { pmBankCatSheet(l); return; }
         if (k.indexOf('expense:') === 0) {
             const cat = k.slice(8);
@@ -19160,6 +19283,322 @@ function pmMzSheet() {
     draw();
 }
 
+/* ── Whose money is whose (split.php) ──
+   Every guest pays into one bank account, the holder's. A host who isn't the holder
+   is paid out: their cottages' money, after card fees, less what the holder has sent
+   to them by name. The server works the figures out (split-lib.php); each person
+   sees their own side. The holder sees their cottages, their costs and what they
+   still owe each paid-out host; a paid-out host sees only what has been sent to them. */
+let __split = null; // split.php status: the last good copy
+let __splitStamp = 0;
+let __splitBusy = false;
+let __pmWhole = false; // a paid-out host with full access, looking at the whole business
+async function splitLoad() {
+    const st = ++__splitStamp;
+    __splitBusy = true;
+    try {
+        const r = await apiPost('split.php', { action: 'status' });
+        if (st === __splitStamp) __split = r;
+    } catch (e) { /* the last good copy stays on screen */ }
+    if (st !== __splitStamp) return;
+    __splitBusy = false;
+    pmRenderList();
+    if (!__pmOpen && pmWide()) pmRenderDetail();
+    try { if (settingsShowing('split')) renderSplitSettings(); } catch (e) {}
+}
+const pmSplitOn = () => !!(__split && __split.on);
+// 'paid' (only what has been sent to them), 'holder' (the account's side) or 'all'.
+function pmView() {
+    const S = __split;
+    if (!S || !S.on) return 'all';
+    if (S.role === 'paid') return __pmWhole ? 'all' : 'paid';
+    return S.role === 'holder' ? 'holder' : 'all';
+}
+// The cottages someone other than the holder is paid out for.
+function pmPaidOutKeys() {
+    const S = __split;
+    const out = new Set();
+    if (!S || !S.on) return out;
+    Object.keys(S.hosts || {}).forEach((k) => { if (Number(S.hosts[k]) !== Number(S.holder)) out.add(k); });
+    return out;
+}
+// The guests this view collects from: the holder's cottages, or the host's own.
+function pmRowsFor(rows) {
+    const v = pmView();
+    if (v === 'all') return rows;
+    const out = pmPaidOutKeys();
+    if (v === 'holder') return rows.filter((r) => !out.has(r.pk));
+    const mine = new Set(((__split.me && __split.me.cottages) || []).map((c) => c.k));
+    return rows.filter((r) => mine.has(r.pk));
+}
+/** @returns {Array<any>} the paid-out hosts, as this view knows them */
+function pmPaidPeople() {
+    const S = __split;
+    if (!S || !S.on) return [];
+    return S.role === 'paid' ? (S.me ? [S.me] : []) : Array.isArray(S.paid_out) ? S.paid_out : [];
+}
+const pmCotNames = (p) => listAnd(((p && p.cottages) || []).map((c) => c.name));
+// A stay as the split's lists show it: "02/10–05/10/2026" (split_stay's twin).
+function pmStayDm(ci, co) {
+    const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ci || ''));
+    const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(co || ''));
+    if (!a || !b) return '';
+    return `${a[3]}/${a[2]}${a[1] !== b[1] ? '/' + a[1] : ''}–${b[3]}/${b[2]}/${b[1]}`;
+}
+const pmUpper = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
+// One figure, what the guests still owe, and who.
+function pmOwedCardHtml(rows, cap, sub) {
+    const total = rows.reduce((s, r) => s + r.dg.balance, 0);
+    const list = rows.map((r) => {
+        const p = pmPlan(r);
+        const name = r.b.name || 'Guest';
+        return `<button type="button" class="pm-orow" data-pm="stay" data-arg="${escapeHtml(String(r.b.id))}" aria-label="${escapeHtml(name)}, ${gbp(r.dg.balance)}, ${escapeHtml(p.cap)}">
+            <span class="pm-main"><span class="pm-t">${pmDot(r.pk)}${escapeHtml(name)}</span><span class="pm-s">${escapeHtml(pmProp(r.pk))} · ${pmStayDm(r.b.checkIn, r.b.checkOut)}</span><span class="pm-s">${escapeHtml(pmUpper(p.sub))}</span></span>
+            <span class="pm-r"><span class="pm-v">${gbp(r.dg.balance)}</span>${pmCap(p.tone, p.cap)}</span></button>`;
+    }).join('');
+    return `<section class="pm-owe" id="pm-coming" aria-label="${escapeHtml(cap)}">
+        <div class="pm-owe-top"><span>${escapeHtml(cap)}</span><b data-fig="owe">${gbp(total)}</b><span class="pm-s">${escapeHtml(rows.length ? sub : 'Nobody owes anything')}</span></div>${list}</section>`;
+}
+// The holder's Needs-you row: a host's money that hasn't been passed on yet.
+function pmPayRowsHtml() {
+    if (pmView() !== 'holder') return [];
+    return pmPaidPeople()
+        .filter((p) => (p.payees || []).length && p.owed > 0.005)
+        .map((p) => `<button type="button" class="pm-mrow pm-wrow" data-pm="split-pay" data-arg="${p.id}" aria-label="Pay ${escapeHtml(p.first)} ${gbp(p.owed)} for ${escapeHtml(pmCotNames(p))}">
+            ${pmAva(p.name)}<span class="pm-main"><span class="pm-t">Pay ${escapeHtml(p.first)} for ${escapeHtml(pmCotNames(p))}</span><span class="pm-s">Paid by ${escapeHtml(pmCotNames(p))} guests, not passed on yet</span></span>
+            <span class="pm-r"><span class="pm-v" data-fig="po-${p.id}">${gbp(p.owed)}</span></span></button>`);
+}
+// A paid-out host's page: what has reached them, what is still with the holder,
+// and their guests who haven't paid yet. Nothing else of the business.
+function pmPaidHtml(rows) {
+    const S = __split;
+    const me = S.me || {};
+    const who = S.holder_first || 'The account holder';
+    const cots = pmCotNames(me) || 'your cottages';
+    const linked = (me.payees || []).length > 0;
+    let h = '';
+    if (!linked) h += pmPaidLinkHtml(me, who);
+    else {
+        const pct = me.share > 0 ? Math.max(0, Math.min(100, Math.round((me.sent / me.share) * 100))) : 0;
+        const line = Math.abs(me.owed) < 0.005
+            ? (me.share > 0 ? `<span class="pm-owl ok">${PM_IC.tick}All of ${escapeHtml(cots)}’s money has reached you</span>` : '')
+            : me.owed > 0
+                ? `<button type="button" class="pm-owl pm-owl-go" data-pm="split-due">${gbp(me.owed)} with ${escapeHtml(who)}, not sent to you yet${PM_IC.chev}</button>`
+                : `<span class="pm-owl">${gbp(-me.owed)} more than ${escapeHtml(cots)}’s money</span>`;
+        h += `<section class="pm-owe pm-sent"><div class="pm-owe-top"><span>Sent to you this tax year</span><b data-fig="sent">${gbp(me.sent_year)}</b>
+            <span class="pm-s">Paid by ${escapeHtml(cots)} guests so far: ${gbp(me.share)}, after card fees</span>
+            <div class="pm-prog" role="img" aria-label="${pct}% of ${escapeHtml(cots)}’s money sent"><i style="width:${pct}%"></i></div>${line}</div></section>`;
+    }
+    h += pmOwedCardHtml(rows, `Guests still to pay for ${cots}`, linked ? 'Not paid yet, so not in the money above' : `${rows.length} guest${rows.length === 1 ? '' : 's'}`);
+    const pays = Array.isArray(me.payments) ? me.payments : [];
+    if (linked && pays.length) {
+        h += `<div class="pm-capline"><span>From ${escapeHtml(who)}</span><span class="pm-capn">${pays.length}</span></div><div class="pm-rows">${pays.map((p) => `<div class="pm-mrow">
+            <span class="pm-mic in" aria-hidden="true">${PM_IC.in}</span><span class="pm-main"><span class="pm-t">${escapeHtml(p.ref || 'Payment')}</span><span class="pm-s">${fmtDate(p.date)}</span></span>
+            <span class="pm-v">${gbp(p.amount)}</span></div>`).join('')}</div>`;
+    }
+    if (chbFull()) h += '<div class="pm-foot"><button type="button" class="pm-linkbtn" data-pm="split-whole">Open the whole business</button></div>';
+    return h;
+}
+// Before a host has said which name the bank pays them as: the payments to their
+// own name, offered, never assumed.
+function pmPaidLinkHtml(me, who) {
+    const c = me.candidates || {};
+    const ex = c.exact || { count: 0, total: 0, name: '' };
+    const like = Array.isArray(c.like) ? c.like : [];
+    const full = chbFull();
+    const ask = (name) => (full ? `<button type="button" class="pm-btn primary" data-pm="split-link" data-arg="${escapeHtml(name)}">Yes, they’re mine</button>` : '');
+    const note = full ? 'After this, every payment to that name counts as yours by itself.' : 'Someone with full access can say so, in People & access.';
+    if (ex.count > 0) {
+        return `<section class="pm-bankcard is-attn"><div class="pm-bc-top">${pmAva(me.name)}<span class="pm-main"><span class="pm-t">${escapeHtml(who)} has sent ${ex.count} payment${ex.count === 1 ? '' : 's'} to ${escapeHtml(ex.name)}</span><span class="pm-s">${gbp(ex.total)} in all. Are they yours?</span></span></div>
+            <div class="pm-acts-row">${ask(ex.name)}</div><p class="pm-note">${note}</p></section>`;
+    }
+    if (like.length) {
+        return `<section class="pm-bankcard is-attn"><div class="pm-bc-top">${pmAva(me.name)}<span class="pm-main"><span class="pm-t">Payments to ${escapeHtml(like[0])}</span><span class="pm-s">${escapeHtml(who)} has sent money to a name like yours. Is it you?</span></span></div>
+            <div class="pm-acts-row">${ask(like[0])}</div><p class="pm-note">${note}</p></section>`;
+    }
+    return `<section class="pm-bankcard"><div class="pm-bc-top"><span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span><span class="pm-main"><span class="pm-t">When ${escapeHtml(who)} sends you money, it shows here</span><span class="pm-s">Payments to your name from the business account count as yours, once you’ve said which name the bank shows.</span></span></div>
+        ${full ? '<div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="split-linkname">Add the name the bank shows</button></div>' : ''}</section>`;
+}
+// The holder's books: their cottages after card fees, their costs, their profit,
+// and each paid-out host's cottages with what has been and is still to be paid.
+function pmSplitBooksHtml() {
+    const S = __split;
+    if (!S || !Array.isArray(S.mine)) return '';
+    const row = (t, s, v, opts) => {
+        const o = opts || {};
+        const tag = o.act ? `button type="button" data-pm="${o.act}" data-arg="${escapeHtml(String(o.arg || ''))}"` : 'div';
+        return `<${tag} class="pm-kv${o.total ? ' total' : ''}"><span class="pm-kvl"><span class="pm-ink">${t}</span>${s ? `<small>${escapeHtml(s)}</small>` : ''}</span><b${o.fig ? ` data-fig="${o.fig}"` : ''}>${v}</b>${o.act ? PM_IC.chev : ''}</${o.act ? 'button' : 'div'}>`;
+    };
+    let h = `<div class="pm-capline"><span>Your cottages</span><span class="pm-capn">This tax year</span></div><div class="pm-kvs pm-split">`;
+    S.mine.forEach((c) => { h += row(pmDot(c.k) + escapeHtml(c.name), 'After card fees', gbp(c.net), { fig: 'n-' + c.k }); });
+    if (Math.abs(S.other || 0) > 0.005) h += row('Not tied to a cottage', 'After card fees', gbp(S.other));
+    h += row('Your costs', 'The expenses you’ve recorded', '−' + gbp(S.costs || 0));
+    h += row('Your profit', '', gbp(S.profit), { total: true, fig: 'profit' });
+    h += `<button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button></div>`;
+    pmPaidPeople().forEach((p) => {
+        const cots = p.cottages || [];
+        const linked = (p.payees || []).length > 0;
+        const n = Array.isArray(p.payments) ? p.payments.length : 0;
+        h += `<div class="pm-capline"><span>${escapeHtml(pmCotNames(p))} ${cots.length > 1 ? 'are' : 'is'} ${escapeHtml(p.first)}’s</span></div><div class="pm-kvs pm-split">`;
+        h += row(cots.length === 1 ? pmDot(cots[0].k) + escapeHtml(cots[0].name) : 'Their cottages', 'Paid by guests, after card fees', gbp(p.share), { fig: 'ps-' + p.id });
+        if (linked) {
+            h += row(`Paid to ${escapeHtml(p.first)}`, `${n} payment${n === 1 ? '' : 's'}`, '−' + gbp(p.sent));
+            h += row(`Still to pay ${escapeHtml(p.first)}`, '', gbp(Math.max(0, p.owed)), p.owed > 0.005 ? { total: true, act: 'split-pay', arg: p.id } : { total: true });
+        }
+        h += '</div>';
+        if (!linked) h += `<p class="pm-note">${escapeHtml(p.first)} hasn’t said which payments are theirs yet, so what you’ve paid them isn’t shown.</p>`;
+    });
+    return h;
+}
+// The list behind a figure owed to a host: the bookings it is for, the total, and
+// how it gets to them. One composition for the sheet and the computer's side pane.
+function pmSplitDueHtml(p, mine) {
+    const S = __split;
+    const L = Array.isArray(p.due) ? p.due : [];
+    const total = L.reduce((s, d) => s + d.amount, 0);
+    const holder = (S && S.holder_first) || 'The account holder';
+    const name = (p.payees && p.payees[0]) || p.name;
+    const bank = pmLiveOn() || pmBankOn() ? 'Monzo' : 'the business account';
+    const rows = L.map((d) => `<div class="pm-due-row"><span class="pm-main"><span class="pm-t">${pmDot(d.prop)}${escapeHtml(d.name || 'A guest')}</span>${d.stay ? `<span class="pm-s">${escapeHtml(d.stay)}</span>` : ''}</span><b>${gbp(d.amount)}</b></div>`).join('');
+    return {
+        total,
+        body: `<div class="pm-due">${rows}<div class="pm-due-row tot"><span class="pm-t">Total</span><b>${gbp(total)}</b></div></div>
+        <p class="pm-dnote">What each guest has paid since ${mine ? 'you were' : escapeHtml(p.first) + ' was'} last paid, after card fees.</p>
+        <p class="pm-dnote">${mine ? `${escapeHtml(holder)} sends it from ${bank}, and it shows here when it arrives.` : `Send it from ${bank} to ${escapeHtml(name)}. The app ticks it off when it arrives.`}</p>`,
+    };
+}
+function pmSplitPaySheet(id, mine) {
+    const S = __split;
+    const p = mine ? S && S.me : pmPaidPeople().find((x) => x.id === id);
+    if (!p) return;
+    const d = pmSplitDueHtml(p, mine);
+    pmSheet(`<span class="pm-kick">${escapeHtml(pmCotNames(p))}</span><h3>${mine ? 'Still to come' : 'Pay ' + escapeHtml(p.first)} ${gbp(d.total)}</h3>${d.body}
+        <div class="pm-sheet-acts"><button type="button" class="pm-btn primary" data-pms="cancel">Done</button></div>`, null);
+}
+// On a computer a paid-out host's side pane: what is still to come.
+function pmSplitDuePage() {
+    const me = __split && __split.me;
+    if (!me) return pmHead('Still to come') + '<div class="pm-dbody"><p class="pm-note">Loading…</p></div>';
+    const d = pmSplitDueHtml(me, true);
+    return pmHead('Still to come ' + gbp(d.total), escapeHtml(pmCotNames(me))) + `<div class="pm-dbody">${d.total > 0.005 ? d.body : `<p class="pm-note">All of ${escapeHtml(pmCotNames(me))}’s money has reached you.</p>`}</div>`;
+}
+async function pmSplitLink(name, id) {
+    const S = __split;
+    const who = Number(id) || (S && S.me && S.me.id) || 0;
+    const nm = String(name || '').trim();
+    if (!who || !nm) return;
+    try {
+        const r = await apiPost('split.php', { action: 'link', admin_id: who, name: nm });
+        const mineNow = S && S.role === 'paid' && S.me && S.me.id === who;
+        toast(r.count ? `${r.count} payment${r.count === 1 ? '' : 's'} to ${nm} counted as ${mineNow ? 'yours' : 'theirs'}.` : `Payments to ${nm} count from now on.`, 'success', {
+            label: 'Undo',
+            fn: async () => { try { await apiPost('split.php', { action: 'unlink', admin_id: who, name: nm }); } catch (e) {} splitLoad(); pmBankLoad(); },
+        });
+    } catch (e) {
+        glassAlert('Couldn’t link that name. ' + chbActErrSay(e));
+        return;
+    }
+    splitLoad();
+    pmBankLoad();
+}
+async function pmSplitLinkAsk(id) {
+    const S = __split;
+    const p = Number(id) ? pmPaidPeople().find((x) => x.id === Number(id)) : S && S.me;
+    if (!p) return;
+    const v = await glassForm(`The name payments to ${p.first} show on the business account’s statement.`, [{ id: 'name', label: 'Name the bank shows', value: p.name, autocomplete: 'off' }], { title: 'Paid to ' + p.first + ' as', okLabel: 'Link it' });
+    if (v && String(v.name || '').trim()) await pmSplitLink(String(v.name).trim(), p.id);
+}
+
+/* ── Matching a bank payment when the app is sure enough to say so ──
+   Money out to a host who is paid out, a damage deposit going back, money in that is
+   already on a booking, cash paid in, a platform payout for one stay. Each is an
+   offer the owner taps; none of it is assumed. */
+const pmNorm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+// split_name_like's twin: shares the person's surname, four letters or more.
+function pmNameLike(name, person) {
+    const a = pmNorm(name);
+    const b = pmNorm(person);
+    if (!a || !b || a === b) return false;
+    const w = String(person || '').trim().toLowerCase().split(/\s+/);
+    const last = pmNorm(w[w.length - 1]);
+    return last.length >= 4 && a.includes(last);
+}
+const pmNameWords = (s) => String(s || '').toUpperCase().split(/[^A-Z]+/).filter((w) => w.length >= 3 && !PM_BANK_STOP.has(w));
+function pmAllStays() {
+    const out = [];
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => out.push({ pk, b })));
+    return out;
+}
+const PM_PLAT_SRC = { Airbnb: 'airbnb', 'Booking.com': 'bookingcom', Vrbo: 'vrbo' };
+// The one imported stay a platform payout is for: from that platform, begun up to
+// three days before the money arrived.
+function pmPlatStay(plat, date) {
+    const src = PM_PLAT_SRC[plat];
+    const t = pmIso(date);
+    if (!src || !t) return null;
+    const hits = [];
+    Object.keys(dbBlocks || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
+        if (String(bl.source || '').toLowerCase() !== src || bl.kind === 'blocked') return;
+        const d = Math.round((t - pmIso(bl.checkIn)) / 864e5);
+        if (d >= 0 && d <= 3) hits.push({ pk, bl });
+    }));
+    return hits.length === 1 ? hits[0] : null;
+}
+function pmSplitSuggest(l) {
+    const words = pmNameWords(`${l.name} ${l.description}`);
+    const named = (b) => pmNameWords(b.name).some((w) => words.includes(w));
+    if (l.amount < 0) {
+        const p = pmPaidPeople().find((x) => pmNorm(l.name) === pmNorm(x.name) || pmNameLike(l.name, x.name) || (x.payees || []).some((n) => pmNorm(n) === pmNorm(l.name) || pmNameLike(l.name, n)));
+        if (p) return { say: `Looks like ${p.first}’s money for ${pmCotNames(p)}.`, acts: [{ k: 'person:' + p.id, label: `Paid to ${p.first}`, primary: true }, { k: 'cat', label: 'Something else' }] };
+        const amt = Math.abs(l.amount);
+        const back = pmAllStays().filter(({ pk, b }) => {
+            if (!named(b)) return false;
+            let h = null;
+            try { h = damageHeld(pk, b); } catch (e) {}
+            return !!h && [h.deposit, h.collected, h.returned].some((v) => v > 0.005 && Math.abs(v - amt) < 0.01);
+        });
+        if (back.length === 1) {
+            const b = back[0].b;
+            return { say: `${b.name || 'A guest'}’s damage deposit going back. It isn’t a cost.`, acts: [{ k: 'depback:' + b.id, label: 'That’s it', primary: true }, { k: 'cat', label: 'Something else' }] };
+        }
+        return null;
+    }
+    const text = `${l.name} ${l.description} ${l.notes}`;
+    // Money already recorded on a booking (a transfer the owner put on it by hand):
+    // the same money, so it is linked and counted once.
+    const ref = /CHB[-\s]?0*(\d{1,6})\b/i.exec(text);
+    const near = (d) => !!pmIso(d) && Math.abs(pmIso(d) - pmIso(l.date)) <= 4 * 864e5;
+    const same = pmAllStays().filter(({ b }) => {
+        if (!(b.depositPaid > 0.005) || (ref ? Number(b.dbId) !== Number(ref[1]) : !named(b))) return false;
+        if (pmBankLines().some((x) => x.as === 'payment' && Number(x.booking_id) === Number(b.dbId) && Math.abs(x.amount - l.amount) < 0.01)) return false;
+        const byBank = /bank|transfer|bacs/i.test(String(b.paymentMethod || ''));
+        return byBank && (near(b.paymentDate) || Math.abs(b.depositPaid - l.amount) < 0.01) && b.depositPaid >= l.amount - 0.005;
+    });
+    if (same.length === 1) {
+        const b = same[0].b;
+        let owes = null;
+        try { owes = pmOwedRow(same[0].pk, b); } catch (e) {}
+        return { say: `${b.name || 'A guest'}’s payment is already recorded on their booking. The same money?`, acts: [{ k: 'same:' + b.id, label: 'Yes, the same money', primary: true }, owes ? { k: 'pay:' + b.id, label: 'It’s a new payment' } : { k: 'income', label: 'Something else' }] };
+    }
+    if (/\bcash\b|paid in|counter|post office/i.test(`${l.name} ${l.description} ${l.type || ''}`)) {
+        return { say: 'Cash paid in. The guests’ payments it came from are already recorded, so it isn’t counted again.', acts: [{ k: 'cashin', label: 'That’s it', primary: true }, { k: 'income', label: 'Other income' }] };
+    }
+    const plat = PM_BANK_PLATFORMS.find(([re]) => re.test(text));
+    if (plat) {
+        const hit = pmPlatStay(plat[1], l.date);
+        if (hit) return { say: `${/^[aeiou]/i.test(plat[1]) ? 'An' : 'A'} ${plat[1]} payout for the stay at ${pmProp(hit.pk)}, ${pmStayDm(hit.bl.checkIn, hit.bl.checkOut)}.`, acts: [{ k: `plat:${hit.pk}|${plat[1]} payout`, label: 'That’s it', primary: true }, { k: `platpick:${plat[1]} payout`, label: 'Another cottage' }] };
+        if (pmSplitOn()) return { say: `${/^[aeiou]/i.test(plat[1]) ? 'An' : 'A'} ${plat[1]} payout. Which cottage was it for?`, acts: [{ k: `platpick:${plat[1]} payout`, label: 'Choose the cottage', primary: true }, { k: 'income', label: 'Something else' }] };
+    }
+    return null;
+}
+function pmBankPlatSheet(l, label) {
+    const cots = __split && Array.isArray(__split.cottages) ? __split.cottages.map((c) => c.k) : Object.keys(propertyMeta || {});
+    const s = pmSheet(`<h3>Which cottage was ${gbp(l.amount)} for?</h3><p>${escapeHtml(l.name || label)} · ${pmDm(pmIso(l.date))}</p>
+        <div class="pm-field"><span class="pm-flabel">Cottage</span>${pmChips('cot', cots.map((k) => [k, pmProp(k)]), '')}</div>
+        <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button></div>`, null);
+    /** @type {any} */ (s).__pick = (k, a) => { if (k === 'cot') { pmSheetClose(); pmBankDo(l.id, `plat:${a}|${label}`); } };
+}
+
 /* ── What a tap does ── */
 const PM_ACT = {
     menu() { const m = document.getElementById('pm-menu'); pmMenuShow(!!(m && m.hidden)); },
@@ -19254,6 +19693,12 @@ const PM_ACT = {
     'mz-check'() { pmMzCheck(false); },
     'mz-sync'() { pmMzSync(false); },
     'mz-disconnect'() { pmMzDisconnect(); },
+    'split-pay'(id) { pmSplitPaySheet(Number(id), false); },
+    'split-due'() { pmSplitPaySheet(0, true); },
+    'split-link'(name) { pmSplitLink(name); },
+    'split-linkname'() { pmSplitLinkAsk(0); },
+    'split-whole'() { __pmWhole = true; pmRender(); const lp = document.getElementById('pm-list'); if (lp) lp.scrollTop = 0; chbScroll(window, { top: 0 }); },
+    'split-mine'() { __pmWhole = false; pmRender(); chbScroll(window, { top: 0 }); },
 };
 function pmWire() {
     const v = /** @type {any} */ (document.getElementById('view-accounts'));

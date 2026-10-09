@@ -3694,6 +3694,82 @@ it_check('§54 disconnecting keeps every payment already added, keeps the client
 $rootDb->exec("DELETE FROM bank_lines WHERE ext_key LIKE 'm:tx_it54_%'");
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('monzo-client', 'monzo-auth', 'monzo-link')");
 
+echo "\n== §55 Whose money is whose: the account holder pays a host their cottage's money ==\n";
+// One bank account (the holder's) takes every guest's money. A host who isn't the
+// holder is paid out: their cottage's money after card fees, less what has been
+// sent to them by name. Driven through the real endpoints and tables
+// (migration-136): the signed-in owner hosts one cottage and someone else holds
+// the account, then the other way round.
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+it_check('§55 nothing set: the split is off and says so', $r['code'] === 200 && ($r['json']['ready'] ?? false) === true && ($r['json']['on'] ?? true) === false && ($r['json']['role'] ?? '') === 'none', $r['raw']);
+$ownName = (string) ($r['json']['people'][0]['name'] ?? '');
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Pimp Fiftyfive', 'couple_rate' => 100]);
+$pk55 = (string) ($r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? ''));
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at) VALUES ('holder55', 'x', 'Hollie Holder', 'holder55@example.com', 0, '{\"money\":true}', NOW())");
+$h55 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $h55, 'hosts' => ['no_such_cottage' => $ownerId]]);
+it_check('§55 a cottage that isn’t one is refused', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => 99999, 'hosts' => []]);
+it_check('§55 a holder who isn’t a person is refused', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $h55, 'hosts' => [$pk55 => $ownerId]]);
+$cfg55 = json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'money-split'")->fetchColumn(), true);
+$ty55 = (date('m-d') < '04-06' ? (int) date('Y') - 1 : (int) date('Y'));
+it_check('§55 settings saved: who holds, who hosts, and it starts from this tax year', $r['code'] === 200 && ($cfg55['holder'] ?? 0) === $h55 && ($cfg55['hosts'][$pk55] ?? 0) === $ownerId && ($cfg55['since'] ?? '') === $ty55 . '-04-06', json_encode($cfg55));
+// Two stays at the owner's cottage: one paid by card (a fee), one by bank transfer (no fee).
+$today55 = date('Y-m-d');
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date) VALUES ('$pk55','Liam Card55','lc55@x.co','" . date('Y-m-d', strtotime('+20 days')) . "','" . date('Y-m-d', strtotime('+23 days')) . "',2,0,'paid',500,500,500,0,3,'$today55')");
+$bc55 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, fee, created_at) VALUES ($bc55,'deposit',500,'COMPLETED','sq_it55_a',8.50, NOW() - INTERVAL 2 DAY)");
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date) VALUES ('$pk55','Ellie Bank55','eb55@x.co','" . date('Y-m-d', strtotime('+30 days')) . "','" . date('Y-m-d', strtotime('+33 days')) . "',2,0,'paid',300,300,300,0,3,'$today55')");
+$bb55 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($bb55,'manual',300,'MANUAL','man_it55_b', NOW())");
+// The holder sent the owner £200 by name a day ago, before anyone linked the name.
+$nowD = date('Y-m-d', strtotime('-1 day'));
+$ins55 = $rootDb->prepare("INSERT INTO bank_lines (ext_key, import_id, txn_date, txn_time, kind, name, category, description, notes, amount, balance) VALUES (?,0,?,'10:00:00','Faster payment',?,'','Cottage money','',?,0)");
+$ins55->execute(['m:tx_it55_1', $nowD, $ownName, -200]);
+$ins55->execute(['m:tx_it55_2', $nowD, 'Someone Else', -50]);
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+$me55 = $r['json']['me'] ?? [];
+it_check('§55 the owner hosts a cottage the account doesn’t hold: they are paid out', ($r['json']['role'] ?? '') === 'paid' && ($r['json']['holder_first'] ?? '') === 'Hollie', $r['raw']);
+it_check('§55 their money is the cottage’s, after the card fee (500 − 8.50 + 300)', abs((float) ($me55['share'] ?? 0) - 791.50) < 0.005, json_encode($me55));
+it_check('§55 nothing counts as sent until the name is theirs, but the payment to it is offered', abs((float) ($me55['sent'] ?? -1)) < 0.005 && ($me55['candidates']['exact']['count'] ?? 0) === 1 && abs((float) ($me55['candidates']['exact']['total'] ?? 0) - 200) < 0.005, json_encode($me55['candidates'] ?? null));
+it_check('§55 every booking is owed, each after its own fee', count($me55['due'] ?? []) === 2 && abs(array_sum(array_column($me55['due'] ?? [], 'amount')) - 791.50) < 0.005, json_encode($me55['due'] ?? null));
+$r = http($admin, 'POST', '/split.php', ['action' => 'link', 'admin_id' => $h55, 'name' => 'Hollie Holder']);
+it_check('§55 a name can only be linked to someone who is paid out', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'link', 'admin_id' => $ownerId, 'name' => $ownName]);
+it_check('§55 linking the name sorts the payment already there', $r['code'] === 200 && ($r['json']['count'] ?? 0) === 1 && abs((float) ($r['json']['total'] ?? 0) - 200) < 0.005, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+$me55 = $r['json']['me'] ?? [];
+it_check('§55 sent £200: what is still owed is the rest, the earliest booking first', abs((float) ($me55['sent'] ?? 0) - 200) < 0.005 && abs((float) ($me55['owed'] ?? 0) - 591.50) < 0.005
+    && count($me55['due'] ?? []) === 2 && abs((float) ($me55['due'][0]['amount'] ?? 0) - 291.50) < 0.005 && ($me55['due'][0]['name'] ?? '') === 'Liam Card55', json_encode($me55['due'] ?? null));
+it_check('§55 the payment to someone else is not theirs', (string) $rootDb->query("SELECT COALESCE(sorted_as,'') FROM bank_lines WHERE ext_key = 'm:tx_it55_2'")->fetchColumn() === '', '');
+// A new statement with a transfer to the linked name sorts itself, by name, as paid to them.
+$csv55 = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Balance,Balance currency\n"
+    . 'tx_it55_3,' . date('d/m/Y') . ',09:00:00,Faster payment,' . strtoupper($ownName) . ",,General,-591.50,GBP,-591.50,GBP,,,,Cottage Oct,,500.00,GBP\n";
+$r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $csv55, 'filename' => 'it55.csv', 'since' => '']);
+$row55 = $rootDb->query("SELECT sorted_as, admin_id FROM bank_lines WHERE ext_key = 'm:tx_it55_3'")->fetch(PDO::FETCH_ASSOC);
+it_check('§55 a later transfer to the same name sorts itself as theirs, as it arrives', ($r['json']['summary']['auto'] ?? 0) === 1 && ($row55['sorted_as'] ?? '') === 'person' && (int) ($row55['admin_id'] ?? 0) === $ownerId, json_encode([$r['json']['summary'] ?? null, $row55]));
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+it_check('§55 …and that pays them up: nothing owed, no bookings left', abs((float) ($r['json']['me']['owed'] ?? 1)) < 0.005 && ($r['json']['me']['due'] ?? [1]) === [], json_encode($r['json']['me'] ?? null));
+// The other way round: the owner holds the account, and someone else is paid out.
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $ownerId, 'hosts' => [$pk55 => $h55]]);
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+$po55 = $r['json']['paid_out'][0] ?? [];
+it_check('§55 the holder sees the account’s side and who is paid out', ($r['json']['role'] ?? '') === 'holder' && ($po55['id'] ?? 0) === $h55 && abs((float) ($po55['share'] ?? 0) - 791.50) < 0.005 && abs((float) ($po55['sent'] ?? -1)) < 0.005, $r['raw']);
+it_check('§55 …and the paid-out cottage is not one of theirs', !in_array($pk55, array_column($r['json']['mine'] ?? [], 'k'), true) && array_key_exists('profit', $r['json'] ?? []), json_encode($r['json']['mine'] ?? null));
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => (int) $rootDb->query("SELECT id FROM bank_lines WHERE ext_key = 'm:tx_it55_2'")->fetchColumn(), 'as' => 'person', 'admin_id' => $ownerId]);
+it_check('§55 a payment can’t be marked as paid to someone who isn’t paid out', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'unlink', 'admin_id' => $ownerId, 'name' => $ownName]);
+it_check('§55 unlinking puts the payments to that name back to sort', $r['code'] === 200 && ($r['json']['count'] ?? 0) === 2 && (int) $rootDb->query("SELECT COUNT(*) FROM bank_lines WHERE sorted_as = 'person'")->fetchColumn() === 0, $r['raw']);
+$r = http($guest, 'GET', '/content.php');
+it_check('§55 whose money is whose never reaches the public content', $r['code'] === 200 && isset($r['json']['content']) && !isset($r['json']['content']['money-split']), mb_substr($r['raw'], 0, 120));
+it_check('§55 a visitor is refused', http($guest, 'POST', '/split.php', ['action' => 'status'])['code'] === 401, '');
+$rootDb->exec("DELETE FROM bank_lines WHERE ext_key LIKE 'm:tx_it55_%'");
+$rootDb->exec("DELETE FROM payments WHERE booking_id IN ($bc55, $bb55)");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($bc55, $bb55)");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'money-split'");
+$rootDb->exec("DELETE FROM admins WHERE id = $h55");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

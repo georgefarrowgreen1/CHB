@@ -14,6 +14,7 @@
 // ============================================================
 require_once __DIR__ . '/monzo-lib.php';
 require_once __DIR__ . '/statement-lib.php';
+require_once __DIR__ . '/split-store.php';
 
 function monzo_client(): array
 {
@@ -228,8 +229,7 @@ function monzo_sync(): array
                 $pots[(string) $pot['id']] = (string) ($pot['name'] ?? '');
             }
         }
-        $ins = db()->prepare('INSERT IGNORE INTO bank_lines (ext_key, import_id, txn_date, txn_time, kind, name, category, description, notes, amount, balance, sorted_as, sorted_label, sorted_at)
-            VALUES (?,0,?,?,?,?,?,?,?,?,?,?,?,?)');
+        $payees = split_payees_now();
         $cursor = $since;
         for ($page = 0; $page < 60; $page++) {
             $r = monzo_http('GET', '/transactions', $token, null, ['account_id' => $acc, 'since' => $cursor, 'limit' => 100]);
@@ -252,17 +252,9 @@ function monzo_sync(): array
                 if ($line === null) {
                     continue;
                 }
-                $a = statement_auto($line);
-                $ins->execute([
-                    $line['ext_key'], $line['date'], $line['time'], $line['type'], $line['name'], $line['category'], $line['description'], $line['notes'],
-                    $line['amount'], $line['balance'], $a ? $a[0] : null, $a ? $a[1] : null, $a ? date('Y-m-d H:i:s') : null,
-                ]);
-                if ($ins->rowCount() > 0) {
-                    $out['added']++;
-                    if ($a) {
-                        $out['auto']++;
-                    }
-                }
+                [$in1, $a1] = split_bank_insert($line, 0, $payees);
+                $out['added'] += $in1 ? 1 : 0;
+                $out['auto'] += $a1 ? 1 : 0;
             }
             if (count($txs) < 100) {
                 break;

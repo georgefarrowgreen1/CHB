@@ -269,6 +269,9 @@ const PEOPLE_POLICY = [
     // The Monzo live link: checking and syncing are the money area's; adding the
     // developer client, connecting and disconnecting are full access only.
     'monzo.php' => ['status' => 'money', 'check' => 'money', 'sync' => 'money'],
+    // Whose money is whose: the figures are the money area's; who hosts what, and
+    // which name is whose, are full access only.
+    'split.php' => ['status' => 'money'],
     'square-setup.php' => ['payouts_refresh' => 'money'],
     // Prices and cottages.
     'rates.php' => ['*' => 'prices'],

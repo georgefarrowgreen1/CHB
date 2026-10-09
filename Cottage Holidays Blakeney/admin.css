@@ -9260,8 +9260,7 @@ body.owner-mode #ib.is-wide.is-triple .ib-side { display: block; flex: none; wid
 
 /* ===================================================================
    PAYMENTS: WHERE THE MONEY IS, IN ONE LOOK (the approved Payments demo).
-   The journey card, what needs you, what is coming in, every movement and
-   the tax year, with a detail page for a stay, a payout, moving money out
+   What guests still owe, what needs you, every movement and the tax year, with a detail page for a stay, a payout, moving money out
    and the books. Every class is pm- and every rule hangs off #pm, the head's
    + menu or the form sheet, so nothing else in the back office reaches it. A
    phone shows the list and a detail page slides over it below the header;
@@ -9292,26 +9291,43 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 .pm-menu > button { display: flex; align-items: center; width: 100%; text-align: left; border: 0; background: none; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm); font-size: var(--fs-body); color: var(--text-light); }
 .pm-menu > button:focus-visible { outline-offset: -2px; }
 
-/* WHERE YOUR MONEY IS: three stops of one journey, joined by a line, and the answer under them. */
-#pm .pm-flow { margin-top: 4px; border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
-#pm .pm-flow-stops { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#pm .pm-flow-stops::before { content: ""; position: absolute; left: calc(100% / 6); right: calc(100% / 6); top: 28px; height: 2px; background: var(--pm-edge); }
-#pm .pm-stop { position: relative; border: 0; background: none; text-align: center; padding: 20px 8px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-#pm .pm-stop + .pm-stop { border-left: 1px solid var(--pm-edge); }
-#pm .pm-stop-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--pm-ground); border: 2px solid var(--pm-pill-edge); color: var(--text-muted); position: relative; z-index: 1; }
-#pm .pm-stop-dot svg { width: 11px; height: 11px; }
-#pm .pm-stop.owed .pm-stop-dot { border-color: var(--warn); color: var(--warn-text); }
-#pm .pm-stop.way .pm-stop-dot { border-color: var(--info); color: var(--info-text); }
-#pm .pm-stop.bank .pm-stop-dot { border-color: var(--ok); color: var(--ok-text); background: color-mix(in srgb, var(--ok) 16%, var(--pm-ground)); }
-#pm .pm-stop-k { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin-top: 4px; }
-#pm .pm-stop-v { font-size: var(--fs-headline); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
-#pm .pm-stop-s { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.3; text-wrap: balance; }
-#pm .pm-stop.is-changed .pm-stop-v { animation: pmSettle 0.6s var(--out); }
+/* WHAT GUESTS STILL OWE: one figure, then who. The same card carries a paid-out
+   host's "sent to you" figure (split.php's side of the page). */
+#pm .pm-owe { margin-top: 4px; border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
+#pm .pm-owe + .pm-owe { margin-top: 12px; }
+#pm .pm-owe-top { padding: 16px 16px 12px; display: grid; gap: 2px; }
+#pm .pm-owe-top > span:first-child { font-size: var(--fs-sub); color: var(--text-muted); }
+#pm .pm-owe-top > b { font-size: var(--fs-hero); font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; line-height: 1.25; }
+#pm .pm-owe-top .pm-s { white-space: normal; }
+#pm .pm-orow { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--pm-edge); border-radius: 0; background: none; padding: 12px 16px; min-height: 60px; }
+#pm .pm-orow .pm-t { white-space: normal; }
+#pm [data-fig].is-changed { animation: pmSettle 0.6s var(--out); }
 @keyframes pmSettle { 30% { translate: 0 -3px; color: var(--accent-text); } }
-#pm .pm-ready { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--pm-edge); background: color-mix(in srgb, var(--ok) 7%, transparent); padding: 12px 16px; min-height: 60px; }
-#pm .pm-ready b { font-size: var(--fs-body); font-weight: 600; display: block; }
-#pm .pm-ready small { font-size: var(--fs-caption); color: var(--text-muted); display: block; line-height: 1.35; }
-#pm .pm-ready-v { font-size: var(--fs-headline); font-weight: 600; color: var(--ok-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pm .pm-prog { height: 8px; border-radius: 4px; background: var(--pm-well); overflow: hidden; margin-top: 12px; }
+#pm .pm-prog i { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.6s var(--out); }
+#pm .pm-owl { display: flex; align-items: center; gap: 4px; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 8px; text-wrap: pretty; }
+#pm .pm-owl.ok { color: var(--ok-text); font-weight: 600; }
+#pm .pm-owl svg { width: 14px; height: 14px; flex: none; }
+#pm .pm-owl-go { border: 0; background: none; padding: 0; min-height: 44px; margin: 0; text-align: left; color: var(--accent-text); font-weight: 600; justify-self: start; }
+#pm .pm-owl-go .pm-chev { color: currentColor; }
+#pm .pm-whole { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 4px 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+#pm .pm-bankcard .pm-note { margin: 8px 0 0; }
+#pm .pm-list > .pm-note { margin: 8px 4px 0; }
+/* the holder's cottages and each paid-out host's, as label + figure rows */
+#pm .pm-split .pm-kv { font-size: var(--fs-body); min-height: 56px; }
+#pm .pm-split .pm-kvl { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+#pm .pm-split .pm-kvl small { font-size: var(--fs-caption); color: var(--text-muted); }
+#pm .pm-split .pm-kv.total { background: var(--pm-well); }
+#pm .pm-split button.pm-kv .pm-chev { margin-left: -4px; }
+#pm .pm-dnote { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 4px; text-wrap: pretty; }
+/* the bookings behind what a host is owed */
+.pm-sheet .pm-kick { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin-bottom: -8px; }
+:is(#pm, .pm-sheet) .pm-due { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-sm); overflow: hidden; }
+:is(#pm, .pm-sheet) .pm-due-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; min-height: 52px; }
+:is(#pm, .pm-sheet) .pm-due-row + .pm-due-row { border-top: 1px solid var(--pm-edge); }
+:is(#pm, .pm-sheet) .pm-due-row b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+:is(#pm, .pm-sheet) .pm-due-row .pm-t { white-space: normal; }
+:is(#pm, .pm-sheet) .pm-due-row.tot { min-height: 44px; background: var(--pm-well); font-weight: 600; }
 :is(#pm, .pm-sheet) .pm-chev { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
 
 /* captions, cards and money rows */
@@ -9540,5 +9556,6 @@ body.owner-mode #pm.is-wide .pm-dbody { padding: 20px 24px 40px; }
 @media (prefers-reduced-motion: reduce) {
   #pm .pm-detail, .pm-sheet, .pm-scrim, .pm-sheet .pm-drop { transition: none; }
   .pm-sheet .pm-spin { animation-duration: 2s; }
-  #pm .pm-stop.is-changed .pm-stop-v, #pm .pm-mrow.is-new { animation: none; }
+  #pm [data-fig].is-changed, #pm .pm-mrow.is-new { animation: none; }
+  #pm .pm-prog i { transition: none; }
 }

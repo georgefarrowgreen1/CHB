@@ -921,7 +921,7 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
     const COPY_ALLOW = new Set([
         'Cottage', 'Cottages', 'Holidays', 'Blakeney', 'Norfolk', 'Westgate', 'Jollyboat', 'Pimpernel',
         'Quay', 'Coast', 'Britain', 'England', 'Wales', 'London',
-        'Square', 'Airbnb', 'Vrbo', 'Google', 'Apple', 'Safari', 'Chrome', 'Mac', 'Windows', 'Android',
+        'Square', 'Monzo', 'Business', 'Airbnb', 'Vrbo', 'Google', 'Apple', 'Safari', 'Chrome', 'Mac', 'Windows', 'Android',
         'Face', 'Touch', 'Home', 'Screen', 'Wifi', 'Stripe', 'Twilio', 'Outlook', 'Gmail',
         'Today', 'Inbox', 'Manage', 'Payments', 'Bookings', 'Enquiries', 'Messages', 'Email',
         'Rates', 'Status', 'Pricing', 'Waitlist', 'Newsletter', 'Reviews', 'Analytics', 'Profile',

@@ -115,14 +115,15 @@ stc('not due: no', !statement_reminder_due(['on' => true], '2026-10-31', '2026-1
 echo "\n§7 The wiring\n";
 $src = (string) file_get_contents(__DIR__ . '/statements.php');
 stc('import rides the op ledger', strpos($src, 'op_claim($in)') !== false && strpos($src, 'op_finish($opTok') !== false);
-stc('a payment already stored is never added again (INSERT IGNORE on the unique key)', strpos($src, 'INSERT IGNORE INTO bank_lines') !== false);
+$store = (string) file_get_contents(__DIR__ . '/split-store.php');
+stc('a payment already stored is never added again (INSERT IGNORE on the unique key, in the one shared insert)', strpos($src, 'split_bank_insert(') !== false && substr_count($store, 'INSERT IGNORE INTO bank_lines') === 2);
 stc('preview writes nothing', (function () use ($src) {
     $i = strpos($src, "'preview' =>");
     $j = strpos($src, "'import' =>");
     $body = $i !== false && $j !== false ? substr($src, $i, $j - $i) : 'INSERT';
     return strpos($body, 'INSERT') === false && strpos($body, 'UPDATE') === false;
 })());
-stc('the automatic sorts come from statement_auto', strpos($src, 'statement_auto($l)') !== false);
+stc('the automatic sorts come from statement_auto', strpos($store, 'statement_auto($l, ') !== false);
 stc('only known ways to sort are accepted', strpos($src, 'in_array($as, STMT_SORTS, true)') !== false);
 stc('it is owner-only', strpos($src, 'require_admin()') !== false);
 $mig = (string) @file_get_contents(__DIR__ . '/migration-135-bank-statements.sql');

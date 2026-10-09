@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 734;
+const ADMIN_BUNDLE_V = 735;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 372;
+const ADMIN_CSS_V = 373;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -464,13 +464,13 @@ const CHB_ACT_CAP = {
     money: ['openAccounts', 'accountsOpen', 'cmdkOpenAccounts', 'addExpense', 'deleteExpense', 'editExpense', 'repeatExpense', 'odsExpense', 'exportAccountsCSV', 'pickExpenseReceipt', 'sweepMarkOneTransferred', 'sweepMarkTransferred', 'sweepRefreshPayouts', 'sweepRememberBalance', 'sweepUnmarkTransferred'],
     prices: ['addAccommodationPrompt', 'archiveAccommodation', 'restoreAccommodation', 'setAccommodationPrivate', 'openAccomThenSec', 'settingsOpenAccom', 'settingsOpenAccomSec', 'settingsOpenCalendar', 'addSeasonGridRow', 'saveSeasonGrid', 'openSeasonDates', 'applyPricingSuggestion', 'nyOfferRates', 'prCottage', 'calRemoveFeed'],
     website: ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'loadAnalytics', 'exportAnalyticsCsv', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
-    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite'],
+    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite', 'oaSplitHolder', 'oaSplitHost', 'oaSplitLinkAsk', 'oaSplitUnlink'],
 };
 // Manage sections by area (settingsOpen's argument); 'all' sections are not listed.
 const CHB_SEC_CAP = {
     prices: ['accom', 'seasongrid', 'pricing', 'calendar', 'cancel'],
     website: ['content', 'experiences', 'newsletter', 'analytics'],
-    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person'],
+    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person', 'split'],
 };
 // The views a dock or rail button opens.
 const CHB_VIEW_CAP = { money: ['view-accounts'], owner: ['view-activity-log'] };
@@ -21482,7 +21482,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'monzolive2';
+    const BUILD = 'moneysplit1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

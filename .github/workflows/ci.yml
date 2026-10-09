@@ -216,6 +216,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-monzo.php
 
+      - name: Whose money is whose — a host's cottage money, less what was sent to them
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-split.php
+
       - name: Calendar sync — a bad feed must never empty the calendar
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php

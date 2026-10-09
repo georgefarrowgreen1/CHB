@@ -204,6 +204,8 @@
                         <button type="button" role="menuitem" data-pm="ask">Ask a guest to pay</button>
                         <button type="button" role="menuitem" data-pm="mz-open">Connect Monzo Business</button>
                         <button type="button" role="menuitem" data-pm="bank-add">Add a bank statement</button>
+                        <button type="button" role="menuitem" data-pm="to-way">Square payouts</button>
+                        <button type="button" role="menuitem" data-pm="move">Move money out</button>
                     </div>
                 </span>
             </div>
@@ -211,8 +213,8 @@
         </div>
 
         <!-- PAYMENTS: WHERE THE MONEY IS, IN ONE LOOK (the approved Payments demo).
-             The journey (owed, with Square, in your bank, ready to move out), what
-             needs you, what is coming in, every movement, and the tax year. A phone
+             What guests still owe, what needs you, every movement, and the tax year
+             (with the split on: each person's own side). A phone
              shows the list and a detail page slides over it below the header; from
              880px of room the two sit side by side. Rendered by pmRender() in
              admin.js; the figures are money.php's ledger and the bookings' own
@@ -481,6 +483,9 @@
             </div>
             <div class="settings-sec oa-sec" id="sec-emails" style="display:none;">
                 <div id="emails-body"></div>
+            </div>
+            <div class="settings-sec oa-sec" id="sec-split" style="display:none;">
+                <div id="split-body"></div>
             </div>
 
             <!-- Experiences (local things to do + guest suggestions) -->

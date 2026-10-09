@@ -1355,6 +1355,10 @@ function is_internal_content_key($key)
                      // account, when it last synced, the balance — never public.
                      // Its token and the developer client are PRIVATE (below).
     }
+    if ($key === 'money-split') {
+        return true; // whose money is whose (split.php): who holds the account, who
+                     // hosts each cottage and the names they're paid as — never public
+    }
     if ($key === 'bank-statements') {
         return true; // whether the business bank's statements are on, the monthly
                      // reminder, and the month it last went (statements.php) — the

@@ -750,6 +750,60 @@ at developers.monzo.com; nothing here assumes it.
   **ui-test-statements.js** (the screens, with the REAL parser run through the php CLI behind a stubbed endpoint;
   also driven by hand at 360/1280 in both themes). Budgets: admin.js +9.5KB, admin.css +0.5KB gz (owner-only).
 
+## Whose money is whose: the account holder pays a host their cottage's money (built and pushed to main without CI, at the owner's ask)
+
+**Asked for as**: every guest pays into Sophia's Monzo Business account; she keeps 21A's and Jollyboat's money
+and pays her costs from it, and sends George Pimpernel's money. George pays Pimpernel's costs from his own
+account, which the app can't see. The approved demo was v10 of the "who earned what" artifact.
+- **The rule is `split-lib.php`** (pure, `test-split.php`, 37 checks, counter `spc()`). Settings are the
+  internal key **`money-split`** {holder, hosts {prop_key: admin id}, payees {admin id: [names]}, since}. A host
+  who isn't the holder is **paid out**; a cottage nobody hosts is the holder's, so no money falls between two
+  people. With no holder set the split is off and every screen is as before.
+- **A paid-out host's money** (`split.php` `split_items`): each booking's income on the days it arrived
+  (accounts.php's own `allocate_income_by_day`, so the arithmetic exists once) **less that day's card fee**,
+  plus every platform payout sorted on the bank page **with a cottage** (`bank_lines.prop_key`, migration-136).
+  **Sent** is the bank lines sorted `person` to them (`bank_lines.admin_id`). **Still owed** is the difference,
+  and `split_allocate` says which bookings it is for: payments cover the earliest-counted money first, so the
+  list on screen is exactly what the next transfer ticks off; money handed back to a guest comes off its own
+  booking. Counted from `since` (set to the tax-year start the first time the settings are saved).
+- **A payment out to a linked name sorts itself** as it arrives, from a statement or the live Monzo link
+  (`split_bank_insert` in `split-store.php` is now the one insert both use; `statement_auto($line, $payees)`).
+  Only an EXACT name (letters only) counts; a similar one ("G Farrow-Green") is offered on the bank page and
+  never assumed. Until migration-136 has run the split stays off and no insert names the new columns.
+- **The holder's side** (`status` role `holder`): their cottages after card fees (accounts.php's payment rows
+  by cottage, plus their matched platform payouts, less card fees), **their costs = every expense except one
+  tagged to a paid-out cottage**, their profit, and each paid-out host's share, sent and still owed.
+- **The Payments page** (admin.js `pmView()`): the flow card (Owed / With Square / In your bank / Ready to move
+  out) and Coming in are GONE for everyone — one **"Guests still to pay"** card (`pmOwedCardHtml`, `#pm-coming`
+  kept as the anchor) lists who owes, overdue included, so Needs you no longer repeats overdue rows. Square
+  payouts and Move money out moved to the + menu. **Holder**: their cottages' guests only, a Needs-you row
+  "Pay George for Pimpernel", and "Your cottages" + "Pimpernel is George's" in place of the books card (Open the
+  books stays a row). **Paid-out host**: only "Sent to you this tax year", what is still with the holder (a sheet
+  of the bookings), their cottages' guests still to pay, and the transfers from the holder; on a computer the
+  side pane is that list, never the business's books. With full access, "Open the whole business" shows the
+  ordinary page. Until the first answer lands the list says Loading rather than flash someone else's money.
+- **The matching engine** (`pmSplitSuggest`, consulted first by `pmBankSuggest`; each is an offer, never
+  assumed): money out to a name like a paid-out host's → "Paid to George"; money out equal to a guest's damage
+  deposit with their name → "deposit going back, not a cost" (sorted `ignore`); money in that a booking already
+  records (paid by transfer, near its date) → "the same money" (sorted `payment` with the booking, **no
+  `set_payment`**, so it is never counted twice); cash paid in → counted once; a platform payout with exactly one
+  imported stay from that platform starting 0–3 days before → that cottage (else, with the split on, a cottage
+  picker). `pmBankDoSplit` carries them out.
+- **Settings**: People & access → **Cottages and the bank** (`renderSplitSettings`, section `split`, full
+  access only): whose account it is, who hosts each cottage, and the names each host is paid as (link / unlink;
+  linking sorts the payments already there, unlinking puts them back to sort). A paid-out host with no linked name
+  is offered the payments to their own name on their Payments page. `split.php`'s `status` is area `money`;
+  `settings`/`link`/`unlink` are full access.
+- Gates: `test-split.php`, **test-integration §55** (20 checks against the real tables: settings refusals, the
+  share after fees, the offer before linking, link sorting the existing payment, the earliest booking first, a new
+  statement sorting itself, the holder's side, the mark refusal, unlink, never public), the re-aimed
+  test-statements/test-monzo source checks, and a full-stack browser drive (George and Sophia signed in, both
+  views, the pay sheet, the five suggestions carried out, the payout raising what is owed) — not committed.
+- **Not done, said plainly**: money owed from before `since` isn't included; the guest "money story" page in the
+  demo was not built (the booking page's ledger serves); the weekly digest, search and the CSV/PDF don't follow
+  the split; the books page is still the whole business's. NOT re-aimed (merge without CI): ui-test-money and the
+  layout/onelook scenes that read `.pm-flow`/`.pm-stop`.
+
 ## The live link to Monzo Business (built and pushed to main without a PR or CI, at the owner's ask)
 
 **Asked for as "add the live link".** Monzo's developer API documents only `uk_retail` / `uk_retail_joint`, so

@@ -113,7 +113,7 @@ mzc('the return is checked against the stored state, in constant time', strpos($
 mzc('…which is single-use, removed before the code is exchanged', strpos($cb, "unset(\$l['pending'], \$l['pending_at'])") !== false && strpos($cb, "unset(\$l['pending']") < strpos($cb, "'grant_type' => 'authorization_code'"));
 mzc('…and lasts fifteen minutes', strpos($cb, "time() - 900") !== false);
 $sy = $strip('monzo-sync.php');
-mzc('payments go in once, keyed by Monzo’s id (INSERT IGNORE)', strpos($sy, 'INSERT IGNORE INTO bank_lines') !== false);
+mzc('payments go in once, keyed by Monzo’s id (INSERT IGNORE, the shared insert)', strpos($sy, 'split_bank_insert($line, 0, ') !== false && strpos((string) file_get_contents(__DIR__ . '/split-store.php'), 'INSERT IGNORE INTO bank_lines') !== false);
 mzc('a sync holds a lock, because a refresh is one-time', strpos($sy, "GET_LOCK('chb_monzo_sync'") !== false && strpos($sy, "RELEASE_LOCK('chb_monzo_sync')") !== false);
 mzc('the token and the client are written encrypted', strpos($sy, "content_set_secret('monzo-auth'") !== false && strpos($strip('monzo.php'), "content_set_secret('monzo-client'") !== false);
 $st = $strip('monzo.php');
