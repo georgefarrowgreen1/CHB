@@ -1397,13 +1397,8 @@
                     </details>
                     <label class="modal-label" for="enq-email-subject">Subject</label>
                     <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-                        <label class="modal-label" for="enq-email-body" style="margin:0;">Message</label>
-                        <span id="enq-email-ctl" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;">
-                        <button type="button" class="btn-sm btn-edit" id="enq-email-draft" data-act="draftComposeReply" title="Draft a warm reply from this record's own facts — you edit it before sending">✨ Draft reply</button>
-                        </span>
-                    </div>
-                    <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message… or tap ✨ Draft reply" style="resize:vertical;"></textarea>
+                    <label class="modal-label" for="enq-email-body">Message</label>
+                    <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
                     <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 10px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
                     <!-- Optional file attachments (images / PDFs / docs). -->
                     <div style="margin:0 0 12px;">
@@ -1891,7 +1886,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1155"></script>
+    <script defer src="app.js?v=1156"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

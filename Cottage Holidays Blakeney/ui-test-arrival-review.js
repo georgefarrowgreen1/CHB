@@ -112,8 +112,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     facts: (document.querySelector('.arv-facts') || {}).textContent || '',
     arrival: !!(window.__composeTarget && window.__composeTarget.arrival),
     title: (document.getElementById('enq-email-title') || {}).textContent || '',
-    // Painted, not merely attributed — an inline display:flex outranks [hidden].
-    replyTools: ['enq-email-ctl', 'etpl-acts'].some((id) => { const e = document.getElementById(id); return !!e && e.getClientRects().length > 0; }),
   }));
   ok(opened.open, 'the ?open=arrival-N target opens the composer');
   ok(/You arrive/.test(opened.subject) && opened.readOnly,
@@ -127,21 +125,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/House rules/.test(opened.facts) && /No smoking indoors/.test(opened.facts) && /Quiet after 10pm/.test(opened.facts),
     'the house rules are named among them too, so they are not typed again');
   ok(/Arrival email/.test(opened.title), `the screen is named for what it is (${opened.title})`);
-  // Saved replies inserts an ENQUIRY-reply paragraph and ✨ Draft reply writes a
-  // BOOKING reply — either would replace the arrival message with something
-  // belonging in a different email. They stand down here.
-  ok(!opened.replyTools, 'the reply-composer tools AND its button bar stand down on an arrival review');
-  // …and come back for the ordinary composer, which shares the same node.
+  // The ordinary composer shares the same node and takes its own chrome back.
   const restored = await page.evaluate(() => {
     window.openBookingEmail('b41');
     return {
       title: (document.getElementById('enq-email-title') || {}).textContent || '',
-      tools: ['enq-email-ctl', 'etpl-acts'].every((id) => { const e = document.getElementById(id); return !!e && e.getClientRects().length > 0; }),
+      facts: (document.getElementById('arv-facts-host') || { innerHTML: '' }).innerHTML.trim(),
       subjectRO: !!(document.getElementById('enq-email-subject') || {}).readOnly,
     };
   });
-  ok(/Email guest/.test(restored.title) && restored.tools && !restored.subjectRO,
-    `an ordinary compose gets its own chrome back (${restored.title}, tools ${restored.tools})`);
+  ok(/Email guest/.test(restored.title) && restored.facts === '' && !restored.subjectRO,
+    `an ordinary compose gets its own chrome back (${restored.title}, facts cleared, subject editable)`);
   await page.evaluate(async () => { await chbOpenTarget('arrival-40'); });
   await page.waitForTimeout(600);
 

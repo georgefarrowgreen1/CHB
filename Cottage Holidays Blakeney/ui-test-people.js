@@ -320,7 +320,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
             summary: (() => { const m = document.getElementById('manage-verdicts'); return !!m && m.getClientRects().length > 0; })(),
             first: (() => { const c = [...document.getElementById('settings-index').children].find((x) => x.getClientRects().length); return c ? c.id : ''; })(),
         }));
-        const want = ['Guest list', 'Waitlist', 'Reviews', 'Guest photos', 'Saved replies', 'Guest chat'];
+        const want = ['Guest list', 'Waitlist', 'Reviews', 'Guest photos', 'Guest chat'];
         ok(want.every((t) => idx.rows.some((r) => (r || '').indexOf(t) === 0)), `Manage keeps her everyday rows (${idx.rows.join(' · ')})`);
         const gone = ['Seasonal rates', 'Price ideas', 'Calendar sync', 'Cancellation policy', 'Follow-up emails', 'Text messages', 'Home page & menu', 'Things to do', 'Newsletter', 'Analytics', 'Status', 'Backups', 'Activity log', 'Integrations', 'Search learning'];
         ok(!gone.some((t) => idx.rows.includes(t)), 'and none of the areas switched off for her');

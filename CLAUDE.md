@@ -621,6 +621,27 @@ them are gone. Git history has all of it if it is ever wanted back. What deliber
   in uploads/ on the host. Nothing writes them now.
 - `via_label()` and the " · via AI chat" activity attribution went with the chat.
 
+## Saved replies and ✨ Draft reply were REMOVED (owner's ask: "delete … completely from the site")
+
+The email composer is a Subject, a Message box, attachments, Preview and Send. Gone:
+- **Saved replies**: the composer's picker (`emailTpl*`, `etpl*`), the Manage → Messages & automation row and its
+  page (`sec-replies`, `renderSavedReplies`), the search route, and the "Buttons in this email" bar (Pay / Invoice /
+  Register buttons on a manual reply). The server half went too: `email_reply_actions` / `email_reply_facts` and the
+  `$actions` argument of `build_enquiry_reply_email` / `send_enquiry_reply_email`. bookings.php and enquiries.php
+  refuse a stale page's `actions` with 409 "Email buttons have been removed. Reload the page and send it again."
+  rather than sending without them.
+- **✨ Draft reply**: `chbDraftEnquiryReply`, `chbDraftBookingReply`, `draftComposeReply`, `enqReplyDraft` and the ✨
+  rows on the enquiry page and the stale-enquiry fold. The decline ask ("Write the reply") and the declined drawer now
+  open the composer EMPTY. The Inbox's "Offer other dates" fills one plain sentence naming the free dates (from
+  `enquiryFreeNearby`), and "Write the reply" after a decline keeps its one starter sentence. Neither is the drafter.
+- **Kept**: the content key `email-templates` stays classified in db.php and listed in people-lib, because rows
+  already stored hold the owner's words and must never reach the public content GET. The chat sheet's "Quick
+  replies…" dropdown is a different feature and stays.
+- Gates: search-test §26 asserts the functions are gone (and still lays the Jollyboat £130 fixture later sections
+  use), test-payrail asserts the resolver is gone and both endpoints refuse, test-emails-render §7 asserts a manual
+  reply carries no buttons, ui-test-hub asserts the composer opens empty. ui-test-replies.js was deleted;
+  ui-test-onelook, ui-test-people and ui-test-arrival-review were re-aimed (onelook and people not run).
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
@@ -3752,7 +3773,7 @@ Calendar sync) · **Bookings & payments** (Payments, Cancellation policy — the
 conditions" row was removed at the owner's ask, as nothing on it can be edited; the terms still open from the guest
 site) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
-automation** (Saved replies, Follow-up emails, Text messages, Guest chat) ·
+automation** (Follow-up emails, Text messages, Guest chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
 **System & tools** (Activity log, then **More tools** folding Backups, Integrations, Search learning and Test copy;
 Test centre on staging) — there is no Status row: the pill beside the title is the way in (the one look, below).
@@ -6142,7 +6163,8 @@ smoke-test (`guestQuestionShaped`), and ui-test-search-learning.js (panel render
 add-answer appends to the FAQ + clears). `guest-faq.php` deploys; `test-guestfaq.php` is
 deploy-excluded.
 
-**AI-drafted enquiry replies** (admin.js) — the enquiry email composer (`openEnquiryEmail`) has a
+**AI-drafted enquiry replies — REMOVED** with Saved replies (see "Saved replies and ✨ Draft reply were
+REMOVED"); what follows is history. The enquiry email composer (`openEnquiryEmail`) had a
 "✨ Draft reply" button (`draftEnquiryReply` fills `#enq-email-body`). `chbDraftEnquiryReply(enq)`
 is deterministic template NLG (no model call → instant, on-brand; the owner edits then sends):
 greeting by first name, availability (`enquiryAvailability` — free vs "just taken"), the live quote

@@ -40,7 +40,7 @@
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
-const OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
+const OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
 
 // §16 serves its owing booking through the fixture, so a background refresh keeps it.
 let liveBookings = [];
@@ -88,7 +88,7 @@ async function open(browser, base, width) {
   const page = await open(t.browser, t.base, 390);
 
   console.log('§1 every Manage button is one of three kinds');
-  const SECS = ['payments', 'reviews', 'replies', 'follow-ups', 'sms', 'experiences', 'newsletter', 'backups', 'apis', 'calendar', 'content', 'cancel', 'seasongrid'];
+  const SECS = ['payments', 'reviews', 'follow-ups', 'sms', 'experiences', 'newsletter', 'backups', 'apis', 'calendar', 'content', 'cancel', 'seasongrid'];
   const seen = { kinds: 0, old: [] };
   for (const sec of SECS) {
     await page.evaluate((s) => settingsOpen(s), sec);
@@ -105,16 +105,13 @@ async function open(browser, base, width) {
   ok(seen.old.length === 0, `no button keeps an old look class${seen.old.length ? ' — ' + seen.old.slice(0, 4).join(' · ') : ''}`);
   const kinds = await page.evaluate(async () => {
     const tick = () => new Promise((r) => setTimeout(r, 30)); // the kinds land on the observer's microtask
-    settingsOpen('replies');
-    await tick();
-    const del = [...document.querySelectorAll('#replies-body button')].find((b) => /^Delete$/.test(b.textContent.trim()));
     settingsOpen('backups');
     await tick();
     const up = [...document.querySelectorAll('#backups-body button')].find((b) => /^Back up now$/.test(b.textContent.trim()));
     const ver = [...document.querySelectorAll('#backups-body button')].find((b) => /^Verify latest$/.test(b.textContent.trim()));
-    return { del: del && del.className, up: up && up.className, ver: ver && ver.className };
+    return { up: up && up.className, ver: ver && ver.className };
   });
-  ok(/u-btn3/.test(kinds.del || '') && /u-btn1/.test(kinds.up || '') && /u-btn2/.test(kinds.ver || ''), `Delete is danger ink, Back up now the accent, Verify latest outlined (${kinds.del} / ${kinds.up} / ${kinds.ver})`);
+  ok(/u-btn1/.test(kinds.up || '') && /u-btn2/.test(kinds.ver || ''), `Back up now is the accent, Verify latest outlined (${kinds.up} / ${kinds.ver})`);
   // The kind lands on a button a renderer adds LATER, not only on the first paint.
   const late = await page.evaluate(async () => {
     settingsOpen('backups');
@@ -172,9 +169,6 @@ async function open(browser, base, width) {
 
   console.log('§4 adding is a row at the foot of its list');
   const adds = await page.evaluate(async () => {
-    settingsOpen('replies');
-    const rb = document.getElementById('replies-body');
-    const lastIsAdd = rb.lastElementChild && rb.lastElementChild.matches('.u-addrow') && /Write a new reply/.test(rb.lastElementChild.textContent);
     settingsOpen('experiences');
     await new Promise((r) => setTimeout(r, 400));
     const list = document.getElementById('exp-admin-list');
@@ -187,9 +181,8 @@ async function open(browser, base, width) {
     const ai = kids.findIndex((x) => x.matches('.u-addrow'));
     const si = kids.findIndex((x) => x.matches('.acw-acts'));
     const pillAdds = [...document.querySelectorAll('#view-settings button')].filter((b) => /^Add (a|an|another|something)\b/.test(b.textContent.trim()) && !b.matches('.u-addrow, .settings-row, .ga-row')).map((b) => b.textContent.trim());
-    return { lastIsAdd, expAdd: !!expAdd, order: ai >= 0 && si > ai, pillAdds };
+    return { expAdd: !!expAdd, order: ai >= 0 && si > ai, pillAdds };
   });
-  ok(adds.lastIsAdd, 'Saved replies: "Write a new reply" is the list card\'s last row');
   ok(adds.expAdd, 'Things to do: "Add something to do" closes the list');
   ok(adds.order, 'a cottage list: the add row sits under the list, above the Save actions');
   ok(adds.pillAdds.length === 0, `no "Add …" pill is left among a page's actions${adds.pillAdds.length ? ' — ' + adds.pillAdds.join(', ') : ''}`);

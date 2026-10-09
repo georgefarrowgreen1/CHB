@@ -291,7 +291,6 @@ function cmdkRegistry() {
         { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check diagnostics updates migrations database storage', sec: 'diagnostics' },
         { id: 'backups', label: 'Backups', sub: 'Back up, download & the emailed copy', kw: 'backup back up download export database passphrase restore', sec: 'backups' },
         { id: 'search-learning', label: 'Search learning', sub: "Teach the assistant & see what it's learned", kw: 'search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand', sec: 'search-learning' },
-        { id: 'replies', label: 'Saved replies', sub: 'Reply templates & the buttons they carry', kw: 'saved replies templates email canned reply library snippets compose', sec: 'replies' },
     ];
 }
 // The navigation thunk for a registry entry — a Manage section opens via
@@ -10256,7 +10255,6 @@ function inboxVerdicts() {
                       `${(e.message || '').trim() ? `<div class="bhub-mut" style="margin-bottom:4px;">&ldquo;${escapeHtml((e.message || '').trim().slice(0, 160))}&rdquo;</div>` : ''}
                        <div class="bhub-btn-row bhub-act-links">
                           <button class="bhub-actlink" ${chbAttrs('openEnquiryHub', String(e.id))}>Open the enquiry</button>
-                          <button class="bhub-actlink" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>
                        </div>`);
               }).join('')
             : '';
@@ -11963,7 +11961,7 @@ function renderBookingHub() {
             <div class="bhub-mut bhub-facts">${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}</div>
             ${noContact}
             <div class="bhub-kvs">
-                ${/* The address opens the SITE'S composer (draft reply, preview,
+                ${/* The address opens the SITE'S composer (preview,
                       send log), never a mailto out to the phone's mail app. */ ''}
                 ${contact('Email', b.email ? `<button class="bhub-kv-act" ${chbAttrs('openBookingEmail', String(b.id))} title="Write an email — opens the site's composer">${escapeHtml(b.email)}</button>` : '')}
                 ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
@@ -12209,38 +12207,6 @@ async function hubRefundPicker(bookingId) {
     if (pick) refundPayment(bookingId, pick.square_payment_id, parseFloat(pick.amount), carriedOf(pick));
 }
 
-// A drafted reply from THIS booking's own facts — the enquiry drafter's idea,
-// extended to bookings: deterministic template (instant, on-brand, the owner
-// edits then sends), never a model call. Money comes from bookingDue, the one
-// owner-facing due figure, so the draft can never quote a different balance
-// than the hub above it.
-function chbDraftBookingReply(b, propKey) {
-    const meta = propertyMeta[propKey] || {};
-    const gt = bookingDue(propKey, b);
-    // NO GREETING HERE — the same rule chbDraftEnquiryReply follows, and its
-    // SIBLING was still breaking it. build_enquiry_reply_email opens every reply
-    // with its own "Hello <first>,", so a draft that greeted too went out
-    // "Hello Laura," / "Hello Laura," on every drafted booking reply. The
-    // template owns the greeting; this owns the body.
-    const lines = [
-        `Thanks for your message about your stay at ${meta.name || 'the cottage'} (${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}).`,
-        `Check-in is from ${b.checkInTime || '15:00'} on arrival day, and checkout by ${b.checkOutTime || '10:00'}.`,
-    ];
-    if (!gt.fullyPaid && gt.balance > 0.005)
-        lines.push(`Your remaining balance is ${gbp(gt.balance)} — we'll email a secure payment link nearer your stay, or just reply if you'd like it sooner.`);
-    lines.push('', 'Any other questions, just ask.', '', String(siteContent['host-name'] || 'Cottage Holidays Blakeney'));
-    return lines.join('\n');
-}
-function draftBookingReply(bookingId) {
-    const b = findBookingById(bookingId);
-    const loc = findBookingLocation(bookingId);
-    if (!b || !loc) return;
-    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
-    if (body) {
-        body.value = chbDraftBookingReply(b, loc.propKey);
-        body.focus();
-    }
-}
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
 // server (bookings_admin_payload); admin.js never computes it.
@@ -12295,7 +12261,6 @@ const SETTINGS_TITLES = {
     'follow-ups': 'Follow-up emails',
     'search-learning': 'Search learning',
     pricing: 'Price ideas',
-    replies: 'Saved replies',
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
 // the slide direction, and what each page has learned so far.
@@ -12525,7 +12490,6 @@ function settingsRenderSection(section) {
     else if (section === 'seasongrid') renderSeasonGrid();
     else if (section === 'search-learning') renderSearchLearning();
     else if (section === 'pricing') renderPricing();
-    else if (section === 'replies') renderSavedReplies();
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
@@ -12559,7 +12523,7 @@ function settingsSetBack(fn, label) {
 // one the next renderer forgets — the email_dark_hooks rule. It reads the label,
 // because what a button DOES is what decides its weight. A button keeps its kind
 // once given one, so "Save" passing through "Saving…" does not change shape.
-const ONE_LOOK_OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
+const ONE_LOOK_OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
 const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|Send to subscribers|Back up now|Send test text|Connect|Update|Add it|Add$|Check again|Paste a new link|Return\b)/i;
 const ONE_LOOK_DANGER = /^(Delete|Remove|Clear)\b/i;
 const ONE_LOOK_KINDS = ['u-btn1', 'u-btn2', 'u-btn3'];
@@ -31349,7 +31313,7 @@ function declinedInboxHtml() {
 function emailDeclinedEnquiry(dbId) {
     const e = (__declinedEnq || []).find((x) => String(x.dbId) === String(dbId));
     if (!e) return;
-    enqReplyDraft(e);
+    openEnquiryEmail(e);
 }
 // Put it back in the inbox, and take it out of the drawer in the same breath so
 // the two lists cannot both claim it.
@@ -33195,7 +33159,6 @@ const IB_ACT = {
         __ibChan[p.key] = 'email';
         const q = p.declined[0];
         let text = q ? `I’m so sorry, ${ibPropName(q.propKey)} isn’t available for those dates.` : '';
-        try { if (q && ibAvail(q) && !ibAvail(q).free) text = chbDraftEnquiryReply(q) || text; } catch (e) {}
         ibDraftSet(p.key, text);
         ibBuild();
         ibRenderAll();
@@ -33206,14 +33169,16 @@ const IB_ACT = {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
         if (!p || !p.enq) return;
         __ibChan[p.key] = 'email';
-        let text = '';
-        try { text = chbDraftEnquiryReply(p.enq) || ''; } catch (e) {}
+        let near = [];
+        try { near = enquiryFreeNearby(p.enq) || []; } catch (e) {}
+        const text = near.length
+            ? `Those dates have gone, I’m afraid. ${near.join(' or ')} ${near.length === 1 ? 'is' : 'are'} free for the same length of stay. Would that suit?`
+            : 'Those dates have gone, I’m afraid. Do you have any other dates in mind?';
         ibDraftSet(p.key, text);
         ibRenderConv();
         ibRenderList();
         const ta = document.getElementById('ib-reply');
         if (ta) ta.focus();
-        ibToast('Draft ready. The enquiry stays open until you decide.');
     },
     stay(arg) { if (__ibOpen) { __ibStayPick[__ibOpen] = Number(arg); ibRenderConv(); ibRenderCtx(); } },
     'lead-make'() {
@@ -33597,13 +33562,6 @@ function enquiryFreeNearby(e) {
     }
     return out;
 }
-// One tap from the message card to a READY draft: open the composer, then run
-// the deterministic drafter into it (draftEnquiryReply reads __composeTarget,
-// which openEnquiryEmail sets — the order is the point).
-function enqReplyDraft(enquiryId) {
-    openEnquiryEmail(enquiryId); // id from a data-act, or the row itself (see above)
-    setTimeout(() => { try { draftEnquiryReply(); } catch (err) {} }, 250);
-}
 // WHAT APPROVAL WILL ACTUALLY ASK FOR — stage from booking_payment_kind's
 // window clause (bookingInBalanceWindow reads the same two fields off an
 // enquiry), and the FIGURE: the plan's deposit plus the refundable deposit the
@@ -33686,12 +33644,11 @@ function renderEnquiryHub() {
         : '';
     // ---- THE MESSAGE NEVER FOLDS. On a booking, guest words are history; on
     // an enquiry they are the decision's input — "is it dog friendly?" has to
-    // be read before Approve. The ✨ draft row answers it in one tap. ----
+    // be read before Approve. ----
     const msgCard = `
         <div class="bhub-msg bhub-card glass-panel">
             <span class="bhub-msg-cap">Their message</span>
             ${e.message ? `<p class="bhub-msg-text">“${escapeHtml(e.message)}”</p>` : '<p class="bhub-msg-text bhub-mut" style="margin:0;">No message — they just asked for the dates.</p>'}
-            ${e.email && e.message ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>` : ''}
         </div>`;
     // ---- The QUOTE — money is a quote here, not a ledger: one row, the
     // schedule approval implies in the sub, breakdown + price/plan controls
@@ -33808,650 +33765,10 @@ function renderEnquiryHub() {
 }
 
 // ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
-// ---- AI-drafted replies: turn a new enquiry into a warm, ready-to-send draft
-// the owner just edits — greeting, availability, the live quote, the answer to
-// whatever they asked (reusing guestFaqAnswer over the cottage's own content), a
-// call to action and a sign-off. Deterministic template NLG (no model call →
-// instant, always on-brand); the owner stays in control (it fills the box, never
-// sends). Turns the assistant from "find the enquiry" into "write the reply". ----
-function chbHostSignoff() {
-    try {
-        const n = ((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '').trim();
-        if (n) return n;
-    } catch (e) {}
-    return 'Cottage Holidays Blakeney';
-}
-// If the enquiry asks something the cottage FAQ covers, weave in the owner's own
-// answer (reuses the guest FAQ matcher, scoped to this cottage).
-function chbEnqTopicAnswer(message, propKey) {
-    if (!message || typeof guestFaqAnswer !== 'function') return '';
-    let hit = null;
-    try {
-        const prev = typeof activeFrontProperty !== 'undefined' ? activeFrontProperty : undefined;
-        if (typeof activeFrontProperty !== 'undefined' && propKey) activeFrontProperty = propKey;
-        hit = guestFaqAnswer(message);
-        if (prev !== undefined) activeFrontProperty = prev;
-    } catch (e) {}
-    return hit && hit.a ? String(hit.a).trim() : '';
-}
-function chbDraftEnquiryReply(enq) {
-    if (!enq) return '';
-    const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey || 'the cottage';
-    const dates = fmtDate(enq.checkIn) + ' to ' + fmtDate(enq.checkOut);
-    // NO GREETING HERE. build_enquiry_reply_email() opens every reply with its
-    // own "Hello <name>,", so a draft that greeted too shipped "Hello Rachel," /
-    // "Hi Rachel," on every drafted reply — invisible until the drafter's output
-    // was put through the real template. The template owns the greeting (an owner
-    // typing a bare message still gets one); this owns the body.
-    const L = [];
-    L.push('Thanks so much for your enquiry about ' + propName + ' for ' + dates + ' — lovely to hear from you.');
-    let avail = null;
-    try { avail = enquiryAvailability(enq); } catch (e) {}
-    const free = !avail || avail.free;
-    if (avail && avail.free) L.push("Good news — those dates are free, and we'd love to welcome you.");
-    else if (avail && !avail.free) {
-        // NAME THE ALTERNATIVES. This used to promise to go and find "the nearest
-        // we can offer" — while enquiryFreeNearby(), which the enquiry hub is
-        // already printing on the screen above this button, knows exactly which
-        // windows are free. A guest handed two real dates can say yes; a guest
-        // handed an offer to go and look has to wait a second time.
-        let wins = [];
-        try { wins = enquiryFreeNearby(enq); } catch (e) { chbSwallow(e, 'enquiry-draft-nearby'); }
-        if (wins.length) {
-            L.push("Those exact dates have just gone, I'm afraid. If you have any flexibility, "
-                + wins.join(' and ')
-                + (wins.length === 1 ? ' is' : ' are')
-                + " free for the same length of stay, and I'd be glad to hold "
-                + (wins.length === 1 ? 'it' : 'either') + ' while you think.');
-        } else {
-            L.push("Those exact dates have just gone, I'm afraid — but if you have any flexibility I'll gladly find the nearest we can offer.");
-        }
-    }
-    // THE QUOTE ONLY BELONGS TO A STAY THAT CAN HAPPEN. Unconditional, it landed
-    // directly under the sentence refusing the dates — pricing a stay the line
-    // above had just said was unavailable. On free dates it is the whole point of
-    // the reply, so it stays exactly as it was.
-    if (free) {
-        try {
-            const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
-            if (p && p.total) {
-                let pl = 'The total for your stay would be ' + gbp(p.total) + ' (' + p.nights + ' night' + (p.nights === 1 ? '' : 's') + ')';
-                if (p.damagesDeposit) pl += ', plus a ' + gbp(p.damagesDeposit) + ' refundable damage deposit';
-                L.push(pl + '.');
-            }
-            // The draft is still sendable without a price, which is the point of
-            // catching — but a quote silently missing from a reply to an enquiry is
-            // a lost booking, not a cosmetic gap.
-        } catch (e) { chbSwallow(e, 'enquiry-draft-quote'); }
-    }
-    const topic = chbEnqTopicAnswer(enq.message || '', enq.propKey);
-    if (topic) L.push('', 'To your question — ' + topic.charAt(0).toLowerCase() + topic.slice(1));
-    L.push('');
-    L.push(free ? "If you'd like to go ahead, just say the word and I'll get everything confirmed. Any questions at all, I'm happy to help." : "Just let me know your thoughts and I'll do my best to help.");
-    L.push('', 'Warm wishes,', chbHostSignoff());
-    return L.join('\n');
-}
-async function draftEnquiryReply() {
-    const t = __composeTarget;
-    if (!t || t.kind !== 'enquiry' || !t.enq) return;
-    const body = document.getElementById('enq-email-body');
-    if (!body) return;
-    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?", 'Replace it'))) return;
-    body.value = chbDraftEnquiryReply(t.enq);
-    body.focus();
-    try { body.setSelectionRange(0, 0); body.scrollTop = 0; } catch (e) {}
-}
-// ============================================================
-// Saved replies — the reply library in the shared composer.
-// A template is ONE PARAGRAPH + the buttons it carries, never a whole letter:
-// build_enquiry_reply_email writes the greeting above the owner's words and
-// the details/quote/sign-off below. Tokens resolve at INSERT via the
-// derivations the hub trusts (bookingDue/priceBreakdown/fmtStayRange), so the
-// server never sees a placeholder. Stored under the INTERNAL key
-// email-templates; read adminPrivateContent-first (the bacs-details rule).
-// ============================================================
-const EMAIL_TPL_KEY = 'email-templates';
-const EMAIL_TPL_MAX = 30;
-const EMAIL_TPL_ACTS = [
-    { id: 'pay', label: 'Pay the balance', what: 'Opens the pay screen with the balance ready' },
-    { id: 'invoice', label: 'View your invoice', what: 'The document they file — it carries your bank details off the card rail' },
-    { id: 'register', label: 'Add your guest details', what: 'The register everyone staying who is 16 or over must be on' },
-];
-let __etplChosen = []; // action ids attached to the email being written
-let __etplOpen = false; // the picker sheet
-let __etplPick = false; // the add-a-button list
-let __etplUndo = null; // { body, chosen, label } — one level, per compose
-let __etplQ = '';
-function emailTplActById(id) {
-    return EMAIL_TPL_ACTS.find((a) => a.id === id) || null;
-}
-// The STARTER set — what the picker offers before the owner has ever saved
-// anything, so the feature demonstrates itself instead of opening on "Nothing
-// saved yet". Shown ONLY while the key is ABSENT: an explicitly emptied
-// library stores '[]' and stays empty (deleting the last starter must not
-// resurrect it), and garbage still degrades to EMPTY, never to these —
-// friendly defaults over corruption would mask a real loss. Any write
-// (a save, an edit, a delete, even a uses++ bump) materialises whatever is
-// on screen, so the starters become ordinary editable rows the first time
-// the library is touched. Bodies follow the composer's own rules: ONE
-// paragraph, no greeting (the template writes "Hello <first>," above), and
-// every figure is a {{token}} resolved per guest — never a number typed here.
-const EMAIL_TPL_DEFAULTS = [
-    { id: 'd-balance', name: 'A nudge about the balance', body: "Just a gentle reminder that {{balance}} is still to pay for your stay at {{cottage}} ({{dates}}). The button below takes you straight to the payment page — and if anything has changed, just reply and we'll sort it out together.", actions: ['pay'], when: 'booking', uses: 0 },
-    { id: 'd-free', name: 'The dates are free', body: "Good news — {{cottage}} is free for {{dates}}, and the total for your stay would be {{total}}. If you'd like to go ahead, just reply and we'll get everything set up for you.", actions: [], when: 'enquiry', uses: 0 },
-    { id: 'd-taken', name: 'Those dates are taken', body: "Thank you so much for thinking of us. Unfortunately those exact dates are already taken — but if your plans have any give in them, let us know roughly when suits and we'll happily look for the nearest free dates either side.", actions: [], when: 'enquiry', uses: 0 },
-    { id: 'd-register', name: 'Before you arrive', body: "We're really looking forward to welcoming you to {{cottage}}. If you have a spare minute before you travel, the button below is where you add the names of everyone staying — it only takes a moment, and it means everything is ready for your arrival.", actions: ['register'], when: 'before', uses: 0 },
-    { id: 'd-invoice', name: 'Your invoice', body: "Your invoice for your stay at {{cottage}} ({{dates}}) is behind the button below — it's yours to save or print for your records. If anything on it doesn't look right, just reply and we'll put it straight.", actions: ['invoice'], when: 'booking', uses: 0 },
-    { id: 'd-paid', name: 'Payment received — thank you', body: "Your payment has arrived safely — thank you. Everything is set for your stay at {{cottage}}, and we'll send your arrival details about a week before you're due.", actions: [], when: 'before', uses: 0 },
-    { id: 'd-after', name: 'After your stay — thank you', body: "Thank you for staying with us at {{cottage}} — it was a pleasure to have you. We hope the journey home was easy, and we'd be delighted to welcome you back whenever Blakeney calls again.", actions: [], when: 'after', uses: 0 },
-    { id: 'd-depback', name: 'Your deposit is on its way back', body: "Your refundable deposit is on its way back to you — it usually lands within 3–5 working days. Thank you for looking after {{cottage}} so well; we'd love to have you back.", actions: [], when: 'after', uses: 0 },
-];
-// When a template SHOWS — the picker offers only what applies to the record
-// on screen (owner's screenshot: a paid pre-arrival booking offered "The
-// dates are free", an after-stay thank-you and a struck-out register button).
-// '' = every record; the rest name the moment. Manage always lists everything.
-const EMAIL_TPL_WHEN = [
-    { id: '', label: 'Every record' },
-    { id: 'enquiry', label: 'Enquiries only' },
-    { id: 'booking', label: 'Bookings only' },
-    { id: 'before', label: 'Bookings — before the stay' },
-    { id: 'after', label: 'Bookings — after the stay' },
-];
-function emailTplWhenLabel(id) {
-    const w = EMAIL_TPL_WHEN.find((x) => x.id === id);
-    return w ? w.label : '';
-}
-// A refused button is refused one of two ways, and only one kills the row:
-// the JOB IS GONE (nothing owed, register already in, stay over — the
-// template's premise went with it) or the CHANNEL is wrong (a transfer-rail
-// guest still owes the money; the words apply, the card button doesn't).
-// The first hides the template; the second just drops the button.
-function etplActMoot(id, f) {
-    if (!f || !f.booking) return true;
-    if (id === 'pay') return f.balance == null;
-    if (id === 'register') return f.regDone || f.stayOver;
-    return false; // invoice — a booking always has one
-}
-// The one decision: does this template apply to the record being emailed?
-// Three gates, each a fact about THIS record — the declared scope, tokens
-// with nothing to resolve to (a balance nudge on a settled stay), and a
-// template whose every button is MOOT here (a register ask once the details
-// are in). A row that fails is HIDDEN, not struck through: an option that
-// no longer applies is not an option.
-function emailTplApplies(t, f) {
-    if (!f) return false;
-    const w = t.when || '';
-    if (w === 'enquiry' && f.booking) return false;
-    if ((w === 'booking' || w === 'before' || w === 'after') && !f.booking) return false;
-    if (w === 'before' && f.stayOver) return false;
-    if (w === 'after' && !f.stayOver) return false;
-    if (emailTplResolve(t.body, f).missing.length) return false;
-    if (t.actions.length && t.actions.every((id) => etplActMoot(id, f))) return false;
-    return true;
-}
-// The key has never been saved (≠ emptied '[]', ≠ garbage) — the one state
-// that shows the starters, and the caption that explains where they came from.
-function emailTplStoreAbsent() {
-    const raw = adminPrivateContent[EMAIL_TPL_KEY] ?? siteContent[EMAIL_TPL_KEY];
-    return raw == null || raw === '';
-}
-// Sanitised: non-JSON / junk rows degrade to fewer templates, never a crash.
-function emailTplList() {
-    if (emailTplStoreAbsent()) return EMAIL_TPL_DEFAULTS.map((t) => ({ ...t, actions: t.actions.slice() }));
-    const raw = adminPrivateContent[EMAIL_TPL_KEY] ?? siteContent[EMAIL_TPL_KEY] ?? '';
-    let parsed = null;
-    try {
-        parsed = typeof raw === 'string' && raw ? JSON.parse(raw) : Array.isArray(raw) ? raw : null;
-    } catch (e) {}
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-        .filter((t) => t && typeof t === 'object' && typeof t.body === 'string' && t.body.trim())
-        .slice(0, EMAIL_TPL_MAX)
-        .map((t) => ({
-            id: String(t.id || '').slice(0, 24) || 't' + Math.random().toString(36).slice(2, 8),
-            name: String(t.name || '').slice(0, 60) || 'Saved reply',
-            body: String(t.body).slice(0, 2000),
-            actions: (Array.isArray(t.actions) ? t.actions : []).map(String).filter((id) => emailTplActById(id)).slice(0, 3),
-            when: EMAIL_TPL_WHEN.some((w) => w.id && w.id === t.when) ? String(t.when) : '',
-            uses: Math.max(0, parseInt(String(t.uses), 10) || 0),
-        }));
-}
-// Mirror-first (the chbPinStore rule): the picker re-reads the store on the
-// very next render, so both mirrors must be true before the network half runs.
-function emailTplStore(list, quiet) {
-    const json = JSON.stringify(list.slice(0, EMAIL_TPL_MAX));
-    siteContent[EMAIL_TPL_KEY] = json;
-    adminPrivateContent[EMAIL_TPL_KEY] = json;
-    const p = saveContent(EMAIL_TPL_KEY, json);
-    if (quiet) p.catch(() => {}); // a lost uses++ bump is not worth an alert
-    return p;
-}
-// The facts tokens + guards read — money via bookingDue / priceBreakdown,
-// never a second sum.
-function emailTplFacts() {
-    const t = __composeTarget;
-    if (!t) return null;
-    if (t.kind === 'booking') {
-        const b = t.b;
-        const pk = t.propKey;
-        let gt = null;
-        try {
-            gt = bookingDue(pk, b);
-        } catch (e) {}
-        return {
-            booking: true,
-            name: b.name || '',
-            cottage: (propertyMeta[pk] && propertyMeta[pk].name) || pk,
-            checkIn: b.checkIn,
-            checkOut: b.checkOut,
-            party: b.guests || '',
-            total: gt ? gt.total : null,
-            balance: gt && gt.balance > 0.001 ? gt.balance : null,
-            rail: bookingOwnerArranged(b) ? 'bacs' : 'card',
-            regDone: !!b.regSubmitted,
-            stayOver: hasCheckedOut(b),
-        };
-    }
-    const enq = t.enq;
-    const pk = enq.propKey;
-    let total = null;
-    try {
-        const p = priceBreakdown(pk, enq.adults, enq.children, enq.checkIn, enq.checkOut);
-        if (p && p.total) total = p.total;
-    } catch (e) {}
-    return {
-        booking: false,
-        name: enq.name || '',
-        cottage: (propertyMeta[pk] && propertyMeta[pk].name) || pk,
-        checkIn: enq.checkIn,
-        checkOut: enq.checkOut,
-        party: enq.guests || '',
-        total,
-        balance: null,
-        rail: 'card',
-        regDone: false,
-        stayOver: false,
-    };
-}
-// {{token}} → this record's facts. Unresolvable = MISSING, never a fallback —
-// "£0.00" in an inbox is a wrong figure; a named refusal costs nothing.
-function emailTplResolve(body, f) {
-    const missing = [];
-    const map = {
-        first: (f.name || '').trim().split(/\s+/)[0] || '',
-        cottage: f.cottage || '',
-        dates: f.checkIn && f.checkOut ? fmtStayRange(f.checkIn, f.checkOut) : '',
-        nights: f.checkIn && f.checkOut ? String(nightsBetween(f.checkIn, f.checkOut)) : '',
-        party: f.party || '',
-        total: f.total != null ? gbp(f.total) : '',
-        balance: f.balance != null ? gbp(f.balance) : '',
-    };
-    const text = String(body).replace(/\{\{(\w+)\}\}/g, (m, k) => {
-        const v = map[k];
-        if (v == null || v === '') {
-            missing.push('{{' + k + '}}');
-            return m;
-        }
-        return v;
-    });
-    return { text, missing: [...new Set(missing)] };
-}
-// The CLIENT half of the guards — UX only; email_reply_actions() re-derives
-// all of them at preview AND send, so this can never make a bad button send.
-// Square's state is left to the server on purpose (it lives in config).
-function etplActGuard(id, f) {
-    if (!f || !f.booking) return 'Buttons need a booking — available once this enquiry is approved.';
-    if (id === 'pay') {
-        if (f.balance == null) return 'Nothing is owed — this stay is paid in full.';
-        if (f.rail !== 'card') return 'This guest pays by transfer — the invoice carries your bank details instead.';
-    }
-    if (id === 'register') {
-        if (f.regDone) return 'Guest details are already submitted — asking again would read as a mistake.';
-        if (f.stayOver) return 'The stay is over.';
-    }
-    return '';
-}
-// Inject the chrome ONCE (index.html untouched — delegated data-acts cover
-// injected markup), then reset per-compose state and render.
-function emailTplSetup() {
-    const draftBtn = document.getElementById('enq-email-draft');
-    if (draftBtn && !document.getElementById('etpl-toggle')) {
-        // Into the #enq-email-ctl group, so the two controls wrap AS A UNIT at
-        // phone width instead of scattering across two ragged rows.
-        draftBtn.insertAdjacentHTML(
-            'beforebegin',
-            `<button type="button" class="btn-sm btn-edit" id="etpl-toggle" data-act="emailTplToggle" title="Insert one of your saved replies">Saved replies</button>`,
-        );
-    }
-    const bodyEl = document.getElementById('enq-email-body');
-    if (bodyEl && !document.getElementById('etpl-panel')) {
-        bodyEl.insertAdjacentHTML('afterend', '<div id="etpl-panel" hidden></div><div id="etpl-acts"></div>');
-    }
-    __etplChosen = [];
-    __etplOpen = false;
-    __etplPick = false;
-    __etplUndo = null;
-    __etplQ = '';
-    // The library is INTERNAL content, so after an anonymous boot + sign-in the
-    // key may simply not have been fetched yet — which reads as "never saved"
-    // (i.e. the starters) over a real library, one uses++ write from clobbering
-    // it. Refresh the way openArea does, fire-and-forget; the composer never
-    // waits, and the picker repaints when the truth lands.
-    if (!__adminPrivateLoaded) {
-        apiPost('content.php', { action: 'get_all' })
-            .then((r) => {
-                adminPrivateContent = r.content || {};
-                __adminPrivateLoaded = true;
-                etplRender();
-            })
-            .catch(() => {});
-    }
-    etplRender();
-}
-function emailTplToggle() {
-    __etplOpen = !__etplOpen;
-    __etplPick = false;
-    etplRender();
-    if (__etplOpen) {
-        const q = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
-        if (q) setTimeout(() => q.focus(), 30);
-    }
-}
-function etplRender() {
-    const panel = document.getElementById('etpl-panel');
-    const actsEl = document.getElementById('etpl-acts');
-    if (!panel || !actsEl) return;
-    const f = emailTplFacts();
-    const toggle = document.getElementById('etpl-toggle');
-    if (toggle) toggle.classList.toggle('is-on', __etplOpen);
-    // ---- the picker sheet ----
-    panel.hidden = !__etplOpen;
-    if (__etplOpen && f) {
-        const ql = __etplQ.trim().toLowerCase();
-        const all = emailTplList();
-        // Applicability FIRST, search second: a template that no longer applies
-        // to this record is not an option, so it is not a search result either.
-        // A row that renders is always insertable — the old disabled-with-reason
-        // and struck-through-button states are gone with the rows they explained.
-        const fits = all.filter((t) => emailTplApplies(t, f));
-        const list = fits.filter((t) => !ql || (t.name + ' ' + t.body).toLowerCase().includes(ql)).sort((a, b) => b.uses - a.uses);
-        const rows = list
-            .map((t) => {
-                const res = emailTplResolve(t.body, f);
-                const snippet = res.text.replace(/\s+/g, ' ').slice(0, 110);
-                // Only the buttons that will actually ride along — a refused one
-                // is dropped here exactly as emailTplInsert drops it.
-                const chips = t.actions
-                    .filter((id) => !etplActGuard(id, f))
-                    .map((id) => `<span class="etpl-carry">${escapeHtml(emailTplActById(id).label)}</span>`)
-                    .join('');
-                return `<button type="button" class="etpl-row" ${chbAttrs('emailTplInsert', t.id)}>
-                    <span class="etpl-row-name">${escapeHtml(t.name)}${t.uses >= 3 ? `<span class="etpl-uses">used ${t.uses}×</span>` : ''}</span>
-                    <span class="etpl-row-sub">${escapeHtml(snippet)}${res.text.length > 110 ? '…' : ''}</span>
-                    ${chips ? `<span class="etpl-carryrow">${chips}</span>` : ''}
-                </button>`;
-            })
-            .join('');
-        const noneMsg = ql
-            ? 'Nothing matches “' + escapeHtml(__etplQ) + '”.'
-            : all.length
-              ? 'None of your saved replies fits this record — the full library is under Manage.'
-              : 'Nothing saved yet — write a reply below, then “Save as a template”.';
-        panel.innerHTML = `
-            <input type="search" class="input-glass etpl-q" id="etpl-q" placeholder="Search your saved replies…" value="${escapeHtml(__etplQ)}" data-act-input="emailTplSearch" data-pass="self" aria-label="Search your saved replies">
-            ${rows || `<p class="etpl-none">${noneMsg}</p>`}`;
-    }
-    // ---- the buttons row ----
-    __etplChosen = __etplChosen.filter((id) => !etplActGuard(id, f));
-    const chips = __etplChosen
-        .map(
-            (id, i) => `<span class="etpl-chip${i === 0 ? ' is-primary' : ''}">${escapeHtml(emailTplActById(id).label)}
-                <span class="etpl-chip-rank">${i === 0 ? 'Primary' : 'Secondary'}</span>
-                <button type="button" class="etpl-chip-x" ${chbAttrs('emailTplRemove', id)} aria-label="Remove the ${escapeHtml(emailTplActById(id).label)} button">✕</button></span>`,
-        )
-        .join('');
-    let pick = '';
-    if (__etplPick && f && f.booking) {
-        const on = EMAIL_TPL_ACTS.filter((a) => !etplActGuard(a.id, f) && !__etplChosen.includes(a.id));
-        const off = EMAIL_TPL_ACTS.filter((a) => etplActGuard(a.id, f));
-        pick = `<div class="etpl-pick">
-            ${on.map((a) => `<button type="button" class="etpl-pick-row" ${chbAttrs('emailTplAdd', a.id)}><span class="etpl-pick-name">${escapeHtml(a.label)}</span><span class="etpl-pick-sub">${escapeHtml(a.what)}</span></button>`).join('')}
-            ${on.length ? '' : `<p class="etpl-none">Every button that works for this guest is already attached.</p>`}
-            ${off.length ? `<p class="etpl-offcap">Not available here</p>${off.map((a) => `<p class="etpl-offrow"><strong>${escapeHtml(a.label)}</strong> — ${escapeHtml(etplActGuard(a.id, f))}</p>`).join('')}` : ''}
-        </div>`;
-    }
-    const undoBit = __etplUndo
-        ? `<button type="button" class="etpl-undo" data-act="emailTplUndo">Undo “${escapeHtml(__etplUndo.label)}”</button>`
-        : '';
-    // The composer WRITES the email; the library is authored under Manage.
-    // "Save as a template" used to sit here and was a third thing to read on
-    // the row that arms the buttons — and it asked, mid-message, a question
-    // about next time. Its greeting lint moved to the Manage editor (where a
-    // hand-written paragraph can open with a greeting just as easily), and
-    // "Write a new reply" there is the way in.
-    actsEl.innerHTML =
-        f && f.booking
-            ? `<div class="etpl-actbar">
-                <span class="etpl-actlab">Buttons in this email</span>
-                ${undoBit}
-                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : 'Add a button'}</button>
-            </div>
-            ${__etplChosen.length ? `<div class="etpl-chips">${chips}</div>` : ''}
-            ${pick}`
-            : `<div class="etpl-actbar">
-                <span class="etpl-actlab">Buttons need a booking — available once this enquiry is approved.</span>
-                ${undoBit}
-            </div>`;
-}
-function emailTplSearch(el) {
-    // Belt for the line above's lesson: never trust the arg to be there.
-    const src = /** @type {HTMLInputElement|null} */ (el && el.value != null ? el : document.getElementById('etpl-q'));
-    __etplQ = src ? src.value : '';
-    // Repaint only the rows — rebuilding the input mid-keystroke is the
-    // bank-details trap, so stash and restore the caret.
-    const q = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
-    const at = q ? q.selectionStart : null;
-    etplRender();
-    const q2 = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
-    if (q2) {
-        q2.focus();
-        if (at != null) {
-            try {
-                q2.setSelectionRange(at, at);
-            } catch (e) {}
-        }
-    }
-}
-function emailTplInsert(id) {
-    const f = emailTplFacts();
-    const t = emailTplList().find((x) => x.id === id);
-    if (!t || !f) return;
-    const res = emailTplResolve(t.body, f);
-    if (res.missing.length) return; // the row is disabled; belt for a stale render
-    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
-    if (!ta) return;
-    __etplUndo = { body: ta.value, chosen: __etplChosen.slice(), label: t.name };
-    const at = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
-    const pre = ta.value.slice(0, at).replace(/\s+$/, '');
-    const post = ta.value.slice(at).replace(/^\s+/, '');
-    ta.value = [pre, res.text, post].filter(Boolean).join('\n\n');
-    // The template's own buttons ride along — minus any this record refuses.
-    t.actions.forEach((aid) => {
-        if (!etplActGuard(aid, f) && !__etplChosen.includes(aid)) __etplChosen.push(aid);
-    });
-    const all = emailTplList().map((x) => (x.id === id ? { ...x, uses: x.uses + 1 } : x));
-    emailTplStore(all, true);
-    __etplOpen = false;
-    etplRender();
-    ta.focus();
-}
-function emailTplUndo() {
-    if (!__etplUndo) return;
-    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
-    if (ta) ta.value = __etplUndo.body;
-    __etplChosen = __etplUndo.chosen.slice();
-    __etplUndo = null;
-    etplRender();
-}
-function emailTplPickToggle() {
-    __etplPick = !__etplPick;
-    __etplOpen = false;
-    etplRender();
-}
-function emailTplAdd(id) {
-    const f = emailTplFacts();
-    if (!f || etplActGuard(id, f) || __etplChosen.includes(id)) return;
-    __etplUndo = { body: (/** @type {HTMLTextAreaElement} */ (document.getElementById('enq-email-body'))).value, chosen: __etplChosen.slice(), label: emailTplActById(id).label };
-    __etplChosen.push(id);
-    __etplPick = false;
-    etplRender();
-}
-function emailTplRemove(id) {
-    __etplChosen = __etplChosen.filter((x) => x !== id);
-    etplRender();
-}
-// emailTplSaveAs is GONE with its button — see etplRender's note. The
-// greeting lint it carried lives on in emailTplEditSave, because a
-// hand-written paragraph opens with "Hi Rachel," just as readily.
-// ---- Manage → Saved replies: the library, WRITTEN and edited ----
-// This is the whole authoring surface now — the composer's "Save as a
-// template" is gone, so a way IN has to live here or the feature is one
-// nobody can add to (the mailboxTab defect: fully built, no button).
-// No button guards here: CARRYING a button is authorship — whether it goes on
-// a given email is decided per guest at compose, and again by the server.
-let __etplEditId = null;
-// A NEW reply is a pending row, not a stored one: emailTplList() drops any
-// entry with an empty body (correctly — that is what a junk row looks like),
-// so an unwritten template saved first would vanish on the next read. It
-// lives here until Save has a name and a paragraph to store.
-let __etplDraft = null;
-function emailTplNew() {
-    __etplDraft = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: '', body: '', actions: [], when: '', uses: 0 };
-    __etplEditId = __etplDraft.id;
-    renderSavedReplies();
-    const el = document.getElementById('etpl-ed-name');
-    if (el) setTimeout(() => el.focus(), 30);
-}
-function renderSavedReplies() {
-    const host = document.getElementById('replies-body');
-    if (!host) return;
-    const stored = emailTplList();
-    const list = __etplDraft ? [__etplDraft, ...stored] : stored;
-    const actNames = (t) => (t.actions.length ? t.actions.map((id) => emailTplActById(id).label).join(', ') : 'no buttons');
-    const rows = list
-        .map((t) => {
-            if (__etplEditId === t.id) {
-                const boxes = EMAIL_TPL_ACTS.map(
-                    (a) => `<label class="etpl-cbx"><input type="checkbox" data-actid="${a.id}"${t.actions.includes(a.id) ? ' checked' : ''}> ${escapeHtml(a.label)}</label>`,
-                ).join('');
-                return `<div class="etpl-mrow is-edit">
-                    <label class="modal-label" for="etpl-ed-name">Name</label>
-                    <input type="text" class="input-glass" id="etpl-ed-name" maxlength="60" value="${escapeHtml(t.name)}">
-                    <label class="modal-label" for="etpl-ed-body">The paragraph — tokens like {{cottage}}, {{dates}} and {{balance}} fill in per guest</label>
-                    <textarea class="input-glass" id="etpl-ed-body" rows="4" maxlength="2000">${escapeHtml(t.body)}</textarea>
-                    <label class="modal-label" for="etpl-ed-when">Shows for</label>
-                    <select class="input-glass" id="etpl-ed-when">${EMAIL_TPL_WHEN.map((w) => `<option value="${w.id}"${(t.when || '') === w.id ? ' selected' : ''}>${escapeHtml(w.label)}</option>`).join('')}</select>
-                    <span class="modal-label">Buttons it carries</span>
-                    <div class="etpl-cbxrow" id="etpl-ed-acts">${boxes}</div>
-                    <div class="etpl-mbtns">
-                        <button type="button" class="btn-sm btn-edit" ${chbAttrs('emailTplEditSave', t.id)}>Save</button>
-                        <button type="button" class="btn-sm btn-edit" data-act="emailTplEditCancel">Cancel</button>
-                    </div>
-                </div>`;
-            }
-            return `<div class="etpl-mrow">
-                <span class="etpl-mmain"><span class="etpl-row-name">${escapeHtml(t.name)}</span>
-                <span class="etpl-row-sub">${t.uses ? `used ${t.uses}×` : 'never used'} · ${escapeHtml(actNames(t))}${t.when ? ` · ${escapeHtml(emailTplWhenLabel(t.when).toLowerCase())}` : ''}</span></span>
-                <span class="etpl-mbtns">
-                    <button type="button" class="btn-sm btn-edit" ${chbAttrs('emailTplEditOpen', t.id)}>Edit</button>
-                    <button type="button" class="btn-sm btn-edit etpl-del" ${chbAttrs('emailTplDelete', t.id)}>Delete</button>
-                </span>
-            </div>`;
-        })
-        .join('');
-    // The list is the card; writing a new one is the row at its foot.
-    host.innerHTML = `
-        ${rows}
-        ${__etplDraft ? '' : uAddRow('Write a new reply', 'data-act="emailTplNew"', !rows)}`;
-}
-function emailTplEditOpen(id) {
-    __etplDraft = null; // editing a stored row abandons an unwritten new one
-    __etplEditId = id;
-    renderSavedReplies();
-}
-function emailTplEditCancel() {
-    __etplDraft = null;
-    __etplEditId = null;
-    renderSavedReplies();
-}
-async function emailTplEditSave(id) {
-    const name = (/** @type {HTMLInputElement|null} */ (document.getElementById('etpl-ed-name')) || { value: '' }).value.trim();
-    const body = (/** @type {HTMLTextAreaElement|null} */ (document.getElementById('etpl-ed-body')) || { value: '' }).value.trim();
-    if (!name || !body) {
-        glassAlert('A saved reply needs a name and a paragraph.');
-        return;
-    }
-    // The email template writes "Hello <first>," above these words, so a
-    // paragraph that greets says hello twice — the drafter's own shipped
-    // defect. Refused here because this is now the only way in.
-    if (/^\s*(hi|hello|hey|dear|good (morning|afternoon|evening))\b/i.test(body)) {
-        glassAlert('Not saved — it opens with a greeting. Every email already says “Hello <name>,” above your words, so this reply would say hello twice. Start at the first real sentence.');
-        return;
-    }
-    const acts = Array.from(document.querySelectorAll('#etpl-ed-acts input[type=checkbox]'))
-        .filter((c) => /** @type {HTMLInputElement} */ (c).checked)
-        .map((c) => String(/** @type {HTMLElement} */ (c).dataset.actid));
-    const whenEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('etpl-ed-when'));
-    const when = whenEl && EMAIL_TPL_WHEN.some((w) => w.id && w.id === whenEl.value) ? whenEl.value : '';
-    const prev = siteContent[EMAIL_TPL_KEY];
-    const isNew = !!(__etplDraft && __etplDraft.id === id);
-    const fields = { name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3), when };
-    const list = isNew
-        ? [{ ...__etplDraft, ...fields }, ...emailTplList()]
-        : emailTplList().map((t) => (t.id === id ? { ...t, ...fields } : t));
-    try {
-        await emailTplStore(list);
-        __etplDraft = null;
-        __etplEditId = null;
-        renderSavedReplies();
-        toast(isNew ? `“${name}” saved — the composer will offer it wherever it fits.` : `“${name}” updated.`);
-    } catch (e) {
-        siteContent[EMAIL_TPL_KEY] = prev;
-        adminPrivateContent[EMAIL_TPL_KEY] = prev;
-    }
-}
-async function emailTplDelete(id) {
-    const t = emailTplList().find((x) => x.id === id);
-    if (!t) return;
-    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`, 'Delete the template', { danger: true });
-    if (!okGo) return;
-    const prev = siteContent[EMAIL_TPL_KEY];
-    const list = emailTplList().filter((x) => x.id !== id);
-    try {
-        await emailTplStore(list);
-        renderSavedReplies();
-        toast(`“${t.name}” deleted.`);
-    } catch (e) {
-        siteContent[EMAIL_TPL_KEY] = prev;
-        adminPrivateContent[EMAIL_TPL_KEY] = prev;
-    }
-}
 
 // One shared composer (#enq-email-modal). __composeTarget carries which kind of
 // record we're emailing so sendEnquiryEmail() posts to the right endpoint.
 let __composeTarget = null;
-// The one ✨ Draft control, whichever record is open — the booking drafter and
-// the enquiry drafter are different composers, and having each on its own
-// button put two identical-looking ✨ actions in one screen-height.
-function draftComposeReply() {
-    const t = __composeTarget;
-    if (!t) return;
-    if (t.kind === 'booking' && t.b) {
-        draftBookingReply(t.b.id);
-        return;
-    }
-    return draftEnquiryReply();
-}
 // The composer's context fold shows ONE line closed: who this email is going to
 // and for which stay. Written by both openers, so the summary and the panel
 // beneath it can never describe different records.
@@ -34475,16 +33792,12 @@ function openEnquiryEmail(enqId) {
     // "Arrival email", the send controls hidden, a read-only subject, the
     // booking's facts panel filled). Only the booking opener took the dressing
     // back off, so reviewing an arrival and then replying to an ENQUIRY opened a
-    // composer titled "Arrival email", with the reply tools gone, a subject that
-    // could not be edited, and another guest's address still on screen.
+    // composer titled "Arrival email", with a subject that could not be edited
+    // and another guest's address still on screen.
     const t0 = document.getElementById('enq-email-title');
     if (t0) t0.textContent = 'Email guest';
-    const c0 = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
-    if (c0) c0.style.display = '';
     const fh0 = document.getElementById('arv-facts-host');
     if (fh0) fh0.innerHTML = '';
-    const a0 = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
-    if (a0) a0.style.display = '';
     const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
     if (s0) s0.readOnly = false;
     if (!enq.email) {
@@ -34534,7 +33847,6 @@ function openEnquiryEmail(enqId) {
     const m = document.getElementById('enq-email-modal');
     if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
     if (m) m.classList.add('open');
-    emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
 }
 function closeEnquiryEmailModal() {
@@ -34544,10 +33856,6 @@ function closeEnquiryEmailModal() {
     backToComposeEdit(); // reset to the compose view for next time
     __composeTarget = null;
     __composeAttachments = [];
-    __etplChosen = [];
-    __etplUndo = null;
-    __etplOpen = false;
-    __etplPick = false;
     renderComposeAttachChips();
 }
 // Toggle the composer back from the preview to the editing view.
@@ -34593,9 +33901,6 @@ async function previewComposedEmail() {
             // here the preview rendered the reply shell instead — a different
             // email from the one that sends, greeting the guest twice.
             ...(t.arrival ? { arrival: true } : {}),
-            // The preview must show the buttons or it is not the email that
-            // goes out; the server validates them against the live state.
-            ...(t.kind === 'booking' && !t.arrival && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
         });
         const frame = document.getElementById('enq-email-preview-frame');
         if (frame)
@@ -34716,7 +34021,6 @@ async function sendEnquiryEmail() {
             subject: subject.trim(),
             message: body.trim(),
             attachments: __composeAttachments.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
-            ...(t.kind === 'booking' && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
         });
         closeEnquiryEmailModal();
         toast(`Email sent to ${rec.name || rec.email}.`);
@@ -34867,27 +34171,15 @@ async function openArrivalReview(bookingId) {
     // right thing. Restored by openBookingEmail on the next ordinary compose.
     const ttl = document.getElementById('enq-email-title');
     if (ttl) ttl.textContent = 'Arrival email';
-    // AND THE REPLY TOOLS STAND DOWN. Saved replies inserts an enquiry-reply
-    // paragraph and ✨ Draft reply writes a booking reply — either would REPLACE
-    // the arrival message with something that belongs in a different email.
-    const ctl = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
-    if (ctl) ctl.style.display = 'none'; // NOT .hidden: its inline display:flex outranks the attribute
-    // The reply library's BUTTON bar goes too — it attaches Pay/Invoice/Register
-    // buttons to the reply template, and this email builds its own.
-    const acts = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
-    if (acts) acts.style.display = 'none';
     const f = pv.facts || {};
     const factRows = [
         ['Arrive', f.arrive],
         ['Leave', f.leave],
         ['Address', f.address],
     ].filter((r) => r[1]);
-    // ITS OWN NODE, not #etpl-acts: that belongs to the reply library, whose
-    // own async content refresh re-renders it — which silently WIPED this panel
-    // on a slow-ish load. Caught by the gate, not by looking.
     let host = document.getElementById('arv-facts-host');
     if (!host) {
-        const after = document.getElementById('etpl-acts') || document.getElementById('enq-email-body');
+        const after = document.getElementById('enq-email-body');
         if (after) after.insertAdjacentHTML('afterend', '<div id="arv-facts-host"></div>');
         host = document.getElementById('arv-facts-host');
     }
@@ -34911,12 +34203,8 @@ function openBookingEmail(bookingId) {
     // composer again (openArrivalReview calls THIS first, then re-dresses it).
     const t0 = document.getElementById('enq-email-title');
     if (t0) t0.textContent = 'Email guest';
-    const c0 = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
-    if (c0) c0.style.display = '';
     const fh = document.getElementById('arv-facts-host');
     if (fh) fh.innerHTML = '';
-    const a0 = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
-    if (a0) a0.style.display = '';
     const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
     if (s0) s0.readOnly = false;
     if (!b.email) {
@@ -34955,9 +34243,6 @@ function openBookingEmail(bookingId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
         composeCtxSummary(`${b.name || 'Guest'} · ${propName} · ${fmtStayRange(b.checkIn, b.checkOut)}`);
-        // The ✨ Draft control is the SHARED one beside Message
-        // (draftComposeReply) — a second copy injected here put the same
-        // action twice in one screen-height, running different code.
     }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your booking — ${propName}, ${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}`;
@@ -34971,7 +34256,6 @@ function openBookingEmail(bookingId) {
     const m = document.getElementById('enq-email-modal');
     if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
     if (m) m.classList.add('open');
-    emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
 }
 
@@ -35011,11 +34295,11 @@ async function declineEnquiry(enqId) {
         if (enq.email && typeof glassConfirm === 'function') {
             const ask = await glassConfirm(
                 `${name} is expecting a reply — the acknowledgement promised one by the end of the next day.\n\n`
-                + 'Send one? The draft is ready, and names any nearby dates that are still free.',
+                + 'Send one now?',
                 'Write the reply',
             );
             if (ask) {
-                enqReplyDraft(enq);
+                openEnquiryEmail(enq);
                 return;
             }
         }
@@ -36486,7 +35770,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice].forEach((f) => {
+[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable

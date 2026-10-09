@@ -1542,10 +1542,6 @@ body.light-mode .ny-act {
   font-size: var(--fs-headline);
   line-height: 1.55;
   margin: 0 0 6px;
-}.bhub-msg-draft {
-  border-top: 1px solid var(--glass-border);
-  margin: 6px -18px 0;
-  padding-left: 18px !important;
 }/* The exception beside the ordinary outcome — quiet, at the touch floor, and it
    yields the row on a phone the way the button above it does. */
 .bhub-next-alt {
@@ -6097,58 +6093,14 @@ body.offline-snap .ods-mark {
 .ks-how-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.5; }
 .ks-how-list b { color: var(--text-light); font-weight: 600; }
 
-/* Saved replies (composer picker + Manage). Chips take an OPAQUE ground,
-   never a tint: a tinted chip on a row that tints on hover composites twice —
-   measured at 4.09:1 in dark, three times, on the demo behind this screen. */
-#etpl-panel { margin: 8px 0 2px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 10px; }
-.etpl-q { width: 100%; margin-bottom: 6px; min-height: 44px; }
-.etpl-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 9px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
-.etpl-row[disabled] { cursor: not-allowed; }
-.etpl-row[disabled] .etpl-row-name { color: var(--text-muted); }
-.etpl-row-name { display: block; font-weight: 600; font-size: var(--fs-body); }
-.etpl-uses { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin-left: 8px; }
-.etpl-row-sub { display: block; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
-.etpl-row-no { display: block; font-size: var(--fs-caption); color: var(--danger-text); font-weight: 600; margin-top: 2px; }
-.etpl-carryrow { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
-.etpl-carry { font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 1px 8px; }
-.etpl-carry.is-off { color: var(--text-muted); text-decoration: line-through; }
-.etpl-none { font-size: var(--fs-sub); color: var(--text-muted); margin: 6px 2px; }
-.etpl-actbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
-.etpl-actlab { flex: 1 1 140px; min-width: 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
-.etpl-undo { background: none; border: none; color: var(--accent-text); font-size: var(--fs-caption); font-weight: 600; text-decoration: underline; min-height: 44px; padding: 0 2px; cursor: pointer; font-family: inherit; }
-.etpl-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
-.etpl-chip { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 7px 6px 12px; }
-.etpl-chip.is-primary { border-color: var(--accent); }
-.etpl-chip-rank { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
-.etpl-chip-x { width: 26px; height: 26px; border-radius: 50%; background: none; border: 1px solid currentColor; color: inherit; display: grid; place-items: center; font-size: var(--fs-sub); line-height: 1; cursor: pointer; padding: 0; }
-.etpl-pick { margin: 8px 0 0; border-top: 1px solid var(--glass-border); padding-top: 8px; }
-.etpl-pick-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 8px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
-.etpl-pick-name { display: block; font-weight: 600; font-size: var(--fs-body); }
-.etpl-pick-sub { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
-.etpl-offcap { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 8px 2px 3px; }
-.etpl-offrow { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 2px 4px; line-height: 1.45; }
-.etpl-offrow strong { color: var(--text-light); }
-/* Manage page */
-.etpl-mrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--glass-border); }
-.etpl-mrow.is-edit { display: block; }
-.etpl-mmain { min-width: 0; }
-.etpl-mbtns { display: flex; gap: 6px; flex-shrink: 0; margin-top: 8px; }
-.etpl-mrow:not(.is-edit) .etpl-mbtns { margin-top: 0; }
-.etpl-del { color: var(--danger-text); }
-.etpl-cbxrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 4px; }
-.etpl-cbx { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sub); color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 8px 13px; min-height: 44px; cursor: pointer; }
-.etpl-cbx input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
-
 /* The composer, iOS-restyled (scoped — the modal only ever opens for the
    owner, after the bundle loads, so its restyle lives in the owner-only
-   sheet). Sentence case everywhere: .btn-sm's global uppercase at 0.68rem +
-   nowrap is what CLIPPED "✨ Draft reply" off the right edge at 390px, and
-   SUBJECT/MESSAGE shouting over quiet grouped fields is the pre-restyle look
-   the rest of the back office has already left behind. */
+   sheet). Sentence case everywhere: SUBJECT/MESSAGE shouting over quiet
+   grouped fields is the pre-restyle look the rest of the back office has
+   already left behind. */
 #enq-email-modal .modal-label { text-transform: none; letter-spacing: 0.02em; font-size: var(--fs-sub); font-weight: 600; margin-bottom: 6px; }
 #enq-email-modal .btn-sm { text-transform: none; letter-spacing: 0; font-size: var(--fs-sub); font-weight: 600; padding: 9px 14px; min-height: 40px; border-radius: 999px; }
 #enq-email-modal .enq-ctx { border-radius: var(--r-lg); }
-#enq-email-modal .etpl-actlab { font-size: var(--fs-sub); }
 /* The context card under a long name + long email at 390px: the who-row WRAPS
    (the cottage tag drops under rather than squeezing the name to a mid-word
    break), the name block owns the leftover width, and the address — which has
@@ -6156,13 +6108,6 @@ body.offline-snap .ods-mark {
 #enq-email-modal .enq-ctx-who { flex-wrap: wrap; }
 #enq-email-modal .enq-ctx-name { flex: 1 1 160px; min-width: 0; }
 #enq-email-modal .enq-ctx-name .enq-ctx-mut { overflow-wrap: anywhere; }
-/* The two library controls are a deliberate two-up row between the Message
-   label and the box — each takes half the rail (the Preview/Send pair's own
-   geometry at the modal foot), with real air before the textarea instead of
-   sitting on its lip. */
-#enq-email-modal #enq-email-ctl { flex: 1 1 100%; margin: 6px 0 2px; }
-#enq-email-modal #enq-email-ctl .btn-sm { flex: 1 1 0; min-height: 44px; text-align: center; }
-#enq-email-modal #enq-email-body { margin-top: 10px; }
 /* THE CONTEXT IS REFERENCE, SO IT FOLDS. ~340px of avatar/name/pill/dates/
    party/price/quote above the Subject field opened the Message box half off
    the screen at 390 and Send below the card's own bottom edge at BOTH widths.
@@ -8363,7 +8308,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look :is(.acr-well, .accounts-stat, .mo-card, .sl-card, .sp-need, .sp-hero, .sp-tsum, .mg-sum, .al-card, .al-week, .sp-off,
   .ana-insights, .u-win, .sp-card, .ac-card, .settings-sec .bhub-fold-grp, .sp-week, .sg-band,
   .cancel-card, .sg-addcard, .cal-well, .exp-edit, .u-listcard, .money-row, .ks-list),
-:is(main, div).one-look #sec-newsletter .glass-panel, :is(main, div).one-look #replies-body {
+:is(main, div).one-look #sec-newsletter .glass-panel {
   background: var(--u-ground); border: 1px solid var(--u-edge); border-style: solid;
   border-radius: var(--u-r-card); box-shadow: none;
   backdrop-filter: none; -webkit-backdrop-filter: none;
@@ -8372,7 +8317,6 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look :is(.accounts-stat, .mo-card, .sl-card, .sp-hero, .mg-sum, .al-card, .ana-insights, .u-win.is-pad) { padding: var(--u-pad); max-width: none; }
 :is(main, div).one-look #sec-newsletter .glass-panel:not(.bhub-fold-grp) { padding: var(--u-pad); max-width: none; }
 :is(main, div).one-look :is(.sp-need, .sp-off) { padding: 12px var(--u-pad); }
-:is(main, div).one-look #replies-body { overflow: hidden; }
 /* Stat tiles stand on the page, not in a card of their own. */
 :is(main, div).one-look .sl-card:has(.sl-stat) { background: none; border: 0; padding: 0; }
 /* A panel inside a card (a comparison, a guest's facts): the one inset surface. */
@@ -8404,15 +8348,13 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 
 /* ---------- 4. ROW: the account row ---------- */
 :is(main, div).one-look :is(.acr-row, .pay-row, .rv-go, .bhub-fold-row, .acw-frow) { min-height: var(--u-h-row); padding: 12px var(--u-pad); gap: var(--u-gap); }
-:is(main, div).one-look :is(.acr-lbl, .pay-lbl, .bhub-fold-lbl, .sp-sysname, .sp-nlabel, .rv-name, .sg-sum-name, .etpl-row-name, .settings-sec .settings-row-label),
+:is(main, div).one-look :is(.acr-lbl, .pay-lbl, .bhub-fold-lbl, .sp-sysname, .sp-nlabel, .rv-name, .sg-sum-name, .settings-sec .settings-row-label),
 :is(main, div).one-look #settings-panel .settings-row-label {
   font-size: var(--fs-body); font-weight: 500; color: var(--text-light);
 }
-:is(main, div).one-look :is(.acr-lbl small, .pr-rsub, .sp-ndetail, .sp-offsub, .bhub-fold-sub, .etpl-row-sub) { font-size: var(--fs-sub); color: var(--text-muted); font-weight: 400; }
+:is(main, div).one-look :is(.acr-lbl small, .pr-rsub, .sp-ndetail, .sp-offsub, .bhub-fold-sub) { font-size: var(--fs-sub); color: var(--text-muted); font-weight: 400; }
 :is(main, div).one-look :is(.pay-val, .ga-v) { font-size: var(--fs-body); color: var(--text-muted); }
 :is(main, div).one-look .settings-row { padding-left: var(--u-pad); padding-right: var(--u-pad); }
-:is(main, div).one-look #replies-body .etpl-mrow { padding: 12px var(--u-pad); border-top: 1px solid var(--u-edge); margin: 0; }
-:is(main, div).one-look #replies-body .etpl-mrow:first-child { border-top: 0; }
 /* A review link row: the cottage, then its two actions on the right. */
 :is(main, div).one-look .rv-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--u-gap); min-height: var(--u-h-row); padding: 8px var(--u-pad); }
 :is(main, div).one-look .rv-row .rv-acts { display: flex; gap: 8px; padding: 0; border: 0; grid-template-columns: none; }

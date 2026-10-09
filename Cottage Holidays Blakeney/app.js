@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 744;
+const ADMIN_BUNDLE_V = 745;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 381;
+const ADMIN_CSS_V = 382;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -463,7 +463,7 @@ const CHB_ACT_CAP = {
     'bk.edit': ['openAddBooking', 'bhubEdit', 'saveBookingNote'],
     'bk.cancel': ['bhubCancel', 'bhubDelete'],
     'bk.block': ['openBlockDates', 'tlBlockTap'],
-    'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'enqReplyDraft', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'chatSendArrival', 'notifyWaitlist', 'deleteWaitlist', 'deleteCurrentThread', 'gstInvite', 'gstResend'],
+    'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'chatSendArrival', 'notifyWaitlist', 'deleteWaitlist', 'deleteCurrentThread', 'gstInvite', 'gstResend'],
     'gu.approve': ['approveEnquiry', 'declineEnquiry', 'openEditEnquiry'],
     'gu.reviews': ['setReviewStatus', 'moderatePhoto'],
     'ks.see': ['openKeysafe', 'keysafeOpen'],
@@ -21517,7 +21517,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'inboxrf1';
+    const BUILD = 'noreplies1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

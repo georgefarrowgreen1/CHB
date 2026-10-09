@@ -736,11 +736,10 @@ if ($action === 'email_preview') {
         }
     } catch (\Throwable $e) {
     }
-    // Saved-reply buttons need a booking behind them (pay/invoice/register all
-    // key off a booking id); on an enquiry any request for one is a stale or
-    // crafted payload — refused with the sentence, never silently dropped.
-    if (!empty($in['actions']) && is_array($in['actions'])) {
-        json_out(['error' => 'Buttons need a booking — this is still an enquiry.'], 409);
+    // Email buttons were removed with Saved replies; a page cached from before
+    // still sends them, and must hear so rather than send an email without them.
+    if (!empty($in['actions'])) {
+        json_out(['error' => 'Email buttons have been removed. Reload the page and send it again.'], 409);
     }
     require_once __DIR__ . '/mailer.php';
     $m = build_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry');
@@ -773,8 +772,10 @@ if ($action === 'email_guest') {
         }
     } catch (\Throwable $e) {
     }
-    if (!empty($in['actions']) && is_array($in['actions'])) {
-        json_out(['error' => 'Buttons need a booking — this is still an enquiry.'], 409);
+    // Email buttons were removed with Saved replies; a page cached from before
+    // still sends them, and must hear so rather than send an email without them.
+    if (!empty($in['actions'])) {
+        json_out(['error' => 'Email buttons have been removed. Reload the page and send it again.'], 409);
     }
     require_once __DIR__ . '/mailer.php';
     $atts = sanitize_email_attachments($in['attachments'] ?? []);

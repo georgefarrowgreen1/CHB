@@ -1270,25 +1270,14 @@ let approveWill409 = false;
   const shared = await page.evaluate(() => window.__shared || '');
   ok(/Arrives:/.test(shared) && /Leaves:/.test(shared) && /Walk-in Guest/.test(shared), `the share text carries the stay (${shared.split('\n')[0]})`);
   ok(!/£/.test(shared), '…and NO money — it goes into a cleaner\'s chat, not the guest\'s inbox');
-  // Draft reply: the enquiry drafter's idea on bookings — filled from THIS
-  // booking's own facts, the balance via bookingDue so it can never disagree
-  // with the hub above it.
+  // The composer opens EMPTY: Saved replies and ✨ Draft reply were removed.
   await page.click('[data-act="openBookingEmail"]');
   await page.waitForTimeout(400);
-  // Re-aimed: the draft affordance is the ONE shared ✨ control now
-  // (draftComposeReply dispatches to the booking drafter on a booking) — the
-  // injected per-booking twin was the same action twice in one screen-height.
-  await page.click('[data-act="draftComposeReply"]');
-  await page.waitForTimeout(200);
-  const draft = await page.evaluate(() => (document.getElementById('enq-email-body') || {}).value || '');
-  // £390: section B part-paid this booking £100 against its £440+£50, and the
-  // draft reads bookingDue live — which is the point.
-  // NB the draft does NOT greet — build_enquiry_reply_email opens every reply
-  // with its own "Hello <first>,", so a greeting here made two (the enquiry
-  // drafter learned this; its booking sibling had not). Gated as an absence in
-  // search-test §26; what this check owns is the FACTS.
-  ok(!/^\s*(?:Hello|Hi|Dear)\s+Walk-in/i.test(draft) && /Check-in is from 15:00/.test(draft) && /remaining balance is £390\.00/.test(draft),
-    `the draft speaks this booking's facts, ungreeted (${draft.split('\n')[0]} … balance line present)`);
+  const comp = await page.evaluate(() => ({
+    body: (document.getElementById('enq-email-body') || {}).value || '',
+    tools: !!document.querySelector('#enq-email-modal [data-act="draftComposeReply"], #enq-email-modal [data-act="emailTplToggle"], #etpl-panel, #etpl-acts'),
+  }));
+  ok(comp.body === '' && !comp.tools, 'the composer opens empty, with no saved replies or draft button');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
@@ -1865,7 +1854,7 @@ let approveWill409 = false;
       const m = document.querySelector('#inbox-detail-pane .bhub-msg-text');
       return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
     })(),
-    draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'),
+    draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'), // must be gone
     // A FOURTH MATERIAL: the message card inherited .bhub-card's --r-panel and
     // .glass-panel's drop shadow, so it was the one RAISED, 28/40px-rounded
     // element between a 20px state card and 12px fold groups. It leads by SIZE.
@@ -1905,7 +1894,7 @@ let approveWill409 = false;
   ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
   ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
   ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
-  ok(j1.msgOpen && j1.draftRow, 'the MESSAGE never folds, with the ✨ draft row beneath it');
+  ok(j1.msgOpen && !j1.draftRow, 'the MESSAGE never folds, and carries no ✨ draft row');
   ok(j1.msgMaterial && j1.msgMaterial.r === '20px' && j1.msgMaterial.sh === 'none',
     `…on the page's own flat CARD material, not a raised 28/40px island (${j1.msgMaterial && j1.msgMaterial.r}, ${j1.msgMaterial && j1.msgMaterial.sh})`);
   ok(j1.msgMaterial && j1.msgMaterial.fs === 17, `…and the quote leads by SIZE instead (${j1.msgMaterial && j1.msgMaterial.fs}px)`);

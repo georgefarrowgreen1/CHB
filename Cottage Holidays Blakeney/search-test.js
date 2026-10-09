@@ -1076,79 +1076,21 @@ if (typeof ctx.cmdkIdfOf === 'function' && typeof ctx.cmdkScore === 'function') 
     vm.runInContext('__cmdkExp = []; __cmdkIdf = null;', ctx);
 }
 
-// ---- 26. AI-drafted enquiry reply: a new enquiry → a warm, ready-to-send draft
-// (greeting, availability, live quote, the FAQ answer to what they asked, CTA,
-// host sign-off). Deterministic — the owner edits, then sends. ----
-if (typeof ctx.chbDraftEnquiryReply === 'function') {
-    vm.runInContext(`
-        propertyMeta.jollyboat = { name: 'Jollyboat' };
-        propertyRates.jollyboat = { coupleRate: 130, extraAdultRate: 0, childRate: 0, damagesDeposit: 50, transactionPct: 0 };
-        siteContent['host-name'] = 'George';
-        siteContent['faqs-jollyboat'] = [{ q: 'Are dogs welcome?', a: 'Yes, up to two well-behaved dogs are welcome at no extra charge.' }];
-        activeFrontProperty = 'jollyboat';
-        Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); Object.keys(dbBlocks).forEach((k) => dbBlocks[k] = []);
-    `, ctx);
-    // RELATIVE DATES, NOT SEPTEMBER 2026. This fixture hardcoded 10–13 Sept 2026
-    // and went red the day that became the past: enquiryFreeNearby never offers a
-    // window before today, so with the enquiry behind us it found none and the
-    // "names the free windows" check failed for a reason nothing to do with the
-    // drafter (the clock class this file documents — a fixed date is only true on
-    // the days before it). Fourteen days out keeps both ±windows in the future.
-    const fwdIso = (n) => { const dd = new Date(ctx.todayDashed() + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + n); return dd.toISOString().slice(0, 10); };
-    const ukd = (iso) => iso.split('-').reverse().join('/');
-    const enq = { id: 99, name: 'Priya Shah', email: 'p@x.co', propKey: 'jollyboat', checkIn: fwdIso(14), checkOut: fwdIso(17), adults: 2, children: 0, guests: '2 adults', message: 'Hi, can we bring our dog?' };
-    const draft = ctx.chbDraftEnquiryReply(enq);
-    // THE DRAFT DOES NOT GREET, and that is the fix, not an omission.
-    // build_enquiry_reply_email() opens every reply with its own "Hello <name>,"
-    // — the template has to own it, since an owner typing a bare message still
-    // gets one — so a body that greeted as well went out reading "Hello Priya," /
-    // "Hi Priya," on every drafted reply. Invisible to both gates until the real
-    // draft was put through the real template. This half asserts the body is a
-    // body; test-emails-render §6 asserts the template greets exactly once.
-    check('draft does NOT greet — the template owns that', !/^\s*(Hi|Hello|Dear)\s+Priya/i.test(draft), draft.split('\n')[0]);
-    check('draft opens on the thanks line instead', /^Thanks so much for your enquiry/.test(draft), draft.split('\n')[0]);
-    check('draft names the cottage + dates', /Jollyboat/.test(draft) && draft.includes(ukd(enq.checkIn)) && draft.includes(ukd(enq.checkOut)));
-    check('draft states availability when free', /those dates are free/i.test(draft));
-    check('draft includes the live quote + refundable deposit', /total for your stay would be £\d/.test(draft) && /refundable damage deposit/.test(draft));
-    check('draft answers the asked question from the cottage FAQ (dogs)', /two well-behaved dogs are welcome/i.test(draft));
-    check('draft signs off with the host name', /Warm wishes,\nGeorge$/.test(draft.trim()));
-    // A clashing enquiry says the dates have gone — and NAMES the free windows
-    // rather than promising to go and look for them. enquiryFreeNearby() already
-    // knew them, and the enquiry hub was already printing them on the screen
-    // directly above the button that writes this draft.
-    vm.runInContext(`dbBookings.jollyboat = [{ id: 1, name: 'Xavier Blake', checkIn: '${fwdIso(15)}', checkOut: '${fwdIso(18)}' }];`, ctx);
-    const clash = ctx.chbDraftEnquiryReply(enq);
-    check('draft flags a clash when the dates are taken', /have just gone/i.test(clash));
-    const wins = ctx.enquiryFreeNearby(enq);
-    check('(fixture) the app can see free windows either side', wins.length >= 1, JSON.stringify(wins));
-    check('draft NAMES the free windows instead of offering to look',
-        wins.every((w) => clash.includes(w)) && !/find the nearest we can offer/.test(clash),
-        clash.split('\n')[1]);
-    // AND IT DOES NOT PRICE A STAY IT HAS JUST REFUSED. The quote line was
-    // unconditional, so it landed directly under the sentence saying the dates
-    // were gone — "£556.20 (4 nights)" for a stay that cannot happen.
-    check('draft carries NO quote when the dates are gone', !/total for your stay would be/.test(clash), clash);
-    // No host name → falls back to the business name.
-    vm.runInContext(`dbBookings.jollyboat = []; siteContent['host-name'] = '';`, ctx);
-    check('draft falls back to the business name with no host name set', /Cottage Holidays Blakeney$/.test(ctx.chbDraftEnquiryReply(enq).trim()));
-    // ITS SIBLING BROKE THE SAME RULE, and nothing had ever looked. ✨ Draft
-    // reply on a BOOKING goes through the same build_enquiry_reply_email, and
-    // chbDraftBookingReply opened with "Hello <first>," — so every drafted
-    // booking reply greeted the guest twice, the exact defect fixed above,
-    // shipped on the half that was never checked. Reported from a phone.
-    if (typeof ctx.chbDraftBookingReply === 'function') {
-        vm.runInContext(`siteContent['host-name'] = 'George';`, ctx);
-        const bk = { id: 'b1', dbId: 1, name: 'Laura Dean', email: 'l@x.co', checkIn: '2026-09-06', checkOut: '2026-09-09', checkInTime: '15:00', checkOutTime: '10:00', adults: 2, children: 0 };
-        const bd = ctx.chbDraftBookingReply(bk, 'jollyboat');
-        check('booking draft does NOT greet either — the template owns that',
-            !/^\s*(Hi|Hello|Dear)\s+Laura/i.test(bd), bd.split('\n')[0]);
-        check('booking draft opens on its own first line', /^Thanks for your message about your stay/.test(bd), bd.split('\n')[0]);
-        // And nowhere ELSE in the body, or the template's greeting still makes two.
-        check('…and never greets her further down', !/\b(Hi|Hello|Dear)\s+Laura\b/i.test(bd), bd);
-        check('booking draft still names the cottage + dates', /Jollyboat/.test(bd) && /06\/09\/2026/.test(bd) && /09\/09\/2026/.test(bd));
-    }
-    vm.runInContext(`siteContent['faqs-jollyboat'] = []; activeFrontProperty = '21a';`, ctx);
-}
+// ---- 26. The drafted replies are GONE (owner's ask, with Saved replies). The
+// composer opens empty and nothing on the enquiry page, the Inbox or the decline
+// ask writes the owner's words for them. ----
+check('the enquiry and booking drafters are gone', typeof ctx.chbDraftEnquiryReply !== 'function' && typeof ctx.chbDraftBookingReply !== 'function');
+check('…and the one-tap draft and the reply library with them', typeof ctx.enqReplyDraft !== 'function' && typeof ctx.draftComposeReply !== 'function' && typeof ctx.emailTplList !== 'function');
+// The fixture the drafter tests used to set up, which later sections rely on
+// (the gap-pricing checks price Jollyboat at £130 a night).
+vm.runInContext(`
+    propertyMeta.jollyboat = { name: 'Jollyboat' };
+    propertyRates.jollyboat = { coupleRate: 130, extraAdultRate: 0, childRate: 0, damagesDeposit: 50, transactionPct: 0 };
+    siteContent['host-name'] = '';
+    siteContent['faqs-jollyboat'] = [];
+    activeFrontProperty = '21a';
+    Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); Object.keys(dbBlocks).forEach((k) => dbBlocks[k] = []);
+`, ctx);
 
 // ---- 27. Proactive business pulse: this month vs last, in plain English, and
 // it leads a generic "how's business" answer. ----
