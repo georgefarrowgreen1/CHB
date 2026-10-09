@@ -530,7 +530,15 @@ async function open(browser, base, width) {
       rowArrow: drawn(arrow) && getComputedStyle(arrow).fontSize === '0px',
       nyChev: nyChev ? drawn(nyChev) : null,
       // …on the action's own line: font-size 0 put the chevron's baseline at its foot and dropped it a line.
-      nyLine: nyChev ? (() => { const a = nyChev.parentElement.getBoundingClientRect(), c = nyChev.getBoundingClientRect(); return Math.round(a.height) <= 22 && Math.abs((c.top + c.bottom) / 2 - (a.top + a.bottom) / 2) <= 2; })() : null,
+      // Measured in the LIST form: a lone task is the solo card, which hides the chevron by design.
+      nyLine: nyChev ? (() => {
+        const ny = document.getElementById('needs-you'), solo = ny.classList.contains('ny-solo');
+        ny.classList.remove('ny-solo');
+        const a = nyChev.parentElement.getBoundingClientRect(), c = nyChev.getBoundingClientRect();
+        const r = nyChev.getClientRects().length > 0 && Math.round(a.height) <= 22 && Math.abs((c.top + c.bottom) / 2 - (a.top + a.bottom) / 2) <= 2;
+        if (solo) ny.classList.add('ny-solo');
+        return r;
+      })() : null,
       segSvg: seg.length === 2 && seg.every((b) => b.querySelector('svg') && !/[❮❯]/.test(b.textContent)),
     };
     // The booking page: call, email and ⋯ are one outlined circle.
