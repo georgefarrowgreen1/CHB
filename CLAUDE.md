@@ -844,6 +844,40 @@ guard removed, the window scope removed — each fails its own checks).
   `.bhub-stay-row` sites (the hub, its intel mentions, the email reader's guest context); an action link's `'›'` glyph
   is the drawn chevron as a mask at the same 0.6; and two fields an id rule held at 44px (`#msg-search`,
   `#sweep-balance`/`#sweep-buffer`) take the one field height. Gated in ui-test-onelook §12.
+- **AND THE SECOND AUDIT, OVER EVERY ADMIN SCREEN** (section 20). Every glyph chevron left is the drawn one: the
+  `.bk-row-arrow` on every booking/enquiry/payment row (masked, keeping its hover tint and the mailbox's turn), the
+  Needs-you action's " ›", the owed line's "View ›", the guest book's "Add detail ›/Hide detail ‹" (now
+  `aria-expanded` with a turning chevron), and the timeline's "❮ ❯" (inline SVG in admin-views.html). Both hubs'
+  call / email / ⋯ are ONE icon button — a 44px outlined circle on the pill token, `corner-shape: round` pinned, because
+  `.btn-sm`'s continuous corner turned the ⋯ into a squircle beside two true circles and the booking hub's was a 56px
+  filled pill. "Keep it for damage" is the outlined second choice beside the filled one; the enquiry's quote breakdown
+  sits in the inset panel (it was a black stain on a 16px corner); a loading row takes the cell corner; and the
+  conversation sheet (the Inbox's pane from 1200px) takes the window's title — its inline serif at 22px is gone from
+  index.html — and the one field for its quick-replies picker and reply box (they were 44px, the box on the card's
+  20px corner beside a 12px search). Gated in §13
+  (break-tested: removing the section fails 7 of 8 — the eighth is the markup's SVG). NB the "££1,363" an audit
+  reads is the owed line's decorative £ tile beside its figure, `aria-hidden` — not a doubled sign on screen.
+  **A FONT-SIZE-0 INLINE-BLOCK SITS ON ITS FOOT.** The Needs-you chevron (a masked `inline-block` with `font-size: 0`)
+  has no line box, so its baseline is its bottom edge and it dropped a line under its own word — "Check" over "›",
+  the action 32px tall. The action is an `inline-flex` row centred on the word now; §13 measures the chevron's centre
+  against the action's. A glyph the mask replaces is a box, not a character: align it as one.
+- **THE TWO LONG WINDOWS JOIN** (section 21). The booking form (`#edit-modal`) and the email composer
+  (`#enq-email-modal`, a `.reviews-modal`) were the last centred cards with their own title (22px bold / the old
+  serif, inline in index.html — removed) and their own field heights (54–58px). They take the window's ground
+  (`--sheet-surface`, `--u-edge`, the card corner), title (17/600), field (48px, cell corner, 17px), caption tier
+  (`.modal-sec`) and switcher (the booking form's `.hs-mode` pairs are the pill track, the travelling pill hidden),
+  and **on a phone both rise from the bottom edge** like every other window. Written as explicit owner rules rather
+  than by adding the guest `.chb-sheet` class: that class's grabber is a block with a negative margin and its padding
+  rule would fight the booking form's padding-0 head/scroll/foot structure, which hides its own overflow — so the
+  grabber here is absolutely placed, and the docked foot loses its bottom corners and gains the home-indicator inset.
+  On a computer both stay cards in the middle. A window's close is one 44px outlined circle (they were 36, a filled
+  38 and 44), the key-safe sheet's title is the window's 17/600, and its lone "Got it" the accent answer as
+  glassAlert's OK is. Gated in ui-test-onelook §14 (break-tested: removing the section fails 6 of 7; the desktop
+  card check rightly survives).
+- **A FIXTURE ON A SCREEN THAT REFRESHES ITSELF IS RE-LAID UNTIL THE SCREEN SHOWS IT.** ui-test-onelook §9/§10/§12
+  failed once in CI and one run in six locally: the Inbox's own message fetch, or a data refresh, landed after the
+  fixture and repainted the hub/list empty. Each now re-seeds and re-opens (≤5 tries) until the rendered screen carries
+  the fixture's own text — a waiting loop, not a weakened check: a real regression still fails its named assertion.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption

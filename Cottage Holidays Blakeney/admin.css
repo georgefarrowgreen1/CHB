@@ -8913,3 +8913,94 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
   content: ''; width: 16px; height: 16px; background: var(--text-muted); opacity: 0.6;
   -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
 }
+
+/* ---------- 20. THE LAST STRAGGLERS (the second audit, every admin screen) ---------- */
+/* A row's arrow is the drawn chevron, not a '›' glyph; it keeps its own hover and turn. */
+:is(main, div).one-look .bk-row-arrow {
+  width: 16px; height: 16px; font-size: 0; background: currentColor;
+  -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+}
+:is(main, div).one-look .bk-owed-go { display: inline-flex; align-items: center; gap: 4px; }
+/* The hub's call, email and ⋯ are one icon button: a 44px outlined circle on both pages. */
+:is(main, div).one-look :is(.bhub-tools .bhub-contact > .bhub-cbtn, .bhub-actions > .bhub-menu-btn) {
+  width: 44px; height: 44px; min-height: 44px; padding: 0; flex: none; display: grid; place-items: center;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); corner-shape: round; background: none; box-shadow: none; color: var(--text-light);
+}
+/* The card's second choice is the outlined pill, beside the filled one. */
+:is(main, div).one-look .bhub-next-acts > .bhub-next-alt { background: none; border-color: var(--u-pill-edge); }
+/* The enquiry's quote breakdown sits in the inset panel, not a black stain on its own corner. */
+:is(main, div).one-look [data-grp='equote'] .price-box { background: var(--u-inset); border: 0; border-radius: var(--u-r-cell); }
+/* A loading row takes the cell's corner, like the rows it stands in for. */
+:is(main, div).one-look .skel-row { border-radius: var(--u-r-cell); }
+/* The guest book's detail toggle reads like the hub's other quiet links, with the drawn chevron. */
+:is(main, div).one-look .gb-more { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sub); font-weight: 600; }
+:is(main, div).one-look .gb-more::after {
+  content: ''; width: 16px; height: 16px; background: currentColor; transition: transform 0.32s var(--unfold);
+  -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+}
+:is(main, div).one-look .gb-more[aria-expanded="true"]::after { transform: rotate(-90deg); }
+/* A Needs-you row's action ends in the drawn chevron as well. */
+:is(main, div).one-look .ny-act { display: inline-flex; align-items: center; gap: 2px; }
+:is(main, div).one-look .ny-chev {
+  display: inline-block; flex: none; width: 16px; height: 16px; font-size: 0; background: currentColor;
+  -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+}
+/* The conversation (a sheet on a phone, the Inbox's pane from 1200px) takes the window's title and
+   the one field: the picker and the reply box were 44px and the reply box sat on the card's corner. */
+body.owner-mode:where(:has(main.one-look.active)) #messages-modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
+body.owner-mode:where(:has(main.one-look.active)) #messages-modal :is(#msg-canned, .chat-composer textarea) {
+  min-height: var(--u-h-field); border-radius: var(--u-r-cell); font-size: var(--fs-headline);
+}
+/* The timeline's Earlier / Later carry the drawn chevron too. */
+.tl-seg button svg { display: block; margin: auto; }
+
+/* ---------- 21. THE TWO LONG WINDOWS: the booking form and the email composer ---------- */
+/* Both were centred cards with their own title (22px bold / the old serif) and their own
+   field heights (54-58px). They take the window's ground, title, field, caption and switcher,
+   and on a phone they rise from the bottom edge like every other window. */
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box) {
+  background: var(--sheet-surface); border: 1px solid var(--u-edge); border-radius: var(--u-r-card);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { background: var(--sheet-surface); border-top-color: var(--u-edge); border-radius: 0 0 var(--u-r-card) var(--u-r-card); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#modal-title, #enq-email-title) { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-sec { font-size: var(--fs-caption); border-top-color: var(--u-edge); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) .modal-label { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) :is(.input-glass, .date-range-trigger) {
+  min-height: var(--u-h-field); padding: 12px 16px; background: var(--u-field); border: 1px solid var(--u-edge);
+  border-radius: var(--u-r-cell); box-shadow: none; font-family: var(--font-sans); font-size: var(--fs-headline);
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) :is(input.input-glass, select.input-glass, .date-range-trigger) { height: var(--u-h-field); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode {
+  display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control); background: var(--u-track); border: 0; border-radius: var(--r-pill);
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode > .hs-mode-btn {
+  flex: 1 1 0; min-height: var(--u-h-small); padding: 0 12px; border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--text-light); font-size: var(--fs-sub); font-weight: 600;
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode > .hs-mode-btn.is-on { background: var(--accent) !important; color: var(--accent-ink) !important; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode .chb-pill { display: none; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #enq-email-modal .reviews-modal-box { position: relative; }
+/* A window's close is the hub's icon button: one 44px outlined circle (they were 36, a filled 38 and 44). */
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-x, #enq-email-modal .reviews-modal-close, #ks-sheet .ks-sheet-x) {
+  width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; flex: none;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); corner-shape: round; background: none; color: var(--text-light);
+}
+/* The key-safe sheet's title is the window's too, and its lone "Got it" the one answer. */
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sheet .ks-sheet-head h2 { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
+@media (max-width: 640px) {
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) { align-items: flex-end; padding: max(20px, var(--safe-t)) 0 0; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box) {
+    max-width: none !important; width: 100%; margin: 0; max-height: calc(100dvh - var(--safe-t) - 20px);
+    border-radius: var(--u-r-card) var(--u-r-card) 0 0; border-bottom: 0;
+  }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal).open :is(.modal-box, .reviews-modal-box) { animation: chbSheetUp 420ms var(--sheet); }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal).closing:not(.open) :is(.modal-box, .reviews-modal-box) { animation: chbSheetDown 280ms var(--in) forwards; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-head { padding-top: 20px; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { border-radius: 0; padding-bottom: calc(14px + var(--safe-b)); }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #enq-email-modal .reviews-modal-box { padding: 28px 20px calc(20px + var(--safe-b)); }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box)::before {
+    content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%); z-index: 4;
+    border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
+  }
+}
