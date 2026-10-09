@@ -8877,3 +8877,21 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .msg-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 :is(main, div).one-look .msg-markread { font-family: var(--font-sans); cursor: pointer; }
 :is(main, div).one-look #messages-head-actions:empty { display: none; }
+
+/* ---------- 17. THE BOOKING AND ENQUIRY PAGES ---------- */
+/* The scope sits on the hub's content node as well as its page, so a hub docked
+   beside a list (Today, the Inbox) wears the same parts as one standing alone. */
+#view-booking-hub.one-look > .back-link, #view-enquiry-hub.one-look > .back-link {
+  display: flex; width: fit-content; margin: 0 0 4px max(-4px, calc((100% - 760px) / 2 - 4px));
+}
+/* A state is a capsule in sentence case, on the capsule's own type. */
+:is(main, div).one-look .bhub-plan-tag { text-transform: none; font-size: var(--fs-caption); font-weight: 600; padding: 2px 8px; }
+/* A state card's one action is a filled pill at every width, the booking page's own decision
+   button. Approve keeps its OWN green (gated in ui-test-ownerday); on a phone it was a ghost,
+   because the sticky bar carried the fill — and that bar now stands down while the card shows. */
+:is(main, div).one-look .bhub-next > .bhub-next-btn {
+  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 12px; padding: 0 20px;
+  border-radius: var(--r-pill); border-color: transparent; background: var(--accent); color: var(--accent-ink);
+  font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600;
+}
+:is(main, div).one-look .bhub-next > .bhub-next-btn.btn-approve { background: var(--ok); }

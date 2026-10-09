@@ -18,7 +18,9 @@
 //      wearing the guest Things-to-do class, whose display:flex broke the grid);
 //   §9 the Inbox joined: no sentence under the title, one chevron, the conversations
 //      one list card under one search with chips, and two verdicts that no longer
-//      claim more than they know (a read-but-unanswered chat, a mailbox that failed).
+//      claim more than they know (a read-but-unanswered chat, a mailbox that failed);
+//  §10 the booking and enquiry pages joined: a back link naming its screen, cards on the
+//      one radius, the one caption tier, sentence-case tags, Approve a filled pill.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -343,6 +345,65 @@ async function open(browser, base, width) {
     return r;
   });
   ok(focus.box && focus.id !== 'msg-canned', `the thread sheet takes focus itself, not the quick-replies picker (${focus.id || (focus.box ? 'the sheet' : '?')})`);
+
+  console.log('§10 the booking and enquiry pages wear the same parts');
+  const hub = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const raw = { id: 91, prop_key: '21a', name: 'Priya Chandra', email: 'priya@example.com', phone: '07700 900000', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(40), check_out: iso(44), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'unpaid', deposit_paid: 0,
+      agreed_total: 590, agreed_per_night: 135, agreed_nights: 4, agreed_nightly: 540, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0,
+      agreed_on: iso(0), hold_status: 'none', deposit_pct_override: 30, reg_url: 'guest-details.php?t=x', reg_submitted: 0 };
+    // Every screen change may reload the stores from the stub, so the fixture is laid down
+    // again immediately before each open.
+    const seed = () => { dbBookings['21a'] = [mapBookingFromApi(raw)]; };
+    seed();
+    const enq = { id: 92, prop_key: '21a', name: 'Grace Holloway', email: 'grace@example.com', phone: '',
+      address: '2 Lane', postcode: 'NR25 7AB', check_in: iso(60), check_out: iso(63), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+      message: 'Is the cottage free?', created_at: iso(-1) + ' 09:00:00' };
+    const back = () => ((document.querySelector('.page-view.active > .back-link') || {}).textContent || '').trim();
+    // The back link names the screen it returns to.
+    await openAccounts();
+    await wait(300);
+    seed();
+    await openBookingHub(91);
+    await wait(500);
+    const fromPay = back();
+    nav('view-backoffice');
+    await wait(200);
+    seed();
+    await openBookingHub(91);
+    await wait(500);
+    const fromToday = back();
+    const c = document.getElementById('booking-hub-content');
+    const grp = [...c.querySelectorAll('.bhub-fold-grp')].find((g) => g.getClientRects().length);
+    const cap = c.querySelector('.bhub-grpcap');
+    const tag = c.querySelector('.bhub-plan-tag');
+    const out = {
+      fromPay, fromToday,
+      radius: grp ? getComputedStyle(grp).borderTopLeftRadius : '',
+      cap: cap ? cap.textContent.trim() + ' / ' + getComputedStyle(cap).textTransform : '',
+      tag: tag ? tag.textContent.trim() + ' / ' + getComputedStyle(tag).textTransform : '',
+    };
+    enquiries.splice(0, enquiries.length, mapEnquiryFromApi(enq));
+    await openEnquiryHub('e92');
+    await wait(600);
+    const okv = getComputedStyle(document.body).getPropertyValue('--ok').trim();
+    const probe = document.createElement('span'); probe.style.color = okv; document.body.appendChild(probe);
+    const okRgb = getComputedStyle(probe).color; probe.remove();
+    const appr = document.querySelector('#enquiry-hub-content .bhub-next .btn-approve');
+    const card = document.querySelector('#enquiry-hub-content .bhub-next');
+    out.enqBack = back();
+    out.approve = appr ? { bg: getComputedStyle(appr).backgroundColor, okRgb, h: Math.round(appr.getBoundingClientRect().height), full: appr.getBoundingClientRect().width >= card.getBoundingClientRect().width - 48 } : null;
+    return out;
+  });
+  ok(hub.fromPay === 'Payments' && hub.fromToday === 'Today', `the booking page's back link names where it goes ("${hub.fromPay}", "${hub.fromToday}")`);
+  ok(hub.enqBack === 'Inbox', `…and the enquiry page's ("${hub.enqBack}")`);
+  ok(hub.radius === '20px', `its groups are cards on the one radius (${hub.radius})`);
+  ok(/^Needs attention \/ none$/.test(hub.cap), `its caption is the one tier, sentence case (${hub.cap})`);
+  ok(/^Custom \/ none$/.test(hub.tag), `a state tag is sentence case (${hub.tag})`);
+  ok(hub.approve && hub.approve.bg === hub.approve.okRgb && hub.approve.h >= 48 && hub.approve.full,
+    `on a phone Approve is the card's filled pill, in its own green (${JSON.stringify(hub.approve)})`);
 
   await page.close();
   await t.done(fails);

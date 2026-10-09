@@ -818,6 +818,18 @@ guard removed, the window scope removed — each fails its own checks).
   answered, so a `msgNeedsReply` thread keeps it amber ("1 to answer"). And the enquiry hub's dock repeated the state
   card's Approve while the card was on screen — `hubWatchSticky` now runs for both hubs, its observers kept in a
   WeakMap per hub node so one hub never unhooks the other's.
+- **THE BOOKING AND ENQUIRY PAGES JOIN** (section 17). The scope class sits on the hub's CONTENT node
+  (`#booking-hub-content` / `#enquiry-hub-content`, `:is(main, div).one-look`) as well as on its page, because those
+  nodes re-parent into Today's and the Inbox's side panes at ≥1200px — scoping the page alone would dress a hub
+  differently docked than standing alone. What moved: the back link names where it goes (`hubBackName()` from
+  `__hubReturnView`: "‹ Payments", "‹ Inbox", else "‹ Today" — exactly the screens `bookingHubBack` returns to; the
+  enquiry's is "‹ Inbox"), the groups are cards on the card radius (`--fold-r`), "Needs attention" is the one caption
+  tier, the plan badge reads "Custom"/"Default" in sentence case. The hub's own decision buttons are kept OUT of the
+  button classifier (`ONE_LOOK_NOT`: the ⋯ circle, the next-action pill, its outlined twin, the sticky bar) — they
+  already are the house look and a label-read kind would have turned "Record a payment" into an outlined pill.
+  **Approve keeps its own green** (gated in ui-test-ownerday): it was a ghost on a phone because the sticky bar
+  carried the fill, and that bar now stands down while the card is on screen, so the card's pill is filled at every
+  width.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
@@ -832,8 +844,10 @@ guard removed, the window scope removed — each fails its own checks).
   scope), **§9** (the Inbox: no sentence under the title, the drawn chevron, one conversations card, the chips, the
   empty archive's way back, and the three honest-verdict fixes — each break-tested), ui-test-hig (a run inside an open
   fold is the inset panel on the CELL radius), ui-test-mailbox (no sentence under the title; the declined row's
-  buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down), search-test (the occupancy
-  check went with the function).
+  buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down; the plan badge says "Custom"/"Default"), **§10** (the booking and
+  enquiry pages: the named back link from two screens, the card radius, the caption tier, the sentence-case tag, a
+  filled green Approve on a phone — break-tested on the back link and the content node's scope), search-test (the
+  occupancy check went with the function).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
