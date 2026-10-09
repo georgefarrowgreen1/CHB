@@ -455,6 +455,7 @@ if ($action === 'delete_sent') {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         json_out(['error' => 'Missing email address'], 400);
     }
+    $n = 0;
     try {
         $st = db()->prepare('DELETE FROM mail_sent WHERE LOWER(to_email) = ?');
         $st->execute([$to]);

@@ -5538,71 +5538,12 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   }
 }
 
-/* ---- Money landing + Income & tax folds: one centred 640px column (the
-   overview spans both desktop columns, so children centre themselves). A
-   landing booking row is a <button> wearing the kv anatomy (full UA reset —
-   the .cmdk-qa-row lesson): guest as label, figure right. */
-/* width:100% is load-bearing on every rail item: in the flex column below,
-   cross-axis AUTO margins cancel align-items:stretch, so without it each
-   card shrink-wraps its own content (measured — ragged widths at 390px). */
-#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap,
-#money-overview > .glass-panel {
-  width: 100%; max-width: 640px; margin-left: auto; margin-right: auto;
-}
-/* The landing is a flex column with the hub's ONE 12px gap (nothing else
-   supplies it here — on the hub the grid does). Captions keep the 20/8
-   rhythm via longhand top/bottom margins, because a margin SHORTHAND would
-   silently overwrite the auto centring above (the .mo-pulse lesson). */
-#money-overview { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); }
-#money-overview .bhub-grpcap { width: 100%; margin-top: 8px; margin-bottom: -4px; }
 /* [hidden] must actually hide: .bhub-grpcap's display:block out-ranks the
-   UA rule, so the empty Needs-attention caption painted over a clean day. */
+   UA rule, so an empty caption painted over a clean page. */
 .bhub-grpcap[hidden] { display: none; }
-/* An empty async holder must not spend a flex gap slot. */
-#mo-attn-async:empty { display: none; }
-/* Income & tax's folds share the drill-down panel's LEFT rail (the headline
-   and year select above them are left-aligned) — centring only these made
-   two columns of one page. */
 #accounts-content .bhub-fold-grp { max-width: 640px; }
-.mo-pulse { font-size: var(--fs-body); color: var(--text-muted); width: 100%; max-width: 640px; margin: 2px auto 0; }
-/* On rail screens the answers align with the title's own left rail — the
-   title started at one edge and the centred 640px column at another, two
-   starting lines on one screen. LONGHAND margin-left only (the .mo-pulse
-   shorthand lesson); below the rail the centred column stays gate-pinned. */
-body.rail-on.admin-screen #money-overview .bhub-fold-grp,
-body.rail-on.admin-screen #money-overview .bhub-grpcap,
-body.rail-on.admin-screen #money-overview > .glass-panel,
-body.rail-on.admin-screen #money-overview .mo-pulse {
-  margin-left: 0;
-}
-/* The "More" caption + group sit just OUTSIDE #money-overview, so the rail rule
-   above never reached them: they stayed centred while the answers went flush-left.
-   Same regime as the answers — centred on the 640 column, flush-left on rail. */
-#accounts-index > .bhub-grpcap,
-#accounts-index > .settings-group {
-  max-width: 640px;
-  margin-left: auto;
-  margin-right: auto;
-}
-body.rail-on.admin-screen #accounts-index > .bhub-grpcap,
-body.rail-on.admin-screen #accounts-index > .settings-group {
-  margin-left: 0;
-}
 .mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; min-height: 44px; align-items: center; }
 @media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
-/* Every row in these folds names a GUEST (or a Due-now marker) — sentence
-   case at reading size, not the reference cards' 84px uppercase column.
-   A NAME IS NOT AN ELLIPSIS: nowrap in whatever the money column left over —
-   at 390, "Richard Berry · payment" had 95px of 182 and painted "Richard Be…"
-   while the VALUE kept a full "£660.00 · due 05/10/2026". Two lines for the
-   name, the date on its own quiet line, the figure alone on the right. */
-#money-overview .bhub-kv-label {
-  flex: 1 1 auto; font-size: var(--fs-body); letter-spacing: 0; text-transform: none;
-  color: var(--text-light); min-width: 0;
-  overflow: hidden; white-space: normal;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-}
-#money-overview .bhub-kv-val { flex: 0 0 auto; white-space: nowrap; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 /* THE TRENDS FOLD IS PART OF THE PAGE, not the old dashboard inside it. A
    .mo-card is a 20px-radius bordered card, and four of them sat inside a fold
    group whose own bottom corners are 12px — a child rounder than its container.
@@ -8632,7 +8573,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
    input inside it, so it painted a second box within the first. The input is bare
    text now, the outline takes the accent while typing, and the clear is a plain
    cross that shows only once there is something to clear. */
-:is(main, div).one-look .al-search { gap: 10px; padding: 0 4px 0 16px; }
+:is(main, div).one-look .al-search { gap: 8px; padding: 0 4px 0 16px; }
 :is(main, div).one-look .al-search input { min-height: 0; height: 46px; padding: 0; margin: 0; background: none !important; border: 0; border-radius: 0; box-shadow: none; }
 :is(main, div).one-look .al-search:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
 :is(main, div).one-look .al-search .al-clear { width: 40px; height: 40px; background: none; color: var(--text-muted); }
@@ -9315,4 +9256,233 @@ body.owner-mode #ib.is-wide.is-triple .ib-side { display: block; flex: none; wid
   #ib .ib-folders > button.is-landed { animation: none; }
   #ib .ib-msg.is-pending .ib-bub { animation: none; opacity: 0.7; }
   #ib .ib-msg.is-new, #ib .ib-rowwrap.is-new, #ib .ib-msg.is-flash .ib-bub { animation: none; }
+}
+
+/* ===================================================================
+   PAYMENTS: WHERE THE MONEY IS, IN ONE LOOK (the approved Payments demo).
+   The journey card, what needs you, what is coming in, every movement and
+   the tax year, with a detail page for a stay, a payout, moving money out
+   and the books. Every class is pm- and every rule hangs off #pm, the head's
+   + menu or the form sheet, so nothing else in the back office reaches it. A
+   phone shows the list and a detail page slides over it below the header;
+   from 880px of room the two sit side by side.
+   =================================================================== */
+body.owner-mode :is(#pm, .pm-sheet, .pm-head-r) {
+  --pm-ground: var(--dark-grey);
+  --pm-card: var(--u-ground);
+  --pm-edge: var(--u-edge);
+  --pm-well: var(--u-track);
+  --pm-pill-edge: var(--u-pill-edge);
+  --pm-field: var(--u-field);
+  --pm-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px 40px rgba(60, 48, 30, 0.16); }
+#pm [hidden], .pm-head-r [hidden] { display: none !important; }
+#pm { container: pm / inline-size; position: relative; color: var(--text-light); }
+:where(#pm, .pm-sheet, .pm-head-r) button { font: inherit; color: inherit; cursor: pointer; }
+#pm .pm-list { min-width: 0; padding: 0 0 40px; }
+
+/* the head: the status pill and the + beside it */
+.pm-head-r { display: flex; align-items: center; gap: 8px; }
+.pm-addwrap { position: relative; }
+.pm-add { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--pm-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; transition: transform 0.32s var(--settle); }
+.pm-add svg { width: 20px; height: 20px; }
+.pm-add[aria-expanded="true"] svg { rotate: 45deg; transition: rotate 0.28s var(--out); }
+.pm-menu { position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 236px; width: max-content; background: var(--sheet-surface); border: 1px solid var(--pm-edge); border-radius: var(--r-sm); padding: 4px; box-shadow: var(--pm-shadow); }
+.pm-menu > button { display: flex; align-items: center; width: 100%; text-align: left; border: 0; background: none; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm); font-size: var(--fs-body); color: var(--text-light); }
+.pm-menu > button:focus-visible { outline-offset: -2px; }
+
+/* WHERE YOUR MONEY IS: three stops of one journey, joined by a line, and the answer under them. */
+#pm .pm-flow { margin-top: 4px; border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
+#pm .pm-flow-stops { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#pm .pm-flow-stops::before { content: ""; position: absolute; left: calc(100% / 6); right: calc(100% / 6); top: 28px; height: 2px; background: var(--pm-edge); }
+#pm .pm-stop { position: relative; border: 0; background: none; text-align: center; padding: 20px 8px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+#pm .pm-stop + .pm-stop { border-left: 1px solid var(--pm-edge); }
+#pm .pm-stop-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--pm-ground); border: 2px solid var(--pm-pill-edge); color: var(--text-muted); position: relative; z-index: 1; }
+#pm .pm-stop-dot svg { width: 11px; height: 11px; }
+#pm .pm-stop.owed .pm-stop-dot { border-color: var(--warn); color: var(--warn-text); }
+#pm .pm-stop.way .pm-stop-dot { border-color: var(--info); color: var(--info-text); }
+#pm .pm-stop.bank .pm-stop-dot { border-color: var(--ok); color: var(--ok-text); background: color-mix(in srgb, var(--ok) 16%, var(--pm-ground)); }
+#pm .pm-stop-k { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin-top: 4px; }
+#pm .pm-stop-v { font-size: var(--fs-headline); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+#pm .pm-stop-s { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.3; text-wrap: balance; }
+#pm .pm-stop.is-changed .pm-stop-v { animation: pmSettle 0.6s var(--out); }
+@keyframes pmSettle { 30% { translate: 0 -3px; color: var(--accent-text); } }
+#pm .pm-ready { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--pm-edge); background: color-mix(in srgb, var(--ok) 7%, transparent); padding: 12px 16px; min-height: 60px; }
+#pm .pm-ready b { font-size: var(--fs-body); font-weight: 600; display: block; }
+#pm .pm-ready small { font-size: var(--fs-caption); color: var(--text-muted); display: block; line-height: 1.35; }
+#pm .pm-ready-v { font-size: var(--fs-headline); font-weight: 600; color: var(--ok-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+:is(#pm, .pm-sheet) .pm-chev { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
+
+/* captions, cards and money rows */
+#pm .pm-capline { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin: 24px 4px 8px; display: flex; justify-content: space-between; gap: 8px; }
+#pm .pm-capline.is-attn { color: var(--warn-text); }
+#pm .pm-capn { font-weight: 500; }
+#pm .pm-rows { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
+#pm .pm-rows > * + * { border-top: 1px solid var(--pm-edge); }
+#pm .pm-mrow, #pm .pm-needrow { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 12px 16px; min-height: 60px; }
+#pm .pm-mrow.is-new { animation: pmRowIn 0.6s var(--out); }
+@keyframes pmRowIn { from { opacity: 0; translate: 0 -8px; } }
+:is(#pm, .pm-sheet) .pm-mic, :is(#pm, .pm-sheet) .pm-ava { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+#pm .pm-mic { background: var(--pm-well); color: var(--text-muted); }
+#pm .pm-mic svg { width: 17px; height: 17px; }
+#pm .pm-mic.in { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+#pm .pm-mic.out { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+#pm .pm-mic.pay { color: var(--info-text); background: color-mix(in srgb, var(--info) 15%, transparent); }
+#pm .pm-mic.bad { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+:is(#pm, .pm-sheet) .pm-ava { color: white; font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0.02em; background: hsl(var(--h, 210) 34% 42%); }
+:is(#pm, .pm-sheet) .pm-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#pm .pm-plain { border: 0; background: none; padding: 0; text-align: left; }
+:is(#pm, .pm-sheet) .pm-t { font-size: var(--fs-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(#pm, .pm-sheet) .pm-s { font-size: var(--fs-caption); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
+:is(#pm, .pm-sheet) .pm-cd { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
+#pm .pm-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+#pm .pm-v { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pm .pm-v.plus { color: var(--ok-text); }
+#pm .pm-v.muted { color: var(--text-muted); font-weight: 500; }
+#pm .pm-acts-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+#pm .pm-acts-row .pm-btn { flex: 1 1 0; min-height: 40px; padding: 0 12px; font-size: var(--fs-sub); }
+#pm .pm-daycap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); padding: 8px 16px; background: color-mix(in srgb, var(--text-light) 2.5%, transparent); }
+:is(#pm, .pm-sheet) .pm-cap { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; border: 1px solid; line-height: 1.5; }
+:is(#pm, .pm-sheet) .pm-cap.warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border-color: color-mix(in srgb, var(--warn) 24%, transparent); }
+:is(#pm, .pm-sheet) .pm-cap.bad { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border-color: color-mix(in srgb, var(--danger) 24%, transparent); }
+:is(#pm, .pm-sheet) .pm-cap.ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 13%, transparent); border-color: color-mix(in srgb, var(--ok) 24%, transparent); }
+:is(#pm, .pm-sheet) .pm-cap.unk { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border-color: color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
+:is(#pm, .pm-sheet) .pm-cap.info { color: var(--info-text); background: color-mix(in srgb, var(--info) 14%, transparent); border-color: color-mix(in srgb, var(--info) 28%, transparent); }
+#pm .pm-empty { text-align: center; color: var(--text-muted); padding: 32px 20px; font-size: var(--fs-sub); }
+#pm .pm-empty b { display: block; color: var(--text-light); font-size: var(--fs-body); margin-bottom: 4px; font-weight: 600; }
+#pm .pm-foot { display: flex; justify-content: center; margin-top: 8px; }
+#pm .pm-linkbtn { border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); min-height: 44px; padding: 0 12px; border-radius: var(--r-pill); }
+
+/* the activity filters: the Inbox's chips */
+#pm .pm-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 1px 12px; margin: 0 -1px; }
+#pm .pm-filters::-webkit-scrollbar { display: none; }
+#pm .pm-filters > button { flex: none; border: 1px solid var(--pm-pill-edge); background: none; border-radius: var(--r-pill); min-height: 36px; padding: 0 12px; font-size: var(--fs-sub); font-weight: 600; position: relative; }
+#pm .pm-filters > button::after { content: ""; position: absolute; inset: -4px 0; }
+#pm .pm-filters > button[aria-pressed="true"] { background: var(--text-light); color: var(--dark-grey); border-color: transparent; }
+
+/* the tax year in one card */
+#pm .pm-books { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
+#pm .pm-books-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 16px 16px 8px; }
+#pm .pm-books-top b { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+#pm .pm-books-top span { font-size: var(--fs-caption); color: var(--text-muted); font-weight: 600; }
+#pm .pm-books-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px 16px 16px; }
+#pm .pm-books-mini div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#pm .pm-books-mini small { font-size: var(--fs-caption); color: var(--text-muted); }
+#pm .pm-books-mini span { font-size: var(--fs-sub); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pm .pm-q { display: flex; align-items: flex-end; gap: 8px; height: 48px; padding: 0 16px 12px; }
+#pm .pm-q i { flex: 1; border-radius: 4px 4px 2px 2px; background: color-mix(in srgb, var(--accent) 55%, transparent); min-height: 3px; }
+#pm .pm-q i.now { background: color-mix(in srgb, var(--accent) 28%, transparent); outline: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -1px; }
+#pm .pm-ql { display: flex; gap: 8px; padding: 0 16px 12px; margin-top: -4px; }
+#pm .pm-ql span { flex: 1; text-align: center; font-size: var(--fs-micro); color: var(--text-muted); font-weight: 600; }
+#pm .pm-hero .pm-q, #pm .pm-hero .pm-ql { padding-left: 0; padding-right: 0; }
+#pm .pm-openrow { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; border-top: 1px solid var(--pm-edge); border-radius: 0; background: none; padding: 0 16px; min-height: 48px; font-size: var(--fs-body); font-weight: 500; color: var(--accent-text); text-align: left; }
+
+/* buttons: the accent pill, and the outlined second choice */
+:is(#pm, .pm-sheet) .pm-btn { min-height: 44px; border-radius: var(--r-pill); padding: 0 16px; font-weight: 600; font-size: var(--fs-body); border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; transition: transform 0.32s var(--settle); }
+:is(#pm, .pm-sheet) .pm-btn svg { width: 17px; height: 17px; }
+:is(#pm, .pm-sheet) .pm-btn.primary { background: var(--accent); color: var(--accent-ink); }
+:is(#pm, .pm-sheet) .pm-btn.second { background: none; border-color: var(--pm-pill-edge); }
+:is(#pm, .pm-sheet) .pm-btn:disabled { opacity: 0.45; cursor: default; }
+:is(#pm, .pm-sheet) .pm-btn:not(:disabled):active, .pm-add:active { transform: scale(var(--sc, 0.97)); transition-duration: 0.08s; transition-timing-function: var(--in); }
+
+/* ── detail pages: they slide over on a phone, as a conversation does ── */
+#pm .pm-detail { position: fixed; top: var(--pm-top, 64px); left: 0; right: 0; bottom: 0; z-index: 1400; background: var(--dark-grey); display: flex; flex-direction: column; overflow: hidden; translate: 100% 0; visibility: hidden; transition: translate 0.38s var(--out), visibility 0s linear 0.38s; }
+#pm.is-detail .pm-detail { translate: 0 0; visibility: visible; transition: translate 0.38s var(--out); }
+body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
+#pm .pm-dhead { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding: 4px 16px 12px; border-bottom: 1px solid var(--pm-edge); background: var(--dark-grey); }
+#pm .pm-back { justify-self: start; border: 0; background: none; color: var(--accent-text); font-weight: 500; font-size: var(--fs-body); display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 12px 0 0; margin-left: -4px; }
+#pm .pm-back svg { width: 18px; height: 18px; }
+#pm .pm-dtitle { min-width: 0; }
+#pm .pm-dname { font-family: var(--font-sans); font-size: var(--fs-title); font-weight: 500; margin: 0; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pm .pm-dsub { font-size: var(--fs-sub); color: var(--text-muted); margin: 2px 0 0; }
+#pm .pm-dbody { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+/* in a scrolling column a clipped card may otherwise shrink to nothing */
+#pm .pm-dbody > * { flex-shrink: 0; }
+#pm .pm-hero { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); }
+#pm .pm-hero-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+#pm .pm-hero-top > span { font-size: var(--fs-sub); color: var(--text-muted); }
+#pm .pm-hero-top b { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
+#pm .pm-hero-top b small { font-size: var(--fs-sub); font-weight: 500; color: var(--text-muted); }
+#pm .pm-hero-sub { font-size: var(--fs-caption); color: var(--text-muted); }
+#pm .pm-hero-sub:empty { display: none; }
+#pm .pm-warnword { color: var(--warn-text); font-weight: 600; }
+#pm .pm-okword { color: var(--ok-text); }
+#pm .pm-bar { height: 6px; border-radius: 3px; background: var(--pm-well); overflow: hidden; }
+#pm .pm-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
+#pm .pm-dcap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin: 4px 4px -8px; }
+#pm .pm-kvs { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
+#pm .pm-kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; font-size: var(--fs-sub); min-height: 44px; border: 0; border-radius: 0; background: none; text-align: left; }
+#pm .pm-kvs > * + * { border-top: 1px solid var(--pm-edge); }
+#pm .pm-kv > span:first-child { color: var(--text-muted); min-width: 0; }
+#pm .pm-kv b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pm .pm-kv .pm-ink { color: var(--text-light); }
+#pm .pm-kv .pm-s { white-space: normal; }
+#pm .pm-kv.total { font-weight: 600; }
+#pm .pm-kv.total > span:first-child { color: var(--text-light); }
+#pm .pm-plan .pm-kv { min-height: 56px; }
+#pm .pm-plan .pm-kv > span:first-child { color: var(--text-light); display: flex; flex-direction: column; gap: 1px; flex: 1; }
+#pm .pm-plan .pm-kv > span:first-child small { color: var(--text-muted); font-size: var(--fs-caption); }
+#pm .pm-kv-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+
+/* a stay's money, told in order: what happened (solid), what will (dashed) */
+#pm .pm-tl { list-style: none; margin: 0; padding: 4px 0 0 4px; display: flex; flex-direction: column; }
+#pm .pm-tl li { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 12px; padding: 0 0 16px; }
+#pm .pm-tl li::before { content: ""; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--pm-edge); }
+#pm .pm-tl li:last-child::before { display: none; }
+#pm .pm-tl li.future::before { background: repeating-linear-gradient(var(--pm-pill-edge) 0 4px, transparent 4px 8px); }
+#pm .pm-tl-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--pm-well); color: var(--text-muted); z-index: 1; }
+#pm .pm-tl-dot svg { width: 12px; height: 12px; }
+#pm .pm-tl li.in .pm-tl-dot { background: color-mix(in srgb, var(--ok) 18%, var(--pm-ground)); color: var(--ok-text); }
+#pm .pm-tl li.out .pm-tl-dot { background: color-mix(in srgb, var(--warn) 18%, var(--pm-ground)); color: var(--warn-text); }
+#pm .pm-tl li.bad .pm-tl-dot { background: color-mix(in srgb, var(--danger) 18%, var(--pm-ground)); color: var(--danger-text); }
+#pm .pm-tl li.future .pm-tl-dot { background: var(--pm-ground); border: 2px dashed var(--pm-pill-edge); }
+#pm .pm-tl-t { font-size: var(--fs-sub); font-weight: 500; }
+#pm .pm-tl-s { font-size: var(--fs-caption); color: var(--text-muted); }
+#pm .pm-tl-s button { color: var(--accent-text); font-weight: 600; border: 0; background: none; padding: 0; }
+#pm .pm-tl-v { font-size: var(--fs-sub); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pm .pm-tl-v.plus { color: var(--ok-text); }
+#pm .pm-tl li.future :is(.pm-tl-t, .pm-tl-v) { color: var(--text-muted); }
+#pm .pm-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+#pm .pm-acts .pm-btn { flex: 1 1 140px; }
+#pm .pm-note { font-size: var(--fs-caption); color: var(--text-muted); margin: -4px 4px 0; text-wrap: pretty; }
+#pm .pm-yr { display: flex; gap: 4px; padding: 4px; min-height: 44px; background: var(--pm-well); border-radius: var(--r-pill); }
+#pm .pm-yr > button { flex: 1 1 0; border: 0; background: none; border-radius: var(--r-pill); min-height: 36px; font-size: var(--fs-sub); font-weight: 600; }
+#pm .pm-yr > button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+/* forms: they rise from the bottom on a phone and sit in the middle on a computer */
+.pm-scrim { position: fixed; inset: 0; z-index: 2040; background: rgba(0, 0, 0, 0.38); opacity: 0; pointer-events: none; transition: opacity 0.25s var(--out); }
+.pm-scrim.show { opacity: 1; pointer-events: auto; }
+.pm-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2050; color: var(--text-light); background: var(--sheet-surface); border-top-left-radius: var(--r-lg); border-top-right-radius: var(--r-lg); padding: 8px 16px calc(20px + var(--safe-b)); translate: 0 105%; visibility: hidden; transition: translate 0.42s var(--out), visibility 0s linear 0.42s; display: flex; flex-direction: column; gap: 12px; max-height: 88vh; overflow-y: auto; }
+.pm-sheet.show { translate: 0 0; visibility: visible; transition: translate 0.42s var(--out); }
+.pm-sheet::before { content: ""; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--pm-pill-edge); flex: none; }
+.pm-sheet h3 { margin: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
+.pm-sheet p { margin: 0; font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+.pm-sheet .pm-who { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-sm); }
+.pm-sheet .pm-field { display: flex; flex-direction: column; gap: 8px; }
+.pm-sheet .pm-flabel { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.pm-sheet input { min-height: 48px; border-radius: var(--r-sm); border: 1px solid var(--pm-edge); background: var(--pm-field); color: var(--text-light); padding: 0 16px; font-size: var(--fs-headline); }
+.pm-sheet input:focus { outline: 2px solid var(--accent-text); outline-offset: 0; }
+.pm-sheet .pm-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.pm-sheet .pm-chips > button { border: 1px solid var(--pm-pill-edge); background: none; border-radius: var(--r-pill); min-height: 36px; padding: 0 12px; font-size: var(--fs-sub); font-weight: 600; position: relative; }
+.pm-sheet .pm-chips > button::after { content: ""; position: absolute; inset: -4px 0; }
+.pm-sheet .pm-chips > button[aria-pressed="true"] { background: var(--text-light); color: var(--dark-grey); border-color: transparent; }
+.pm-sheet .pm-sheet-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.pm-sheet .pm-sheet-acts .pm-btn { flex: 1 1 140px; }
+body.pm-sheet-open { overflow: hidden; }
+
+/* ── Computer: the page and the details beside it ── */
+body.owner-mode #pm.is-wide { display: flex; border: 1px solid var(--pm-edge); border-radius: var(--r-lg); overflow: hidden; background: var(--dark-grey); }
+body.owner-mode #pm.is-wide .pm-list { flex: none; width: 440px; border-right: 1px solid var(--pm-edge); padding: 16px 16px 40px; overflow-y: auto; overscroll-behavior: contain; }
+body.owner-mode #pm.is-wide .pm-detail { position: relative; inset: auto; translate: none; visibility: visible; flex: 1; min-width: 0; z-index: auto; transition: none; }
+body.owner-mode #pm.is-wide .pm-dhead { padding: 20px 24px 12px; }
+body.owner-mode #pm.is-wide .pm-back { display: none; }
+body.owner-mode #pm.is-wide .pm-dbody { padding: 20px 24px 40px; }
+@media (min-width: 641px) {
+  .pm-sheet { left: 50%; right: auto; bottom: 24px; width: 440px; border-radius: var(--r-lg); translate: -50% 110%; padding-bottom: 20px; }
+  .pm-sheet.show { translate: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pm .pm-detail, .pm-sheet, .pm-scrim { transition: none; }
+  #pm .pm-stop.is-changed .pm-stop-v, #pm .pm-mrow.is-new { animation: none; }
 }

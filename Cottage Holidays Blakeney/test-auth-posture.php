@@ -48,6 +48,7 @@ $RATE = 'rate_limit(';
 $REGISTRY = [
     // ---- Owner-only JSON endpoints -------------------------------------
     'accounts.php' => ['admin'],
+    'money.php' => ['admin'],
     'activity-log.php' => ['admin'],
     'activity.php' => ['admin'],
     'admin-bootstrap.php' => ['admin'],
@@ -173,6 +174,7 @@ $REGISTRY = [
     'csp-lib.php' => ['lib', [], 'pure CSP severity/matcher for csp-report.php (no I/O, no entry)'],
     'backup-crypt.php' => ['lib', [], 'pure AES-256-CBC/PBKDF2 encryption of the weekly dump before it is emailed (openssl container format); required by backup.php, no entry point of its own'],
     'sweep-lib.php' => ['lib', [], 'pure safe-to-move arithmetic for accounts.php (no I/O, no entry)'],
+    'money-lib.php' => ['lib', [], 'the one money ledger the Payments page reads (pure: events, position, books; no I/O)'],
     'bank-lib.php' => ['lib', [], 'Square linked-bank-account cache + the can-money-move decision; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
