@@ -857,6 +857,19 @@ guard removed, the window scope removed — each fails its own checks).
   20px corner beside a 12px search). Gated in §13
   (break-tested: removing the section fails 7 of 8 — the eighth is the markup's SVG). NB the "££1,363" an audit
   reads is the owed line's decorative £ tile beside its figure, `aria-hidden` — not a doubled sign on screen.
+- **THE TWO LONG WINDOWS JOIN** (section 21). The booking form (`#edit-modal`) and the email composer
+  (`#enq-email-modal`, a `.reviews-modal`) were the last centred cards with their own title (22px bold / the old
+  serif, inline in index.html — removed) and their own field heights (54–58px). They take the window's ground
+  (`--sheet-surface`, `--u-edge`, the card corner), title (17/600), field (48px, cell corner, 17px), caption tier
+  (`.modal-sec`) and switcher (the booking form's `.hs-mode` pairs are the pill track, the travelling pill hidden),
+  and **on a phone both rise from the bottom edge** like every other window. Written as explicit owner rules rather
+  than by adding the guest `.chb-sheet` class: that class's grabber is a block with a negative margin and its padding
+  rule would fight the booking form's padding-0 head/scroll/foot structure, which hides its own overflow — so the
+  grabber here is absolutely placed, and the docked foot loses its bottom corners and gains the home-indicator inset.
+  On a computer both stay cards in the middle. A window's close is one 44px outlined circle (they were 36, a filled
+  38 and 44), the key-safe sheet's title is the window's 17/600, and its lone "Got it" the accent answer as
+  glassAlert's OK is. Gated in ui-test-onelook §14 (break-tested: removing the section fails 6 of 7; the desktop
+  card check rightly survives).
 - **A FIXTURE ON A SCREEN THAT REFRESHES ITSELF IS RE-LAID UNTIL THE SCREEN SHOWS IT.** ui-test-onelook §9/§10/§12
   failed once in CI and one run in six locally: the Inbox's own message fetch, or a data refresh, landed after the
   fixture and repainted the hub/list empty. Each now re-seeds and re-opens (≤5 tries) until the rendered screen carries

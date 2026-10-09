@@ -23085,7 +23085,7 @@ function keysafeHow() {
         + '<li><b>A guest leaves.</b> The page asks for a new code once they’ve gone.</li>'
         + '<li><b>You set the safe.</b> Use the code it suggests or your own, then tap “I’ve set the safe”.</li>'
         + '<li><b>The next guest sees it</b> on their booking page ' + __keysafeDays + ' days before they arrive. It is never emailed.</li></ol>'
-        + '<button type="button" class="ks-rotate" ' + chbAttrs('keysafeSheetClose') + '>Got it</button>');
+        + '<button type="button" class="ks-rotate is-primary" ' + chbAttrs('keysafeSheetClose') + '>Got it</button>');
 }
 // The guest-side reveal window, mirrored for DISPLAY only (my-bookings.php
 // owns the real gate) — from revealDays before check-in through check-out.

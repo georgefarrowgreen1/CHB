@@ -574,6 +574,65 @@ async function open(browser, base, width) {
   ok(last.quote === '12px 0px', `the enquiry's quote sits in the inset panel on the cell's corner (${last.quote})`);
   ok(last.sheet === '17px 600 48px 48px 12px', `the conversation's title is the window's, its picker and reply box the one field (${last.sheet})`);
 
+  console.log('§14 the two long windows: the booking form and the email composer');
+  const longWin = async (w) => {
+    await page.setViewportSize({ width: w, height: w > 640 ? 900 : 844 });
+    return page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+      const bk = mapBookingFromApi({ id: 98, prop_key: '21a', name: 'Sofia Laurent', email: 'sofia@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
+        check_in: iso(30), check_out: iso(33), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440,
+        agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(0), hold_status: 'none' });
+      dbBookings['21a'] = [bk];
+      nav('view-backoffice');
+      await wait(300);
+      const read = (boxSel, titleSel, fieldSel) => {
+        const box = document.querySelector(boxSel), r = box.getBoundingClientRect(), c = getComputedStyle(box);
+        const t = getComputedStyle(document.querySelector(titleSel)), f = document.querySelector(fieldSel), fc = getComputedStyle(f);
+        return {
+          edge: Math.round(r.bottom) >= innerHeight - 1 && Math.round(r.left) <= 1 && Math.round(r.right) >= innerWidth - 1,
+          corners: c.borderTopLeftRadius + '/' + c.borderBottomLeftRadius, bg: c.backgroundColor,
+          title: t.fontSize + ' ' + t.fontWeight, field: Math.round(f.getBoundingClientRect().height) + ' ' + fc.borderTopLeftRadius,
+        };
+      };
+      // The window ground every other window stands on, for comparison.
+      const gd = document.querySelector('#glass-dialog .glass-dialog-box');
+      void glassAlert('probe');
+      await wait(450);
+      const ground = getComputedStyle(gd).backgroundColor;
+      document.getElementById('glass-dialog-ok').click();
+      await wait(350);
+      openAddBooking();
+      await wait(600);
+      const book = read('#edit-modal .modal-box', '#modal-title', '#modal-name');
+      const xs = (sel) => { const x = document.querySelector(sel); if (!x) return ''; const c = getComputedStyle(x), r = x.getBoundingClientRect(); return Math.round(r.width) + ' ' + c.backgroundColor + ' ' + c.borderTopWidth; };
+      book.x = xs('#edit-modal .modal-x');
+      const on = document.querySelector('#edit-modal .hs-mode-btn.is-on');
+      book.seg = on ? getComputedStyle(on).borderTopLeftRadius + ' ' + Math.round(on.getBoundingClientRect().height) : '';
+      closeModal();
+      await wait(400);
+      dbBookings['21a'] = [bk]; // a refresh may have landed since
+      openBookingEmail(bk.id);
+      await wait(600);
+      const mail = read('#enq-email-modal .reviews-modal-box', '#enq-email-title', '#enq-email-subject');
+      mail.x = xs('#enq-email-modal .reviews-modal-close');
+      try { closeEnquiryEmailModal(); } catch (e) {}
+      await wait(400);
+      return { ground, book, mail };
+    });
+  };
+  const phone = await longWin(390);
+  ok(phone.book.edge && phone.book.corners === '20px/0px', `on a phone the booking form rises from the bottom edge (${phone.book.corners})`);
+  ok(phone.mail.edge && phone.mail.corners === '20px/0px', `…and so does the email composer (${phone.mail.corners})`);
+  ok(phone.book.bg === phone.ground && phone.mail.bg === phone.ground, `both stand on the window's own ground (${phone.book.bg} / ${phone.mail.bg} vs ${phone.ground})`);
+  ok(phone.book.title === '17px 600' && phone.mail.title === '17px 600', `both titles are the window's (${phone.book.title} / ${phone.mail.title})`);
+  ok(phone.book.field === '48 12px' && phone.mail.field === '48 12px', `their fields are the one field (${phone.book.field} / ${phone.mail.field})`);
+  ok(/^9+px 36$/.test(phone.book.seg), `the booking form's choices are the one pill switcher (${phone.book.seg})`);
+  ok(phone.book.x === '44 rgba(0, 0, 0, 0) 1px' && phone.mail.x === phone.book.x, `a window's close is the one outlined 44px circle (${phone.book.x} / ${phone.mail.x})`);
+  const desk = await longWin(1280);
+  ok(!desk.book.edge && desk.book.corners === '20px/20px', `on a computer the booking form stays a card in the middle (${desk.book.corners})`);
+  await page.setViewportSize({ width: 390, height: 844 });
+
   await page.close();
   await t.done(fails);
 })().catch(async (e) => { console.error('FAILED:', e); process.exit(1); });
