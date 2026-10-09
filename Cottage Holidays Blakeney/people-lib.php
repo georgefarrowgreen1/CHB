@@ -263,6 +263,7 @@ const PEOPLE_POLICY = [
     'push.php' => ['subscribe_admin' => 'all', 'unsubscribe_admin' => 'all', 'test_admin' => 'all'],
     // The Payments screens.
     'accounts.php' => ['*' => 'money'],
+    'money.php' => ['*' => 'money'],
     'expenses.php' => ['*' => 'money'],
     'square-setup.php' => ['payouts_refresh' => 'money'],
     // Prices and cottages.

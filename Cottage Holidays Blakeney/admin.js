@@ -15710,59 +15710,20 @@ async function openAccounts() {
         return;
     }
     if (chbScreenRefused('money')) return;
-    // NAVIGATE FIRST, then load: the tax-year list is a dropdown ON this page,
-    // not permission to show it. Awaiting it first meant a poor signal gave 9s
-    // of nothing then an alert, still on Today (measured). See CLAUDE.md.
+    // NAVIGATE FIRST, then load (the poor-signal rule): the page paints from what
+    // is in hand and money.php's figures fill in when they land.
     nav('view-accounts');
     adminHistPush('view-accounts');
-    adminLoading('money-overview', 'your money');
-    // Fetch available tax years from the backend
-    let years = [];
-    try {
-        const res = await apiGet('accounts.php');
-        years = res.years || [];
-    } catch (e) {
-        adminNetFail(() => window.openAccounts());
-    }
-    if (years.length === 0) years = [taxYearStartOf(todayDashed())];
-    const sel = document.getElementById('accounts-year');
-    if (sel) {
-        sel.innerHTML = years
-            .map((y) => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`)
-            .join('');
-    }
-    // Ensure booking data is loaded (the owner may land here without opening the
-    // back office first), then render the payments manager + income report.
+    accountsShowIndex();
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
     } catch (e) {}
+    // The returns already issued, which damageHeld reads to know what is still held.
     try {
         await loadDepositReturns();
     } catch (e) {}
-    try {
-        renderDepositsDue();
-    } catch (e) {}
-    try {
-        renderMoneyPanel();
-    } catch (e) {}
-    try {
-        renderMoneyForecast();
-    } catch (e) {}
-    try {
-        renderMoneyFeed();
-    } catch (e) {}
-    try {
-        await loadExpenses();
-    } catch (e) {}
-    // Guarded like every sibling: this can now run before the data lands, and an
-    // unhandled reject here surfaces as a raw error toast from the facade stub.
-    try {
-        await renderAccounts();
-    } catch (e) {}
-    try {
-        renderMoneyOverview();
-    } catch (e) {}
-    accountsShowIndex();
+    renderMoneyOverview();
+    loadExpenses().catch(() => {});
 }
 
 // ---- Money router: Apple-style index → drill-down sub-pages (mirrors Settings) ----
@@ -15793,6 +15754,16 @@ function accountsOpen(section) {
     // The pricing coach moved INTO Manage → Pricing; old links, saved history and
     // recents land there.
     if (section === 'pricingcoach') { openPricingCoach(); return; }
+    // The old money pages are parts of the one Payments page now: Income & tax is
+    // the books, Move money out its own detail, the balances and the feed are the
+    // landing. The typed-balance worksheet stays one tap from Move money out.
+    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move' };
+    if (Object.prototype.hasOwnProperty.call(PM_ROUTE, section)) {
+        accountsShowIndex();
+        if (PM_ROUTE[section]) pmOpen(PM_ROUTE[section]);
+        return;
+    }
+    if (section === 'balance') section = 'sweep';
     // A section that no longer exists (an old remembered screen, a stale link) lands on the
     // landing rather than an empty page titled "Payments".
     if (!document.getElementById('asec-' + section)) { accountsShowIndex(); return; }
@@ -17544,489 +17515,971 @@ function chbAutopayUptakeHtml() {
                 : ''}
         </div>`;
 }
-function renderMoneyOverview() {
-    const el = document.getElementById('money-overview');
-    if (!el) return;
-    const today = todayDashed();
-    const now = chbNow();
-    const curTY = taxYearStartOf(today);
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAYMENTS: WHERE THE MONEY IS, IN ONE LOOK (the approved Payments demo).
+   Money takes one journey: a guest owes it, Square takes it, it lands in the
+   bank, and the owner moves it out, less the deposits that go back. The page
+   shows that journey, then what needs the owner, what is coming in, every
+   movement and the tax year. Two sources, each said once:
+     - who owes what: the bookings' own derivations (bookingDue and the plan
+       helpers), so this page, the booking page and Today cannot disagree;
+     - where the money is, the activity and the books: money.php, which reads
+       accounts.php's report and the Square payout cache (money-lib.php).
+   Markup uses data-pm and pm- classes, so the app's dispatcher and the one-look
+   restyler leave it alone (the Inbox's rule).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PM_IC = {
+    in: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M15 17H7V9"/></svg>',
+    out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></svg>',
+    bank: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/></svg>',
+    receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 21.5 20H2.5z"/><path d="M12 10v4M12 17.2v.1"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    chev: '<svg class="pm-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+    card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/></svg>',
+    email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>',
+    home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/></svg>',
+};
+const PM_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const PM_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const PM_FILTERS = [['all', 'All'], ['in', 'Money in'], ['out', 'Money out'], ['payout', 'Payouts'], ['deposit', 'Deposits']];
+let __pm = null; // the last good money.php summary (kept when a refresh fails)
+let __pmErr = false;
+let __pmStamp = 0;
+let __pmT = 0;
+let __pmAct = [];
+let __pmActEnd = false;
+let __pmShown = 20;
+let __pmFilter = 'all';
+let __pmOpen = null; // 'stay:<id>' | 'payout:<id>' | 'move' | 'books' | null
+let __pmFig = null;
+let __pmYear = 0;
+const __pmBooks = {};
+const __pmStay = {};
+const __pmPayout = {};
+const __pmFresh = new Set();
 
-    // Trailing 12 calendar months (oldest → newest) for the received-cash trend.
-    const months = [];
-    for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        months.push({
-            key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
-            // slice(0,3): en-GB's "short" month is FOUR letters for September
-            // ("Sept"), and the axis columns are equal-width flex tracks, so the
-            // one long label overflowed into its neighbour and painted "AugSept".
-            short: d.toLocaleDateString('en-GB', { month: 'short' }).slice(0, 3),
-            received: 0,
+const pmNow = () => chbNow().getTime();
+const pmIso = (s) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : 0;
+};
+const pmDayStart = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+const pmDaysFrom = (t) => Math.round((pmDayStart(t) - pmDayStart(pmNow())) / 864e5);
+const pmDm = (t) => { const d = new Date(t); return `${d.getDate()} ${PM_MON[d.getMonth()]}` + (d.getFullYear() !== new Date(pmNow()).getFullYear() ? ' ' + d.getFullYear() : ''); };
+const pmDdm = (t) => `${PM_DAY[new Date(t).getDay()]} ${pmDm(t)}`;
+function pmDayLabel(t) {
+    const n = pmDaysFrom(t);
+    return n === 0 ? 'Today' : n === -1 ? 'Yesterday' : n === 1 ? 'Tomorrow' : pmDdm(t);
+}
+function pmRange(a, b) {
+    const x = new Date(pmIso(a)), y = new Date(pmIso(b));
+    if (!pmIso(a) || !pmIso(b)) return '';
+    return x.getMonth() === y.getMonth() && x.getFullYear() === y.getFullYear()
+        ? `${x.getDate()}–${y.getDate()} ${PM_MON[x.getMonth()]}`
+        : `${x.getDate()} ${PM_MON[x.getMonth()]} – ${y.getDate()} ${PM_MON[y.getMonth()]}`;
+}
+const pmProp = (pk) => (propertyMeta[pk] && propertyMeta[pk].name) || pk || '';
+const pmDot = (pk) => (pk ? `<i class="pm-cd" style="background:var(--prop-${escapeHtml(pk)}, var(--accent))" aria-hidden="true"></i>` : '');
+function pmHue(name) {
+    let h = 0;
+    const s = String(name || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return h;
+}
+const pmInitials = (name) => String(name || '').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0].toUpperCase()).slice(0, 2).join('') || '?';
+const pmAva = (name) => `<span class="pm-ava" style="--h:${pmHue(name)}" aria-hidden="true">${escapeHtml(pmInitials(name))}</span>`;
+const pmFirst = (name) => String(name || '').trim().split(/[\s&]+/)[0] || 'the guest';
+const pmRoot = () => document.getElementById('pm');
+const pmWide = () => { const r = pmRoot(); return !!r && r.getBoundingClientRect().width >= 880; };
+
+/* ── Who owes what: the bookings' own rules, one row per booking ── */
+function pmOwedRow(pk, b) {
+    const today = todayDashed();
+    let dg = null;
+    try { dg = bookingDue(pk, b); } catch (e) { return null; }
+    if (!dg || !(dg.balance > 0.005)) return null;
+    const past = (b.checkOut || '') <= today;
+    const due = bookingPlanDueDate(b) || '';
+    let inWin = false;
+    try { inWin = bookingInBalanceWindow(b); } catch (e) {}
+    const consent = !!(b.autopayConsentAt && !b.autopayRevokedAt && b.autopayDue);
+    const declined = consent && (b.autopayAttempts || 0) >= 3;
+    const first = !(dg.paid > 0.005);
+    const asked = String((first ? b.depositRequestedAt : b.balanceRemindedAt || b.balanceRequestedAt || b.depositRequestedAt) || '').slice(0, 10);
+    // A card on file pays itself on the day, so it is never overdue unless it was declined.
+    const overdue = (!consent || declined) && (past || !!(due && ukShiftDays(due, 7) < today));
+    return {
+        pk, b, dg, due, past, first, asked, overdue, declined,
+        auto: consent && !declined && !past,
+        dueNow: past || inWin || first,
+        arranged: bookingOwnerArranged(b),
+    };
+}
+function pmOwed() {
+    const rows = [];
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+        const r = pmOwedRow(pk, b);
+        if (r) rows.push(r);
+    }));
+    rows.sort((a, z) => String(a.due || a.b.checkIn || '').localeCompare(String(z.due || z.b.checkIn || '')));
+    return rows;
+}
+function pmPlan(r) {
+    const stage = r.first ? 'deposit' : 'balance';
+    const dDue = pmIso(r.due);
+    if (r.overdue) return { tone: 'bad', cap: 'Overdue', sub: r.past ? 'the stay is over' : 'was due ' + pmDm(dDue) };
+    if (r.declined) return { tone: 'warn', cap: 'Card declined', sub: 'the card on file was declined' };
+    if (r.auto) {
+        const nx = pmIso(r.b.autopayNextAt || r.b.autopayDue);
+        return { tone: 'ok', cap: 'Collects itself', sub: 'card on file' + (nx ? ' · ' + pmDdm(nx) : '') };
+    }
+    if (r.arranged) return { tone: 'unk', cap: 'You arranged it', sub: String(r.b.paymentMethod || '').toLowerCase() + (dDue ? ' · due ' + pmDm(dDue) : '') };
+    if (r.dueNow) {
+        return r.asked
+            ? { tone: 'warn', cap: 'Asked · not paid', sub: `${stage} asked ${pmDm(pmIso(r.asked))}` }
+            : { tone: 'warn', cap: 'Due now', sub: `${stage} · not asked yet` };
+    }
+    if (r.asked) return { tone: 'info', cap: 'Link sent', sub: dDue ? 'due ' + pmDm(dDue) : 'sent ' + pmDm(pmIso(r.asked)) };
+    const self = squareAdminEnabled && r.b.email;
+    return { tone: 'unk', cap: dDue ? 'Asks ' + pmDm(dDue) : 'Later', sub: self ? 'the balance email goes by itself' : dDue ? 'due ' + pmDm(dDue) : 'not asked yet' };
+}
+// Deposits waiting to go back: held, and the guest has left (or said they have).
+function pmDepsBack() {
+    const out = [];
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+        let h = null;
+        try { h = damageHeld(pk, b); } catch (e) {}
+        if (h && h.held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) out.push({ pk, b, held: h.held });
+    }));
+    return out;
+}
+const pmCap = (tone, text) => `<span class="pm-cap ${tone}">${escapeHtml(text)}</span>`;
+
+/* ── The page ── */
+function pmPill(rows) {
+    const od = rows.filter((r) => r.overdue).length;
+    const dueNow = rows.filter((r) => !r.overdue && r.dueNow && !r.auto && !r.declined).reduce((s, r) => s + r.dg.balance, 0);
+    headPillSet('mo-pill', od
+        ? headPill('bad', `${od} overdue`, { label: `${od} ${od === 1 ? 'payment is' : 'payments are'} overdue` })
+        : dueNow > 0.005
+            ? headPill('warn', `${gbp(dueNow).replace(/\.00$/, '')} due now`)
+            : headPill('ok', rows.length ? 'Nothing due yet' : 'Nothing to collect'));
+}
+function pmArrives(iso) {
+    const t = pmIso(iso);
+    if (!t) return 'in the next payout';
+    const n = pmDaysFrom(t);
+    return n <= 0 ? 'arrives today' : n === 1 ? 'arrives tomorrow' : n < 7 ? 'arrives ' + PM_DAY[new Date(t).getDay()] : 'arrives ' + pmDm(t);
+}
+function pmFlowHtml(rows) {
+    const owed = rows.reduce((s, r) => s + r.dg.balance, 0);
+    const owers = rows.length;
+    const P = __pm && __pm.position;
+    const bad = !!(P && P.error);
+    const fig = (v) => (!P ? '…' : bad ? '—' : gbp(v));
+    const wait = !P ? (__pmErr ? 'couldn’t check' : 'working it out') : bad ? 'couldn’t work it out' : '';
+    const waySub = wait || (P.next_arrival ? pmArrives(P.next_arrival) : P.with_square > 0.005 ? 'in the next payout' : 'nothing on its way');
+    const bankSub = wait || (P.last_moved ? 'since ' + pmDm(P.last_moved * 1000) : 'not moved out yet');
+    const stop = (cls, ic, k, v, s, act, label) =>
+        `<button type="button" class="pm-stop ${cls}" data-pm="${act}" aria-label="${escapeHtml(label)}"><span class="pm-stop-dot" aria-hidden="true">${ic}</span><span class="pm-stop-k">${k}</span><span class="pm-stop-v">${v}</span><span class="pm-stop-s">${escapeHtml(s)}</span></button>`;
+    const readySub = !P || bad ? (wait || '') : P.held > 0.005 ? `after ${gbp(P.held)} of guests’ deposits` : 'no guest deposits held';
+    return `<section class="pm-flow" aria-label="Where your money is">
+        <div class="pm-flow-stops">
+            ${stop('owed', PM_IC.clock, 'Owed to you', gbp(owed), owers ? `${owers} guest${owers === 1 ? '' : 's'}` : 'nobody', 'to-coming', `Owed to you ${gbp(owed)} from ${owers} guest${owers === 1 ? '' : 's'}`)}
+            ${stop('way', PM_IC.card, 'With Square', fig(P && P.with_square), waySub, 'to-way', `With Square ${fig(P && P.with_square)}, ${waySub}`)}
+            ${stop('bank', PM_IC.bank, 'In your bank', fig(P && P.in_bank), bankSub, 'move', `Paid into your bank ${bankSub}: ${fig(P && P.in_bank)}`)}
+        </div>
+        <button type="button" class="pm-ready" data-pm="move" aria-label="Ready to move out ${fig(P && P.ready)}">
+            <span><b>Ready to move out</b><small>${escapeHtml(readySub)}</small></span>
+            <span class="pm-ready-v">${fig(P && P.ready)}</span>${PM_IC.chev}
+        </button>
+    </section>`;
+}
+function pmNeedsHtml(rows) {
+    const out = [];
+    const P = __pm && __pm.position;
+    const failed = P && Array.isArray(P.failed) ? P.failed : [];
+    if (failed.length) {
+        out.push(`<div class="pm-needrow">
+            <span class="pm-mic bad" aria-hidden="true">${PM_IC.alert}</span>
+            <span class="pm-main"><span class="pm-t">A Square payout didn’t arrive</span><span class="pm-s">check the bank account in Square</span></span>
+            <span></span></div>`);
+    }
+    rows.filter((r) => r.overdue).forEach((r) => {
+        const id = escapeHtml(String(r.b.id));
+        const canAsk = !r.arranged && squareAdminEnabled && r.b.email;
+        const ask = canAsk
+            ? (r.asked
+                ? `<button type="button" class="pm-btn second" data-pm="remind" data-arg="${id}">Send a reminder</button>`
+                : `<button type="button" class="pm-btn second" data-pm="askone" data-arg="${id}">Ask to pay</button>`)
+            : '';
+        out.push(`<div class="pm-needrow">
+            <span class="pm-mic bad" aria-hidden="true">${PM_IC.alert}</span>
+            <button type="button" class="pm-main pm-plain" data-pm="stay" data-arg="${id}"><span class="pm-t">${escapeHtml(r.b.name || 'Guest')}</span><span class="pm-s">${pmDot(r.pk)}${escapeHtml(pmProp(r.pk))} · ${escapeHtml(pmPlan(r).sub)}</span></button>
+            <span class="pm-v">${gbp(r.dg.balance)}</span>
+            <div class="pm-acts-row">${ask}<button type="button" class="pm-btn primary" data-pm="record" data-arg="${id}">Record a payment</button></div>
+        </div>`);
+    });
+    pmDepsBack().forEach((d) => {
+        const id = escapeHtml(String(d.b.id));
+        out.push(`<div class="pm-needrow">
+            <span class="pm-mic out" aria-hidden="true">${PM_IC.shield}</span>
+            <button type="button" class="pm-main pm-plain" data-pm="stay" data-arg="${id}"><span class="pm-t">${escapeHtml(d.b.name || 'Guest')}’s deposit</span><span class="pm-s">${pmDot(d.pk)}${escapeHtml(pmProp(d.pk))} · left ${pmDm(pmIso(d.b.checkOut))}</span></button>
+            <span class="pm-v">${gbp(d.held)}</span>
+            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="keep" data-arg="${id}">Keep it</button><button type="button" class="pm-btn primary" data-pm="return" data-arg="${id}">Return ${gbp(d.held)}</button></div>
+        </div>`);
+    });
+    return out.length ? `<div class="pm-capline is-attn"><span>Needs you</span></div><div class="pm-rows">${out.join('')}</div>` : '';
+}
+function pmComingHtml(rows) {
+    const list = rows.filter((r) => !r.overdue);
+    if (!list.length) return '';
+    const sum = list.reduce((s, r) => s + r.dg.balance, 0);
+    return `<div class="pm-capline" id="pm-coming"><span>Coming in</span><span class="pm-capn">${gbp(sum)}</span></div><div class="pm-rows">${list.map((r) => {
+        const p = pmPlan(r);
+        return `<button type="button" class="pm-mrow" data-pm="stay" data-arg="${escapeHtml(String(r.b.id))}" aria-label="${escapeHtml(r.b.name || 'Guest')}, ${gbp(r.dg.balance)}, ${escapeHtml(p.cap)}">
+            ${pmAva(r.b.name)}<span class="pm-main"><span class="pm-t">${escapeHtml(r.b.name || 'Guest')}</span><span class="pm-s">${pmDot(r.pk)}${escapeHtml(pmProp(r.pk))} · ${escapeHtml(p.sub)}</span></span>
+            <span class="pm-r"><span class="pm-v">${gbp(r.dg.balance)}</span>${pmCap(p.tone, p.cap)}</span></button>`;
+    }).join('')}</div>`;
+}
+// One movement as a row: what it is, who, and the figure.
+function pmKind(e) {
+    const name = e.name || 'A guest';
+    const stay = e.booking_id ? 'b' + e.booking_id : '';
+    switch (e.kind) {
+        case 'in': {
+            const how = e.method === 'card'
+                ? `card${e.fee != null ? ' · fee ' + gbp(e.fee) : ''}${e.status === 'pending' ? ' · processing' : ''}`
+                : `${String(e.method || 'payment').toLowerCase()}, recorded by you`;
+            return { ic: 'in', icon: PM_IC.in, t: name, sub: `${e.what} · ${how}`, v: '+' + gbp(e.amount), vc: 'plus', act: stay ? 'stay' : '', arg: stay };
+        }
+        case 'refund': return { ic: 'out', icon: PM_IC.out, t: name, sub: 'Refund to their card' + (e.status === 'pending' ? ' · on its way' : ''), v: '−' + gbp(e.amount), vc: '', act: stay ? 'stay' : '', arg: stay };
+        case 'back': return { ic: 'out', icon: PM_IC.shield, t: name, sub: 'Deposit returned' + (e.status === 'pending' ? ' · on its way' : ''), v: '−' + gbp(e.amount), vc: '', act: stay ? 'stay' : '', arg: stay };
+        case 'kept': return { ic: 'in', icon: PM_IC.shield, t: name, sub: 'Deposit kept · counts as income', v: gbp(e.amount), vc: 'muted', act: stay ? 'stay' : '', arg: stay };
+        case 'expense': return { ic: 'out', icon: PM_IC.receipt, t: e.who || e.what, sub: `${e.what} · expense${e.prop ? ' · ' + pmProp(e.prop) : ''}`, v: '−' + gbp(e.amount), vc: '', act: 'books', arg: '' };
+        case 'moved': return { ic: '', icon: PM_IC.out, t: 'Moved out', sub: 'from your bank, recorded by you', v: gbp(e.amount), vc: 'muted', act: 'move', arg: '' };
+        case 'payout': {
+            const arr = pmIso(e.arrival);
+            const sub = e.state === 'way' ? `On its way${arr ? ' · ' + pmDdm(arr) : ''}` : e.state === 'failed' ? 'Didn’t arrive · check your bank details in Square' : e.state === 'landed' ? 'In your bank' : 'Sent by Square';
+            return { ic: e.state === 'failed' ? 'bad' : 'pay', icon: PM_IC.bank, t: 'Square payout', sub, v: gbp(e.amount), vc: 'muted', act: 'payout', arg: e.payout };
+        }
+        default: return null;
+    }
+}
+function pmKeep(e) {
+    const f = __pmFilter;
+    return f === 'all'
+        || (f === 'in' && (e.kind === 'in' || e.kind === 'kept'))
+        || (f === 'out' && ['refund', 'back', 'expense', 'moved'].includes(e.kind))
+        || (f === 'payout' && e.kind === 'payout')
+        || (f === 'deposit' && (e.kind === 'back' || e.kind === 'kept' || (e.kind === 'in' && e.deposit > 0)));
+}
+function pmActivityHtml() {
+    let html = `<div class="pm-capline" id="pm-activity"><span>Activity</span></div><div class="pm-filters" role="group" aria-label="Show">${PM_FILTERS.map(([k, l]) => `<button type="button" data-pm="filter" data-arg="${k}" aria-pressed="${__pmFilter === k}">${l}</button>`).join('')}</div><div class="pm-rows">`;
+    if (!__pm) {
+        html += `<div class="pm-empty">${__pmErr ? '<b>Couldn’t load the activity</b>Check your connection. <button type="button" class="pm-linkbtn" data-pm="retry">Try again</button>' : 'Loading…'}</div></div>`;
+        return html;
+    }
+    const all = __pmAct.filter(pmKeep);
+    const items = all.slice(0, __pmShown);
+    let day = null;
+    items.forEach((e) => {
+        const k = pmKind(e);
+        if (!k) return;
+        const t = e.at * 1000;
+        const d = pmDayStart(t);
+        if (d !== day) { day = d; html += `<div class="pm-daycap">${pmDayLabel(t)}</div>`; }
+        const tag = k.act ? `button type="button" data-pm="${k.act}" data-arg="${escapeHtml(String(k.arg || ''))}"` : 'div';
+        html += `<${tag} class="pm-mrow${__pmFresh.has(e.id) ? ' is-new' : ''}" aria-label="${escapeHtml(k.t)}, ${escapeHtml(k.sub)}, ${escapeHtml(k.v)}">
+            <span class="pm-mic ${k.ic}" aria-hidden="true">${k.icon}</span>
+            <span class="pm-main"><span class="pm-t">${escapeHtml(k.t)}</span><span class="pm-s">${escapeHtml(k.sub)}</span></span>
+            <span class="pm-v ${k.vc}">${k.v}</span></${k.act ? 'button' : 'div'}>`;
+    });
+    if (!items.length) html += '<div class="pm-empty"><b>Nothing here</b>Nothing of this kind yet.</div>';
+    html += '</div>';
+    if (all.length > __pmShown || !__pmActEnd) html += '<div class="pm-foot"><button type="button" class="pm-linkbtn" data-pm="older">Show older</button></div>';
+    return html;
+}
+function pmQuarterNow(year) {
+    const t = pmNow();
+    const y = taxYearStartOf(todayDashed());
+    if (year !== y) return -1;
+    const b = [`${y}-07-06`, `${y}-10-06`, `${y + 1}-01-06`].map(pmIso);
+    return t < b[0] ? 0 : t < b[1] ? 1 : t < b[2] ? 2 : 3;
+}
+const PM_QL = ['Apr–Jun', 'Jul–Sep', 'Oct–Dec', 'Jan–Apr'];
+function pmQuarters(b, labels) {
+    const q = b.quarters || [0, 0, 0, 0];
+    const mx = Math.max(...q, 1);
+    const now = pmQuarterNow(b.year);
+    return `<div class="pm-q" aria-hidden="true">${q.map((v, i) => `<i class="${i === now ? 'now' : ''}" style="height:${Math.max(4, Math.round((v / mx) * 34))}px"></i>`).join('')}</div>
+        <div class="pm-ql" aria-hidden="true">${PM_QL.map((l, i) => `<span>${l}${labels ? `<br>${q[i] ? '£' + Math.round(q[i]).toLocaleString('en-GB') : '–'}` : ''}</span>`).join('')}</div>`;
+}
+function pmBooksCardHtml() {
+    const b = __pm && __pm.books;
+    if (!b) return '';
+    return `<div class="pm-capline"><span>The books · ${taxYearShort(b.year)}</span></div><section class="pm-books">
+        <div class="pm-books-top"><b>${gbp(b.profit)}</b><span>${b.profit < 0 ? 'loss' : 'profit'} so far</span></div>
+        <div class="pm-books-mini"><div><small>Income</small><span>${gbp(b.income + b.kept)}</span></div><div><small>Card fees</small><span>−${gbp(b.fees)}</span></div><div><small>Expenses</small><span>−${gbp(b.expenses)}</span></div></div>
+        ${pmQuarters(b, false)}
+        <button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button>
+    </section>`;
+}
+function pmRenderList() {
+    const lp = document.getElementById('pm-list');
+    if (!lp) return;
+    const rows = pmOwed();
+    pmPill(rows);
+    const keep = lp.scrollTop;
+    lp.innerHTML = pmFlowHtml(rows) + pmNeedsHtml(rows) + pmComingHtml(rows) + pmActivityHtml() + pmBooksCardHtml();
+    lp.scrollTop = keep;
+    // A figure that changed settles, so the owner sees what moved; the first paint stays still.
+    const P = __pm && __pm.position;
+    const figs = { owed: rows.reduce((s, r) => s + r.dg.balance, 0), way: P ? P.with_square : null, bank: P ? P.in_bank : null };
+    if (__pmFig) {
+        Object.keys(figs).forEach((k) => {
+            if (figs[k] == null || __pmFig[k] == null || Math.abs(figs[k] - __pmFig[k]) < 0.005) return;
+            const el = lp.querySelector(`.pm-stop.${k}`);
+            if (el) el.classList.add('is-changed');
         });
     }
-    const monthIndex = {};
-    months.forEach((m, i) => (monthIndex[m.key] = i));
+    __pmFig = figs;
+    __pmFresh.clear();
+}
 
-    let monthRevenue = 0,
-        receivedTY = 0,
-        owedUpcoming = 0,
-        receivedUpcoming = 0,
-        owedCount = 0,
-        next90 = 0;
-    const byCottageTY = {};
-    Object.keys(propertyMeta).forEach((k) => (byCottageTY[k] = 0));
-    const in90 = formatDashed(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 90));
-    const monthStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
-    const monthEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            const ps = paymentSummary(propKey, b);
-            const recv = Math.max(0, ps.deposit || 0);
-            if (recv > 0 && b.paymentDate) {
-                const mk = (b.paymentDate || '').slice(0, 7);
-                if (monthIndex[mk] != null) months[monthIndex[mk]].received += recv;
-                if (taxYearStartOf(b.paymentDate) === curTY) {
-                    receivedTY += recv;
-                    byCottageTY[propKey] = (byCottageTY[propKey] || 0) + recv;
-                }
-            }
-            if ((b.checkIn || '') >= monthStart && (b.checkIn || '') <= monthEnd)
-                monthRevenue += ps.total || 0;
-            if ((b.checkOut || '') >= today) {
-                // Outstanding/collected KPIs use the SAME deposit-folded figures
-                // (displayGrand) as the Payments & balances rows, so the two
-                // screens always quote identical numbers for the same bookings.
-                // Income aggregates above (receivedTY, trend) stay rental-only.
-                const pG =
-                    b.agreedPrice ||
-                    priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-                const gt = displayGrand(pG, ps, b.holdStatus, b);
-                receivedUpcoming += gt.paid || 0;
-                // Deposit-folded frame (gt), not rental (ps): the donut and its
-                // "collected of due" caption must agree with the To-collect group,
-                // which uses bookingDue — an uncollected refundable deposit is money
-                // still to collect.
-                if (!gt.fullyPaid) {
-                    owedUpcoming += gt.balance || 0;
-                    owedCount++;
-                }
-                if ((b.checkIn || '') >= today && (b.checkIn || '') <= in90)
-                    next90 += ps.total || 0;
-            }
-        });
+/* ── Detail pages ── */
+function pmHead(title, sub) {
+    return `<div class="pm-dhead"><button type="button" class="pm-back" data-pm="close">${PM_IC.back}Payments</button><div class="pm-dtitle"><h2 class="pm-dname">${title}</h2>${sub ? `<p class="pm-dsub">${sub}</p>` : ''}</div></div>`;
+}
+function pmStayPage(id) {
+    const b = findBookingById(id);
+    const loc = b ? findBookingLocation(id) : null;
+    if (!b || !loc) return pmHead('Booking') + '<div class="pm-dbody"><p class="pm-note">This booking isn’t loaded. It may have been cancelled.</p></div>';
+    const pk = loc.propKey;
+    const dg = bookingDue(pk, b);
+    const r = pmOwedRow(pk, b);
+    const p = r ? pmPlan(r) : null;
+    const owed = r ? r.dg.balance : 0;
+    const total = dg.total || 0;
+    const paid = dg.paid || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 100;
+    let h = { held: 0, deposit: 0 };
+    try { h = damageHeld(pk, b); } catch (e) {}
+    const dep = Number(dg.dep) || 0;
+    const left = hasCheckedOut(b) || !!b.guestCheckedOutAt;
+    const evs = __pmStay[b.dbId];
+    const tl = [];
+    if (!evs) tl.push('<li class="future"><span class="pm-tl-dot">' + PM_IC.clock + '</span><span><span class="pm-tl-t">Loading what has happened…</span></span><span></span></li>');
+    (evs || []).forEach((e) => {
+        const when = pmDm(e.at * 1000);
+        if (e.kind === 'in') {
+            if (e.status === 'failed') { tl.push(`<li class="bad"><span class="pm-tl-dot">${PM_IC.alert}</span><span><span class="pm-tl-t">${escapeHtml(e.what)} didn’t go through</span><br><span class="pm-tl-s">${when} · card</span></span><span class="pm-tl-v">${gbp(e.amount)}</span></li>`); return; }
+            const po = e.payout;
+            const fee = e.fee != null ? ` · fee ${gbp(e.fee)}` : '';
+            const where = e.method !== 'card'
+                ? `${escapeHtml(String(e.method || 'Payment'))}, recorded by you`
+                : e.status === 'pending' ? 'Card · processing'
+                    : po && po.landed ? `Card${fee} · reached your bank ${pmDm(pmIso(po.arrival))}`
+                        : po && po.payout ? `Card${fee} · <button type="button" data-pm="payout" data-arg="${escapeHtml(po.payout)}">on its way${po.arrival ? ', ' + pmDdm(pmIso(po.arrival)) : ''}</button>`
+                            : `Card${fee} · with Square, in the next payout`;
+            tl.push(`<li class="in"><span class="pm-tl-dot">${PM_IC.in}</span><span><span class="pm-tl-t">${escapeHtml(e.what)}${e.deposit > 0 ? ` <span class="pm-tl-s">(includes ${gbp(e.deposit)} refundable deposit)</span>` : ''}</span><br><span class="pm-tl-s">${when} · ${where}</span></span><span class="pm-tl-v plus">+${gbp(e.amount)}</span></li>`);
+        } else if (e.kind === 'refund') {
+            tl.push(`<li class="out"><span class="pm-tl-dot">${PM_IC.out}</span><span><span class="pm-tl-t">Refund</span><br><span class="pm-tl-s">${when} · back to their card${e.status === 'pending' ? ', on its way' : ''}</span></span><span class="pm-tl-v">−${gbp(e.amount)}</span></li>`);
+        } else if (e.kind === 'back') {
+            tl.push(`<li class="out"><span class="pm-tl-dot">${PM_IC.shield}</span><span><span class="pm-tl-t">Deposit returned</span><br><span class="pm-tl-s">${when} · back to them${e.status === 'pending' ? ', on its way' : ''}</span></span><span class="pm-tl-v">−${gbp(e.amount)}</span></li>`);
+        } else if (e.kind === 'kept') {
+            tl.push(`<li><span class="pm-tl-dot">${PM_IC.shield}</span><span><span class="pm-tl-t">Deposit kept</span><br><span class="pm-tl-s">${when} · counts as income</span></span><span class="pm-tl-v">${gbp(e.amount)}</span></li>`);
+        }
     });
-    const expTY = expensesForYear(curTY).reduce((s, x) => s + (x.amount || 0), 0);
-    const netTY = receivedTY - expTY;
-    const collectedPct =
-        receivedUpcoming + owedUpcoming > 0
-            ? Math.round((receivedUpcoming / (receivedUpcoming + owedUpcoming)) * 100)
-            : receivedUpcoming > 0
-              ? 100
-              : 0;
-    // ---- Year on year (this tax year TO DATE vs last year to the same point) ----
-    // Received cash by payment date, and nights sold by check-in date — both
-    // measured over the same elapsed slice of each tax year so it's like-for-like.
-    const tyStartStr = (y) => `${y}-04-06`;
-    const daysBetween = (a, b) => Math.round((dpParse(b) - dpParse(a)) / 86400000);
-    const addDays = (ds, n) => {
-        const p = dpParse(ds);
-        return formatDashed(new Date(p.getFullYear(), p.getMonth(), p.getDate() + n));
-    };
-    const elapsed = Math.max(0, daysBetween(tyStartStr(curTY), today));
-    const lastCutoff = addDays(tyStartStr(curTY - 1), elapsed); // same point last year
-    const yoy = { revThis: 0, revLast: 0, nightsThis: 0, nightsLast: 0 };
-    const inRange = (ds, lo, hi) => ds && ds >= lo && ds <= hi;
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            const ps = paymentSummary(propKey, b);
-            const recv = Math.max(0, ps.deposit || 0);
-            if (recv > 0 && b.paymentDate) {
-                if (inRange(b.paymentDate, tyStartStr(curTY), today)) yoy.revThis += recv;
-                else if (inRange(b.paymentDate, tyStartStr(curTY - 1), lastCutoff))
-                    yoy.revLast += recv;
-            }
-            const nts = nightsBetween(b.checkIn, b.checkOut) || 0;
-            if (inRange(b.checkIn, tyStartStr(curTY), today)) yoy.nightsThis += nts;
-            else if (inRange(b.checkIn, tyStartStr(curTY - 1), lastCutoff)) yoy.nightsLast += nts;
-        });
-    });
-    const yoyPct = (now_, prev) => {
-        if (prev <= 0) return now_ > 0 ? { txt: 'new', cls: 'mo-good' } : { txt: '—', cls: '' };
-        const p = Math.round(((now_ - prev) / prev) * 100);
-        return { txt: (p >= 0 ? '+' : '') + p + '%', cls: p >= 0 ? 'mo-good' : 'mo-warn' };
-    };
-    const revDelta = yoyPct(yoy.revThis, yoy.revLast);
-    const nightsDelta = yoyPct(yoy.nightsThis, yoy.nightsLast);
-    const yoyCard = `
-                <div class="mo-card mo-yoy">
-                    <div class="mo-card-title">This year vs last · to ${dpParse(today).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
-                    <div class="yoy-grid">
-                        <div class="yoy-metric">
-                            <div class="yoy-label">Received</div>
-                            <div class="yoy-now">${gbp(yoy.revThis)}</div>
-                            <div class="yoy-cmp"><span class="${revDelta.cls}">${revDelta.txt}</span> vs ${gbp(yoy.revLast)} last year</div>
-                        </div>
-                        <div class="yoy-metric">
-                            <div class="yoy-label">Nights stayed</div>
-                            <div class="yoy-now">${yoy.nightsThis}</div>
-                            <div class="yoy-cmp"><span class="${nightsDelta.cls}">${nightsDelta.txt}</span> vs ${yoy.nightsLast} last year</div>
-                        </div>
-                    </div>
-                    <div class="mo-sub" style="margin-top:10px;">${taxYearShort(curTY)} so far against the same window of ${taxYearShort(curTY - 1)}.</div>
-                </div>`;
-
-    const cottageMax = Math.max(1, ...Object.values(byCottageTY));
-
-    const trendBars = osVBars(
-        months.map((m) => ({ label: m.short, short: m.short, value: Math.round(m.received) })),
-        moneyShort,
-    );
-    const cottageBars = osHBars(
-        Object.keys(byCottageTY).map((k) => ({
-            label: propertyMeta[k].name,
-            value: Math.round(byCottageTY[k]),
-            max: cottageMax,
-            valLabel: gbp(byCottageTY[k]),
-            color: `var(--prop-${k})`,
-        })),
-    );
-    // ---- THE FIVE ANSWERS (owner-approved demo): the landing IS the
-    // answer — pulse line, exceptions, then one verdict group per money
-    // question; the slow answers (payouts, tax report, recent feed) fill
-    // in asynchronously. ----
-    // Per-booking owed rows with PLAN awareness — the same helpers the hub's
-    // payask uses, so "due now" here and the ask there cannot disagree. Due
-    // NOW: the first payment (nothing in) is due on booking; the balance once
-    // its own plan's date arrives; anything on a finished stay. OVERDUE (the
-    // exception, not the queue): a finished stay, or a due date a week gone.
-    const owedRows = [];
-    Object.keys(dbBookings).forEach((pk) => {
-        (dbBookings[pk] || []).forEach((b) => {
-            const dg = bookingDue(pk, b);
-            if (!dg || !(dg.balance > 0.005)) return;
-            const psR = paymentSummary(pk, b);
-            const pastR = (b.checkOut || '') <= today;
-            const dueDate = bookingPlanDueDate(b);
-            const inWin = (() => { try { return bookingInBalanceWindow(b); } catch (e) { return false; } })();
-            owedRows.push({
-                pk, b, ps: psR, dg, dueDate,
-                dueNow: pastR || inWin || !(dg.paid > 0.005),
-                overdue: pastR || !!(dueDate && ukShiftDays(dueDate, 7) < today),
-                arranged: bookingOwnerArranged(b),
-            });
-        });
-    });
-    owedRows.sort((a, z) => (a.b.checkIn || '').localeCompare(z.b.checkIn || ''));
-    __moOwedRows = owedRows;
-    const overdueRows = owedRows.filter((r) => r.overdue);
-    const queueRows = owedRows.filter((r) => !r.overdue);
-    const dueNowRows = queueRows.filter((r) => r.dueNow);
-    const dueNowSum = dueNowRows.reduce((s, r) => s + r.dg.balance, 0);
-    const laterSum = queueRows.reduce((s, r) => s + r.dg.balance, 0) - dueNowSum;
-    const collectTotal = dueNowSum + laterSum;
-    const kvDot = (cls) => `<span class="bhub-chip-dot ${cls}" aria-hidden="true"></span>`;
-    const stage = (r) => (!(r.dg.paid > 0.005) ? 'first payment' : 'balance');
-    // A ROW'S VALUE IS MONEY, AND ONLY MONEY. The date used to ride the value
-    // ("£660.00 · due 05/10/2026"), which took 204px of a 390px rail and left
-    // the guest's NAME — the thing you scan for — cut to "Richard Be…" in 95px.
-    // Name (two-line clamp) above its own quiet sub line; the figure on the
-    // right, nowrap, in a column that shrink-wraps to it.
-    const bkRow = (r, valHtml, subHtml) =>
-        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span>${subHtml ? `<span class="bhub-kv-sub">${subHtml}</span>` : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
-
-    // The pulse line — money in this month, paced against last year to the
-    // same point (the yoy derivation above).
-    const monthIn = months[11] ? months[11].received : 0;
-    const pulse = `${monthIn > 0.005 ? gbp(monthIn) + ' in this month' : 'Nothing in yet this month'}${yoy.revLast > 0 ? ` · ${revDelta.txt} vs last year to this point` : receivedTY > 0 ? ` · ${gbp(receivedTY)} received in ${taxYearShort(curTY)}` : ''}`;
-
-    // Exceptions first — a clean day renders no red section at all. The
-    // Square-hasn't-said row joins asynchronously (its data is the payout
-    // cache) into #mo-attn-async.
-    let attnRows = '';
-    overdueRows.forEach((r, i) => {
-        const why = (r.b.checkOut || '') <= today ? 'the stay is over' : `due ${fmtDate(r.dueDate)}${r.b.balanceDueDate ? ' — their plan' : ''}`;
-        const remind = !r.arranged && squareAdminEnabled && r.b.email && (r.b.balanceRequestedAt || r.b.depositRequestedAt)
-            ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(r.b.id))}>Send a reminder</button>` : '';
-        attnRows += bhubFoldGrp('mood' + i,
-            `Overdue — ${escapeHtml(r.b.name || 'Guest')}`,
-            escapeHtml(why + (r.b.balanceRemindedAt ? ' · reminded ' + fmtDate(String(r.b.balanceRemindedAt).slice(0, 10)) : '')),
-            stCap('bad', gbp(r.dg.balance)),
-            `<div class="bhub-btn-row bhub-act-links">${remind}
-                ${!r.arranged && squareAdminEnabled && r.b.email ? `<button class="bhub-actlink" ${chbAttrs('requestPayment', String(r.b.id), 'balance')}>Request by card</button>` : ''}
-                <button class="bhub-actlink" ${chbAttrs('openBookingHub', String(r.b.id))}>Open the booking</button>
-            </div>`);
-    });
-    const attn = `${attnRows ? `<span class="bhub-grpcap is-attn" id="mo-attn-cap">Needs attention</span>` : `<span class="bhub-grpcap is-attn" id="mo-attn-cap" hidden>Needs attention</span>`}${attnRows}<div id="mo-attn-async"></div>`;
-
-    // The five verdicts.
-    const collectFold =
-        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate && r.dg.paid > 0.005 ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
-        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, gbp(r.dg.balance), r.dueDate ? 'due ' + escapeHtml(fmtDate(r.dueDate)) : '')).join('') : '') +
-        `<div class="bhub-btn-row bhub-act-links">
-            ${dueNowRows.filter((r) => !r.arranged && r.b.email && squareAdminEnabled).length >= 2 ? `<button class="bhub-actlink" data-act="moChaseDue">Chase everyone due (${dueNowRows.filter((r) => !r.arranged && r.b.email).length})</button>` : ''}
-            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button>
-        </div>`;
-    // THE TWO "TO COLLECT" FIGURES RECONCILE IN WORDS. The day spine's sentence
-    // says what the WHOLE fleet owes (chbOpsParts) while this fold's figure is
-    // the QUEUE — the overdue sits above as an exception and is deliberately not
-    // folded in (a pinned, break-tested decision: "an EXCEPTION row in Needs
-    // attention, NOT a queue row"). So the two disagreed by exactly the overdue,
-    // 70px apart on one screen, with nothing saying why. The sub names the
-    // difference and points at the row that holds it.
-    const overdueSum = overdueRows.reduce((s, r) => s + r.dg.balance, 0);
-    const collectGrp = collectTotal > 0.005
-        ? bhubFoldGrp('mocollect', 'To collect',
-            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}${overdueRows.length ? ` · ${gbp(overdueSum)} overdue above` : ''}`),
-            `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
-        : '';
-    const moveGrp = bhubFoldGrp('momove', 'To move out', 'paid in, net of fees',
-        `<span id="mo-move-fig" class="mo-run">${stCap('unk', 'working it out…')}</span>`,
-        `<div id="mo-move-rows" class="bhub-mut mo-run" style="margin-bottom:6px;">Checking the payout data…</div>
-         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
-    // CALM IS NOT A ROW EACH: "To collect" with nothing owed and "To give back" with nothing held used to
-    // take a full row apiece to say "all clear". They render only when there is something to do; the
-    // page's status pill says the rest. The deposits group is filled in by moAsyncFill when it finds held
-    // money (it is the only one that needs the payout/ledger fetch).
-    __moHead = { collect: collectTotal + overdueSum, due: dueNowSum, over: overdueRows.length, move: null, held: null, unk: 0 };
-    const backGrp = '<div id="mo-back-slot"></div>';
-    // A row TITLE stays in ink; the trailing figure carries the state (the
-    // capsule-is-state rule, applied to the landing's own labels).
-    const booksGrp = bhubFoldGrp('mobooks', `The books · ${taxYearShort(curTY)}`, 'after fees and expenses',
-        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok-text);">${gbp(netTY)}</span>`,
-        `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
-         <div class="bhub-btn-row bhub-act-links">
-            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'income')}>Open Income &amp; tax</button>
-            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'expenses')}>Log an expense</button>
-         </div>`);
-    const recentGrp = bhubFoldGrp('morecent', 'Recent', 'the latest money in',
-        `<span class="bhub-sum-val" id="mo-recent-sum">…</span>`,
-        `<div id="mo-recent-rows" class="bhub-mut mo-run" style="margin-bottom:6px;">Loading the feed…</div>
-         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'recent')}>Full payment history</button></div>`);
-    const trendsGrp = bhubFoldGrp('motrends', 'Trends &amp; history', 'year on year, by cottage', '',
-        `${yoyCard}
-         <div class="mo-grid2">
-            <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
-            <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
-                    <div class="mo-sub" style="font-size:var(--fs-sub);">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
-                <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
-         </div>`);
-
-    el.innerHTML = `
-                <h2 class="mo-headline" id="mo-headline"></h2>
-                <div class="mo-pulse">${pulse}</div>
-                ${attn}
-                <span class="bhub-grpcap">Your money</span>
-                ${collectGrp}${moveGrp}${backGrp}${booksGrp}${recentGrp}${trendsGrp}`;
-    moHeadline();
-    // The fleet's live arrangements ride the same repaint (display-only
-    // derivation — see chbMoneyOnTheWayHtml).
+    if (owed > 0.005 && p) {
+        const t = r.auto ? 'Collects itself' : r.overdue ? 'Still owed' : r.declined ? 'Card declined' : p.cap.indexOf('Asks') === 0 ? 'The balance email goes by itself' : 'Still to pay';
+        tl.push(`<li class="future"><span class="pm-tl-dot">${PM_IC.clock}</span><span><span class="pm-tl-t">${t}</span><br><span class="pm-tl-s">${escapeHtml(p.sub)}</span></span><span class="pm-tl-v">${gbp(owed)}</span></li>`);
+    }
+    if (h.held > 0.005) tl.push(`<li class="future"><span class="pm-tl-dot">${PM_IC.shield}</span><span><span class="pm-tl-t">Deposit goes back</span><br><span class="pm-tl-s">${left ? 'they have left · return or keep it' : 'after they leave on ' + pmDm(pmIso(b.checkOut))}</span></span><span class="pm-tl-v">${gbp(h.held)}</span></li>`);
+    const hs = b.holdStatus || 'none';
+    const depState = h.held > 0.005 ? ['info', 'Held', hs === 'none' ? 'paid to you directly' : 'taken with the first payment']
+        : hs === 'returned' ? ['ok', 'Returned', 'returned']
+            : hs === 'kept' ? ['warn', 'Kept', 'kept for damage']
+                : ['unk', 'Not taken yet', 'taken with the first payment'];
+    const depLine = dep > 0.005 ? `<div class="pm-kv"><span>Refundable deposit<small>${depState[2]}</small></span><span class="pm-kv-r"><b>${gbp(dep)}</b>${pmCap(depState[0], depState[1])}</span></div>` : '';
+    const acts = [];
+    const idA = escapeHtml(String(b.id));
+    if (owed > 0.005 && !r.auto && !r.arranged && squareAdminEnabled && b.email) {
+        acts.push(r.asked
+            ? `<button type="button" class="pm-btn second" data-pm="remind" data-arg="${idA}">${PM_IC.email}Send a reminder</button>`
+            : `<button type="button" class="pm-btn second" data-pm="askone" data-arg="${idA}">${PM_IC.email}Ask to pay</button>`);
+    }
+    if (owed > 0.005) acts.push(`<button type="button" class="pm-btn primary" data-pm="record" data-arg="${idA}">Record a payment</button>`);
+    if (h.held > 0.005 && left) acts.push(`<button type="button" class="pm-btn second" data-pm="keep" data-arg="${idA}">Keep it</button><button type="button" class="pm-btn primary" data-pm="return" data-arg="${idA}">Return ${gbp(h.held)}</button>`);
+    acts.push(`<button type="button" class="pm-btn second" data-pm="hub" data-arg="${idA}">${PM_IC.home}Open the booking</button>`);
+    return pmHead(escapeHtml(b.name || 'Guest'), `${pmDot(pk)}${escapeHtml(pmProp(pk))} · ${pmRange(b.checkIn, b.checkOut)}`) + `<div class="pm-dbody">
+        <section class="pm-hero"><div class="pm-hero-top"><span>Paid</span><b>${gbp(paid)} <small>of ${gbp(total)}</small></b></div>
+            <div class="pm-bar" role="img" aria-label="${pct}% paid"><i style="width:${pct}%"></i></div>
+            <div class="pm-hero-sub">${owed > 0.005 ? `<span class="pm-warnword">${gbp(owed)} to pay</span>${p ? ' · ' + escapeHtml(p.sub) : ''}` : 'Paid in full ✓'}</div></section>
+        <div class="pm-dcap">The plan</div>
+        <div class="pm-kvs pm-plan">
+            <div class="pm-kv"><span>The stay<small>${pmRange(b.checkIn, b.checkOut)} · ${escapeHtml(pmProp(pk))}</small></span><span class="pm-kv-r"><b>${gbp(Math.max(0, total - dep))}</b></span></div>
+            ${depLine}
+            ${owed > 0.005 && p ? `<div class="pm-kv"><span>Still to pay<small>${escapeHtml(p.sub)}</small></span><span class="pm-kv-r"><b>${gbp(owed)}</b>${pmCap(p.tone, p.cap)}</span></div>` : ''}
+        </div>
+        <div class="pm-dcap">What has happened, and what will</div>
+        <ol class="pm-tl">${tl.join('')}</ol>
+        <div class="pm-acts">${acts.join('')}</div>
+    </div>`;
+}
+function pmPayoutPage(id) {
+    const d = __pmPayout[id];
+    if (!d) return pmHead('Square payout') + '<div class="pm-dbody"><p class="pm-note">Loading the payout…</p></div>';
+    if (d.error) return pmHead('Square payout') + `<div class="pm-dbody"><p class="pm-note">${escapeHtml(d.error)}</p></div>`;
+    const po = d.payout;
+    const arr = pmIso(po.arrival);
+    const bank = (__pm && __pm.position && __pm.position.bank) || 'your bank';
+    const st = po.state === 'way' ? ['info', 'On its way', 'On its way to your bank'] : po.state === 'failed' ? ['bad', 'Didn’t arrive', 'It didn’t reach your bank'] : po.state === 'landed' ? ['ok', 'Arrived', 'In your bank'] : ['unk', 'Sent', 'Sent by Square'];
+    const gross = d.charges.reduce((s, e) => s + (e.amount || 0), 0);
+    const fees = d.charges.reduce((s, e) => s + (e.fee || 0), 0);
+    const other = Math.round((po.amount - (gross - fees)) * 100) / 100;
+    const sub = (po.state === 'way' ? 'On its way' : po.state === 'landed' ? 'Arrived' : po.state === 'failed' ? 'Didn’t arrive' : 'Sent') + (arr ? ' · ' + pmDdm(arr) : '') + ' · ' + escapeHtml(bank);
+    return pmHead(`Square payout · ${gbp(po.amount)}`, sub) + `<div class="pm-dbody">
+        <section class="pm-hero"><div class="pm-hero-top"><span>${st[2]}</span>${pmCap(st[0], st[1])}</div>
+            <div class="pm-hero-sub">${po.state === 'way' ? 'Payouts usually take one working day.' : po.state === 'failed' ? 'Bad bank details stop every later payout too, so it is worth checking in Square.' : ''}</div></section>
+        <div class="pm-dcap">What it is made of</div>
+        <div class="pm-kvs pm-calc">${d.charges.map((e) => `<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="b${e.booking_id}"><span><span class="pm-ink">${escapeHtml(e.name || 'A guest')} · ${escapeHtml(String(e.what || 'payment').toLowerCase())}</span><br><span class="pm-s">${pmDm(e.at * 1000)} · ${gbp(e.amount)}${e.fee != null ? ` less ${gbp(e.fee)} fee` : ''}</span></span><b>${gbp(e.amount - (e.fee || 0))}</b></button>`).join('')}
+            <div class="pm-kv"><span>Taken from guests</span><b>${gbp(gross)}</b></div>
+            <div class="pm-kv"><span>Square’s fees</span><b>−${gbp(fees)}</b></div>
+            ${Math.abs(other) > 0.005 ? `<div class="pm-kv"><span>Refunds and adjustments</span><b>${other < 0 ? '−' : ''}${gbp(Math.abs(other))}</b></div>` : ''}
+            <div class="pm-kv total"><span>Paid to your bank</span><b>${gbp(po.amount)}</b></div></div>
+        ${d.unmatched ? `<p class="pm-note">${d.unmatched === 1 ? 'One payment' : d.unmatched + ' payments'} in it ${d.unmatched === 1 ? 'isn’t' : 'aren’t'} in this app’s records, such as a sale taken in Square itself.</p>` : ''}
+    </div>`;
+}
+function pmMovePage() {
+    const P = __pm && __pm.position;
+    if (!P) return pmHead('Move money out') + `<div class="pm-dbody"><p class="pm-note">${__pmErr ? 'Couldn’t load the figures. Check your connection.' : 'Working it out…'}</p></div>`;
+    const items = __pm.bank_items || [];
+    const byDay = {};
+    items.forEach((it) => { const k = it.arrival || ''; byDay[k] = (byDay[k] || 0) + it.settled; });
+    const held = items.filter((it) => it.fenced > 0.005);
+    const bank = P.bank || 'your bank';
+    const since = P.last_moved ? 'since you last moved money out, ' + pmDm(P.last_moved * 1000) : 'Square has paid in';
+    const checked = P.checked ? `Square was last checked ${pmDayLabel(P.checked * 1000).toLowerCase()} at ${new Date(P.checked * 1000).toTimeString().slice(0, 5)}.` : 'Square hasn’t been checked yet.';
+    return pmHead('Move money out', escapeHtml(P.last_moved ? 'What has reached your bank since you last moved money out' : 'What Square has paid into your bank')) + `<div class="pm-dbody">
+        <section class="pm-hero"><div class="pm-hero-top"><span>Ready to move out</span><b class="pm-okword">${gbp(P.ready)}</b></div>
+            <div class="pm-hero-sub">Everything Square has paid into ${escapeHtml(bank)} ${escapeHtml(since)}, less the deposits you will give back.</div></section>
+        <div class="pm-dcap">Paid into your bank</div>
+        <div class="pm-kvs pm-calc">${Object.keys(byDay).sort().map((k) => `<div class="pm-kv"><span>Square payout${k ? ' · ' + pmDdm(pmIso(k)) : ''}</span><b>${gbp(byDay[k])}</b></div>`).join('') || '<div class="pm-kv"><span>Nothing yet</span><b>£0.00</b></div>'}
+            <div class="pm-kv total"><span>In your bank</span><b>${gbp(P.in_bank)}</b></div></div>
+        <div class="pm-dcap">Guests’ deposits you hold</div>
+        <div class="pm-kvs pm-calc">${held.length ? held.map((it) => {
+            const b = findBookingById(it.booking_id);
+            const gone = b && (hasCheckedOut(b) || b.guestCheckedOutAt);
+            const sub = b ? (gone ? 'left ' + pmDm(pmIso(b.checkOut)) + ' · to return' : 'goes back after ' + pmDm(pmIso(b.checkOut))) : '';
+            return `<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="b${it.booking_id}"><span><span class="pm-ink">${escapeHtml(it.name || 'A guest')}</span>${sub ? `<br><span class="pm-s">${sub}</span>` : ''}</span><b>${gbp(it.fenced)}</b></button>`;
+        }).join('') : '<div class="pm-kv"><span>None</span><b>£0.00</b></div>'}
+            <div class="pm-kv total"><span>Kept back</span><b>−${gbp(P.held)}</b></div></div>
+        <p class="pm-note">${P.with_square > 0.005 ? `${gbp(P.with_square)} more is with Square and joins this when it lands.` : 'Nothing is with Square right now.'} ${escapeHtml(checked)}</p>
+        <div class="pm-acts"><button type="button" class="pm-btn primary" data-pm="moved"${P.ready > 0.005 ? '' : ' disabled'}>I’ve moved ${gbp(P.ready)} out</button></div>
+        <div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="check">Check Square now</button><button type="button" class="pm-linkbtn" data-pm="balance">Work it out from your bank balance</button></div>
+    </div>`;
+}
+function pmBooksPage() {
+    const years = ((__pm && __pm.years) || []).map(Number).filter(Boolean).sort((a, z) => a - z).slice(-3);
+    const y = __pmYear || (__pm && __pm.books && __pm.books.year) || taxYearStartOf(todayDashed());
+    const b = __pmBooks[y];
+    const cur = y === taxYearStartOf(todayDashed());
+    const head = pmHead('The books', cur ? `6 April ${y} to today · card and bank payments recorded here` : `6 April ${y} to 5 April ${y + 1}`);
+    const yr = years.length > 1 ? `<div class="pm-yr" role="group" aria-label="Tax year">${years.map((v) => `<button type="button" data-pm="yr" data-arg="${v}" aria-pressed="${v === y}">${taxYearShort(v)}</button>`).join('')}</div>` : '';
+    if (!b) return head + `<div class="pm-dbody">${yr}<p class="pm-note">${b === null ? 'Couldn’t load that year. Check your connection.' : 'Loading the books…'}</p></div>`;
+    const caveats = (() => { try { return accountsScopeCaveats(y, b.expenses); } catch (e) { return []; } })();
+    const und = b.undated && b.undated.count ? `<p class="pm-note">${b.undated.count === 1 ? 'One payment has' : b.undated.count + ' payments have'} no date, so ${b.undated.count === 1 ? 'it isn’t' : 'they aren’t'} in any year. Add the date on the booking.</p>` : '';
+    return head + `<div class="pm-dbody">${yr}
+        <section class="pm-hero"><div class="pm-hero-top"><span>${cur ? (b.profit < 0 ? 'Loss so far' : 'Profit so far') : b.profit < 0 ? 'Loss' : 'Profit'}</span><b>${gbp(b.profit)}</b></div>
+            ${pmQuarters(b, true)}</section>
+        <div class="pm-kvs pm-calc">
+            <div class="pm-kv"><span>Rental income</span><b>${gbp(b.income)}</b></div>
+            ${b.kept > 0.005 ? `<div class="pm-kv"><span>Deposits kept</span><b>${gbp(b.kept)}</b></div>` : ''}
+            <div class="pm-kv"><span>Square’s card fees</span><b>−${gbp(b.fees)}</b></div>
+            <div class="pm-kv"><span>Expenses</span><b>−${gbp(b.expenses)}</b></div>
+            <div class="pm-kv total"><span>${b.profit < 0 ? 'Loss' : 'Profit'}</span><b>${gbp(b.profit)}</b></div></div>
+        <div class="pm-dcap">Expenses</div>
+        <div class="pm-kvs pm-calc">${(b.by_category || []).map((c) => `<div class="pm-kv"><span>${escapeHtml(c.category)}</span><b>${gbp(c.amount)}</b></div>`).join('') || '<div class="pm-kv"><span>None logged</span><b>£0.00</b></div>'}
+            <button type="button" class="pm-openrow" data-pm="expenses">Every expense ${PM_IC.chev}</button></div>
+        <div class="pm-acts"><button type="button" class="pm-btn second" data-pm="expense">${PM_IC.plus}Add an expense</button><button type="button" class="pm-btn second" data-pm="csv">Download for your accountant</button><button type="button" class="pm-btn second" data-pm="pdf">Year statement (PDF)</button></div>
+        ${und}${caveats.length ? `<p class="pm-note">${caveats.map(escapeHtml).join(' ')}</p>` : ''}
+    </div>`;
+}
+function pmRenderDetail() {
+    const pane = document.getElementById('pm-detail');
+    if (!pane) return;
+    const key = __pmOpen || (pmWide() ? 'books' : null);
+    if (!key) { pane.innerHTML = ''; return; }
+    const i = key.indexOf(':');
+    const k = i < 0 ? key : key.slice(0, i);
+    const arg = i < 0 ? '' : key.slice(i + 1);
+    const body = pane.querySelector('.pm-dbody');
+    const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : pmBooksPage();
+    pane.__pmKey = key;
+    const nb = pane.querySelector('.pm-dbody');
+    if (nb) nb.scrollTop = keepTop;
+}
+function pmLayout() {
+    const r = pmRoot();
+    if (!r) return;
+    const wide = pmWide();
+    r.classList.toggle('is-wide', wide);
+    if (wide) { r.classList.remove('is-detail'); document.body.classList.remove('pm-detail-open'); }
+    const hdr = document.querySelector('header');
+    r.style.setProperty('--pm-top', (hdr ? Math.max(0, hdr.getBoundingClientRect().bottom) : 0) + 'px');
+    if (wide) {
+        const top = r.getBoundingClientRect().top;
+        r.style.height = Math.max(460, window.innerHeight - Math.max(0, top) - 16) + 'px';
+    } else r.style.height = '';
+}
+function pmRender() {
+    const r = pmRoot();
+    if (!r) return;
+    pmWire();
+    pmLayout();
+    pmRenderList();
+    pmRenderDetail();
+}
+// A refresh asked for several times in one moment (a save, then loadData's own
+// repaint) is one request.
+function pmRefresh() {
+    clearTimeout(__pmT);
+    __pmT = setTimeout(pmLoad, 200);
+}
+async function pmLoad(expectNew) {
+    const stamp = ++__pmStamp;
+    const before = new Set(__pmAct.map((e) => e.id));
     try {
-        el.innerHTML += chbMoneyOnTheWayHtml();
-    } catch (e) {}
-    // Kick the slow answers — they fill in place, stamp-guarded so a repaint
-    // mid-flight never writes into a newer render.
-    moAsyncFill();
+        const r = await apiPost('money.php', { action: 'summary' });
+        if (stamp !== __pmStamp) return;
+        __pm = r;
+        __pmErr = false;
+        __pmAct = Array.isArray(r.activity) ? r.activity : [];
+        __pmActEnd = __pmAct.length < 80;
+        if (r.books && r.books.year) {
+            __pmBooks[r.books.year] = r.books;
+            if (!__pmYear) __pmYear = r.books.year;
+        }
+        if (expectNew) __pmAct.forEach((e) => { if (!before.has(e.id)) __pmFresh.add(e.id); });
+        // The stay and payout pages re-read what they show.
+        Object.keys(__pmStay).forEach((k) => delete __pmStay[k]);
+        const open = __pmOpen || '';
+        if (open.indexOf('stay:') === 0) pmLoadStay(open.slice(5));
+    } catch (e) {
+        if (stamp !== __pmStamp) return;
+        __pmErr = true; // the last good figures stay on screen
+    }
+    pmRender();
 }
-// THE LANDING SAYS IT IN A SENTENCE. One line composed from the same figures the groups below show
-// (never a second derivation): what is yours to move, who owes you, what is held, and how many things need
-// a look. Parts that are still loading are left out rather than guessed, so it never claims "no deposits
-// are held" before the ledger has answered.
-let __moHead = { collect: 0, due: 0, over: 0, move: null, held: null, unk: 0 };
-function moHeadline() {
-    const h = document.getElementById('mo-headline');
-    if (!h) return;
-    const H = __moHead;
-    const owes = H.collect > 0.005 ? `<b>${gbp(H.collect)}</b> is owed to you${H.over ? ` (${H.over} overdue)` : ''}` : 'Nobody owes you anything';
-    const held = H.held == null ? '' : H.held > 0.005 ? `<b>${gbp(H.held)}</b> of deposits is held for guests` : 'no deposits are held';
-    const parts = [];
-    if (H.move != null && H.move > 0.005) parts.push(`<b>${gbp(H.move)}</b> is yours to move out`);
-    parts.push(owes + (held ? ' and ' + held : ''));
-    if (H.unk > 0) parts.push(`<b>${H.unk === 1 ? 'One charge' : H.unk + ' charges'}</b> ${H.unk === 1 ? 'needs' : 'need'} a look`);
-    h.innerHTML = parts.join('. ') + '.';
-    // THE PAGE'S STATUS, the Manage pill's look beside the title: overdue money is the one
-    // fault, money due now the one chase, and anything else is in order — owed later is not late.
-    const due = H.due || 0;
-    headPillSet('mo-pill', H.over
-        ? headPill('bad', `${H.over} overdue`, { label: `${H.over} ${H.over === 1 ? 'payment is' : 'payments are'} overdue` })
-        : due > 0.005
-          ? headPill('warn', `${gbp(due).replace(/\.00$/, '')} due now`)
-          : headPill('ok', H.collect > 0.005 ? 'Nothing due yet' : 'Nothing to collect'));
+async function pmLoadStay(id) {
+    const b = findBookingById(id);
+    if (!b) return;
+    try {
+        const r = await apiPost('money.php', { action: 'stay', id: b.dbId });
+        __pmStay[b.dbId] = (r && r.events) || [];
+    } catch (e) {
+        __pmStay[b.dbId] = [];
+    }
+    if (__pmOpen === 'stay:' + id) pmRenderDetail();
 }
-// Rows the landing's chase-all acts on (set by renderMoneyOverview).
-let __moOwedRows = [];
-let __moFillStamp = 0;
-// Chase everyone DUE through the search answer's bulk machinery — one
-// informed confirm, serial sends, honest partial report, no undo.
-async function moChaseDue() {
-    const rows = (__moOwedRows || [])
-        .filter((r) => r.dueNow)
-        .map((r) => ({ b: r.b, pk: r.pk, ps: Object.assign({}, r.ps, { balance: r.dg.balance, fullyPaid: false }) }));
-    const act = chbBulkAction && chbBulkBalanceAction ? chbBulkBalanceAction(rows) : null;
-    if (!act || typeof act.inline !== 'function') {
-        toast('Nothing to chase in bulk — use the rows above.');
+async function pmLoadPayout(id) {
+    try {
+        const r = await apiPost('money.php', { action: 'payout', id });
+        __pmPayout[id] = { payout: r.payout, charges: r.charges || [], unmatched: r.unmatched || 0 };
+    } catch (e) {
+        __pmPayout[id] = { error: chbActErrSay(e) };
+    }
+    if (__pmOpen === 'payout:' + id) pmRenderDetail();
+}
+async function pmLoadBooks(y) {
+    if (__pmBooks[y]) return;
+    try {
+        const r = await apiPost('money.php', { action: 'books', year: y });
+        __pmBooks[y] = r.books;
+    } catch (e) {
+        __pmBooks[y] = null;
+    }
+    if (__pmYear === y) pmRenderDetail();
+}
+function pmOpen(key) {
+    __pmOpen = key;
+    pmMenuShow(false);
+    const r = pmRoot();
+    if (!r) return;
+    if (key.indexOf('stay:') === 0) {
+        const b = findBookingById(key.slice(5));
+        if (b && !__pmStay[b.dbId]) pmLoadStay(key.slice(5));
+    }
+    if (key.indexOf('payout:') === 0 && !__pmPayout[key.slice(7)]) pmLoadPayout(key.slice(7));
+    if (key === 'books' && __pmYear && __pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear);
+    if (key === 'books') chbNavRemember('accounts:income');
+    else if (key === 'move') chbNavRemember('accounts:sweep');
+    if (!pmWide()) {
+        r.classList.add('is-detail');
+        document.body.classList.add('pm-detail-open');
+    }
+    pmLayout();
+    pmRenderDetail();
+    const b = document.querySelector('#pm-detail .pm-dbody');
+    if (b) b.scrollTop = 0;
+}
+function pmClose() {
+    const r = pmRoot();
+    if (r) r.classList.remove('is-detail');
+    document.body.classList.remove('pm-detail-open');
+    __pmOpen = null;
+    chbNavRemember('view-accounts');
+}
+function pmMenuShow(on) {
+    const m = document.getElementById('pm-menu');
+    const b = document.getElementById('pm-add');
+    if (!m || !b) return;
+    m.hidden = !on;
+    b.setAttribute('aria-expanded', String(!!on));
+    if (on) { const f = /** @type {HTMLElement|null} */ (m.querySelector('button')); if (f) f.focus(); }
+}
+
+/* ── Forms: they rise from the bottom on a phone and sit in the middle on a computer ── */
+let __pmSheetSave = null;
+function pmSheet(html, onSave) {
+    let s = document.getElementById('pm-sheet');
+    if (!s) {
+        const scrim = document.createElement('div');
+        scrim.id = 'pm-scrim';
+        scrim.className = 'pm-scrim';
+        document.body.appendChild(scrim);
+        s = document.createElement('div');
+        s.id = 'pm-sheet';
+        s.className = 'pm-sheet';
+        s.setAttribute('role', 'dialog');
+        s.setAttribute('aria-modal', 'true');
+        document.body.appendChild(s);
+        scrim.addEventListener('click', pmSheetClose);
+        s.addEventListener('click', (e) => {
+            const el = e.target instanceof Element ? /** @type {HTMLElement|null} */ (e.target.closest('[data-pms]')) : null;
+            if (!el || /** @type {any} */ (el).disabled) return;
+            const k = el.getAttribute('data-pms');
+            const a = el.getAttribute('data-arg') || '';
+            if (k === 'cancel') pmSheetClose();
+            else if (k === 'save') { if (__pmSheetSave) __pmSheetSave(); }
+            else if (s && /** @type {any} */ (s).__pick) /** @type {any} */ (s).__pick(k, a);
+        });
+        s.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement && __pmSheetSave) { e.preventDefault(); __pmSheetSave(); }
+        });
+    }
+    s.innerHTML = html;
+    const h = s.querySelector('h3');
+    if (h) { h.id = 'pm-sheet-title'; s.setAttribute('aria-labelledby', 'pm-sheet-title'); }
+    __pmSheetSave = onSave;
+    /** @type {any} */ (s).__pick = null;
+    const scrim = document.getElementById('pm-scrim');
+    if (scrim) scrim.classList.add('show');
+    s.classList.add('show');
+    document.body.classList.add('pm-sheet-open');
+    setTimeout(() => { const f = /** @type {HTMLElement|null} */ (s && s.querySelector('input')); if (f) f.focus({ preventScroll: true }); }, 360);
+    return s;
+}
+function pmSheetClose() {
+    const s = document.getElementById('pm-sheet');
+    const scrim = document.getElementById('pm-scrim');
+    if (s) s.classList.remove('show');
+    if (scrim) scrim.classList.remove('show');
+    document.body.classList.remove('pm-sheet-open');
+    __pmSheetSave = null;
+}
+const pmNum = (v) => Math.round((Number(String(v || '').replace(/[£,\s]/g, '')) || 0) * 100) / 100;
+function pmChips(kind, list, on) {
+    return `<div class="pm-chips">${list.map(([v, l]) => `<button type="button" data-pms="${kind}" data-arg="${escapeHtml(v)}" aria-pressed="${v === on}">${escapeHtml(l)}</button>`).join('')}</div>`;
+}
+function pmWhoCard(r) {
+    const p = pmPlan(r);
+    return `<div class="pm-who">${pmAva(r.b.name)}<span class="pm-main"><span class="pm-t">${escapeHtml(r.b.name || 'Guest')}</span><span class="pm-s">${pmDot(r.pk)}${escapeHtml(pmProp(r.pk))} · ${pmRange(r.b.checkIn, r.b.checkOut)} · ${gbp(r.dg.balance)} ${p.tone === 'bad' ? 'overdue' : 'still to pay'}</span></span></div>`;
+}
+// Started from a guest (their row or their page), the form is that guest's alone.
+// Only the + menu, which does not know who paid, offers the choice of guest.
+function pmRecordSheet(id) {
+    const owing = pmOwed();
+    const fixed = !!id;
+    let pick = id ? String(id) : owing[0] ? String(owing[0].b.id) : '';
+    if (!pick) { toast('Nobody owes you anything right now.'); return; }
+    let how = 'Bank transfer';
+    let amt = null;
+    const rowOf = () => {
+        const b = findBookingById(pick);
+        const loc = b ? findBookingLocation(pick) : null;
+        return b && loc ? pmOwedRow(loc.propKey, b) : null;
+    };
+    const draw = () => {
+        const r = rowOf();
+        if (!r) { pmSheetClose(); toast('Nothing is owed on that booking.'); return; }
+        const shown = amt == null ? r.dg.balance.toFixed(2) : amt;
+        const s = pmSheet(`<h3>${fixed ? `Record a payment from ${escapeHtml(pmFirst(r.b.name))}` : 'Record a payment'}</h3>
+            <p>For money that reached you another way: a bank transfer or cash. Card payments record themselves.</p>
+            ${fixed ? pmWhoCard(r) : `<div class="pm-field"><span class="pm-flabel">Who paid</span>${pmChips('who', owing.map((o) => [String(o.b.id), pmFirst(o.b.name)]), pick)}</div>`}
+            <div class="pm-field"><label class="pm-flabel" for="pm-rec-amt">Amount</label><input id="pm-rec-amt" inputmode="decimal" autocomplete="off" value="${escapeHtml(shown)}"></div>
+            <div class="pm-field"><span class="pm-flabel">How</span>${pmChips('how', [['Bank transfer', 'Bank transfer'], ['Cash', 'Cash']], how)}</div>
+            <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save" id="pm-rec-go">Record ${gbp(pmNum(shown))}</button></div>`, () => pmRecordSave(rowOf(), how));
+        /** @type {any} */ (s).__pick = (k, a) => {
+            const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
+            if (k === 'who') { pick = a; amt = null; draw(); }
+            else if (k === 'how') { how = a; amt = inp ? inp.value : amt; draw(); }
+        };
+        const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
+        if (inp) inp.addEventListener('input', () => {
+            amt = inp.value;
+            const go = document.getElementById('pm-rec-go');
+            if (go) go.textContent = 'Record ' + gbp(pmNum(amt));
+        });
+    };
+    draw();
+}
+// One payment received, added to what is already recorded. set_payment stores the
+// CUMULATIVE rental (and the cash deposit only in full), so the sum is worked out
+// here from the booking's own figures, exactly as the Record dialog does.
+async function pmRecordSave(r, how) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
+    const v = pmNum(inp ? inp.value : '');
+    if (!r) return;
+    if (!(v > 0)) { if (inp) inp.focus(); return; }
+    const b = r.b;
+    const p = b.agreedPrice || priceBreakdown(r.pk, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    const rental = bookingRentalPure(b, p);
+    const dmg = Math.max(0, Number(b.damagesDeposit != null ? b.damagesDeposit : (p && p.damagesDeposit) || 0));
+    const cashDep = dmg > 0 && (b.holdStatus || 'none') === 'none';
+    const had = Math.min(Math.max(0, Number(b.depositPaid) || 0), rental);
+    let cum = had + v;
+    const withDep = cashDep && cum >= rental + dmg - 0.01;
+    const extra = cum > rental + 0.005 && !withDep ? Math.round((cum - rental) * 100) / 100 : 0;
+    if (cum > rental) cum = rental;
+    const status = cum >= rental - 0.001 ? 'paid' : cum > 0.001 ? 'deposit' : 'unpaid';
+    const body = { action: 'set_payment', id: b.dbId, payment: status, payment_date: todayDashed(), payment_method: how };
+    if (status === 'deposit') body.deposit = Math.round(cum * 100) / 100;
+    if (withDep && status === 'paid') body.deposit_collected = true;
+    const prev = { payment: b.payment || 'unpaid', depositPaid: Number(b.depositPaid) || 0, date: b.paymentDate || '', method: b.paymentMethod || '' };
+    pmSheetClose();
+    try {
+        const send = Object.assign({}, body);
+        send.op_id = chbOpFor(['set_payment', send]);
+        await apiPost('bookings.php', send);
+        chbOpBump();
+        await loadData();
+        const said = `Recorded ${gbp(v - extra)} from ${b.name || 'the guest'}${how === 'Cash' ? ' in cash' : ''}.${extra ? ` The extra ${gbp(extra)} isn’t recorded: a deposit is recorded in full or not at all.` : ''}`;
+        toast(said, 'success', { label: 'Undo', fn: () => pmRecordUndo(b, prev) });
+        pmRender();
+        pmLoad(true);
+        offerUpdatedConfirmationEmail(b.id);
+    } catch (e) {
+        glassAlert('Couldn’t record the payment. ' + chbActErrSay(e));
+    }
+}
+async function pmRecordUndo(b, prev) {
+    const body = { action: 'set_payment', id: b.dbId, payment: prev.payment };
+    if (prev.payment === 'deposit') body.deposit = prev.depositPaid;
+    if (prev.depositPaid > 0.001) { body.payment_date = prev.date || todayDashed(); body.payment_method = prev.method; }
+    try {
+        body.op_id = chbOpFor(['set_payment', body]);
+        await apiPost('bookings.php', body);
+        chbOpBump();
+        await loadData();
+        toast('Put back as it was.');
+        pmRender();
+        pmLoad();
+    } catch (e) {
+        glassAlert('Couldn’t undo it. ' + chbActErrSay(e));
+    }
+}
+function pmExpenseSheet() {
+    let cat = EXPENSE_CATS[0];
+    const draw = (amt, who) => {
+        const s = pmSheet(`<h3>Add an expense</h3>
+            <div class="pm-field"><label class="pm-flabel" for="pm-ex-amt">Amount</label><input id="pm-ex-amt" inputmode="decimal" autocomplete="off" placeholder="£0.00" value="${escapeHtml(amt || '')}"></div>
+            <div class="pm-field"><label class="pm-flabel" for="pm-ex-who">Paid to</label><input id="pm-ex-who" autocomplete="off" placeholder="Who you paid" value="${escapeHtml(who || '')}"></div>
+            <div class="pm-field"><span class="pm-flabel">Kind</span>${pmChips('cat', EXPENSE_CATS.map((c) => [c, c]), cat)}</div>
+            <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">Add</button></div>`, pmExpenseSave);
+        /** @type {any} */ (s).__pick = (k, a) => {
+            if (k !== 'cat') return;
+            const a1 = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-ex-amt'));
+            const w1 = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-ex-who'));
+            cat = a;
+            draw(a1 ? a1.value : '', w1 ? w1.value : '');
+        };
+        /** @type {any} */ (s).__cat = () => cat;
+    };
+    draw('', '');
+}
+async function pmExpenseSave() {
+    const s = /** @type {any} */ (document.getElementById('pm-sheet'));
+    const a = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-ex-amt'));
+    const w = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-ex-who'));
+    const v = pmNum(a ? a.value : '');
+    if (!(v > 0)) { if (a) a.focus(); return; }
+    const cat = s && s.__cat ? s.__cat() : 'Other';
+    pmSheetClose();
+    try {
+        const res = await queueOrPost('expenses.php', { action: 'add', date: todayDashed(), category: cat, amount: v, prop: '', description: (w && w.value.trim()) || '', recurring: 0 });
+        if (res && res.queued) { toast('Saved offline. It will sync when you reconnect.'); return; }
+        await loadExpenses();
+        delete __pmBooks[taxYearStartOf(todayDashed())];
+        await pmLoad(true);
+        const bk = __pm && __pm.books;
+        toast(`${cat} ${gbp(v)} added.${bk ? ` ${bk.profit < 0 ? 'Loss' : 'Profit'} so far is ${gbp(bk.profit)}.` : ''}`);
+    } catch (e) {
+        glassAlert('Couldn’t add the expense. ' + chbActErrSay(e));
+    }
+}
+function pmAskSheet() {
+    const list = pmOwed().filter((r) => !r.auto && !r.arranged && r.b.email);
+    if (!squareAdminEnabled) { toast('Card payments are off, so there is no pay link to send.'); return; }
+    if (!list.length) { toast('Nobody needs asking: everyone who owes you is already arranged.'); return; }
+    let pick = String(list[0].b.id);
+    const draw = () => {
+        const r = list.find((x) => String(x.b.id) === pick) || list[0];
+        const s = pmSheet(`<h3>Ask a guest to pay</h3><p>Emails them the pay link for what is due. You see the email before it goes.</p>
+            <div class="pm-field"><span class="pm-flabel">Who</span>${pmChips('who', list.map((o) => [String(o.b.id), pmFirst(o.b.name)]), pick)}</div>
+            ${pmWhoCard(r)}
+            <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">Continue</button></div>`, async () => {
+            pmSheetClose();
+            await requestPayment(r.b.id, r.first ? 'deposit' : 'balance');
+            pmRefresh();
+        });
+        /** @type {any} */ (s).__pick = (k, a) => { if (k === 'who') { pick = a; draw(); } };
+    };
+    draw();
+}
+// "I've moved it out": every payment counted as in the bank is marked in the
+// sweep's record (sweep-moved), which the server reads. The WHOLE stored map is
+// amended, never rebuilt from what is on screen.
+async function pmMoved() {
+    const P = __pm && __pm.position;
+    const items = (__pm && __pm.bank_items) || [];
+    if (!P || !items.length) return;
+    const prev = Object.assign({}, (__pm && __pm.moved_map) || {});
+    const map = Object.assign({}, prev);
+    const now = Math.floor(Date.now() / 1000);
+    items.forEach((it) => { if (it.txn_id) map[String(it.txn_id)] = now; });
+    try {
+        await saveContent('sweep-moved', JSON.stringify(map));
+    } catch (e) { return; }
+    toast(`Recorded: ${gbp(P.ready)} moved out.${P.held > 0.005 ? ` ${gbp(P.held)} of deposits stays put.` : ''}`, 'success', {
+        label: 'Undo',
+        fn: async () => { try { await saveContent('sweep-moved', JSON.stringify(prev)); } catch (e) { return; } pmLoad(); },
+    });
+    await pmLoad(true);
+}
+async function pmExport(kind) {
+    const y = __pmYear || taxYearStartOf(todayDashed());
+    try {
+        accountsReport = await apiGet('accounts.php?year=' + encodeURIComponent(y));
+        await loadExpenses();
+    } catch (e) {
+        glassAlert('Couldn’t load the year. ' + chbActErrSay(e));
         return;
     }
-    try {
-        const res = await act.inline();
-        if (res && res.say) toast(res.say);
-        renderMoneyOverview();
-    } catch (e) {
-        glassAlert(String((e && e.message) || e));
-    }
+    if (kind === 'csv') exportAccountsCSV();
+    else downloadYearStatement(y);
 }
-// ONE accounts.php fetch answers To-move-out, To-give-back, The-books AND
-// the Square-hasn't-said exception (the payload the sweep and Income & tax
-// read, cached into __sweepLiab); the recent feed is its own call.
-// THE ANSWER ARRIVING. moAsyncFill paints "working it out…" into the Money
-// landing's answers and a second fetch replaces each with the real figure — the
-// swap had no transition at all, so a placeholder simply became a number. This
-// is the most honest flourish available in the app: something really did change,
-// and it changed because work finished.
-//
-// No first-fill flag is needed, and that is the difference from the availability
-// chip (which is rebuilt with data that has NOT changed, so its entrance had to
-// be latched): renderMoneyOverview paints the placeholders and only then calls
-// this, so every write in here is an arrival by construction.
-//
-// The index staggers the four answers 90ms apart so they read as ONE delivery
-// rather than four pops. It is the ROW's index, not the call order — the two
-// fetches resolve independently and an order-of-arrival counter would stagger by
-// whichever came back first.
-function moLand(el, i) {
-    if (!el) return;
-    el.classList.remove('mo-run'); // the placeholder pulse ends the moment the answer lands
-    el.style.setProperty('--mo-land-d', (i || 0) * 90 + 'ms');
-    el.classList.remove('mo-landed');
-    void (/** @type {HTMLElement} */ (el)).offsetWidth;
-    el.classList.add('mo-landed');
+
+/* ── What a tap does ── */
+const PM_ACT = {
+    menu() { const m = document.getElementById('pm-menu'); pmMenuShow(!!(m && m.hidden)); },
+    'to-coming'() {
+        const c = document.getElementById('pm-coming') || document.querySelector('#pm-list .pm-capline.is-attn');
+        if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else toast('Nobody owes you anything.');
+    },
+    'to-way'() {
+        const way = __pmAct.find((e) => e.kind === 'payout' && e.state === 'way');
+        if (way) pmOpen('payout:' + way.payout);
+        else toast(__pm && __pm.position && __pm.position.with_square > 0.005 ? 'Taken recently: it joins Square’s next payout.' : 'Nothing is with Square right now.');
+    },
+    move() { pmOpen('move'); },
+    books() { pmOpen('books'); },
+    stay(id) { if (id) pmOpen('stay:' + id); },
+    payout(id) { if (id) pmOpen('payout:' + id); },
+    close() { pmClose(); },
+    filter(arg) { __pmFilter = arg; __pmShown = 20; pmRenderList(); },
+    async older() {
+        __pmShown += 40;
+        if (__pmAct.filter(pmKeep).length < __pmShown && !__pmActEnd && __pmAct.length) {
+            try {
+                const r = await apiPost('money.php', { action: 'activity', before: __pmAct[__pmAct.length - 1].at });
+                const more = (r && r.activity) || [];
+                const have = new Set(__pmAct.map((e) => e.id));
+                more.forEach((e) => { if (!have.has(e.id)) __pmAct.push(e); });
+                __pmActEnd = more.length < 80;
+            } catch (e) { toast('Couldn’t load older activity. ' + chbActErrSay(e), 'error'); }
+        }
+        pmRenderList();
+    },
+    yr(arg) { __pmYear = Number(arg); if (__pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear); pmRenderDetail(); },
+    retry() { pmLoad(); },
+    record(id) { pmMenuShow(false); pmRecordSheet(id || ''); },
+    expense() { pmMenuShow(false); pmExpenseSheet(); },
+    ask() { pmMenuShow(false); pmAskSheet(); },
+    async askone(id) { const b = findBookingById(id); const loc = b && findBookingLocation(id); const r = loc ? pmOwedRow(loc.propKey, b) : null; await requestPayment(id, r && r.first ? 'deposit' : 'balance'); pmRefresh(); },
+    async remind(id) { await sendPaymentReminder(id); await loadData(); pmRender(); },
+    async return(id) { await returnDeposit(id); pmRender(); pmLoad(true); },
+    async keep(id) { await keepDeposit(id); pmRender(); pmLoad(true); },
+    hub(id) { openBookingHub(id); },
+    async moved() { await pmMoved(); },
+    async check() {
+        try {
+            await apiPost('square-setup.php', { action: 'payouts_refresh' });
+            toast('Square checked.');
+        } catch (e) { toast(chbActErrSay(e), 'error'); }
+        Object.keys(__pmPayout).forEach((k) => delete __pmPayout[k]);
+        await pmLoad();
+    },
+    balance() { accountsOpen('balance'); },
+    expenses() { accountsOpen('expenses'); },
+    csv() { pmExport('csv'); },
+    pdf() { pmExport('pdf'); },
+};
+function pmWire() {
+    const v = /** @type {any} */ (document.getElementById('view-accounts'));
+    if (!v || v.__pmWired) return;
+    v.__pmWired = true;
+    v.addEventListener('click', (e) => {
+        const tgt = e.target instanceof Element ? e.target : null;
+        const el = tgt ? /** @type {HTMLElement|null} */ (tgt.closest('[data-pm]')) : null;
+        if (!el) {
+            const m = document.getElementById('pm-menu');
+            if (m && !m.hidden && !(tgt && tgt.closest('.pm-addwrap'))) pmMenuShow(false);
+            return;
+        }
+        if (/** @type {any} */ (el).disabled) return;
+        const act = el.getAttribute('data-pm') || '';
+        if (act !== 'menu') {
+            const m = document.getElementById('pm-menu');
+            if (m && !m.hidden && !el.closest('.pm-menu')) pmMenuShow(false);
+        }
+        const fn = PM_ACT[act];
+        if (fn) fn(el.getAttribute('data-arg') || '', el);
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !v.classList.contains('active')) return;
+        if (document.body.classList.contains('pm-sheet-open')) { pmSheetClose(); return; }
+        const m = document.getElementById('pm-menu');
+        if (m && !m.hidden) { pmMenuShow(false); const b = document.getElementById('pm-add'); if (b) b.focus(); return; }
+        const r = pmRoot();
+        if (r && r.classList.contains('is-detail')) pmClose();
+    });
+    window.addEventListener('resize', () => { if (v.classList.contains('active')) { pmLayout(); pmRenderDetail(); } });
 }
-function moAsyncFill() {
-    const stamp = ++__moFillStamp;
-    const alive = (id) => __moFillStamp === stamp && document.getElementById(id);
-    apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed())))
-        .then((rep) => {
-            if (!alive('mo-move-fig')) return;
-            const L = rep.deposit_liability || null;
-            if (L && !L.error) __sweepLiab = L;
-            const P = (L && L.payouts) || null;
-            // To move out — the landed, movable figure (P.inBank is already
-            // net of fees and of deposits leaving those charges).
-            const moveFig = document.getElementById('mo-move-fig');
-            const moveRows = document.getElementById('mo-move-rows');
-            if (P && P.known > 0 && Number(P.inBank) > 0) {
-                moveFig.innerHTML = `<span class="bhub-payline-fig">${gbp(Number(P.inBank))}</span>`;
-                const items = (P.items && P.items.inBank) || [];
-                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
-            } else {
-                moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
-                if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
-            }
-            __moHead.move = P && P.known > 0 ? Number(P.inBank) || 0 : null;
-            moLand(moveFig, 0);
-            moLand(moveRows, 0);
-            // To give back — only exists when a deposit is held; otherwise the headline says so.
-            const slot = document.getElementById('mo-back-slot');
-            if (slot && L && !L.error) {
-                // The ring fence (L) is SQUARE money only. A deposit paid in cash or by
-                // transfer is held too — the owner hands it back themselves — and the
-                // landing said "no deposits are held" over one Today was asking to return.
-                const cashItems = [];
-                try {
-                    Object.keys(dbBookings).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
-                        if ((b.holdStatus || 'none') !== 'none') return;
-                        const h = damageHeld(pk, b);
-                        if (h.held > 0.005) cashItems.push({ name: b.name, net: h.held, check_in: b.checkIn, check_out: b.checkOut, cash: (b.paymentMethod || 'by hand').toLowerCase() });
-                    }));
-                } catch (e) {}
-                const items = (L.items || []).concat(cashItems);
-                const cashSum = cashItems.reduce((n, it) => n + it.net, 0);
-                const backNet = Number(L.net || 0) + cashSum;
-                __moHead.held = items.length ? backNet : 0;
-                if (items.length) {
-                    const today2 = todayDashed();
-                    const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : 'ready to return') + (it.cash ? ' · paid ' + (/^by /.test(it.cash) ? it.cash : 'by ' + it.cash) : '');
-                    // `it.net` — the liability items carry outstanding/awaiting/rental/fee/gross/feeBack/net and NO `amount`.
-                    slot.innerHTML = bhubFoldGrp('moback', 'To give back', 'deposits still held',
-                        `<span class="bhub-payline-fig" id="mo-back-fig">${gbp(backNet)}</span>`,
-                        `<div id="mo-back-rows" style="margin-bottom:6px;">${items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${st(it)}</span></span><span class="bhub-kv-val">${gbp(Number(it.net) || 0)}</span></div>`).join('')}</div>
-                         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
-                    moLand(document.getElementById('mo-back-fig'), 1);
-                }
-            }
-            // The books — the SERVER'S net (rental + kept − fees − expenses),
-            // replacing the client's fee-less estimate.
-            const booksFig = document.getElementById('mo-books-fig');
-            if (booksFig && typeof rep.total === 'number') {
-                const startYear = taxYearStartOf(todayDashed());
-                const expT = expensesForYear(startYear).reduce((s2, x) => s2 + (x.amount || 0), 0);
-                const net = (rep.total || 0) + (rep.kept_deposits || 0) - (rep.card_fees || 0) - expT;
-                booksFig.textContent = gbp(net);
-                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok-text)';
-                const br = document.getElementById('mo-books-rows');
-                if (br) br.innerHTML = `${gbp(rep.total || 0)} income · − ${gbp(rep.card_fees || 0)} card fees · − ${gbp(expT)} expenses${(rep.kept_deposits || 0) > 0.005 ? ` · + ${gbp(rep.kept_deposits)} kept deposits` : ''}`;
-                moLand(booksFig, 2);
-                moLand(br, 2);
-            }
-            // Square-hasn't-said — the exception joins the red section, with
-            // the age that makes it an exception (payouts checked, charge old).
-            const holder = document.getElementById('mo-attn-async');
-            if (holder && P && P.known > 0 && P.items && (P.items.unknown || []).length) {
-                const win = Number(P.lookback) || 90;
-                const ageOf = (it) => { const dsrc = it.paid_on || it.created_at; return dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0; };
-                // A charge older than Square's payout window can never be matched,
-                // so it stops being a thing to look at (owner-asked) — it still
-                // sits in Move money out's "Square hasn't said" group.
-                const unk = (P.items.unknown || []).filter((it) => ageOf(it) < win);
-                const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
-                const oldDays = unk.reduce((m, it) => Math.max(m, ageOf(it)), 0);
-                if (unk.length && oldDays > 7) {
-                    __moHead.unk = unk.length;
-                    // The sub is a nowrap right-rail caption beside a capsule —
-                    // measured at 390 it had 197px for 66 characters and painted
-                    // "…it should be by…". It names the FACT; the sentence that
-                    // explains it lives inside the fold, where it has the width.
-                    holder.innerHTML = bhubFoldGrp('mounk', `Square hasn’t said`,
-                        oldDays >= win ? `${oldDays} days old · past Square’s ${win}-day window` : `${oldDays}-day-old charge · not in the payout data`,
-                        stCap('warn', gbp(total)),
-                        `<div class="bhub-mut" style="margin-bottom:6px;">${oldDays >= win ? `${unk.length === 1 ? 'This charge is' : 'These charges are'} older than the ${win} days of payouts Square reports, so ${unk.length === 1 ? 'it' : 'they'} can’t be matched here. If you’ve seen the money in your bank, there is nothing to do.` : `Square has reported other payouts, so ${unk.length === 1 ? 'this charge' : 'these charges'} should have appeared by now.`}</div>
-                         ${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(it.kind || 'payment')}${it.paid_on ? ' · taken ' + escapeHtml(fmtDate(String(it.paid_on).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('')}
-                         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
-                    const cap = document.getElementById('mo-attn-cap');
-                    if (cap) cap.hidden = false;
-                }
-            }
-        })
-        .then(() => moHeadline(), () => {})
-        .catch(() => {
-            const moveFig = document.getElementById('mo-move-fig');
-            if (__moFillStamp === stamp && moveFig) moveFig.innerHTML = stCap('unk', 'couldn’t load');
-        });
-    apiPost('bookings.php', { action: 'recent_payments' })
-        .then((r) => {
-            if (!alive('mo-recent-sum')) return;
-            const list = (r && r.payments) || [];
-            const sum = document.getElementById('mo-recent-sum');
-            const rowsEl = document.getElementById('mo-recent-rows');
-            if (!list.length) {
-                if (sum) sum.textContent = 'nothing yet';
-                if (rowsEl) rowsEl.textContent = 'Card payments will appear here as they come in.';
-                moLand(sum, 3);
-                moLand(rowsEl, 3);
-                return;
-            }
-            const latest = list[0];
-            if (sum) sum.textContent = `${(latest.name || 'a guest').split(' ')[0]} · ${gbp(Math.abs(parseFloat(latest.amount)) || 0)}`;
-            // The NAME is the label and everything else is the sub: "Alexandrina
-            // Featherstonehaugh-Smythe · damages return" still ran past a two-line
-            // clamp at 360 (measured by the gate on its first run), and the name
-            // is the half you scan for.
-            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')}</span><span class="bhub-kv-sub">${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}${p.created_at ? ' · ' + escapeHtml(fmtDate(String(p.created_at).slice(0, 10))) : ''}</span></span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}</span></div>`).join('');
-            moLand(sum, 3);
-            moLand(rowsEl, 3);
-        })
-        .catch(() => {});
+// The page's one renderer for the rest of the app: anything that changes money
+// (a payment recorded, an expense added, a deposit returned) calls this.
+function renderMoneyOverview() {
+    if (!pmRoot()) return;
+    pmRender();
+    const v = document.getElementById('view-accounts');
+    if (v && v.classList.contains('active')) pmRefresh();
 }
 // Per-booking payments & balances manager (top of the Money & income view).
 // Upcoming + current stays, with manual reconcile + Square request/refund.
@@ -18332,6 +18785,7 @@ function afterPaymentChange(bookingId) {
     if (acc && acc.classList.contains('active')) {
         // Re-fetch deposit returns, then re-render the whole money view.
         loadDepositReturns().then(() => {
+            renderMoneyOverview();
             try {
                 renderDepositsDue();
             } catch (e) {}

@@ -607,7 +607,7 @@ try {
     $sweep['error'] = true;
 }
 
-json_out([
+$accountsOut = [
     'year' => $requested,
     'years' => $yearList,
     'deposit_liability' => $sweep,
@@ -628,4 +628,10 @@ json_out([
     'by_property' => $byProp,
     'payments' => $inYear,
     'undated' => ['count' => $undatedCount, 'total' => round($undatedIncome, 2), 'held' => round($undatedHeld, 2)],
-]);
+];
+// money.php includes this file for the SAME report (the books and where the money
+// is), so the arithmetic above exists once: included, it hands the array back.
+if (defined('CHB_ACCOUNTS_AS_LIB')) {
+    return $accountsOut;
+}
+json_out($accountsOut);

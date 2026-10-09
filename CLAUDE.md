@@ -652,6 +652,41 @@ gave-up 30d).
   relay is back — the op-queue probe rule, server-side; once per request,
   re-entrancy-guarded).
 
+## Payments: where the money is, in one look (the approved Payments demo, built without CI)
+
+**Supersedes the "FIVE ANSWERS" landing below** (its renderer, moAsyncFill, moHeadline and the Tools rows are gone).
+The page is `#pm` in admin-views.html, `pm*` / `PM_*` in admin.js, the `#pm` / `.pm-sheet` block at the foot of
+admin.css. Markup uses `data-pm` and `pm-` classes (the Inbox's rule), wired once on `#view-accounts` by `pmWire`.
+- **The journey card**: Owed to you (the bookings' own `bookingDue`), With Square, In your bank, and **Ready to move
+  out**, then Needs you (overdue balances, deposits to return, a failed payout), Coming in (each with how the money
+  arrives: collects itself / link sent / asked, not paid / due now / asks on its date / you arranged it), Activity
+  (five filters, paged by `before`) and The books. A phone slides a detail page over the list below the header
+  (`#pm.is-detail`, `--pm-top`); from 880px of room the two sit side by side and the detail defaults to the books.
+- **Two sources, each said once.** Who owes what is client-side from `pmOwedRow` (bookingDue, bookingPlanDueDate,
+  bookingInBalanceWindow, the autopay columns, bookingOwnerArranged), so this page, the booking page and Today cannot
+  disagree. A card on file is never overdue unless declined (3 tries). Everything else is **money.php**: `summary`
+  (position, bank items, the moved-out map, the books, years, the first 80 movements), `activity {before}`,
+  `stay {id}`, `payout {id}`, `books {year}`.
+- **money.php reads accounts.php AS A LIBRARY** (`CHB_ACCOUNTS_AS_LIB` makes it return its report instead of
+  `json_out`), so the sweep's per-transaction arithmetic exists once. `money-lib.php` is pure: payments rows to events
+  (the card's amount is rental + the deposit that rode it), payouts from the Square cache, expenses, moved-out
+  markings, `money_position` (with Square = settled money on its way or unknown; in the bank = landed and not marked
+  moved; ready = the sweep's own movable; held = the gap) and `money_books` (one profit sum). Square is never asked
+  on a page visit; "Check Square now" on Move money out asks.
+- **"I've moved it out"** amends the WHOLE stored `sweep-moved` map with every in-bank txn (the payouts-lib rule) and
+  offers Undo. The typed-balance worksheet stays one tap away (`accountsOpen('balance')` shows the old `asec-sweep`).
+- **Recording a payment is a sheet** (`pmRecordSheet`): from a guest it is that guest's alone; from + it offers the
+  owing guests. It adds the typed sum to what is recorded and posts the CUMULATIVE `set_payment` (cash deposit only in
+  full, `deposit_collected`), with the op ledger id and an Undo that puts the previous figures back.
+- **Routes**: `accountsOpen('payments'|'recent')` lands on the page, `'income'` opens the books, `'sweep'` opens Move
+  money out, `'expenses'` keeps the old expense manager (the books' "Every expense"). `renderMoneyOverview()` is now
+  the page's repaint plus a debounced summary refetch; anything that changes money still calls it.
+- **A reset rule inside `:is(#pm, …)` takes the id's weight**: `:is(#pm, .pm-sheet) button { color: inherit }` beat
+  the pressed chip's own colour and painted white on white. Resets go in `:where()`.
+- NOT re-aimed (merge without CI, the owner's ask): ui-test-money, ui-test-backoffice-motion (moLand), the onelook
+  and layout scenes that read `#money-overview`. Follow-ups: Today, the dock badge and search still compute owed
+  their own way; the CSV/PDF keep their own profit arithmetic.
+
 ## The Money area is FIVE ANSWERS, not an index
 
 **CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.

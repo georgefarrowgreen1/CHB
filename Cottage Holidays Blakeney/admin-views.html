@@ -194,28 +194,31 @@
             <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
             </div>
-            <div class="settings-head-pills" id="mo-pill"></div>
+            <div class="pm-head-r">
+                <div class="settings-head-pills" id="mo-pill"></div>
+                <span class="pm-addwrap">
+                    <button type="button" class="pm-add" id="pm-add" data-pm="menu" aria-label="Add" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+                    <div class="pm-menu" id="pm-menu" role="menu" hidden>
+                        <button type="button" role="menuitem" data-pm="record">Record a payment</button>
+                        <button type="button" role="menuitem" data-pm="expense">Add an expense</button>
+                        <button type="button" role="menuitem" data-pm="ask">Ask a guest to pay</button>
+                    </div>
+                </span>
+            </div>
         </div>
-        <!-- Assist Bar: search payments/balances + ask money questions inline. -->
         </div>
 
-        <!-- INDEX -->
-        <div id="accounts-index" class="settings-index">
-            <div id="money-overview" class="money-overview"><!-- JS injects the five-verdict money landing --></div>
-            <!-- The verdicts above route to Payments & balances, Recent, Income & tax
-                 and Move money out themselves — the index keeps only the destinations
-                 no verdict owns. -->
-            <!-- one-look: a destination is a row in a card, the Manage index's own anatomy. -->
-            <span class="bhub-grpcap">Tools</span>
-            <div class="settings-group">
-                <button class="settings-row" data-act="accountsOpen" data-arg="payments">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Payments &amp; balances</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-act="accountsOpen" data-arg="expenses">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Expenses</span></span><span class="settings-row-chev">›</span>
-                </button>
+        <!-- PAYMENTS: WHERE THE MONEY IS, IN ONE LOOK (the approved Payments demo).
+             The journey (owed, with Square, in your bank, ready to move out), what
+             needs you, what is coming in, every movement, and the tax year. A phone
+             shows the list and a detail page slides over it below the header; from
+             880px of room the two sit side by side. Rendered by pmRender() in
+             admin.js; the figures are money.php's ledger and the bookings' own
+             derivations (bookingDue), never a second sum. -->
+        <div id="accounts-index">
+            <div class="pm" id="pm">
+                <section class="pm-list" id="pm-list" aria-label="Payments"></section>
+                <section class="pm-detail" id="pm-detail" aria-label="Details"></section>
             </div>
         </div>
 
