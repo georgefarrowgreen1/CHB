@@ -52,9 +52,9 @@ const SUM = {
     await page.waitForTimeout(900);
 
     console.log('§1 the week, and what needs a look');
-    const w = await page.evaluate(() => ({ bars: document.querySelectorAll('#al-week .al-wbar').length, big: document.querySelector('.al-wbig b').textContent, cap: document.querySelector('#al-week .st-cap').textContent, need: document.querySelector('.al-need b').textContent, warnDots: document.querySelectorAll('#al-week .al-wbar i b').length }));
+    const w = await page.evaluate(() => ({ bars: document.querySelectorAll('#al-week .al-wbar').length, big: document.querySelector('.al-wbig b').textContent, cap: (document.querySelector('#al-pill .head-pill') || {}).textContent || '', inCard: !!document.querySelector('#al-week .st-cap'), need: document.querySelector('.al-need b').textContent, warnDots: document.querySelectorAll('#al-week .al-wbar i b').length }));
     ok(w.bars === 7 && w.big === '9 events', `seven days and the week's total (${w.bars}, ${w.big})`);
-    ok(/1 needs a look/.test(w.cap), `the capsule says what needs a look ("${w.cap}")`);
+    ok(/1 needs a look/.test(w.cap) && !w.inCard, `the title's status pill says what needs a look, not a capsule in the week card ("${w.cap}")`);
     ok(w.need === 'A server error', `the warning is said in plain words ("${w.need}")`);
     ok(w.warnDots === 1, 'the day it happened carries a warning dot');
 
@@ -107,7 +107,7 @@ const SUM = {
     await page.waitForTimeout(600);
     const seen = posts.find((p) => p.action === 'seen');
     ok(seen && JSON.stringify(seen.ids) === '[28]', `Seen it posts the warning's ids (${seen && JSON.stringify(seen.ids)})`);
-    ok(await page.evaluate(() => document.getElementById('al-needs').hidden && /Nothing needs you/.test(document.querySelector('#al-week .st-cap').textContent)), 'and the card clears, the capsule saying so');
+    ok(await page.evaluate(() => document.getElementById('al-needs').hidden && /All clear/.test((document.querySelector('#al-pill .head-pill') || {}).textContent || '')), 'and the card clears, the pill saying so');
     if (process.env.CHB_SHOTS) {
       await page.evaluate(() => { activityLogState.sum.needs = [{ title: 'A server error', why: 'Worth a look — the log has the details', tech: 'Server error in diagnostics.php', ids: [28], n: 1 }]; alPaintNeeds(); alPaintWeek(); });
       await page.screenshot({ path: process.env.CHB_SHOTS + '/actlog.png', fullPage: true });

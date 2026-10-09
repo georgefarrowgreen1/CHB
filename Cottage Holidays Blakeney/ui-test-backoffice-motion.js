@@ -289,11 +289,11 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   console.log('\n§3 A figure that changed says so');
   await page.evaluate(() => openBookings());
   await page.waitForFunction(() => {
-    const v = document.querySelector('#bookings-owed .bk-owed');
+    const v = document.querySelector('#bookings-owed .head-pill');
     return v && /£\d/.test((v.textContent || '').trim());
   }, { timeout: 15000 });
   const firstPaint = await page.evaluate(() => {
-    const v = document.querySelector('#bookings-owed .bk-owed');
+    const v = document.querySelector('#bookings-owed .head-pill');
     return { txt: (v.textContent || '').trim(), anims: v.getAnimations().length };
   });
   ok(/£\d/.test(firstPaint.txt), `the owed line carries the figure (${firstPaint.txt})`);
@@ -302,7 +302,7 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   // A repaint that changes nothing must stay still.
   await page.evaluate(() => renderBookings());
   await page.waitForTimeout(30);
-  ok(await page.evaluate(() => document.querySelector('#bookings-owed .bk-owed').getAnimations().length === 0),
+  ok(await page.evaluate(() => document.querySelector('#bookings-owed .head-pill').getAnimations().length === 0),
     'a repaint with the same figure stays still');
 
   // The COUNT changes: a second booking arrives owing. (A part-payment that leaves the same
@@ -312,13 +312,13 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
     const first = dbBookings['jollyboat'][0] || dbBookings['21a'][0];
     dbBookings['jollyboat'].push(Object.assign({}, first, { id: 'b-owes-2', dbId: 9902, name: 'Late Arrival', depositPaid: 0, payment: 'unpaid', checkIn: first.checkIn, checkOut: first.checkOut, paymentMethod: 'Card' }));
     renderBookings();
-    const v = document.querySelector('#bookings-owed .bk-owed');
+    const v = document.querySelector('#bookings-owed .head-pill');
     return { txt: (v.textContent || '').trim(), anims: v.getAnimations().map((a) => a.animationName) };
   });
   ok(settled.anims.includes('bkFigSettle'), `a second booking owes and the figure settles (now "${settled.txt}")`);
   // It SETTLES, it does not pop: the capsule was already on screen.
   const settleFrom = await page.evaluate(() => {
-    const v = document.querySelector('#bookings-owed .bk-owed');
+    const v = document.querySelector('#bookings-owed .head-pill');
     const a = v.getAnimations()[0]; if (!a) return null;
     a.pause(); a.currentTime = 0;
     const cs = getComputedStyle(v);

@@ -418,19 +418,19 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(cta.w >= 44 && cta.h >= 44, `the + is a 44px target (${cta.w}x${cta.h})`);
     ok(/Add/.test(cta.name), `…and is named for a screen reader ("${cta.name}")`);
 
-    // (B) Who owes is said ONCE, in one line under the Bookings caption — a real button that
+    // (B) Who owes is said ONCE, in Today's status pill beside the title — a real button that
     // says the figure and opens the list. (It used to ride the day line as an unbreakable run.)
     const dayLine = await page.evaluate(() => {
-        const b = document.querySelector('#bookings-owed .bk-owed');
+        const b = document.querySelector('#bookings-owed .head-pill');
         return {
             has: !!b,
             isBtn: !!b && b.tagName === 'BUTTON' && b.getAttribute('data-act') === 'openBookingsNeedsPay',
-            said: /£[\d,]+ to collect from/.test((b && b.textContent) || ''),
+            said: /^£[\d,]+ to collect$/.test(((b && b.textContent) || '').trim()) && /from \d+ guests?/.test((b && b.getAttribute('aria-label')) || ''),
             onDayLine: /to collect/.test((document.getElementById('today-date') || {}).textContent || ''),
         };
     });
-    ok(dayLine.has && dayLine.isBtn, 'who owes is one button under the Bookings caption');
-    ok(dayLine.said, '…saying the figure and the number of guests');
+    ok(dayLine.has && dayLine.isBtn, 'who owes is one button: the pill beside the Today title');
+    ok(dayLine.said, '…saying the figure, and to a screen reader the number of guests');
     ok(!dayLine.onDayLine, '…and the day sentence no longer repeats it');
 
     // (I) The cap names the ASK's stage. A finished stay with the deposit still

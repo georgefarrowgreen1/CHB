@@ -665,8 +665,8 @@ gave-up 30d).
 **Update (calm is one line):** the landing opens with a SENTENCE (`moHeadline`, `#mo-headline`) built from the
 same figures the groups show — what is yours to move, who owes you, what is held, how many things need a look —
 and leaves out any part still loading rather than guessing. "To collect" renders only when money is owed and "To
-give back" only when a deposit is held (filled by `moAsyncFill` into `#mo-back-slot`); otherwise ONE `#mo-calm`
-line says so. The "More" cards are three `.mo-tool` buttons. The Square-hasn't-said row says when a charge is
+give back" only when a deposit is held (filled by `moAsyncFill` into `#mo-back-slot`); otherwise the status pill
+beside the title says so (`#mo-pill` — the `#mo-calm` panel is gone, see "Every page's status is the Manage pill"). The "More" cards are three `.mo-tool` buttons. The Square-hasn't-said row says when a charge is
 older than Square's payout window and so cannot be matched. The destination pages (Move out, Income & tax,
 Recent, Expenses, Pricing coach) are NOT yet reworked.
 
@@ -909,6 +909,78 @@ guard removed, the window scope removed — each fails its own checks).
   one switcher, the caption on its row's line, the window's accent Save), §6 (the scope probe on the guest side),
   search-test (the occupancy check went with the function).
 
+## Every page's status is the Manage pill, beside its title (owner-asked)
+
+**Asked for from three screenshots of one idea in three looks** — Today's bookings card header ("✓ Nobody
+owes you anything"), Key safes' green words ("✓ All 3 safes are ready") and Payments' tinted panel ("✓ Nothing
+to collect") — "instead give them the pill style and position that the Manage status pill has". Every page that
+states how it is doing now does it ONE way: `headPill(tone, text, opts)` (admin.js, beside `manageStatusPill`)
+renders the Manage pill's own markup (`cron-pill head-pill ok|warn|danger|unk` + `.cron-pill-dot`), a
+`<button>` when it leads somewhere (`opts.act`), else a `role="status"` span (`.is-static`, no pointer);
+`headPillSet(slot, html)` writes it only when it changed (two memos, the ops-line lesson) and settles a pill
+whose words changed. `''` claims nothing. The place is the Manage header's: title left, pill right, centred on
+the title's line — `.dashboard-header.settings-head` + `.settings-head-titles` + `.settings-head-pills` on Today
+(`#bookings-owed`), Key safes (`#ks-pill`) and Payments (`#mo-pill`); the sub-pages' existing title slot
+(`#settings-panel-cap`) and a `.settings-panel-head` row on the Activity log (`#al-pill`, index.html).
+- **What each says**: Today — `£X to collect` (amber, taps to the who-owes list; "from N guests" in its
+  aria-label) / `Nobody owes you anything` / `Nothing to chase` (owner-arranged money still owed); Key safes —
+  `N codes to set` (red when the duty is red) / `All N ready`; Payments — `N overdue` (red) / `£X due now`
+  (amber) / `Nothing due yet` / `Nothing to collect` (owed later is not late); Activity log — `N need a look` /
+  `All clear`; Calendar sync — `N not syncing` (red, as Manage's feed row) / `N behind` / `None linked` /
+  `Up to date` / `Checking…`, and a cottage's page `<Platform> not responding` / `Not linked` / `Synced 2m ago`;
+  Reviews, Price ideas, Seasonal rates and Payments settings keep their words in the pill.
+- **What went**: the bookings card's status row and its join rules (the list is its own card again; the count is
+  the caption's `· 6 upcoming`), `.ks-status`, `#mo-calm` and `__moCalmState`, the Calendar sync summary's mark
+  and title (the card keeps the facts and Sync all — hidden when nothing is linked), and the activity week
+  card's capsule. **Calendar sync said "All calendars up to date" with 0 of 4 linked** — a claim about nothing;
+  it says `None linked` now.
+- **The words were cut to fit 360px beside the title** (measured): "4 need a new code" wrapped "Key safes" to two
+  lines, so `N codes to set` (aria-label keeps "N safes need a new code"); `Up to date`, `All clear`. The ⓘ on Key
+  safes moved beside the title (28px, a 44px region) so the right edge is the pill's. "Seasonal rates" still wraps
+  at 360 (fits from 375).
+- Gated by **ui-test-onelook §16** (nine pages: the pill present, the Manage pill's classes and look — height,
+  corners, type, padding, dot — right of the title on its line at the row's edge, each page's words, none of the
+  old looks left), break-tested four ways (a page's pill losing the class, Payments' header losing the row anatomy,
+  "up to date" about nothing, a status line restored). Re-aimed: ui-test-simpletoday §5, ui-test-keysafe §2b,
+  ui-test-money (calm and overdue), ui-test-manage §3b/§3c and the title-pill reads, ui-test-ownerday,
+  ui-test-backoffice-motion §3, ui-test-round8, ui-test-workspace, ui-test-needs-you. NB onelook's fixture
+  SERVES §16's booking, because its background refresh empties `dbBookings` and the pill then rightly says nothing.
+
+## One window, wherever the rows are one list (owner-asked, from screenshots)
+
+**Asked for from Payments' "Needs attention" card beside Calendar sync's separate cottage cards**: "give them
+the same treatment", sitewide, "regardless of how small". Rows of one kind that stack are ONE joined window —
+a hairline between, the card corners only on the run's ends — and a caption names each run. Gated by
+**ui-test-onelook §17** (break-tested eight ways) plus re-aims in ui-test-manage §3/§3b and ui-test-keysafe.
+- **The generic join** (admin.css one-look block) covers `.sp-need, .sp-off, .ac-card, .settings-sec
+  .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .cancel-card, .u-join`. Its top margin is
+  `calc(-1 * var(--fold-gap, 0px))`: a container with a flex gap DECLARES it as `--fold-gap` and the join cancels
+  it (`.sp-sec` 8px, the content editor 12px). Forcing `margin-top: 0` instead left rows squared-but-apart.
+- **Calendar sync**: one "Cottages" caption over one window of rows (`.cal-cot` + a `cot-dot` in the cottage
+  colour); failing platforms are their own fold rows under "Needs attention" (`cal-prob`, red "failing"
+  capsule); the facts line (`.cal-sum`) shows only when something is linked — "3 of 4 cottages linked" about
+  nothing linked was dropped. The list is ONE column at 640px at every width.
+- **Key safes**: two or more to-dos are rows of one window under "Needs attention" (`.ks-trow`, the duty's
+  severity as a capsule — Set now / Soon / After <time>); one to-do keeps the card with its full-width button.
+  A guest past check-in reads "is staying until <date>", never "arrives".
+- **Also joined**: the cottage page's Private/Remove rows, Search learning's stats + probe, the expense list +
+  its add row, the booking hub's money group with the grid below at EVERY width (docked included), the
+  enquiry message with the group under it, Price ideas' two lists, loading skeleton rows, the Status page's
+  Needs-a-look rows. The hub's "Needs attention" sits directly under the payask now.
+- **A page's first caption sits 24px under its title** (section 24 of the block; flow-root on the hosts whose
+  first child's margin collapsed through) — calendar and Payments read 32, the cottage calendar page 8,
+  Backups and Text messages 16.
+- **Text messages' state is the title pill** (Texts on / Texts off / Not ready / Set on the server / Couldn't
+  check), the quiet line under it only when it adds something.
+- **The season strip had gone BLANK**: section 12's generic `position: relative` reach rule caught `.sg-blk`,
+  the absolutely-positioned blocks, and they painted 0px tall. Removed from that rule; ui-test-manage asserts the
+  blocks paint.
+- **An auto-docked hub must not take over the screen** (`__hubAuto`): the wide split docks the first booking
+  quietly; narrowing below the split used to open it full-screen and hide the + menu (CI caught it in
+  ui-test-workspace). Only a hub the owner opened follows the width change.
+- NB the probes that found these live in the scratch stack, not the repo: "squared corners but apart" and
+  "title→first caption gap" are the two measurements worth re-running after any layout pass.
+
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
 **Supersedes the summary row below.** The status is said once, by `#health-pill` beside the Manage title, its dot
@@ -930,7 +1002,7 @@ also watched different halves: the pill the full system check (diagnostics.php),
   `checkCronHealth()` now only tells Today (`__nyCronQuiet`).
 - **A limited person gets no pill**: they are never sent the system's state (diagnostics is full access only), and
   `#manage-verdicts` was already hidden for them.
-- `.mg-sum` CSS stays: it is the Calendar sync page's summary row. The banner's CSS left app.css (guests paid for it).
+- `.mg-sum` CSS stays: it is the Calendar sync page's facts card (its verdict is the title's pill now). The banner's CSS left app.css (guests paid for it).
 - Gated by ui-test-manage §1–§2 (the one pill and no extras; amber for a feed and a review; all clear; the system
   row; stopped jobs red with ONE row; a second failing check still a row; grey both ways; hidden when limited; the
   real fetch folded in), ui-test-needs-you §10 (a dropped bootstrap is grey, a fresh one green), ui-test-hig §2 (one
@@ -1931,6 +2003,8 @@ Now eight.
   chip sits between them). With NO bookings loaded at all the row claims nothing and the empty state
   stands alone. Today's title carries no divider (the `.dashboard-header` border belonged to the
   removed sentence; it is cleared for `#view-backoffice` only).
+- **SUPERSEDED — who owes is Today's status pill beside the title** (see "Every page's status is the Manage pill"); the
+  row, its card join and the count on its edge are gone, the count is the caption's again.
 - **ONE CARD IN EVERY STATE (continuity, approved demo).** The status row is the HEADER of the card that
   holds the list: a list with bookings joins it exactly as the empty state does (no gap, the first row
   loses its top radius/border, the last takes the card's), and the count ("6 past" / "0 upcoming") rides
@@ -2359,10 +2433,9 @@ capsule — 2/4/1/1/1 fire).
   the shadow stayed while the gate said "none" on the rule; restated at that
   specificity, with the glass-panel hover LIFT opted out (a list cell does not rise).
   The Needs-you rail (`border-left`) and the icon tile fill are gone: the capsule
-  says the state once. **ONE EXEMPTION, gated**: `#calendar-list`'s per-cottage
-  groups keep their own corners and 16px of air — an owner's ask ("clear air
-  between the cottages", ui-test-manage §3) outranks the list rule, and the join
-  rule left them 5px apart, which is neither.
+  says the state once. (The `#calendar-list` exemption that once kept the cottages
+  apart is GONE — the owner later asked for Calendar sync to be one joined window
+  like Payments; see "One window, wherever the rows are one list".)
 - **THE CHEVRON IS `BHUB_CHEV`** — one stroke-SVG span constant used at all seven
   disclosure sites (one of them string-concatenated, hence the constant rather than
   a template). `.bhub-chev` is a 14px box; the `›` glyph is gone. ui-test-hub and
@@ -3225,7 +3298,8 @@ rather than closing it. Gated by ui-test-topmenu §H (opens, covers the Messages
 
 ## Calendar sync is a status page, not a form (approved demo, built)
 
-Manage → Calendar sync (`renderCalendarList`, admin.js) opens with ONE summary row
+**The verdict is the title's status pill now** ("Every page's status is the Manage pill"); the summary card keeps the facts
+and Sync all. Manage → Calendar sync (`renderCalendarList`, admin.js) opens with ONE summary row
 (`.mg-sum` anatomy: "All calendars up to date" / "N calendars aren't syncing", "3 of 4
 cottages linked · newest 2m ago") and a **Sync all** pill that walks the cottages ONE
 AT A TIME (`calSyncAll`, each row's capsule spins then ticks). Each FAILING platform
@@ -3642,7 +3716,7 @@ Manage → Activity log (`#act-log-app`, built once by `alShell()` in admin.js; 
   grouped by action+title, max 6) and `seen` {ids} (internal key **`activity-seen`**, last 400 ids). `list` is
   unchanged except rows now carry `id`/`action`/`entity`/`entity_id` and, for known warnings, a plain `nice`
   title + `verdict` — one judgement shared with the Status page.
-- **Client**: a week card (bars + "needs a look" capsule; tap a day to filter), the Needs-a-look card (Seen it →
+- **Client**: a week card (bars; tap a day to filter — its "needs a look" verdict is the title's pill, `#al-pill`), the Needs-a-look card (Seen it →
   POST seen, row leaves), a pill search (250ms debounce, server `q`), five ICON tabs (All/Bookings/Money/Messages/
   System via `AL_GROUP`) with count badges and a sliding pill (`--al-i`), the log grouped by day with consecutive
   same-action rows collapsed ×N, each row expanding to facts, the raw code and "Open the booking". "Show older
@@ -3847,6 +3921,7 @@ are GONE (`switchGuestTab` survives as a compat opener).
 
 `renderKeysafe` / `keysafeView` (admin.js, `.ks-*` in admin.css). Three rounds, owner-led
 (overhaul → "can this be simplified?" → the approved demo); this is the end state:
+- **SUPERSEDED: the status is the pill beside the title** (`#ks-pill`, "N codes to set" / "All N ready").
 - **ONE STATUS LINE** (`.ks-status`) under the title — "✓ All 3 safes are ready" or red/amber
   "1 safe needs a new code". It counts the TO-DOS below, which include a safe with no code
   recorded (the duty counts only due/later; a safe with nothing on record has nothing to give).

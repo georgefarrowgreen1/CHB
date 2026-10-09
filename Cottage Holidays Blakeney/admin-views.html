@@ -21,18 +21,17 @@
      ============================================================ -->
 <template data-view="view-backoffice">
 
-        <div class="dashboard-header">
-            <div>
-                <!-- The day's verdict sits BESIDE the title, the same
-                     title + capsule anatomy as the Bookings caption row
-                     (.bk-caprow / #bookings-verdict). Filled by
-                     todayOpsLine(); empty while duties are present. -->
+        <!-- The Manage header's anatomy: the title on the left, the page's ONE status
+             pill on the right (#bookings-owed — who owes you, filled by renderBookings). -->
+        <div class="dashboard-header settings-head">
+            <div class="settings-head-titles">
                 <div class="bo-today-head">
                     <h1 class="section-title" style="margin: 0;">Today</h1>
                     <span id="today-verdict"></span>
                 </div>
                 <p class="lead bo-today-date" id="today-date" style="text-align:left;margin:4px 0 0;"></p>
             </div>
+            <div class="settings-head-pills" id="bookings-owed"></div>
         </div>
 
         <!-- ASSIST BAR — the search brain embedded in the workspace: type a
@@ -120,11 +119,7 @@
                     <button class="inbox-sort-btn" role="tab" aria-selected="false" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
                 </div>
             </div>
-            <!-- WHO OWES, SAID ONCE: one quiet line under the caption row (filled by
-                 renderBookings). "Nobody owes you anything." with a tick, or the figure
-                 with a way to the list. It replaces the Needs payment tab, which was a
-                 fact dressed as a place. -->
-            <div id="bookings-owed"></div>
+            <!-- (Who owes is the pill beside the Today title.) -->
             <div id="bookings-filter-chip"></div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
         </div>
@@ -238,11 +233,12 @@
     </template>
 
 <template data-view="view-keysafe">
-        <div class="dashboard-header">
-            <div>
+        <div class="dashboard-header settings-head">
+            <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Key safes</h1>
+                <button type="button" class="ks-info" data-act="keysafeHow" aria-label="How the keeper works" title="How the keeper works">i</button>
             </div>
-            <button type="button" class="ks-info" data-act="keysafeHow" aria-label="How the keeper works" title="How the keeper works">i</button>
+            <div class="settings-head-pills" id="ks-pill"></div>
         </div>
         <div id="keysafe-body"><!-- injected by renderKeysafe() --></div>
 </template>
@@ -251,10 +247,11 @@
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->
         <div id="accounts-chrome">
-        <div class="dashboard-header">
-            <div>
+        <div class="dashboard-header settings-head">
+            <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
             </div>
+            <div class="settings-head-pills" id="mo-pill"></div>
         </div>
         <!-- Assist Bar: search payments/balances + ask money questions inline. -->
         </div>
@@ -584,7 +581,7 @@
                  the server, so the field is left blank and blank means "keep it". -->
             <div class="settings-sec" id="sec-sms" style="display:none;">
                 <div style="max-width:640px;">
-                <p id="sms-state" role="status" aria-live="polite" style="font-size:var(--fs-body);font-weight:600;margin:0 0 4px;line-height:1.45;">Checking…</p>
+                <p id="sms-state" hidden style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 4px;line-height:1.45;"></p>
                 <div class="acr-cap">Twilio account</div>
                 <div class="acr-well">
                     <div class="acr-row"><span class="acr-lbl">Send booking texts</span><span class="chb-switch"><input type="checkbox" id="sms-on" aria-label="Send booking texts"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
@@ -694,6 +691,7 @@
                     <!-- Per-cottage review links for Airbnb / Vrbo guests (renderReviewLinks). -->
                     <div id="review-links"></div>
                     <section class="rv-sec">
+                        <h3 class="acr-cap">Tools</h3>
                         <div class="acr-well rv-well">
                             <button type="button" class="rv-go" data-act="settingsOpen" data-arg="reviews-import">
                                 <span class="rv-go-txt"><span class="rv-name">Import</span></span>

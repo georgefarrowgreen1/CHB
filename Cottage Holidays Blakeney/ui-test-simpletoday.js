@@ -128,38 +128,47 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     owed: (document.getElementById('bookings-owed') || {}).textContent || '',
   }));
   ok(bk.tabs.join() === 'upcoming,past' && !bk.more, `two tabs and no ⋯ (${bk.tabs.join()})`);
-  ok(/Nobody owes you anything/.test(bk.owed), `nobody owes → one calm line ("${bk.owed.trim()}")`);
+  ok(/Nobody owes you anything/.test(bk.owed), `nobody owes → the pill says so ("${bk.owed.trim()}")`);
   const owes = await page.evaluate((o) => {
     dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b9', dbId: 9, name: 'Sarah Pemberton', checkIn: o.f, checkOut: o.g, depositPaid: 0, payment: 'unpaid' })];
     renderBookings();
-    const b = document.querySelector('#bookings-owed .bk-owed');
-    return { txt: b ? b.textContent.trim() : '', btn: !!b && b.tagName === 'BUTTON' };
+    const b = document.querySelector('#bookings-owed .head-pill');
+    return { txt: b ? b.textContent.trim() : '', btn: !!b && b.tagName === 'BUTTON', label: b ? b.getAttribute('aria-label') || '' : '', tone: b ? b.dataset.tone : '' };
   }, { f: d(5), g: d(9) });
-  ok(owes.btn && /£[\d,]+ to collect from 1 guest/.test(owes.txt), `someone owes → the figure, as a button ("${owes.txt}")`);
+  ok(owes.btn && /^£[\d,]+ to collect$/.test(owes.txt) && owes.tone === 'warn', `someone owes → the figure, as an amber pill you can tap ("${owes.txt}")`);
+  ok(/from 1 guest/.test(owes.label), `…which tells a screen reader who it is from ("${owes.label}")`);
 
-  // ONE CARD IN EVERY STATE: with bookings listed, the status row is the header of the same card.
+  // THE MANAGE PILL'S PLACE: right of the Today title, centred on its line — not a row in the bookings card.
   await page.waitForTimeout(600);
-  const joinOf = () => page.evaluate(() => {
-    const o = document.querySelector('#bookings-owed .bk-owed'), r = document.querySelector('#bookings-list .bk-row');
-    if (!o || !r) return null;
-    const or = o.getBoundingClientRect(), rr = r.getBoundingClientRect(), os = getComputedStyle(o), rs = getComputedStyle(r);
-    return { gap: Math.abs(rr.top - or.bottom), oRad: parseFloat(os.borderBottomLeftRadius), rRad: parseFloat(rs.borderTopLeftRadius), rTop: rs.borderTopWidth, n: (o.querySelector('.bk-owed-n') || {}).textContent || '' };
+  const place = await page.evaluate(() => {
+    const p = document.querySelector('#bookings-owed .head-pill'), h = document.querySelector('#view-backoffice h1');
+    const pr = p.getBoundingClientRect(), hr = h.getBoundingClientRect();
+    const r = document.querySelector('#bookings-list .bk-row');
+    return {
+      right: Math.round(document.querySelector('#view-backoffice .dashboard-header').getBoundingClientRect().right - pr.right),
+      dy: Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)), after: pr.left > hr.right, h: Math.round(pr.height),
+      inList: !!document.querySelector('#bookings-workspace .head-pill'),
+      rTop: r ? parseFloat(getComputedStyle(r).borderTopLeftRadius) : -1,
+      cls: [...p.classList].join(' '), manage: document.getElementById('health-pill').className,
+    };
   });
-  const j1 = await joinOf();
-  ok(j1 && j1.gap <= 1 && j1.oRad === 0 && j1.rRad === 0 && j1.rTop === '0px', `owing: the status row and the first booking are ONE card (gap ${j1 && j1.gap}, radii ${j1 && j1.oRad}/${j1 && j1.rRad})`);
+  ok(place.after && place.right <= 1 && place.dy <= 2, `the pill sits right of the title on its line (${place.right}px from the edge, ${place.dy.toFixed(1)}px off centre)`);
+  ok(place.h === 44 && /\bcron-pill\b/.test(place.cls) && /\bhead-pill\b/.test(place.cls), `it IS the Manage pill (${place.cls}, ${place.h}px)`);
+  ok(!place.inList && place.rTop >= 16, `the bookings list is its own card, with no status row on top (first row's corner ${place.rTop}px)`);
   await page.evaluate((o) => {
     dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b7', dbId: 7, name: 'Paid Guest', checkIn: o.f, checkOut: o.g, depositPaid: 640, payment: 'paid' })];
     renderBookings();
   }, { f: d(5), g: d(9) });
-  await page.waitForTimeout(600);
-  const j2 = await joinOf();
-  ok(j2 && j2.gap <= 1 && j2.oRad === 0 && j2.rRad === 0, `clear: the same join holds (gap ${j2 && j2.gap})`);
-  ok(j2 && /^\d+ upcoming$/.test(j2.n), `the count rides the status row ("${j2 && j2.n}")`);
-  ok(await page.evaluate(() => !(document.getElementById('bookings-summary') || {}).textContent), 'and is not said a second time in the caption');
+  const clear = await page.evaluate(() => {
+    const p = document.querySelector('#bookings-owed .head-pill');
+    return { txt: p ? p.textContent.trim() : '', tone: p ? p.dataset.tone : '', tag: p ? p.tagName : '', sum: (document.getElementById('bookings-summary') || {}).textContent || '' };
+  });
+  ok(clear.tone === 'ok' && clear.txt === 'Nobody owes you anything' && clear.tag === 'SPAN', `clear: a green pill that only states ("${clear.txt}")`);
+  ok(/^· 1 upcoming$/.test(clear.sum.trim()), `the count is the caption's ("${clear.sum.trim()}")`);
 
   if (process.env.CHB_SHOT) await page.screenshot({ path: process.env.CHB_SHOT, fullPage: true });
 
-  // The empty state is the standard one — and joined to the status row above it as ONE well, with no button.
+  // The empty state is the standard one: a card of its own, with no button.
   await page.evaluate((o) => {
     // Only a FINISHED stay remains, so Upcoming is empty while the books are known to be clear.
     dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b8', dbId: 8, name: 'Old Guest', checkIn: o.a, checkOut: o.b, depositPaid: 640, payment: 'paid' })];
@@ -168,12 +177,11 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(600); // let the list's own fade-in settle before measuring a gap
   const emp = await page.evaluate(() => {
     const e = document.querySelector('#bookings-list .bk-empty');
-    const o = document.querySelector('#bookings-owed .bk-owed');
-    const er = e ? e.getBoundingClientRect() : null, or = o ? o.getBoundingClientRect() : null;
+    const es = e ? getComputedStyle(e) : null;
     return {
       has: !!e, title: e ? (e.querySelector('p') || {}).textContent : '', sub: e ? (e.querySelector('small') || {}).textContent : '',
       icon: !!(e && e.querySelector('svg')), buttons: e ? e.querySelectorAll('button, a').length : -1,
-      joined: !!(er && or) && Math.abs(or.bottom - er.top) <= 1,
+      card: !!es && parseFloat(es.borderTopLeftRadius) >= 16 && es.borderTopStyle !== 'none',
       // The one look's switcher: a pill track, no floating shadow, the chosen side in the accent.
       seg: (() => {
         const f = document.getElementById('bookings-filters'), on = f.querySelector('.is-on');
@@ -184,7 +192,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   });
   ok(emp.has && emp.title === 'No upcoming bookings' && /will appear here/.test(emp.sub), `the empty state names what is true and what fills it ("${emp.title}")`);
   ok(emp.icon && emp.buttons === 0, 'it carries the mark and NO button (the + in the month row is the way to add)');
-  ok(emp.joined, 'it joins the status row above into one well (no gap between them) ');
+  ok(emp.card, 'it is a card of its own — nothing sits on top of it now the status is the title\'s pill');
   ok(emp.seg.shadow === 'none' && emp.seg.on === emp.seg.acc, `the tabs are the one switcher — no floating shadow, the chosen side in the accent (${emp.seg.on})`);
   await page.evaluate(() => { bookingsSetFilter('customplan'); });
   ok(await page.evaluate(() => (document.querySelector('#bookings-list .bk-empty p') || {}).textContent === 'No bookings here'), 'a filter with nothing in it says so in its own words');

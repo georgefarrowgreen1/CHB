@@ -256,23 +256,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(500);
   const cal = await page.evaluate(() => {
     const list = document.getElementById('calendar-list');
-    // The cottages breathe (owner-asked): measured air between VERTICALLY
-    // consecutive cards. At desktop width the settings section flows in CSS
-    // columns, so DOM order is not screen order — group by column (left edge),
-    // sort by top, and measure within each column.
-    const cards = list ? [...list.querySelectorAll('.bhub-fold-grp')] : [];
-    const byCol = {};
-    cards.forEach((el) => {
-      const b = el.getBoundingClientRect();
-      (byCol[Math.round(b.left / 50)] = byCol[Math.round(b.left / 50)] || []).push(b);
-    });
-    let minGap = 999;
-    Object.values(byCol).forEach((col) => {
-      col.sort((a, b) => a.top - b.top);
-      for (let i = 1; i < col.length; i++) minGap = Math.min(minGap, col[i].top - col[i - 1].bottom);
-    });
+    // The cottages are ONE card, as Payments' Needs attention is (owner-asked, superseding the
+    // earlier "clear air between the cottages"): one column, every row flush with the next, the
+    // card's corners only on the run's ends.
+    const cards = list ? [...list.querySelectorAll('.bhub-fold-grp:not(.cal-prob)')] : [];
+    const bs = cards.map((el) => el.getBoundingClientRect());
+    const gaps = bs.slice(1).map((b, i) => Math.round(b.top - bs[i].bottom));
+    const rad = (el, c) => parseFloat(getComputedStyle(el)['border' + c + 'Radius']) || 0;
     return {
-      minGap,
+      gaps, oneCol: new Set(bs.map((b) => Math.round(b.left))).size === 1,
+      ends: cards.length ? [rad(cards[0], 'TopLeft'), rad(cards[0], 'BottomLeft'), rad(cards[cards.length - 1], 'TopLeft'), rad(cards[cards.length - 1], 'BottomLeft')] : [],
+      dotName: !!list.querySelector('[data-grp="cal-jollyboat"] .cal-cot .cot-dot') && !list.querySelector('[data-grp="cal-jollyboat"] .prop-tag'),
       grps: list ? list.querySelectorAll('.bhub-fold-grp').length : 0,
       jbWarn: !!list.querySelector('[data-grp="cal-jollyboat"] .st-cap.is-warn .st-wic'),
       a21ok: !!list.querySelector('[data-grp="cal-21a"] .st-cap.is-ok .st-tick'),
@@ -282,7 +276,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(cal.grps >= 2, `every cottage is a verdict group (${cal.grps})`);
-  ok(cal.minGap >= 12, `…with clear air between the cottages (${Math.round(cal.minGap)}px)`);
+  ok(cal.oneCol && cal.gaps.length && cal.gaps.every((g) => g === 0), `…joined into ONE card in one column, no air between rows (${cal.gaps.join(',')})`);
+  ok(cal.ends[0] >= 16 && cal.ends[1] === 0 && cal.ends[2] === 0 && cal.ends[3] >= 16, `…the card's corners only on the run's ends (${cal.ends.join('/')})`);
+  ok(cal.dotName, 'a cottage row is titled by its dot and name, not a pill');
   ok(cal.jbWarn && cal.a21ok, 'the stalled feed wears the triangle, the fresh one the ✓');
   ok(/last imported 3 days ago/.test(cal.jbSub), `the sub states the staleness (${cal.jbSub})`);
   ok(cal.runInFold && cal.editRoute, 'Run-the-sync + the feed-link editor sit inside the fold');
@@ -310,10 +306,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForFunction(() => !!document.querySelector('#calendar-list .cal-prob'), null, { timeout: 4000 }).catch(() => {});
   const c1 = await page.evaluate(() => {
     const L = document.getElementById('calendar-list');
-    const sum = L.querySelector('.cal-sum');
+    const pill = document.querySelector('#settings-panel-cap .head-pill');
     return {
-      state: sum && sum.dataset.state, t: (L.querySelector('.cal-sum .mg-t') || {}).textContent || '', s: (L.querySelector('.cal-sum .mg-s') || {}).textContent || '',
+      state: pill && pill.dataset.tone, t: pill ? pill.textContent.trim() : '', label: pill ? pill.getAttribute('aria-label') || '' : '', s: (L.querySelector('.cal-sum .mg-s') || {}).textContent || '',
+      oldMark: !!L.querySelector('.mg-mark, .mg-t'),
       probs: L.querySelectorAll('.cal-prob').length, probTxt: (L.querySelector('.cal-prob') || {}).textContent || '',
+      probRow: !!L.querySelector('.cal-prob.bhub-fold-grp > .bhub-fold-row .st-cap.is-bad'),
+      attnCap: [...L.querySelectorAll('.bhub-grpcap.is-attn')].some((c) => /Needs attention/.test(c.textContent) && c.nextElementSibling && c.nextElementSibling.classList.contains('cal-prob')),
       badDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-bad'),
       okDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-ok'),
       cap21: !!L.querySelector('[data-grp="cal-21a"] .st-cap.is-bad'),
@@ -322,13 +321,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   // At phone width the platform rows keep their words on one readable column
   // (the first build squeezed them to a 60px sliver beside a full-width
-  // "Replace link" row), and the summary's title never wraps under Sync all.
+  // "Replace link" row), and the page title stays on one line beside its pill.
   await page.setViewportSize({ width: 390, height: 1400 });
   await page.evaluate(() => { __bhubOpenFolds.add('cal-21a'); renderCalendarList(); });
   await page.waitForTimeout(400);
   const phone = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('#bhub-fold-cal-21a .cal-prow')];
-    const t = document.querySelector('#calendar-list .cal-sum .mg-t');
+    const t = document.getElementById('settings-panel-title');
     const lh = t ? parseFloat(getComputedStyle(t).lineHeight) || 20 : 20;
     return {
       n: rows.length,
@@ -352,13 +351,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'linking another platform is the add row at the foot of the platform list');
   ok(phone.tiles.every((x) => x.lines === 1 && !x.clipped), 'every tile label sits on one line, uncut');
   await page.screenshot({ path: '/tmp/claude-0/-home-user-CHB/e820a22c-cfa5-5535-94d0-f1835c6df202/scratchpad/cal390c.png', clip: { x: 0, y: 700, width: 390, height: 450 } });
-  ok(phone.titleLines === 1, `the summary title stays on one line beside its mark (${phone.titleLines})`);
+  ok(phone.titleLines === 1, `the page title stays on one line beside its status pill (${phone.titleLines})`);
   await page.setViewportSize({ width: 1280, height: 950 });
-  ok(c1.state === 'warn' && /1 calendar isn.t syncing/.test(c1.t), `the summary names the one failing calendar (${c1.t})`);
+  ok(c1.state === 'bad' && /^1 not syncing$/.test(c1.t) && /1 calendar isn.t syncing/.test(c1.label), `the title's status pill names the one failing calendar, red as on Manage (${c1.t})`);
+  ok(!c1.oldMark, 'the summary card carries the facts only — no second verdict of its own');
   ok(/2 of 3 cottages linked/.test(c1.s), `…and how many cottages are linked (${c1.s})`);
   ok(c1.probs === 1 && /21A Westgate · Airbnb/.test(c1.probTxt) && /Still using the 4 Airbnb stays/.test(c1.probTxt), 'the failing platform leads, saying what it still has');
+  ok(c1.probRow && c1.attnCap, 'the problem is a fold row under the "Needs attention" caption, as on Payments — not a tinted card of its own');
   ok(c1.badDot && c1.okDot && c1.cap21, 'each platform wears its own dot; the cottage reads failing');
   ok(!c1.explain, 'the explanation line is gone');
+  // Its fix is inside the fold, as every Needs-attention row's is.
+  await page.click('.cal-prob .bhub-fold-row');
+  await page.waitForSelector('.cal-prob .u-btn1', { state: 'visible' });
   await page.click('.cal-prob .u-btn1');
   await page.waitForSelector('#cal-link-in');
   await page.fill('#cal-link-in', 'not a link');
@@ -374,8 +378,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const saved = calPosts.find((x) => x.action === 'save_feeds');
   ok(!!saved && saved.feeds.length === 2 && saved.feeds.some((f) => f.source === 'bookingcom') && saved.feeds.some((f) => f.source === 'airbnb' && /new\.ics/.test(f.url)), 'saving replaces ONLY that platform’s link');
   ok(calPosts.some((x) => x.action === 'sync' && x.prop === '21a'), '…then syncs it at once');
-  const c2 = await page.evaluate(() => ({ probs: document.querySelectorAll('#calendar-list .cal-prob').length, t: (document.querySelector('#calendar-list .cal-sum .mg-t') || {}).textContent || '' }));
-  ok(c2.probs === 0 && /All calendars up to date/.test(c2.t), `fixed → the problem card leaves and the summary clears (${c2.t})`);
+  const c2 = await page.evaluate(() => ({ probs: document.querySelectorAll('#calendar-list .cal-prob').length, t: ((document.querySelector('#settings-panel-cap .head-pill') || {}).textContent || '').trim(), tone: (document.querySelector('#settings-panel-cap .head-pill') || { dataset: {} }).dataset.tone }));
+  ok(c2.probs === 0 && c2.t === 'Up to date' && c2.tone === 'ok', `fixed → the problem card leaves and the pill goes green (${c2.t})`);
   // Sync all walks the cottages, each row showing its own spinner.
   calPosts.length = 0; calSyncHold = true;
   await page.click('#calendar-list [data-act="calSyncAll"]');
@@ -408,14 +412,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const plats = [...D.querySelectorAll('.cal-plat')];
     const sec = document.getElementById('sec-calendar');
     return {
-      t: (D.querySelector('.cal-sum .mg-t') || {}).textContent || '', s: (D.querySelector('.cal-sum .mg-s') || {}).textContent || '',
+      t: ((document.querySelector('#settings-panel-cap .head-pill') || {}).textContent || '').trim(), s: (D.querySelector('.cal-sum .mg-s') || {}).textContent || '',
       n: plats.length, bc: plats[2] ? plats[2].textContent : '', vrboBad: plats[1] ? plats[1].classList.contains('is-bad') : false,
       ids: ['sync-export-21a', 'sync-airbnb-21a', 'sync-vrbo-21a', 'sync-bookingcom-21a'].every((i) => !!document.getElementById(i)),
       prose: /Links save automatically|Share booked dates|How it works/.test(sec.textContent),
       unlinks: D.querySelectorAll('[data-act="calRemoveFeed"]').length,
     };
   });
-  ok(/Vrbo isn.t responding/.test(d1.t), `the summary leads with the failing platform (${d1.t})`);
+  ok(/^Vrbo not responding$/.test(d1.t), `the title's pill leads with the failing platform (${d1.t})`);
   ok(/26 stays imported · 2 of 3 platforms linked/.test(d1.s), `…and counts what came in (${d1.s})`);
   ok(d1.n === 3 && d1.vrboBad && /Not linked/.test(d1.bc) && /Booking\.com/.test(d1.bc), 'one row per platform, each with its own state');
   ok(d1.ids && d1.unlinks === 2, 'the fields keep their ids, and only linked platforms can be unlinked');
@@ -850,7 +854,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { parsed, cap0, titleCap, noOld, actsHidden0, partial, ready, bsave: bsave && bsave.val, after, depBurst: n1 - n0, depSaves: dsaves.length - n0, depVal: dsaves.length ? dsaves[dsaves.length - 1].val : null, depMark };
   });
   ok(py.noOld, 'no free-text bank box, no "How it works" folds, no deposit Save button');
-  ok(/Taking cards|Cards off/.test(py.titleCap), `the title carries the card-payments capsule (${py.titleCap})`);
+  ok(/Taking cards|Cards off/.test(py.titleCap), `the title carries the card-payments status pill (${py.titleCap})`);
   ok(py.parsed === 'Barclays | 20-00-00 | 12345678' && /Saved/.test(py.cap0) && py.actsHidden0, `saved free-text details split back into the three fields, nothing to save yet (${py.parsed})`);
   ok(py.partial.fmt === '40-44' && py.partial.disabled && /6 digits/.test(py.partial.problem) && py.partial.dot && /Unsaved/.test(py.partial.cap), `a short sort code is formatted, flagged and cannot be saved (${py.partial.fmt}: ${py.partial.problem})`);
   ok(py.ready.sort === '40-44-52' && py.ready.acc === '87654321' && !py.ready.disabled, `digits only, dashes added (${py.ready.sort} / ${py.ready.acc})`);
@@ -883,8 +887,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await new Promise((r) => setTimeout(r, 350));
     const rv = {
       qrow: !!document.querySelector('#guest-review-moderation .acw-qrow'),
-      // The waiting count rides the TITLE's capsule now (the approved Reviews demo).
-      cap: !!document.querySelector('#settings-panel-cap .st-cap.is-warn'),
+      // The waiting count rides the TITLE's status pill (the approved Reviews demo, in the Manage pill's look).
+      cap: !!document.querySelector('#settings-panel-cap .head-pill.warn'),
       pills: !!document.querySelector('#guest-review-moderation .acw-modacts .u-btn1') && !!document.querySelector('#guest-review-moderation .acw-modacts .u-btn2'),
     };
     return { ca, wl, ga, rv };
@@ -978,7 +982,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const otherStill = keys.length < 2 || !document.getElementById('revcopy-' + keys[1]).classList.contains('is-copied');
     const capOnLine = (() => {
       const t = document.getElementById('settings-panel-title').getBoundingClientRect();
-      const c = document.querySelector('#settings-panel-cap .st-cap');
+      const c = document.querySelector('#settings-panel-cap .head-pill');
       if (!c) return null;
       const cr = c.getBoundingClientRect();
       return Math.abs((t.top + t.bottom) / 2 - (cr.top + cr.bottom) / 2);
@@ -1342,6 +1346,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       closed: document.getElementById(`sg-fold-${i0}`).hidden,
       bar0: document.getElementById('sg-savebar').hidden,
       blocks: document.querySelectorAll('#sg-strip .sg-blk').length,
+      // PAINTED, not just present: a general hit-region rule once set these absolutely-placed blocks
+      // back to position:relative, so every one sat in the DOM at 0px tall and the strip drew nothing.
+      blocksPainted: [...document.querySelectorAll('#sg-strip .sg-blk')].filter((x) => x.getBoundingClientRect().height >= 20 && getComputedStyle(x).position === 'absolute').length,
       noIntro: !/Each season is one card/.test(document.getElementById('sec-seasongrid').textContent),
     };
     document.getElementById(`sg-sum-${i0}`).click();
@@ -1402,7 +1409,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(sb.closed && sb.opened, 'a season starts closed and its summary opens it');
   ok(sb.bar0 && sb.bar1 && /1 unsaved change/.test(sb.msg1), `no save bar until something changes, then it counts (${sb.msg1})`);
   ok(/on usual £/.test(sb.diff), `each price says how it compares with the usual rate (${sb.diff})`);
-  ok(sb.blocks === 2, `the year strip draws each coming season (${sb.blocks})`);
+  ok(sb.blocks === 2 && sb.blocksPainted === 2, `the year strip draws each coming season, painted at the strip's height (${sb.blocks} / ${sb.blocksPainted} painted)`);
   ok(sb.noIntro, 'the explanatory sentence is gone');
   ok(sb.easterName === 'Easter' && /Suggested/.test(sb.easterTag) && /Your name/.test(sb.myTag), `an unnamed season is named from its dates; a typed name is kept (${sb.easterName})`);
   ok(sb.rep.from === sb.rep.want && sb.rep.name === 'Easter' && sb.rep.open, `Repeat next year moves Easter with Easter (${sb.rep.from} = ${sb.rep.want})`);

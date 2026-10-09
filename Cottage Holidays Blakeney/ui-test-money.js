@@ -177,11 +177,11 @@ let mailWillFail = false;
   // stops being cut off on a phone — see ui-test-legibility §2).
   const head = await page.evaluate(() => ({
     h: ((document.getElementById('mo-headline') || {}).textContent || '').replace(/,/g, ''),
-    calm: ((document.getElementById('mo-calm') || {}).textContent || '').trim(),
-    calmShown: !!(document.getElementById('mo-calm') && document.getElementById('mo-calm').getClientRects().length),
+    pill: ((document.querySelector('#mo-pill .head-pill') || {}).textContent || '').trim(),
+    tone: (document.querySelector('#mo-pill .head-pill') || { dataset: {} }).dataset.tone || '',
   }));
   ok(/£490\.00 is owed to you \(1 overdue\)/.test(head.h) && !/Nobody owes you/.test(head.h), `the headline names what is owed and that it is overdue, never "nobody owes you" (${head.h})`);
-  ok(!/nothing to collect/i.test(head.calm), `the calm line never claims nothing is owed over an overdue row (${head.calm || 'hidden'})`);
+  ok(head.tone === 'bad' && /^1 overdue$/.test(head.pill), `the status pill is red and names the overdue, never "nothing to collect" (${head.pill})`);
   ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
   // The exception's figure is a red capsule carrying the warning triangle —
   // and it is the row's ONE mark (the label's red dot came off with it).
@@ -257,13 +257,12 @@ let mailWillFail = false;
     await new Promise((r) => setTimeout(r, 900));
     window.apiGet = real;
     const el = document.getElementById('mo-back-rows');
-    return { missing: !el, txt: el ? el.textContent || '' : '', head: (document.getElementById('mo-headline') || {}).textContent || '', calm: (document.getElementById('mo-calm') || {}).textContent || '' };
+    return { missing: !el, txt: el ? el.textContent || '' : '', head: (document.getElementById('mo-headline') || {}).textContent || '' };
   });
   ok(!backChk.missing, 'a held deposit gives the money landing its To-give-back group');
   ok(!backChk.missing && !/£0\.00/.test(backChk.txt), `a held deposit never renders as £0.00 (${(backChk.txt || '').slice(0, 60)})`);
   ok(!backChk.missing && /£73\.69/.test(backChk.txt), '…it states the net the owner actually hands back');
   ok(/£147\.38 of deposits is held for guests/.test(backChk.head.replace(/,/g, '')), `…and the headline says so (${backChk.head})`);
-  ok(!/deposits to give back/i.test(backChk.calm), 'the calm line does not claim there are no deposits to give back');
   // The renderer must read a key the payload HAS (comments stripped first, so the scan cannot see its own explanation).
   const admSrc = require('fs')
     .readFileSync(__dirname + '/admin.js', 'utf8')
@@ -275,7 +274,7 @@ let mailWillFail = false;
   ok(!/Number\(it\.amount\)/.test(backRegion), 'the To-give-back renderer does not read the non-existent `amount` key');
   ok(/it\.net/.test(backRegion), '…it reads it.net, the key the liability payload carries');
 
-  // The calm state, driven for real: nobody owing and no deposits held is ONE line and one sentence — and
+  // The calm state, driven for real: nobody owing and no deposits held is one sentence and a green pill — and
   // neither group takes a row.
   const calmChk = await page.evaluate(async () => {
     const real = window.apiGet;
@@ -289,8 +288,15 @@ let mailWillFail = false;
     window.apiGet = real;
     const out = {
       h: ((document.getElementById('mo-headline') || {}).textContent || '').replace(/,/g, ''),
-      calm: ((document.getElementById('mo-calm') || {}).textContent || '').trim(),
-      shown: !!(document.getElementById('mo-calm') && document.getElementById('mo-calm').getClientRects().length),
+      pill: ((document.querySelector('#mo-pill .head-pill') || {}).textContent || '').trim(),
+      tone: (document.querySelector('#mo-pill .head-pill') || { dataset: {} }).dataset.tone || '',
+      calmPanel: !!document.querySelector('#mo-calm, .mo-calm'),
+      pillPlace: (() => {
+          const p = document.querySelector('#mo-pill .head-pill'), h = document.querySelector('#accounts-chrome h1');
+          if (!p || !h) return false;
+          const pr = p.getBoundingClientRect(), hr = h.getBoundingClientRect();
+          return pr.left > hr.right && Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)) <= 2;
+      })(),
       grps: Array.from(document.querySelectorAll('#money-overview .bhub-fold-grp')).map((g) => g.getAttribute('data-grp')),
     };
     dbBookings['21a'] = keep;
@@ -311,7 +317,8 @@ let mailWillFail = false;
   });
   ok(/Cash Deposit/.test(cashChk.rows) && /paid by bank transfer/.test(cashChk.rows), `a cash-held deposit is in To give back, labelled (${cashChk.rows.slice(0, 80)})`);
   ok(/of deposits is held/.test(cashChk.head), `…and the headline no longer says none is held (${cashChk.head})`);
-  ok(calmChk.shown && /nothing to collect/i.test(calmChk.calm) && /no deposits to give back/i.test(calmChk.calm), `…and one calm line replaces two rows (${calmChk.calm})`);
+  ok(calmChk.tone === 'ok' && calmChk.pill === 'Nothing to collect' && !calmChk.calmPanel, `…the status is ONE green pill, not a tinted panel (${calmChk.pill})`);
+  ok(calmChk.pillPlace, '…beside the Payments title, on its line — the Manage pill\'s place');
   ok(!calmChk.grps.includes('mocollect') && !calmChk.grps.includes('moback'), `…with neither calm group rendered (${calmChk.grps.join(',')})`);
 
   // 2b-ii. "Square hasn't said" stands down past the payout window (owner-asked): a

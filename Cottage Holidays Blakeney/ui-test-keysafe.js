@@ -89,21 +89,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/9265/.test(body), 'the current code is stated');
   ok(/21A Westgate still has Hannah’s code/.test(body), '…and the to-do says whose code is still on the safe');
   ok(/Marcus Ellery arrives/.test(body), 'the next guest is named');
-  ok(/sees the new code on their booking page once you confirm/.test(body), 'and the reveal waits on the confirm');
+  ok(/sees (the new code on their booking page|it) once you confirm/.test(body), 'and the reveal waits on the confirm');
 
-  console.log('§2b the simpler anatomy — status line, to-do, one list, a sheet');
+  console.log('§2b the simpler anatomy — status pill, to-do, one list, a sheet');
   const anat = await page.evaluate(() => {
     const host = document.getElementById('keysafe-body');
-    const todo = host.querySelector('.ks-todo');
-    const rows = [...host.querySelectorAll('.ks-list .ks-row')];
+    // Two or more to-dos are rows of ONE card under "Needs attention"; one is a card with its button.
+    const trows = [...host.querySelectorAll('.ks-todos .ks-trow')];
+    const todo = host.querySelector('.ks-trow[data-pk="21a"]') || host.querySelector('.ks-todo');
+    const rows = [...host.querySelectorAll('.ks-list:not(.ks-todos) .ks-row')];
     const r21 = rows.find((r) => r.dataset.pk === '21a');
     return {
-      status: (host.querySelector('.ks-status') || {}).textContent || '',
-      statusBad: !!host.querySelector('.ks-status.is-bad'),
-      firstChild: host.firstElementChild && host.firstElementChild.classList.contains('ks-status'),
+      status: (document.querySelector('#ks-pill .head-pill') || {}).textContent || '',
+      statusLabel: (document.querySelector('#ks-pill .head-pill') || { getAttribute: () => '' }).getAttribute('aria-label') || '',
+      statusBad: (document.querySelector('#ks-pill .head-pill') || { dataset: {} }).dataset.tone === 'bad',
+      // The status is the title's pill now, so the page itself opens on the to-do.
+      firstChild: !!host.firstElementChild && (trows.length > 1
+        ? host.firstElementChild.classList.contains('ks-cap') && /Needs attention/.test(host.firstElementChild.textContent) && host.firstElementChild.nextElementSibling.classList.contains('ks-todos')
+        : host.firstElementChild.classList.contains('ks-todo')),
+      joined: trows.length > 1 && !host.querySelector('.ks-todo') && host.querySelectorAll('.ks-todos').length === 1
+        && trows.every((r, i) => !i || Math.round(r.getBoundingClientRect().top) === Math.round(trows[i - 1].getBoundingClientRect().bottom)),
+      pillBesideTitle: (() => {
+          const p = document.querySelector('#ks-pill .head-pill'), h = document.querySelector('#view-keysafe h1'), i = document.querySelector('#view-keysafe .ks-info');
+          if (!p || !h || !i) return false;
+          const pr = p.getBoundingClientRect(), hr = h.getBoundingClientRect(), ir = i.getBoundingClientRect();
+          return pr.left > ir.right && ir.left > hr.right && Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)) <= 2;
+      })(),
       todoIs21a: !!(todo && todo.dataset.pk === '21a' && todo.classList.contains('is-bad')),
-      todoBtn: todo ? todo.querySelector('.ks-rotate.is-primary').textContent : '',
-      btn44: todo ? todo.querySelector('.ks-rotate').getBoundingClientRect().height >= 44 : false,
+      todoBtn: todo ? (todo.classList.contains('ks-trow') ? todo.getAttribute('aria-label') + ' ' + todo.querySelector('b').textContent : todo.querySelector('.ks-rotate.is-primary').textContent) : '',
+      btn44: todo ? (todo.querySelector('.ks-rotate') || todo).getBoundingClientRect().height >= 44 : false,
       rows: rows.length,
       safes: Object.keys(__keysafe).filter((k) => (__keysafe[k] || {}).enabled !== false).length,
       row44: rows.every((r) => r.getBoundingClientRect().height >= 44),
@@ -112,11 +126,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       r21bad: !!(r21 && r21.querySelector('.ks-row-sub.is-bad')),
       r21name: r21 ? r21.getAttribute('aria-label') : '',
       noCards: !host.querySelector('.ks-card, .bhub-fold, details'),
+      nTodo: trows.length || host.querySelectorAll('.ks-todo').length,
       info: !!document.querySelector('#view-keysafe .ks-info[data-act="keysafeHow"]'),
     };
   });
-  ok(anat.firstChild && /safes? needs? a new code/.test(anat.status) && anat.statusBad, `ONE status line leads, in red (${anat.status})`);
-  ok(anat.todoIs21a && /Set a new code for Marcus/.test(anat.todoBtn) && anat.btn44, `the to-do card names the work and carries the one button (${anat.todoBtn})`);
+  ok(/^\d+ codes? to set$/.test(anat.status) && /safes? needs? a new code/.test(anat.statusLabel) && anat.statusBad, `the status is ONE red pill (${anat.status} — "${anat.statusLabel}")`);
+  ok(anat.pillBesideTitle, '…beside the title, after the ⓘ, on the title\'s line — the Manage pill\'s place');
+  ok(anat.firstChild, 'the page opens on the to-do, with no status line of its own');
+  ok(anat.nTodo < 2 || anat.joined, `${anat.nTodo} to-dos are rows of ONE card under "Needs attention", flush, never stacked cards`);
+  ok(anat.todoIs21a && /Set a new code for Marcus/.test(anat.todoBtn) && /still has Hannah/.test(anat.todoBtn) && anat.btn44, `the to-do names the work and its tap sets the code (${anat.todoBtn.slice(0, 80)})`);
   ok(anat.rows === anat.safes && anat.rows >= 2 && anat.row44, `every safe is a row of ONE list (${anat.rows})`);
   ok(anat.r21code === '9265' && /Still Hannah’s code · Marcus arrives/.test(anat.r21sub) && anat.r21bad, `the row: code on the right, one red line (${anat.r21sub})`);
   ok(/code 9 2 6 5/i.test(anat.r21name), '…and it is spoken digit by digit');
@@ -153,7 +171,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.setViewportSize({ width: 1280, height: 950 });
   }
   console.log('§3 the rotate flow');
-  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate, .ks-trow[data-pk="21a"]').click();
   await page.waitForTimeout(400);
   const pre = await page.evaluate(() => (document.getElementById('gdf-code') || {}).value || '');
   ok(/^\d{4}$/.test(pre), 'a fresh 4-digit code is filled in (' + pre + ')');
@@ -167,14 +185,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(300);
   // The real rotation: overtype a chosen code, confirm.
-  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="21a"] .ks-rotate, .ks-trow[data-pk="21a"]').click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '4826'; });
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(900);
   ok(confirms.length === 1 && confirms[0].code === '4826' && confirms[0].booking_id === 2, 'the confirm posts the code FOR the next booking');
   ok(typeof confirms[0].op_id === 'string' && confirms[0].op_id.length > 6, '…stamped with an op_id (the offline replay contract)');
-  const r21 = await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="21a"]'); return { code: r.querySelector('.ks-row-code').textContent, sub: r.querySelector('.ks-row-sub').textContent, calm: !r.querySelector('.ks-row-sub.is-bad, .ks-row-sub.is-warn'), todo: !!document.querySelector('.ks-todo[data-pk="21a"]') }; });
+  const r21 = await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="21a"]'); return { code: r.querySelector('.ks-row-code').textContent, sub: r.querySelector('.ks-row-sub').textContent, calm: !r.querySelector('.ks-row-sub.is-bad, .ks-row-sub.is-warn'), todo: !!document.querySelector('[data-pk="21a"]:is(.ks-todo, .ks-trow)') }; });
   ok(r21.code === '4826' && /Marcus · sees it (now|from )/.test(r21.sub) && r21.calm, `the row flips: 4826, and when Marcus sees it (${r21.sub})`);
   ok(!r21.todo, 'and its to-do card is gone');
   await page.locator('.ks-row[data-pk="21a"]').click();
@@ -220,7 +238,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return {
       state: keysafeDue('scratch', __keysafe.scratch).state,
       duty: chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label)).length,
-      capWarn: !!(row && row.querySelector('.ks-row-sub.is-warn')) && !document.querySelector('.ks-todo[data-pk="scratch"]'),
+      capWarn: !!(row && row.querySelector('.ks-row-sub.is-warn')) && !document.querySelector('[data-pk="scratch"]:is(.ks-todo, .ks-trow)'),
       sub: row ? (row.querySelector('.ks-row-sub') || {}).textContent || '' : '',
       until: fmtDate(sh(2)),
     };
@@ -283,8 +301,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.ukNowMinutes = () => 7 * 60 + 37; // the screenshot's clock
     const at737 = duty();
     renderKeysafe();
-    const card = document.querySelector('.ks-todo[data-pk="scratch"]');
-    const cap737 = card ? (card.querySelector('.ks-todo-h') || {}).textContent || '' : '';
+    const card = document.querySelector('[data-pk="scratch"]:is(.ks-todo, .ks-trow)');
+    const cap737 = card ? (card.querySelector('.ks-todo-h, .ks-row-txt b') || {}).textContent || '' : '';
     const capWarn = !!card && !card.classList.contains('is-bad');
     const sub737 = card ? (card.querySelector('.ks-say') || {}).textContent || '' : '';
     window.ukNowMinutes = () => 10 * 60 + 1; // they're out
@@ -377,7 +395,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const otaDuty = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label))[0] || null);
   ok(!!otaDuty && otaDuty.sev === 'danger', 'the rotation duty fires for the platform stay (red — they arrive tomorrow)');
   confirms.length = 0;
-  await page.locator('.ks-todo[data-pk="jollyboat"] .ks-rotate').click();
+  await page.locator('.ks-todo[data-pk="jollyboat"] .ks-rotate, .ks-trow[data-pk="jollyboat"]').click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '6183'; });
   await page.locator('#glass-dialog-ok').click();
@@ -386,7 +404,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the confirm identifies the stay by ref, not a booking id (${confirms[0] && confirms[0].stay_ref})`);
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label)).length) === 0,
     'and once the safe is set for them, the duty is gone');
-  ok(await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="jollyboat"]'); return !!r && /Airbnb guest · share it in Airbnb/.test(r.textContent) && !r.querySelector('.is-warn, .is-bad') && !document.querySelector('.ks-todo[data-pk="jollyboat"]'); }),
+  ok(await page.evaluate(() => { const r = document.querySelector('.ks-row[data-pk="jollyboat"]'); return !!r && /Airbnb guest · share it in Airbnb/.test(r.textContent) && !r.querySelector('.is-warn, .is-bad') && !document.querySelector('[data-pk="jollyboat"]:is(.ks-todo, .ks-trow)'); }),
     'the row flips calm — the platform stay reads like a direct one, and its to-do is gone');
   if (process.env.CHB_SHOTS) {
     await page.setViewportSize({ width: 390, height: 1100 });

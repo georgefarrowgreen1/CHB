@@ -64,15 +64,15 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // were read only inside the hub's own plan panel, so a mistyped plan stayed
   // invisible until the money came out wrong. Driven by CLICKING the chip — a
   // filter reachable only by calling the function is a filter nobody has.
-  // THE FILTERS ARE TWO TABS. Upcoming / Past are the everyday views; "who owes" is one
-  // quiet line under the caption (#bookings-owed) that opens the list as a chip-marked
+  // THE FILTERS ARE TWO TABS. Upcoming / Past are the everyday views; "who owes" is Today's
+  // status pill beside the title (#bookings-owed), which opens the list as a chip-marked
   // filter, and the audits (Custom plans, All) are no longer offered on screen.
   const tabsNow = await page.evaluate(() => [...document.querySelectorAll('#bookings-filters [data-bfilter]')].map((b) => b.getAttribute('data-bfilter')));
   ok(JSON.stringify(tabsNow) === JSON.stringify(['upcoming', 'past']), `the tab row is two filters (${tabsNow.join(', ')})`);
   ok(await page.evaluate(() => !document.getElementById('bookings-more-btn') && !document.querySelector('.bk-more')),
     'there is no ⋯ on the Bookings caption any more');
   const owedLine = await page.evaluate(() => (document.getElementById('bookings-owed') || {}).textContent || '');
-  ok(/to collect|Nobody owes you anything/.test(owedLine), `who owes is said once, in one line under the caption ("${owedLine.trim()}")`);
+  ok(/to collect|Nobody owes you anything/.test(owedLine), `who owes is said once, in the pill beside the title ("${owedLine.trim()}")`);
   // A filter with no tab selects NO tab, says what is on in a chip, and the chip is the way back.
   await page.evaluate(() => window.bookingsSetFilter('customplan'));
   await page.waitForTimeout(350);
@@ -106,6 +106,12 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // THE MENU STAYS ON THE SCREEN: the + sits at the RIGHT edge now and its menu hangs off the
   // wrapper's right edge; measured at phone width.
   await page.setViewportSize({ width: 390, height: 850 });
+  // Narrowing the window (an iPad turning to portrait) must not open the AUTO-docked booking full
+  // screen: the owner never tapped it. It used to, whenever the width change landed after the nav
+  // below — which is how this step timed out on a + that was hidden behind the booking page.
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => document.querySelector('.page-view.active').id) === 'view-backoffice',
+    'narrowing past 1200px leaves the owner on Today — the auto-docked booking does not open full screen');
   await page.evaluate(() => window.nav('view-backoffice'));
   await page.waitForTimeout(500);
   await page.click('.cal-actions .cal-add-btn');

@@ -104,8 +104,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // question as the row, so it has to be the same number; and the needspay filter
   // behind the button has to contain exactly the bookings that figure counted, or
   // the owner taps a total and lands on a list missing one of them.
-  // The figure now lives in ONE line under the Bookings caption (#bookings-owed), not in the
-  // day sentence — same derivation (bookingDue), so the same property holds.
+  // The figure now lives in Today's status pill beside the title (#bookings-owed) — same
+  // derivation (bookingDue), so the same property holds.
   const ops = await page.evaluate(() => {
     try { renderBookings(); } catch (e) {}
     const el = document.getElementById('bookings-owed');
