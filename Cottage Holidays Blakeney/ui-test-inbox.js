@@ -5,7 +5,9 @@
 //  3. a reply waits five seconds with Undo on the message, then sends
 //  4. the decision: Approve (held, then posted), dates taken → Offer, Decline → ask
 //  5. Done, Remind me, Link: the owner's record is saved to inbox-state
-//  6. search, the computer's panes and its keyboard
+//  6. search
+//  7. Delete from the ⋯ menu: asks first, names what goes and what stays
+//  8. the computer's panes and its keyboard
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -60,6 +62,10 @@ const SHOTS = process.env.IB_SHOTS || '';
             if (file === 'mailbox.php') {
                 if (b.action === 'list') return json({ ok: true, messages: mails, total: mails.length, hasMore: false });
                 if (b.action === 'sent') return json({ ok: true, messages: sent });
+                if (b.action === 'delete' && Array.isArray(b.uids)) {
+                    for (let i = mails.length - 1; i >= 0; i--) if (b.uids.includes(mails[i].uid)) mails.splice(i, 1);
+                    return json({ ok: true, deleted: b.uids.length });
+                }
                 if (b.action === 'read') {
                     const m = mails.find((x) => x.uid === b.uid) || mails[0];
                     return json({ ok: true, uid: m.uid, from: m.from, fromRaw: m.fromRaw, date: m.date, subject: m.subject, body: m.preview + '\n\nOn Mon, someone wrote:\n> an earlier message', attachments: [] });
@@ -216,7 +222,71 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.fill('#ib-q', '');
     await page.dispatchEvent('#ib-q', 'input');
 
-    console.log('7. a computer');
+    console.log('7. delete');
+    const menuOf = async (k) => {
+        await page.click(`#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`);
+        await page.waitForTimeout(700);
+        await page.click('#ib-conv [data-ib="menu"]');
+        await page.waitForTimeout(200);
+        return page.$eval('#ib-conv .ib-menu', (m) => [...m.querySelectorAll('button')].map((x) => x.textContent.trim())).catch(() => []);
+    };
+    const dlg = () => page.evaluate(() => ({
+        open: document.getElementById('glass-dialog').classList.contains('open'),
+        title: (document.getElementById('glass-dialog-title') || {}).textContent || '',
+        msg: document.getElementById('glass-dialog-msg').innerText,
+        ok: document.getElementById('glass-dialog-ok').textContent.trim(),
+        danger: document.getElementById('glass-dialog-ok').classList.contains('is-danger'),
+    }));
+    const delPosts = () => posts.filter((p) => p.action === 'delete' || p.action === 'delete_sent');
+    const marcus = await menuOf('e:marcus@example.com');
+    ok(marcus.length && !marcus.some((t) => /Delete/.test(t)), `a booking with no messages offers no Delete (${marcus.join(' / ')})`);
+    await page.click('#ib-conv [data-ib="menu"]');
+    await page.click('#ib-conv .ib-back');
+    await page.waitForTimeout(600);
+    const lucy = await menuOf('e:lucy@example.com');
+    ok(lucy[lucy.length - 1] === 'Delete conversation', `Delete is the menu's last item (${lucy.join(' / ')})`);
+    ok(await page.$eval('#ib-conv .ib-menu', (m) => { const b = m.querySelector('[data-ib="delete"]'); return b.classList.contains('is-danger') && getComputedStyle(b).color !== getComputedStyle(m.querySelector('[data-ib="unread"]')).color; }), 'in the danger ink');
+    await page.click('#ib-conv .ib-menu [data-ib="delete"]');
+    await page.waitForTimeout(400);
+    let g = await dlg();
+    ok(g.open && /Lucy Marsh/.test(g.title), `it asks first (${g.title})`);
+    ok(/The email from them is deleted for good, from the mailbox too\./.test(g.msg) && /Nothing is sent to Lucy/.test(g.msg), `and says what goes (${g.msg.replace(/\s+/g, ' ')})`);
+    ok(!/booking/.test(g.msg), 'no booking to keep, so it says nothing about one');
+    ok(g.ok === 'Delete' && g.danger, 'the button says Delete, in red, not the accent');
+    await page.click('#glass-dialog-cancel');
+    await page.waitForTimeout(400);
+    ok(!delPosts().length && (await keys()).includes('e:lucy@example.com'), 'Cancel deletes nothing');
+    await page.click('#ib-conv [data-ib="menu"]');
+    await page.waitForTimeout(200);
+    await page.click('#ib-conv .ib-menu [data-ib="delete"]');
+    await page.waitForTimeout(400);
+    await page.click('#glass-dialog-ok');
+    await page.waitForTimeout(800);
+    const lp = delPosts();
+    ok(lp.length === 1 && lp[0].__url === 'mailbox.php' && JSON.stringify(lp[0].uids) === '["u3"]', `Delete takes her email from the mailbox, in one call (${JSON.stringify(lp)})`);
+    ok(!(await keys()).includes('e:lucy@example.com'), 'and she leaves the Inbox');
+    const lt = await page.$eval('#ib-toast-msg', (e) => e.textContent);
+    ok(/Deleted your conversation with Lucy/.test(lt), `it says so (${lt})`);
+    ok(await page.$eval('#ib-toast-undo', (e) => e.hidden), 'with no Undo: the mailbox cannot give it back');
+    const dan = await menuOf('e:daniel@example.com');
+    ok(dan.includes('Delete conversation'), 'a guest with a booking can delete the conversation too');
+    await page.click('#ib-conv .ib-menu [data-ib="delete"]');
+    await page.waitForTimeout(400);
+    g = await dlg();
+    ok(/2 emails from them and the email you sent are deleted for good/.test(g.msg), `both his addresses and what you sent (${g.msg.replace(/\s+/g, ' ')})`);
+    ok(/Their booking at Jollyboat stays, with the emails sent about it\./.test(g.msg), 'and it says the booking stays');
+    const n0 = delPosts().length;
+    await page.click('#glass-dialog-ok');
+    await page.waitForTimeout(800);
+    const dp = delPosts().slice(n0);
+    const mb = dp.find((p) => p.__url === 'mailbox.php' && p.action === 'delete');
+    ok(mb && mb.uids.slice().sort().join(',') === 'u1,u2', `his emails from both addresses go (${mb && mb.uids})`);
+    ok(dp.some((p) => p.action === 'delete_sent' && p.to === 'daniel@example.com'), 'and what was sent to him');
+    ok(!dp.some((p) => p.__url === 'bookings.php'), 'the booking is never touched');
+    ok(state && state.done && state.done['e:daniel@example.com'] > 0 && !(state.remind || {})['e:daniel@example.com'], 'he moves to Done, his reminder cleared');
+    ok(/booking stays on Today/.test(await page.$eval('#ib-toast-msg', (e) => e.textContent)), 'and the toast says where the booking is');
+
+    console.log('8. a computer');
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(800);
     await page.evaluate(() => ibSoon());

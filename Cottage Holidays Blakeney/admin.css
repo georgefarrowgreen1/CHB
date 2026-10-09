@@ -9134,6 +9134,7 @@ body.ib-conv-open:has(#view-inbox.active) { overflow: hidden; }
 #ib .ib-menucap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); padding: 8px 12px 2px; }
 #ib .ib-menu hr { border: 0; border-top: 1px solid var(--ib-edge); margin: 4px; }
 #ib .ib-menu button:focus-visible { outline-offset: -2px; }
+#ib .ib-menu button.is-danger { color: var(--danger-text); }
 #ib .ib-ctxdrop { position: absolute; left: 0; right: 0; top: 100%; background: var(--dark-grey); border-bottom: 1px solid var(--ib-edge); box-shadow: var(--ib-shadow); display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.3s var(--out), visibility 0s linear 0.3s; }
 #ib .ib-ctxdrop.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows 0.3s var(--out); }
 #ib .ib-ctxdrop > div { overflow: hidden; min-height: 0; }
