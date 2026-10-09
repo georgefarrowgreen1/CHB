@@ -529,6 +529,8 @@ async function open(browser, base, width) {
     const out = {
       rowArrow: drawn(arrow) && getComputedStyle(arrow).fontSize === '0px',
       nyChev: nyChev ? drawn(nyChev) : null,
+      // …on the action's own line: font-size 0 put the chevron's baseline at its foot and dropped it a line.
+      nyLine: nyChev ? (() => { const a = nyChev.parentElement.getBoundingClientRect(), c = nyChev.getBoundingClientRect(); return Math.round(a.height) <= 22 && Math.abs((c.top + c.bottom) / 2 - (a.top + a.bottom) / 2) <= 2; })() : null,
       segSvg: seg.length === 2 && seg.every((b) => b.querySelector('svg') && !/[❮❯]/.test(b.textContent)),
     };
     // The booking page: call, email and ⋯ are one outlined circle.
@@ -564,6 +566,7 @@ async function open(browser, base, width) {
   });
   ok(last.rowArrow, 'a booking row ends in the drawn chevron, not a "›" glyph');
   ok(last.nyChev !== false, `a Needs-you action ends in the drawn chevron (${last.nyChev === null ? 'no task on screen' : 'drawn'})`);
+  ok(last.nyLine !== false, 'the chevron sits on the action\'s own line, centred beside its word');
   ok(last.segSvg, 'the timeline\'s Earlier / Later carry the drawn chevron, not "❮ ❯"');
   ok(last.bookIcons.length >= 2 && last.bookIcons.every((s) => s === '44 44 999px rgba(0, 0, 0, 0) 1px'),
     `the booking page's call, email and ⋯ are one outlined 44px circle (${[...new Set(last.bookIcons)].join(' / ')})`);

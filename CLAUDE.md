@@ -857,6 +857,10 @@ guard removed, the window scope removed — each fails its own checks).
   20px corner beside a 12px search). Gated in §13
   (break-tested: removing the section fails 7 of 8 — the eighth is the markup's SVG). NB the "££1,363" an audit
   reads is the owed line's decorative £ tile beside its figure, `aria-hidden` — not a doubled sign on screen.
+  **A FONT-SIZE-0 INLINE-BLOCK SITS ON ITS FOOT.** The Needs-you chevron (a masked `inline-block` with `font-size: 0`)
+  has no line box, so its baseline is its bottom edge and it dropped a line under its own word — "Check" over "›",
+  the action 32px tall. The action is an `inline-flex` row centred on the word now; §13 measures the chevron's centre
+  against the action's. A glyph the mask replaces is a box, not a character: align it as one.
 - **THE TWO LONG WINDOWS JOIN** (section 21). The booking form (`#edit-modal`) and the email composer
   (`#enq-email-modal`, a `.reviews-modal`) were the last centred cards with their own title (22px bold / the old
   serif, inline in index.html — removed) and their own field heights (54–58px). They take the window's ground

@@ -8940,8 +8940,9 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
 }
 :is(main, div).one-look .gb-more[aria-expanded="true"]::after { transform: rotate(-90deg); }
 /* A Needs-you row's action ends in the drawn chevron as well. */
+:is(main, div).one-look .ny-act { display: inline-flex; align-items: center; gap: 2px; }
 :is(main, div).one-look .ny-chev {
-  display: inline-block; width: 16px; height: 16px; margin-left: 2px; vertical-align: -3px; font-size: 0; background: currentColor;
+  display: inline-block; flex: none; width: 16px; height: 16px; font-size: 0; background: currentColor;
   -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
 }
 /* The conversation (a sheet on a phone, the Inbox's pane from 1200px) takes the window's title and
