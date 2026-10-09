@@ -9486,6 +9486,10 @@ body.pm-sheet-open { overflow: hidden; }
 #pm .pm-bankstrip { margin-top: 12px; }
 #pm .pm-bsugg { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; font-size: var(--fs-sub); color: var(--text-light); text-wrap: pretty; }
 #pm .pm-bsugg .pm-linkbtn { min-height: 32px; padding: 0 8px; margin-left: auto; position: relative; }
+/* a sorted payment: what it was, and its one action, on one line */
+#pm .pm-bdone { flex-wrap: nowrap; color: var(--text-muted); }
+#pm .pm-bdone > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pm .pm-bdone .pm-linkbtn { flex: none; }
 #pm .pm-bsugg .pm-linkbtn::after { content: ""; position: absolute; inset: -6px 0; }
 #pm .pm-bsame { grid-column: 1 / -1; margin: 4px -12px -8px; }
 #pm .pm-bsame .pm-linkbtn { font-size: var(--fs-caption); }

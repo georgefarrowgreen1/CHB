@@ -17987,17 +17987,25 @@ function pmBankSuggest(l) {
     if (cat) return { say: `Looks like ${cat.toLowerCase()}.`, acts: [{ k: 'expense:' + cat, label: `Add as ${cat}`, primary: true }, { k: 'cat', label: 'Something else' }] };
     return { say: 'What was it for?', acts: [{ k: 'cat', label: 'An expense', primary: true }, { k: 'ignore', label: 'Not the business' }] };
 }
-function pmBankRow(l) {
-    const desc = l.description && l.description.toUpperCase() !== String(l.name || '').toUpperCase() && l.description.length <= 40 ? ' · ' + escapeHtml(l.description) : '';
+// `dated` false under a day caption (the Sorted list), where the date is said above.
+function pmBankRow(l, dated) {
+    const desc = l.description && l.description.toUpperCase() !== String(l.name || '').toUpperCase() && l.description.length <= 40 ? escapeHtml(l.description) : '';
+    const sub = [dated === false ? '' : pmDdm(pmIso(l.date)), desc].filter(Boolean).join(' · ');
     const head = `<span class="pm-mic ${l.amount > 0 ? 'in' : 'out'}" aria-hidden="true">${l.amount > 0 ? PM_IC.in : PM_IC.out}</span>
-        <span class="pm-main"><span class="pm-t">${escapeHtml(l.name || l.description || 'Payment')}</span><span class="pm-s">${pmDdm(pmIso(l.date))}${desc}</span></span>
+        <span class="pm-main"><span class="pm-t">${escapeHtml(l.name || l.description || 'Payment')}</span>${sub ? `<span class="pm-s">${sub}</span>` : ''}</span>
         <span class="pm-v${l.amount > 0 ? ' plus' : ''}">${l.amount > 0 ? '+' : '−'}${gbp(Math.abs(l.amount))}</span>`;
     if (l.as) {
         const auto = l.as === 'square' || l.as === 'pot';
         // A payment recorded on a booking is changed on the booking, where the rest of its money is.
         const bk = l.as === 'payment' && l.booking_id ? findBookingById(l.booking_id) : null;
         const act = auto ? '' : bk ? `<button type="button" class="pm-linkbtn" data-pm="stay" data-arg="${escapeHtml(String(bk.id))}">Open</button>` : l.as === 'payment' ? '' : `<button type="button" class="pm-linkbtn" data-pm="bank-undo" data-arg="${l.id}">Undo</button>`;
-        return `<div class="pm-needrow pm-wrow">${head}<div class="pm-bsugg"><span>${escapeHtml(l.label || PM_BANK_AS[l.as] || '')}</span>${pmCap('ok', auto ? 'Matched' : 'Sorted')}${act}</div></div>`;
+        // What it was, in words that don't repeat the name above them; the Sorted
+        // caption says it was sorted, so only a match made by itself carries a capsule.
+        const p = l.as === 'person' ? pmPaidPeople().find((x) => x.id === Number(l.admin_id)) : null;
+        const what = l.as === 'person' ? (p ? 'Paid to ' + p.first : 'Paid to a host')
+            : l.as === 'payment' ? (/already recorded/i.test(l.label || '') ? 'Already on their booking' : 'Recorded on their booking')
+                : l.label || PM_BANK_AS[l.as] || '';
+        return `<div class="pm-needrow pm-wrow">${head}<div class="pm-bsugg pm-bdone"><span>${escapeHtml(what)}</span>${auto ? pmCap('ok', 'Matched') : ''}${act}</div></div>`;
     }
     const s = pmBankSuggest(l);
     const n = s.same ? pmBankLines().filter((x) => !x.as && x.name === l.name && Math.sign(x.amount) === Math.sign(l.amount)).length : 0;
@@ -18118,7 +18126,7 @@ function pmBankPage() {
         <span class="pm-r"><button type="button" class="pm-mini${d.due && !pmLiveOk() ? ' ok' : ''}" data-pm="bank-add">Add</button></span></div>`);
     h += `<div class="pm-rows">${rows.join('')}</div>`;
     if (toSort.length) {
-        h += `<div class="pm-dcap is-attn">To sort · ${B.unsorted || toSort.length}</div><div class="pm-rows">${toSort.slice(0, __pmBankShown).map(pmBankRow).join('')}</div>`;
+        h += `<div class="pm-dcap is-attn">To sort · ${B.unsorted || toSort.length}</div><div class="pm-rows">${toSort.slice(0, __pmBankShown).map((l) => pmBankRow(l)).join('')}</div>`;
         if (toSort.length > __pmBankShown) h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-more">Show ${Math.min(40, toSort.length - __pmBankShown)} more</button></div>`;
     } else if (lines.length) {
         h += '<p class="pm-note">Everything is sorted.</p>';
@@ -18128,7 +18136,7 @@ function pmBankPage() {
         h += `<div class="pm-dcap">Sorted</div><div class="pm-rows">${done.map((l) => {
             const cap = l.date !== day ? `<div class="pm-daycap">${pmDayLabel(pmIso(l.date))}</div>` : '';
             day = l.date;
-            return cap + pmBankRow(l);
+            return cap + pmBankRow(l, false);
         }).join('')}</div>`;
     }
     const foot = [];
