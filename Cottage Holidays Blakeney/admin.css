@@ -9353,6 +9353,15 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 #pm .pm-empty b { display: block; color: var(--text-light); font-size: var(--fs-body); margin-bottom: 4px; font-weight: 600; }
 #pm .pm-foot { display: flex; justify-content: center; margin-top: 8px; }
 #pm .pm-linkbtn { border: 0; background: none; color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); min-height: 44px; padding: 0 12px; border-radius: var(--r-pill); }
+/* With Square: a caption that carries its own action, and the small per-row answer */
+#pm .pm-dcap.is-attn { color: var(--warn-text); }
+#pm .pm-dcap-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 -12px 4px; }
+#pm .pm-dcap-row .pm-linkbtn { padding-right: 4px; font-size: var(--fs-caption); white-space: nowrap; }
+#pm .pm-wrow :is(.pm-t, .pm-s) { white-space: normal; }
+#pm .pm-mini { position: relative; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pm-pill-edge); background: none; font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; }
+#pm .pm-mini::after { content: ""; position: absolute; inset: -6px 0; }
+#pm .pm-mini svg { width: 14px; height: 14px; }
+#pm .pm-mini.ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 
 /* the activity filters: the Inbox's chips */
 #pm .pm-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 1px 12px; margin: 0 -1px; }

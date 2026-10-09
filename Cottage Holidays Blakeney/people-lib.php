@@ -345,7 +345,7 @@ function people_content_cap($key)
     if ($k === 'plan-presets') {
         return 'payments';
     }
-    if ($k === 'sweep-moved' || $k === 'sweep-balance') {
+    if ($k === 'sweep-moved' || $k === 'sweep-landed' || $k === 'sweep-balance') {
         return 'money';
     }
     // Prices and cottages: rates, rules, the cottage pages and their private notes.

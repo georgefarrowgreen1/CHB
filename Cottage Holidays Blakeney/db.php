@@ -1409,6 +1409,10 @@ function is_internal_content_key($key)
                      // bank. There is no bank feed, so this is the only record of
                      // it — their money movements; never on the public content GET.
     }
+    if ($key === 'sweep-landed') {
+        return true; // card payments the owner says ARE in their bank where Square's
+                     // payout data is silent. Their money; never on the public GET.
+    }
     if ($key === 'square-location') {
         return true; // which Square location the money screens read — back office only
     }

@@ -33,8 +33,17 @@
 // ============================================================
 
 const PAYOUTS_CACHE_KEY = 'square-payouts';
-const PAYOUTS_LOOKBACK_DAYS = 60; // enough to cover anything the sweep screen lists
-const PAYOUTS_MAX = 30; // bounds the per-payout entry calls (one a day, so ~31 total)
+// The sweep lists charges from the last 90 days (plus any still holding a deposit),
+// and a payout follows its charge by a day or two, so the fetch reaches back past 90.
+// At 60 a charge between 60 and 90 days old could never be matched to its payout and
+// read as "with Square" however long ago it reached the bank.
+const PAYOUTS_LOOKBACK_DAYS = 100;
+const PAYOUTS_MAX = 60; // payouts per fetch; a PAID one already read is never re-read
+// What Square has said about a charge is KEPT after its payout leaves the fetch window,
+// for this long: a PAID payout does not change, and dropping the fact turned money the
+// owner had already moved out back into "with Square" (reported live, £1,291.97).
+const PAYOUTS_KEEP_DAYS = 400;
+const PAYOUTS_KEEP_MAX = 1500;
 const PAYOUTS_TTL = 21600; // 6h — how old a cache has to be before a refresh is due
 // The balance the owner last stated, WITH its date. Written by the client through the
 // ordinary content save (no new endpoint), classified internal in db.php.
@@ -49,13 +58,27 @@ const SWEEP_MOVED_KEY = 'sweep-moved';
 // Bounded like the other owner-written lists. Older marks fall off the end; a
 // charge that has dropped out of the payout window is no longer shown anyway.
 const SWEEP_MOVED_MAX = 200;
+// Card payments the owner has told us ARE in their bank when Square's payout data
+// does not say so (a charge older than the data, or one Square never reported).
+// Same shape and same reader as the moved marks. Square's own word wins whenever it
+// has one: a mark only changes a charge Square has not called landed, and never one
+// in a payout Square says FAILED.
+const SWEEP_LANDED_KEY = 'sweep-landed';
 
 // The owner's record of what they have already transferred out. Bounded and
 // sanitised on read: this is owner-written JSON reaching money arithmetic, so a
 // malformed value must degrade to "nothing marked" rather than to an exception.
 function payouts_moved_map()
 {
-    $raw = function_exists('content_value') ? content_value(SWEEP_MOVED_KEY) : '';
+    return payouts_mark_map(SWEEP_MOVED_KEY, SWEEP_MOVED_MAX);
+}
+function payouts_landed_marks()
+{
+    return payouts_mark_map(SWEEP_LANDED_KEY, SWEEP_MOVED_MAX);
+}
+function payouts_mark_map($key, $max)
+{
+    $raw = function_exists('content_value') ? content_value($key) : '';
     if ($raw === '') {
         return [];
     }
@@ -71,9 +94,9 @@ function payouts_moved_map()
             $out[$k] = $ts;
         }
     }
-    if (count($out) > SWEEP_MOVED_MAX) {
+    if (count($out) > $max) {
         arsort($out); // newest marks win
-        $out = array_slice($out, 0, SWEEP_MOVED_MAX, true);
+        $out = array_slice($out, 0, $max, true);
     }
     return $out;
 }
@@ -173,7 +196,11 @@ function payouts_charge_map(array $payouts, array $entriesByPayout, $todayIso)
 // not know keeps `landed => null` (unknown), which the caller must not treat as
 // spendable. The Square id is consumed here and NOT copied into the result — it is
 // machinery, and the screen has no use for it.
-function payouts_apply(array $txns, array $map)
+//
+// $todayIso, when given, re-judges `landed` from the payout's status and date: the
+// cache holds the verdict as of its last refresh, so a payout cached as "arriving
+// Thursday" otherwise read "on its way" all Thursday until the next one.
+function payouts_apply(array $txns, array $map, $todayIso = null)
 {
     $out = [];
     foreach ($txns as $t) {
@@ -183,11 +210,16 @@ function payouts_apply(array $txns, array $map)
         if ($known === null) {
             $t['landed'] = null;
             $t['arrival'] = '';
+            $t['payout_status'] = '';
             $out[] = $t;
             continue;
         }
         $t['landed'] = $known['landed'];
+        if ($todayIso !== null && (string) ($known['status'] ?? '') !== '') {
+            $t['landed'] = payouts_landed(['status' => $known['status'], 'arrival_date' => $known['arrival'] ?? ''], $todayIso);
+        }
         $t['arrival'] = $known['arrival'];
+        $t['payout_status'] = strtoupper((string) ($known['status'] ?? ''));
         if ($known['fee'] !== null) {
             $t['fee'] = $known['fee']; // Square's real figure beats our estimate
             $t['fee_actual'] = true;
@@ -218,7 +250,11 @@ function payouts_charge_key(array $it)
 // Kept separate rather than dropped, because "you have already transferred this"
 // is a different statement from "Square never paid it", and the owner has to be
 // able to see what they marked — and unmark it.
-function payouts_split_totals(array $items, array $moved = [])
+//
+// $owner is the owner's "it's in my bank" marks (payouts_landed_marks): a charge
+// Square has not called landed counts as landed on the owner's word, carrying WHEN
+// they said so. Never one in a FAILED payout — Square knows that money did not arrive.
+function payouts_split_totals(array $items, array $moved = [], array $owner = [])
 {
     $sum = ['inBank' => 0.0, 'onWay' => 0.0, 'unknown' => 0.0, 'moved' => 0.0];
     $lists = ['inBank' => [], 'onWay' => [], 'unknown' => [], 'moved' => []];
@@ -227,6 +263,12 @@ function payouts_split_totals(array $items, array $moved = [])
         $landed = $it['landed'] ?? null;
         $movable = round((float) ($it['movable'] ?? 0), 2);
         $key = payouts_charge_key($it);
+        if ($landed !== true && $key !== '' && isset($owner[$key])
+            && strtoupper((string) ($it['payout_status'] ?? '')) !== 'FAILED') {
+            $landed = true;
+            $it['landed'] = true;
+            $it['landed_by_owner'] = (int) $owner[$key];
+        }
         // Only a LANDED charge can have been transferred: money Square has not
         // paid out cannot have left the bank, so a stale mark on one must not
         // quietly remove it from the figure.
@@ -372,6 +414,44 @@ function payouts_failed(array $payouts)
     return ['count' => count($out), 'amount' => round($total, 2), 'items' => $out];
 }
 
+// KEEP WHAT SQUARE HAS ALREADY SAID. Each refresh rebuilt the charge map from the
+// fetch window alone, so a charge whose payout aged out of it lost its "landed" — and
+// with it any "moved out" mark, which only applies to landed money — and went back to
+// reading "with Square". A PAID or SENT payout's charges are carried forward while
+// their arrival date is within PAYOUTS_KEEP_DAYS; the fresh fetch always wins where it
+// has an answer. A FAILED one is not carried: Square re-pays failed money as an
+// adjustment, not against the same charges, so keeping it would say "didn't arrive"
+// about money that later did.
+function payouts_charge_merge(array $fresh, array $prev, $todayIso, $keepDays = PAYOUTS_KEEP_DAYS)
+{
+    $out = $fresh;
+    $floor = gmdate('Y-m-d', (int) strtotime($todayIso . ' 12:00:00 UTC') - (int) $keepDays * 86400);
+    foreach ($prev as $pid => $c) {
+        $pid = (string) $pid;
+        if ($pid === '' || isset($out[$pid]) || !is_array($c)) {
+            continue;
+        }
+        $status = strtoupper((string) ($c['status'] ?? ''));
+        $arrival = (string) ($c['arrival'] ?? '');
+        if (!in_array($status, ['PAID', 'SENT'], true) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $arrival) || $arrival < $floor) {
+            continue;
+        }
+        $fee = $c['fee'] ?? null;
+        $out[$pid] = [
+            'payout_id' => (string) ($c['payout_id'] ?? ''),
+            'status' => $status,
+            'arrival' => $arrival,
+            'landed' => payouts_landed(['status' => $status, 'arrival_date' => $arrival], $todayIso),
+            'fee' => $fee === null ? null : round(abs((float) $fee), 2),
+        ];
+    }
+    if (count($out) > PAYOUTS_KEEP_MAX) {
+        uasort($out, fn($a, $b) => strcmp((string) ($b['arrival'] ?? ''), (string) ($a['arrival'] ?? '')));
+        $out = array_slice($out, 0, PAYOUTS_KEEP_MAX, true);
+    }
+    return $out;
+}
+
 // Is the cache old enough to be worth a refresh? An absent//unreadable cache
 // always is. Pure so the cron's decision is testable without a clock.
 function payouts_stale($cache, $now, $ttl = PAYOUTS_TTL)
@@ -483,15 +563,39 @@ if (!function_exists('payouts_cached')) {
         // so rather than reading as full coverage.
         $truncated = count($raw) > count($payouts) || !empty($res['body']['cursor']);
 
+        // A PAID payout whose entries were read in full last time cannot change, so it
+        // is not asked about again: its charges come forward through the merge below and
+        // its refund lines are copied. That keeps a hundred days of payouts to a handful
+        // of calls once the first refresh has read them.
+        // Only a cache about THIS location is carried forward: after the owner picks a
+        // different one, the old answer is about another shop's payouts.
+        $same = is_array($prev) && (string) ($prev['location'] ?? '') === $loc;
+        $prevRead = [];
+        foreach (($same ? ($prev['payouts'] ?? []) : []) as $pp) {
+            if (is_array($pp) && !empty($pp['entries_read']) && strtoupper((string) ($pp['status'] ?? '')) === 'PAID') {
+                $prevRead[(string) ($pp['id'] ?? '')] = true;
+            }
+        }
         $entries = [];
         $refunds = [];
-        foreach ($payouts as $p) {
+        foreach ($payouts as $i => $p) {
+            if ($p['status'] === 'PAID' && isset($prevRead[$p['id']])) {
+                $payouts[$i]['entries_read'] = true;
+                foreach (($prev['refunds'] ?? []) as $rf) {
+                    if (is_array($rf) && (string) ($rf['payout'] ?? '') === $p['id']) {
+                        $refunds[] = $rf;
+                    }
+                }
+                continue;
+            }
             $r = square_api('GET', '/v2/payouts/' . rawurlencode($p['id']) . '/payout-entries?limit=100');
             if ((int) $r['status'] < 200 || (int) $r['status'] >= 300) {
-                continue; // one unreadable payout must not lose the other twenty-nine
+                continue; // one unreadable payout must not lose the others
             }
             $list = $r['body']['payout_entries'] ?? [];
             $entries[$p['id']] = $list;
+            // Read in full only when Square says there is no further page.
+            $payouts[$i]['entries_read'] = empty($r['body']['cursor']);
             // Refund lines are collected ONLY to roll the balance forward (money that
             // has left since a stated figure). They are deliberately NOT used to
             // compute the deposit liability — our own ledger owns that, and a second
@@ -508,10 +612,15 @@ if (!function_exists('payouts_cached')) {
                     'amount' => round(abs($net), 2),
                     'at' => (int) $p['landed_at'],
                     'refund_id' => (string) ($e['type_refund_details']['refund_id'] ?? ''),
+                    'payout' => $p['id'],
                 ];
             }
         }
-        $map = payouts_charge_map($payouts, $entries, $today);
+        $map = payouts_charge_merge(
+            payouts_charge_map($payouts, $entries, $today),
+            $same && is_array($prev['charges'] ?? null) ? $prev['charges'] : [],
+            $today,
+        );
 
         // Open disputes: money Square may pull back. A failure here must not lose the
         // payout data we already have, so it degrades to "unknown" on its own.
