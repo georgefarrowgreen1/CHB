@@ -30297,9 +30297,10 @@ function ibStateClean(raw) {
     if (typeof v === 'string') {
         try { v = JSON.parse(v); } catch (e) { v = null; }
     }
-    const out = { since: 0, done: {}, remind: {}, reminded: {}, unread: {}, cleared: {}, links: {} };
+    const out = { since: 0, at: 0, done: {}, remind: {}, reminded: {}, unread: {}, cleared: {}, links: {} };
     if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
     out.since = Number(v.since) || 0;
+    out.at = Number(v.at) || 0;
     const cutoff = Date.now() - IB_STATE_DAYS * 864e5;
     ['done', 'remind', 'reminded', 'unread', 'cleared'].forEach((k) => {
         const m = v[k];
@@ -30318,12 +30319,30 @@ function ibStateClean(raw) {
     }
     return out;
 }
-// A new boot payload is adopted only while none of our saves is in flight (chbDutyMap's rule).
+// THE STORED RECORD MUST ARRIVE BEFORE ANYTHING IS WRITTEN. On a reload the list
+// (and the dock's count) can ask for the record before admin-bootstrap has answered;
+// the record then reads empty, and writing it — the first-open line was written at
+// once — replaced every saved Done with nothing. So nothing is saved until the boot
+// payload has been seen; a change made before then is kept here and laid over the
+// stored record when it lands. And a payload is adopted only if it is not OLDER than
+// what this page last saved (`at`), or a refresh that left before a save and landed
+// after it would roll the Done back; another device's newer save is still adopted.
+let __ibStEarly = false;
+const ibStReady = () => /** @type {any} */ (window).__inboxStatePre !== undefined;
 function ibState() {
     const pre = /** @type {any} */ (window).__inboxStatePre;
-    if (pre !== __ibStSeen && !__ibStPending) {
+    if (ibStReady() && pre !== __ibStSeen && !__ibStPending) {
         __ibStSeen = pre;
-        __ibSt = ibStateClean(pre);
+        const c = ibStateClean(pre);
+        if (__ibStEarly && __ibSt) {
+            ['done', 'remind', 'reminded', 'unread', 'cleared', 'links'].forEach((k) => Object.assign(c[k], __ibSt[k]));
+            c.since = c.since || __ibSt.since;
+            __ibSt = c;
+            __ibStEarly = false;
+            ibStateSave();
+        } else if (!__ibSt || c.at >= (__ibSt.at || 0)) {
+            __ibSt = c;
+        }
     }
     if (!__ibSt) __ibSt = ibStateClean(null);
     return __ibSt;
@@ -30331,6 +30350,8 @@ function ibState() {
 // Mirror first, save after, on a chain that always saves the CURRENT record.
 function ibStateSave() {
     ibState();
+    __ibSt.at = Date.now();
+    if (!ibStReady()) { __ibStEarly = true; return; }
     __ibStPending++;
     __ibStQ = __ibStQ.then(async () => {
         try {
@@ -31287,7 +31308,7 @@ function ibRender() {
     if (!root) return;
     ibWire(root);
     ibListShell();
-    if (!ibState().since) {
+    if (ibStReady() && !ibState().since) {
         ibState().since = ibNow();
         ibStateSave();
     }
@@ -32043,7 +32064,7 @@ document.addEventListener('keydown', (e) => {
 // The dock pip and the rail say the list's own number (app.js inboxCount).
 function ibWaitingCount() {
     try {
-        if (!ibState().since) { ibState().since = ibNow(); ibStateSave(); }
+        if (ibStReady() && !ibState().since) { ibState().since = ibNow(); ibStateSave(); }
         if (!__ibPeople.length || !ibRoot()) ibBuild();
         return __ibPeople.filter((p) => ibInList(p) && ibWaiting(p)).length;
     } catch (e) {

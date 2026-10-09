@@ -136,7 +136,8 @@ if ($action === 'set') {
     // The search assistant's sync keys update quietly in the background on every
     // taught phrasing / dead-end — logging each write would drown the activity
     // feed. Real content edits keep their audit line.
-    if (!in_array($key, ['nlu-learned', 'nlu-suppressed', 'search-misses'], true)) {
+    // The Inbox's own record and Today's dismissals are saved on every tick or swipe.
+    if (!in_array($key, ['nlu-learned', 'nlu-suppressed', 'search-misses', 'inbox-state', 'duty-dismissed'], true)) {
         log_activity('content', 'content.set', 'Website content updated: ' . $key, ['entity' => 'content', 'entity_id' => $key]);
     }
     json_out(['ok' => true]);

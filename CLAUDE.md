@@ -1208,7 +1208,11 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
 - **THE OWNER'S RECORD is the internal content key `inbox-state`** {since, done, remind, reminded,
   unread, cleared, links} — classified in db.php, allowed for everyday staff in people-lib, riding
   the admin boot payload as `inbox` (`window.__inboxStatePre`) like `duty-dismissed`, saved
-  mirror-first on a chain (`ibStateSave`). Done holds until they write again; drafts are per device
+  mirror-first on a chain (`ibStateSave`). **NOTHING IS SAVED BEFORE THE BOOT PAYLOAD HAS ANSWERED**
+  (`ibStReady`): the dock count asked for the record early, read it empty, wrote the first-open line
+  and so replaced every saved Done with nothing — reloaded Done rows came back. An early change is
+  laid over the stored record when it lands; a payload OLDER than this page's last save (`at`) is
+  ignored, so a refresh in flight across a save cannot roll it back. Done holds until they write again; drafts are per device
   (localStorage `chb-ib-draft:<key>`).
 - **A REPLY OR AN APPROVAL WAITS FIVE SECONDS with Undo on the message** (`ibHoldInline`); leaving
   the page sends what is waiting (pagehide / hidden), never loses it. A failed send puts the words
