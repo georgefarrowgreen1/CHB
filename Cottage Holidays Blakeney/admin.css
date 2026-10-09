@@ -5874,11 +5874,6 @@ body.offline-snap .ods-mark {
   cursor: pointer;
   font: inherit;
 }
-.ods-duty .ods-duty-go {
-  color: var(--text-muted);
-  font-size: var(--fs-sub);
-  flex: 0 0 auto;
-}
 /* the BOUNDED timeline: lanes and bars for exactly the days the rows vouch
    for; the third column is hatched UNKNOWN, never an empty "free" cell */
 .ods-tl {
@@ -9004,3 +8999,21 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sh
     border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
   }
 }
+
+/* ---------- 22. THE OFFLINE DAY SHEET wears the online Today's parts ---------- */
+/* No 3px rail (the capsule says the state, as online), each run of rows is ONE card, the cottage
+   tag keeps to its name, and the banner, timeline and private notes take the house corners. */
+:is(main, div).one-look .ods-row {
+  margin: 0; border: 1px solid var(--u-edge); border-radius: 0; background: var(--u-ground); box-shadow: none;
+}
+:is(main, div).one-look .ods-row + .ods-row { border-top: 0; }
+:is(main, div).one-look .ods-row:not(.ods-row + .ods-row) { border-top-left-radius: var(--u-r-card); border-top-right-radius: var(--u-r-card); }
+:is(main, div).one-look .ods-row:not(:has(+ .ods-row)) { border-bottom-left-radius: var(--u-r-card); border-bottom-right-radius: var(--u-r-card); margin-bottom: 16px; }
+:is(main, div).one-look .ods-row .ny-main > .prop-tag { align-self: flex-start; }
+:is(main, div).one-look :is(.ods-mark, .ods-ops) { border-radius: var(--u-r-cell); }
+:is(main, div).one-look .ods-tl { background: var(--u-inset); border: 1px solid var(--u-edge); border-radius: var(--u-r-card); }
+:is(main, div).one-look .ods-row .bhub-icbtn { background: none; border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); corner-shape: round; }
+:is(main, div).one-look .ods-duty { margin: 0; border: 1px solid var(--u-edge); border-radius: 0; box-shadow: none; }
+:is(main, div).one-look .ods-duty + .ods-duty { border-top: 0; }
+:is(main, div).one-look .ods-duty:not(.ods-duty + .ods-duty) { border-top-left-radius: var(--u-r-card); border-top-right-radius: var(--u-r-card); }
+:is(main, div).one-look .ods-duty:not(:has(+ .ods-duty)) { border-bottom-left-radius: var(--u-r-card); border-bottom-right-radius: var(--u-r-card); margin-bottom: 16px; }
