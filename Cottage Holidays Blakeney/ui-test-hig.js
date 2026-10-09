@@ -179,10 +179,10 @@ const NEST = (rootSel) => {
       ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the run (vacuity guard — one row cannot fail a join)`);
       if (r.n < 2) continue;
       ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
-      // Today's bookings are the BODY of one card whose header is the status row: the run's top is
-      // squared against that header and its foot takes the CARD radius, not the cell's.
+      // Today's bookings are their OWN card now (who owes is the pill beside the Today title), so the
+      // run's ends take the card radius like every other one-look list.
       const card = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-lg')));
-      const bodyOfCard = name === 'Today bookings';
+      const bodyOfCard = false;
       // A screen that has joined the one look draws its run of rows as ONE list
       // card, so the run's ends take the CARD radius; elsewhere they keep the cell's.
       // Inside an open fold the run is the card's own INSET panel, on the cell radius.
@@ -372,7 +372,7 @@ const NEST = (rootSel) => {
       dot: dot ? getComputedStyle(dot).backgroundColor : null, okRgb,
       pills: document.querySelectorAll('#manage-verdicts .st-cap.is-ok').length,
       card: !!document.querySelector('#manage-verdicts .mg-sum'),
-      heads: document.querySelectorAll('.settings-head-pills .cron-pill').length,
+      heads: document.querySelectorAll('#view-settings .settings-head-pills .cron-pill').length,
     };
     w.__cronStatusPre = keep.cron; w.__feedStatusPre = keep.feeds; w.__diagSum = keep.diag; w.__sigAt = keep.sig;
     __nyMod = keep.mod; w.chbMissList = keep.m; w.slGuestQuestions = keep.g;
