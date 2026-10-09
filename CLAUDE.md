@@ -691,6 +691,50 @@ in admin.css). The ids the rest of the app reads are unchanged (`enq-email-subje
   two" (the preheader repeats a greeting the message brings); onelook §14, ownerday §5, arrival-review and e2e
   re-aimed. ui-test-mailbox was already stale on main (it expects a drafted reply) and was not touched.
 
+## Add or edit a booking: one sheet (approved demo v2, built and pushed to main without CI)
+
+**Asked for as "overhaul the add booking page", demoed twice, then "Build it, merge without tests or CI".** Supersedes
+the sectioned form (its `.modal-foot`, `.mav-strip`, `.modal-cols`, the date trigger and `#modal-date-verdict`). The
+sheet is `#edit-modal .modal-box.bks` in index.html, the "ADD-BOOKING SHEET" block in admin.js (`bks*`) and the "ADD /
+EDIT A BOOKING" block in admin.css.
+- **The hidden `#modal-*` inputs are still the form's STORE.** setModalFields, tlAddAt, the cmdk prefills, the
+  walkthrough, the new-cottage wizard and saveModal read and write them unchanged. admin.js `bksSync` paints the sheet
+  from them; app.js reaches it only through `bksHook()` (guarded on `__ADMIN_LOADED`, the chbFrameSync pattern), and
+  setModalFields calls `bksReset(f)` for the view state (folds, price mode, reason, the switch).
+- **Check-in is always 3pm and check-out 10am**: the tiles state them, nothing asks. The hidden time inputs keep the
+  values so every save path is unchanged.
+- **The stay**: a cottage row unfolding the list (Free / Booked / Too small capsules once dates are set; "A new
+  cottage" starts the existing wizard), Arrive | Leave tiles over an inline calendar with each free night's price
+  (`nightlyRateFor`, the guest calendars' function), and a verdict row: nights, ✓ Free with the next arrival, or
+  "Overlaps <who>" with the first free cottage that fits offered as one tap. Picking a smaller cottage brings the party
+  down and says so. The server's clash and occupancy confirms are still the authority.
+- **The price**: Standard (night by night, every line from the price model's parts, so they add up to the row) or
+  Custom as a total, a night or a discount. `price_override` is always a TOTAL; a night or a discount is re-derived
+  when the standard moves (`bksDerive`), and values carry between modes unrounded. "Why" chips store
+  **`bookings.price_reason`** (migration-138, VARCHAR(40), owner-only: unset in `my_bookings_payload` and the guest
+  export). The first payment row folds the plan (deposit % and balance date on the same calendar).
+- **An edit never re-sends money.** The paid card is add-only; an edit shows "Received so far" (`displayGrand().paid`)
+  and posts no payment fields, which the server's update keeps. The refundable deposit is a stepper until it has been
+  taken, then a fact. A fully paid booking (`bks-paidlock`) offers no custom price; an arrived one (`bks-movelock`)
+  locks the cottage and dates with a note.
+- **The confirmation is a switch.** Add: on by default; off posts `send_confirmation: false`, which reaches
+  `send_booking_emails` as `skip_guest` (the owner's copy still goes). Edit: on when something the confirmation STATES
+  changed (cottage, dates, party, price vs `__bks.orig`), unless the owner touched it; on means saveModal calls
+  `send_confirmation guest_only`. The post-save "re-send?" dialog is no longer asked from this sheet.
+- **Add says what is missing** instead of refusing in a box: no dates opens the calendar and nudges the tiles, no name
+  focuses the field (`bksHook('nudge-dates'|'nudge-name')`); the button is `aria-disabled` until both are there.
+- **Layout traps found by driving it** (390 and 1280, both themes): `#edit-modal .bks [hidden]` needs `!important`
+  (row rules set `display`); a fold is `grid-template-columns: minmax(0, 1fr)` with `min-width: 0` on its child,
+  because `overflow: clip` is NOT a scroll container, so its automatic minimum stays the content's and the custom
+  price fold grew to 523px in a 390px sheet; the switchers' pills are seated from `openModal` on the next frame (before
+  that the sheet is `display: none` and every button measures 0); the mobile 17px input rule needs `!important` on the
+  big price input; the "Other" discount box is `3.4em` wide so the forced 17px fits.
+- **Not run or re-aimed, at the owner's ask**: ui-test-addbooking (built for the old form), ui-test-dialogs,
+  ui-test-hig, ui-test-hub, ui-test-radii and ui-test-onelook §14 (old classes), ui-test-coach (the add-booking walk
+  now starts at `#bks-cot-row`), layout-test (its scene was re-aimed, not run). Checked by a throwaway headless drive:
+  every state above, no page errors, nothing wider than the sheet, and the save payload (override, reason, the
+  confirmation flag). Budgets raised: admin.js +12.8KB, admin.css +2.5KB gz (owner-only, immutable-cached).
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

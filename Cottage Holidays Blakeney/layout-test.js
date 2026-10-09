@@ -310,7 +310,7 @@ async function waitForServer(url, tries = 40) {
       // The Activity feed lives inside a disclosure fold — the scene opens it
       // the way the owner does, so #hub-history has real geometry to check.
       { key: 'admin-booking-hub', open: "(async () => { await openBookingHub('b2'); if (document.getElementById('bhub-fold-activity').hidden) bhubFoldToggle('activity'); })()", mustSee: ['#booking-hub-content', '#hub-history'] },
-      { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); mavToggle(); })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-strip', '#modal-availability .mav-grid', '.modal-foot'] },
+      { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); })()", mustSee: ['#edit-modal .modal-box', '#bks-cot-row', '#modal-date-trigger', '#bks-verdict', '#modal-save-btn'] },
       { key: 'admin-close-modal', open: 'closeModal()', mustSee: ['#bookings-list'] },
       // The glassForm dialogs were never opened by this gate, which is how two
       // native date fields came to overhang the panel's right edge on an iPhone

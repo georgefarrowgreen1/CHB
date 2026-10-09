@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     agreed_txn_fee     DECIMAL(10,2) NULL,
     agreed_on          DATE          NULL,
     price_override     DECIMAL(10,2) NULL,   -- if set, this is the agreed TOTAL (manual back-office price)
+    price_reason       VARCHAR(40)  NULL,    -- why the price is custom, owner-only (migration-138)
     -- Per-booking payment plan (migration-103): NULL = site standard.
     deposit_pct_override    DECIMAL(5,2)  NULL,  -- this booking's deposit %, replacing square-deposit-pct
     deposit_amount_override DECIMAL(10,2) NULL,  -- …or a fixed £ deposit (wins over the pct; capped at the total)

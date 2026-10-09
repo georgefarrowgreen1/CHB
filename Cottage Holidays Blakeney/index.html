@@ -1583,219 +1583,181 @@
     </div>
 
     <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="glass-panel modal-box">
-            <!-- HEAD / scroll / FOOT as flex siblings. The head sat inside the
-                 scroller with the ✕ floating over it, so the form's controls slid
-                 under the circle at 55 of 60 scroll positions — it landed on the
-                 Adults '+', where elementFromPoint returned the ✕, so the tap
-                 closed the form instead of adding an adult. The footer had been
-                 docked outside for the same reason; the head had not. Out here
-                 the title stays visible as the form scrolls. -->
-            <div class="modal-head">
-                <h3 id="modal-title">Edit booking</h3>
-                <button type="button" class="modal-x" data-act="closeModal" aria-label="Close">✕</button>
+        <div class="glass-panel modal-box bks">
+            <!-- THE ADD-BOOKING SHEET (the approved v2 demo): Email a guest's shape — ✕, the
+                 title over a one-line summary, Add where the keyboard can't cover it — then
+                 rows on hairlines inside four cards. Every #modal-* id the rest of the app
+                 reads is kept: the hidden inputs below are the STORE (setModalFields, the
+                 prefills, saveModal and the walkthrough read and write them), and admin.js's
+                 bksSync paints the sheet from them. -->
+            <div class="modal-head bks-head" id="bks-head">
+                <button type="button" class="modal-x" data-act="closeModal" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <div class="bks-tt">
+                    <h3 id="modal-title">New booking</h3>
+                    <span class="bks-sum" id="bks-sum" aria-live="polite"></span>
+                </div>
+                <button type="button" class="bks-add" id="modal-save-btn" data-act="saveModal">Add</button>
             </div>
-            <div class="modal-scroll">
+            <div class="modal-scroll bks-body" id="bks-body">
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
-
-            <!-- Sectioned form, THE STAY FIRST (the approved demo): cottage,
-                 dates and party decide the price and whether the booking can
-                 exist — the guest's name can wait, the calendar can't. Stay |
-                 Guest side by side ≥901px, Money + Notes full-width beneath.
-                 Every field id and handler is unchanged — only the order and
-                 the controls' clothes are new. -->
-            <div class="modal-cols">
-            <div class="modal-col">
-            <div class="modal-sec">The stay</div>
-            <label class="modal-label" for="modal-property">Cottage</label>
-            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
+            <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
+            <!-- Check-in is always 3pm and check-out always 10am: stated on the tiles, never asked. -->
+            <input type="hidden" id="modal-checkin-time" value="15:00"><input type="hidden" id="modal-checkout-time" value="10:00">
+            <select id="modal-property" hidden aria-hidden="true" tabindex="-1">
                 <option value="21a">21A Westgate</option>
                 <option value="jollyboat">Jollyboat</option>
                 <option value="pimpernel">Pimpernel</option>
                 <option value="__new__">New cottage…</option>
             </select>
-            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New cottage name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
+            <div id="modal-error" class="bks-err" role="alert" style="display:none;"></div>
 
-            <!-- Same clickable glass calendar the customer site uses (admin mode:
-                 taken nights shaded from loaded data, everything still pickable —
-                 the availability strip + server clash confirm guard the save).
-                 The VERDICT capsule on the row answers free/overlaps at a glance;
-                 the strip below still names the blocker and holds the grid. -->
-            <label class="modal-label">Stay dates</label>
-            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker" aria-label="Select the stay dates">
-                <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
-                <span class="modal-date-verdict" id="modal-date-verdict" style="display:none;"></span>
-                <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
-            </button>
-            <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
-            <!-- Live availability for the chosen cottage: ONE summary line
-                 (free / overlaps, next booking) with the six-week grid behind
-                 its Calendar toggle — visible BEFORE saving either way. -->
-            <div id="modal-availability" style="display:none;"></div>
-
-            <!-- Party as steppers, capped at the cottage's own occupancy where
-                 it's known — TYPING past the cap stays possible (the server's
-                 occupancy confirm is the deliberate override). -->
-            <div class="modal-steprow">
-                <span class="modal-step-lbl"><label for="modal-adults">Adults</label><small id="modal-occ-note"></small></span>
-                <span class="modal-step">
-                    <button type="button" data-act="modalStep" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">−</button>
-                    <input type="number" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice">
-                    <button type="button" data-act="modalStep" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
-                </span>
-            </div>
-            <div class="modal-steprow">
-                <span class="modal-step-lbl"><label for="modal-children">Children</label></span>
-                <span class="modal-step">
-                    <button type="button" data-act="modalStep" data-arg="children" data-arg2="-1" aria-label="Fewer children">−</button>
-                    <input type="number" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
-                    <button type="button" data-act="modalStep" data-arg="children" data-arg2="1" aria-label="More children">+</button>
-                </span>
-            </div>
-            <div class="modal-2col">
-                <div>
-                    <label class="modal-label" for="modal-checkin-time">Check-in time</label>
-                    <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
+            <div class="bks-cap">The stay</div>
+            <div class="bks-card" id="bks-stay">
+                <button type="button" class="bks-row" id="bks-cot-row" data-bks="cot" aria-expanded="false" aria-controls="bks-cot-fold">
+                    <span class="bks-rt"><span class="bks-rl">Cottage</span></span>
+                    <span class="bks-rv" id="bks-cot-val"></span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="bks-fold" id="bks-cot-fold"><div>
+                    <div id="bks-cot-list" role="radiogroup" aria-label="Cottage"></div>
+                    <div class="bks-fr" id="bks-newcot" hidden><label for="modal-property-new">Name</label><input id="modal-property-new" autocomplete="off" placeholder="The new cottage&rsquo;s name" data-act-input="updateModalPrice"></div>
+                </div></div>
+                <div class="bks-tiles" id="modal-date-trigger">
+                    <button type="button" class="bks-tile" id="bks-t-in" data-bks="tile" data-v="in" aria-expanded="false" aria-controls="bks-cal-fold"><span class="bks-tl">Arrive</span><span class="bks-td" id="bks-t-in-d">Add a date</span><span class="bks-tm" id="bks-t-in-tm">from 3pm</span></button>
+                    <button type="button" class="bks-tile" id="bks-t-out" data-bks="tile" data-v="out" aria-expanded="false" aria-controls="bks-cal-fold"><span class="bks-tl">Leave</span><span class="bks-td" id="bks-t-out-d">Add a date</span><span class="bks-tm" id="bks-t-out-tm">by 10am</span></button>
                 </div>
-                <div>
-                    <label class="modal-label" for="modal-checkout-time">Check-out time</label>
-                    <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
+                <div class="bks-fold" id="bks-cal-fold"><div><div class="bks-cal" id="bks-cal"></div></div></div>
+                <div class="bks-vrow" id="bks-verdict" aria-live="polite" hidden></div>
+                <div class="bks-row">
+                    <span class="bks-rt"><label class="bks-rl" for="modal-adults">Adults</label><span class="bks-rs" id="modal-occ-note"></span></span>
+                    <span class="modal-step"><button type="button" data-act="modalStep" data-arg="adults" data-arg2="-1" aria-label="Fewer adults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><input type="number" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice"><button type="button" data-act="modalStep" data-arg="adults" data-arg2="1" aria-label="More adults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
                 </div>
-            </div>
-            </div>
-
-            <div class="modal-col">
-            <div class="modal-sec">The guest</div>
-            <label class="modal-label" for="modal-name">Name</label>
-            <div class="modal-name-wrap">
-                <input type="text" class="input-glass" id="modal-name" autocomplete="off" data-act-input="modalNameSuggest" data-pass="value">
-                <!-- Typeahead: past guests matching what you're typing (repeat guests are one tap). -->
-                <div id="modal-name-suggest" class="modal-suggest" style="display:none;" role="listbox" aria-label="Matching past guests"></div>
-            </div>
-
-            <div class="modal-2col">
-                <div>
-                    <label class="modal-label" for="modal-email">Email</label>
-                    <input type="email" class="input-glass" id="modal-email" placeholder="guest@email.com">
-                </div>
-                <div>
-                    <label class="modal-label" for="modal-phone">Phone</label>
-                    <input type="tel" class="input-glass" id="modal-phone" placeholder="07…">
+                <div class="bks-row">
+                    <span class="bks-rt"><label class="bks-rl" for="modal-children">Children</label><span class="bks-rs">Under 16</span></span>
+                    <span class="modal-step"><button type="button" data-act="modalStep" data-arg="children" data-arg2="-1" aria-label="Fewer children"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><input type="number" id="modal-children" min="0" value="0" data-act-input="updateModalPrice"><button type="button" data-act="modalStep" data-arg="children" data-arg2="1" aria-label="More children"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
                 </div>
             </div>
 
-            <label class="modal-label" for="modal-address">Home address</label>
-            <textarea class="input-glass" id="modal-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-            <label class="modal-label" for="modal-postcode">Postcode</label>
-            <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
-            </div>
+            <div class="bks-cap">The guest</div>
+            <div class="bks-card" id="bks-guest">
+                <div class="bks-fr"><label for="modal-name">Name</label><input id="modal-name" autocomplete="off" placeholder="Their full name" data-act-input="modalNameSuggest" data-pass="value"><span id="bks-nm-cap"></span></div>
+                <!-- Typeahead: guests you've hosted before (a repeat guest is one tap). -->
+                <div id="modal-name-suggest" class="bks-sug" style="display:none;" role="listbox" aria-label="Matching past guests"></div>
+                <div class="bks-fr"><label for="modal-email">Email</label><input type="email" id="modal-email" autocomplete="off" placeholder="For the confirmation" data-bks-in="email"></div>
+                <div class="bks-fr"><label for="modal-phone">Phone</label><input type="tel" id="modal-phone" autocomplete="off" placeholder="Optional"></div>
+                <button type="button" class="bks-row" id="bks-addr-row" data-bks="addr" aria-expanded="false" aria-controls="bks-addr-fold">
+                    <span class="bks-rt"><span class="bks-rl">Home address</span></span>
+                    <span class="bks-rv bks-muted" id="bks-addr-val">Optional</span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="bks-fold" id="bks-addr-fold"><div>
+                    <div class="bks-fr bks-ta"><label for="modal-address">Address</label><textarea id="modal-address" rows="2" placeholder="House, street, town" data-bks-in="addr"></textarea></div>
+                    <div class="bks-fr"><label for="modal-postcode">Postcode</label><input id="modal-postcode" autocomplete="off" placeholder="NR25 7AB" data-bks-in="addr"></div>
+                </div></div>
             </div>
 
-            <div class="modal-sec" id="modal-sec-money">Money</div>
-            <div class="price-box" id="modal-price-box" style="margin-top: 5px;">
-                <p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">Enter dates to see the total.</p>
+            <div class="bks-cap">Price</div>
+            <div class="bks-card" id="bks-price">
+                <div id="modal-override-group" class="bks-segrow"><div class="bks-seg" id="bks-pmode" role="group" aria-label="Price">
+                    <span class="bks-pill" aria-hidden="true"></span>
+                    <button type="button" data-bks="pmode" data-v="std" aria-pressed="true">Standard</button>
+                    <button type="button" data-bks="pmode" data-v="custom" aria-pressed="false">Custom</button>
+                </div></div>
+                <div class="bks-fold on" id="bks-std-fold"><div>
+                    <button type="button" class="bks-row" id="bks-nights-row" data-bks="nights" aria-expanded="false" aria-controls="bks-nights-fold">
+                        <span class="bks-rt"><span class="bks-rl" id="bks-n-l">The stay</span><span class="bks-rs" id="bks-n-s">Pick the dates to price it</span></span>
+                        <span class="bks-rv" id="bks-n-v"></span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="bks-fold" id="bks-nights-fold"><div id="bks-nights"></div></div>
+                </div></div>
+                <div class="bks-fold" id="bks-cus-fold"><div>
+                    <div class="bks-segrow"><div class="bks-seg" id="bks-cmode" role="group" aria-label="Set the price as">
+                        <span class="bks-pill" aria-hidden="true"></span>
+                        <button type="button" data-bks="cmode" data-v="total" aria-pressed="true">A total</button>
+                        <button type="button" data-bks="cmode" data-v="night" aria-pressed="false">A night</button>
+                        <button type="button" data-bks="cmode" data-v="off" aria-pressed="false">A discount</button>
+                    </div></div>
+                    <div id="bks-c-in"></div>
+                    <div class="bks-row bks-res"><span class="bks-rt"><span class="bks-rl" id="bks-c-res-l"></span><span class="bks-rs" id="bks-c-res-s"></span></span><span class="bks-rv" id="bks-c-res-v"></span></div>
+                    <div class="bks-gs" id="bks-c-gs"></div>
+                    <div class="bks-whycap" id="bks-why-l">Why &middot; only you see this</div>
+                    <div class="bks-chips" id="bks-why" role="group" aria-labelledby="bks-why-l"></div>
+                </div></div>
+                <!-- The real override (a TOTAL, '' = standard): the sheet writes it, saveModal posts it. -->
+                <input type="hidden" id="modal-price-override">
+                <div class="bks-row" id="modal-deposit-group">
+                    <span class="bks-rt"><label class="bks-rl" for="modal-damages-deposit">Refundable deposit</label><span class="bks-rs" id="bks-dep-s">Back to them after the stay</span></span>
+                    <span class="bks-rv" id="bks-dep-ro" hidden></span>
+                    <span class="modal-step" id="bks-dep-step"><button type="button" data-act="modalStep" data-arg="dmg" data-arg2="-25" aria-label="Less deposit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><input type="number" id="modal-damages-deposit" min="0" step="5" placeholder="75" data-act-input="updateModalPrice"><button type="button" data-act="modalStep" data-arg="dmg" data-arg2="25" aria-label="More deposit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
+                </div>
+                <div class="bks-row bks-tot"><span class="bks-rt"><span class="bks-rl">Total</span><span class="bks-rs" id="bks-tot-s">Pick the dates to price the stay</span></span><span class="bks-rv" id="bks-tot">&mdash;</span></div>
+                <div id="modal-plan-group">
+                    <button type="button" class="bks-row" id="bks-plan-row" data-bks="plan" aria-expanded="false" aria-controls="bks-plan-fold">
+                        <span class="bks-rt"><span class="bks-rl">First payment</span><span class="bks-rs" id="bks-first-s"></span></span>
+                        <span class="bks-rv" id="bks-first"></span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="bks-fold" id="bks-plan-fold"><div>
+                        <div class="bks-row">
+                            <span class="bks-rt"><label class="bks-rl" for="modal-plan-pct">Deposit now</label><span class="bks-rs" id="bks-pct-s">Standard is 25%</span></span>
+                            <span class="modal-step"><button type="button" data-act="modalStep" data-arg="pct" data-arg2="-5" aria-label="Smaller deposit percentage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><input type="number" id="modal-plan-pct" min="1" max="100" step="any" placeholder="25" data-act-input="updateModalPrice"><button type="button" data-act="modalStep" data-arg="pct" data-arg2="5" aria-label="Bigger deposit percentage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
+                        </div>
+                        <div class="bks-row">
+                            <span class="bks-rt"><span class="bks-rl" id="bks-due-l">Balance by</span><span class="bks-rs" id="bks-due-s">Standard is 30 days before</span></span>
+                            <button type="button" class="bks-pillbtn" id="bks-due-btn" data-bks="pick" data-v="due" aria-expanded="false" aria-controls="bks-due-fold" aria-labelledby="bks-due-l bks-due-v"><span id="bks-due-v"></span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                        </div>
+                        <input type="hidden" id="modal-plan-due">
+                        <div class="bks-fold" id="bks-due-fold"><div><div class="bks-cal" id="bks-due-cal"></div></div></div>
+                        <div class="bks-row bks-lnkrow"><button type="button" class="bks-lnk" data-bks="planstd">Back to the standard plan</button></div>
+                    </div></div>
+                </div>
+                <div class="bks-row" id="bks-rcvd-row" hidden><span class="bks-rt"><span class="bks-rl">Received so far</span><span class="bks-rs" id="bks-rcvd-s">Record more on the booking page</span></span><span class="bks-rv" id="bks-rcvd"></span></div>
             </div>
 
             <div id="modal-payment-group">
-                <label class="modal-label" id="modal-payment-label" for="modal-payment">Payment so far</label>
-                <!-- Segment is the visible control; the SELECT stays the source
-                     of truth (every programmatic write + save path reads it) —
-                     modalPaySync repaints the segment from its value. -->
-                <div class="hs-mode" id="modal-pay-seg" role="group" aria-labelledby="modal-payment-label" style="margin-bottom:10px;">
-                    <button type="button" class="hs-mode-btn is-on" data-act="modalPayMode" data-arg="unpaid" aria-pressed="true">Nothing yet</button>
-                    <button type="button" class="hs-mode-btn" data-act="modalPayMode" data-arg="deposit" aria-pressed="false">Deposit paid</button>
-                    <button type="button" class="hs-mode-btn" data-act="modalPayMode" data-arg="paid" aria-pressed="false">Paid in full</button>
-                </div>
-                <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails" style="display:none;" aria-hidden="true" tabindex="-1">
-                    <option value="unpaid">Unpaid</option>
-                    <option value="deposit">Deposit paid</option>
-                    <option value="paid">Paid in full</option>
-                </select>
-                <!-- Inline payment details (were 3 sequential pop-up prompts after Save). -->
-                <div id="modal-payment-details" style="display:none;">
-                    <div class="modal-2col">
-                        <div id="modal-deposit-amount-wrap">
-                            <label class="modal-label" for="modal-deposit-amount">Amount paid (£)</label>
-                            <input type="number" class="input-glass" id="modal-deposit-amount" min="0" step="0.01" placeholder="e.g. 100">
+                <div class="bks-cap" id="modal-payment-label">Paid so far</div>
+                <div class="bks-card">
+                    <!-- The select stays the source of truth (every save path reads it). -->
+                    <select id="modal-payment" hidden aria-hidden="true" tabindex="-1">
+                        <option value="unpaid">Unpaid</option>
+                        <option value="deposit">Deposit paid</option>
+                        <option value="paid">Paid in full</option>
+                    </select>
+                    <div class="bks-segrow"><div class="bks-seg" id="modal-pay-seg" role="group" aria-labelledby="modal-payment-label">
+                        <span class="bks-pill" aria-hidden="true"></span>
+                        <button type="button" data-act="modalPayMode" data-arg="unpaid" aria-pressed="true">Nothing yet</button>
+                        <button type="button" data-act="modalPayMode" data-arg="deposit" aria-pressed="false">Some</button>
+                        <button type="button" data-act="modalPayMode" data-arg="paid" aria-pressed="false">All of it</button>
+                    </div></div>
+                    <div class="bks-fold" id="modal-payment-details"><div>
+                        <div class="bks-row" id="modal-deposit-amount-wrap"><span class="bks-rt"><label class="bks-rl" for="modal-deposit-amount">Amount</label><span class="bks-rs" id="bks-amt-s"></span></span><span class="bks-money">&pound;<input id="modal-deposit-amount" inputmode="decimal" autocomplete="off"></span></div>
+                        <div class="bks-row"><span class="bks-rt"><span class="bks-rl" id="bks-rcv-l">Received</span></span><button type="button" class="bks-pillbtn" id="bks-rcv-btn" data-bks="pick" data-v="rcv" aria-expanded="false" aria-controls="bks-rcv-fold" aria-labelledby="bks-rcv-l bks-rcv-v"><span id="bks-rcv-v"></span><svg class="bks-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
+                        <input type="hidden" id="modal-payment-date">
+                        <div class="bks-fold" id="bks-rcv-fold"><div><div class="bks-cal" id="bks-rcv-cal"></div></div></div>
+                        <div class="bks-how">
+                            <span class="bks-rt"><span class="bks-rl">How</span><span class="bks-rs">The balance email sends a card link or your bank details to match</span></span>
+                            <div class="bks-seg" id="bks-how" role="group" aria-label="How it was paid">
+                                <span class="bks-pill" aria-hidden="true"></span>
+                                <button type="button" data-bks="how" data-v="Card" aria-pressed="false">Card</button>
+                                <button type="button" data-bks="how" data-v="Bank transfer" aria-pressed="false">Transfer</button>
+                                <button type="button" data-bks="how" data-v="Cash" aria-pressed="false">Cash</button>
+                            </div>
+                            <input type="hidden" id="modal-payment-method">
                         </div>
-                        <div>
-                            <label class="modal-label" for="modal-payment-date">Payment date</label>
-                            <input type="date" class="input-glass" id="modal-payment-date">
-                        </div>
-                    </div>
-                    <label class="modal-label" for="modal-payment-method">Payment method (optional)</label>
-                    <input type="text" class="input-glass" id="modal-payment-method" placeholder="Card / Bank transfer / Cash …">
+                    </div></div>
                 </div>
             </div>
 
-            <div id="modal-deposit-group">
-                <div class="modal-steprow">
-                    <span class="modal-step-lbl"><label class="modal-label" for="modal-damages-deposit" style="margin:0;">Refundable damages deposit (£)</label></span>
-                    <span class="modal-step">
-                        <button type="button" data-act="modalStep" data-arg="dmg" data-arg2="-25" aria-label="Less deposit">−</button>
-                        <input type="number" id="modal-damages-deposit" min="0" step="5" placeholder="75" data-act-input="updateModalPrice">
-                        <button type="button" data-act="modalStep" data-arg="dmg" data-arg2="25" aria-label="More deposit">+</button>
-                    </span>
-                </div>
-                <p class="modal-hint">Charged with the first payment, refunded after the stay &mdash; not income.</p>
+            <div class="bks-cap">Notes</div>
+            <div class="bks-card">
+                <label class="sr-only" for="modal-notes">Staff notes</label>
+                <textarea class="bks-notes" id="modal-notes" rows="3" placeholder="Only you see these"></textarea>
             </div>
 
-            <div id="modal-override-group">
-                <label class="modal-label" for="modal-price-override">Override total price (£)</label>
-                <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" data-act-input="updateModalPrice">
-                <p class="modal-hint">A custom total for this booking only &mdash; the public site keeps the standard prices.</p>
-            </div>
-
-            <div id="modal-plan-group">
-                <label class="modal-label" id="modal-plan-label">Payment plan</label>
-                <div class="hs-mode" id="modal-plan-seg" role="group" aria-labelledby="modal-plan-label" style="margin-bottom:10px;">
-                    <button type="button" class="hs-mode-btn is-on" id="modal-plan-std-btn" data-act="modalPlanMode" data-arg="standard" aria-pressed="true">Standard</button>
-                    <button type="button" class="hs-mode-btn" id="modal-plan-custom-btn" data-act="modalPlanMode" data-arg="custom" aria-pressed="false">Custom</button>
-                </div>
-                <p class="modal-hint" id="modal-plan-std-line" style="margin:0 0 18px;"></p>
-                <div id="modal-plan-custom" style="display:none;">
-                    <div class="modal-2col">
-                        <div>
-                            <label class="modal-label" for="modal-plan-pct">Deposit %</label>
-                            <span class="modal-step">
-                                <button type="button" data-act="modalStep" data-arg="pct" data-arg2="-5" aria-label="Smaller deposit percentage">−</button>
-                                <input type="number" id="modal-plan-pct" min="1" max="100" step="any" placeholder="30" data-act-input="updateModalPrice">
-                                <button type="button" data-act="modalStep" data-arg="pct" data-arg2="5" aria-label="Bigger deposit percentage">+</button>
-                            </span>
-                        </div>
-                        <div>
-                            <label class="modal-label" for="modal-plan-due">Balance due by</label>
-                            <input type="date" class="input-glass" id="modal-plan-due" data-act-change="updateModalPrice">
-                        </div>
-                    </div>
-                    <p class="modal-hint">Leave a field blank to keep that half standard. You can change the plan later from the booking&rsquo;s page.</p>
+            <div id="bks-conf-wrap">
+                <div class="bks-cap" id="bks-conf-cap">When you add it</div>
+                <div class="bks-card">
+                    <div class="bks-row"><span class="bks-rt"><label class="bks-rl" for="bks-conf" id="bks-conf-l">Email the confirmation</label><span class="bks-rs" id="bks-conf-s"></span></span><span class="chb-switch"><input type="checkbox" id="bks-conf" role="switch" data-bks-in="conf"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
                 </div>
             </div>
-
-            <div class="modal-sec">Notes</div>
-            <!-- The section cap carries the visible name; the label stays for
-                 the accessible one (and togglePaymentField's enquiry relabel). -->
-            <label class="modal-label sr-only" for="modal-notes">Staff notes</label>
-            <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
-
-            <div id="modal-error" style="color:var(--danger-text); font-size:var(--fs-sub); margin-bottom: 15px; display: none;"></div>
-            </div>
-
-            <!-- Docked: the live total and Save never leave the screen. The
-                 figure MIRRORS the price box's own total (modalFootSync reads
-                 it back), so the two can never quote different numbers. -->
-            <div class="modal-foot">
-                <div class="modal-foot-total" id="modal-foot-total">
-                    <span class="modal-foot-cap" id="modal-foot-cap">Total</span>
-                    <span class="modal-foot-fig" id="modal-foot-fig">&mdash;</span>
-                </div>
-                <button class="btn-glass" id="modal-save-btn" data-act="saveModal">Save</button>
-                <!-- The living sub: first payment + due date (or the clash
-                     warning) — filled by modalFootSync, add mode only. A FULL-
-                     WIDTH second line of the bar, so a long sentence can never
-                     widen the no-shrink figure wrapper past the box. -->
-                <span class="modal-foot-sub" id="modal-foot-sub" style="display:none;"></span>
             </div>
         </div>
     </div>
@@ -1928,7 +1890,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1160"></script>
+    <script defer src="app.js?v=1161"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

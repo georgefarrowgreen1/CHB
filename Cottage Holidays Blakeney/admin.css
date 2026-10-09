@@ -5494,128 +5494,349 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   #asec-income select { max-width: 100%; }
 }
 
-/* ---- Add/Edit Booking: the sectioned form (owner-only, so these live in
-   admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money
-   and Notes beneath; the rare controls fold behind one More-options row; the
-   live total + Save ride a sticky footer so neither ever leaves the screen. */
-/* Native-sheet structure: the form scrolls in .modal-scroll, the footer is
-   a flex SIBLING — iOS overscroll can't drag the bar off the box bottom
-   (it did, screenshotted). --mpad is the one padding token. */
-#edit-modal .modal-box {
-    --mpad: 35px; position: relative; padding: 0;
-    display: flex; flex-direction: column; overflow: hidden;
+/* ============================================================
+   ADD / EDIT A BOOKING — the sheet (the approved v2 demo). Email a
+   guest's shape: ✕, the title over a one-line summary, Add at the top
+   where the keyboard can't cover it, then rows on hairlines inside
+   cards. admin.js bksSync paints it from the hidden #modal-* inputs.
+   On a phone it is the window rule's bottom sheet (section 21 of the
+   one-look block); from 641px a 600px card in the middle.
+   ============================================================ */
+#edit-modal .modal-box.bks {
+  position: relative; display: flex; flex-direction: column; overflow: hidden; padding: 0; max-width: 600px;
+  color: var(--text-light); font-family: var(--font-sans); font-size: var(--fs-body); line-height: 1.5;
 }
-#edit-modal .modal-scroll {
-    overflow-y: auto; overscroll-behavior: contain;
-    min-height: 0; flex: 1 1 auto;
-    padding: 4px var(--mpad) 0;
+#edit-modal .bks [hidden] { display: none !important; }
+@media (max-width: 640px) {
+  #edit-modal .modal-box.bks { height: calc(100dvh - max(20px, var(--safe-t))); }
 }
-/* The head is a flex SIBLING of the scroller, not its first child: the title
-   stays put while the form moves under it, and the ✕ has a bar of its own to
-   sit in rather than floating over whatever has scrolled beneath. */
-.modal-head {
-    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; padding: 16px var(--mpad) 12px;
+@media (min-width: 641px) {
+  #edit-modal .modal-box.bks { height: min(860px, calc(100dvh - 64px)); }
 }
-.modal-head #modal-title {
-    font-family: var(--font-serif); font-size: var(--fs-title); margin: 0;
-    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+
+/* The head: ✕ | the title over the summary | Add. */
+#edit-modal .bks-head {
+  flex: none; display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid transparent; transition: border-color 250ms var(--out);
 }
-@media (max-width: 639px) {
-    #edit-modal .modal-box { --mpad: 22px; }
-    #edit-modal .modal-scroll { padding: 2px var(--mpad) 0; }
-    .modal-head { padding: 12px var(--mpad) 8px; }
+#edit-modal .bks-head.scrolled { border-bottom-color: var(--u-edge); }
+#edit-modal .bks-head .modal-x {
+  justify-self: start; position: relative; width: 44px; height: 44px; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); background: none; color: var(--text-light); cursor: pointer;
+  transition: transform 320ms var(--out);
 }
-/* In the head's flow now, never absolute over the scroller. `relative` is for
-   the hit region only — it keeps the 36px circle and reaches the 44px floor
-   (the round-seven rule), the look unchanged. */
-.modal-x {
-    position: relative; flex: 0 0 auto; width: 36px; height: 36px;
-    border-radius: 50%; border: 1px solid var(--glass-border); background: none;
-    color: var(--text-light); font-family: inherit; font-size: var(--fs-body); cursor: pointer; z-index: 3;
+#edit-modal .bks-head .modal-x svg { width: 20px; height: 20px; }
+.bks-tt { min-width: 0; display: grid; text-align: center; }
+#edit-modal .bks-tt h3 {
+  margin: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.modal-x::before { content: ''; position: absolute; inset: -4px; }
-/* Inside the box, so sentence case at 600 — 'The stay' / 'The guest' / 'Money'
-   were the last tracked-caps captions in a modal. */
-.modal-sec {
-    font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none;
-    color: var(--text-muted); margin: 2px 0 12px; padding-top: 16px;
-    border-top: 1px solid var(--glass-border);
+.bks-sum { min-height: 1.4em; font-size: var(--fs-caption); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#edit-modal .bks-add {
+  justify-self: end; position: relative; min-height: 44px; padding: 0 20px; border: 0; border-radius: var(--r-pill); cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600;
+  transition: transform 320ms var(--out), opacity 300ms var(--out);
 }
-.modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
-.modal-hint { font-size: var(--fs-caption); color: var(--text-muted); margin: -12px 0 18px; }
-.modal-foot {
-    /* Docked outside the scroller, on the OPAQUE theme surface. Glass +
-       backdrop blur was tried and MEASURED: inside the box's backdrop root
-       the blur never applies — dark mode read through. */
-    flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
-    padding: 12px var(--mpad) 14px;
-    border-top: 1px solid var(--glass-border);
-    border-radius: 0 0 var(--r-lg) var(--r-lg);
-    background: var(--cmdk-surface);
+#edit-modal .bks-head .modal-x:active, #edit-modal .bks-add:active { transform: scale(0.94); transition-duration: 80ms; }
+#edit-modal .bks-add[aria-disabled="true"] { opacity: 0.45; }
+#edit-modal .bks-add[aria-busy="true"] { opacity: 0.7; }
+#edit-modal .bks-add.bks-ready { animation: bksReady 400ms var(--out); }
+
+/* The body scrolls under the head; every block is a caption over a card. */
+#edit-modal .bks-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(32px + var(--safe-b)); }
+.bks-cap { margin: 20px 0 8px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+#modal-error + .bks-cap { margin-top: 8px; }
+.bks-card { overflow: hidden; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--r-lg); }
+.bks-err {
+  margin: 8px 0 0; padding: 12px 16px; border-radius: var(--r-sm); font-size: var(--fs-sub); font-weight: 500;
+  color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); animation: bksSwap 300ms var(--out);
 }
-/* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
-.modal-foot-total { flex: 0 0 auto; }
-.modal-foot-cap {
-    display: block; font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none;
-    color: var(--text-muted); white-space: nowrap;
+
+/* A row: label (and its sub) on the left, the value or control on the right. */
+.bks .bks-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 16px;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left;
 }
-.modal-foot-fig { font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); white-space: nowrap; }
-/* The consequence line: first payment + due date, or the clash warning —
-   filled by modalFootSync, add mode only. A full-width SECOND LINE of the
-   bar (the foot wraps): inside the no-shrink figure wrapper a long sentence
-   pushed the bar past the box edge (measured in the gate's own §4). */
-.modal-foot { flex-wrap: wrap; }
-.modal-foot-sub {
-    flex: 1 1 100%; order: 3; margin-top: -4px;
-    font-size: var(--fs-micro); color: var(--text-muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.bks button.bks-row { cursor: pointer; }
+.bks button.bks-row:disabled { cursor: default; }
+.bks button.bks-row:disabled .bks-chev { opacity: 0; }
+.bks :is(button.bks-row, .bks-opt, .bks-tile, .bks-sugrow):focus-visible { outline-offset: -2px; }
+.bks-rt { flex: 1; min-width: 0; display: grid; }
+.bks-rl { font-weight: 500; }
+.bks-rs { font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+.bks-rs.warn { color: var(--warn-text); }
+.bks-rv { flex: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.bks-rv.bks-muted { color: var(--text-muted); font-weight: 500; }
+.bks-chev { flex: none; width: 16px; height: 16px; color: var(--text-muted); transition: rotate 360ms var(--out), opacity 200ms var(--out); }
+.bks [aria-expanded="true"] > .bks-chev, .bks [aria-expanded="true"] > span > .bks-chev { rotate: 180deg; }
+.bks-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.bks-plus {
+  flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text);
 }
-.modal-foot .btn-glass { flex: 1; min-height: 46px; margin-left: auto; }
-/* ---- Add/Edit booking steppers + the dates verdict (the approved demo) ---- */
-.modal-steprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-.modal-step-lbl { flex: 1 1 auto; min-width: 0; }
-.modal-step-lbl .modal-label, .modal-steprow .modal-label { margin: 0; }
-.modal-step-lbl small { display: block; font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; }
-.modal-step {
-    display: inline-flex; align-items: center; flex: 0 0 auto;
-    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); border-radius: 999px;
+.bks-plus svg { width: 16px; height: 16px; }
+.bks-rv .bks-plus { width: 24px; height: 24px; }
+
+/* A fold: the 0fr grid with one child (the back office's own). */
+.bks-fold {
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; visibility: hidden;
+  transition: grid-template-rows 360ms var(--unfold), visibility 0s linear 360ms;
 }
-.modal-step button {
-    width: 42px; height: 40px; border: 0; background: none; border-radius: 999px;
-    color: var(--accent-text); font-size: var(--fs-headline); line-height: 1; cursor: pointer; font-family: inherit;
+.bks-fold > div { min-width: 0; min-height: 0; overflow: hidden; overflow: clip; overflow-clip-margin: 4px; }
+.bks-fold.on { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+
+/* The cottage list. */
+.bks .bks-opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 16px;
+  border: 0; border-top: 1px solid var(--u-edge); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.modal-step button:disabled { color: var(--text-muted); opacity: 0.4; cursor: default; }
-.modal-step input {
-    /* height 40 = the pill's own — and WCAG 2.5.8's 24px floor (a11y §5). */
-    width: 58px; height: 40px; border: 0; background: none; text-align: center; padding: 0;
-    color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline);
-    font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
+#bks-cot-list > .bks-opt:first-child { border-top: 0; }
+.bks-opt .bks-sc { margin-left: 4px; }
+.bks-tick { flex: none; width: 18px; height: 18px; color: var(--accent-text); opacity: 0; transform: scale(0.6); transition: opacity 250ms var(--out), transform 300ms var(--out); }
+.bks-tick svg { width: 18px; height: 18px; }
+.bks-opt[aria-checked="true"] .bks-tick { opacity: 1; transform: none; }
+.bks-movelock #bks-cot-row .bks-chev { opacity: 0; }
+
+/* Arrive | Leave. The times are the house's own, stated not asked. */
+.bks-tiles { display: grid; grid-template-columns: 1fr 1fr; }
+.bks .bks-tile {
+  display: grid; align-content: start; gap: 2px; min-width: 0; min-height: 44px; padding: 12px 16px;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 300ms var(--out);
 }
-.modal-step input::-webkit-outer-spin-button, .modal-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-/* The verdict capsule on the dates row — ✓ free / ⚠ overlaps, the a11y §1b
-   discovered pair (status ink on its own tint). The trigger's text yields. */
-#modal-date-trigger .date-range-text { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.modal-date-verdict { flex: 0 0 auto; font-size: var(--fs-caption); font-weight: 600; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
-.modal-date-verdict.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 15%, transparent); }
-.modal-date-verdict.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 16%, transparent); }
-/* The availability SUMMARY strip — the grid sits behind its Calendar toggle. */
-.mav-strip {
-    display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); color: var(--text-light);
-    border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 13px; margin: 0 0 14px;
+.bks .bks-tile + .bks-tile { border-left: 1px solid var(--u-edge); }
+.bks .bks-tile.picking { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.bks .bks-tile:disabled { cursor: default; }
+.bks-tl { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); transition: color 250ms var(--out); }
+.bks-tile.picking .bks-tl { color: var(--accent-text); }
+.bks-td { font-size: var(--fs-headline); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bks-td.empty { color: var(--text-muted); font-weight: 500; }
+.bks-tm { font-size: var(--fs-sub); color: var(--text-muted); }
+.bks-note { padding: 12px 16px; font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+
+/* The dates' verdict: nights, free or who holds them, and a free cottage on offer. */
+.bks-vrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; font-size: var(--fs-sub); color: var(--text-muted); }
+.bks-vrow b { color: var(--text-light); font-weight: 600; }
+.bks .bks-alt {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); background: none; color: var(--text-light);
+  font: inherit; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; transition: transform 320ms var(--out);
 }
-.mav-strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ok); }
-.mav-strip-dot.is-clash { background: var(--danger); }
-.mav-strip-txt { min-width: 0; }
-.mav-toggle {
-    margin-left: auto; flex: 0 0 auto; background: none; border: none; padding: 6px;
-    font-family: inherit; font-size: var(--fs-caption); color: var(--accent-text); cursor: pointer;
+.bks-alt::before { content: ""; position: absolute; inset: -8px 0; }
+.bks-alt svg { width: 14px; height: 14px; color: var(--text-muted); }
+.bks-alt:active { transform: scale(0.95); transition-duration: 80ms; }
+
+/* Status capsules (the dashboard's .st-cap). */
+.bks-sc { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--fs-caption); font-weight: 600; line-height: 1.6; white-space: nowrap; }
+.bks-sc.ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.bks-sc.warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.bks-sc.info { color: var(--info-text); background: color-mix(in srgb, var(--info) 16%, transparent); }
+
+/* The calendar, unfolded inside the card: each free night's price under it. */
+.bks-cal { padding: 4px 12px 12px; }
+.bks-calhd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.bks-calhd b { font-weight: 600; }
+.bks .bks-calnav {
+  width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: var(--text-muted); cursor: pointer;
 }
-@media (min-width: 901px) {
-    #edit-modal .modal-box { max-width: 860px; }
-    .modal-cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 34px; align-items: start; }
-    .modal-col { min-width: 0; }
-    .modal-cols .modal-col > .modal-sec:first-child { border-top: none; padding-top: 4px; }
+.bks-calnav svg { width: 18px; height: 18px; }
+.bks-calg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px 0; }
+.bks-calg.turn { animation: bksSwap 300ms var(--out); }
+.bks-dw { padding: 4px 0; text-align: center; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.bks .bks-d {
+  position: relative; height: 48px; padding: 0; display: grid; align-content: center; justify-items: center; gap: 0;
+  border: 0; border-radius: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.bks-d span, .bks-d small { position: relative; z-index: 1; }
+.bks-d small { display: block; font-size: var(--fs-micro); line-height: 1; color: var(--text-muted); }
+.bks-d.past { color: var(--text-muted); }
+.bks-d.taken span { color: var(--text-muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.bks-d.today::after { content: ""; position: absolute; inset: 2px 4px; border: 1px solid var(--u-pill-edge); border-radius: var(--r-sm); }
+.bks .bks-d:is(.band, .s, .e) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.bks .bks-d.s { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.bks .bks-d.e { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.bks .bks-d.s.e { border-radius: var(--r-sm); }
+.bks .bks-d.solo { background: none; }
+.bks-d:is(.s, .e)::before { content: ""; position: absolute; inset: 0; border-radius: var(--r-sm); background: var(--accent); }
+.bks-d:is(.s, .e) span, .bks-d:is(.s, .e) small { color: var(--accent-ink); }
+.bks-d:is(.s, .e) span { font-weight: 700; }
+.bks-d.pop::before { animation: bksPop 340ms var(--out); }
+.bks-d.wave { animation: bksWave 320ms var(--out) backwards; animation-delay: calc(var(--w, 0) * 30ms); }
+.bks .bks-d:disabled { opacity: 0.3; cursor: default; }
+.bks-calk { margin: 8px 4px 0; font-size: var(--fs-caption); color: var(--text-muted); text-wrap: pretty; }
+
+/* Steppers: the app's own modalStep handler, in round buttons. */
+.bks .modal-step { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; border-radius: 0; }
+.bks .modal-step button {
+  position: relative; width: 36px; height: 36px; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--u-pill-edge); border-radius: 50%; background: none; color: var(--text-light); cursor: pointer;
+  transition: transform 320ms var(--out), opacity 200ms var(--out);
+}
+.bks .modal-step button::before { content: ""; position: absolute; inset: -4px; }
+.bks .modal-step button:active { transform: scale(0.9); transition-duration: 80ms; }
+.bks .modal-step button:disabled { opacity: 0.3; cursor: default; color: var(--text-light); }
+.bks .modal-step svg { width: 14px; height: 14px; }
+.bks .modal-step input {
+  width: 48px; height: 36px; padding: 0; border: 0; background: none; text-align: center; outline-offset: 0;
+  color: var(--text-light); font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600;
+  font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
+}
+.bks .modal-step input::-webkit-outer-spin-button, .bks .modal-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bks .modal-step input::placeholder { color: var(--text-muted); opacity: 1; }
+#modal-occ-note.warn { color: var(--warn-text); }
+
+/* Field rows: the composer's To / Subject rows. */
+.bks-fr { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 52px; padding: 4px 16px; }
+.bks-fr label { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); transition: color 200ms var(--out); }
+.bks-fr:focus-within label { color: var(--accent-text); }
+.bks .bks-fr :is(input, textarea) {
+  width: 100%; min-width: 0; margin: 0; padding: 12px 0; border: 0; border-radius: 0; background: none; box-shadow: none; outline: none;
+  color: inherit; font-family: var(--font-sans); font-size: var(--fs-body);
+}
+.bks .bks-fr textarea { min-height: 72px; resize: none; line-height: 1.5; }
+.bks :is(.bks-fr input, .bks-fr textarea, .bks-notes)::placeholder { color: var(--text-muted); opacity: 0.8; }
+.bks-fr.bks-ta { align-items: start; }
+.bks-fr.bks-ta label { padding-top: 12px; }
+body.light-mode #edit-modal .bks textarea { background-color: transparent !important; }
+
+/* The typeahead: guests who have stayed before. */
+.bks-sugcap { padding: 12px 16px 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.bks .bks-sugrow {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 16px;
+  border: 0; border-top: 1px solid var(--u-edge); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  animation: bksSwap 300ms var(--out) backwards; animation-delay: calc(var(--i, 0) * 40ms);
+}
+.bks-sugcap + .bks-sugrow { border-top: 0; }
+.bks-ava {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%;
+  background: color-mix(in srgb, var(--text-light) 10%, transparent); font-size: var(--fs-caption); font-weight: 700;
+}
+
+/* Switchers: a track, the chosen side in the accent, the pill travelling. */
+.bks-segrow { padding: 12px 16px; }
+.bks-seg { position: relative; display: flex; padding: 4px; border-radius: var(--r-pill); background: var(--u-track); }
+.bks .bks-seg > button {
+  position: relative; z-index: 1; flex: 1; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-pill);
+  background: none; color: var(--text-muted); font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600;
+  white-space: nowrap; cursor: pointer; transition: color 250ms var(--out), transform 320ms var(--out);
+}
+.bks .bks-seg > button:active { transform: scale(0.96); transition-duration: 80ms; }
+.bks .bks-seg > button[aria-pressed="true"] { color: var(--accent-ink); }
+.bks-pill {
+  position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: var(--r-pill); background: var(--accent);
+  transition: translate 460ms var(--sheet), width 460ms var(--sheet), opacity 200ms var(--out);
+}
+
+/* The price: standard night by night, or custom. */
+.bks-night { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 16px 8px 28px; border-top: 1px solid var(--u-edge); }
+.bks-night:first-child { border-top: 0; }
+.bks-night .bks-rv { font-weight: 500; }
+#bks-nights { padding-bottom: 4px; }
+.bks-pane { animation: bksSwap 300ms var(--out); }
+.bks-big { display: flex; align-items: baseline; gap: 8px; padding: 4px 16px 12px; }
+.bks-cur { font-size: var(--fs-display); font-weight: 500; color: var(--text-muted); }
+#edit-modal .bks-big input {
+  flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; outline: none; caret-color: var(--accent-text);
+  color: var(--text-light); font-family: var(--font-sans); font-size: var(--fs-display) !important; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+#edit-modal .bks-big input::placeholder { color: var(--text-muted); opacity: 0.45; }
+.bks-unit { font-size: var(--fs-sub); color: var(--text-muted); white-space: nowrap; }
+.bks-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 16px; }
+.bks .bks-chip {
+  position: relative; min-height: 36px; padding: 0 16px; border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill);
+  background: none; color: var(--text-light); font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; cursor: pointer;
+  transition: background-color 250ms var(--out), color 250ms var(--out), border-color 250ms var(--out), transform 320ms var(--out);
+}
+.bks .bks-chip::before { content: ""; position: absolute; inset: -4px 0; }
+.bks .bks-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.bks .bks-chip:active { transform: scale(0.95); transition-duration: 80ms; }
+.bks-chipin {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 12px; border: 1px solid var(--u-pill-edge);
+  border-radius: var(--r-pill); font-size: var(--fs-sub); font-weight: 600; transition: background-color 250ms var(--out), color 250ms var(--out);
+}
+#edit-modal .bks-chipin input {
+  width: 3.4em; min-width: 1ch; field-sizing: content; margin: 0; padding: 0; border: 0; background: none; outline: none;
+  color: inherit; text-align: right; font-family: var(--font-sans); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+#edit-modal .bks-chipin input::placeholder { color: inherit; opacity: 1; }
+.bks-chipin input:placeholder-shown:not(:focus) + .bks-sfx { display: none; }
+.bks-chipin:has(input:not(:placeholder-shown)) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.bks-chipin:focus-within { border-color: var(--accent-text); }
+.bks .bks-res .bks-rl { font-weight: 600; }
+.bks-res .bks-rl.off { color: var(--ok-text); }
+.bks-res .bks-rl.more { color: var(--warn-text); }
+.bks-gs { margin: 0 16px 16px; padding: 12px 16px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-light) 5%, transparent); font-size: var(--fs-sub); }
+.bks-gsl { display: block; margin-bottom: 4px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.bks-gsr { display: flex; justify-content: space-between; gap: 12px; }
+.bks-gsr b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.bks-nw { white-space: nowrap; }
+.bks-whycap { padding: 12px 16px 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.bks .bks-tot { background: color-mix(in srgb, var(--text-light) 4%, transparent); }
+.bks .bks-tot .bks-rl { font-weight: 600; }
+.bks .bks-tot .bks-rv { font-size: var(--fs-headline); font-weight: 700; }
+
+/* Money in a pill, a date in a pill, a link-like way back. */
+.bks-money {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); font-weight: 600;
+}
+#edit-modal .bks-money input {
+  width: 80px; margin: 0; padding: 0; border: 0; background: none; outline: none; text-align: right;
+  color: inherit; font-family: var(--font-sans); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.bks-money:focus-within { border-color: var(--accent-text); }
+.bks .bks-pillbtn {
+  flex: none; position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 16px;
+  border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); background: none; color: inherit;
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; transition: transform 320ms var(--out);
+}
+.bks .bks-pillbtn::before { content: ""; position: absolute; inset: -4px 0; }
+.bks .bks-pillbtn:active { transform: scale(0.96); transition-duration: 80ms; }
+.bks-pillbtn .bks-chev { width: 14px; height: 14px; }
+.bks .bks-lnkrow { min-height: 48px; }
+.bks .bks-lnk {
+  min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--accent-text); font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600;
+}
+.bks-how { display: grid; gap: 8px; padding: 12px 16px 16px; }
+
+/* Notes: the card is the box. */
+#edit-modal .bks-notes {
+  display: block; width: 100%; min-height: 96px; margin: 0; padding: 12px 16px; border: 0; border-radius: 0; background: none;
+  box-shadow: none; outline: none; resize: none; color: inherit; font-family: var(--font-sans); font-size: var(--fs-body); line-height: 1.55;
+}
+
+/* Hairlines between the rows of one card, and none above what is folded away. */
+#edit-modal .bks-card > * + *,
+#edit-modal .bks-fold > div > :is(.bks-row, .bks-fold, .bks-fr) + :is(.bks-row, .bks-fold, .bks-fr),
+#edit-modal .bks-fold > div > .bks-fold + :is(.bks-row, .bks-how),
+#edit-modal .bks-fold > div > .bks-row + :is(.bks-how, .bks-fr),
+#edit-modal #bks-cot-list + .bks-fr,
+#edit-modal #modal-plan-group > .bks-row + .bks-fold,
+#edit-modal :is(.bks-res, .bks-whycap) { border-top: 1px solid var(--u-edge); }
+#edit-modal :is(.bks-card, .bks-fold > div, #modal-plan-group) > .bks-fold:not(.on) { border-top-color: transparent; }
+#edit-modal :is(.bks-card, .bks-fold > div) > [hidden]:first-child + * { border-top: 0; }
+
+/* Motion: the sheet rises in card by card; a changed figure settles. */
+.bks-casc > :is(.bks-cap, .bks-card, #modal-payment-group, #bks-conf-wrap) {
+  animation: bksRise 460ms var(--out) backwards; animation-delay: calc(var(--i, 0) * 55ms + 120ms);
+}
+.bks-settle { animation: bksSettle 340ms var(--out); }
+.bks-swap { animation: bksSwap 320ms var(--out); }
+.bks-nudge { animation: bksNudge 380ms var(--out); }
+@keyframes bksRise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes bksSwap { from { opacity: 0; transform: translateY(4px); } }
+@keyframes bksSettle { from { opacity: 0.35; transform: translateY(3px); } }
+@keyframes bksNudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes bksReady { from { transform: scale(0.92); } }
+@keyframes bksPop { from { transform: scale(0.6); opacity: 0.4; } }
+@keyframes bksWave { from { background-color: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .bks-casc > *, .bks-settle, .bks-swap, .bks-nudge, .bks-add.bks-ready, .bks-d.pop::before, .bks-d.wave,
+  .bks-calg.turn, .bks-pane, .bks-sugrow, .bks-err { animation: none; }
+  .bks-fold, .bks-pill, .bks-chev, .bks-tick, .bks-tile, .bks-head { transition: none; }
 }
 
 .mo-chip {
@@ -8667,24 +8888,7 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-
   background: var(--sheet-surface); border: 1px solid var(--u-edge); border-radius: var(--u-r-card);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { background: var(--sheet-surface); border-top-color: var(--u-edge); border-radius: 0 0 var(--u-r-card) var(--u-r-card); }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-sec { font-size: var(--fs-caption); border-top-color: var(--u-edge); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-label { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal :is(.input-glass, .date-range-trigger) {
-  min-height: var(--u-h-field); padding: 12px 16px; background: var(--u-field); border: 1px solid var(--u-edge);
-  border-radius: var(--u-r-cell); box-shadow: none; font-family: var(--font-sans); font-size: var(--fs-headline);
-}
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal :is(input.input-glass, select.input-glass, .date-range-trigger) { height: var(--u-h-field); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode {
-  display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control); background: var(--u-track); border: 0; border-radius: var(--r-pill);
-}
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode > .hs-mode-btn {
-  flex: 1 1 0; min-height: var(--u-h-small); padding: 0 12px; border: 0; border-radius: var(--r-pill);
-  background: transparent; color: var(--text-light); font-size: var(--fs-sub); font-weight: 600;
-}
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode > .hs-mode-btn.is-on { background: var(--accent) !important; color: var(--accent-ink) !important; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode .chb-pill { display: none; }
 /* A window's close is the hub's icon button: one 44px outlined circle (they were 36, a filled 38 and 44). */
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-x, #ks-sheet .ks-sheet-x) {
   width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; flex: none;
@@ -8701,7 +8905,6 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sh
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.open .modal-box { animation: chbSheetUp 420ms var(--sheet); }
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.closing:not(.open) .modal-box { animation: chbSheetDown 280ms var(--in) forwards; }
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-head { padding-top: 20px; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { border-radius: 0; padding-bottom: calc(14px + var(--safe-b)); }
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box::before {
     content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%); z-index: 4;
     border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);

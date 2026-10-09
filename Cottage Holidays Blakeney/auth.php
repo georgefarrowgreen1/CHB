@@ -1367,7 +1367,7 @@ switch ($action) {
         // The OWNER'S fields are not the guest's data: the private booking note, and
         // the payment-processor handles that identify a card on file.
         foreach ($bookings as &$bk) {
-            foreach (['notes', 'hold_payment_id', 'autopay_card_id', 'autopay_customer_id', 'autopay_last_error', 'autopay_last_code'] as $k) {
+            foreach (['notes', 'price_reason', 'hold_payment_id', 'autopay_card_id', 'autopay_customer_id', 'autopay_last_error', 'autopay_last_code'] as $k) {
                 unset($bk[$k]);
             }
         }

@@ -379,6 +379,21 @@ function damages_returned($bookingId)
 // RE-sending after a payment is recorded, so the owner isn't re-pinged each time.
 // $deferOwner = true sends the guest copy now (its result is what the UI shows)
 // but moves the owner copy to after the response is flushed (mail_after_response).
+// WHY A PRICE IS CUSTOM, for the owner only (migration-138). Written on its own,
+// after the booking, so an install that has not run the migration still saves the
+// booking — the reason is the one thing it loses. Absent = leave it alone; '' clears.
+function booking_price_reason_store(int $id, array $in): void
+{
+    if ($id <= 0 || !array_key_exists('price_reason', $in)) {
+        return;
+    }
+    $why = mb_substr(trim(strip_tags((string) $in['price_reason'])), 0, 40);
+    try {
+        db()->prepare('UPDATE bookings SET price_reason = ? WHERE id = ?')->execute([$why !== '' ? $why : null, $id]);
+    } catch (\Throwable $e) {
+    }
+}
+
 // send_booking_confirmation() lives in booking-confirm-lib.php so the enquiry
 // approval sends the SAME confirmation (plan, invoice and register links).
 
@@ -693,9 +708,13 @@ if ($action === 'add') {
     // a guest email). Email failure never blocks the booking.
     $emailResult = null;
     $guestEmail = clean($in['email'] ?? '');
+    // The sheet's "Email the confirmation" switch. Absent = on, so an older page
+    // and every other caller keep today's behaviour.
+    $sendGuest = !array_key_exists('send_confirmation', $in) || !empty($in['send_confirmation']);
+    booking_price_reason_store($newId, $in);
     if ($guestEmail !== '') {
         // Guest copy sync (the UI reports its result); owner copy after the response.
-        $emailResult = send_booking_confirmation($newId, false, true);
+        $emailResult = send_booking_confirmation($newId, false, true, !$sendGuest);
         // Record the confirmation so it shows in the Bookings page email log.
         if (is_array($emailResult) && !empty($emailResult['guest']['ok'])) {
             log_activity('comms', 'email.confirmation', 'Booking confirmation emailed — ' . $name, [
@@ -1035,6 +1054,7 @@ if ($action === 'update') {
         || (int) $adults !== (int) ($b['adults'] ?? 0)
         || (int) $children !== (int) ($b['children'] ?? 0)
         || $priceOverride !== $oldOverride;
+    booking_price_reason_store($id, $in);
     json_out(op_finish($opTok, ['ok' => true, 'material' => $material]));
 }
 

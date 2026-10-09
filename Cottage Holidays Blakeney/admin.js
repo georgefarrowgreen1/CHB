@@ -6215,16 +6215,14 @@ const CHB_WALK = {
         mark: () => coachBookingN(),
         done: (m) => ({ ok: coachBookingN() > m, say: 'Saved — the booking is on Today.', miss: 'Stopped before saving — nothing was created.' }),
         start: () => openAddBooking(), steps: [
-        // No `until`: the cottage select is static index.html markup that opens
-        // PRESELECTED, so "it has a value" was true before the modal even opened —
-        // an unfalsifiable signal, which auto-advanced off step 1 after the 1400ms
-        // grace and made coachWalk's skip pass start a blank form at step 2 of 5.
-        // A default is not a decision; this step waits for Next.
-        { sel: '#modal-property', say: 'Choose which cottage this booking is for.' },
-        { sel: '#modal-date-trigger', say: 'Tap here to pick the check-in and check-out dates.', until: () => coachVal('#modal-checkin') !== '' && coachVal('#modal-checkout') !== '' },
+        // No `until`: the sheet opens with a cottage already chosen, so "it has a
+        // value" is true before the owner decides anything. A default is not a
+        // decision; this step waits for Next.
+        { sel: '#bks-cot-row', say: 'Tap here to choose which cottage this booking is for.' },
+        { sel: '#modal-date-trigger', say: 'Tap Arrive, then pick the day they arrive and the day they leave.', until: () => coachVal('#modal-checkin') !== '' && coachVal('#modal-checkout') !== '' },
         { sel: '#modal-name', say: 'Type the guest’s name — past guests suggest as you type.', until: () => coachVal('#modal-name').length > 1 },
         { sel: '#modal-email', say: 'Add their email so booking emails reach them.', until: () => /@/.test(coachVal('#modal-email')) },
-        { sel: '#modal-save-btn', say: 'Tap Add booking — you can take payment straight after.' },
+        { sel: '#modal-save-btn', say: 'Tap Add — you can take payment straight after.' },
     ] },
     'block-dates': {
         mark: () => coachBlockN(),
@@ -35159,28 +35157,37 @@ async function approveEnquiry(enqId) {
 }
 
 function openAddBooking() {
-    document.getElementById('modal-title').innerText = 'Add a booking';
+    document.getElementById('modal-title').innerText = 'New booking';
     document.getElementById('modal-mode').value = 'add';
     document.getElementById('modal-record-id').value = '';
-    setModalFields({}); // blank form, default times
+    setModalFields({}); // blank form, the fixed times
     modalNameSuggestClose();
     togglePaymentField(true);
     openModal();
 }
-// ---- Guest typeahead (Add Booking): as you type a name, suggest guests you've
-// hosted before (from past bookings) so a repeat guest is one tap — name, email
-// and phone filled — instead of re-keying. Search woven into data entry. ----
+// ---- Guest typeahead: as you type a name, guests you've hosted before (from
+// past bookings) — a repeat guest is one tap, name, email and phone filled, and
+// the sheet says which stay this is. ----
 let __modalNameHits = [];
 function modalGuests() {
     const seen = new Map();
+    const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     try {
         Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
             const nm = (b.name || '').trim();
             if (!nm) return;
             const key = nm.toLowerCase();
-            const prev = seen.get(key);
+            const prev = seen.get(key) || { name: nm, email: '', phone: '', stays: 0, lastIn: '', last: '' };
+            prev.stays++;
             // Keep the richest contact details seen for a repeat name.
-            seen.set(key, { name: nm, email: b.email || (prev && prev.email) || '', phone: b.phone || (prev && prev.phone) || '' });
+            prev.email = b.email || prev.email;
+            prev.phone = b.phone || prev.phone;
+            if ((b.checkIn || '') > prev.lastIn) {
+                prev.lastIn = b.checkIn || '';
+                const mo = /^\d{4}-(\d{2})/.exec(b.checkIn || '');
+                prev.last = ((propertyMeta[pk] && propertyMeta[pk].name) || pk) + (mo ? ', ' + M[+mo[1] - 1] : '');
+            }
+            seen.set(key, prev);
         }));
     } catch (e) {}
     return [...seen.values()];
@@ -35188,13 +35195,21 @@ function modalGuests() {
 function modalNameSuggest(v) {
     const box = document.getElementById('modal-name-suggest');
     if (!box) return;
+    // A name typed over the picked guest is someone else: the stay capsule goes.
+    if (__bks.returning && String(v || '').trim() !== __bks.returning.name) {
+        __bks.returning = null;
+        const cap = document.getElementById('bks-nm-cap');
+        if (cap) cap.innerHTML = '';
+    }
+    try { bksSync(); } catch (e) {}
     const q = (v || '').trim().toLowerCase();
-    if (q.length < 2) { modalNameSuggestClose(); return; }
-    const hits = modalGuests().filter((g) => g.name.toLowerCase().includes(q)).slice(0, 5);
+    if (q.length < 2 || __bks.returning) { modalNameSuggestClose(); return; }
+    const hits = modalGuests().filter((g) => g.name.toLowerCase().includes(q)).slice(0, 3);
     __modalNameHits = hits;
     if (!hits.length) { modalNameSuggestClose(); return; }
-    box.innerHTML = hits
-        .map((g, i) => `<button type="button" class="modal-suggest-row" role="option" ${chbAttrs('modalNamePick', String(i))}><span class="modal-suggest-nm">${escapeHtml(g.name)}</span>${g.email ? `<span class="modal-suggest-sub">${escapeHtml(g.email)}</span>` : ''}</button>`)
+    const ini = (n) => n.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    box.innerHTML = '<div class="bks-sugcap">Stayed before</div>' + hits
+        .map((g, i) => `<button type="button" class="bks-sugrow" role="option" style="--i:${i}" ${chbAttrs('modalNamePick', String(i))}><span class="bks-ava" aria-hidden="true">${escapeHtml(ini(g.name))}</span><span class="bks-rt"><span class="bks-rl">${escapeHtml(g.name)}</span><span class="bks-rs">${g.stays} stay${g.stays === 1 ? '' : 's'}${g.last ? ' · last at ' + escapeHtml(g.last) : ''}</span></span></button>`)
         .join('');
     box.style.display = 'block';
 }
@@ -35204,7 +35219,13 @@ function modalNamePick(i) {
     const n = document.getElementById('modal-name'); if (n) n.value = g.name;
     const e = document.getElementById('modal-email'); if (e && g.email) e.value = g.email;
     const p = document.getElementById('modal-phone'); if (p && g.phone) p.value = g.phone;
+    __bks.returning = g;
+    const cap = document.getElementById('bks-nm-cap');
+    if (cap) cap.innerHTML = `<span class="bks-sc info">${bksOrd(g.stays + 1)} stay</span>`;
+    if (__bks.pmode === 'custom' && !__bks.why) __bks.why = 'Returning guest';
     modalNameSuggestClose();
+    ['modal-email', 'modal-phone'].forEach((id) => bksReplay(document.getElementById(id), 'bks-settle'));
+    updateModalPrice();
 }
 function modalNameSuggestClose() {
     const box = document.getElementById('modal-name-suggest');
@@ -35212,10 +35233,858 @@ function modalNameSuggestClose() {
     __modalNameHits = [];
 }
 
+// ============================================================
+//  THE ADD-BOOKING SHEET (the approved v2 demo, built). The form's STORE is
+//  the hidden #modal-* inputs in index.html — setModalFields, the prefills
+//  (tlAddAt, cmdkPrefill*), the walkthrough and saveModal read and write them —
+//  and this paints the sheet from them: the cottage list, the Arrive / Leave
+//  tiles (the times are fixed: 3pm in, 10am out), an inline calendar with each
+//  night's price, the overlap verdict with a free cottage on offer, the price
+//  (Standard, or Custom as a total, a night or a discount, with why), the paid
+//  card, and the confirmation as a switch. Markup uses data-bks (one delegated
+//  listener), never data-act, except the steppers and the paid switcher, which
+//  keep the app's own handlers.
+// ============================================================
+const BKS_WHY = ['Returning guest', 'Friends & family', 'Longer stay', 'Last minute'];
+const BKS_SVG = (d, w) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w || 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const BKS_IC = {
+    tick: BKS_SVG('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 2.4),
+    plus: BKS_SVG('<path d="M12 5v14M5 12h14"/>'),
+    left: BKS_SVG('<path d="m15 6-6 6 6 6"/>'),
+    right: BKS_SVG('<path d="m9 6 6 6-6 6"/>'),
+};
+const __bks = {
+    pmode: 'std', cmode: 'total', cTotal: null, cNight: null, cOff: null, why: '',
+    nightsOpen: false, picking: '', view: [2026, 0], pick: { rcv: null, due: null },
+    returning: null, conf: true, confTouched: false, orig: null, clamped: '', wave: false, pop: '',
+};
+const bksEl = (id) => document.getElementById(id);
+const bksR2 = (x) => Math.round(x * 100) / 100;
+const bksReduce = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function bksGbp0(n) {
+    const r = Math.round(n);
+    return Math.abs(n - r) < 0.005 ? '£' + r.toLocaleString('en-GB') : gbp(n);
+}
+function bksOrd(n) {
+    return n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+}
+// "3pm", "10:30am" — the dead :00 goes (the email rule).
+function bksHm(t) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(t || '');
+    if (!m) return '';
+    const h = +m[1], mi = +m[2];
+    return (h % 12 || 12) + (mi ? ':' + m[2] : '') + (h >= 12 ? 'pm' : 'am');
+}
+function bksShort(a, b) {
+    const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(a || ''), y = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b || '');
+    if (!x || !y) return '';
+    const yr = y[1] !== todayDashed().slice(0, 4) ? ' ' + y[1] : '';
+    return x[2] === y[2] && x[1] === y[1] ? `${+x[3]}–${+y[3]} ${M[+y[2] - 1]}${yr}` : `${+x[3]} ${M[+x[2] - 1]} – ${+y[3]} ${M[+y[2] - 1]}${yr}`;
+}
+function bksReplay(el, cls) {
+    if (!el || bksReduce()) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+}
+function bksSetText(el, txt, cls) {
+    if (!el || el.textContent === txt) return;
+    el.textContent = txt;
+    if (cls) bksReplay(el, cls);
+}
+function bksSetHtml(el, html, cls) {
+    if (!el || el.__h === html) return;
+    el.__h = html;
+    el.innerHTML = html;
+    if (cls) bksReplay(el, cls);
+}
+function bksFold(id, on) {
+    const f = bksEl(id);
+    if (f) f.classList.toggle('on', !!on);
+}
+function bksExpanded(id, on) {
+    const b = bksEl(id);
+    if (b) b.setAttribute('aria-expanded', String(!!on));
+}
+const bksMode = () => dpVal('modal-mode') || 'add';
+const bksBox = () => document.querySelector('#edit-modal .modal-box.bks');
+const bksLocked = (cls) => { const b = bksBox(); return !!(b && b.classList.contains(cls)); };
+function bksCotName(k) {
+    return (propertyMeta[k] && propertyMeta[k].name) || k;
+}
+function bksAccent(k) {
+    return (propertyMeta[k] && propertyMeta[k].accent) || 'var(--accent)';
+}
+function bksFits(k) {
+    const lim = occupancyLimits[k];
+    if (!lim) return true;
+    const ad = Math.max(1, parseInt(dpVal('modal-adults'), 10) || 1);
+    const ch = Math.max(0, parseInt(dpVal('modal-children'), 10) || 0);
+    return ad <= lim.maxAdults && ch <= lim.maxChildren && ad + ch <= (lim.maxTotal || 99);
+}
+// Who holds any of these nights in cottage k (end-exclusive, the booking being
+// edited never counts against itself). An owner block is "your own block".
+function bksClashFor(k, ci, co) {
+    const self = bksMode() === 'booking' ? dpVal('modal-record-id') : null;
+    for (const b of dbBookings[k] || []) if (b.id !== self && b.checkIn < co && b.checkOut > ci) return b.name || 'a booking';
+    for (const bl of dbBlocks[k] || []) {
+        if (bl.checkIn < co && bl.checkOut > ci) {
+            return bl.source === 'owner' ? 'your own block' : `a ${otaSourceName(bl.source, 'platform')} stay`;
+        }
+    }
+    return null;
+}
+function bksNextArrival(k, from) {
+    const self = bksMode() === 'booking' ? dpVal('modal-record-id') : null;
+    return (dbBookings[k] || []).filter((b) => b.id !== self).map((b) => b.checkIn)
+        .concat((dbBlocks[k] || []).map((b) => b.checkIn))
+        .filter((d) => d && d >= from).sort()[0] || null;
+}
+// A night's price before extras: the couple rate after its season and weekend —
+// nightlyRateFor, the same function both guest calendars quote from.
+function bksNightRate(k, d) {
+    const r = propertyRates[k] || defaultRates[k];
+    return r ? nightlyRateFor(d, r, propertySeasons[k] || []) : null;
+}
+
+function bksReset(f) {
+    f = f || {};
+    const mode = bksMode();
+    Object.assign(__bks, {
+        pmode: mode !== 'enquiry' && f.priceOverride != null ? 'custom' : 'std',
+        cmode: 'total',
+        cTotal: f.priceOverride != null ? Number(f.priceOverride) : null,
+        cNight: null, cOff: null,
+        why: f.priceReason || '',
+        nightsOpen: false, picking: '', pick: { rcv: null, due: null },
+        returning: null, conf: mode === 'add', confTouched: false, clamped: '', wave: false, pop: '',
+    });
+    const ref = /^\d{4}-\d{2}-\d{2}$/.test(f.checkIn || '') ? f.checkIn : todayDashed();
+    __bks.view = [+ref.slice(0, 4), +ref.slice(5, 7) - 1];
+    __bks.orig = mode === 'booking'
+        ? { pk: f.propKey || '', ci: f.checkIn || '', co: f.checkOut || '', ad: Number(f.adults) || 0, ch: Number(f.children) || 0, ov: f.priceOverride != null ? Number(f.priceOverride) : null }
+        : null;
+    ['bks-cot-fold', 'bks-cal-fold', 'bks-addr-fold', 'bks-nights-fold', 'bks-plan-fold', 'bks-due-fold', 'bks-rcv-fold'].forEach((id) => bksFold(id, false));
+    ['bks-cot-row', 'bks-addr-row', 'bks-nights-row', 'bks-plan-row', 'bks-due-btn', 'bks-rcv-btn'].forEach((id) => bksExpanded(id, false));
+    const cin = /** @type {any} */ (bksEl('bks-c-in'));
+    if (cin) cin.__mode = null;
+    const cap = bksEl('bks-nm-cap');
+    if (cap) cap.innerHTML = '';
+    // A fresh open snaps every switcher's pill rather than sliding from the last booking's.
+    document.querySelectorAll('#edit-modal .bks-pill').forEach((pl) => { /** @type {HTMLElement} */ (pl).style.width = ''; });
+    bksWire();
+    const body = bksEl('bks-body');
+    if (body) body.scrollTop = 0;
+    const head = bksEl('bks-head');
+    if (head) head.classList.remove('scrolled');
+    // The sheet rises in, card by card, once per open.
+    if (body && !bksReduce()) {
+        let n = 0;
+        Array.from(body.children).forEach((c) => {
+            if (c.matches('.bks-cap, .bks-card, #modal-payment-group, #bks-conf-wrap')) /** @type {HTMLElement} */ (c).style.setProperty('--i', String(n++));
+        });
+        body.classList.remove('bks-casc');
+        void body.offsetWidth;
+        body.classList.add('bks-casc');
+        setTimeout(() => body.classList.remove('bks-casc'), 1400);
+    }
+}
+
+function bksWire() {
+    const root = /** @type {any} */ (bksEl('edit-modal'));
+    if (!root || root.__bksWired) return;
+    root.__bksWired = true;
+    root.addEventListener('click', bksClick);
+    root.addEventListener('input', bksInput);
+    root.addEventListener('change', (e) => {
+        const t = /** @type {HTMLInputElement} */ (e.target);
+        if (t && t.id === 'bks-conf') {
+            __bks.conf = t.checked;
+            __bks.confTouched = true;
+            bksSync();
+        }
+    });
+    const body = bksEl('bks-body');
+    const head = bksEl('bks-head');
+    if (body && head) body.addEventListener('scroll', () => head.classList.toggle('scrolled', body.scrollTop > 4), { passive: true });
+}
+
+function bksClick(e) {
+    const t = /** @type {HTMLElement} */ (e.target).closest('[data-bks]');
+    if (!t || /** @type {any} */ (t).disabled) return;
+    const v = t.getAttribute('data-v') || '';
+    switch (t.getAttribute('data-bks')) {
+        case 'cot':
+            if (bksLocked('bks-movelock')) return;
+            bksToggle('bks-cot-row', 'bks-cot-fold');
+            return;
+        case 'opt':
+            bksChooseCot(v);
+            return;
+        case 'tile':
+            bksOpenCal(v);
+            return;
+        case 'nav': {
+            let [y, m] = __bks.view;
+            m += Number(v);
+            if (m < 0) { m = 11; y--; }
+            if (m > 11) { m = 0; y++; }
+            __bks.view = [y, m];
+            bksPaintCal(true);
+            return;
+        }
+        case 'day':
+            bksDay(v);
+            return;
+        case 'alt':
+            bksChooseCot(v);
+            bksReplay(bksEl('bks-cot-row'), 'bks-settle');
+            return;
+        case 'addr': {
+            const open = bksToggle('bks-addr-row', 'bks-addr-fold');
+            if (open) setTimeout(() => { const a = bksEl('modal-address'); if (a) a.focus({ preventScroll: true }); }, 200);
+            return;
+        }
+        case 'pmode':
+            __bks.pmode = v === 'custom' ? 'custom' : 'std';
+            updateModalPrice();
+            if (v === 'custom' && __bks.cmode !== 'off') setTimeout(() => { const a = bksEl('bks-c-amt'); if (a) a.focus({ preventScroll: true }); }, 380);
+            return;
+        case 'cmode': {
+            // Carry the price across: the same stay, said the new way.
+            const m = __modalMoney;
+            if (m && m.override != null && m.nights) {
+                if (v === 'total') __bks.cTotal = m.override;
+                if (v === 'night') __bks.cNight = m.override / m.nights;
+                if (v === 'off') __bks.cOff = m.stdTotal ? Math.max(0, (1 - m.override / m.stdTotal) * 100) : null;
+            }
+            __bks.cmode = v;
+            updateModalPrice();
+            if (v !== 'off') setTimeout(() => { const a = bksEl('bks-c-amt'); if (a) a.focus({ preventScroll: true }); }, 60);
+            return;
+        }
+        case 'off': {
+            const p = Number(v);
+            __bks.cOff = __bks.cOff === p ? null : p;
+            const a = /** @type {HTMLInputElement|null} */ (bksEl('bks-c-amt'));
+            if (a) a.value = '';
+            updateModalPrice();
+            return;
+        }
+        case 'why':
+            __bks.why = __bks.why === v ? '' : v;
+            bksSync();
+            return;
+        case 'nights':
+            __bks.nightsOpen = !__bks.nightsOpen;
+            bksSync();
+            return;
+        case 'plan':
+            modalPlanMode(__modalPlanCustom ? 'standard' : 'custom');
+            return;
+        case 'planstd': {
+            modalPlanMode('standard');
+            const r = bksEl('bks-plan-row');
+            if (r) r.focus();
+            return;
+        }
+        case 'pick': {
+            const open = bksToggle(v === 'due' ? 'bks-due-btn' : 'bks-rcv-btn', v === 'due' ? 'bks-due-fold' : 'bks-rcv-fold');
+            if (open) { __bks.pick[v] = null; bksMiniCal(v); }
+            return;
+        }
+        case 'onenav': {
+            const which = t.closest('[data-pick]').getAttribute('data-pick');
+            let [y, m] = __bks.pick[which];
+            m += Number(v);
+            if (m < 0) { m = 11; y--; }
+            if (m > 11) { m = 0; y++; }
+            __bks.pick[which] = [y, m];
+            bksMiniCal(which, true);
+            return;
+        }
+        case 'one': {
+            const which = t.closest('[data-pick]').getAttribute('data-pick');
+            const inp = /** @type {HTMLInputElement|null} */ (bksEl(which === 'due' ? 'modal-plan-due' : 'modal-payment-date'));
+            if (inp) inp.value = v;
+            bksMiniCal(which);
+            updateModalPrice();
+            setTimeout(() => {
+                bksFold(which === 'due' ? 'bks-due-fold' : 'bks-rcv-fold', false);
+                bksExpanded(which === 'due' ? 'bks-due-btn' : 'bks-rcv-btn', false);
+            }, bksReduce() ? 0 : 360);
+            return;
+        }
+        case 'how': {
+            const inp = /** @type {HTMLInputElement|null} */ (bksEl('modal-payment-method'));
+            if (inp) inp.value = v;
+            bksSync();
+            return;
+        }
+    }
+}
+function bksToggle(rowId, foldId) {
+    const row = bksEl(rowId);
+    const open = !(row && row.getAttribute('aria-expanded') === 'true');
+    bksExpanded(rowId, open);
+    bksFold(foldId, open);
+    return open;
+}
+function bksInput(e) {
+    const t = /** @type {HTMLInputElement} */ (e.target);
+    if (!t) return;
+    if (t.id === 'bks-c-amt') {
+        const n = parseFloat(t.value);
+        const val = isNaN(n) ? null : Math.max(0, n);
+        if (__bks.cmode === 'total') __bks.cTotal = val;
+        if (__bks.cmode === 'night') __bks.cNight = val;
+        if (__bks.cmode === 'off') __bks.cOff = val != null ? Math.min(90, val) : null;
+        updateModalPrice();
+        return;
+    }
+    if (t.hasAttribute('data-bks-in')) bksSync();
+}
+
+function bksChooseCot(k) {
+    if (bksLocked('bks-movelock')) return;
+    const sel = /** @type {HTMLSelectElement|null} */ (bksEl('modal-property'));
+    if (!sel) return;
+    if (k === '__new__') {
+        sel.value = '__new__';
+        onModalPropertyChange();
+        setTimeout(() => { const nu = bksEl('modal-property-new'); if (nu) nu.focus({ preventScroll: true }); }, 60);
+        return;
+    }
+    // A cottage that sleeps fewer brings the party down WITH it, and says so —
+    // typing past the cap stays possible (the server's occupancy confirm).
+    const lim = occupancyLimits[k];
+    if (lim) {
+        const a = /** @type {HTMLInputElement} */ (bksEl('modal-adults')), c = /** @type {HTMLInputElement} */ (bksEl('modal-children'));
+        const ad = Math.max(1, parseInt(a.value, 10) || 1), ch = Math.max(0, parseInt(c.value, 10) || 0);
+        const nad = Math.min(ad, lim.maxAdults), nch = Math.min(ch, lim.maxChildren, Math.max(0, (lim.maxTotal || 99) - nad));
+        if (nad !== ad || nch !== ch) {
+            a.value = String(nad);
+            c.value = String(nch);
+            __bks.clamped = bksCotName(k);
+        }
+    }
+    sel.value = k;
+    onModalPropertyChange();
+    setTimeout(() => { bksFold('bks-cot-fold', false); bksExpanded('bks-cot-row', false); }, bksReduce() ? 0 : 260);
+}
+
+function bksOpenCal(which) {
+    if (bksLocked('bks-movelock')) return;
+    const fold = bksEl('bks-cal-fold');
+    if (!fold) return;
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    const same = fold.classList.contains('on') && __bks.picking === which;
+    __bks.picking = which === 'out' && !ci ? 'in' : which;
+    fold.classList.toggle('on', !same);
+    if (!same) {
+        const d = (__bks.picking === 'out' ? co || ci : ci) || todayDashed();
+        __bks.view = [+d.slice(0, 4), +d.slice(5, 7) - 1];
+        bksPaintCal();
+    }
+    bksPaintTiles();
+}
+function bksDay(s) {
+    let ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    let done = false;
+    if (__bks.picking === 'in' || !ci || s <= ci) {
+        ci = s;
+        if (co && co <= s) co = '';
+        __bks.pop = s;
+        if (co) { __bks.wave = true; done = true; } else __bks.picking = 'out';
+    } else {
+        co = s;
+        __bks.pop = s;
+        __bks.wave = true;
+        done = true;
+    }
+    /** @type {HTMLInputElement} */ (bksEl('modal-checkin')).value = ci;
+    /** @type {HTMLInputElement} */ (bksEl('modal-checkout')).value = co;
+    updateModalPrice();
+    if (done) setTimeout(() => { bksFold('bks-cal-fold', false); __bks.picking = ''; bksPaintTiles(); }, bksReduce() ? 0 : 520);
+}
+
+// ---- the painters ----
+function bksSync(what) {
+    const box = bksBox();
+    if (!box) return;
+    if (what === 'nudge-dates' || what === 'nudge-name') { bksNudge(what); return; }
+    bksDerive();
+    const m = __modalMoney;
+    const mode = bksMode();
+    const isNew = isCustomPropertyMode();
+    box.dataset.mode = mode;
+    box.classList.toggle('bks-newcot-mode', isNew);
+    bksPaintCot(isNew);
+    bksPaintTiles();
+    if ((bksEl('bks-cal-fold') || { classList: { contains: () => false } }).classList.contains('on')) bksPaintCal();
+    bksPaintVerdict(isNew);
+    bksPaintParty();
+    const addr = [dpVal('modal-postcode'), (dpVal('modal-address').split('\n')[0] || '')].filter(Boolean)[0] || '';
+    bksSetText(bksEl('bks-addr-val'), addr ? addr.slice(0, 18) : 'Optional');
+    bksPaintPrice(m, mode, isNew);
+    bksPaintPaid(m, mode, isNew);
+    bksPaintConf(mode);
+    bksPaintHead(m, mode, isNew);
+    bksSeatAll();
+}
+// A custom price set as a night or a discount FOLLOWS the stay: the override (a
+// total, what the server stores) is re-derived whenever the standard moves.
+function bksDerive() {
+    const ov = /** @type {HTMLInputElement|null} */ (bksEl('modal-price-override'));
+    if (!ov) return;
+    const m = __modalMoney;
+    let want = ov.value;
+    if (__bks.pmode !== 'custom') want = '';
+    else if (__bks.cmode === 'total') want = __bks.cTotal != null ? String(bksR2(__bks.cTotal)) : '';
+    else if (m && __bks.cmode === 'night') want = __bks.cNight != null ? String(bksR2(__bks.cNight * m.nights)) : '';
+    else if (m && __bks.cmode === 'off') want = __bks.cOff != null ? String(bksR2(m.stdTotal * (1 - __bks.cOff / 100))) : '';
+    if (want !== ov.value) {
+        ov.value = want;
+        updateModalPriceCore();
+    }
+}
+function bksPaintCot(isNew) {
+    const sel = /** @type {HTMLSelectElement|null} */ (bksEl('modal-property'));
+    if (!sel) return;
+    const k = sel.value;
+    const newName = dpVal('modal-property-new').trim();
+    bksSetHtml(bksEl('bks-cot-val'), isNew
+        ? `<span class="bks-plus">${BKS_IC.plus}</span>${escapeHtml(newName || 'New cottage')}`
+        : `<span class="bks-dot" style="background:${escapeHtml(bksAccent(k))}"></span>${escapeHtml(bksCotName(k))}`, 'bks-settle');
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    const dated = /^\d{4}-\d{2}-\d{2}$/.test(ci) && /^\d{4}-\d{2}-\d{2}$/.test(co) && co > ci;
+    const opts = Array.from(sel.options).filter((o) => o.value !== '__new__');
+    const html = opts.map((o) => {
+        const key = o.value;
+        const lim = occupancyLimits[key];
+        const r = propertyRates[key] || defaultRates[key];
+        const sub = [lim ? `Sleeps ${lim.maxTotal || lim.maxAdults}` : '', r && r.coupleRate ? `from ${bksGbp0(Number(r.coupleRate))} a night` : ''].filter(Boolean).join(' · ');
+        let cap = '';
+        if (dated) cap = !bksFits(key) ? '<span class="bks-sc warn">Too small</span>' : bksClashFor(key, ci, co) ? '<span class="bks-sc warn">Booked</span>' : '<span class="bks-sc ok">Free</span>';
+        return `<button type="button" class="bks-opt" role="radio" aria-checked="${key === k}" data-bks="opt" data-v="${escapeHtml(key)}"><span class="bks-dot" style="background:${escapeHtml(bksAccent(key))}"></span><span class="bks-rt"><span class="bks-rl">${escapeHtml(o.textContent || key)}${cap}</span>${sub ? `<span class="bks-rs">${escapeHtml(sub)}</span>` : ''}</span><span class="bks-tick">${BKS_IC.tick}</span></button>`;
+    }).join('') + `<button type="button" class="bks-opt" role="radio" aria-checked="${isNew}" data-bks="opt" data-v="__new__"><span class="bks-plus">${BKS_IC.plus}</span><span class="bks-rt"><span class="bks-rl">A new cottage</span><span class="bks-rs">Name it, then set its prices next</span></span><span class="bks-tick">${BKS_IC.tick}</span></button>`;
+    bksSetHtml(bksEl('bks-cot-list'), html);
+    const nr = bksEl('bks-newcot');
+    if (nr) nr.hidden = !isNew;
+}
+function bksPaintTiles() {
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    const td = (id, v) => {
+        const el = bksEl(id);
+        if (!el) return;
+        el.classList.toggle('empty', !v);
+        bksSetText(el, v ? dpSpoken(v) : 'Add a date', 'bks-settle');
+    };
+    td('bks-t-in-d', ci);
+    td('bks-t-out-d', co);
+    bksSetText(bksEl('bks-t-in-tm'), 'from ' + (bksHm(dpVal('modal-checkin-time')) || '3pm'));
+    bksSetText(bksEl('bks-t-out-tm'), 'by ' + (bksHm(dpVal('modal-checkout-time')) || '10am'));
+    const open = !!(bksEl('bks-cal-fold') && bksEl('bks-cal-fold').classList.contains('on'));
+    [['bks-t-in', 'in'], ['bks-t-out', 'out']].forEach(([id, w]) => {
+        const el = bksEl(id);
+        if (!el) return;
+        el.classList.toggle('picking', open && __bks.picking === w);
+        el.setAttribute('aria-expanded', String(open && __bks.picking === w));
+    });
+}
+function bksPaintCal(turn) {
+    const host = bksEl('bks-cal');
+    if (!host) return;
+    const [y, m] = __bks.view;
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const pk = currentModalProperty().key;
+    const conf = modalStayConflicts();
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    const today = todayDashed();
+    const lead = (new Date(Date.UTC(y, m, 1, 12)).getUTCDay() + 6) % 7;
+    const days = new Date(Date.UTC(y, m + 1, 0, 12)).getUTCDate();
+    let cells = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="bks-dw" aria-hidden="true">${d}</span>`).join('');
+    for (let i = 0; i < lead; i++) cells += '<span></span>';
+    let w = 0;
+    for (let d = 1; d <= days; d++) {
+        const s = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const st = conf ? modalDayState(conf, s) : null;
+        const cls = ['bks-d'];
+        if (s < today) cls.push('past');
+        if (s === today) cls.push('today');
+        if (st) cls.push('taken');
+        const isS = s === ci, isE = s === co;
+        if (isS) cls.push('s');
+        if (isS && !co) cls.push('solo');
+        if (isE) cls.push('e');
+        if (ci && co && s > ci && s < co) {
+            cls.push('band');
+            if (__bks.wave) { cls.push('wave'); w++; }
+        }
+        if ((isS || isE) && __bks.pop === s) cls.push('pop');
+        const rate = !st && s >= today && !isE && pk ? bksNightRate(pk, s) : null;
+        const price = rate != null ? `<small>${bksGbp0(rate)}</small>` : '';
+        const label = `${dpSpoken(s)}${st ? `, booked by ${st.who}` : rate != null ? `, ${bksGbp0(rate)} a night` : ''}${isS ? ', arrival' : ''}${isE ? ', departure' : ''}`;
+        cells += `<button type="button" class="${cls.join(' ')}" data-bks="day" data-v="${s}" aria-label="${escapeHtml(label)}" style="--w:${w}"><span>${d}</span>${price}</button>`;
+    }
+    host.innerHTML = `<div class="bks-calhd"><button type="button" class="bks-calnav" data-bks="nav" data-v="-1" aria-label="Previous month">${BKS_IC.left}</button><b>${MONTHS[m]} ${y}</b><button type="button" class="bks-calnav" data-bks="nav" data-v="1" aria-label="Next month">${BKS_IC.right}</button></div>
+        <div class="bks-calg${turn ? ' turn' : ''}">${cells}</div>
+        <p class="bks-calk">${__bks.picking === 'out' ? 'Now the day they leave.' : 'The day they arrive.'} Crossed out: already booked. You can still pick them; Add asks first.</p>`;
+    __bks.wave = false;
+    __bks.pop = '';
+}
+function bksPaintVerdict(isNew) {
+    const v = bksEl('bks-verdict');
+    if (!v) return;
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    if (!(/^\d{4}-\d{2}-\d{2}$/.test(ci) && /^\d{4}-\d{2}-\d{2}$/.test(co) && co > ci)) {
+        v.hidden = true;
+        /** @type {any} */ (v).__h = '';
+        return;
+    }
+    v.hidden = false;
+    const n = nightsBetween(ci, co);
+    let h = `<b>${n} night${n === 1 ? '' : 's'}</b>`;
+    const pk = isNew ? '' : currentModalProperty().key;
+    if (pk) {
+        const who = bksClashFor(pk, ci, co);
+        if (who) {
+            h += `<span class="bks-sc warn">⚠ Overlaps ${escapeHtml(who)}</span>`;
+            const sel = /** @type {HTMLSelectElement} */ (bksEl('modal-property'));
+            const alt = Array.from(sel.options).map((o) => o.value).find((k) => k !== '__new__' && k !== pk && bksFits(k) && !bksClashFor(k, ci, co));
+            if (alt && !bksLocked('bks-movelock')) h += `<button type="button" class="bks-alt" data-bks="alt" data-v="${escapeHtml(alt)}"><span class="bks-dot" style="background:${escapeHtml(bksAccent(alt))}"></span>${escapeHtml(bksCotName(alt))} is free${BKS_IC.right}</button>`;
+        } else {
+            h += '<span class="bks-sc ok">✓ Free</span>';
+            const next = bksNextArrival(pk, co);
+            if (next) h += `<span>next arrival ${escapeHtml(dpSpoken(next))}</span>`;
+        }
+    }
+    bksSetHtml(v, h, 'bks-swap');
+}
+function bksPaintParty() {
+    const pk = currentModalProperty().key;
+    const lim = pk ? occupancyLimits[pk] : null;
+    const note = bksEl('modal-occ-note');
+    if (!note) return;
+    note.classList.toggle('warn', !!__bks.clamped);
+    if (__bks.clamped && lim) note.textContent = `${__bks.clamped} sleeps ${lim.maxTotal || lim.maxAdults}, so this came down`;
+    else note.textContent = lim ? (lim.maxChildren === 0 || (lim.maxTotal || 0) <= lim.maxAdults ? `Sleeps ${lim.maxAdults} adult${lim.maxAdults === 1 ? '' : 's'}` : `Sleeps ${lim.maxAdults} adults, ${lim.maxTotal} in all`) : '';
+    __bks.clamped = '';
+}
+// What one stay costs, night by night — every line from the price model's own
+// parts, so the lines always add up to the figure on the row above them.
+function bksNightRows(m) {
+    const pk = m.propKey;
+    const r = propertyRates[pk] || defaultRates[pk] || {};
+    const seasons = propertySeasons[pk] || [];
+    const ch = Math.max(0, parseInt(dpVal('modal-children'), 10) || 0);
+    const xa = m.p.extraAdults || 0;
+    const rows = [];
+    let raw = 0;
+    for (let i = 0; i < m.nights; i++) {
+        const d = ukShiftDays(m.checkIn, i);
+        const rate = nightlyRateFor(d, r, seasons);
+        raw += rate;
+        const se = seasons.find((x) => d >= x.start_date && d <= x.end_date);
+        const tags = [se ? se.label || 'Season' : '', weekendPctFor(d, r) > 0 ? 'Weekend' : ''].filter(Boolean).join(' · ');
+        rows.push({ l: dpSpoken(d), s: tags, v: rate });
+    }
+    const xaR = parseFloat(r.extraAdultRate) || 0, chR = parseFloat(r.childRate) || 0;
+    if (xa) { rows.push({ l: `${xa} extra adult${xa === 1 ? '' : 's'}`, s: `${bksGbp0(xaR)} a night each`, v: xa * xaR * m.nights }); raw += xa * xaR * m.nights; }
+    if (ch) { rows.push({ l: `${ch} child${ch === 1 ? '' : 'ren'}`, s: `${bksGbp0(chR)} a night each`, v: ch * chR * m.nights }); raw += ch * chR * m.nights; }
+    const ss = shortStayCharge(r, m.nights);
+    const adj = bksR2(m.p.nightly - ss - raw);
+    if (Math.abs(adj) >= 0.01) rows.push({ l: adj < 0 ? 'Last-minute price' : 'Adjustment', s: '', v: adj });
+    if (ss > 0) rows.push({ l: 'Short stay', s: `${bksGbp0(parseFloat(r.shortFee) || 0)} a night for short stays`, v: ss });
+    if (m.p.txFee > 0) rows.push({ l: `Card fee (${m.p.transactionPct}%)`, s: '', v: m.p.txFee });
+    return rows;
+}
+function bksPaintPrice(m, mode, isNew) {
+    const paidLock = bksLocked('bks-paidlock');
+    const canCustom = mode !== 'enquiry' && !isNew && !paidLock;
+    const custom = canCustom && __bks.pmode === 'custom';
+    const segRow = bksEl('modal-override-group');
+    if (segRow) segRow.hidden = !canCustom;
+    bksPressed('bks-pmode', custom ? 'custom' : 'std');
+    bksFold('bks-std-fold', !custom);
+    bksFold('bks-cus-fold', custom);
+    // The standard, night by night.
+    const nRow = /** @type {HTMLButtonElement|null} */ (bksEl('bks-nights-row'));
+    const nL = bksEl('bks-n-l'), nS = bksEl('bks-n-s'), nV = bksEl('bks-n-v');
+    if (nS) nS.classList.remove('warn');
+    if (isNew) {
+        bksSetText(nL, dpVal('modal-property-new').trim() ? `“${dpVal('modal-property-new').trim()}”` : 'A new cottage');
+        bksSetText(nS, 'Priced once you’ve set its rates — that’s the next step');
+        bksSetText(nV, '');
+        if (nRow) nRow.disabled = true;
+        __bks.nightsOpen = false;
+    } else if (!m) {
+        bksSetText(nL, 'The stay');
+        bksSetText(nS, 'Pick the dates to price it');
+        bksSetText(nV, '');
+        if (nRow) nRow.disabled = true;
+        __bks.nightsOpen = false;
+    } else {
+        if (nRow) nRow.disabled = false;
+        bksSetText(nL, `${m.nights} night${m.nights === 1 ? '' : 's'}`);
+        let rows;
+        if (m.agreed) {
+            const a = m.agreed;
+            bksSetText(nS, paidLock ? 'Paid in full · money is managed on the booking page' : 'Agreed when booked');
+            rows = [{ l: `${gbp(a.perNight || 0)} × ${a.nights || m.nights} night${(a.nights || m.nights) === 1 ? '' : 's'}`, s: '', v: a.nightly || 0 }];
+            if ((a.txFee || 0) > 0) rows.push({ l: `Card fee (${a.transactionPct || 0}%)`, s: '', v: a.txFee });
+        } else {
+            rows = bksNightRows(m);
+            const rates = rows.slice(0, m.nights).map((x) => x.v);
+            const lo = Math.min(...rates), hi = Math.max(...rates);
+            const extra = m.p.extraAdults ? ' + extra guests' : (parseInt(dpVal('modal-children'), 10) || 0) > 0 ? ' + child rate' : '';
+            let sub = (lo === hi ? `${bksGbp0(lo)} a night` : `${bksGbp0(lo)}–${bksGbp0(hi)} a night`) + extra;
+            if (m.stayChanged && m.agreedWas != null) {
+                sub = `Today’s rates · replaces the agreed ${gbp(m.agreedWas)}`;
+                if (nS) nS.classList.add('warn');
+            }
+            if (paidLock) sub = 'Paid in full · money is managed on the booking page';
+            bksSetText(nS, sub);
+        }
+        bksSetText(nV, gbp(paidLock ? m.total : m.stdTotal), 'bks-settle');
+        bksSetHtml(bksEl('bks-nights'), rows.map((x) => `<div class="bks-night"><span class="bks-rt"><span class="bks-rl">${escapeHtml(x.l)}</span>${x.s ? `<span class="bks-rs">${escapeHtml(x.s)}</span>` : ''}</span><span class="bks-rv">${gbp(x.v)}</span></div>`).join(''));
+    }
+    bksExpanded('bks-nights-row', __bks.nightsOpen);
+    bksFold('bks-nights-fold', __bks.nightsOpen);
+    // The custom price: one input, rebuilt only when the way of setting it changes.
+    if (canCustom) bksPaintCustom(m);
+    // The refundable deposit: a stepper until it has been taken, then a fact.
+    const bk = m && m.booking;
+    const hs = bk ? bk.holdStatus || 'none' : 'none';
+    const ro = mode === 'enquiry' || paidLock || (mode === 'booking' && hs !== 'none');
+    const step = bksEl('bks-dep-step'), roEl = bksEl('bks-dep-ro');
+    if (step) step.hidden = ro;
+    if (roEl) roEl.hidden = !ro;
+    const pk = currentModalProperty().key;
+    const defDep = pk && propertyRates[pk] ? parseFloat(propertyRates[pk].damagesDeposit) || 0 : 0;
+    const depInp = /** @type {HTMLInputElement|null} */ (bksEl('modal-damages-deposit'));
+    if (depInp) depInp.placeholder = String(defDep);
+    const depShown = m ? depositTakenAmt(m.p, bk) : defDep;
+    if (roEl) bksSetText(roEl, gbp(depShown));
+    bksSetText(bksEl('bks-dep-s'), hs === 'charged' || hs === 'captured' ? 'Taken with their first payment'
+        : hs === 'returned' || hs === 'released' ? 'Returned to them'
+        : hs === 'kept' ? 'Kept for damage'
+        : 'Back to them after the stay');
+    // The total.
+    bksSetText(bksEl('bks-tot'), m ? gbp(m.grand) : '—', 'bks-settle');
+    bksSetText(bksEl('bks-tot-s'), !m ? (isNew ? 'Priced once its rates are set' : 'Pick the dates to price the stay')
+        : m.override != null ? (m.dep > 0 ? `Custom price + the ${bksGbp0(m.dep)} deposit` : 'Custom price')
+        : m.dep > 0 ? `Includes the ${bksGbp0(m.dep)} deposit` : '');
+    // The plan: a NEW booking's first payment, the fold holding its terms.
+    const planG = bksEl('modal-plan-group');
+    const f = m && mode === 'add' && !isNew ? modalPlanFacts() : null;
+    if (planG) planG.hidden = !f;
+    if (f) {
+        bksSetText(bksEl('bks-first'), gbp(f.first), 'bks-settle');
+        bksSetText(bksEl('bks-first-s'), f.full ? `Arrival is within ${paymentTerms.balanceDays || 30} days, so it’s all now` : `${f.pct}% now with the deposit · ${gbp(f.balance)} by ${dpSpoken(f.due)}`);
+        bksExpanded('bks-plan-row', __modalPlanCustom);
+        bksFold('bks-plan-fold', __modalPlanCustom);
+        const pctInp = /** @type {HTMLInputElement|null} */ (bksEl('modal-plan-pct'));
+        if (pctInp) pctInp.placeholder = String(paymentTerms.depositPct || 25);
+        bksSetText(bksEl('bks-pct-s'), `Standard is ${paymentTerms.depositPct || 25}%`);
+        bksSetText(bksEl('bks-due-s'), `Standard is ${paymentTerms.balanceDays || 30} days before`);
+        const due = dpVal('modal-plan-due') || f.due;
+        bksSetText(bksEl('bks-due-v'), due === todayDashed() ? 'Today' : dpSpoken(due));
+        if (bksEl('bks-due-fold') && bksEl('bks-due-fold').classList.contains('on')) bksMiniCal('due');
+    }
+    // An edit: what has been received, said and never re-sent.
+    const rRow = bksEl('bks-rcvd-row');
+    let paid = null;
+    if (mode === 'booking' && bk) {
+        try {
+            const loc = findBookingLocation(bk.id);
+            const pk0 = loc ? loc.propKey : pk;
+            const p0 = bk.agreedPrice || priceBreakdown(pk0, bk.adults || 0, bk.children || 0, bk.checkIn, bk.checkOut);
+            paid = displayGrand(p0, paymentSummary(pk0, bk), bk.holdStatus || 'none', bk).paid;
+        } catch (e) {}
+    }
+    if (rRow) rRow.hidden = paid == null;
+    if (paid != null) bksSetText(bksEl('bks-rcvd'), gbp(paid));
+}
+function bksPaintCustom(m) {
+    bksPressed('bks-cmode', __bks.cmode);
+    const cin = /** @type {any} */ (bksEl('bks-c-in'));
+    if (!cin) return;
+    if (cin.__mode !== __bks.cmode) {
+        cin.__mode = __bks.cmode;
+        cin.innerHTML = __bks.cmode === 'total'
+            ? '<div class="bks-big bks-pane"><span class="bks-cur" aria-hidden="true">£</span><input id="bks-c-amt" inputmode="decimal" autocomplete="off" aria-label="Price for the stay, in pounds"><span class="bks-unit">for the stay</span></div>'
+            : __bks.cmode === 'night'
+              ? '<div class="bks-big bks-pane"><span class="bks-cur" aria-hidden="true">£</span><input id="bks-c-amt" inputmode="decimal" autocomplete="off" aria-label="Price a night, in pounds"><span class="bks-unit" id="bks-c-unit">a night</span></div>'
+              : '<div class="bks-chips bks-pane" id="bks-c-off">' + [5, 10, 15, 20].map((p) => `<button type="button" class="bks-chip" data-bks="off" data-v="${p}" aria-pressed="false">${p}% off</button>`).join('') + '<span class="bks-chipin"><input id="bks-c-amt" inputmode="decimal" autocomplete="off" aria-label="Your own discount, per cent" placeholder="Other"><span class="bks-sfx">% off</span></span></div>';
+    }
+    const amt = /** @type {HTMLInputElement|null} */ (bksEl('bks-c-amt'));
+    if (amt && document.activeElement !== amt) {
+        const v = __bks.cmode === 'total' ? __bks.cTotal : __bks.cmode === 'night' ? __bks.cNight : [5, 10, 15, 20].includes(__bks.cOff) ? null : __bks.cOff;
+        amt.value = v == null ? '' : __bks.cmode === 'off' ? String(Math.round(v * 10) / 10) : v.toFixed(2);
+    }
+    if (amt && __bks.cmode !== 'off') amt.placeholder = m ? (__bks.cmode === 'total' ? m.stdTotal.toFixed(2) : (m.stdTotal / m.nights).toFixed(2)) : '0.00';
+    if (__bks.cmode === 'night') bksSetText(bksEl('bks-c-unit'), m ? `a night × ${m.nights}` : 'a night');
+    document.querySelectorAll('#bks-c-off .bks-chip').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-v')) === __bks.cOff)));
+    const resL = bksEl('bks-c-res-l'), resS = bksEl('bks-c-res-s');
+    if (resL) resL.classList.remove('off', 'more');
+    if (!m) {
+        bksSetText(resL, 'Pick the dates first');
+        bksSetText(resS, 'The standard price depends on them');
+        bksSetText(bksEl('bks-c-res-v'), '');
+    } else if (m.override == null) {
+        bksSetText(resL, 'No custom price yet');
+        bksSetText(resS, `Standard price ${gbp(m.stdTotal)}`);
+        bksSetText(bksEl('bks-c-res-v'), gbp(m.stdTotal));
+    } else {
+        const diff = bksR2(m.stdTotal - m.override);
+        const pc = m.stdTotal ? Math.round((Math.abs(diff) / m.stdTotal) * 100) : 0;
+        if (Math.abs(diff) < 0.005) bksSetText(resL, 'Same as the standard price');
+        else if (diff > 0) { resL.classList.add('off'); bksSetText(resL, `${gbp(diff)} off · ${pc}%`); }
+        else { resL.classList.add('more'); bksSetText(resL, `${gbp(-diff)} more · ${pc}%`); }
+        bksSetText(resS, `Standard price ${gbp(m.stdTotal)}`);
+        bksSetText(bksEl('bks-c-res-v'), gbp(m.override), 'bks-settle');
+    }
+    const n = m ? m.nights : 0;
+    // What the guest's documents will say: the one coherent line a custom price prints.
+    bksSetHtml(bksEl('bks-c-gs'), m && m.override != null && Math.abs(m.stdTotal - m.override) >= 0.005
+        ? `<span class="bks-gsl">Their confirmation and invoice will say</span><span class="bks-gsr"><span>Agreed price for your stay <span class="bks-nw">(${n} night${n === 1 ? '' : 's'})</span></span><b>${gbp(m.override)}</b></span>`
+        : '<span class="bks-gsl">Their confirmation and invoice will say</span><span class="bks-gsr"><span>The nightly breakdown, as usual</span></span>');
+    bksSetHtml(bksEl('bks-why'), BKS_WHY.map((w) => `<button type="button" class="bks-chip" data-bks="why" data-v="${escapeHtml(w)}" aria-pressed="${__bks.why === w}">${escapeHtml(w)}</button>`).join(''));
+}
+function bksPaintPaid(m, mode, isNew) {
+    const g = bksEl('modal-payment-group');
+    // An edit shows what was received in the price card (and never re-sends it);
+    // the enquiry and the new-cottage flows record payment elsewhere.
+    if (g && mode !== 'enquiry') g.hidden = mode !== 'add' || isNew;
+    const f = m && mode === 'add' ? modalPlanFacts() : null;
+    bksSetText(bksEl('bks-amt-s'), f ? `The first payment is ${gbp(f.first)}` : '');
+    const rcv = dpVal('modal-payment-date');
+    bksSetText(bksEl('bks-rcv-v'), !rcv || rcv === todayDashed() ? 'Today' : dpSpoken(rcv));
+    if (bksEl('bks-rcv-fold') && bksEl('bks-rcv-fold').classList.contains('on')) bksMiniCal('rcv');
+    const how = dpVal('modal-payment-method');
+    const v = /card|square/i.test(how) ? 'Card' : /transfer|bank|bacs/i.test(how) ? 'Bank transfer' : /cash/i.test(how) ? 'Cash' : '';
+    bksPressed('bks-how', v);
+}
+// Material = what the confirmation STATES: dates, cottage, party, price. A
+// phone-number fix is not, so the switch stays off and nothing asks.
+function bksMaterial() {
+    const o = __bks.orig;
+    if (!o) return false;
+    const ovRaw = dpVal('modal-price-override');
+    const ov = ovRaw !== '' ? bksR2(parseFloat(ovRaw) || 0) : null;
+    return currentModalProperty().key !== o.pk || dpVal('modal-checkin') !== o.ci || dpVal('modal-checkout') !== o.co
+        || (parseInt(dpVal('modal-adults'), 10) || 0) !== o.ad || (parseInt(dpVal('modal-children'), 10) || 0) !== o.ch
+        || ov !== (o.ov != null ? bksR2(o.ov) : null);
+}
+function bksPaintConf(mode) {
+    const wrap = bksEl('bks-conf-wrap');
+    if (wrap) wrap.hidden = mode === 'enquiry';
+    if (mode === 'enquiry') return;
+    const box = /** @type {HTMLInputElement|null} */ (bksEl('bks-conf'));
+    const em = dpVal('modal-email').trim();
+    const nm = (dpVal('modal-name').trim().split(/\s+/)[0]) || 'them';
+    if (mode === 'booking') {
+        const mat = bksMaterial();
+        if (!__bks.confTouched) __bks.conf = mat;
+        bksSetText(bksEl('bks-conf-cap'), 'When you save');
+        bksSetText(bksEl('bks-conf-l'), `Email ${nm} the changes`);
+        bksSetText(bksEl('bks-conf-s'), !em ? 'No email address on this booking' : mat ? 'The stay or the price changed' : 'Nothing they’d notice has changed');
+    } else {
+        bksSetText(bksEl('bks-conf-cap'), 'When you add it');
+        bksSetText(bksEl('bks-conf-l'), `Email ${nm} the confirmation`);
+        bksSetText(bksEl('bks-conf-s'), em ? `Dates, price and how to pay · ${em}` : 'Add an email address to send one');
+    }
+    if (box) {
+        box.disabled = !em;
+        box.checked = !!em && __bks.conf;
+    }
+}
+function bksPaintHead(m, mode, isNew) {
+    const ci = dpVal('modal-checkin'), co = dpVal('modal-checkout');
+    const parts = [isNew ? dpVal('modal-property-new').trim() || 'New cottage' : bksCotName(currentModalProperty().key)];
+    parts.push(ci && co && co > ci ? bksShort(ci, co) : 'no dates yet');
+    if (m) parts.push(gbp(m.grand));
+    bksSetText(bksEl('bks-sum'), parts.join(' · '), 'bks-swap');
+    const btn = bksEl('modal-save-btn');
+    if (!btn) return;
+    const ready = mode !== 'add' || !!(dpVal('modal-name').trim() && ci && co && co > ci);
+    const was = btn.getAttribute('aria-disabled') === 'true';
+    btn.setAttribute('aria-disabled', String(!ready));
+    if (was && ready) bksReplay(btn, 'bks-ready');
+}
+function bksPressed(segId, v) {
+    document.querySelectorAll(`#${segId} > button`).forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === v)));
+}
+// The switcher's pill travels to the pressed button (the composer's own motion).
+function bksSeatAll() {
+    document.querySelectorAll('#edit-modal .bks-seg').forEach((seg) => {
+        const pill = /** @type {HTMLElement|null} */ (seg.querySelector('.bks-pill'));
+        const on = /** @type {HTMLElement|null} */ (seg.querySelector('button[aria-pressed="true"]'));
+        if (!pill) return;
+        if (!on || !on.offsetWidth) { pill.style.opacity = '0'; return; }
+        const first = !pill.style.width || pill.style.opacity === '0';
+        if (first) pill.style.transition = 'none';
+        pill.style.opacity = '';
+        pill.style.width = on.offsetWidth + 'px';
+        pill.style.translate = on.offsetLeft + 'px 0';
+        if (first) { void pill.offsetWidth; pill.style.transition = ''; }
+    });
+}
+// One date on the same calendar: a balance date between today and arrival, or
+// the day money was received (never in the future).
+function bksMiniCal(which, turn) {
+    const host = bksEl(which === 'due' ? 'bks-due-cal' : 'bks-rcv-cal');
+    if (!host) return;
+    host.setAttribute('data-pick', which);
+    const ci = dpVal('modal-checkin');
+    const f = modalPlanFacts();
+    const val = which === 'rcv' ? dpVal('modal-payment-date') || todayDashed() : dpVal('modal-plan-due') || (f ? f.due : todayDashed());
+    if (!__bks.pick[which]) __bks.pick[which] = [+val.slice(0, 4), +val.slice(5, 7) - 1];
+    const [y, m] = __bks.pick[which];
+    const lo = which === 'rcv' ? '2000-01-01' : todayDashed();
+    const hi = which === 'rcv' ? todayDashed() : ci || '9999-12-31';
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const lead = (new Date(Date.UTC(y, m, 1, 12)).getUTCDay() + 6) % 7;
+    const days = new Date(Date.UTC(y, m + 1, 0, 12)).getUTCDate();
+    let cells = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="bks-dw" aria-hidden="true">${d}</span>`).join('');
+    for (let i = 0; i < lead; i++) cells += '<span></span>';
+    for (let d = 1; d <= days; d++) {
+        const s = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const on = s === val, off = s < lo || s > hi;
+        cells += `<button type="button" class="bks-d${on ? ' s e' : ''}${s === todayDashed() ? ' today' : ''}" data-bks="one" data-v="${s}" ${off ? 'disabled' : ''} aria-label="${escapeHtml(dpSpoken(s))}${on ? ', chosen' : ''}"><span>${d}</span></button>`;
+    }
+    host.innerHTML = `<div class="bks-calhd"><button type="button" class="bks-calnav" data-bks="onenav" data-v="-1" aria-label="Previous month">${BKS_IC.left}</button><b>${MONTHS[m]} ${y}</b><button type="button" class="bks-calnav" data-bks="onenav" data-v="1" aria-label="Next month">${BKS_IC.right}</button></div><div class="bks-calg${turn ? ' turn' : ''}">${cells}</div>`;
+}
+function bksIntoView(el) {
+    const body = bksEl('bks-body');
+    if (!el || !body) return;
+    const r = el.getBoundingClientRect(), b = body.getBoundingClientRect();
+    body.scrollTo({ top: Math.max(0, body.scrollTop + (r.top - b.top) - 24), behavior: bksReduce() ? 'auto' : 'smooth' });
+}
+// Add isn't ready: point at what is missing rather than refusing in a box.
+function bksNudge(what) {
+    const sum = bksEl('bks-sum');
+    if (what === 'nudge-dates') {
+        if (!(bksEl('bks-cal-fold') && bksEl('bks-cal-fold').classList.contains('on'))) bksOpenCal(dpVal('modal-checkin') ? 'out' : 'in');
+        const t = bksEl('modal-date-trigger');
+        bksIntoView(t);
+        bksReplay(t, 'bks-nudge');
+        if (sum) { sum.textContent = 'Pick the dates first'; bksReplay(sum, 'bks-swap'); }
+    } else {
+        const nm = bksEl('modal-name');
+        bksIntoView(nm);
+        if (nm) nm.focus({ preventScroll: true });
+        bksReplay(nm && nm.closest('.bks-fr'), 'bks-nudge');
+        if (sum) { sum.textContent = 'Add the guest’s name'; bksReplay(sum, 'bks-swap'); }
+    }
+}
+
 function openEditEnquiry(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
-    document.getElementById('modal-title').innerText = 'Edit or move enquiry';
+    document.getElementById('modal-title').innerText = enq.name || 'Edit enquiry';
     document.getElementById('modal-mode').value = 'enquiry';
     document.getElementById('modal-record-id').value = enq.id;
     setModalFields({

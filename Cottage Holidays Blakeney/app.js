@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 749;
+const ADMIN_BUNDLE_V = 750;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 385;
+const ADMIN_CSS_V = 386;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2128,6 +2128,8 @@ function mapBookingFromApi(row) {
         b.agreedPrice.total = b.priceOverride;
         b.agreedPrice.isOverride = true;
     }
+    // Why the price is custom — owner-only (migration-138; the guest payload strips it).
+    b.priceReason = row.price_reason ? String(row.price_reason) : '';
     return b;
 }
 function mapEnquiryFromApi(row) {
@@ -16357,23 +16359,9 @@ function openBookingDatePicker() {
     dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
-// Keep the modal's date trigger label in sync with the hidden inputs.
+// The Add-booking sheet's Arrive / Leave tiles paint from the hidden inputs.
 function refreshModalDateTrigger() {
-    const disp = document.getElementById('modal-date-display');
-    const trigger = document.getElementById('modal-date-trigger');
-    if (!disp || !trigger) return;
-    const ci = document.getElementById('modal-checkin').value;
-    const co = document.getElementById('modal-checkout').value;
-    if (ci && co) {
-        disp.innerText = `${dpPretty(ci)}  →  ${dpPretty(co)}`;
-        trigger.classList.add('has-dates');
-    } else if (ci) {
-        disp.innerText = `Check-in ${dpPretty(ci)} — pick check-out`;
-        trigger.classList.remove('has-dates');
-    } else {
-        disp.innerText = 'Select the stay dates';
-        trigger.classList.remove('has-dates');
-    }
+    bksHook();
 }
 // WHO OPENED THE PICKER. The dialogs it opens FROM stay open behind it, so closing
 // it must hand focus back into them — otherwise activeElement is <body>, outside any
@@ -19648,6 +19636,8 @@ function openModal() {
     // entry Back replayed the admin view underneath and left the form stranded on top.
     if (!em.classList.contains('open')) overlayHistPush();
     em.classList.add('open');
+    // The sheet's switchers measure their buttons to seat the pill: only now are they laid out.
+    requestAnimationFrame(() => bksHook());
     // THE FORM OPENS AT ITS TOP. Focusing the name field scrolled it into view
     // — measured scrollTop 337 at open — so the STAY (cottage + dates, what this
     // form leads with) was already off screen, and on a phone the keyboard
@@ -19696,30 +19686,21 @@ function isCustomPropertyMode() {
     const mode = document.getElementById('modal-mode');
     return !!(sel && sel.value === '__new__' && mode && mode.value === 'add');
 }
-// Show/hide the pricing-dependent step-1 fields and relabel Save → Next for the
-// custom flow (they move to steps 2/3). Called on property change + modal open.
+// The Add button names the action: Next for the new-cottage flow (its rates come
+// next), Add for a new booking, Save for an edit. Everything else the sheet shows
+// is painted by bksSync (admin.js — the form only ever opens with it loaded).
 function applyModalPropertyMode() {
     const custom = isCustomPropertyMode();
-    const setDisp = (id, show) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = show ? '' : 'none';
-    };
-    setDisp('modal-price-box', !custom);
-    setDisp('modal-payment-group', !custom);
-    setDisp('modal-deposit-group', !custom);
-    setDisp('modal-override-group', !custom);
-    // The payment-plan fields are an ADD-time affordance only — an existing
-    // booking's plan is edited from its hub (editPaymentPlan), and the enquiry
-    // editor has no booking to plan for yet.
     const modeEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-mode'));
-    setDisp('modal-plan-group', !custom && !!modeEl && modeEl.value === 'add');
-    // Custom-property mode hides the price box, so the footer's mirror of it
-    // must stand down too (Save relabels to Next — the button itself stays).
-    setDisp('modal-foot-total', !custom);
     const btn = document.getElementById('modal-save-btn');
-    // The button names the ACTION (the figure beside it carries the money —
-    // a label repeating a hostile-length total would blow the bar, §4).
-    if (btn) btn.textContent = custom ? 'Next →' : (modeEl && modeEl.value === 'add' ? 'Add booking' : 'Save');
+    if (btn) btn.textContent = custom ? 'Next' : (modeEl && modeEl.value === 'add' ? 'Add' : 'Save');
+    bksHook();
+}
+function bksHook(what) {
+    const w = /** @type {any} */ (window);
+    if (w.__ADMIN_LOADED && typeof w.bksSync === 'function') {
+        try { w.bksSync(what); } catch (e) {}
+    }
 }
 
 // ---- Add/Edit modal steppers ----
@@ -20054,14 +20035,13 @@ function setModalFields(f) {
                   : '';
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
-    // A fresh open starts with the availability calendar folded to its strip.
-    __mavOpen = false;
-    // The plan opens on STANDARD with blank fields (blank IS the standard) —
-    // it only renders in ADD mode, and the Standard line quotes the LIVE site
-    // terms so the words can never drift from what the server derives.
-    const stdLine = document.getElementById('modal-plan-std-line');
-    if (stdLine) stdLine.textContent = `The site standard — ${paymentTerms.depositPct || 25}% deposit now, the balance due ${paymentTerms.balanceDays || 30} days before arrival.`;
+    // The plan opens on STANDARD with blank fields (blank IS the standard).
     try { modalPlanMode('standard'); } catch (e) {}
+    // The sheet's own view state (folds, the price mode, the reason, the switch).
+    const w = /** @type {any} */ (window);
+    if (w.__ADMIN_LOADED && typeof w.bksReset === 'function') {
+        try { w.bksReset(f); } catch (e) {}
+    }
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
     // Clean slate: release any "move" lock and restore the payment-entry fields
     // left hidden by a previous arrived / fully-paid edit, so Add and normal edits
@@ -20098,120 +20078,29 @@ function modalDayState(c, d) {
     for (const bl of c.blocks) if (d >= bl.checkIn && d < bl.checkOut) return { kind: 'external', who: (bl.source || 'external') + ' import' };
     return null;
 }
-// Six weeks around the chosen dates with this cottage's booked days (own
-// bookings) and imported platform blocks (Airbnb/Vrbo) marked, so a clash is
-// visible BEFORE saving instead of only as the server's warning afterwards.
-// Display-only, from data already loaded — the server stays the authority.
-// The everyday face is ONE summary line (free / overlaps, next booking) —
-// the grid answered a question already settled once dates were chosen, and
-// cost ~350px of every open. It stays one tap away behind the Calendar toggle.
-let __mavOpen = false;
-function mavToggle() {
-    __mavOpen = !__mavOpen;
-    updateModalAvailability();
-}
+// Who the chosen dates overlap, walked over the WHOLE stay (a long booking's far
+// end must not slip past). Display-only, from data already loaded — the server's
+// clash confirm stays the authority. The sheet's verdict row reads __modalClash.
 function updateModalAvailability() {
-    const el = document.getElementById('modal-availability');
-    if (!el) return;
-    // The verdict capsule on the dates row: ✓ free / ⚠ overlaps at a glance
-    // (the strip below still NAMES the blocker and holds the grid).
-    const cap = document.getElementById('modal-date-verdict');
-    const capSet = (clash, has) => {
-        __modalClash = has ? clash : null;
-        if (!cap) return;
-        if (!has) {
-            cap.style.display = 'none';
-            cap.textContent = '';
-            return;
-        }
-        cap.style.display = '';
-        cap.className = 'modal-date-verdict ' + (clash ? 'is-warn' : 'is-ok');
-        cap.textContent = clash ? '⚠ overlaps' : '✓ free';
-    };
-    const hide = () => {
-        el.style.display = 'none';
-        el.innerHTML = '';
-        capSet(null, false);
-    };
-    if (!isAuthenticated) return hide();
+    __modalClash = null;
+    if (!isAuthenticated) return;
     const conflicts = modalStayConflicts();
-    if (!conflicts) return hide();
-    const propKey = conflicts.propKey;
-    const ci = document.getElementById('modal-checkin').value;
-    const co = document.getElementById('modal-checkout').value;
-    const dayState = (d) => modalDayState(conflicts, d);
-    const hasDates = /^\d{4}-\d{2}-\d{2}$/.test(ci) && /^\d{4}-\d{2}-\d{2}$/.test(co) && co > ci;
-    // Clash detection walks the WHOLE chosen stay, not just the grid's six-week
-    // window — a long booking's far end must not slip past the summary line.
-    let clashWith = null;
-    if (hasDates) {
-        for (let d0 = ci, n = 0; d0 < co && n < 400; d0 = ukShiftDays(d0, 1), n++) {
-            const st = dayState(d0);
-            if (st) { clashWith = st.who; break; }
-        }
+    if (!conflicts) return;
+    const ci = dpVal('modal-checkin');
+    const co = dpVal('modal-checkout');
+    if (!(/^\d{4}-\d{2}-\d{2}$/.test(ci) && /^\d{4}-\d{2}-\d{2}$/.test(co) && co > ci)) return;
+    for (let d0 = ci, n = 0; d0 < co && n < 400; d0 = ukShiftDays(d0, 1), n++) {
+        const st = modalDayState(conflicts, d0);
+        if (st) { __modalClash = st.who; return; }
     }
-    // The soonest booking/import starting on or after checkout — the fact that
-    // tells the owner how much room this stay leaves.
-    const nextStart = conflicts.bookings.map((b) => b.checkIn)
-        .concat(conflicts.blocks.map((b) => b.checkIn))
-        .filter((d0) => d0 && d0 >= (hasDates ? co : todayDashed()))
-        .sort()[0] || null;
-    capSet(clashWith, hasDates);
-    const stripTxt = !hasDates
-        ? 'Pick the dates to check availability'
-        : (clashWith ? `Overlaps ${clashWith}` : `Free ${fmtStayRange(ci, co)}`)
-          + (nextStart ? ` · next booking starts ${fmtDate(nextStart)}` : '');
-    let html = `
-        <div class="mav-strip">
-            ${hasDates ? `<span class="mav-strip-dot${clashWith ? ' is-clash' : ''}" aria-hidden="true"></span>` : ''}
-            <span class="mav-strip-txt">${escapeHtml(stripTxt)}</span>
-            <button type="button" class="mav-toggle" data-act="mavToggle">${__mavOpen ? 'Hide calendar' : 'Calendar'}</button>
-        </div>
-        ${clashWith ? `<div class="mav-clash">These dates overlap ${escapeHtml(clashWith)} — you'll be asked to confirm at save.</div>` : ''}`;
-    if (__mavOpen) {
-        // Grid: 6 weeks starting on the Monday of the week holding check-in (or today).
-        const anchorIso = hasDates ? ci : todayDashed();
-        const anchor = new Date(anchorIso + 'T00:00:00Z');
-        const start = new Date(anchor.getTime() - ((anchor.getUTCDay() + 6) % 7) * 86400000);
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        let cells = '';
-        for (let i = 0; i < 42; i++) {
-            const dt = new Date(start.getTime() + i * 86400000);
-            const iso = dt.toISOString().slice(0, 10);
-            const st = dayState(iso);
-            const inRange = ci && co && iso >= ci && iso < co;
-            const cls = ['mav-day'];
-            if (st) cls.push(st.kind === 'booked' ? 'is-booked' : 'is-external');
-            if (inRange) cls.push('is-sel');
-            // Show the month on the 1st (and the first cell) so the strip stays readable.
-            const label = dt.getUTCDate() === 1 || i === 0 ? `${dt.getUTCDate()} ${months[dt.getUTCMonth()]}` : String(dt.getUTCDate());
-            cells += `<span class="${cls.join(' ')}" title="${iso}${st ? ' — ' + escapeHtml(st.who) : ' — free'}">${label}</span>`;
-        }
-        const dows = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => `<span class="mav-dow">${d}</span>`).join('');
-        html += `
-        <div class="mav-head">
-            <span class="modal-label" style="margin:0;">Availability — ${escapeHtml(propertyMeta[propKey].name || propKey)}</span>
-            <span class="mav-legend"><span class="mav-key is-booked"></span>booked<span class="mav-key is-external"></span>imported<span class="mav-key is-sel"></span>this stay</span>
-        </div>
-        <div class="mav-grid">${dows}${cells}</div>`;
-    }
-    el.innerHTML = html;
-    el.style.display = 'block';
 }
 
-// The plan's Standard | Custom toggle (hs-mode vocabulary). Flipping BACK to
-// Standard wipes the fields — a reverted plan must never ride the save. The
-// brief line under it renders in BOTH modes now (it states the first payment,
-// which every plan has); only the pct/due fields fold.
+// The plan's Standard | Custom state: the First payment row's fold. Going BACK to
+// standard wipes the fields — a reverted plan must never ride the save.
+let __modalPlanCustom = false;
 function modalPlanMode(mode) {
-    const custom = mode === 'custom';
-    const wrap = document.getElementById('modal-plan-custom');
-    if (wrap) wrap.style.display = custom ? '' : 'none';
-    const sb = document.getElementById('modal-plan-std-btn');
-    const cb = document.getElementById('modal-plan-custom-btn');
-    if (sb) { sb.classList.toggle('is-on', !custom); sb.setAttribute('aria-pressed', String(!custom)); }
-    if (cb) { cb.classList.toggle('is-on', custom); cb.setAttribute('aria-pressed', String(custom)); }
-    if (!custom) {
+    __modalPlanCustom = mode === 'custom';
+    if (!__modalPlanCustom) {
         const p = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
         if (p) p.value = '';
         const d0 = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
@@ -20231,7 +20120,7 @@ let __modalClash = null;
 function modalPlanFacts() {
     const m = __modalMoney;
     if (!m || !(m.total > 0) || !m.checkIn) return null;
-    const custom = !!document.querySelector('#modal-plan-custom-btn.is-on');
+    const custom = __modalPlanCustom;
     const pctEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
     const dueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
     const pctRaw = custom && pctEl && pctEl.value !== '' ? parseFloat(pctEl.value) : NaN;
@@ -20250,63 +20139,11 @@ function modalPlanFacts() {
         due,
     };
 }
-// The plan line speaks the derivation — first payment as the card takes it,
-// balance + date, "full amount up front" inside the window; site standard
-// while nothing is priced.
-function modalPlanBrief() {
-    const line = document.getElementById('modal-plan-std-line');
-    if (!line) return;
-    const f = modalPlanFacts();
-    if (!f) {
-        line.textContent = `The site standard — ${paymentTerms.depositPct || 25}% deposit now, the balance due ${paymentTerms.balanceDays || 30} days before arrival.`;
-        return;
-    }
-    const dep = __modalMoney.dep;
-    line.textContent = f.full
-        ? `Arrival is inside the ${paymentTerms.balanceDays || 30}-day window, so the full amount is asked up front — first payment ${gbp(f.first)}${dep > 0 ? ` (stay ${gbp(__modalMoney.total)} + ${gbp(dep)} refundable)` : ''}.`
-        : `First payment ${gbp(f.first)} — ${f.pct}% deposit ${gbp(f.planDep)}${dep > 0 ? ` + ${gbp(dep)} refundable` : ''} · balance ${gbp(f.balance)} due by ${fmtDate(f.due)}.`;
-}
-
-// The sticky footer's figure MIRRORS the price box's own rendered total —
-// read back, never recomputed, so the two surfaces can't quote different
-// numbers (the §C3 discipline). No total row → an honest dash. The SUB line
-// beneath it is the add-mode consequence: the clash warning, or the plan's
-// first payment + due date (the same facts the plan brief states).
-function modalFootSync() {
-    const fig = document.getElementById('modal-foot-fig');
-    if (!fig) return;
-    const amt = document.querySelector('#modal-price-box .price-row.total .price-amount');
-    fig.textContent = amt ? amt.textContent : '—';
-    const cap = document.getElementById('modal-foot-cap');
-    const lbl = document.querySelector('#modal-price-box .price-row.total span:first-child');
-    if (cap) cap.textContent = lbl ? lbl.textContent : 'Total';
-    const sub = document.getElementById('modal-foot-sub');
-    if (!sub) return;
-    let txt = '';
-    if (dpVal('modal-mode') === 'add') {
-        if (__modalClash) txt = `⚠ Overlaps ${__modalClash} — you'll be asked to confirm`;
-        else if (__modalMoney) {
-            const f = modalPlanFacts();
-            if (f) txt = f.full ? `Full amount up front — first payment ${gbp(f.first)}` : `First payment ${gbp(f.first)} · balance due ${fmtDate(f.due)}`;
-        } else if (amt) {
-            txt = '';
-        } else {
-            txt = 'Pick the dates to price the stay';
-        }
-    }
-    sub.textContent = txt;
-    sub.style.display = txt ? '' : 'none';
-}
-
 // Live total inside the Add/Edit modal
 function updateModalPrice() {
     updateModalPriceCore();
     try {
-        modalFootSync();
-    } catch (e) {}
-    try {
         modalStepSync();
-        modalPlanBrief();
         // A prefilled amount follows the plan while still OURS (data-auto);
         // a figure the owner typed over is never touched.
         const amt = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-deposit-amount'));
@@ -20321,105 +20158,77 @@ function updateModalPrice() {
             }
         }
     } catch (e) {}
+    bksHook();
 }
 function updateModalPriceCore() {
     try {
         updateModalAvailability();
     } catch (e) {}
-    __modalMoney = null; // refilled below only when a fresh stay is priced
-    const box = document.getElementById('modal-price-box');
-    if (!box) return;
+    // What the sheet states and the plan reads — ONE derivation, never a second
+    // price calc. Null until a real cottage and a real stay are chosen.
+    __modalMoney = null;
     const cur = currentModalProperty();
     const propKey = cur.key;
-    const checkIn = document.getElementById('modal-checkin').value;
-    const checkOut = document.getElementById('modal-checkout').value;
-    const adults = Math.max(1, parseInt(document.getElementById('modal-adults').value, 10) || 0);
-    const children = Math.max(
-        0,
-        parseInt(document.getElementById('modal-children').value, 10) || 0,
-    );
-    if (!checkIn || !checkOut || checkOut <= checkIn) {
-        box.innerHTML = `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">Enter valid dates to see the total.</p>`;
-        return;
-    }
-    // "New property…" chosen → it'll be created as a private cottage on save;
-    // there's no rate to price against until then.
-    if (!propKey) {
-        const nm = cur.newName;
-        box.innerHTML = nm
-            ? `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">“${escapeHtml(nm)}” will be created as a new private cottage — you'll set its nightly rate when you save, then the total appears here.</p>`
-            : `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">Type the new property's name to continue.</p>`;
-        return;
-    }
-    const depEl = document.getElementById('modal-damages-deposit');
-    const depOverride = depEl && depEl.value !== '' ? depEl.value : null;
+    const checkIn = dpVal('modal-checkin');
+    const checkOut = dpVal('modal-checkout');
+    const adults = Math.max(1, parseInt(dpVal('modal-adults'), 10) || 0);
+    const children = Math.max(0, parseInt(dpVal('modal-children'), 10) || 0);
+    if (!propKey || !checkIn || !checkOut || checkOut <= checkIn) return;
+    const depOverride = dpVal('modal-damages-deposit') !== '' ? dpVal('modal-damages-deposit') : null;
     const p = priceBreakdown(propKey, adults, children, checkIn, checkOut, depOverride);
-    const extras = [];
-    if (p.extraAdults > 0)
-        extras.push(`${p.extraAdults} extra adult${p.extraAdults === 1 ? '' : 's'}`);
-    if (children > 0) extras.push(`${children} child${children === 1 ? '' : 'ren'}`);
-    const perNightLabel = `Couple${extras.length ? ' + ' + extras.join(' + ') : ''}`;
-    const ovEl = document.getElementById('modal-price-override');
-    const override = ovEl && ovEl.value !== '' ? Math.max(0, parseFloat(ovEl.value) || 0) : null;
-    // Deposit is charged with the first payment & refunded after the stay → show it
-    // inside the total until it's been refunded (for an edit, use the booking's state).
+    const ovRaw = dpVal('modal-price-override');
+    const override = ovRaw !== '' ? Math.max(0, parseFloat(ovRaw) || 0) : null;
+    // EDITING A CONFIRMED BOOKING: the price was LOCKED when it was booked. While
+    // the stay is unchanged the standard is the AGREED rental (what saving
+    // preserves); changing dates, party, cottage or deposit reprices at today's
+    // rates, and the sheet says that saving replaces the agreed figure.
     let holdSt = 'none';
-    let repriceNote = '';
-    if (document.getElementById('modal-mode').value === 'booking') {
-        const bk =
-            typeof findBookingById === 'function'
-                ? findBookingById(document.getElementById('modal-record-id').value)
-                : null;
+    let agreed = null;
+    let stayChanged = false;
+    let agreedWas = null;
+    let bk = null;
+    if (dpVal('modal-mode') === 'booking') {
+        bk = typeof findBookingById === 'function' ? findBookingById(dpVal('modal-record-id')) : null;
         if (bk) holdSt = bk.holdStatus || 'none';
-        // EDITING A CONFIRMED BOOKING: the price was LOCKED when it was booked.
-        // While the stay is unchanged, show the AGREED figures — that is exactly
-        // what saving preserves (bookings.php only re-snapshots when the stay
-        // changes). Changing dates/party/deposit falls through to today's rates,
-        // with an explicit note that saving replaces the agreed total.
         if (bk && bk.agreedPrice) {
             const a = bk.agreedPrice;
             const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bk.id) : null;
             const curDep = bk.damagesDeposit != null ? bk.damagesDeposit : a.damagesDeposit || 0;
-            const stayChanged =
+            stayChanged =
                 (loc && loc.propKey && propKey !== loc.propKey) ||
                 checkIn !== bk.checkIn ||
                 checkOut !== bk.checkOut ||
                 adults !== bk.adults ||
                 children !== bk.children ||
                 (depOverride !== null && parseFloat(depOverride) !== curDep);
-            const agreedGrand = displayGrandTotal(a.total, a, holdSt);
-            if (!stayChanged && override === null) {
-                const aDep = displayDepositAmt(a, holdSt);
-                box.innerHTML = `
-                <div class="price-row"><span>${gbp(a.perNight)} × ${a.nights} night${a.nights === 1 ? '' : 's'}</span><span>${gbp(a.nightly)}</span></div>
-                <div class="price-row"><span>Transaction fee (${a.transactionPct || 0}%)</span><span>${gbp(a.txFee || 0)}</span></div>
-                ${aDep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(aDep)}</span></div>` : ''}
-                <div class="price-row total"><span>Agreed total${aDep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(agreedGrand)}</span></div>
-                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">Agreed price — locked at the rates in effect when booked. Changing the dates or party reprices at today's rates.</p>`;
-                return;
-            }
-            if (stayChanged) {
-                repriceNote = `<p style="font-size:var(--fs-caption);color:var(--warn);margin:8px 0 0;">New price at today's rates — saving replaces the agreed ${gbp(agreedGrand)}.</p>`;
-            }
+            if (!stayChanged) agreed = a;
+            else agreedWas = displayGrandTotal(a.total, a, holdSt);
         }
     }
-    const depAmt = displayDepositAmt(p, holdSt);
-    // The plan brief / foot sub / prefill read THIS, never a re-derivation:
-    // the rental frame the plan's percentage bites on, and the refundable
-    // deposit that rides the first payment.
-    __modalMoney = { total: override !== null ? override : p.total, dep: depAmt, checkIn };
-    let rows = `
-                <div class="price-row"><span>${perNightLabel} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
-                <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                ${depAmt > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(depAmt)}</span></div>` : ''}`;
-    if (override !== null) {
-        rows += `
-                <div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(displayGrandTotal(p.total, p, holdSt))}</span></div>
-                <div class="price-row total"><span>Total${depAmt > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(override, p, holdSt))}</span></div>`;
-    } else {
-        rows += `<div class="price-row total"><span>Total${depAmt > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, holdSt))}</span></div>`;
-    }
-    box.innerHTML = rows + repriceNote;
+    // The standard rental: the agreed snapshot (nightly + fee — a.total carries
+    // the override once one is set), else today's rates.
+    const stdTotal = agreed
+        ? Math.round(((agreed.hasSnapshot ? (agreed.nightly || 0) + (agreed.txFee || 0) : agreed.total) || 0) * 100) / 100
+        : p.total;
+    const total = override !== null ? override : stdTotal;
+    const dep = displayDepositAmt(p, holdSt);
+    __modalMoney = {
+        total, // the RENTAL frame the plan's percentage bites on
+        dep, // the refundable that rides the first payment
+        checkIn,
+        checkOut,
+        propKey,
+        p,
+        nights: p.nights,
+        stdTotal,
+        override,
+        agreed,
+        agreedWas,
+        stayChanged,
+        holdSt,
+        booking: bk,
+        grand: Math.round((total + dep) * 100) / 100,
+    };
 }
 
 function openEditBooking(bookingId) {
@@ -20452,7 +20261,7 @@ function openEditBookingNow(bookingId) {
     // edits — money is managed on the Payments card from then on. Hide them.
     const ps = typeof paymentSummary === 'function' ? paymentSummary(loc.propKey, b) : null;
     const fullyPaid = !!(ps && ps.fullyPaid);
-    document.getElementById('modal-title').innerText = arrived ? 'Edit booking' : 'Edit or move booking';
+    document.getElementById('modal-title').innerText = b.name || 'Edit booking';
     document.getElementById('modal-mode').value = 'booking';
     document.getElementById('modal-record-id').value = b.id;
     setModalFields({
@@ -20477,6 +20286,7 @@ function openEditBookingNow(bookingId) {
         agreedPrice: b.agreedPrice,
         damagesDeposit: b.damagesDeposit,
         priceOverride: b.priceOverride,
+        priceReason: b.priceReason,
     });
     togglePaymentField(true);
     openModal();
@@ -20484,54 +20294,34 @@ function openEditBookingNow(bookingId) {
     trimPaidBookingFields(fullyPaid);
 }
 
-// Hide (or restore) the payment-entry fields of the booking modal — status/date/
-// method, the damages-deposit amount and the price override. Once a booking is
-// fully paid these only invite accidental edits; money is managed on the Payments
-// card from then on. setModalFields() restores them first, so Add and part-paid
-// edits keep the full form.
+// A FULLY PAID booking's price is a record: the sheet stops offering a custom
+// price or a deposit change, and says where money is managed now. setModalFields()
+// releases it first, so Add and part-paid edits keep the full sheet.
 function trimPaidBookingFields(hide) {
-    ['modal-payment-group', 'modal-deposit-group', 'modal-override-group'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = hide ? 'none' : '';
-    });
-    let note = document.getElementById('modal-paid-note');
-    if (hide) {
-        const anchor = document.getElementById('modal-price-box');
-        if (!note && anchor && anchor.parentNode) {
-            note = document.createElement('p');
-            note.id = 'modal-paid-note';
-            note.style.cssText = 'font-size:var(--fs-sub);color:var(--text-muted);margin:10px 0 4px;';
-            anchor.parentNode.insertBefore(note, anchor.nextSibling);
-        }
-        if (note) note.textContent = 'Paid in full — manage payments (refunds, deposit return) on the booking’s Payments card.';
-    } else if (note) {
-        note.remove();
-    }
+    const box = document.querySelector('#edit-modal .modal-box');
+    if (box) box.classList.toggle('bks-paidlock', !!hide);
+    bksHook();
 }
 
-// Lock (or release) the "move" fields of the booking modal — the date picker and
-// the cottage select — leaving every other field editable. Used when a booking
-// has already started: the owner can still fix details, but can't relocate a stay
-// that's under way. setModalFields() always releases it first, so Add and normal
-// edits are never left locked.
+// Once the guest has ARRIVED the stay can't be moved: the date tiles and the
+// cottage row lock, every other field stays editable. setModalFields() always
+// releases it first, so Add and normal edits are never left locked.
 function lockBookingMove(lock) {
+    const box = document.querySelector('#edit-modal .modal-box');
+    if (box) box.classList.toggle('bks-movelock', !!lock);
+    document.querySelectorAll('#modal-date-trigger .bks-tile, #bks-cot-row').forEach((b) => {
+        /** @type {HTMLButtonElement} */ (b).disabled = !!lock;
+    });
     const trig = document.getElementById('modal-date-trigger');
-    const prop = document.getElementById('modal-property');
-    if (trig) {
-        trig.disabled = !!lock;
-        trig.style.opacity = lock ? '0.55' : '';
-        trig.style.pointerEvents = lock ? 'none' : '';
-    }
-    if (prop) prop.disabled = !!lock;
     let note = document.getElementById('modal-move-locked');
     if (lock && trig && trig.parentNode) {
         if (!note) {
-            note = document.createElement('p');
+            note = document.createElement('div');
             note.id = 'modal-move-locked';
-            note.style.cssText = 'margin:6px 0 0;font-size:var(--fs-sub);color:var(--text-muted);';
+            note.className = 'bks-note';
             trig.parentNode.insertBefore(note, trig.nextSibling);
         }
-        note.textContent = 'The guest has arrived — the dates and cottage are locked. You can still edit the other details.';
+        note.textContent = 'They’ve arrived, so the dates and cottage are locked. Everything else can change.';
     } else if (note) {
         note.remove();
     }
@@ -20552,27 +20342,27 @@ function togglePaymentField(show) {
 // (these used to be 3 sequential pop-up prompts AFTER pressing Save). For
 // "Paid in Full" the amount is the total, so only date + method show.
 function togglePaymentDetails() {
-    const status = (document.getElementById('modal-payment') || {}).value || 'unpaid';
+    const status = dpVal('modal-payment') || 'unpaid';
     const det = document.getElementById('modal-payment-details');
     if (!det) return;
-    det.style.display = status === 'deposit' || status === 'paid' ? '' : 'none';
+    const open = status === 'deposit' || status === 'paid';
+    det.classList.toggle('on', open);
     const amtWrap = document.getElementById('modal-deposit-amount-wrap');
-    if (amtWrap) amtWrap.style.display = status === 'deposit' ? '' : 'none';
+    if (amtWrap) amtWrap.hidden = status !== 'deposit';
     // Default the payment date to today the first time it's revealed.
-    const pd = document.getElementById('modal-payment-date');
-    if (pd && det.style.display !== 'none' && !pd.value) pd.value = todayDashed();
-    modalPaySync(); // keep the visible segment in step with the select
+    const pd = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-payment-date'));
+    if (pd && open && !pd.value) pd.value = todayDashed();
+    modalPaySync(); // keep the visible switcher in step with the select
 }
 // Paint the "Payment so far" segment from the hidden select — the select stays
 // the source of truth (setModalFields and every save path read/write it), so a
 // programmatic write + change event repaints exactly like a tap.
 function modalPaySync() {
     const v = dpVal('modal-payment') || 'unpaid';
-    document.querySelectorAll('#modal-pay-seg .hs-mode-btn').forEach((b) => {
-        const on = b.getAttribute('data-arg') === v;
-        b.classList.toggle('is-on', on);
-        b.setAttribute('aria-pressed', String(on));
+    document.querySelectorAll('#modal-pay-seg button').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-arg') === v));
     });
+    bksHook();
 }
 // A segment tap: set the select, reveal the fields — and in ADD mode prefill
 // the amount with what the card would actually take (the plan's first payment,
@@ -20670,8 +20460,13 @@ async function saveModal() {
         errBox.style.display = 'block';
     };
 
-    if (!name || !checkIn || !checkOut) {
-        showErr('Name and both dates are required.');
+    // Not ready yet: point at what is missing rather than refusing in a box.
+    if (!checkIn || !checkOut) {
+        bksHook('nudge-dates');
+        return;
+    }
+    if (!name) {
+        bksHook('nudge-name');
         return;
     }
     if (checkOut <= checkIn) {
@@ -20800,19 +20595,31 @@ async function saveModal() {
         adults,
         children,
         notes,
-        payment,
     };
+    // AN EDIT SHOWS THE MONEY WITHOUT SENDING IT: absent payment fields keep what
+    // was received (bookings.php re-derives the status against the new total), so
+    // a save can never wipe a payment. A NEW booking records what was paid.
+    if (mode === 'add') payload.payment = payment;
     if (damagesDeposit !== null) payload.damages_deposit = damagesDeposit;
     // Always send price_override: a number sets it, '' clears it (revert to calculated)
     payload.price_override =
         priceOverride === '' ? '' : Math.max(0, parseFloat(priceOverride) || 0);
-    if (depositAmount !== null) payload.deposit = depositAmount;
-    if (paymentDate !== null) payload.payment_date = paymentDate;
-    if (paymentMethod !== null) payload.payment_method = paymentMethod;
+    if (mode === 'add') {
+        if (depositAmount !== null) payload.deposit = depositAmount;
+        if (paymentDate !== null) payload.payment_date = paymentDate;
+        if (paymentMethod !== null) payload.payment_method = paymentMethod;
+    }
+    // Why the price is custom (owner-only, migration-138); '' clears it with the price.
+    const whyEl = document.querySelector('#bks-why [aria-pressed="true"]');
+    payload.price_reason = payload.price_override !== '' && whyEl ? whyEl.getAttribute('data-v') || '' : '';
+    // The sheet's "Email the confirmation" switch (absent = on, older pages).
+    const confEl = /** @type {HTMLInputElement|null} */ (document.getElementById('bks-conf'));
+    const sendConf = !!(confEl && confEl.checked && !confEl.disabled);
+    if (mode === 'add' && email) payload.send_confirmation = sendConf;
     // Payment plan at booking time — ADD only, and only while the toggle says
     // CUSTOM (belt and braces with modalPlanMode's wipe: the payload can never
     // carry values the owner reverted away from). Blank sends nothing.
-    if (mode === 'add' && document.querySelector('#modal-plan-custom-btn.is-on')) {
+    if (mode === 'add' && __modalPlanCustom) {
         const planPctEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
         const planDueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
         const planPct = planPctEl ? planPctEl.value.trim() : '';
@@ -20823,7 +20630,6 @@ async function saveModal() {
 
     try {
         let addRes = null;
-        let materialEdit = true; // an older server that does not say assumes yes
         if (mode === 'add') {
             // One id per save intent (chbOpFor): a hand retry replays instead
             // of double-adding, and the guarded ladder's override posts share
@@ -20842,8 +20648,6 @@ async function saveModal() {
             const upRes = await saveBookingGuarded('update', payload, 'Save these changes anyway?');
             if (upRes === null) return;
             chbOpBump();
-            // Server-decided: it holds the OLD row. Silence assumes yes.
-            materialEdit = !upRes || upRes.material !== false;
         }
         await loadData();
         closeModal();
@@ -20851,15 +20655,18 @@ async function saveModal() {
         clearDetails();
         showChangeoverToasts();
         if (mode !== 'add') {
-            toast('Booking updated.');
-            // Offer the guest the updated details — the money row's own ask, so
-            // wording never forks. Only on a MATERIAL edit (dates/cottage/party/
-            // price; bookings.php decides): it fired on every save, so a phone-typo
-            // asked to re-send the confirmation, and an ask that appears for nothing
-            // teaches the owner to dismiss the one that counts.
-            if (payload.email && materialEdit) {
-                const freshB = Object.values(dbBookings).flat().find((x) => x.dbId === payload.id);
-                if (freshB) await offerUpdatedConfirmationEmail(freshB.id);
+            // THE SWITCH IS THE DECISION: on by itself when something the guest's
+            // confirmation states changed (dates, cottage, party, price), off
+            // otherwise — so a phone-number fix never asks, and no dialog follows.
+            if (payload.email && sendConf) {
+                try {
+                    await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id, guest_only: true });
+                    toast(`Saved — ${(name.split(/\s+/)[0] || 'the guest')} has been emailed the changes.`);
+                } catch (e) {
+                    glassAlert("Saved, but the email didn't send: " + (e && e.message ? e.message : e));
+                }
+            } else {
+                toast('Booking updated.');
             }
         }
         if (mode === 'add' && addRes) {
@@ -20870,7 +20677,9 @@ async function saveModal() {
                 ? (Object.values(dbBookings).flat().find((x) => x.dbId === addRes.id) || null)
                 : null;
             const guestEmail = addRes.email && addRes.email.guest;
-            if (guestEmail && guestEmail.ok) {
+            if (payload.send_confirmation === false) {
+                toast('Booking saved — no email sent.');
+            } else if (guestEmail && guestEmail.ok) {
                 toast(`Booking saved — confirmation emailed to ${payload.email}.`);
             } else if (
                 guestEmail &&
@@ -21517,7 +21326,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'plusfix1';
+    const BUILD = 'addbooksheet';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

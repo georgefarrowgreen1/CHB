@@ -23,7 +23,7 @@ if (!function_exists('booking_by_id')) {
     }
 }
 
-function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner = false)
+function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner = false, $skipGuest = false)
 {
     try {
         $b = booking_by_id((int) $bookingId);
@@ -123,6 +123,9 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             'skip_owner' => $guestOnly,
             // Send the owner copy after the HTTP response (booking-add flow).
             'defer_owner' => $deferOwner,
+            // The Add-booking sheet's "Email the confirmation" switch, turned off:
+            // the owner copy still goes, the guest's does not.
+            'skip_guest' => $skipGuest,
             // Signed link to the guest-viewable HTML invoice (invoice.php).
             'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
             // Signed link to the guest-registration form (UK hotel-records duty).

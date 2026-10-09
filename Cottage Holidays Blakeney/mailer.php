@@ -2632,7 +2632,10 @@ function send_booking_emails($b)
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
     // ---- Guest confirmation ----
-    if (!empty($b['email'])) {
+    if (!empty($b['skip_guest'])) {
+        $out['guest']['error'] = 'Not sent (switched off)';
+    }
+    if (!empty($b['email']) && empty($b['skip_guest'])) {
         // THE SUBJECT SAYS WHICH STAY AND WHEN, so it can be found again in a search for
         // "Jollyboat" or "Sep" — not just that "a booking" happened.
         $subject = "You’re booked: {$b['prop_name']}, " . email_range($b['check_in'], $b['check_out']);

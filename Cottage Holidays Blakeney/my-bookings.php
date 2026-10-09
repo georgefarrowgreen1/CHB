@@ -86,6 +86,8 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // went with it. Stripped here rather than narrowing the SELECT, because
         // every other consumer of that row is owner-side and still needs it.
         unset($bk['notes']);
+        // The same for WHY the owner charged what they did (migration-138).
+        unset($bk['price_reason']);
         $bk['pay_token'] = ($preview || !$sqOn) ? null : pay_token((int) $bk['id']);
         $ks = $ksFor($bk['prop_key']);
         // The cottage's on/off switch gates the reveal too — a keeper the
