@@ -487,7 +487,8 @@ let mailWillFail = false;
     const pc = document.getElementById('pricing-body');
     const w = pc.querySelector('.pr-scard');
     const coach = {
-      cap: [...pc.querySelectorAll('.acr-cap')].some((c) => /searched for/.test(c.textContent)),
+      // The search weeks fold under their own row now (the one-look pass).
+      cap: [...pc.querySelectorAll('.bhub-fold-grp')].some((g) => /searched for/.test((g.querySelector('.bhub-fold-lbl') || g).textContent)),
       opp: !!pc.querySelector('.pr-scard .st-cap.is-ok .st-tick'),
       insight: !!pc.querySelector('.pr-scard .st-cap.is-unk'),
       well: w ? getComputedStyle(w).borderStyle !== 'none' : false,

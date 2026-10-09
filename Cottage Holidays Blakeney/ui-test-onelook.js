@@ -1,0 +1,234 @@
+// ONE LOOK ACROSS MANAGE (the approved "One look for Manage" demo), driven in a
+// real browser. What is worth driving here rather than reading off the CSS:
+//
+//   §1 every Manage page's buttons are one of THREE kinds, with no old look
+//      class left — oneLookButtons is a choke point, so a page that escapes it
+//      is the defect (the email_dark_hooks rule);
+//   §2 the back link NAMES where it goes, on every route that sets one;
+//   §3 the menu: no Status row (the pill is the way in), the rare tools fold
+//      under "More tools", and the rows carry no sub-lines;
+//   §4 adding is a ROW at the foot of the list it adds to, never a pill among
+//      the actions;
+//   §5 every field in the place editor has a label of its own;
+//   §6 a window opened from Manage is a bottom sheet on a phone — and the same
+//      window opened outside Manage is untouched (the scope is the point);
+//   §7 one caption tier on Manage, the old tracked capitals left alone outside it.
+const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+let fails = 0;
+const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
+const OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
+
+async function open(browser, base, width) {
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); try { localStorage.setItem('chb-theme', 'dark'); } catch (e) {} });
+  await page.route(/\.php/, (route) => {
+    const url = route.request().url();
+    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    let b = {}; try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+    if (url.includes('experiences.php')) return json({ ok: true, experiences: [
+      { id: 7, status: 'published', title: 'Blakeney Point seal trips', category: 'Boat trips & wildlife', body: 'Seals.', image_url: '' },
+      { id: 8, status: 'published', title: 'Cley Marshes', category: 'Walks & nature', body: 'Birds.', image_url: '' },
+    ] });
+    if (url.includes('rates.php')) return json({ properties: [
+      { prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
+      { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 150, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 2 },
+    ], seasons: {}, occupancy: {} });
+    if (url.includes('reviews.php')) return json({ ok: true, reviews: [{ id: 1, status: 'pending', prop: '21a', name: 'Margaret', text: 'Lovely.' }] });
+    if (url.includes('ical-import.php')) return json({ ok: true, feeds: [], blocks: [] });
+    if (route.request().method() === 'POST' && b.action === 'admin_status') return json({ ok: true, admin: true });
+    return json({ ok: true, bookings: [], enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
+  });
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+  await page.evaluate(() => window.loadAdminBundle());
+  await page.waitForTimeout(700);
+  await page.evaluate(async () => { await loadData(); await openArea(); });
+  await page.waitForTimeout(800);
+  return page;
+}
+
+(async () => {
+  const t = await bootBrowser();
+  const page = await open(t.browser, t.base, 390);
+
+  console.log('§1 every Manage button is one of three kinds');
+  const SECS = ['payments', 'reviews', 'replies', 'follow-ups', 'sms', 'experiences', 'newsletter', 'backups', 'apis', 'calendar', 'content', 'cancel', 'seasongrid'];
+  const seen = { kinds: 0, old: [] };
+  for (const sec of SECS) {
+    await page.evaluate((s) => settingsOpen(s), sec);
+    await page.waitForTimeout(350);
+    const r = await page.evaluate((OLD) => {
+      const v = document.getElementById('view-settings');
+      const old = [...v.querySelectorAll('button, a.btn-sm')].filter((b) => OLD.some((c) => b.classList.contains(c))).map((b) => b.className + ' "' + b.textContent.trim().slice(0, 20) + '"');
+      return { old, kinds: v.querySelectorAll('.u-btn1, .u-btn2, .u-btn3').length };
+    }, OLD);
+    seen.kinds += r.kinds;
+    r.old.forEach((x) => seen.old.push(sec + ': ' + x));
+  }
+  ok(seen.kinds >= 30, `the pages' buttons carry one of the three kinds (${seen.kinds} across ${SECS.length} pages; vacuity guard)`);
+  ok(seen.old.length === 0, `no button keeps an old look class${seen.old.length ? ' — ' + seen.old.slice(0, 4).join(' · ') : ''}`);
+  const kinds = await page.evaluate(async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 30)); // the kinds land on the observer's microtask
+    settingsOpen('replies');
+    await tick();
+    const del = [...document.querySelectorAll('#replies-body button')].find((b) => /^Delete$/.test(b.textContent.trim()));
+    settingsOpen('backups');
+    await tick();
+    const up = [...document.querySelectorAll('#backups-body button')].find((b) => /^Back up now$/.test(b.textContent.trim()));
+    const ver = [...document.querySelectorAll('#backups-body button')].find((b) => /^Verify latest$/.test(b.textContent.trim()));
+    return { del: del && del.className, up: up && up.className, ver: ver && ver.className };
+  });
+  ok(/u-btn3/.test(kinds.del || '') && /u-btn1/.test(kinds.up || '') && /u-btn2/.test(kinds.ver || ''), `Delete is danger ink, Back up now the accent, Verify latest outlined (${kinds.del} / ${kinds.up} / ${kinds.ver})`);
+  // The kind lands on a button a renderer adds LATER, not only on the first paint.
+  const late = await page.evaluate(async () => {
+    settingsOpen('backups');
+    const b = document.createElement('button'); b.className = 'btn-sm btn-edit'; b.textContent = 'Save later'; document.getElementById('backups-body').appendChild(b);
+    await new Promise((r) => setTimeout(r, 30));
+    return b.className;
+  });
+  ok(late === 'u-btn1', `a button painted after the page opened is given its kind too (${late})`);
+
+  console.log('§2 the back link names where it goes');
+  const backs = await page.evaluate(async () => {
+    const w = () => new Promise((r) => setTimeout(r, 250));
+    const t = () => document.getElementById('settings-back').textContent.trim();
+    const o = {};
+    settingsOpen('payments'); await w(); o.payments = t();
+    settingsOpen('reviews-import'); await w(); o.importBack = t();
+    settingsOpenCancel('21a'); await w(); o.cancel21 = t();
+    settingsOpen('pricing'); await w(); o.pricing = t(); o.pricingTitle = document.getElementById('settings-panel-title').textContent;
+    prOpenCosts(); await w(); o.costs = t(); o.costsTitle = document.getElementById('settings-panel-title').textContent; o.costsCap = document.getElementById('settings-panel-cap').textContent;
+    o.oneBack = document.querySelectorAll('#pricing-body .pr-up, #pricing-body .pr-ptitle').length === 0;
+    settingsBack(); await w(); o.afterCosts = document.getElementById('settings-panel-title').textContent;
+    return o;
+  });
+  ok(backs.payments === 'Manage', `a page off the menu goes back to "Manage" (${backs.payments})`);
+  ok(backs.importBack === 'Reviews', `a sub-page names its parent (${backs.importBack})`);
+  ok(backs.cancel21 === 'Cancellation policy', `a cottage's policy goes back to "Cancellation policy" (${backs.cancel21})`);
+  ok(backs.pricingTitle === 'Price ideas' && backs.pricing === 'Manage', `the page is named as its menu row (${backs.pricingTitle})`);
+  ok(backs.costs === 'Price ideas' && backs.costsTitle === 'Changeovers' && backs.oneBack && !backs.costsCap, `Changeovers has ONE header: "‹ Price ideas" over its own title, no ideas badge (${backs.costs} / ${backs.costsTitle})`);
+  ok(backs.afterCosts === 'Price ideas', `…and its back link returns to Price ideas (${backs.afterCosts})`);
+
+  console.log('§3 the menu');
+  const menu = await page.evaluate(async () => {
+    settingsShowIndex();
+    const idx = document.getElementById('settings-index');
+    const row = document.getElementById('mt-row');
+    const fold = document.getElementById('mt-fold');
+    const before = { hidden: fold.hidden, exp: row.getAttribute('aria-expanded') };
+    row.click();
+    await new Promise((r) => setTimeout(r, 50));
+    const after = { hidden: fold.hidden, exp: row.getAttribute('aria-expanded'), inside: [...fold.querySelectorAll('.settings-row')].map((r) => r.dataset.arg || r.id).join(',') };
+    row.click();
+    return {
+      status: !!idx.querySelector('[data-arg="diagnostics"]'),
+      subs: [...idx.querySelectorAll(':scope > .settings-group .settings-row-sub')].filter((s) => !s.closest('.mg-cot') && s.id !== 'oa-index-sub').length,
+      cotFig: idx.querySelectorAll('.mg-fig').length,
+      before, after, closed: fold.hidden,
+      names: ['seasongrid', 'pricing', 'guests'].map((a) => (idx.querySelector(`[data-arg="${a}"] .settings-row-label`) || {}).textContent),
+    };
+  });
+  ok(!menu.status, 'no Status row: the pill beside the title is the way in');
+  ok(menu.subs === 0 && menu.cotFig === 0, `a menu row says where it goes and nothing more (${menu.subs} sub-lines, ${menu.cotFig} booked figures)`);
+  ok(menu.before.hidden && menu.before.exp === 'false' && !menu.after.hidden && menu.after.exp === 'true' && menu.closed, 'More tools opens and closes in place, saying so');
+  ok(/backups/.test(menu.after.inside) && /apis/.test(menu.after.inside) && /search-learning/.test(menu.after.inside), `…holding Backups, Integrations and Search learning (${menu.after.inside})`);
+  ok(menu.names.join('|') === 'Seasonal rates|Price ideas|Guest list', `three rows renamed for what the page is (${menu.names.join(' · ')})`);
+
+  console.log('§4 adding is a row at the foot of its list');
+  const adds = await page.evaluate(async () => {
+    settingsOpen('replies');
+    const rb = document.getElementById('replies-body');
+    const lastIsAdd = rb.lastElementChild && rb.lastElementChild.matches('.u-addrow') && /Write a new reply/.test(rb.lastElementChild.textContent);
+    settingsOpen('experiences');
+    await new Promise((r) => setTimeout(r, 400));
+    const list = document.getElementById('exp-admin-list');
+    const expAdd = list && list.lastElementChild && list.lastElementChild.querySelector('.u-addrow[data-act="expAddNew"]');
+    settingsOpenAccom('21a');
+    __bhubOpenFolds.add('ac-21a-amenities');
+    settingsOpenAccom('21a');
+    const well = document.querySelector('#bhub-fold-ac-21a-amenities .acr-well');
+    const kids = well ? [...well.children] : [];
+    const ai = kids.findIndex((x) => x.matches('.u-addrow'));
+    const si = kids.findIndex((x) => x.matches('.acw-acts'));
+    const pillAdds = [...document.querySelectorAll('#view-settings button')].filter((b) => /^Add (a|an|another|something)\b/.test(b.textContent.trim()) && !b.matches('.u-addrow, .settings-row, .ga-row')).map((b) => b.textContent.trim());
+    return { lastIsAdd, expAdd: !!expAdd, order: ai >= 0 && si > ai, pillAdds };
+  });
+  ok(adds.lastIsAdd, 'Saved replies: "Write a new reply" is the list card\'s last row');
+  ok(adds.expAdd, 'Things to do: "Add something to do" closes the list');
+  ok(adds.order, 'a cottage list: the add row sits under the list, above the Save actions');
+  ok(adds.pillAdds.length === 0, `no "Add …" pill is left among a page's actions${adds.pillAdds.length ? ' — ' + adds.pillAdds.join(', ') : ''}`);
+
+  console.log('§5 every field has a label');
+  const fields = await page.evaluate(async () => {
+    settingsOpen('experiences');
+    await new Promise((r) => setTimeout(r, 400));
+    expAddNew();
+    const ed = document.querySelector('.exp-edit[data-id="0"]');
+    const fs = [...ed.querySelectorAll('input:not([type=hidden]), select, textarea')];
+    const unlabelled = fs.filter((f) => !ed.querySelector(`label[for="${f.id}"]`)).map((f) => f.id);
+    const firstAct = ed.querySelector('.u-acts > button');
+    return { n: fs.length, unlabelled, first: firstAct && firstAct.textContent.trim(), thumbW: Math.round(ed.querySelector('.exp-edit-thumb').getBoundingClientRect().width) };
+  });
+  ok(fields.n >= 8 && fields.unlabelled.length === 0, `the place editor's ${fields.n} fields each have their own label${fields.unlabelled.length ? ' — missing: ' + fields.unlabelled.join(', ') : ''}`);
+  ok(fields.first === 'Save' && fields.thumbW === 64, `its actions lead with Save, and the photo keeps its square (${fields.first}, ${fields.thumbW}px)`);
+
+  console.log('§6 windows: a bottom sheet in Manage, untouched outside it');
+  const inManage = await page.evaluate(async () => {
+    settingsOpen('payments');
+    const p = glassConfirm('Delete this?', 'Delete', { danger: true });
+    await new Promise((r) => setTimeout(r, 600));
+    const box = document.querySelector('#glass-dialog .glass-dialog-box').getBoundingClientRect();
+    const ok = document.getElementById('glass-dialog-ok');
+    const out = { bottom: Math.round(innerHeight - box.bottom), width: Math.round(box.width), okRadius: parseFloat(getComputedStyle(ok).borderTopLeftRadius) };
+    document.getElementById('glass-dialog-cancel').click();
+    await p;
+    await new Promise((r) => setTimeout(r, 450));
+    return out;
+  });
+  ok(Math.abs(inManage.bottom) <= 1 && inManage.width >= 388 && inManage.okRadius > 100, `opened from Manage it sits on the bottom edge, full width, pill buttons (${inManage.bottom}px from the bottom, ${inManage.width}px)`);
+  const outside = await page.evaluate(async () => {
+    nav('view-backoffice');
+    await new Promise((r) => setTimeout(r, 300));
+    const p = glassConfirm('Delete this?', 'Delete', { danger: true });
+    await new Promise((r) => setTimeout(r, 600));
+    const box = document.querySelector('#glass-dialog .glass-dialog-box').getBoundingClientRect();
+    const out = { bottom: Math.round(innerHeight - box.bottom) };
+    document.getElementById('glass-dialog-cancel').click();
+    await p;
+    await new Promise((r) => setTimeout(r, 450));
+    await openArea();
+    return out;
+  });
+  ok(outside.bottom > 40, `the same window over Today keeps its own shape (${outside.bottom}px clear of the bottom)`);
+  const qr = await page.evaluate(async () => {
+    settingsOpen('reviews');
+    await new Promise((r) => setTimeout(r, 300));
+    reviewQrOpen('21a');
+    await new Promise((r) => setTimeout(r, 500));
+    const ov = document.getElementById('rv-qr-modal');
+    const out = { btns: [...ov.querySelectorAll('button')].map((b) => b.textContent.trim()).join('|'), noX: !ov.querySelector('.rvq-close'), copy: (ov.querySelector('#rvq-copy') || {}).getAttribute && ov.querySelector('#rvq-copy').getAttribute('data-act') };
+    reviewQrClose();
+    return out;
+  });
+  ok(qr.btns === 'Done|Copy link' && qr.noX && qr.copy === 'copyReviewLink', `the QR window ends in its answers, not a corner ✕ (${qr.btns})`);
+
+  console.log('§7 one caption tier on Manage, nothing changed outside it');
+  const caps = await page.evaluate(async () => {
+    settingsOpen('follow-ups');
+    const m = document.querySelector('#sec-follow-ups .acr-cap');
+    const inside = { tt: getComputedStyle(m).textTransform, ls: getComputedStyle(m).letterSpacing };
+    // The same class outside Manage keeps the look it had.
+    const probe = document.createElement('div'); probe.className = 'acr-cap'; probe.textContent = 'Probe';
+    document.getElementById('view-accounts').appendChild(probe);
+    const outside = { tt: getComputedStyle(probe).textTransform };
+    probe.remove();
+    return { inside, outside };
+  });
+  ok(caps.inside.tt === 'none' && (caps.inside.ls === 'normal' || parseFloat(caps.inside.ls) === 0), `on Manage a caption is sentence case, untracked (${caps.inside.tt} / ${caps.inside.ls})`);
+  ok(caps.outside.tt === 'uppercase', `outside Manage the same class keeps its own look (${caps.outside.tt})`);
+
+  await page.close();
+  await t.done(fails);
+})().catch(async (e) => { console.error('FAILED:', e); process.exit(1); });

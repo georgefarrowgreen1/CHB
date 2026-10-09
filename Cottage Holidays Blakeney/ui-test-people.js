@@ -153,7 +153,9 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
             details: ((document.querySelector('#acct-body .oa-r-details .ga-s') || {}).textContent || ''),
         }));
         ok(acct.people === 'You and Sophia', `the account page names who else signs in (${acct.people})`);
-        ok(acct.details === 'George Farrow · george@example.com', `Your details is your own name and email (${acct.details})`);
+        // The row says what it is and nothing else (the one-look pass): the
+        // page it opens carries the name and email.
+        ok(acct.details === '', `Your details is a one-line row, no sub restating it (${acct.details})`);
         await page.click(rowByTitle('#acct-body', 'People & access'));
         await page.waitForTimeout(600);
         const list = await page.evaluate(() => [...document.querySelectorAll('#people-body .ga-group:first-of-type .ga-row')].map((r) => ({ t: (r.querySelector('.ga-t') || {}).textContent, s: (r.querySelector('.ga-s') || {}).textContent || '', btn: r.tagName === 'BUTTON' })));
@@ -231,14 +233,15 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
             full: (document.getElementById('oa-full') || {}).checked,
             switches: [...document.querySelectorAll('#person-body .oa-cap')].map((r) => (r.querySelector('.ga-t') || {}).textContent + '=' + r.querySelector('input').checked),
             always: !!document.querySelector('#person-body .st-cap'),
-            sign: [...document.querySelectorAll('#person-body .ga-group')].map((g) => g.textContent).find((t) => /sign-in codes and reset links go/.test(t)) || '',
+            sign: [...document.querySelectorAll('#person-body .ga-group')].map((g) => g.textContent).find((t) => /Send a password reset link/.test(t)) || '',
+            pwField: document.querySelectorAll('#person-body input[type="password"]').length,
             danger: (document.querySelector('#person-body .ga-signout .ga-t') || {}).textContent,
         }));
         ok(pp.h1 === 'Sophia Hart', 'her page is headed with her name');
         ok(pp.caps.join(' | ') === 'What Sophia can do | Only you | Emails | Sign-in', `it says what she can do, what only you can, her emails and her sign-in (${pp.caps.join(' | ')})`);
         ok(pp.full === false && pp.always, 'full access is off; the everyday work is always hers');
         ok(pp.switches.join() === 'Take payments=true,Refunds and deposits=false,Money overview=false,Prices and cottages=false,Website and marketing=false', `the five switches show her real settings (${pp.switches.join(', ')})`);
-        ok(/Passkey on iPhone/.test(pp.sign) && /Send a password reset link/.test(pp.sign), 'her sign-in lists her passkey and a reset link — never a password');
+        ok(/Passkey on iPhone/.test(pp.sign) && /Send a password reset link/.test(pp.sign) && pp.pwField === 0, 'her sign-in lists her passkey and a reset link — never a password');
         ok(pp.danger === 'Remove Sophia’s access', 'removing her access is the last, destructive row');
         ok((await page.evaluate(() => (document.querySelector('#person-body .oa-r-emails .ga-s') || {}).textContent)) === 'New enquiries, new bookings, payments received and 2 more', 'her page names the emails she gets');
         await page.click('#person-body .oa-r-emails');
@@ -286,7 +289,7 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
         await page.click('#glass-dialog-ok');
         await waitShut(page);
         await page.waitForTimeout(400);
-        ok(await page.evaluate(() => /Give Sophia access again/.test(document.getElementById('person-body').textContent) && /still in the activity log/.test(document.getElementById('person-body').textContent)), 'her page then offers to give the access back, and keeps her history');
+        ok(await page.evaluate(() => /Give Sophia access again/.test(document.getElementById('person-body').textContent) && document.querySelector('#person-body h1').textContent === 'Sophia Hart'), 'her page then offers to give the access back, and is still hers');
         await page.close();
     }
 
@@ -317,9 +320,9 @@ const MAIL_KINDS = KINDS.map((k) => ({ k, cap: { paid: 'payments', ideas: 'websi
             summary: (() => { const m = document.getElementById('manage-verdicts'); return !!m && m.getClientRects().length > 0; })(),
             first: (() => { const c = [...document.getElementById('settings-index').children].find((x) => x.getClientRects().length); return c ? c.id : ''; })(),
         }));
-        const want = ['Guests', 'Waitlist', 'Reviews', 'Guest photos', 'Saved replies', 'Guest chat'];
+        const want = ['Guest list', 'Waitlist', 'Reviews', 'Guest photos', 'Saved replies', 'Guest chat'];
         ok(want.every((t) => idx.rows.some((r) => (r || '').indexOf(t) === 0)), `Manage keeps her everyday rows (${idx.rows.join(' · ')})`);
-        const gone = ['Seasonal rates', 'Pricing', 'Calendar sync', 'Cancellation policy', 'Follow-up emails', 'Text messages', 'Home page & menu', 'Things to do', 'Newsletter', 'Analytics', 'Status', 'Backups', 'Activity log', 'Integrations', 'Search learning'];
+        const gone = ['Seasonal rates', 'Price ideas', 'Calendar sync', 'Cancellation policy', 'Follow-up emails', 'Text messages', 'Home page & menu', 'Things to do', 'Newsletter', 'Analytics', 'Status', 'Backups', 'Activity log', 'Integrations', 'Search learning'];
         ok(!gone.some((t) => idx.rows.includes(t)), 'and none of the areas switched off for her');
         ok(!idx.labels.includes('Website & marketing') && !idx.labels.includes('System & tools') && !idx.labels.includes('Cottages & pricing'), `a group left with nothing in it goes too (${idx.labels.join(' · ')})`);
         ok(!idx.summary, 'the system summary row is full access only');

@@ -16,7 +16,9 @@
 //     works on a NOUN, and nine cottage-page captions were whole sentences
 //     wearing it (the worst painted three lines above an empty well). Asserted
 //     as one painted line, with a floor so "shorten it" cannot become a stub.
-//  §3 A SETTINGS ROW'S DESCRIPTION does not drop a lone word.
+//  §3 THE MANAGE ROWS ARE ONE LINE EACH. It used to measure the orphaned last
+//     word in each row's description; the one-look pass took the descriptions
+//     off, so it asserts what replaced them: no description, one-line labels.
 //
 // 360px is the width that matters for §2 and §3: it is the narrowest phone in
 // real use and the one where the rail runs out first. A gate written at 390
@@ -51,22 +53,6 @@ const CUT_SUBS = () => {
     if (el.scrollWidth <= el.clientWidth + 1) continue;
     const full = (el.textContent || '').trim();
     out.push({ txt: full.slice(0, 46), lost: Math.round((1 - el.clientWidth / el.scrollWidth) * 100), w: Math.round(el.getBoundingClientRect().width) });
-  }
-  return out;
-};
-
-// An orphan is a wrapped block whose LAST line is a lone short word. Measured
-// with a Range over the contents — the element box tells you nothing about
-// where the lines actually fell.
-const ORPHANS = (sel) => {
-  const out = [];
-  for (const el of document.querySelectorAll(sel)) {
-    if (!el.getClientRects().length) continue;
-    const r = document.createRange(); r.selectNodeContents(el);
-    const rects = [...r.getClientRects()].filter((x) => x.width > 0);
-    if (rects.length < 2) continue;
-    const box = el.getBoundingClientRect(), last = rects[rects.length - 1];
-    if (last.width < box.width * 0.30) out.push({ txt: (el.textContent || '').trim().slice(0, 46), last: Math.round(last.width), box: Math.round(box.width) });
   }
   return out;
 };
@@ -249,37 +235,44 @@ const ORPHANS = (sel) => {
     ok(caps.every((c) => c.t.length >= 3), 'and none of them is a stub');
     if (w === 390) {
       const subs = await page.evaluate(() => [...document.querySelectorAll('.acr-capsub')].filter((e) => e.getClientRects().length).map((e) => (e.textContent || '').trim().length));
-      ok(subs.length >= 4 && Math.min(...subs) >= 12, `the explanations moved to the sub line beneath (${subs.length} of them, shortest ${Math.min(...subs)} chars)`);
+      // The one-look pass took the explanations off the cottage editors: a
+      // caption names its well, and the controls inside say the rest.
+      ok(subs.length === 0, `no explanation line under the captions (${subs.length} painted)`);
     }
   }
 
   // ------------------------------------------------------- §3 the orphans
-  console.log('\n§3 A settings row’s description does not drop a lone word');
+  console.log('\n§3 The Manage rows are one line each');
   const pretty = await page.evaluate(() => {
     const e = document.querySelector('.settings-row-sub');
     return e ? getComputedStyle(e).textWrap || getComputedStyle(e).textWrapStyle : '';
   });
   ok(/pretty/.test(pretty), `.settings-row-sub carries text-wrap: pretty (${pretty})`);
+  // The one-look pass took the descriptions off the Manage rows (a row says
+  // where it goes), so there is no description left to orphan a word in — the
+  // account row's sub (its name) is the one survivor and keeps the rule. What
+  // must hold now is the outcome: every row label is ONE line at phone width.
   for (const w of [360, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.waitForTimeout(300);
     await page.evaluate(async () => { await openArea('manage'); });
-    await page.waitForFunction(() => document.querySelectorAll('.settings-row-sub').length > 5, { timeout: 12000 });
+    await page.waitForFunction(() => document.querySelectorAll('#settings-index .settings-row').length > 5, { timeout: 12000 });
     await page.waitForTimeout(400);
-    const withFix = (await page.evaluate(ORPHANS, '.settings-row-sub')).length;
-    const total = await page.evaluate(() => document.querySelectorAll('.settings-row-sub').length);
-    // Measure the SAME page without the declaration rather than pinning a
-    // number: a fixed threshold rots the moment a row's copy changes, and the
-    // claim being made is about the declaration's effect, not about a count.
-    await page.addStyleTag({ content: '.settings-row-sub { text-wrap: wrap !important; }' });
-    await page.waitForTimeout(300);
-    const without = (await page.evaluate(ORPHANS, '.settings-row-sub')).length;
-    await page.evaluate(() => { const t = [...document.querySelectorAll('style')].pop(); if (t) t.remove(); });
-    await page.waitForTimeout(200);
-    ok(withFix < without, `${w}px: ${without} orphans of ${total} without the rule, ${withFix} with it`);
-    // NB not zero, and deliberately not asserted as zero: `pretty` protects the
-    // last line, it does not rebalance the block the way `balance` does.
-    ok(withFix <= without - 2, `${w}px: \u2026and the win is more than noise (${without - withFix} fewer)`);
+    const r = await page.evaluate(() => {
+      // The cottage rows keep their price ("from £130 a night") and a problem row
+      // under Needs a look keeps its reason — both are data, not explanation.
+      const rows = [...document.querySelectorAll('#settings-index .settings-row')].filter((x) => x.getClientRects().length && !x.closest('#cottages-overview') && !x.classList.contains('mg-prob'));
+      const subs = rows.filter((x) => { const sb = x.querySelector('.settings-row-sub'); return sb && sb.id !== 'oa-index-sub' && sb.getClientRects().length && sb.textContent.trim(); }).length;
+      const multi = rows.filter((x) => {
+        const l = x.querySelector('.settings-row-label');
+        if (!l) return false;
+        const rg = document.createRange(); rg.selectNodeContents(l);
+        return new Set([...rg.getClientRects()].filter((q) => q.width > 1).map((q) => Math.round(q.top))).size > 1;
+      }).map((x) => (x.querySelector('.settings-row-label') || x).textContent.trim());
+      return { n: rows.length, subs, multi };
+    });
+    ok(r.n > 10 && r.subs === 0, `${w}px: ${r.n} Manage rows, none with a description beneath (${r.subs})`);
+    ok(r.multi.length === 0, `${w}px: every row label is one line${r.multi.length ? ' — ' + r.multi.join('; ') : ''}`);
   }
 
   console.log(`\n${fails ? fails + ' FAILED' : 'All legibility checks passed'}`);

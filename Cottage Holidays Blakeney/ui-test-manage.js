@@ -343,8 +343,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(phone.n === 2 && phone.minMain >= 180, `at 390px each platform's words get a real column (${Math.round(phone.minMain)}px)`);
   ok(phone.maxBtn < 120, `…and Replace stays a small button (${Math.round(phone.maxBtn)}px)`);
-  ok(phone.tiles.length === 4 && new Set(phone.tiles.map((x) => x.h)).size === 1 && phone.tiles.every((x) => !x.clipped && x.lines === 1),
-    `the fold's four tools are pills of one height, each on one line, none cut off (${JSON.stringify(phone.tiles.map((x) => [x.h, x.lines]))})`);
+  // "Link a platform" left the tools for an add row at the foot of the platform
+  // list (the one-look pass) — three tools remain, and the add row is where the
+  // platforms are.
+  ok(phone.tiles.length === 3 && new Set(phone.tiles.map((x) => x.h)).size === 1 && phone.tiles.every((x) => !x.clipped && x.lines === 1),
+    `the fold's three tools are pills of one height, each on one line, none cut off (${JSON.stringify(phone.tiles.map((x) => [x.h, x.lines]))})`);
+  ok(await page.evaluate(() => !!document.querySelector('#bhub-fold-cal-21a .cal-plist > .u-addrow')),
+    'linking another platform is the add row at the foot of the platform list');
   ok(phone.tiles.every((x) => x.lines === 1 && !x.clipped), 'every tile label sits on one line, uncut');
   await page.screenshot({ path: '/tmp/claude-0/-home-user-CHB/e820a22c-cfa5-5535-94d0-f1835c6df202/scratchpad/cal390c.png', clip: { x: 0, y: 700, width: 390, height: 450 } });
   ok(phone.titleLines === 1, `the summary title stays on one line beside its mark (${phone.titleLines})`);
@@ -907,7 +912,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(g1.tiles.length === 3 && /2\s*To invite back/.test(g1.tiles[2]), `three stat tiles, counting who to invite back (${g1.tiles.join(' | ')})`);
   ok(g1.inviteRows === 2, 'guests with no stay in 2+ months are grouped as worth inviting back');
   ok(!g1.prose && g1.pwInputs === 0, 'no "set a password for them" copy and no password box anywhere');
-  ok(/^Guests$/.test(g1.title), `the page is called Guests (${g1.title})`);
+  ok(/^Guest list$/.test(g1.title), `the page is called Guest list, as its Manage row is (${g1.title})`);
   await page.click('#guest-admin-list .gst-stat.is-invite');
   ok(await page.evaluate(() => !!document.querySelector('#guest-admin-list .gst-chip') && document.querySelectorAll('#guest-admin-list .gst-row').length === 2), 'a tile filters, with a chip to clear it');
   await page.click('#guest-admin-list .gst-chip');

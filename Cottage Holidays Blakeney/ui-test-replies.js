@@ -442,15 +442,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(s8b.rows === 0 && s8b.none, 'an explicitly emptied library stays empty — the starters never resurrect');
-  // The Manage caption names the starters for what they are while the store is
-  // untouched (the #replies-body host is still in the DOM from §6).
+  // While the store is untouched the starters are simply the library: every one
+  // is a row the owner can edit or delete, the way a saved one is (the caption
+  // that called them starters went with the one-look pass). The #replies-body
+  // host is still in the DOM from §6.
   const s8c = await page.evaluate(() => {
     delete siteContent['email-templates'];
     delete adminPrivateContent['email-templates'];
     renderSavedReplies();
-    return (document.querySelector('#replies-body .etpl-mcap') || {}).textContent || '';
+    const rows = [...document.querySelectorAll('#replies-body .etpl-mrow')];
+    return { rows: rows.length, editable: rows.every((r) => r.querySelector('[data-act="emailTplEditOpen"]') && r.querySelector('[data-act="emailTplDelete"]')), add: !!document.querySelector('#replies-body > .u-addrow') };
   });
-  ok(/starter replies to begin with/.test(s8c), `Manage says these are starters, not saves (${s8c.slice(0, 50)}…)`);
+  ok(s8c.rows > 0 && s8c.editable && s8c.add, `the starters are the library, each one editable and deletable, with Write a new reply at the foot (${JSON.stringify(s8c)})`);
   ok(pageErrors.length === 0, `no page errors across the run (${pageErrors.slice(0, 2).join(' | ')})`);
 
   await done(fails);

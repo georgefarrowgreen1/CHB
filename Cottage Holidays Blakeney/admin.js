@@ -9934,6 +9934,9 @@ function manageAccessSync() {
     if (mv) mv.hidden = !full;
     const co = document.getElementById('cottages-overview');
     if (co) co.hidden = !chbCan('prices');
+    // "More tools" stands down when none of the rows folded under it is this person's.
+    const mt = document.getElementById('mt-row');
+    if (mt) mt.style.display = Array.from(document.querySelectorAll('#mt-fold .settings-row')).some((r) => getComputedStyle(r).display !== 'none') ? '' : 'none';
     idx.querySelectorAll(':scope > .settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return;
         const any = Array.from(g.querySelectorAll('.settings-row')).some((r) => getComputedStyle(r).display !== 'none') || (g.querySelector('#cottages-overview') && chbCan('prices'));
@@ -9953,23 +9956,16 @@ function renderCottagesOverview() {
     // EVERY live cottage, private ones included — a private cottage still takes
     // bookings, and this list is the owner's only door to its page from the landing.
     const keys = typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
-    let occ = {};
-    try {
-        occ = cottageMonthOccupancy();
-    } catch (e) {}
-    const mon = chbNow().toLocaleDateString('en-GB', { month: 'short' });
     const HOUSE = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>';
-    // ONE ROW PER COTTAGE, in the group's own list (the approved prototype):
-    // name and price on the left, the month's booked figure on the right with a
-    // thin bar. Tapping opens THAT cottage's page.
+    // ONE ROW PER COTTAGE, in the group's own list: the name and its price, opening
+    // THAT cottage's page. (The month's booked figure left with the one look —
+    // a menu row says where it goes; how full a month is lives on Today.)
     const row = (k) => {
         const meta = propertyMeta[k] || {};
         const r = propertyRates[k] || defaultRates[k] || {};
-        const pct = Math.max(0, Math.min(100, Math.round((occ[k] && occ[k].pct) || 0)));
         return `<button type="button" class="settings-row mg-cot" data-act="openAccomThenSec" data-arg="${k}">
             <span class="settings-row-ic">${HOUSE}</span>
             <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(meta.name || k)}</span><span class="settings-row-sub">${meta.unlisted ? 'Private · ' : ''}from £${Math.round(r.coupleRate || 0)} a night</span></span>
-            <span class="mg-fig"><b data-count="${pct}">${pct}%</b><small>booked in ${mon}</small><span class="mg-mini" aria-hidden="true"><i data-w="${pct}"></i></span></span>
             <span class="settings-row-chev" aria-hidden="true">›</span>
         </button>`;
     };
@@ -9981,28 +9977,19 @@ function renderCottagesOverview() {
             <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(p.name || p.prop_key)}</span><span class="settings-row-sub">Removed from the site · tap to restore</span></span>
             <span class="settings-row-chev" aria-hidden="true">›</span>
         </button>`).join('');
-    if (el.dataset.sig === html) return; // unchanged → no repaint, no replayed motion
+    if (el.dataset.sig === html) return; // unchanged → no repaint
     el.dataset.sig = html;
     el.innerHTML = html;
-    // The figures count up and the bars fill when the list arrives.
-    const still = chbReducedMotion();
-    el.querySelectorAll('.mg-mini i').forEach((i) => {
-        const w = /** @type {HTMLElement} */ (i).dataset.w + '%';
-        if (still) { /** @type {HTMLElement} */ (i).style.width = w; return; }
-        requestAnimationFrame(() => requestAnimationFrame(() => { /** @type {HTMLElement} */ (i).style.width = w; }));
-    });
-    if (!still) el.querySelectorAll('[data-count]').forEach((b) => {
-        const to = Number(/** @type {HTMLElement} */ (b).dataset.count) || 0;
-        if (!to) return;
-        const t0 = performance.now();
-        const step = (t) => {
-            const k = Math.min(1, (t - t0) / 900);
-            b.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))) + '%';
-            if (k < 1) requestAnimationFrame(step);
-        };
-        b.textContent = '0%';
-        requestAnimationFrame(step);
-    });
+}
+// "More tools" opens and closes in place: the rarely used System pages fold under
+// one row on the Manage menu, the bhub fold's collapsing grid.
+function mgMoreTools() {
+    const row = document.getElementById('mt-row');
+    const fold = document.getElementById('mt-fold');
+    if (!row || !fold) return;
+    const open = fold.hidden;
+    fold.hidden = !open;
+    row.setAttribute('aria-expanded', String(open));
 }
 
 // ---- Inbox: a dedicated back-office screen combining enquiries, guest messages
@@ -12334,7 +12321,7 @@ const SETTINGS_TITLES = {
     cancel: 'Cancellation policy',
     seasongrid: 'Seasonal rates',
     payments: 'Payments',
-    guests: 'Guests',
+    guests: 'Guest list',
     analytics: 'Analytics',
     waitlist: 'Waitlist',
     newsletter: 'Newsletter',
@@ -12350,7 +12337,7 @@ const SETTINGS_TITLES = {
     backups: 'Backups',
     'follow-ups': 'Follow-up emails',
     'search-learning': 'Search learning',
-    pricing: 'Pricing',
+    pricing: 'Price ideas',
     replies: 'Saved replies',
 };
 // The owner's account pages (renderOwnerAccount and below): their depth, for
@@ -12586,6 +12573,18 @@ function settingsBack() {
 // The back link names where it goes ("‹ Manage", "‹ Reviews"), as the account
 // pages' always did — a bare "‹ Back" left the owner guessing which back.
 const BACK_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+// Adding something is a row at the foot of the list it adds to (the one look):
+// an accent "+" tile and the words, never one more pill among the actions.
+function uAddRow(label, attrs, first) {
+    return `<button type="button" class="u-addrow${first ? ' is-first' : ''}" ${attrs}><span class="u-addic" aria-hidden="true"><i></i></span><span class="u-addt">${escapeHtml(label)}</span></button>`;
+}
+// Is this section the one on screen? A list that repaints in the background (the
+// calendar overview landing, a price search finishing) must not retitle the page
+// the owner has since moved to, or point its back link somewhere else.
+function settingsShowing(section) {
+    const sec = document.getElementById('sec-' + section);
+    return !!sec && sec.style.display !== 'none';
+}
 function settingsSetBack(fn, label) {
     settingsBackTarget = fn;
     const b = document.getElementById('settings-back');
@@ -12818,7 +12817,7 @@ function renderOwnerAccount() {
             `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(oaRoleWords(me))}</p></div>${oaAvaBtn(false, 'me')}</div>` +
             gaGroup(
                 [
-                    gaRow({ ic: 'user', t: 'Your details', s: [oaName() || (me && me.username) || '', (me && me.contact) || ''].filter(Boolean).join(' · ') || 'Your name and email', act: chbAttrs('oaGo', 'details'), chev: true, cls: 'oa-r-details' }),
+                    gaRow({ ic: 'user', t: 'Your details', act: chbAttrs('oaGo', 'details'), chev: true, cls: 'oa-r-details' }),
                     gaRow({ ic: 'bell', t: 'Notifications', s: oaNotifySub(), act: chbAttrs('oaGo', 'notify'), chev: true, cls: 'oa-r-notify' }),
                     gaRow({ ic: 'key', t: 'Sign-in & security', s: oaSecuritySub(), act: chbAttrs('oaGo', 'security'), chev: true, cls: 'oa-r-security' }),
                 ],
@@ -12831,7 +12830,6 @@ function renderOwnerAccount() {
                     gaRow({
                         ic: 'layout',
                         t: 'Search-first layout',
-                        s: 'Payments and Manage move into Search',
                         v: oaSwitch('oa-search', backofficeMode() === 'search', 'Search-first layout', 'oaSearchFirst'),
                         static: true,
                         cls: 'oa-swrow',
@@ -12894,7 +12892,7 @@ function renderHostProfile() {
     box.innerHTML = oaPage(
         'host',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Host profile</h1><p class="ga-lead">Guests see this on every cottage page.</p>` +
+            `<h1 class="section-title ga-h1">Host profile</h1>` +
             `<div class="ga-group ga-hero">${oaAvaBtn(true, 'host')}<button type="button" class="ga-link ga-photolink" ${chbAttrs('oaPhotoSheet', 'host')}>${oaHostPhotoUrl() ? 'Change photo' : 'Add a photo'}</button></div>` +
             gaGroup([
                 gaRow({ t: 'Name', s: val('host-name'), act: chbAttrs('oaEdit', 'name'), chev: true }),
@@ -12907,7 +12905,6 @@ function renderHostProfile() {
             gaGroup([
                 gaRow({
                     t: 'Reviews and rating',
-                    s: 'From your published reviews',
                     v: `<span class="oa-figs">${fig.cnt ? escapeHtml(fig.count + ' · ' + fig.rating) : 'None yet'}</span>`,
                     static: true,
                 }),
@@ -12917,14 +12914,14 @@ function renderHostProfile() {
                     gaRow({
                         ic: 'phone',
                         t: dial ? String(cp.display || dial) : 'Add a number',
-                        s: dial ? 'Dials ' + oaDialSpaced(dial) : 'Guests see a “Call to discuss” button once it’s set',
+                        s: dial ? 'Dials ' + oaDialSpaced(dial) : '',
                         act: chbAttrs('oaEdit', 'phone'),
                         chev: true,
+                        cls: dial ? '' : 'oa-accent', // adding something wears the accent, as "Add someone" does
                     }),
                 ],
                 'Call to discuss',
             ) +
-            `<p class="ga-note">The number behind the “Call to discuss” button on every booking form.</p>` +
             `<h2 class="ga-cap">How guests see you</h2>` +
             oaHostCard(),
     );
@@ -13124,12 +13121,13 @@ function oaDeviceRows() {
             gaRow({
                 ic: 'bell',
                 t: 'Turn on alerts for this device',
-                s: st === 'install' ? 'On iPhone and iPad, add the site to your Home Screen first' : 'Your browser will ask to allow notifications',
+                // Installing first is a step they must take; "your browser will ask" told them nothing.
+                s: st === 'install' ? 'On iPhone and iPad, add the site to your Home Screen first' : '',
                 act: 'data-act="enableOwnerPush"',
                 cls: 'oa-accent',
             }),
         );
-    rows.push(gaRow({ ic: 'send', t: 'Send a test alert', s: 'Check one reaches your devices', act: 'data-act="testOwnerPush"' }));
+    rows.push(gaRow({ ic: 'send', t: 'Send a test alert', act: 'data-act="testOwnerPush"' }));
     return rows;
 }
 // Ask the device, then patch the words where they show. A render never waits
@@ -13172,39 +13170,28 @@ function oaKeyRows() {
         }),
     );
     if (passkeysSupported())
-        rows.push(gaRow({ ic: 'plus', t: keys.length ? 'Add another passkey' : 'Add a passkey', s: 'Sign in with Face ID or Touch ID. Your password still works.', act: 'data-act="addAdminPasskey"' }));
+        rows.push(gaRow({ ic: 'plus', t: keys.length ? 'Add another passkey' : 'Add a passkey', act: 'data-act="addAdminPasskey"', cls: 'oa-accent' }));
     else if (!keys.length) rows.push(gaRow({ ic: 'face', t: 'No passkeys', s: 'This device or browser can’t make one', static: true }));
     return rows;
 }
 // The three equal ways in (an emailed code alone signs you in), and who else has
 // their own. One sentence, said on the page and patched when the people list lands.
-function oaSecurityLead(others) {
-    return 'Sign in with a code from your email, your password or a passkey. ' + (others.length ? listAnd(others) + (others.length > 1 ? ' sign' : ' signs') + ' in separately.' : 'Anyone you add signs in separately.');
-}
 function renderSecurity() {
     const box = document.getElementById('security-body');
     if (!box) return;
     const me = chbMe();
-    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
     const contact = (me && me.contact) || '';
-    const owner = (__oaPeople || []).find((p) => p.original) || null;
     box.innerHTML = oaPage(
         'security',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1><p class="ga-lead">${escapeHtml(oaSecurityLead(others))}</p>` +
+            `<h1 class="section-title ga-h1">Sign-in &amp; security</h1>` +
             gaGroup([gaRow({ ic: 'key', t: 'Change password', act: 'data-act="changeAdminPassword"', chev: true })], 'Password') +
             `<h2 class="ga-cap">Passkeys</h2><div id="admin-passkey-list"><div class="ga-group">${oaKeyRows().join('')}</div></div>` +
-            `<p class="ga-note">${escapeHtml(
-                chbFull()
-                    ? 'Your passkeys sign in as you, and only you. Keep one on two devices, like your phone and your Mac, so you’re never locked out.'
-                    : 'Your passkeys sign in as you, and only you. ' + ((owner && owner.first) || 'The owner') + ' can see which devices have one and remove a lost phone’s, but can’t use them.',
-            )}</p>` +
             gaGroup(
                 [
                     gaRow({
                         ic: 'shield',
                         t: 'Email me a code on new devices',
-                        s: 'When your password is used on a new device. Devices are remembered for 60 days.',
                         v: oaSwitch('admin-2fa-toggle', oaTwoStepOn(), 'Email me a code on new devices', 'oaTwoStep'),
                         static: true,
                         cls: 'oa-swrow',
@@ -13212,7 +13199,7 @@ function renderSecurity() {
                 ],
                 'Two-step sign-in',
             ) +
-            `<p class="ga-note">${escapeHtml(contact ? 'The code goes to ' + contact + ', your email in Your details.' : 'Add your email in Your details first. Until then it stays off, so you can’t be locked out.')}</p>`,
+            (contact ? '' : `<p class="ga-note">Add your email in Your details first. Until then two-step stays off, so you can’t be locked out.</p>`),
     );
     loadAdminPasskeys();
     if (chbFull() && __oaPeople === null) loadPeople();
@@ -13268,8 +13255,6 @@ function oaPeoplePatch() {
         if (el && el.textContent !== text) el.textContent = text;
     };
     set('#acct-body .oa-r-people .ga-s', others.length ? 'You and ' + listAnd(others) : 'Only you so far');
-    set('#details-body .ga-lead', others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.');
-    set('#security-body .ga-lead', oaSecurityLead(others));
     set('#notify-body .oa-r-emails .ga-s', oaMailSummary());
     __oaStill = true;
     try {
@@ -13314,17 +13299,15 @@ function renderYourDetails() {
     const box = document.getElementById('details-body');
     if (!box) return;
     const me = chbMe() || {};
-    const others = (__oaPeople || []).filter((p) => !p.you && p.state !== 'removed').map((p) => p.first);
     box.innerHTML = oaPage(
         'details',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Your details</h1><p class="ga-lead">${escapeHtml(others.length ? 'Yours alone. ' + listAnd(others) + (others.length > 1 ? ' have their own sign-ins.' : ' has a separate sign-in.') : 'Yours alone. Anyone you add gets their own.')}</p>` +
+            `<h1 class="section-title ga-h1">Your details</h1>` +
             gaGroup([
                 gaRow({ t: 'Name', s: oaName() || 'Add your name', act: chbAttrs('oaMeEdit', 'name'), chev: true }),
                 gaRow({ t: 'Email', s: me.contact || 'Add your email', act: chbAttrs('oaMeEdit', 'email'), chev: true }),
                 gaRow({ t: 'Username', s: me.username || '', act: chbAttrs('oaMeEdit', 'username'), chev: true }),
-            ]) +
-            `<p class="ga-note">Sign-in codes and password reset links go to this email, not anyone else’s. You sign in with the username or the email, or with a passkey.</p>`,
+            ]),
     );
     if (chbFull() && __oaPeople === null) loadPeople();
 }
@@ -13402,14 +13385,13 @@ function renderPeople() {
                   ? gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaRoleWords(p) + ' · you', static: true, cls: 'oa-person' })
                   : gaRow({ ava: oaAvaOf(p.name, oaPersonPhotoUrl(p), false, 'oa-pava'), t: p.name, s: oaPersonSub(p), act: chbAttrs('oaPersonOpen', p.id), chev: true, cls: 'oa-person' + (p.state === 'removed' ? ' oa-dim' : '') }),
           );
-    rows.push(gaRow({ ic: 'plus', t: 'Add someone', s: 'They choose their own password', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }));
+    rows.push(gaRow({ ic: 'plus', t: 'Add someone', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }));
     box.innerHTML = oaPage(
         'people',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">People &amp; access</h1><p class="ga-lead">Who can sign in to the back office, and what each of you can do.</p>` +
+            `<h1 class="section-title ga-h1">People &amp; access</h1>` +
             gaGroup(rows) +
-            gaGroup([gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' })]) +
-            `<p class="ga-note">Everyone signs in with their own password or passkey. Sign-in codes and reset links go to their own email, and the activity log names who did what.</p>`,
+            gaGroup([gaRow({ ic: 'mail', t: 'Who gets which emails', s: Array.isArray(list) ? oaMailSummary() : 'Choose who gets each email', act: chbAttrs('oaEmailsOpen', 'people'), chev: true, cls: 'oa-r-emails' })]),
     );
     if (!Array.isArray(list)) loadPeople();
 }
@@ -13461,24 +13443,22 @@ function renderPerson() {
         `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">${escapeHtml(p.name)}</h1><p class="ga-lead">${escapeHtml(oaPersonSub(p))}</p></div>${oaAvaOf(p.name, oaPersonPhotoUrl(p), false)}</div>`;
     if (p.state === 'removed') {
         html +=
-            gaGroup([gaRow({ ic: 'send', t: 'Give ' + n + ' access again', s: 'Sends a new invite to ' + p.contact, act: chbAttrs('oaPersonDo', 'restore'), cls: 'oa-accent' })]) +
-            `<p class="ga-note">${escapeHtml(n)} was signed out everywhere when the access was removed. Everything ${escapeHtml(n)} did is still in the activity log under ${escapeHtml(n)}’s name.</p>`;
+            gaGroup([gaRow({ ic: 'send', t: 'Give ' + n + ' access again', s: 'Sends a new invite to ' + p.contact, act: chbAttrs('oaPersonDo', 'restore'), cls: 'oa-accent' })]);
         box.innerHTML = oaPage('person', html);
         return;
     }
     html += gaGroup([
-        gaRow({ ic: 'star', t: 'Full access, like you', s: 'Everything, including People & access', v: oaSwitch('oa-full', p.full, 'Full access, like you', 'oaPersonFull'), static: true, cls: 'oa-swrow' }),
+        gaRow({ ic: 'star', t: 'Full access, like you', v: oaSwitch('oa-full', p.full, 'Full access, like you', 'oaPersonFull'), static: true, cls: 'oa-swrow' }),
     ]);
     if (!p.full) {
         html +=
             gaGroup(
-                [gaRow({ ic: 'check', t: 'The everyday', s: 'Bookings and the calendar, enquiries, messages, key safes, guests and reviews', v: stCap('ok', 'Always'), static: true })].concat(
-                    Object.keys(OA_CAPS).map((k) => gaRow({ t: OA_CAPS[k][0], s: OA_CAPS[k][1], v: oaSwitch('oa-cap-' + k, !!(p.caps && p.caps[k]), OA_CAPS[k][0], 'oaPersonCap', k), static: true, cls: 'oa-swrow oa-cap' })),
+                [gaRow({ ic: 'check', t: 'The everyday', v: stCap('ok', 'Always'), static: true })].concat(
+                    Object.keys(OA_CAPS).map((k) => gaRow({ t: OA_CAPS[k][0], v: oaSwitch('oa-cap-' + k, !!(p.caps && p.caps[k]), OA_CAPS[k][0], 'oaPersonCap', k), static: true, cls: 'oa-swrow oa-cap' })),
                 ),
                 'What ' + n + ' can do',
             ) +
-            gaGroup([gaRow({ ic: 'lock', t: 'Set-up and system', s: 'Payment setup and bank details, integrations, status and backups, the activity log, and People & access', static: true })], 'Only you') +
-            `<p class="ga-note">A switched-off area disappears from ${escapeHtml(n)}’s menus and Today, and the server refuses it too, so an old link or a stray tap can’t reach it. Its emails stop as well.</p>`;
+            gaGroup([gaRow({ ic: 'lock', t: 'Set-up and system', static: true })], 'Only you');
     }
     const keys = OA_PERSON_KEYS[p.id];
     const keyRows = !Array.isArray(keys)
@@ -13493,7 +13473,7 @@ function renderPerson() {
                     act: chbAttrs('oaPersonKeyRemove', k.id),
                 }),
             )
-          : [gaRow({ ic: 'face', t: 'No passkeys yet', s: n + ' adds them from ' + n + '’s own Sign-in & security', static: true })];
+          : [gaRow({ ic: 'face', t: 'No passkeys yet', static: true })];
     html += gaGroup(
         [
             gaRow({
@@ -13508,16 +13488,15 @@ function renderPerson() {
         'Emails',
     );
     html += gaGroup(
-        [gaRow({ ic: 'mail', t: p.contact || 'No email', s: 'Where ' + n + '’s sign-in codes and reset links go', static: true })]
+        [gaRow({ ic: 'mail', t: p.contact || 'No email', static: true })]
             .concat(keyRows)
             .concat([
                 p.state === 'invited'
                     ? gaRow({ ic: 'send', t: 'Send the invite again', s: 'The link works for 7 days', act: chbAttrs('oaPersonDo', 'reinvite') })
-                    : gaRow({ ic: 'send', t: 'Send a password reset link', s: n + ' chooses the new password. You never see it.', act: chbAttrs('oaPersonDo', 'reset_link') }),
+                    : gaRow({ ic: 'send', t: 'Send a password reset link', act: chbAttrs('oaPersonDo', 'reset_link') }),
             ]),
         'Sign-in',
     );
-    if (Array.isArray(keys) && keys.length) html += `<p class="ga-note">Remove a passkey if a phone is lost or sold. ${escapeHtml(n)} can still sign in with the password. You can’t add or use ${escapeHtml(n)}’s passkeys.</p>`;
     html += `<div class="ga-group ga-signout">${gaRow({ ic: 'bin', t: p.state === 'invited' ? 'Cancel the invite' : 'Remove ' + n + '’s access', act: chbAttrs('oaPersonDo', p.state === 'invited' ? 'cancel_invite' : 'remove'), danger: true })}</div>`;
     box.innerHTML = oaPage('person', html);
     if (!Array.isArray(keys) && p.state !== 'invited') oaPersonKeysLoad(p.id);
@@ -13591,7 +13570,7 @@ function renderEmails() {
     if (!chbFull()) return renderMyEmails(box);
     const person = (__oaPeople || []).find((x) => x.id === __oaPerson);
     const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'People') : oaBack('notify', 'Notifications');
-    const head = back + `<h1 class="section-title ga-h1">Who gets which emails</h1><p class="ga-lead">Each email goes to whoever’s photo is lit. Tap a photo to send it or stop it.</p>`;
+    const head = back + `<h1 class="section-title ga-h1">Who gets which emails</h1><p class="ga-lead">Tap a photo to send or stop an email.</p>`;
     if (!Array.isArray(__oaPeople)) {
         box.innerHTML = oaPage('emails', head + gaGroup([gaRow({ ic: 'mail', t: 'Loading…', static: true })]));
         loadPeople();
@@ -13622,17 +13601,15 @@ function renderEmails() {
                     // overview leaves the money out, and the row says whose.
                     const plain = m.k === 'digest' ? list.filter((p) => oaMailLit(p, 'digest') && !p.full && !(p.caps && p.caps.money)).map((p) => p.first + '’s') : [];
                     const also = plain.length ? listAnd(plain) + (plain.length > 1 ? ' copies leave' : ' copy leaves') + ' out the money' : '';
-                    return `<div class="ga-row em-row" data-mail="${m.k}"><span class="ga-lb"><span class="ga-t">${escapeHtml(m.t)}</span><span class="ga-s">${escapeHtml(m.s)}</span>${also ? `<span class="ga-s em-also">${escapeHtml(also)}</span>` : ''}</span><span class="em-togs">${list.map((p) => oaMailTog(p, m)).join('')}</span></div>`;
+                    return `<div class="ga-row em-row" data-mail="${m.k}"><span class="ga-lb"><span class="ga-t">${escapeHtml(m.t)}</span>${also ? `<span class="ga-s em-also">${escapeHtml(also)}</span>` : ''}</span><span class="em-togs">${list.map((p) => oaMailTog(p, m)).join('')}</span></div>`;
                 })
                 .join('')}</div>`;
     });
     html +=
-        `<p class="ga-note">New enquiries, guest messages and the backup always reach someone, so the last person on one can’t be switched off. A switched-off area takes its emails with it.</p>` +
-        `<p class="ga-note">Phone alerts are separate: each of you chooses your own in Notifications. If an alert can’t reach your phone, it comes to your email instead.</p>` +
         gaGroup(
             (__oaMailExtras || [])
                 .map((e) => gaRow({ ic: 'mail', t: e, s: 'Copied on every email but the backup', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) }))
-                .concat([gaRow({ ic: 'plus', t: 'Add an address', s: 'Someone without a sign-in, like a co-host', act: 'data-act="addNotifyEmail"' })]),
+                .concat([gaRow({ ic: 'plus', t: 'Add an address', act: 'data-act="addNotifyEmail"', cls: 'oa-accent' })]),
             'Also emailed',
         );
     box.innerHTML = oaPage('emails', html);
@@ -13880,11 +13857,6 @@ function renderSearchLearning() {
 
     // 1) Plain-language model status. No jargon: what's loaded, how much it's
     // been taught, how many dead-ends are waiting.
-    const darkstarUp = (typeof DARKSTAR === 'object' && DARKSTAR.st) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('darkstar-ready'));
-    const encoderUp = typeof CHB_ENC === 'object' && CHB_ENC.st;
-    const modelLine = darkstarUp
-        ? (encoderUp ? 'Both on-device models are loaded — the assistant understands wording by meaning, not just keywords.' : 'The on-device meaning model is loaded — the assistant matches your wording to what it can answer.')
-        : 'Running on keywords for now — the on-device meaning model loads a moment after you open search.';
     const statTiles = [
         ['Taught phrasings', learned.length],
         ['Made literal', suppressed.length],
@@ -13893,15 +13865,13 @@ function renderSearchLearning() {
     // A "Test the assistant" sandbox — type any phrasing, see how it reads it.
     const probeHtml = `
         <section class="glass-panel sl-card">
-            <label class="sl-probe-label" for="sl-probe-input">Test the assistant — type a phrasing to see how it reads it</label>
+            <label class="sl-probe-label" for="sl-probe-input">Test the assistant</label>
             <input id="sl-probe-input" class="input-glass" autocomplete="off" placeholder="e.g. who still hasn't coughed up" ${chbInput('slProbe')} data-pass="value">
             <div id="sl-probe-out" class="sl-probe-out"></div>
         </section>`;
     const statusHtml = `
         <section class="glass-panel sl-card">
-            <p class="sl-model">${esc(modelLine)}</p>
             <div class="sl-stats">${statTiles}</div>
-            <p class="sl-note">Everything here follows YOU, not this device — teaching on your phone shows up on your laptop too.</p>
         </section>`;
 
     // The answerable question-types — options for the "teach to any answer" picker.
@@ -13956,8 +13926,7 @@ function renderSearchLearning() {
     // answer on the cottage's FAQ (or a dismiss). Only shown when there are any.
     let guestQs = [];
     try { guestQs = slGuestQuestions(); } catch (e) {}
-    const guestRows = `<p class="sl-note" style="margin:0 0 12px;">Questions guests typed that the instant-answer assistant couldn't answer. Add an answer and the next guest asking gets it on the spot — no message to you.</p>` +
-        guestQs.slice(0, 20).map((r) => {
+    const guestRows = guestQs.slice(0, 20).map((r) => {
             const nm = (propertyMeta[r.prop] || {}).name || '';
             return `<div class="sl-row">
                 <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
@@ -13983,17 +13952,17 @@ function renderSearchLearning() {
     const teachSum = misses.length ? stCap('warn', misses.length + ' waiting') : stCap('ok', 'nothing waiting');
     const teachSub = misses.length
         ? `“${esc(misses[0].t)}”${misses.length > 1 ? ' + ' + (misses.length - 1) + ' more' : ''} found nothing`
-        : 'recent searches all found something';
+        : '';
     const guestSum = stCap('warn', guestQs.length + ' unanswered');
-    const guestSub = `“${esc((guestQs[0] || {}).q || '')}” — one tap makes it an instant answer`;
+    const guestSub = `“${esc((guestQs[0] || {}).q || '')}”`;
     const taughtSum = learned.length ? stCap('ok', learned.length + ' phrasing' + (learned.length === 1 ? '' : 's')) : stCap('unk', 'none yet');
     const supSum = suppressed.length ? stCap('unk', String(suppressed.length)) : stCap('unk', 'none');
     wrap.innerHTML =
         statusHtml + probeHtml +
         bhubFoldGrp('sl-teach', 'Teach the assistant', teachSub, teachSum, `<div class="sl-fold-body">${missRows}</div>`) +
         (guestQs.length ? bhubFoldGrp('sl-guest', 'Guests asked these', guestSub, guestSum, `<div class="sl-fold-body">${guestRows}</div>`) : '') +
-        bhubFoldGrp('sl-taught', 'What you’ve taught it', 'wording you’ve tagged “Means: …”', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
-        bhubFoldGrp('sl-literal', 'Made literal', 'phrasings searched word-for-word', supSum, `<div class="sl-fold-body">${supRows}</div>`);
+        bhubFoldGrp('sl-taught', 'What you’ve taught it', '', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
+        bhubFoldGrp('sl-literal', 'Made literal', '', supSum, `<div class="sl-fold-body">${supRows}</div>`);
 }
 
 // ---- Money → Pricing coach (data-driven suggestions; apply is opt-in) ----
@@ -14101,9 +14070,8 @@ function loadContentEditor() {
             `<button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(k))}>Save</button></div>`;
     });
     wrap.innerHTML =
-        '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>' +
-        bhubFoldGrp('wc-images', 'Images', 'the hero banner &amp; site-wide pictures', stCap(nImgs ? 'ok' : 'unk', nImgs ? nImgs + ' image' + (nImgs === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${imgRows}</div>`) +
-        bhubFoldGrp('wc-text', 'Text &amp; wording', 'site name, menu labels, hero words', stCap(nTexts ? 'ok' : 'unk', nTexts ? nTexts + ' field' + (nTexts === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${textRows}</div>`);
+        bhubFoldGrp('wc-images', 'Images', '', stCap(nImgs ? 'ok' : 'unk', nImgs ? nImgs + ' image' + (nImgs === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${imgRows}</div>`) +
+        bhubFoldGrp('wc-text', 'Text &amp; wording', '', stCap(nTexts ? 'ok' : 'unk', nTexts ? nTexts + ' field' + (nTexts === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${textRows}</div>`);
 }
 // The green border is a CLAIM, so it waits for the save. It used to flash on a
 // rejected write (saveContent rethrows; the catch swallowed it) — the same defect
@@ -14181,12 +14149,8 @@ async function renderSms() {
     if (sid) sid.value = st.sid_set ? '' : '';
     if (sid) sid.placeholder = st.sid_set ? '•••• ' + (st.sid_tail || '') + ' — blank keeps it' : 'AC…';
     if (from) from.value = st.from || '';
-    const ts = document.getElementById('sms-token-state');
-    if (ts) {
-        ts.textContent = st.token_set
-            ? 'A token is saved. Leave blank to keep it, or paste a new one to replace it.'
-            : 'Stored encrypted, and never shown again once saved.';
-    }
+    // Whether a token is saved rides the field itself, as the SID's does.
+    if (tok) tok.placeholder = st.token_set ? 'Saved — blank keeps it' : 'Paste the auth token';
     smsPaintState(st);
     // A config.php constant silently outranks everything on this page, so say so
     // rather than letting the owner edit fields that cannot take effect.
@@ -14212,12 +14176,12 @@ function smsPaintState(st) {
         return say('Texts are already set up on the server, and those settings win — so this page is read-only.', 'var(--ok-text)');
     }
     if (st.ready) {
-        return say('Texts are on. Guests who tick the box get balance reminders and arrival info.', 'var(--ok-text)');
+        return say('Texts are on.', 'var(--ok-text)');
     }
     if (st.on) {
         return say('Switched on, but not usable yet — fill in all three Twilio details below.', 'var(--warn-text)');
     }
-    return say('Texts are off. The enquiry form does not offer them, and nobody is texted.', 'var(--text-muted)');
+    return say('Texts are off.', 'var(--text-muted)');
 }
 async function saveSmsSettings() {
     const msg = document.getElementById('sms-msg');
@@ -14533,26 +14497,26 @@ function settingsOpenAccom(k) {
               ? `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), false)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label">List on the website</span><span class="settings-row-sub">This cottage is private — show it publicly so guests can find and enquire</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-main"><span class="settings-row-label">List on the website</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`
               : `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), true)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.16 3.19M6.6 6.6C3.6 8.3 2 12 2 12s3.5 7 10 7a9.3 9.3 0 0 0 5.4-1.6M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label">Make private</span><span class="settings-row-sub">Hide from the website but keep booking &amp; taking payments in the back office</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-main"><span class="settings-row-label">Make private</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         const removeRow = arch
             ? `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" ${chbAttrs('restoreAccommodation', String(k))}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label">Restore to the site</span><span class="settings-row-sub">This cottage is currently removed (hidden)</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-main"><span class="settings-row-label">Restore to the site</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`
             : `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" ${chbAttrs('archiveAccommodation', String(k))}>
                             <span class="settings-row-ic" style="color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger-text);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger-text);">Remove this accommodation</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         // THE FOLD ANATOMY (the approved demo): every section is a verdict
@@ -14597,7 +14561,7 @@ function settingsOpenAccom(k) {
             const open = __bhubOpenFolds.has(key);
             return `<section class="bhub-card glass-panel bhub-fold-grp ac-card" data-grp="${escapeHtml(key)}">
                 <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${escapeHtml(key)}">
-                    <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
+                    <span class="bhub-fold-lbl">${s.label}</span>
                     <span class="bhub-fold-right">${right(s.id)}${BHUB_CHEV}</span>
                 </button>
                 <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="acr-body">${accomSectionHtml(k, s.id)}</div></div>
@@ -14793,7 +14757,6 @@ const CAL_IC = (() => {
     return {
         sync: i('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'),
         copy: i('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>'),
-        add: i('<path d="M12 4v16M4 12h16"/>'),
         edit: i('<path d="M4 20h4L20 8l-4-4L4 16z"/><path d="M14 6l4 4"/>'),
     };
 })();
@@ -14855,8 +14818,8 @@ function calSubHtml(k, v) {
     const chips = srcs && srcs.length
         ? srcs.map((x) => `<span class="cal-chip"><i class="cal-dot${x.s && x.s.ok === false ? ' is-bad' : x.s ? ' is-ok' : ''}" aria-hidden="true"></i>${escapeHtml(calPlat(x.source).name)}</span>`).join('')
         : '';
-    if (v.tone === 'none') return 'link Airbnb, Booking.com or Vrbo';
-    if (v.linked === null) return 'add an Airbnb or Booking.com link';
+    // Nothing linked: the "not linked" capsule says it, and the row opens to link one.
+    if (v.tone === 'none' || v.linked === null) return '';
     // The capsule already says how fresh it is; the sub only repeats the age when
     // that age is the problem.
     const when = v.age == null || (chips && v.tone === 'ok') ? '' : 'last imported ' + calAgo(v.age) + ' ago';
@@ -14905,13 +14868,16 @@ function calFoldHtml(k) {
     const canAdd = !srcs || Object.keys(CAL_PLAT).some((s2) => !(srcs || []).some((x) => x.source === s2));
     const formOpen = __calLink && __calLink.pk === k && __calLink.mode === 'add';
     const fixOpen = __calLink && __calLink.pk === k && __calLink.mode === 'fix';
-    return (rows ? `<div class="cal-plist">${rows}</div>` : '')
+    // Linking another platform is a row at the foot of the platform list.
+    const addRow = canAdd && !formOpen
+        ? uAddRow('Link a platform', chbAttrs('calLinkOpen', String(k), '', 'add'), !rows)
+        : '';
+    return (rows || addRow ? `<div class="cal-plist">${rows}${addRow}</div>` : '')
         + (fixOpen ? calLinkFormHtml(k) : '')
         + (formOpen ? calLinkFormHtml(k) : '')
         + `<div class="mo-tools cal-tools">
             <button class="mo-tool" ${chbAttrs('runSync', String(k))}>${__calBusy[k] === 'run' ? '<span class="mg-spin cal-tspin" aria-hidden="true"></span><span>Syncing</span>' : CAL_IC.sync + '<span>Sync now</span>'}</button>
             ${__calOv && __calOv[k] && __calOv[k].export_url ? `<button class="mo-tool" ${chbAttrs('calCopyLink', String(k))}>${CAL_IC.copy}<span>Copy link</span></button>` : ''}
-            ${canAdd && !formOpen ? `<button class="mo-tool" aria-label="Link a platform" ${chbAttrs('calLinkOpen', String(k), '', 'add')}>${CAL_IC.add}<span>Add new</span></button>` : ''}
             <button class="mo-tool" ${chbAttrs('settingsOpenCalendar', String(k))}>${CAL_IC.edit}<span>Edit links</span></button>
           </div>`;
 }
@@ -14930,6 +14896,7 @@ function renderCalendarList() {
         else list.innerHTML = calListHtml();
         if (!__calOv) calLoadOverview();
     }
+    if (!settingsShowing('calendar')) return;
     settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.calendar;
@@ -15132,6 +15099,7 @@ function renderCancelList() {
         list.style.display = '';
         list.innerHTML = `<div class="settings-group">${cancelRowsHtml()}</div>`;
     }
+    if (!settingsShowing('cancel')) return;
     settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.cancel;
@@ -15150,7 +15118,8 @@ function cancelPickerHtml(propKey) {
                 </button>`;
         })
         .join('');
-    return `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:560px;margin:0 0 16px;">Choose the cancellation policy guests see on the <strong>${escapeHtml(propertyMeta[propKey].name)}</strong> page.</p><div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy">${cards}</div>`;
+    // The page's title names the cottage; the cards are the choice.
+    return `<div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}">${cards}</div>`;
 }
 function settingsOpenCancel(propKey) {
     adminHistPush('view-settings', 'cancel', { prop: propKey });
@@ -18875,15 +18844,13 @@ async function testOwnerPush() {
 function renderNotifySettings() {
     const wrap = document.getElementById('notify-body');
     if (!wrap) return;
-    const others = (__oaPeople || []).filter((p) => !p.you && p.state === 'active').map((p) => p.first);
     const full = chbFull();
     wrap.innerHTML = oaPage(
         'notify',
         oaBack('acct', 'Account') +
-            `<h1 class="section-title ga-h1">Notifications</h1><p class="ga-lead">${escapeHtml(others.length ? 'Your own alerts. ' + listAnd(others) + (others.length > 1 ? ' choose their own.' : ' chooses theirs.') : 'What reaches this device, and what interrupts you.')}</p>` +
+            `<h1 class="section-title ga-h1">Notifications</h1>` +
             `<h2 class="ga-cap">This device</h2><div id="notify-device"><div class="ga-group">${oaDeviceRows().join('')}</div></div>` +
             `<h2 class="ga-cap">What interrupts you</h2><div id="notify-prefs-body"></div>` +
-            `<p class="ga-note">Turning one off stops the buzz. It still lands in the activity log, and anything urgent, like a calendar sync that could double-book you, always gets through.</p>` +
             // Emails are a separate choice from alerts: who gets which is set on one
             // page (everyone's, for full access; your own list, read-only, otherwise).
             gaGroup(
@@ -21166,8 +21133,7 @@ function prProfitCardHtml(pk, x) {
     if (x.hidden) return '';
     return `<div class="acr-well pr-pcard" data-idea="${escapeHtml(x.id)}">
         <div class="pr-shead"><span class="pr-stitle">${escapeHtml(x.title)}</span>${stCap('ok', x.gain)}</div>
-        <p class="pr-swhy">${escapeHtml(x.why)}</p>
-        <div class="pr-cmp">${x.compare.map((c, i) => `<div class="pr-cmprow${i === x.best ? ' is-best' : ''}"><span class="pr-cmpk">${escapeHtml(c[0])}</span><span class="pr-cmpv">${escapeHtml(c[1])}</span><span class="pr-cmps">${escapeHtml(c[2])}</span></div>`).join('')}</div>
+        <div class="pr-cmp">${x.compare.map((c, i) => `<div class="pr-cmprow${i === x.best ? ' is-best' : ''}"><span class="pr-cmpk">${escapeHtml(c[0])}</span><span class="pr-cmpv">${escapeHtml(c[1])}</span></div>`).join('')}</div>
         <div class="pr-basis">${prConfBars(x.conf)}<span><b>${['', 'Low confidence', 'Fairly sure', 'Confident'][x.conf]}</b> · ${escapeHtml(x.basis)}</span></div>
         <div class="pr-ideaacts"><button type="button" class="pay-btn" ${chbAttrs(...x.run)}>${escapeHtml(x.act)}</button><button type="button" class="pay-btn2" ${chbAttrs('prHide', pk, x.id, x.sig)}>Not now</button></div>
     </div>`;
@@ -21175,19 +21141,23 @@ function prProfitCardHtml(pk, x) {
 function prLearnedHtml(pk) {
     const L = prLearned(pk);
     const nm = (propertyMeta[pk] || {}).name || pk;
-    if (L.count < 3) return `<section class="rv-sec"><h3 class="acr-cap">What it has learned about ${escapeHtml(nm)}’s guests</h3><div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div></section>`;
+    const cap = `What it has learned about ${escapeHtml(nm)}’s guests`;
+    // Read-only, so it folds under its own row (the one look's simpler format).
+    if (L.count < 3) return `<section class="rv-sec">${bhubFoldGrp('prf-learn', cap, '', '', `<div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div>`)}</section>`;
     const bar = (row) => {
         const v = row.avg;
         return `<div class="pr-lrow"><span class="pr-lk">${escapeHtml(row.k)}</span><span class="pr-lbar"><span class="${v != null && v < 3 ? 'is-short' : ''}" style="width:${v != null ? Math.min(100, Math.round((v / 7) * 100)) : 0}%"></span></span><span class="pr-lv">${v != null ? v.toFixed(1) : '—'}</span></div>`;
     };
-    return `<section class="rv-sec">
-        <h3 class="acr-cap">What it has learned about ${escapeHtml(nm)}’s guests</h3>
-        <div class="acr-well pr-learn">
+    return `<section class="rv-sec">${bhubFoldGrp(
+        'prf-learn',
+        cap,
+        '',
+        '',
+        `<div class="pr-learn">
             <span class="pr-lt">Nights per stay, by when they book</span>${L.lead.map(bar).join('')}
             <span class="pr-lt">Nights per stay, by time of year</span>${L.season.map(bar).join('')}
-            <p class="pr-note">From ${L.count} stays over the last three years, recent ones counting more. Short averages are where the drive takes a big share of what a stay pays.</p>
-        </div>
-    </section>`;
+        </div>`,
+    )}</section>`;
 }
 function prCostsPageHtml(pk, keysHtml) {
     const c = prCosts(), K = prKept(pk), F = prFleetShare();
@@ -21197,8 +21167,6 @@ function prCostsPageHtml(pk, keysHtml) {
             <span class="acr-step"><button type="button" ${chbAttrs('prCostStep', field, '-1')} aria-label="${escapeHtml(label)} — less">−</button><span class="acr-val pr-val">${shown}</span><button type="button" ${chbAttrs('prCostStep', field, '1')} aria-label="${escapeHtml(label)} — more">+</button></span>
         </div>`;
     return `<div class="rv-page pr-page">
-        <button type="button" class="pr-back pr-up" data-act="prCloseCosts">‹ Pricing</button>
-        <h3 class="pr-ptitle">Changeovers</h3>
         ${keysHtml}
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm)} · next 6 weeks</h3>
@@ -21206,7 +21174,7 @@ function prCostsPageHtml(pk, keysHtml) {
                 <span class="pr-sumk">${c.on ? 'Kept per booked night, after the drive' : 'Taken per booked night'}</span>
                 <span class="pr-sumv">${K.nights ? prGbp(K.perNight) : '—'}</span>
                 <div class="pr-sumg"><span><b>${prGbp(K.kept)}</b>${c.on ? 'kept in all' : 'taken in all'}</span><span><b>${K.trips}</b>changeover${K.trips === 1 ? '' : 's'}</span><span><b>${prDriveText(Math.round(K.trips * c.drive * 2))}</b>on the road</span></div>
-                <p class="pr-note">${K.short && c.on ? `${K.short} of these ${K.trips} stays ${K.short === 1 ? 'is' : 'are'} 2 nights or fewer — each costs the same ${prGbp(c.trip)} trip as a week does.` : K.trips ? 'Every stay is three nights or more.' : 'No changeovers in the next six weeks.'}${K.est ? ` Platform stays are estimated at your own price.` : ''}</p>
+                ${K.short && c.on ? `<p class="pr-note">${K.short} of these ${K.trips} stays ${K.short === 1 ? 'is' : 'are'} 2 nights or fewer.</p>` : ''}
             </div>
         </section>
         <section class="rv-sec">
@@ -21222,7 +21190,7 @@ function prCostsPageHtml(pk, keysHtml) {
                 <div class="pay-row pr-rule pr-total"><span class="pay-lbl">Each changeover</span><span class="pr-tripv">${c.on ? prGbp(c.trip) : 'Off'}</span></div>
                 </div>
             </div>
-            <p class="pr-note">Across all your cottages: ${F.n} changeover${F.n === 1 ? '' : 's'} on ${F.days} day${F.days === 1 ? '' : 's'} in the next six weeks${F.n > F.days ? ` — ${F.n - F.days} already share${F.n - F.days === 1 ? 's' : ''} a drive` : ''}. ${c.on ? 'The engine takes this cost off every stay before it compares anything' : 'With changeover costs off, the engine compares what guests pay and nothing else'}; nights you or a platform hold back are neither booked nor unsold.</p>
+            <p class="pr-note">Across all your cottages: ${F.n} changeover${F.n === 1 ? '' : 's'} on ${F.days} day${F.days === 1 ? '' : 's'} in the next six weeks${F.n > F.days ? ` — ${F.n - F.days} already share${F.n - F.days === 1 ? 's' : ''} a drive` : ''}.</p>
         </section>
     </div>`;
 }
@@ -21303,7 +21271,7 @@ function renderPricing() {
     const r = prRate(pk);
     const wkDays = String(r.weekendDays == null ? '5,6' : r.weekendDays).split(',').filter(Boolean).map((x) => ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][+x]).filter(Boolean);
     const step = (field, label, sub, shown, lessLabel) => `<div class="pay-row pr-rule">
-            <span class="pr-rlbl"><span class="pay-lbl">${label}</span><span class="pr-rsub">${escapeHtml(sub)}</span></span>
+            <span class="pr-rlbl"><span class="pay-lbl">${label}</span>${sub ? `<span class="pr-rsub">${escapeHtml(sub)}</span>` : ''}</span>
             <span class="acr-step"><button type="button" ${chbAttrs('prStep', field, '-1')} aria-label="${escapeHtml(lessLabel)} — less">−</button><span class="acr-val pr-val">${shown}</span><button type="button" ${chbAttrs('prStep', field, '1')} aria-label="${escapeHtml(lessLabel)} — more">+</button></span>
         </div>`;
     const usual = Math.round(parseFloat(r.coupleRate) || 0);
@@ -21316,7 +21284,23 @@ function renderPricing() {
     const cotsHtml = `<div class="pay-seg pr-cots" role="group" aria-label="Cottage" style="grid-template-columns: repeat(${keys.length}, minmax(0, 1fr));">${keys
             .map((k) => `<button type="button" data-v="${escapeHtml(k)}" class="${k === pk ? 'is-on' : ''}" aria-pressed="${k === pk}" ${chbAttrs('prCottage', k)}><span class="rv-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent));" aria-hidden="true"></span>${escapeHtml(nm(k).replace(/ Westgate( Street)?$/, ''))}</button>`)
             .join('')}</div>`;
-    if (__prPage === 'costs') { wrap.innerHTML = prCostsPageHtml(pk, cotsHtml); return; }
+    const ttl = document.getElementById('settings-panel-title');
+    const here = settingsShowing('pricing');
+    if (__prPage === 'costs') {
+        if (here) {
+            if (ttl) ttl.textContent = 'Changeovers';
+            // The ideas count belongs to the Price ideas page, not this one.
+            const cap = document.getElementById('settings-panel-cap');
+            if (cap) cap.innerHTML = '';
+            settingsSetBack(prCloseCosts, SETTINGS_TITLES.pricing);
+        }
+        wrap.innerHTML = prCostsPageHtml(pk, cotsHtml);
+        return;
+    }
+    if (here) {
+        if (ttl) ttl.textContent = SETTINGS_TITLES.pricing;
+        settingsSetBack(() => settingsShowIndex(), 'Manage');
+    }
     wrap.innerHTML = `<div class="rv-page pr-page">
         ${cotsHtml}
         <section class="rv-sec">
@@ -21344,12 +21328,12 @@ function renderPricing() {
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
             <div class="acr-well rv-well">
-                ${step('coupleRate', 'Usual nightly', 'Every night unless something below applies', `£${usual}`, 'Usual nightly')}
+                ${step('coupleRate', 'Usual nightly', '', `£${usual}`, 'Usual nightly')}
                 ${step('weekendPct', 'Weekends', wkDays.length ? wkDays.join(' and ') : 'No weekend days set', wk ? `+${wk}%` : 'Off', 'Weekend uplift')}
-                ${step('lastminPct', 'Last minute', lmd ? `Within ${lmd} day${lmd === 1 ? '' : 's'} of arrival` : 'Set the days in the cottage’s rates', lmp ? `−${lmp}%` : 'Off', 'Last-minute discount')}
-                ${step('shortFee', 'Short stays', `A night, on stays of ${Math.max(1, parseInt(r.shortMax, 10) || 2)} nights or fewer`, parseFloat(r.shortFee) > 0 ? `+£${Math.round(parseFloat(r.shortFee))}` : 'Off', 'Short-stay charge')}
+                ${step('lastminPct', 'Last minute', lmd ? `Within ${lmd} day${lmd === 1 ? '' : 's'} of arrival` : '', lmp ? `−${lmp}%` : 'Off', 'Last-minute discount')}
+                ${step('shortFee', 'Short stays', `Stays of ${Math.max(1, parseInt(r.shortMax, 10) || 2)} nights or fewer`, parseFloat(r.shortFee) > 0 ? `+£${Math.round(parseFloat(r.shortFee))}` : 'Off', 'Short-stay charge')}
                 <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl">Minimum stay</span><span class="pr-rsub">${escapeHtml(prMinSummary(pk))}</span></span>${Array.isArray(r.minByDate) && r.minByDate.length ? `<button type="button" class="pr-back" ${chbAttrs('prClearMinByDate', pk)}>Clear dated</button>` : ''}</div>
-                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-gapfit-lbl">Short gaps can book</span><span class="pr-rsub">Within 10 days, a gap shorter than the minimum books as exactly that gap</span></span>
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-gapfit-lbl">Short gaps can book</span></span>
                     <label class="chb-switch"><input type="checkbox" id="pr-gapfit" aria-labelledby="pr-gapfit-lbl" ${parseInt(r.gapFitDays, 10) > 0 ? 'checked' : ''} data-act-change="prGapFitToggle"><span class="chb-switch-track" aria-hidden="true"></span></label></div>
                 <button type="button" class="rv-go" ${chbAttrs('settingsOpenAccomSec', pk, 'rates')}><span class="rv-go-txt"><span class="rv-name">Extra guests</span></span><span class="pay-val">${extras}</span>${chev}</button>
                 <button type="button" class="rv-go" data-act="settingsOpen" data-arg="seasongrid"><span class="rv-go-txt"><span class="rv-name">Seasonal rates</span></span><span class="pay-val">${coming} coming up</span>${chev}</button>
@@ -21358,7 +21342,7 @@ function renderPricing() {
         <section class="rv-sec">
             <h3 class="acr-cap">Smart pricing</h3>
             <div class="acr-well rv-well">
-                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-smart-lbl">Suggest prices</span><span class="pr-rsub">Nothing changes until you tap</span></span>
+                <div class="pay-row pr-rule"><span class="pr-rlbl"><span class="pay-lbl" id="pr-smart-lbl">Suggest prices</span></span>
                     <label class="chb-switch"><input type="checkbox" id="pr-smart" aria-labelledby="pr-smart-lbl" ${s.smart ? 'checked' : ''} data-act-change="prSmartToggle"><span class="chb-switch-track" aria-hidden="true"></span></label></div>
                 <div class="pr-limits${s.smart ? '' : ' is-off'}">
                     ${step('floor', 'Never suggest below', '', s.floor ? `£${s.floor}` : 'No limit', 'Lowest suggestion')}
@@ -21408,7 +21392,6 @@ function prSearchIdeasHtml(pk) {
             const can = x.apply && x.apply.field === 'weekendPct';
             return `<div class="acr-well pr-scard" id="psug-${escapeHtml(x.id)}">
                 <div class="pr-shead"><span class="pr-stitle">${escapeHtml(x.title)}</span>${op ? stCap('ok', 'Opportunity') : stCap('unk', 'Insight')}</div>
-                <p class="pr-swhy">${escapeHtml(x.detail)}</p>
                 ${can ? `<button type="button" class="pay-btn pr-sapply" ${chbAttrs('applyPricingSuggestion', String(x.prop_key), String(x.apply.field), Number(x.apply.value), String(x.id))}>Set weekends to ${Number(x.apply.value)}%</button>` : ''}
             </div>`;
         })
@@ -21421,9 +21404,9 @@ function prRadarHtml() {
     const weeks = (sig.searchWeeks || []).filter((w) => w.count > 0 && String(w.week || '').slice(0, 10) >= mon).slice(0, 6).sort((a, b) => String(a.week || '').localeCompare(String(b.week || '')));
     if (!sig.searches60 && !weeks.length) return '';
     const max = Math.max(1, ...weeks.map((w) => w.count));
-    return `<section class="rv-sec">
-        <h3 class="acr-cap">What guests searched for · last 60 days</h3>
-        <div class="acr-well pr-radar">
+    // Read-only, so it folds under its own row.
+    return `<section class="rv-sec">${bhubFoldGrp('prf-radar', 'What guests searched for · last 60 days', '', '', `
+        <div class="pr-radar">
             <div class="pr-rnums"><span><b>${sig.searches60 || 0}</b>search${sig.searches60 === 1 ? '' : 'es'}</span>${sig.noResult60 ? `<span class="is-miss"><b>${sig.noResult60}</b>found nothing free</span>` : ''}</div>
             ${weeks.map((w) => {
                 const iso = String(w.week || '').slice(0, 10);
@@ -21435,8 +21418,7 @@ function prRadarHtml() {
                 </button>`;
             }).join('')}
             <div class="pr-rkey"><span><i></i>searched</span><span><i class="is-miss"></i>nothing free</span></div>
-        </div>
-    </section>`;
+        </div>`)}</section>`;
 }
 // A searched week → that week on the calendar (its first free night, if any).
 function prRadarWeek(iso) {
@@ -24519,7 +24501,7 @@ function renderChatAnswersEditor() {
     if (!host) return;
     host.innerHTML =
         '<div class="acr-cap">Quick-question chips</div>' +
-        '<div class="acr-capsub">The chat\u2019s own chips \u2014 leave one blank to use the default.</div>' +
+        '' +
         '<div class="acr-well">' +
         CHAT_FAQ_ORDER.map((which) => {
             const f = CHAT_FAQ[which];
@@ -24551,11 +24533,11 @@ function renderChatAwayEditor() {
     };
     host.innerHTML =
         '<div class="acr-cap">Away reply</div>' +
-        '<div class="acr-capsub">Sent at most once every few hours \u2014 never right after you\u2019ve replied.</div>' +
+        '' +
         `<div class="acr-well">
             <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
             <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContentField', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
-            <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
+            <div class="acr-row"><span class="acr-lbl">Only outside these hours</span>
                 <span style="display:flex;gap:6px;align-items:center;">
                 <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContentField', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
                 <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContentField', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
@@ -24761,7 +24743,6 @@ function accomSectionHtml(k, sec) {
             const imgEl = document.querySelector('[data-edit-img="' + ck.img + '"]');
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
             return `<div class="acr-cap">Home-page tile</div>
-                    <div class="acr-capsub">The tile guests tap. Its detail-page photos and text live in Photos and Text.</div>
                     <div class="acr-well">
                         <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
                             <span class="acr-lbl" style="flex:1;">Home-page photo</span><button class="btn-sm btn-edit acw-linkbtn" ${chbAttrs('contentEditImage', String(ck.img))}>Replace…</button></div>
@@ -24776,10 +24757,9 @@ function accomSectionHtml(k, sec) {
         case 'photos': {
             const imgs = accomImages(k);
             return `<div class="acr-cap">Gallery</div>
-                    <div class="acr-capsub">The first photo is the main image.</div>
                     <div class="acr-well">
                         <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
-                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>Add a photo</button></div>
+                        ${uAddRow('Add a photo', chbAttrs('accomAddPhoto', String(k)))}
                     </div>`;
         }
         case 'amenities': {
@@ -24791,13 +24771,12 @@ function accomSectionHtml(k, sec) {
             return `<div class="acr-cap">What guests get</div>
                     <div class="acr-well">
                         <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
+                        ${uAddRow('Add an amenity', chbAttrs('accomAddAmenity', String(k)))}
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>Add an amenity</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save amenities</button>
                             <span id="accom-am-msg-${k}" style="font-size:var(--fs-sub);"></span>
                         </div>
-                    </div>
-                    <p class="acr-note">One per row, a few words each. They show as pills on the cottage page and behind the <strong>Amenities</strong> tile on the guest&rsquo;s own stay.</p>`;
+                    </div>`;
         }
         case 'text': {
             const def = propertyContent[k] || {};
@@ -24819,7 +24798,7 @@ function accomSectionHtml(k, sec) {
             // the same updateRate instant-save the old fields used.
             const acr = (field, label, sub, unit, step, max, subId) => `
                     <div class="acr-row">
-                        <span class="acr-lbl">${label}<small${subId ? ` id="${subId}"` : ''}>${sub}</small></span>
+                        <span class="acr-lbl">${label}${sub || subId ? `<small${subId ? ` id="${subId}"` : ''}>${sub}</small>` : ''}</span>
                         <span class="acr-step">
                             <button type="button" ${chbAttrs('acrStep', String(k), field, String(-step))} aria-label="${label} — less">−</button>
                             <span class="acr-val">${unit === '£' ? '<span class="acr-unit">£</span>' : ''}<input id="acr-${k}-${field}" type="number" min="0"${max ? ` max="${max}"` : ''} step="${step}" value="${r[field] || 0}" ${chbChange('acrType', String(k), field, CHB_VALUE)} aria-label="${label}">${unit !== '£' ? `<span class="acr-unit">${unit}</span>` : ''}</span>
@@ -24830,7 +24809,7 @@ function accomSectionHtml(k, sec) {
             return `
                     <div class="acr-cap">Your price</div>
                     <div class="acr-well">
-                        ${acr('coupleRate', 'Couple per night', 'two adults — every quote starts here', '£', 5)}
+                        ${acr('coupleRate', 'Couple per night', '', '£', 5)}
                         ${acr('extraAdultRate', 'Extra adult', 'per night, on top', '£', 5)}
                         ${acr('childRate', 'Child', 'per night — under 16', '£', 5)}
                     </div>
@@ -24843,13 +24822,13 @@ function accomSectionHtml(k, sec) {
                     </div>
                     <div class="acr-cap">Deposit &amp; fee</div>
                     <div class="acr-well">
-                        ${acr('damagesDeposit', 'Damages deposit', 'charged with the first payment, refunded after checkout', '£', 5)}
-                        ${acr('transactionPct', 'Transaction fee', 'added to the guest&rsquo;s total', '%', 0.5)}
+                        ${acr('damagesDeposit', 'Damages deposit', '', '£', 5)}
+                        ${acr('transactionPct', 'Transaction fee', '', '%', 0.5)}
                     </div>
                     <div class="acr-cap">Book-direct badge</div>
                     <div class="acr-well">
                         <div class="acr-row">
-                            <span class="acr-lbl">Airbnb price<small>what the same night costs there</small></span>
+                            <span class="acr-lbl">Airbnb price</span>
                             <label class="acr-ota"><span class="acr-unit">£</span><input id="acr-${k}-ota" type="number" min="0" step="1" value="${escapeHtml(String(otaVal))}" placeholder="—" ${chbChange('acrOta', String(k), CHB_VALUE)} aria-label="Airbnb price for comparison"></label>
                         </div>
                         <div class="acr-preview"><div class="acr-pvcap">On the cottage page, guests see:</div><span class="acr-badge" id="acr-badge-${k}"></span></div>
@@ -24867,7 +24846,6 @@ function accomSectionHtml(k, sec) {
                         <div class="acr-row"><span class="acr-lbl">Maximum nights<small>0 = no limit</small></span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '-1')} aria-label="Maximum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-maxNights" type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)} aria-label="Maximum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '1')} aria-label="Maximum nights — more">+</button></span></div>
                     </div>
                     <div class="acr-cap">Arrival days</div>
-                    <div class="acr-capsub">None ticked means guests may arrive any day.</div>
                     <div class="acr-well">
                         <div class="arrival-days acw-days">${[
                             'Sun',
@@ -24917,29 +24895,26 @@ function accomSectionHtml(k, sec) {
                     <div class="acr-well">
                         ${auto.map((t) => `<div class="acr-row"><span class="acr-lbl">${escapeHtml(t)}</span></div>`).join('')}
                     </div>
-                    <p class="acr-note">Guests see these first, so there is no need to write them out again. Change them under <strong>Times &amp; limits</strong>.</p>
                     <div class="acr-cap">Your own rules</div>
                     <div class="acr-well">
                         <div id="accom-houserules-rows-${k}" class="acw-list">${houseRulesList(k)
                             .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
                             .join('')}</div>
+                        ${uAddRow('Add a rule', chbAttrs('accomAddHouseRule', String(k)))}
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>Add a rule</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save house rules</button>
                         </div>
-                    </div>
-                    <p class="acr-note">One per row, a sentence each. They show on the cottage page and behind the <strong>House rules</strong> tile on the guest&rsquo;s own stay.</p>`;
+                    </div>`;
         }
         case 'safety':
             return `
                     <div class="acr-cap">Safety notes</div>
-                    <div class="acr-capsub">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page.</div>
                     <div class="acr-well">
                         <div id="accom-safety-rows-${k}" class="acw-list">${accomSafetyList(k)
                             .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
                             .join('')}</div>
+                        ${uAddRow('Add an item', chbAttrs('accomAddSafety', String(k)))}
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>Add an item</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
                         </div>
                     </div>`;
@@ -24967,10 +24942,8 @@ function accomSectionHtml(k, sec) {
         case 'arrival':
             return `
                     <div class="acr-cap">Arrival info</div>
-                    <div class="acr-capsub">Directions, key collection, wifi — private to booked guests.</div>
                     <div class="acr-well">
-                        <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContentField', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
-                        <small class="acw-tip">✓ Saves by itself — emailed before check-in, and unlocks on the guest&rsquo;s account at the cottage door (see Location)</small></div>
+                        <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContentField', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>
                     </div>`;
         case 'opsnotes':
             // The OWNER'S operational card — the facts needed standing AT the
@@ -24983,21 +24956,18 @@ function accomSectionHtml(k, sec) {
             return `
                     <label class="chb-switch-row"><span class="chb-switch"><input type="checkbox" id="ks-toggle-${k}" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}><span class="chb-switch-track" aria-hidden="true"></span></span><span>Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</span></label>
                     <div class="acr-cap">Private notes</div>
-                    <div class="acr-capsub">For you only — never shown to guests.</div>
                     <div class="acr-well">
-                        <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea>
-                        <small class="acw-tip">✓ Saves by itself — carried in your phone&rsquo;s offline day sheet, readable at the door with no signal</small></div>
+                        <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>
                     </div>`;
         case 'location':
             return `
                     <div class="acr-cap">Address</div>
-                    <div class="acr-capsub">Shown to guests.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="2" class="input-glass" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)} aria-label="Address">${escapeHtml(r.address || '')}</textarea></div>
                     </div>
                     <div class="acr-cap">Key-code unlock spot</div>
                     <div class="acr-well">
-                        <div class="acr-row"><span class="acr-lbl">GPS pin<small>within 25m unlocks the arrival info on the guest&rsquo;s phone — stand at the cottage and tap the button</small></span><span class="st-cap ${geoVal(k) ? 'is-ok' : 'is-unk'}">${geoVal(k) ? '<span class="st-tick" aria-hidden="true">✓</span>' : ''}<span id="geo-status-${k}">${geoStatusText(k)}</span></span></div>
+                        <div class="acr-row"><span class="acr-lbl">GPS pin</span><span class="st-cap ${geoVal(k) ? 'is-ok' : 'is-unk'}">${geoVal(k) ? '<span class="st-tick" aria-hidden="true">✓</span>' : ''}<span id="geo-status-${k}">${geoStatusText(k)}</span></span></div>
                         <div class="acw-acts">
                             <button class="btn-sm btn-edit" ${chbAttrs('captureGeo', String(k))}>${IC_PIN} Use my current location</button>
                             <button class="btn-sm btn-delete" ${chbAttrs('clearGeo', String(k))}>Clear</button>
@@ -25013,24 +24983,20 @@ function accomSectionHtml(k, sec) {
         case 'local':
             return `
                     <div class="acr-cap">Dark skies</div>
-                    <div class="acr-capsub">Shown on Things to do, site-wide.</div>
                     <div class="acr-well">
                         <div class="acw-frow"><textarea rows="3" class="input-glass" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)} aria-label="Dark skies note">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
                     </div>
                     <div class="acr-cap">Accessibility</div>
-                    <div class="acr-capsub">Shown on the cottage page.</div>
                     <div class="acr-well">
-                        <div class="acw-frow"><textarea rows="4" class="input-glass" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)} aria-label="Accessibility">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea>
-                        <small class="acw-tip">Steps, parking distance, ground-floor sleeping, bathroom layout — both save by themselves</small></div>
+                        <div class="acw-frow"><textarea rows="4" class="input-glass" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)} aria-label="Accessibility">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea></div>
                     </div>`;
         case 'faq':
             return `
                     <div class="acr-cap">Instant answers</div>
-                    <div class="acr-capsub">The &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script.</div>
                     <div class="acr-well">
                         <div id="faq-editor-${k}" class="acw-list">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
+                        ${uAddRow('Add a question', chbAttrs('addFaqRow', String(k)))}
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>Add a question</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
                         </div>
                     </div>`;
@@ -25040,11 +25006,10 @@ function accomSectionHtml(k, sec) {
                 : [];
             return `
                     <div class="acr-cap">Welcome book</div>
-                    <div class="acr-capsub">Private — only guests who&rsquo;ve booked this cottage see it.</div>
                     <div class="acr-well">
                         <div id="welcome-editor-${k}" class="acw-list">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
+                        ${uAddRow('Add a section', chbAttrs('addWelcomeRow', String(k)))}
                         <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>Add a section</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
                         </div>
                     </div>`;
@@ -25304,11 +25269,13 @@ async function loadAnalytics(days = 30) {
               })
             : ym || '';
     };
-    const moCard = (title, body) =>
-        `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
-    const grid2 = (a, b) => `<div class="mo-grid2">${a}${b}</div>`;
+    // A card with nothing in it yet says nothing: it is left out, and a pair or a
+    // section left empty goes with it (the one look's simpler format).
     const emptyNote = (t) =>
-        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
+        `<p class="ana-empty" style="font-size:var(--fs-sub);color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
+    const moCard = (title, body) =>
+        /^<p class="ana-empty"[^<]*>[^<]*<\/p>$/.test(String(body).trim()) ? '' : `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
+    const grid2 = (a, b) => (a && b ? `<div class="mo-grid2">${a}${b}</div>` : a || b);
 
     // Category palette — colour bars by meaning rather than one flat hue.
     const HUE = {
@@ -25412,7 +25379,7 @@ async function loadAnalytics(days = 30) {
             { label: 'Unique visitors', value: uniq },
             { label: 'Enquiries', value: d.enquiries || 0 },
             { label: 'Bookings', value: bookings },
-        ]) + emptyNote('Enquiries &amp; bookings are counted by the date they came in.');
+        ]);
     const ev = d.events || {};
     const engagement = funnelBars([
         { label: 'Clicked “Enquire now”', value: ev.book_click || 0 },
@@ -25462,8 +25429,7 @@ async function loadAnalytics(days = 30) {
     const enginesHtml = engines.length
         ? osHBars(
               engines.map((e) => ({ label: e.name, value: e.count, max: enMax, color: '#5BA8FF' })),
-          ) +
-          `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Search engines hide the words people typed — connect Google Search Console for the actual terms.</p>`
+          )
         : emptyNote('No search-engine visits yet.');
     const sources = Array.isArray(d.sources) ? d.sources : [];
     const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
@@ -25566,38 +25532,35 @@ async function loadAnalytics(days = 30) {
         ? `<div class="ana-insights"><div class="mo-card-title" style="margin-bottom:6px;">Highlights</div><ul style="margin:0;padding-left:18px;">${insights.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`
         : '';
 
+    // The headline figures and the visits chart stay open; the four deeper
+    // sections fold under their own rows. An empty section is not drawn at all.
+    const anaGroup = (key, label, html) => (String(html).trim() ? bhubFoldGrp('ana-' + key, label, '', '', html) : '');
+    const over = moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml) + grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement));
     wrap.innerHTML =
         pickerRow +
         insightsHtml +
         kpis +
-        `
-                <div class="ana-group-title">Behaviour over time</div>
-                ${moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml)}
-                ${grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement))}
-
-                <div class="ana-group-title">Audience</div>
-                ${grid2(moCard('New vs returning', mixHtml), moCard('How visitors browse', devicesHtml))}
-
-                <div class="ana-group-title">Where visitors come from</div>
-                ${grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml))}
-                ${grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))}
-
-                <div class="ana-group-title">On-site behaviour</div>
-                ${grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml))}
-                ${grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))}
-
-                <div class="ana-group-title">What guests are searching for</div>
-                ${moCard(
-                    'Search demand',
-                    `
+        (over ? `<div class="ana-group-title">Behaviour over time</div>${over}` : '') +
+        `<div class="ana-folds">` +
+        anaGroup('audience', 'Audience', grid2(moCard('New vs returning', mixHtml), moCard('How visitors browse', devicesHtml))) +
+        anaGroup('sources', 'Where visitors come from', grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml)) + grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))) +
+        anaGroup('onsite', 'On-site behaviour', grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml)) + grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))) +
+        anaGroup(
+            'search',
+            'What guests are searching for',
+            moCard(
+                'Search demand',
+                `
                     <div class="mo-kpis" style="margin-bottom:12px;">
                         <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
                         <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
                     </div>
                     ${topMonthsHtml ? `<div class="acw-cap" style="margin:4px 0 8px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
+                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul>` : ''}
                 `,
-                )}` +
+            ),
+        ) +
+        `</div>` +
         exportRow;
 }
 
@@ -25670,14 +25633,14 @@ async function loadNewsletter() {
     // unknown falls back to a countless label rather than inventing a number.
     __nlActive = active;
     const recent = (r.recent || []).filter((s) => !s.unsubscribed_at).slice(0, 12);
+    // The two figures are stat tiles; who is on the list folds under its own count.
     const list = recent.length
-        ? `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
-        : `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
-    stats.innerHTML = `<div class="accounts-stat" style="max-width:640px;">
-                <div style="display:flex;gap:26px;flex-wrap:wrap;">
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div class="acw-cap" style="margin-bottom:0;">Active subscribers</div></div>
-                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div class="acw-cap" style="margin-bottom:0;">Unsubscribed</div></div>
-                </div>${list}</div>`;
+        ? bhubFoldGrp('nlsubs', 'Who’s subscribed', '', stCap('unk', String(active)), `<div style="font-size:var(--fs-sub);color:var(--text-muted);">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`)
+        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:12px 4px 0;">No subscribers yet.</p>`;
+    stats.innerHTML = `<div class="u-stats">
+                    <div class="u-stat"><div class="u-stat-n">${active}</div><div class="u-stat-l">Active subscribers</div></div>
+                    <div class="u-stat"><div class="u-stat-n">${total - active}</div><div class="u-stat-l">Unsubscribed</div></div>
+                </div>${list}`;
 }
 // ---- Status (Manage → Status) ----
 // Apply any pending database migrations from the UI (calls migrate.php with
@@ -26015,13 +25978,13 @@ function spWeekHtml() {
         ? groups.map((g, k) => `<div class="sp-issue" style="animation-delay:${k * 60}ms"><span class="sp-cnt">×${g.k}</span><span class="sp-itext"><span class="sp-ititle">${escapeHtml(g.title)}</span><span class="sp-iverd${g.needs ? ' is-needs' : ''}">${escapeHtml(g.verdict)}</span></span></div>`).join('')
         : `<div class="sp-issue sp-none">${day == null ? 'Nothing logged this week.' : 'Nothing logged that day.'}</div>`;
     return `<section class="sp-sec" id="sp-week">
-        <h2 class="sp-cap"><span>This week</span><span class="sp-capnote">${day == null ? 'tap a day' : escapeHtml((days[day] || {}).label || '') + ' · tap again for all'}</span></h2>
+        <h2 class="sp-cap"><span>This week</span>${day == null ? '' : `<span class="sp-capnote">${escapeHtml((days[day] || {}).label || '')}</span>`}</h2>
         <div class="sp-card sp-weekcard">
             <div class="sp-whead"><span class="sp-wmark${needs ? ' is-warn' : ''}" aria-hidden="true">${needs ? '!' : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${SP_TICK}</svg>`}</span>
                 <span class="sp-wtext"><span class="sp-wtitle">${escapeHtml(title)}</span><span class="sp-wsub">${escapeHtml(sub)}</span></span></div>
             <div class="sp-days">${bars}</div>
             <div class="sp-issues">${list}</div>
-            <button type="button" class="sp-link" data-act="nav" data-view="view-activity-log">Open the activity log ›</button>
+            <button type="button" class="u-btn2" data-act="nav" data-view="view-activity-log">Open the activity log</button>
         </div>
     </section>`;
 }
@@ -26074,9 +26037,8 @@ function spHtml(r, reveal) {
             const route = spRoute(c.label);
             return `<div class="sp-need is-${c.status === 'fail' ? 'bad' : 'warn'}">
                 <div class="sp-nhead"><span class="sp-nlabel">${escapeHtml(c.label)}</span>${stCap(c.status === 'fail' ? 'bad' : 'warn', c.status === 'fail' ? 'Needs fixing' : 'Worth a look')}</div>
-                <div class="sp-ndetail">${escapeHtml(c.detail || '')}</div>
-                ${c.hint ? `<div class="sp-nhint">${escapeHtml(c.hint)}</div>` : ''}
-                ${route ? `<button type="button" class="sp-link" data-act="settingsOpen" data-arg="${route.arg}">${escapeHtml(route.t)} ›</button>` : ''}
+                <div class="sp-ndetail">${escapeHtml(spFirstSentence(c.detail))}</div>
+                ${route ? `<button type="button" class="u-btn2" data-act="settingsOpen" data-arg="${route.arg}">${escapeHtml(route.t)}</button>` : ''}
             </div>`;
         }).join('')}<button type="button" class="sp-fix" ${chbAttrs('runSelfRepair', CHB_SELF)} title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></section>`;
     }
@@ -26084,12 +26046,12 @@ function spHtml(r, reveal) {
     if (vit.length) h += `<section class="sp-vitals">${vit.map(spVitalHtml).join('')}</section>`;
     h += spWeekHtml();
     if (systems.length) {
-        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Everything checked</span><span class="sp-capnote">${counted.length} check${counted.length === 1 ? '' : 's'}</span></h2><div class="sp-card sp-syslist">${systems.map((s) => {
+        h += `<section class="sp-sec"><h2 class="sp-cap"><span>Everything checked</span></h2><div class="sp-card sp-syslist">${systems.map((s) => {
             const open = __sp.open === s.k;
             return `<div class="sp-sys${open ? ' is-open' : ''}" data-k="${s.k}">
                 <button type="button" class="sp-syshead" ${chbAttrs('spToggle', s.k)} aria-expanded="${open}">
                     <span class="sp-sysic">${spSvg(s.icon)}</span>
-                    <span class="sp-systext"><span class="sp-sysname">${escapeHtml(s.name)}</span><span class="sp-syssub">${escapeHtml(s.sub)}</span></span>
+                    <span class="sp-systext"><span class="sp-sysname">${escapeHtml(s.name)}</span></span>
                     <span class="sp-bslot" data-sp-badge="${s.k}">${spBadge(s, reveal ? 'wait' : 'done')}</span>
                     <svg class="sp-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
                 </button>
@@ -26110,7 +26072,7 @@ function spHtml(r, reveal) {
     if (optionals.length) {
         h += `<section class="sp-sec"><h2 class="sp-cap"><span>Switched off</span></h2>${optionals.map((c) => {
             const route = spRoute(c.label);
-            return `<div class="sp-off"><span class="sp-offic">${spSvg(route ? route.ic : SP_IC.off)}</span><span class="sp-systext"><span class="sp-sysname">${escapeHtml(c.label.replace(/\s*\([^)]*\)$/, ''))}</span><span class="sp-offsub">${escapeHtml(String(c.detail || '').replace(/\s*\(optional\)\.?/i, '.'))}</span></span>${route ? `<button type="button" class="sp-on" data-act="settingsOpen" data-arg="${route.arg}" aria-label="${escapeHtml(route.t)}">Turn on ›</button>` : ''}</div>`;
+            return `<div class="sp-off"><span class="sp-offic">${spSvg(route ? route.ic : SP_IC.off)}</span><span class="sp-systext"><span class="sp-sysname">${escapeHtml(c.label.replace(/\s*\([^)]*\)$/, ''))}</span><span class="sp-offsub">${escapeHtml(String(c.detail || '').replace(/\s*\(optional\)\.?/i, '.').split('.')[0])}</span></span>${route ? `<button type="button" class="sp-on" data-act="settingsOpen" data-arg="${route.arg}" aria-label="${escapeHtml(route.t)}">Turn on</button>` : ''}</div>`;
         }).join('')}</section>`;
     }
     return h;
@@ -26121,10 +26083,17 @@ function spHeroTitle(r) {
     const w = checks.filter((c) => c.status === 'warn').length;
     return f ? `${f} issue${f === 1 ? '' : 's'} need${f === 1 ? 's' : ''} you` : w ? `${w} thing${w === 1 ? '' : 's'} worth a look` : 'All systems running';
 }
+// What is wrong, in its first sentence: the setup notes and file names that
+// followed it are what the fix button under it leads to.
+function spFirstSentence(t) {
+    const str = String(t || '');
+    const first = str.split(/(?<=[.:])\s| — /)[0].replace(/[:.]$/, '');
+    return first === str ? str : first + '.';
+}
 function spHeroSub(r) {
     const counted = (r.checks || []).filter((c) => c.status !== 'optional');
     const passed = counted.filter((c) => c.status === 'ok').length;
-    return passed === counted.length ? `${passed} checks passed. Nothing needs you.` : `${passed} of ${counted.length} checks passed — the rest are below.`;
+    return passed === counted.length ? `${passed} checks passed` : `${passed} of ${counted.length} checks passed`;
 }
 // The reveal: the ring and the system badges tick through the real answer.
 function spReveal(r) {
@@ -26221,9 +26190,8 @@ function renderBackups() {
     const body = document.getElementById('backups-body');
     if (!body) return;
     body.innerHTML = `
+                <h3 class="u-cap is-first">Backups</h3>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
-                    <div class="label">Backups</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
                     <div id="backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" ${chbAttrs('runBackupNow', CHB_SELF)}>Back up now</button>
@@ -26239,7 +26207,8 @@ function renderBackups() {
                          passphrase the Monday email carries the report only — the
                          backup itself stays on the server, downloadable above. -->
                     <div class="acr-cap" style="margin-top:18px;">The emailed copy</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">The backup holds every guest's name, address, phone and messages, and an email lives in your inbox for ever — so it is only attached once you set a passphrase to lock it with. <strong>Keep the passphrase somewhere other than that inbox</strong>; without it the file cannot be opened, by you or anyone else.</p>
+                    <!-- The one sentence kept: losing the passphrase loses the backup. -->
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 12px;">Keep it somewhere other than your inbox — without it the file can’t be opened.</p>
                     <label class="modal-label" for="backup-pass">Backup passphrase</label>
                     <input type="password" class="input-glass" id="backup-pass" autocomplete="new-password" placeholder="a few unrelated words" style="max-width:340px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
@@ -26255,9 +26224,8 @@ function renderBackups() {
 function renderHeroOptCard() {
     const host = document.getElementById('hero-opt-host');
     if (!host) return;
-    host.innerHTML = `                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
-                    <div class="label">Hero image</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can replace it any time under Images above).</p>
+    host.innerHTML = `                <h3 class="u-cap">Hero image</h3>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div id="hero-opt-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
                 </div>`;
@@ -26316,7 +26284,9 @@ async function refreshHeroStatus() {
     try {
         const r = await apiPost('optimize-hero.php', { action: 'status' });
         if (!r.hero) {
-            el.textContent = 'No uploaded hero found — upload one in Manage → Home page & menu.';
+            // Nothing uploaded, nothing to optimise: the card says nothing rather than send the owner elsewhere.
+            const host = document.getElementById('hero-opt-host');
+            if (host) host.innerHTML = '';
             return;
         }
         const kb = Math.round(r.hero.bytes / 1024);
@@ -26360,13 +26330,13 @@ async function refreshBackupStatus() {
         const b = (r.backups || [])[0];
         el.textContent = b
             ? `Latest: ${b.file} · ${Math.round(b.bytes / 1024)} KB · ${b.at}`
-            : 'No backup stored yet — run one now.';
+            : 'No backup stored yet';
         const fe = document.getElementById('files-backup-status');
         if (fe) {
             const f = r.files_backup;
             fe.textContent = f
                 ? `Photos & uploads: ${f.file} · ${(f.bytes / 1048576).toFixed(1)} MB · ${f.at} — too big to email, download a copy now and then.`
-                : 'Photos & uploads: no archive yet — refreshes each Monday, or archive now.';
+                : 'No photo archive yet';
         }
     } catch (e) {
         el.textContent = "Couldn't check backups: " + (e.message || '');
@@ -26445,7 +26415,7 @@ function refreshBackupPassState() {
     const set = String((adminPrivateContent && adminPrivateContent['backup-passphrase']) || '').trim() !== '';
     state.textContent = set
         ? 'A passphrase is set — the emailed copy is encrypted.'
-        : 'No passphrase yet — the backup is not attached to the email.';
+        : 'No passphrase yet, so the weekly email has no backup attached.';
 }
 async function runBackupNow(btn) {
     if (btn) {
@@ -26544,9 +26514,11 @@ function renderTestCentreList() {
         detail.style.display = 'none';
         detail.innerHTML = '';
     }
-    settingsSetBack(() => settingsShowIndex(), 'Manage');
-    const title = document.getElementById('settings-panel-title');
-    if (title) title.textContent = SETTINGS_TITLES.testcentre;
+    if (settingsShowing('testcentre')) {
+        settingsSetBack(() => settingsShowIndex(), 'Manage');
+        const title = document.getElementById('settings-panel-title');
+        if (title) title.textContent = SETTINGS_TITLES.testcentre;
+    }
     if (!list) return;
     list.style.display = '';
     list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every guest-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
@@ -28253,7 +28225,7 @@ function renderSeasonGrid() {
                     <h3 class="acr-cap" id="sg-count"></h3>
                     <div class="sg-cards" id="season-grid-body">${bands.map((b) => seasonCardHtml(b)).join('')}</div>
                     <div class="sg-addcard">
-                        <button type="button" class="sg-add" id="sg-add" aria-expanded="false" aria-controls="sg-ideas" data-act="sgAddToggle"><span aria-hidden="true">+</span>Add a season</button>
+                        <button type="button" class="u-addrow is-first" id="sg-add" aria-expanded="false" aria-controls="sg-ideas" data-act="sgAddToggle"><span class="u-addic" aria-hidden="true"><i></i></span><span class="u-addt">Add a season</span></button>
                         <div class="sg-fold" id="sg-ideas" hidden><div class="sg-foldin" id="sg-ideas-in"></div></div>
                     </div>
                 </section>
@@ -29481,42 +29453,6 @@ function osHBars(items) {
                 </div>`;
         })
         .join('');
-}
-// Booked cottage-nights this calendar month, per cottage (direct bookings + imported platform STAYS; blocks excluded).
-function cottageMonthOccupancy() {
-    const now = chbNow();
-    const mStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
-    const mEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-    const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const sets = {};
-    const out = {};
-    Object.keys(propertyMeta).forEach((k) => {
-        sets[k] = new Set();
-        out[k] = { nights: 0, total: days, pct: 0 };
-    });
-    const add = (k, ci, co) => {
-        if (!sets[k]) return;
-        let d = dpParse(ci),
-            e = dpParse(co);
-        if (!d || !e) return;
-        for (; d < e; d.setDate(d.getDate() + 1)) {
-            const ds = formatDashed(d);
-            if (ds >= mStart && ds <= mEnd) sets[k].add(ds);
-        }
-    };
-    Object.keys(dbBookings).forEach((k) =>
-        (dbBookings[k] || []).forEach((b) => add(k, b.checkIn, b.checkOut)),
-    );
-    // A BLOCK IS NOT A BOOKING: the owner's own blocks and a host's "Not available" hold on an imported
-    // calendar do not count as booked nights (isOtaBlock — the rule the pulse, insights and price model share).
-    Object.keys(dbBlocks || {}).forEach((k) =>
-        (dbBlocks[k] || []).forEach((bl) => { if (isOtaBlock(bl)) add(k, bl.checkIn, bl.checkOut); }),
-    );
-    Object.keys(out).forEach((k) => {
-        out[k].nights = sets[k].size;
-        out[k].pct = Math.round((sets[k].size / days) * 100);
-    });
-    return out;
 }
 
 // ---- TIMELINE calendar (Today): one row per cottage, days across ----
@@ -31175,15 +31111,10 @@ function renderSavedReplies() {
             </div>`;
         })
         .join('');
-    const cap = emailTplStoreAbsent() && stored.length
-        ? `${stored.length} starter replies to begin with — edit or delete them freely, and write your own below.`
-        : stored.length
-          ? `${stored.length} saved ${stored.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers each one to the records it fits, most-used first.`
-          : 'Nothing saved yet — write your first reply below.';
+    // The list is the card; writing a new one is the row at its foot.
     host.innerHTML = `
-        <p class="etpl-mcap">${cap}</p>
         ${rows}
-        ${__etplDraft ? '' : '<div class="etpl-mnew"><button type="button" class="btn-sm btn-edit" data-act="emailTplNew">Write a new reply</button></div>'}`;
+        ${__etplDraft ? '' : uAddRow('Write a new reply', 'data-act="emailTplNew"', !rows)}`;
 }
 function emailTplEditOpen(id) {
     __etplDraft = null; // editing a stored row abandons an unwritten new one
@@ -32232,15 +32163,17 @@ async function loadExperiencesAdmin() {
     const published = rows.filter((r) => r.status === 'published');
     let html = '';
     if (pending.length) {
-        html += `<h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 10px;">Suggestions to review (${pending.length})</h3>`;
+        html += `<h3 class="exp-pubcap">Suggestions to review · ${pending.length}</h3>`;
         html += pending.map(expPendingHtml).join('');
-        html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
     }
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">Add something to do</button></div>`;
+    // Each place is a row: its name over its category, opening into its editor.
+    // Adding one is a row at the foot of the list, the way every list adds.
+    html += `<h3 class="exp-pubcap">Published · ${published.length}</h3>`;
     html +=
         `<div id="exp-admin-list">` +
         (published.length
-            ? published.map(expEditHtml).join('')
+            ? published.map((r) => bhubFoldGrp('exp-' + r.id, escapeHtml(r.title || 'Untitled'), r.category ? escapeHtml(r.category) : '', '', expEditHtml(r))).join('') +
+              `<div class="u-win u-join">${uAddRow('Add something to do', 'data-act="expAddNew"', true)}</div>`
             : emptyState({
                   icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>',
                   title: 'Nothing listed yet',
@@ -32277,28 +32210,24 @@ function expEditHtml(r) {
             ),
         )
         .join('');
-    return `<div class="glass-panel exp-edit" data-id="${id}" style="padding:14px 16px;margin-bottom:12px;">
+    // Every field under its own label (the one look's field) — placeholders are
+    // examples, never the only name a field has.
+    const fld = (fid, label, control) => `<div class="u-field"><label class="u-flabel" for="${fid}">${label}</label>${control}</div>`;
+    const txt = (fid, val, ph, type) => `<input type="${type || 'text'}" class="input-glass" id="${fid}" value="${escapeHtml(val || '')}"${ph ? ` placeholder="${ph}"` : ''}>`;
+    return `<div class="glass-panel exp-edit" data-id="${id}">
                 <input type="hidden" id="exp-img-${id}" value="${escapeHtml(r.image_url || '')}">
-                <div style="display:flex;gap:10px;align-items:flex-start;">
-                    <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(r.image_url || '')}');"></div>
-                    <div style="flex:1;min-width:0;">
-                        <input type="text" class="input-glass" id="exp-t-${id}" value="${escapeHtml(r.title || '')}" placeholder="Title" style="margin-bottom:8px;">
-                        <select class="input-glass" id="exp-c-${id}" style="margin-bottom:0;">${catOpts}</select>
-                    </div>
-                </div>
-                <textarea class="input-glass" id="exp-b-${id}" rows="2" placeholder="Description" style="resize:vertical;margin:8px 0;">${escapeHtml(r.body || '')}</textarea>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <input type="text" class="input-glass" id="exp-ll-${id}" value="${escapeHtml(r.link_label || '')}" placeholder="Link label (e.g. Find out more)" style="flex:1;min-width:150px;">
-                    <input type="text" class="input-glass" id="exp-lu-${id}" value="${escapeHtml(r.link_url || '')}" placeholder="https://…" style="flex:1;min-width:150px;">
-                    <input type="tel" class="input-glass" id="exp-p-${id}" value="${escapeHtml(r.phone || '')}" placeholder="Phone" style="flex:1;min-width:120px;">
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <input type="text" class="input-glass" id="exp-d-${id}" value="${escapeHtml(r.distance || '')}" placeholder="Distance (e.g. 5 min walk)" style="flex:1;min-width:150px;">
-                    <input type="text" class="input-glass" id="exp-m-${id}" value="${escapeHtml(r.map_query || '')}" placeholder="Map location (address or place name)" style="flex:1;min-width:150px;">
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <button class="btn-sm btn-edit" ${chbAttrs('expUpload', id)}>Photo</button>
+                <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(r.image_url || '')}');"></div>
+                ${fld('exp-t-' + id, 'Title', txt('exp-t-' + id, r.title))}
+                ${fld('exp-c-' + id, 'Category', `<select class="input-glass" id="exp-c-${id}">${catOpts}</select>`)}
+                ${fld('exp-b-' + id, 'Description', `<textarea class="input-glass" id="exp-b-${id}" rows="3" style="resize:vertical;">${escapeHtml(r.body || '')}</textarea>`)}
+                ${fld('exp-ll-' + id, 'Link label', txt('exp-ll-' + id, r.link_label, 'e.g. Find out more'))}
+                ${fld('exp-lu-' + id, 'Link', txt('exp-lu-' + id, r.link_url, 'https://…'))}
+                ${fld('exp-p-' + id, 'Phone', txt('exp-p-' + id, r.phone, '', 'tel'))}
+                ${fld('exp-d-' + id, 'Distance', txt('exp-d-' + id, r.distance, 'e.g. 5 min walk'))}
+                ${fld('exp-m-' + id, 'Map location', txt('exp-m-' + id, r.map_query, 'Address or place name'))}
+                <div class="u-acts is-bare">
                     <button class="btn-sm btn-edit" ${chbAttrs('expSave', id)}>Save</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expUpload', id)}>Photo</button>
                     <button class="btn-sm btn-edit" ${chbAttrs('expMove', id, -1)} aria-label="Move up">↑</button>
                     <button class="btn-sm btn-edit" ${chbAttrs('expMove', id, 1)} aria-label="Move down">↓</button>
                     <button class="btn-sm btn-delete" style="margin-left:auto;" ${chbAttrs('expDelete', id)}>Delete</button>
