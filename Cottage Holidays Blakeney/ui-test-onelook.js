@@ -296,14 +296,21 @@ async function open(browser, base, width) {
       { thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Can we check in early?', last_at: now, last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
       { thread_id: 'b2', name: 'Mark Ellis', email: 'm@example.com', last_body: 'No dogs, sorry.', last_at: now, last_role: 'admin', unread: 0, archived: 0, is_guest: 0 },
     ];
+    const fixture = __msgThreads;
     __msgShowArchived = false;
-    document.getElementById('messages-list').dataset.loaded = '1';
     inboxFolder('messages');
     const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
     if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
-    renderMessagesList();
-    inboxVerdicts();
-    await wait(120);
+    // The Inbox's own message fetch can land after the fixture under load and repaint the
+    // list; re-lay it until the rendered list is really the fixture's.
+    for (let k = 0; k < 5; k++) {
+      __msgThreads = fixture;
+      document.getElementById('messages-list').dataset.loaded = '1';
+      renderMessagesList();
+      inboxVerdicts();
+      await wait(150);
+      if (document.getElementById('msg-search') && document.querySelectorAll('#messages-list .msg-thread-row').length === 2) break;
+    }
     const list = document.getElementById('messages-list');
     const cards = list.querySelectorAll('.msg-threads');
     const rowsIn = cards[0] ? cards[0].querySelectorAll('.msg-thread-row').length : 0;
@@ -377,11 +384,15 @@ async function open(browser, base, width) {
     const fromPay = back();
     nav('view-backoffice');
     await wait(200);
-    seed();
-    await openBookingHub(91);
-    await wait(500);
-    const fromToday = back();
+    // Under load a background refresh can land mid-open and blank the hub; wait on STATE.
     const c = document.getElementById('booking-hub-content');
+    for (let k = 0; k < 5; k++) {
+      seed();
+      await openBookingHub(91);
+      await wait(500);
+      if (/Priya/.test(c.textContent) && c.querySelector('.bhub-grpcap')) break;
+    }
+    const fromToday = back();
     const grp = [...c.querySelectorAll('.bhub-fold-grp')].find((g) => g.getClientRects().length);
     const cap = c.querySelector('.bhub-grpcap');
     const tag = c.querySelector('.bhub-plan-tag');
@@ -444,15 +455,20 @@ async function open(browser, base, width) {
     const mk = (id, ci, co) => mapBookingFromApi({ id, prop_key: '21a', name: 'Sofia Laurent', email: 'sofia@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
       check_in: iso(ci), check_out: iso(co), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440,
       agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(0), hold_status: 'none' });
-    dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
     nav('view-backoffice');
     await wait(200);
-    dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
-    await openBookingHub(95);
-    await wait(500);
+    // A background data refresh can replace dbBookings mid-open under load (the §10
+    // race), leaving an empty hub. Wait on STATE: re-seed and re-open until the hub
+    // is really showing the seeded guest with her other stays.
     const c = document.getElementById('booking-hub-content');
-    if ((document.getElementById('bhub-fold-guest') || {}).hidden) bhubFoldToggle('guest');
-    await wait(450);
+    for (let k = 0; k < 5; k++) {
+      dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
+      await openBookingHub(95);
+      await wait(400);
+      if ((document.getElementById('bhub-fold-guest') || {}).hidden) bhubFoldToggle('guest');
+      await wait(450);
+      if (/Sofia/.test(c.textContent) && c.querySelector('.bhub-stays-cap')) break;
+    }
     const list = c.querySelector('.bhub-stays');
     const rows = list ? [...list.querySelectorAll('.bhub-stay-row')] : [];
     const cap = (c.querySelector('.bhub-stays-cap') || {}).textContent || '';
