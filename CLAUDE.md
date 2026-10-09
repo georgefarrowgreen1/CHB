@@ -844,6 +844,23 @@ guard removed, the window scope removed — each fails its own checks).
   `.bhub-stay-row` sites (the hub, its intel mentions, the email reader's guest context); an action link's `'›'` glyph
   is the drawn chevron as a mask at the same 0.6; and two fields an id rule held at 44px (`#msg-search`,
   `#sweep-balance`/`#sweep-buffer`) take the one field height. Gated in ui-test-onelook §12.
+- **AND THE SECOND AUDIT, OVER EVERY ADMIN SCREEN** (section 20). Every glyph chevron left is the drawn one: the
+  `.bk-row-arrow` on every booking/enquiry/payment row (masked, keeping its hover tint and the mailbox's turn), the
+  Needs-you action's " ›", the owed line's "View ›", the guest book's "Add detail ›/Hide detail ‹" (now
+  `aria-expanded` with a turning chevron), and the timeline's "❮ ❯" (inline SVG in admin-views.html). Both hubs'
+  call / email / ⋯ are ONE icon button — a 44px outlined circle on the pill token, `corner-shape: round` pinned, because
+  `.btn-sm`'s continuous corner turned the ⋯ into a squircle beside two true circles and the booking hub's was a 56px
+  filled pill. "Keep it for damage" is the outlined second choice beside the filled one; the enquiry's quote breakdown
+  sits in the inset panel (it was a black stain on a 16px corner); a loading row takes the cell corner; and the
+  conversation sheet (the Inbox's pane from 1200px) takes the window's title — its inline serif at 22px is gone from
+  index.html — and the one field for its quick-replies picker and reply box (they were 44px, the box on the card's
+  20px corner beside a 12px search). Gated in §13
+  (break-tested: removing the section fails 7 of 8 — the eighth is the markup's SVG). NB the "££1,363" an audit
+  reads is the owed line's decorative £ tile beside its figure, `aria-hidden` — not a doubled sign on screen.
+- **A FIXTURE ON A SCREEN THAT REFRESHES ITSELF IS RE-LAID UNTIL THE SCREEN SHOWS IT.** ui-test-onelook §9/§10/§12
+  failed once in CI and one run in six locally: the Inbox's own message fetch, or a data refresh, landed after the
+  fixture and repainted the hub/list empty. Each now re-seeds and re-opens (≤5 tries) until the rendered screen carries
+  the fixture's own text — a waiting loop, not a weakened check: a real regression still fails its named assertion.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption

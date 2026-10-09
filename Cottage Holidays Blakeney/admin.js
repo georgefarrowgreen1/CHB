@@ -10471,7 +10471,7 @@ function renderBookings() {
         let html = '';
         if (owers.length) {
             const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay"><span class="bk-owed-ic" aria-hidden="true">£</span><span class="bk-owed-tx"><b>£${Math.round(sumOwed).toLocaleString('en-GB')} to collect</b> <small>from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}</small></span><span class="bk-owed-go">View <span aria-hidden="true">›</span></span></button>`;
+            html = `<button type="button" class="bk-owed is-due" data-act="openBookingsNeedsPay"><span class="bk-owed-ic" aria-hidden="true">£</span><span class="bk-owed-tx"><b>£${Math.round(sumOwed).toLocaleString('en-GB')} to collect</b> <small>from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}</small></span><span class="bk-owed-go">View ${BHUB_CHEV}</span></button>`;
         } else if (allRows.length) {
             // The count rides this row's right edge (it is the header of the card that holds the
             // list), so the empty and the full versions answer the same question in the same place.
@@ -11538,7 +11538,7 @@ function hubGuestBookCard(propKey, b) {
         <div class="gb-stars" role="radiogroup" aria-label="Rate this stay (private)">
             ${[1, 2, 3, 4, 5].map((n) => `<button class="gb-star ${n <= d.overall ? 'on' : ''}" ${chbAttrs('gbSetStar', String(b.id), n)} aria-label="${n} star${n === 1 ? '' : 's'}">★</button>`).join('')}
         </div>
-        <button class="gb-more" ${chbAttrs('gbDetail', String(b.id))}>${d.detail ? 'Hide detail ‹' : 'Add detail — categories & a note ›'}</button>
+        <button class="gb-more" aria-expanded="${d.detail ? 'true' : 'false'}" ${chbAttrs('gbDetail', String(b.id))}>${d.detail ? 'Hide detail' : 'Add detail — categories & a note'}</button>
         ${d.detail ? `
             ${seg('clean', 'Cleanliness')}${seg('rules', 'House rules')}${seg('comms', 'Communication')}
             <textarea id="gb-note-${b.id}" class="input-glass" rows="2" maxlength="500" aria-label="A note to your future self (private)" placeholder="A note to your future self — factual and professional." style="margin:8px 0 0;resize:vertical;font-size:var(--fs-sub);">${escapeHtml(d.note)}</textarea>

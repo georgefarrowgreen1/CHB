@@ -24,7 +24,11 @@
 //  §11 Today joined: the one switcher, the Bookings caption on its count's line, and the
 //      booking window's one action the accent pill;
 //  §12 small parts: a guest's other stays as one inset list with the drawn chevron, an
-//      action link's chevron drawn too, and the message search at the one field height.
+//      action link's chevron drawn too, and the message search at the one field height;
+//  §13 the last stragglers: every remaining "›" / "❮ ❯" glyph is the drawn chevron, both
+//      hubs' call / email / ⋯ are one outlined circle, the card's second choice is
+//      outlined, the enquiry quote sits in the inset panel, the conversation sheet takes the
+//      window's title and the one field.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -499,6 +503,76 @@ async function open(browser, base, width) {
   ok(small.chev, 'each ends in the drawn chevron, not "open →"');
   ok(small.actGlyph === '""' && /url\(/.test(small.actMask), `an action link ends in the drawn chevron too, not a '›' glyph (${small.actGlyph})`);
   ok(small.searchH === 48, `the message search is the one field's height (${small.searchH}px)`);
+
+  console.log('§13 the last stragglers: one chevron, one icon button, one second choice');
+  const last = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const drawn = (el, pseudo) => { if (!el) return false; const c = getComputedStyle(el, pseudo || null); return /url\(/.test(c.maskImage || c.webkitMaskImage || ''); };
+    const mk = (id, ci, co) => mapBookingFromApi({ id, prop_key: '21a', name: 'Sofia Laurent', email: 'sofia@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(ci), check_out: iso(co), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440,
+      agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(0), hold_status: 'none' });
+    const seed = () => { dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37)]; };
+    // Today: the rows, the Needs-you actions and the timeline's Earlier / Later.
+    nav('view-backoffice');
+    await wait(300);
+    for (let k = 0; k < 5; k++) {
+      seed();
+      try { bookingsSetFilter('upcoming'); } catch (e) {}
+      try { renderBookings(); } catch (e) {}
+      await wait(150);
+      if (document.querySelector('#bookings-list .bk-row-arrow')) break;
+    }
+    const arrow = document.querySelector('#bookings-list .bk-row-arrow');
+    const nyChev = document.querySelector('#needs-you .ny-chev');
+    const seg = [...document.querySelectorAll('#view-backoffice .tl-seg button[data-act="changeMonth"]')];
+    const out = {
+      rowArrow: drawn(arrow) && getComputedStyle(arrow).fontSize === '0px',
+      nyChev: nyChev ? drawn(nyChev) : null,
+      segSvg: seg.length === 2 && seg.every((b) => b.querySelector('svg') && !/[❮❯]/.test(b.textContent)),
+    };
+    // The booking page: call, email and ⋯ are one outlined circle.
+    const c = document.getElementById('booking-hub-content');
+    for (let k = 0; k < 5; k++) { seed(); await openBookingHub(96); await wait(500); if (/Sofia/.test(c.textContent) && c.querySelector('.bhub-menu-btn')) break; }
+    const shape = (el) => { if (!el) return null; const s = getComputedStyle(el), r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), s.borderTopLeftRadius, s.backgroundColor, s.borderTopWidth].join(' '); };
+    out.bookIcons = [...c.querySelectorAll('.bhub-tools .bhub-cbtn, .bhub-tools .bhub-menu-btn')].map(shape);
+    // The card's second choice beside the filled one is outlined.
+    c.insertAdjacentHTML('beforeend', '<div class="bhub-next" id="probe-next"><div class="bhub-next-acts"><button class="bhub-next-btn">Return</button><button class="bhub-actlink bhub-next-alt">Keep</button></div></div>');
+    const alt = c.querySelector('#probe-next .bhub-next-alt');
+    out.alt = { bg: getComputedStyle(alt).backgroundColor, bw: getComputedStyle(alt).borderTopWidth };
+    c.querySelector('#probe-next').remove();
+    // The guest book's detail toggle says whether it is open and ends in the drawn chevron.
+    const more = c.querySelector('.gb-more');
+    out.more = more ? { exp: more.getAttribute('aria-expanded'), drawn: drawn(more, '::after'), glyph: /[›‹]/.test(more.textContent) } : null;
+    // The enquiry page: its ⋯ is the same circle, and the quote sits in the inset panel.
+    const enq = { id: 93, prop_key: '21a', name: 'Grace Holloway', email: 'grace@example.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB',
+      check_in: iso(60), check_out: iso(63), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Free?', created_at: iso(-1) + ' 09:00:00' };
+    enquiries.splice(0, enquiries.length, mapEnquiryFromApi(enq));
+    await openEnquiryHub('e93');
+    await wait(600);
+    const e = document.getElementById('enquiry-hub-content');
+    out.enqMenu = shape(e.querySelector('.bhub-menu-btn'));
+    const pb = e.querySelector("[data-grp='equote'] .price-box");
+    out.quote = pb ? getComputedStyle(pb).borderTopLeftRadius + ' ' + getComputedStyle(pb).borderTopWidth : '';
+    // The conversation sheet takes the window's title and the one field.
+    try { openMessageThread('a1'); } catch (er) {}
+    await wait(500);
+    const mt = document.getElementById('messages-modal-title'), mc = document.getElementById('msg-canned'), mi = document.getElementById('messages-modal-input');
+    out.sheet = [mt && getComputedStyle(mt).fontSize, mt && getComputedStyle(mt).fontWeight, mc && getComputedStyle(mc).minHeight, mi && getComputedStyle(mi).minHeight, mi && getComputedStyle(mi).borderTopLeftRadius].join(' ');
+    try { closeMessagesModal(); } catch (er) {}
+    return out;
+  });
+  ok(last.rowArrow, 'a booking row ends in the drawn chevron, not a "›" glyph');
+  ok(last.nyChev !== false, `a Needs-you action ends in the drawn chevron (${last.nyChev === null ? 'no task on screen' : 'drawn'})`);
+  ok(last.segSvg, 'the timeline\'s Earlier / Later carry the drawn chevron, not "❮ ❯"');
+  ok(last.bookIcons.length >= 2 && last.bookIcons.every((s) => s === '44 44 999px rgba(0, 0, 0, 0) 1px'),
+    `the booking page's call, email and ⋯ are one outlined 44px circle (${[...new Set(last.bookIcons)].join(' / ')})`);
+  ok(last.enqMenu === '44 44 999px rgba(0, 0, 0, 0) 1px', `…and so is the enquiry page's ⋯ (${last.enqMenu})`);
+  ok(last.alt.bg === 'rgba(0, 0, 0, 0)' && last.alt.bw === '1px', `the card's second choice is the outlined pill (${last.alt.bg}, ${last.alt.bw})`);
+  ok(last.more && last.more.exp === 'false' && last.more.drawn && !last.more.glyph,
+    `the guest book's detail toggle says whether it is open and ends in the drawn chevron (${JSON.stringify(last.more)})`);
+  ok(last.quote === '12px 0px', `the enquiry's quote sits in the inset panel on the cell's corner (${last.quote})`);
+  ok(last.sheet === '17px 600 48px 48px 12px', `the conversation's title is the window's, its picker and reply box the one field (${last.sheet})`);
 
   await page.close();
   await t.done(fails);
