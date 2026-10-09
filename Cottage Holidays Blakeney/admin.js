@@ -19241,6 +19241,15 @@ const PM_ACT = {
     'bank-remind'(a, el) { pmBankRemind(!!(el && /** @type {HTMLInputElement} */ (el).checked)); },
     'bank-remove'() { pmBankRemove(); },
     'mz-setup'() { pmMzSheet(); },
+    // From the + menu: always a way in, even after "Not now" hid the landing card.
+    async 'mz-open'() {
+        pmMenuShow(false);
+        try { localStorage.removeItem(PM_BANK_HIDE); } catch (e) {}
+        pmOpen('bank');
+        if (!__pmBank) await pmBankLoad();
+        const st = pmLive().state;
+        if (__pmBank && __pmBank.ready && (st === 'off' || st === 'ready' || st === 'reconnect') && chbMayUse('owner')) pmMzSheet();
+    },
     'mz-connect'() { pmMzSheet(); },
     'mz-check'() { pmMzCheck(false); },
     'mz-sync'() { pmMzSync(false); },
