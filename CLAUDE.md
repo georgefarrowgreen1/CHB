@@ -784,14 +784,37 @@ guard removed, the window scope removed — each fails its own checks).
   carries a running slide on through a repaint with a negative `animation-delay`); the SMS token's saved state rides
   the field's placeholder (its note went); the review QR and Square location windows end in their answers (Done /
   Copy link, Cancel), not a corner ✕.
+- **THE REST OF THE BACK OFFICE JOINS, ONE AREA AT A TIME** (owner-asked overnight: "inspect every single admin ui
+  element and make sure they're in keeping"). The scope class goes on each view's `<main>` in index.html and the
+  view joins `oneLookWatch` (admin.js footer); section 15 of the block names only the parts that area owns.
+  **Payments + Key safes first.** What moved: Payments' Tools tiles are rows in a card (the Manage index's own
+  `.settings-row` anatomy); its captions are the one tier; the drill-down back link reads "‹ Payments"; the deposits
+  heading is a caption; the "Tap a booking to…" note went, leaving only the card-payments-off fact; the "Check
+  Square now" button has its own row; a deposit card and the key-safe list are cards on the card radius with no
+  shadow. **A fold group takes the card radius through `--fold-r`** (the base `.bhub-card.bhub-fold-grp` reads
+  `var(--fold-r, var(--r-sm))`, the one-look views set it) — generalising the Manage card rule to every fold group
+  overrode the joins' squared corners AND their negative margins (each container's flex gap is cancelled by
+  `--fold-gap`), so the Payments landing came apart into islands. Key-safe to-do cards keep their tinted edge (the
+  duty's severity) and their full-width accent action, as Today's single task does. `Return` and a bare `Add` are
+  primary kinds now.
+- **THE EXPENSE ROWS WERE WEARING THE GUEST'S CLASS.** `.exp-row` is the guest Things-to-do row in app.css, and its
+  `display: flex` silently beat admin.css's grid for the expenses list, so every expense wrapped into a narrow column
+  at phone width (the documented phone fix for those rows had stopped working the day Things to do shipped). They
+  are `.xp-row` now: a caption per tax year with its total, one list card, a line per expense (what, then date ·
+  cottage, the amount, its tools as 32px glyphs whose reach is 44 and never overlaps), and "Add an expense" is the
+  row at the foot that opens the form in place.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
   is the one tier, sentence case), ui-test-people (rows carry no sub; the reset row and no password box; the
   renamed rows), ui-test-legibility (no explanation line under the editors' captions; §3 now asserts one-line Manage rows with no
   description, the orphan it measured having nowhere left to happen), ui-test-sms (the token's placeholder),
-  ui-test-money (the search weeks are a fold row), ui-test-replies (the starters are the library, each editable, no
-  caption calling them starters), search-test (the occupancy check went with the
+  ui-test-money (the search weeks are a fold row; a deposit card is on the card radius), ui-test-replies (the
+  starters are the library, each editable, no caption calling them starters), ui-test-hig (a run of rows on a
+  one-look screen ends on the CARD radius; elsewhere the cell's), ui-test-onelook §7 (the outside-the-scope probe
+  sits on a guest view now) and **§8** (Payments and Key safes: tools as rows, one caption tier, the named back
+  link, an expense as one line in one card, the key-safe list a shadowless card — break-tested on the key-safe
+  scope), search-test (the occupancy check went with the
   function).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)

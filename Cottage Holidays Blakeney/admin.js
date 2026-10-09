@@ -12599,7 +12599,7 @@ function settingsSetBack(fn, label) {
 // because what a button DOES is what decides its weight. A button keeps its kind
 // once given one, so "Save" passing through "Saving…" does not change shape.
 const ONE_LOOK_OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
-const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|Send to subscribers|Back up now|Send test text|Connect|Update|Add it|Check again|Paste a new link)/i;
+const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|Send to subscribers|Back up now|Send test text|Connect|Update|Add it|Add$|Check again|Paste a new link|Return\b)/i;
 const ONE_LOOK_DANGER = /^(Delete|Remove|Clear)\b/i;
 const ONE_LOOK_KINDS = ['u-btn1', 'u-btn2', 'u-btn3'];
 // Switchers, folds and the season strip's own controls are not buttons of this kind.
@@ -16638,14 +16638,12 @@ async function renderSweep(refetch) {
             <summary>Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
          </details>` +
-        `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:14px 0 0;max-width:620px;">
-            ${P
+        `<p class="sweep-checked">${P
                 ? P.checked
                     ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
                     : 'Payouts have not been checked yet.'
-                : 'No payout data yet.'}
-            <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
-         </p>`;
+                : 'No payout data yet.'}</p>
+         <div class="u-acts is-bare sweep-acts"><button class="btn-sm btn-edit" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button></div>`;
 }
 function sweepSet(which, value) {
     if (which === 'balance') {
@@ -16839,23 +16837,26 @@ function renderExpenses() {
         chart = `<div class="mo-card" style="max-width:680px;"><div class="mo-card-title">Spend by category · ${taxYearShort(parseInt(years[0], 10))}</div>${bars}</div>`;
     }
 
+    // ONE LOOK: each tax year is a caption over ONE list card, a line per expense —
+    // what it was over when and where, the amount on the right, its tools after it.
+    // The row is .xp-row, NOT .exp-row: the guest's Things-to-do rows already own
+    // that class (app.css), and their display:flex was silently winning over this
+    // list's grid, squeezing every line into a wrapped column at phone width.
     const list = years.length
         ? years
               .map((y) => {
                   // Newest first — the expense you just logged is the one you look for.
                   const items = rowsByYear[y].slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
                   const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
-                  return `<div style="margin-top:18px;">
-                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);font-weight:600;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
+                  return `<div class="u-cap xp-yr"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
+                <div class="u-win u-listcard xp-list">
                     ${items
                         .map(
-                            (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
-                      <div class="feed-row exp-row">
-                        <span class="feed-date">${fmtDate(x.date)}</span>
-                        <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
-                        ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : '<span></span>'}
+                            (x) => `<div class="xp-item" data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
+                      <div class="xp-row">
+                        <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <span class="exp-acts"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
+                        <span class="exp-acts">${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" aria-label="View the scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : ''}<button class="feed-del" title="Edit" aria-label="Edit this expense" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" aria-label="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" aria-label="Remove this expense" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
                       <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`,
@@ -16864,28 +16865,30 @@ function renderExpenses() {
                 </div>`;
               })
               .join('')
-        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:14px;">No expenses logged yet.</p>`;
+        : '';
 
+    // Adding is a row at the foot of the lists; it opens the form in place.
     wrap.innerHTML = `
                 ${chart}
+                ${list}
+                <div class="u-win u-listcard xp-add">
                 <details class="exp-add-details" id="exp-add-details">
-                  <summary class="exp-add-summary">Add an expense</summary>
-                  <div class="accounts-stat" style="max-width:680px;margin-top:10px;">
-                    <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;align-items:flex-end;">
-                        <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
-                        <div><label class="modal-label">Category</label><select id="exp-cat" class="input-glass field-sm" style="margin:0;">${EXPENSE_CATS.map((c) => `<option>${c}</option>`).join('')}</select></div>
-                        <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
-                        <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
-                        <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
-                        <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sub);color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
-                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">Scan a photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
-                        <button class="btn-sm btn-edit exp-add-btn" data-act="addExpense">Add</button>
-                        <button class="btn-sm exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button>
+                  <summary class="exp-add-summary u-addrow is-first"><span class="u-addic" aria-hidden="true"><i></i></span><span class="u-addt">Add an expense</span></summary>
+                  <div class="xp-form">
+                    <div class="exp-add-form">
+                        <div><label class="modal-label" for="exp-date">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}"></div>
+                        <div><label class="modal-label" for="exp-cat">Category</label><select id="exp-cat" class="input-glass field-sm">${EXPENSE_CATS.map((c) => `<option>${c}</option>`).join('')}</select></div>
+                        <div><label class="modal-label" for="exp-amount">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00"></div>
+                        <div><label class="modal-label" for="exp-prop">Cottage</label><select id="exp-prop" class="input-glass field-sm">${cottageOpts}</select></div>
+                        <div class="xp-wide"><label class="modal-label" for="exp-desc">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean"></div>
+                        <label class="exp-recurring-label xp-wide"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring every month</label>
+                        <div class="exp-receipt-field xp-wide"><span class="modal-label">Receipt · read on this device, not stored</span><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">Scan a photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                     </div>
                     <div id="exp-receipt-card"></div>
+                    <div class="u-acts is-bare"><button class="u-btn1 exp-add-btn" data-act="addExpense">Add</button><button class="u-btn2 exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button></div>
                   </div>
                 </details>
-                <div class="feed-list" style="max-width:680px;margin-top:8px;">${list}</div>`;
+                </div>`;
 }
 // Load an existing expense back into the form to edit it.
 let __editingExpenseId = null;
@@ -18074,9 +18077,10 @@ function renderMoneyPanel() {
             : receivedTotal > 0
               ? 100
               : 0;
-    const intro = squareAdminEnabled
-        ? 'Tap a booking to handle its money on the booking hub — request card payments, record bank transfers, return the damage deposit and download invoices all live there.'
-        : 'Tap a booking to handle its money on the booking hub. Square card payments are off — set them up in Manage to email pay links; recording manual payments (bank transfer, cash) works regardless.';
+    // The one-look pass took the explanation off (a row opening its booking says what
+    // it does). What stays is the one fact that unblocks something: with card
+    // payments off there are no pay links to send.
+    const intro = squareAdminEnabled ? '' : 'Card payments are off — turn them on in Manage → Payments to email pay links. Recording a transfer or cash works either way.';
     if (!rows.length) {
         el.innerHTML = `<div class="accounts-empty">No upcoming or current bookings.</div>`;
         return;
@@ -18134,7 +18138,7 @@ function renderMoneyPanel() {
         })
         .join('');
     el.innerHTML = `${owedBanner}
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
+                ${intro ? `<p class="mp-note">${intro}</p>` : ''}
                 <div class="bk-list">${cards}</div>`;
 }
 // paymentStatusLabel / paymentStatusMeta (the ledger wording + traffic-light dot
@@ -33237,8 +33241,9 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 // restored straight onto Inbox or Payments must not wait for a Today visit
 // (renderNeedsYou) to see the day and the rail's counts.
 try { chbFrameSync(); } catch (e) {}
-// The Manage screens' buttons take their kind from here on (oneLookButtons).
-try { ['view-settings', 'view-activity-log'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
+// The back office's buttons take their kind from here on (oneLookButtons) — Manage
+// first, then each area as it joined the one look.
+try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

@@ -565,7 +565,8 @@ let mailWillFail = false;
     return { r: c.borderTopLeftRadius, top: c.borderTopColor, left: c.borderLeftColor, hair, sh: c.boxShadow };
   });
   ok(depRow, 'a deposit row is on screen (vacuity guard)');
-  ok(depRow && depRow.r === '12px', `a deposit row is a list CELL, not an off-scale 16 (${depRow && depRow.r})`);
+  // Payments joined the one look: a deposit is a CARD on its radius (20), not an off-scale 16.
+  ok(depRow && depRow.r === '20px', `a deposit row is a card on the one look's radius, not an off-scale 16 (${depRow && depRow.r})`);
   ok(depRow && depRow.top === depRow.hair && depRow.left === depRow.hair,
     `…and its border is the plain hairline, not an amber ring (${depRow && depRow.top})`);
   ok(depRow && depRow.sh === 'none', `…and it casts no drop shadow — a queue is a list, not islands (${depRow && depRow.sh})`);

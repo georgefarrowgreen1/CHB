@@ -5022,7 +5022,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-card.bhub-fold-grp {
   padding: 0;
   overflow: hidden;
-  border-radius: var(--r-sm);
+  /* The one look's card radius where the view has joined it (--fold-r). */
+  border-radius: var(--fold-r, var(--r-sm));
   border: 1px solid var(--glass-border);
 }
 /* NB `body.light-mode .glass-panel` is (0,2,1) — it outranks a two-class
@@ -7593,7 +7594,7 @@ body.owner-mode .money-row .money-status { flex-shrink: 0; white-space: nowrap; 
 body.owner-mode .money-row .money-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 body.owner-mode .money-row .money-actions .btn-sm { min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; margin: 0; }
 body.owner-mode .money-row .money-actions .btn-sm:first-child { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-body.owner-mode #asec-payments .accounts-section-title { font-size: var(--fs-headline); margin: 8px 0 4px; }
+/* (#asec-payments' section title is the one caption tier now — the one-look block.) */
 body.owner-mode .money-owed { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 0 12px; }
 body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size: var(--fs-sub); }
 
@@ -7704,21 +7705,8 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
   .mg-spin { animation: none; }
 }
 
-/* EXPENSE ROWS: five columns fitted a desktop; at 390 the description was cut to
-   "Maintenan…" and the edit/remove glyphs were 32px. On a phone the row stacks —
-   what it was for and the figure on top, the date and the actions beneath — and
-   the two controls reach the 44px floor. */
-.exp-row { grid-template-columns: 84px 1fr auto auto auto; gap: 8px 12px; }
-.exp-acts { display: flex; gap: 12px; }
-@media (max-width: 639px) {
-  .exp-row { grid-template-columns: auto 1fr auto; grid-template-areas: "who who amt" "date rc acts"; align-items: center; }
-  .exp-row > .feed-date { grid-area: date; }
-  .exp-row > .feed-who { grid-area: who; white-space: normal; overflow: visible; text-overflow: clip; }
-  .exp-row > :nth-child(3) { grid-area: rc; }
-  .exp-row > .feed-amt { grid-area: amt; }
-  .exp-row > .exp-acts { grid-area: acts; gap: 12px; }
-  .exp-row .feed-del { min-width: 44px; min-height: 44px; }
-}
+/* (The expense rows are .xp-row in the one-look block: this grid was keyed on .exp-row, a class the
+   guest's Things-to-do rows also wear, and their display:flex had been silently beating it.) */
 
 /* THE MONEY LANDING'S "To give back" SLOT is a wrapper filled late (moAsyncFill),
    so the sibling join rules never saw through it: two joined runs with a
@@ -8488,7 +8476,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look .settings-panel-head { margin-bottom: 8px; }
 
 /* ---------- 2. CAPTION: one tier, sentence case, above its card ---------- */
-:is(main, div).one-look :is(.acr-cap, .sp-cap, .sp-h2, .ana-group-title, .u-cap, .bo-sec-title, .settings-section-label, .bhub-grpcap, .exp-pubcap),
+:is(main, div).one-look :is(.acr-cap, .sp-cap, .sp-h2, .ana-group-title, .u-cap, .bo-sec-title, .settings-section-label, .bhub-grpcap, .exp-pubcap, .accounts-section-title, .ks-cap),
 :is(main, div).one-look #sg-count {
   font-family: var(--font-sans); font-size: var(--fs-caption); font-weight: 600; line-height: 1.5;
   color: var(--text-muted); text-transform: none; letter-spacing: 0;
@@ -8501,7 +8489,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 /* ---------- 3. CARD: the account group, everywhere ---------- */
 :is(main, div).one-look :is(.acr-well, .accounts-stat, .mo-card, .sl-card, .sp-need, .sp-hero, .sp-tsum, .mg-sum, .al-card, .al-week, .sp-off,
   .ana-insights, .u-win, .sp-card, .ac-card, .settings-sec .bhub-fold-grp, .sp-week, .sg-band,
-  .cancel-card, .sg-addcard, .cal-well, .exp-edit, .u-listcard),
+  .cancel-card, .sg-addcard, .cal-well, .exp-edit, .u-listcard, .money-row, .ks-list),
 :is(main, div).one-look #sec-newsletter .glass-panel, :is(main, div).one-look #replies-body {
   background: var(--u-ground); border: 1px solid var(--u-edge); border-style: solid;
   border-radius: var(--u-r-card); box-shadow: none;
@@ -8624,7 +8612,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start;
   grid-template-columns: none; padding: 12px var(--u-pad); border-top: 1px solid var(--u-edge);
 }
-:is(main, div).one-look :is(.mo-tools, .u-acts.is-bare) { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 0; border-top: 0; }
+:is(main, div).one-look :is(.mo-tools, .u-acts.is-bare, .accounts-actions, .money-actions) { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 0; border-top: 0; }
 :is(main, div).one-look .sg-acts { display: flex; flex-wrap: wrap; gap: 8px; grid-template-columns: none; }
 :is(main, div).one-look .sg-acts button { flex: 0 0 auto; white-space: nowrap; }
 :is(main, div).one-look [data-act="runSelfRepair"] { align-self: flex-start; justify-self: start; }
@@ -8674,7 +8662,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look .u-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* ---------- 10. FIELD: one, always under its label ---------- */
-:is(main, div).one-look .settings-sec :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
+:is(main, div).one-look :is(.settings-sec, .accounts-sec) :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
 :is(main, div).one-look .al-search input, body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-box .input-glass {
   min-height: var(--u-h-field); height: auto; padding: 12px 16px; margin: 0;
   background: var(--u-field) !important; border: 1px solid var(--u-edge);
@@ -8817,3 +8805,54 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look :is(.sp-weekcard, .sp-need) > .u-btn2 { align-self: flex-start; margin-top: 8px; }
 /* A calendar's platforms are a list inside its row; linking another is that list's foot row. */
 :is(main, div).one-look .cal-plist > .u-addrow { padding-left: 0; padding-right: 0; }
+
+/* ---------- 15. THE REST OF THE BACK OFFICE: Payments and Key safes ---------- */
+/* The same parts as Manage; only what these screens own is named here. A fold
+   group takes the card radius through --fold-r, so the joins (which square the
+   inner corners and cancel each container's own gap) keep working untouched. */
+:is(main, div).one-look { --fold-r: var(--u-r-card); }
+/* A run of booking rows is one list card: the corners at its ends, hairlines between. */
+:is(main, div).one-look .bk-row { border-radius: var(--u-r-card); }
+:is(main, div).one-look :is(.bk-row + .bk-row, .mbx-item + .mbx-item > .bk-row) { border-top-left-radius: 0; border-top-right-radius: 0; }
+:is(main, div).one-look .bk-row:has(+ .bk-row) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+:is(main, div).one-look .money-row { padding: var(--u-pad); }
+:is(main, div).one-look .mp-note { margin: 12px 4px 16px; font-size: var(--fs-sub); color: var(--text-muted); max-width: 640px; }
+/* The Payments index's tools are rows in a card, the Manage index's own anatomy. */
+:is(main, div).one-look #accounts-index > .settings-group { margin-top: 0; }
+/* The drill-down title sits where every Manage page's does. */
+:is(main, div).one-look #accounts-panel-title { margin: 4px 0 8px !important; }
+/* Expenses: a caption per tax year (its total on the right), then one list card. */
+:is(main, div).one-look .xp-yr { display: flex; justify-content: space-between; gap: 12px; }
+:is(main, div).one-look .xp-item + .xp-item { border-top: 1px solid var(--u-edge); }
+:is(main, div).one-look .xp-row { display: flex; align-items: center; gap: var(--u-gap); min-height: var(--u-h-row); padding: 8px 8px 8px var(--u-pad); }
+:is(main, div).one-look .xp-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+:is(main, div).one-look .xp-main .feed-who { font-size: var(--fs-body); font-weight: 500; color: var(--text-light); white-space: normal; overflow: visible; text-overflow: clip; }
+:is(main, div).one-look .xp-sub { font-size: var(--fs-sub); color: var(--text-muted); }
+:is(main, div).one-look .xp-row .feed-amt { flex: none; font-size: var(--fs-body); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }
+:is(main, div).one-look .xp-row .exp-acts { flex: none; display: flex; gap: 12px; }
+:is(main, div).one-look .xp-row .feed-del { min-width: 32px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; background: none; border: 0; color: var(--text-muted); font-size: var(--fs-headline); }
+/* A 32px glyph whose region reaches 44 sideways (::before, -6px), 12px apart so two regions never overlap. */
+:is(main, div).one-look .xp-row .feed-del::before { inset: 0 -6px; }
+:is(main, div).one-look .xp-add { margin-top: var(--u-gap); overflow: hidden; }
+:is(main, div).one-look .xp-add > details > summary { list-style: none; }
+:is(main, div).one-look .xp-add > details > summary::-webkit-details-marker { display: none; }
+:is(main, div).one-look .xp-add > details > summary::after { content: none; }
+:is(main, div).one-look .xp-form { padding: 0 var(--u-pad) var(--u-pad); border-top: 1px solid var(--u-edge); }
+:is(main, div).one-look .exp-add-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--u-gap); padding-top: var(--u-pad); }
+:is(main, div).one-look .exp-add-form > * { min-width: 0; }
+:is(main, div).one-look .exp-add-form .xp-wide { grid-column: 1 / -1; }
+:is(main, div).one-look .exp-recurring-label { display: flex; align-items: center; gap: 8px; min-height: var(--u-h-control); font-size: var(--fs-body); color: var(--text-light); }
+/* Key safes: a to-do card keeps its tinted edge (amber while the guest is in, red
+   once they have gone — the duty's own severity) and loses its drop shadow; its
+   one action is the full-width accent pill, as on Today's single task. */
+:is(main, div).one-look .ks-todo { background: var(--u-ground); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: var(--u-r-card); padding: var(--u-pad); }
+:is(main, div).one-look .ks-rotate { min-height: var(--u-h-control); font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; border-color: var(--u-pill-edge); }
+:is(main, div).one-look .ks-rotate.is-primary { border-color: transparent; }
+:is(main, div).one-look .ks-info { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; border-color: var(--u-pill-edge); }
+:is(main, div).one-look .ks-list { padding: 0; overflow: hidden; }
+:is(main, div).one-look .ks-row { min-height: var(--u-h-row); padding: 12px var(--u-pad); }
+/* Move money out: when the payouts were last read, then the one way to read them again. */
+:is(main, div).one-look .sweep-checked { margin: 16px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); max-width: 620px; }
+:is(main, div).one-look .sweep-acts { padding-top: 8px; }
+/* A caption over the list of safes: the page is a flex column with its own gap. */
+:is(main, div).one-look #view-keysafe .ks-cap { margin: 8px 4px -8px; }
