@@ -746,9 +746,9 @@ at developers.monzo.com; nothing here assumes it.
   month at most.
 - Gates: test-statements, test-integration **§53** (the real endpoint and tables: refused for a visitor, the
   preview writes nothing, auto-sort exactly two, the replay, the same file again, an overlap adds only the new
-  line, the mark refusals, the link, undo, the reminder, never public, stop keeps the payments). The screens were
-  driven in a browser at 360/390/1280 in both themes with the REAL parser behind a stubbed endpoint; there is no
-  ui-test suite for them yet. Budgets: admin.js +9.5KB, admin.css +0.5KB gz (owner-only).
+  line, the mark refusals, the link, undo, the reminder, never public, stop keeps the payments) and
+  **ui-test-statements.js** (the screens, with the REAL parser run through the php CLI behind a stubbed endpoint;
+  also driven by hand at 360/1280 in both themes). Budgets: admin.js +9.5KB, admin.css +0.5KB gz (owner-only).
 
 ## The Money area is FIVE ANSWERS, not an index
 
