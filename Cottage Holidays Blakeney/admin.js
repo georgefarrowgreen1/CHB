@@ -10822,8 +10822,10 @@ function bhubMenuClose(ev) {
         const m = /** @type {HTMLElement} */ (el);
         bhubMenuHide(m);
     });
+    // Every opener, not just the ⋯: Today's + also opens a menu, and it turns into a ×
+    // while aria-expanded is true, so a + left out of this stayed a × after closing.
     document
-        .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
+        .querySelectorAll('.bhub-menu-btn[aria-expanded="true"], [data-act="bhubMenu"][aria-expanded="true"]')
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
     document.removeEventListener('keydown', __bhubMenuEsc);
 }
