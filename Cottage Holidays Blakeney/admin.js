@@ -17755,7 +17755,7 @@ function pmRenderDetail() {
     const arg = i < 0 ? '' : key.slice(i + 1);
     const body = pane.querySelector('.pm-dbody');
     const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
-    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : k === 'due' ? pmSplitDuePage() : pmBooksPage();
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'line' ? pmLinePage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : k === 'due' ? pmSplitDuePage() : pmBooksPage();
     pane.__pmKey = key;
     const nb = pane.querySelector('.pm-dbody');
     if (nb) nb.scrollTop = keepTop;
@@ -18217,17 +18217,15 @@ function pmBankRow(l, dated) {
         <span class="pm-main"><span class="pm-t">${escapeHtml(l.name || l.description || 'Payment')}</span>${sub ? `<span class="pm-s">${sub}</span>` : ''}</span>
         <span class="pm-v${l.amount > 0 ? ' plus' : ''}">${l.amount > 0 ? '+' : '−'}${gbp(Math.abs(l.amount))}</span>`;
     if (l.as) {
-        const auto = l.as === 'square' || l.as === 'pot';
-        // A payment recorded on a booking is changed on the booking, where the rest of its money is.
-        const bk = l.as === 'payment' && l.booking_id ? findBookingById(l.booking_id) : null;
-        const act = auto ? '' : bk ? `<button type="button" class="pm-linkbtn" data-pm="stay" data-arg="${escapeHtml(String(bk.id))}">Open</button>` : l.as === 'payment' ? '' : `<button type="button" class="pm-linkbtn" data-pm="bank-undo" data-arg="${l.id}">Undo</button>`;
-        // What it was, in words that don't repeat the name above them; the Sorted
-        // caption says it was sorted, so only a match made by itself carries a capsule.
-        const p = l.as === 'person' ? pmPaidPeople().find((x) => x.id === Number(l.admin_id)) : null;
-        const what = l.as === 'person' ? (p ? 'Paid to ' + p.first : 'Paid to a host')
-            : l.as === 'payment' ? (/already recorded/i.test(l.label || '') ? 'Already on their booking' : 'Recorded on their booking')
-                : l.label || PM_BANK_AS[l.as] || '';
-        return `<div class="pm-needrow pm-wrow">${head}<div class="pm-bsugg pm-bdone"><span>${escapeHtml(what)}</span>${auto ? pmCap('ok', 'Matched') : ''}${act}</div></div>`;
+        // A sorted payment is one plain row saying what it was; its details, and the
+        // way to undo it, are on its own page.
+        const name = l.name || l.description || 'Payment';
+        const what = pmBankWhat(l);
+        const v = `${l.amount > 0 ? '+' : '−'}${gbp(Math.abs(l.amount))}`;
+        return `<button type="button" class="pm-mrow" data-pm="line" data-arg="${l.id}" aria-label="${escapeHtml(name)}, ${escapeHtml(what)}, ${v}">
+            <span class="pm-mic ${l.amount > 0 ? 'in' : 'out'}" aria-hidden="true">${l.amount > 0 ? PM_IC.in : PM_IC.out}</span>
+            <span class="pm-main"><span class="pm-t">${escapeHtml(name)}</span><span class="pm-s">${escapeHtml(what)}</span></span>
+            <span class="pm-v${l.amount > 0 ? ' plus' : ''}">${v}</span></button>`;
     }
     const s = pmBankSuggest(l);
     const n = s.same ? pmBankLines().filter((x) => !x.as && x.name === l.name && Math.sign(x.amount) === Math.sign(l.amount)).length : 0;
@@ -18235,6 +18233,83 @@ function pmBankRow(l, dated) {
         <div class="pm-bsugg"><span>${escapeHtml(s.say)}</span></div>
         <div class="pm-acts-row">${s.acts.map((a) => `<button type="button" class="pm-btn ${a.primary ? 'primary' : 'second'}" data-pm="bank-do" data-arg="${l.id}|${escapeHtml(a.k)}">${escapeHtml(a.label)}</button>`).join('')}</div>
         ${n > 1 ? `<div class="pm-bsame"><button type="button" class="pm-linkbtn" data-pm="bank-all" data-arg="${l.id}|${escapeHtml(s.same)}">Do the same for all ${n} from ${escapeHtml(l.name)}</button></div>` : ''}
+    </div>`;
+}
+// What a sorted payment was, in words that don't repeat the payee's name.
+function pmBankWhat(l) {
+    if (l.as === 'person') {
+        const p = pmPaidPeople().find((x) => x.id === Number(l.admin_id));
+        return p ? 'Paid to ' + p.first : 'Paid to a host';
+    }
+    if (l.as === 'payment') return /already recorded/i.test(l.label || '') ? 'Already on their booking' : 'Recorded on their booking';
+    const w = l.label || PM_BANK_AS[l.as] || '';
+    return l.as === 'platform' && l.prop ? `${w} · ${pmProp(l.prop)}` : w;
+}
+// Whether the books count it. They read booking payments and expenses only, so
+// everything else a bank payment can be sorted as is left out of them.
+function pmBankBooksSay(l) {
+    switch (l.as) {
+        case 'payment': return 'Counted, as their payment';
+        case 'expense': return 'Counted, as a cost';
+        case 'square': return 'Already counted, as the card payments in it';
+        case 'person': {
+            const p = pmPaidPeople().find((x) => x.id === Number(l.admin_id));
+            return `Not a cost · ${p ? p.first + '’s' : 'the host’s'} share`;
+        }
+        case 'platform': return l.prop ? `Not in the books · counts towards ${pmProp(l.prop)}` : 'Not in the books';
+        default: return 'Left out';
+    }
+}
+// One bank payment on its own page: what it was, what the bank said, and the way
+// to undo the sorting. A payment still to sort shows the same question as its row.
+function pmLinePage(id) {
+    const l = pmBankLines().find((x) => x.id === Number(id));
+    if (!l) return pmHead('Bank payment') + '<div class="pm-dbody"><p class="pm-note">This payment isn’t loaded. Pull down to refresh, or open it again from the list.</p></div>';
+    const name = l.name || l.description || 'Payment';
+    const out = l.amount < 0;
+    const time = /^\d{2}:\d{2}/.test(String(l.time || '')) ? ' · ' + String(l.time).slice(0, 5) : '';
+    const via = l.via === 'live' ? 'Open Banking' : l.via === 'statement' ? 'a statement' : '';
+    const kv = (k, v) => (v ? `<div class="pm-kv"><span>${k}</span><span class="pm-kv-t">${v}</span></div>` : '');
+    const bank = [
+        kv('Payee', escapeHtml(l.name || '')),
+        kv('Reference', l.description && l.description !== l.name ? escapeHtml(l.description) : ''),
+        kv('Type', escapeHtml(l.type || '')),
+        kv('Bank’s category', escapeHtml(l.category || '')),
+        kv('Notes', escapeHtml(l.notes || '')),
+        kv('Balance after', l.balance != null ? gbp(l.balance) : ''),
+        kv('Came in through', via),
+    ].join('');
+    const acts = [];
+    let what = '';
+    if (l.as) {
+        const auto = l.as === 'square' || l.as === 'pot';
+        const bk = l.as === 'payment' && l.booking_id ? findBookingById(l.booking_id) : null;
+        const loc = bk ? findBookingLocation(bk.id) : null;
+        const p = l.as === 'person' ? pmPaidPeople().find((x) => x.id === Number(l.admin_id)) : null;
+        const sorted = l.sorted_at ? pmDm(pmIso(String(l.sorted_at).slice(0, 10))) + (auto ? ' · by itself' : '') : auto ? 'By itself' : '';
+        const rows = [];
+        if (bk) rows.push(`<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="${escapeHtml(String(bk.id))}"><span>Booking</span><span class="pm-kv-t">${escapeHtml(bk.name || 'Guest')} · ${loc ? escapeHtml(pmProp(loc.propKey)) + ' · ' : ''}${pmRange(bk.checkIn, bk.checkOut)}${PM_IC.chev}</span></button>`);
+        if (p) rows.push(kv('For', escapeHtml(pmCotNames(p) || p.name || p.first)));
+        if (l.as === 'platform' && l.prop) rows.push(kv('Cottage', escapeHtml(pmProp(l.prop))));
+        rows.push(kv('In your books', escapeHtml(pmBankBooksSay(l))));
+        rows.push(kv('Sorted on', sorted));
+        what = `<div class="pm-dcap">What it was</div><div class="pm-kvs">${rows.join('')}</div>`;
+        // A payment recorded on a booking is changed on the booking, where the rest of its money is.
+        if (bk) acts.push(`<button type="button" class="pm-btn second" data-pm="stay" data-arg="${escapeHtml(String(bk.id))}">${PM_IC.home}Open the booking</button>`);
+        else if (!auto && l.as !== 'payment') acts.push(`<button type="button" class="pm-btn second" data-pm="bank-undo" data-arg="${l.id}">Undo, and sort it again</button>`);
+    } else {
+        const s = pmBankSuggest(l);
+        // The question and its answers sit together, above the bank's details.
+        what = `<div class="pm-dcap">What was it?</div><div class="pm-kvs"><div class="pm-kv"><span class="pm-kv-t pm-left">${escapeHtml(s.say)}</span></div></div>
+            <div class="pm-acts">${s.acts.map((a) => `<button type="button" class="pm-btn ${a.primary ? 'primary' : 'second'}" data-pm="bank-do" data-arg="${l.id}|${escapeHtml(a.k)}">${escapeHtml(a.label)}</button>`).join('')}</div>`;
+    }
+    return pmHead(escapeHtml(name), `${pmDdm(pmIso(l.date))}${time} · Monzo Business`) + `<div class="pm-dbody">
+        <section class="pm-hero"><div class="pm-hero-top"><span>${out ? 'Paid out' : 'Paid in'}</span><b>${out ? '−' : '+'}${gbp(Math.abs(l.amount))}</b></div>
+            <div class="pm-hero-sub">${l.as ? `${pmCap('ok', 'Sorted')} <span>${escapeHtml(pmBankWhat(l))}</span>` : `<span class="pm-warnword">Not sorted yet</span>`}</div></section>
+        ${what}
+        <div class="pm-dcap">From your bank</div>
+        <div class="pm-kvs">${bank}</div>
+        ${acts.length ? `<div class="pm-acts">${acts.join('')}</div>` : ''}
     </div>`;
 }
 // The live link to Monzo (monzo.php), as the statements answer carries it.
@@ -19180,6 +19255,7 @@ const PM_ACT = {
     },
     books() { pmOpen('books'); },
     stay(id) { if (id) pmOpen('stay:' + id); },
+    line(id) { if (id) pmOpen('line:' + id); },
     payout(id) { if (id) pmOpen('payout:' + id); },
     close() { pmClose(); },
     filter(arg) { __pmFilter = arg; __pmShown = 20; pmRenderList(); },
@@ -19235,6 +19311,7 @@ const PM_ACT = {
         try {
             if (l.as === 'expense') await pmBankUndoExpense(l, l.expense_id);
             else if (l.as !== 'payment') await pmBankUnmark(l);
+            toast('Back in To sort.');
         } catch (e) { glassAlert('Couldn’t undo it. ' + chbActErrSay(e)); }
     },
     'bank-remind'(a, el) { pmBankRemind(!!(el && /** @type {HTMLInputElement} */ (el).checked)); },

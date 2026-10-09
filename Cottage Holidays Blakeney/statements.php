@@ -77,6 +77,11 @@ function stmt_row(array $r): array
         'label' => (string) ($r['sorted_label'] ?? ''),
         'admin_id' => isset($r['admin_id']) ? (int) $r['admin_id'] : null,
         'prop' => isset($r['prop_key']) ? (string) $r['prop_key'] : '',
+        // Where it came in (the live link writes import 0), when it was sorted, and
+        // the bank's balance after it, for the payment's own page.
+        'via' => (int) ($r['import_id'] ?? 0) === 0 ? 'live' : 'statement',
+        'sorted_at' => (string) ($r['sorted_at'] ?? ''),
+        'balance' => isset($r['balance']) && $r['balance'] !== null ? round((float) $r['balance'], 2) : null,
     ];
 }
 // The text of the uploaded file, refused in words when it is not one.

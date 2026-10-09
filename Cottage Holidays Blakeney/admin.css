@@ -9437,6 +9437,9 @@ body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
 #pm .pm-kv b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #pm .pm-kv .pm-ink { color: var(--text-light); }
 #pm .pm-kv .pm-s { white-space: normal; }
+#pm .pm-kv .pm-kv-t { color: var(--text-light); text-align: right; overflow-wrap: anywhere; display: inline-flex; align-items: center; gap: 8px; }
+#pm .pm-kv .pm-kv-t.pm-left { text-align: left; }
+#pm .pm-kv .pm-kv-t svg { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
 #pm .pm-kv.total { font-weight: 600; }
 #pm .pm-kv.total > span:first-child { color: var(--text-light); }
 #pm .pm-plan .pm-kv { min-height: 56px; }
