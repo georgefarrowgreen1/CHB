@@ -383,7 +383,6 @@ function cmdkActions(q) {
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
         A('filterboard', `Filter the ${{ 'view-inbox': 'Inbox', 'view-accounts': 'Payments' }[typeof cmdkActiveWorkspace === 'function' ? cmdkActiveWorkspace() : ''] || 'Today'} board`, 'Dim everything on this screen that doesn’t match', 'filter today inbox payments board dim narrow highlight only show find on screen calendar timeline bookings enquiries emails expenses', /filter.{0,10}(today|inbox|payment|board|screen|calendar|timeline|booking|enquir|email|expense)|(dim|narrow|only ?show).{0,10}(board|today|inbox|payment|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|inbox|payments?|board|screen|calendar|timeline|bookings?|enquir(y|ies)|emails?|expenses?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /\b(income|tax|vat|revenues?|takings|earnings|accounts?|figures)\b.{0,10}(total|report|year|summary|view|show)?|\bview\b.{0,8}\b(income|accounts|tax)\b/, () => cmdkOpenAccounts('income')),
-        A('sweep', 'Move money out', 'What you can transfer without leaving the account short', 'move money out transfer withdraw sweep safe balance take out bank account how much can i deposits owed back clawback', /(move|transfer|withdraw|take|sweep|pull).{0,14}(money|funds|cash|out|across|over)|how much.{0,16}(can i|safe|move|transfer|withdraw|take out)|safe to (move|transfer|withdraw|take)|(leave|keep).{0,12}in the account/, () => cmdkOpenAccounts('sweep')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing', 'Your prices, ideas and what guests search for', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => { closeCmdK(); openPricingCoach(); }),
         A('theme',
@@ -534,10 +533,6 @@ async function cmdkPricingMerge() {
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
     cmdkRender(true); // late merge — keep the reader's scroll position
 }
-// WHAT'S SAFE TO MOVE, ANSWERED IN THE WINDOW rather than linked to. Same shape as
-// cmdkPricingMerge: stamp-guarded, and silent when there is nothing it can stand
-// behind. No `safe` figure without a balance — that is the owner's to supply.
-const CHB_SWEEP_Q = /how much.{0,20}(can i (move|transfer|withdraw|take)|safe to (move|transfer|withdraw))|safe to (move|transfer|withdraw)|what can i (move|transfer|withdraw|take out)|(move|transfer|withdraw).{0,14}(money|funds|cash) out/;
 // ---- SCOPE-BATCH families (branches in cmdkIntent 0b9): deterministic
 // keyword phrasings; an unloaded store never mints a claim (expenses/waitlist
 // fetch stamp-guarded, the sweep pattern).
@@ -551,36 +546,6 @@ const CHB_GUESTBOOK_Q = /\b(best|worst|favourite) guests?\b|guests? (i|we)('ve| 
 // NB bare "who's waiting" is the ENQUIRIES ground (golden-pinned) — this only
 // fires on the list's own name or a space/dates/cancellation object.
 const CHB_WAITLIST_Q = /\bwait.?list\b|waiting list|who('s| is) waiting for (a |the )?(space|dates|cancellation|cottage)/;
-let __cmdkSweepStamp = 0;
-async function cmdkSweepMerge() {
-    const stamp = ++__cmdkSweepStamp;
-    const gen = __cmdkQueryGen;
-    let d = null;
-    try { d = await apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed()))); } catch (e) { return; }
-    if (stamp !== __cmdkSweepStamp || gen !== __cmdkQueryGen) return;
-    const L = d && d.deposit_liability;
-    if (!L || L.error) return;
-    const P = L.payouts || null;
-    const disp = (L.disputes && Number(L.disputes.amount)) || 0;
-    const keep = Number(L.net || 0) + disp;
-    // Without payout data there is no honest "in the bank" figure, so the answer is
-    // the ring fence alone — the thing we DO know.
-    const inBank = P && P.known > 0 ? Number(P.inBank || 0) : null;
-    const bits = [];
-    if (inBank !== null) bits.push(`${gbp(inBank)} of recent card money is in the bank`);
-    bits.push(`keep ${gbp(keep)} back${disp > 0 ? ' (deposits plus a disputed payment)' : ' for the deposits still to return'}`);
-    const row = {
-        type: 'answer', id: 'sweep-answer', wrap: true,
-        label: bits.join(' — ') + '.',
-        sub: P && P.onWay > 0 && P.nextArrival
-            ? `${gbp(P.onWay)} more arrives ${fmtDate(P.nextArrival)} · open Move money out to enter your balance`
-            : 'Open Move money out and enter your balance for the exact figure',
-        run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
-    };
-    if (__cmdkResults.some((x) => x && x.id === 'sweep-answer')) return;
-    __cmdkResults = cmdkArrangeWide([row].concat(__cmdkResults).slice(0, 34), 34);
-    cmdkRender(true);
-}
 // Expenses asked before Payments was opened: fill via the REAL loader, then
 // re-run the query so the family answers from the store.
 let __cmdkExpStamp = 0;
@@ -7030,9 +6995,6 @@ function cmdkSearchCore(q, allowCorrect) {
             // A pricing-review question also pulls the server's demand-signal
             // suggestions into the palette once they land.
             if (CHB_PRICE_Q.test(ql)) { try { cmdkPricingMerge(); } catch (e) {} }
-            // "how much can I move out" is a QUESTION, so it gets an answer rather
-            // than a link to the screen that holds the answer.
-            if (CHB_SWEEP_Q.test(ql)) { try { cmdkSweepMerge(); } catch (e) {} }
             // Store-filling merges for the scope-batch families: fire only while
             // the store is genuinely UNLOADED, so a filled (even empty) store
             // answers synchronously and the fetch can never loop.
@@ -15842,7 +15804,6 @@ const ACCOUNTS_TITLES = {
     recent: 'Recent payments',
     income: 'Income & tax',
     expenses: 'Expenses',
-    sweep: 'Move money out',
 };
 function expensesForYear(startYear) {
     return allExpenses.filter((x) => taxYearStartOf(x.date) === startYear);
@@ -15865,15 +15826,14 @@ function accountsOpen(section) {
     // recents land there.
     if (section === 'pricingcoach') { openPricingCoach(); return; }
     // The old money pages are parts of the one Payments page now: Income & tax is
-    // the books, Move money out its own detail, the balances and the feed are the
-    // landing. The typed-balance worksheet stays one tap from Move money out.
-    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move', way: 'way', bank: 'bank' };
+    // the books, the balances and the feed are the landing. Move money out is gone,
+    // so an old link to it (sweep, balance) lands on the landing.
+    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: '', balance: '', way: 'way', bank: 'bank' };
     if (Object.prototype.hasOwnProperty.call(PM_ROUTE, section)) {
         accountsShowIndex();
         if (PM_ROUTE[section]) pmOpen(PM_ROUTE[section]);
         return;
     }
-    if (section === 'balance') section = 'sweep';
     // A section that no longer exists (an old remembered screen, a stale link) lands on the
     // landing rather than an empty page titled "Payments".
     if (!document.getElementById('asec-' + section)) { accountsShowIndex(); return; }
@@ -15907,8 +15867,6 @@ function accountsOpen(section) {
             renderAccounts();
         } else if (section === 'expenses') {
             renderExpenses();
-        } else if (section === 'sweep') {
-            renderSweep();
         }
     } catch (e) {}
     chbScroll(window, { top: 0 });
@@ -16289,584 +16247,6 @@ function toggleReceiptDetail(id) {
         el.style.display = 'none';
     }
 }
-// ---- MOVE MONEY OUT -------------------------------------------------------
-// Some of the Square account's balance is not the owner's to move: a damage
-// deposit gets direct-debited back out later. sweep-lib.php owns the arithmetic
-// and the reasoning; this only formats accounts.php's deposit_liability.
-// The BALANCE is typed in and deliberately NOT stored: there is no bank feed, and
-// a remembered balance would be stale the moment it was saved — a wrong number
-// here moves real money.
-let __sweepBalance = '';
-let __sweepBuffer = '';
-// Set once the owner edits the field, so a re-render never overwrites what they are
-// typing with the rolled-forward estimate.
-let __sweepBalTouched = false;
-let __sweepLiab = null; // cached: typing a balance must not re-query the server
-// Whether the owner has the workings open. Ticking a payment off SAVES and
-// re-renders, and this box is rebuilt by innerHTML — so without remembering it,
-// the panel you are working in snaps shut on every tick and has to be reopened to
-// reach the next row. Measured: `open` was false immediately after a tick. Read
-// from the live DOM at the top of each render, before the refetch wipes the box.
-let __sweepWorkingsOpen = false;
-async function renderSweep(refetch) {
-    const box = document.getElementById('sweep-body');
-    if (!box) return;
-    const openNow = /** @type {HTMLDetailsElement|null} */ (box.querySelector('details.sweep-detail'));
-    if (openNow) __sweepWorkingsOpen = openNow.open;
-    if (refetch !== false) __sweepLiab = null;
-    if (!__sweepLiab) {
-        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Working out what Square will claw back…</p>`;
-        try {
-            const rep = await apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed())));
-            __sweepLiab = rep.deposit_liability || { error: true };
-        } catch (e) {
-            box.innerHTML = `<div class="accounts-empty">Couldn't load: ${escapeHtml(e.message)}</div>`;
-            return;
-        }
-    }
-    const L = __sweepLiab;
-    if (!L || L.error) {
-        // An empty liability is NOT the same as "nothing owed" — say so rather than
-        // showing a confident £0 that could be a failed query.
-        box.innerHTML = `<div class="accounts-empty">Couldn't work out the deposits still owed back, so there's no safe figure to give you. Try again in a moment.</div>`;
-        return;
-    }
-    // (The GLOBAL gbp renders every figure here — a comma-less local shadow
-    // painted £1852.62 on the headline.) Starts from what the owner last stated, ROLLED FORWARD by what Square has done
-    // since (payouts_balance_estimate) — an estimate, and labelled as one.
-    const est = (L.balance && L.balance.estimate) || null;
-    if (__sweepBalance === '' && est && !__sweepBalTouched) __sweepBalance = String(est.estimate.toFixed(2));
-    const bal = parseFloat(__sweepBalance);
-    const buf = parseFloat(__sweepBuffer) || 0;
-    const hasBal = !isNaN(bal) && __sweepBalance !== '';
-    // Money under dispute is fenced beside the deposits — Square can pull it back,
-    // and a chargeback on a whole stay dwarfs a deposit.
-    const disp = (L.disputes && Number(L.disputes.amount)) || 0;
-    const ring = Number(L.net || 0) + disp + buf;
-    const safe = hasBal ? Math.max(0, bal - ring) : null;
-    const short = hasBal ? Math.max(0, ring - bal) : 0;
-
-    // THREE STATES, NOT ONE LIST. This card explains the RING FENCE, and was headed
-    // "Deposits still to return" — a TO-DO that two of its three rows are not: one
-    // already refunded and waiting on Square (the row said so while the heading
-    // contradicted it), and one whose guest has not left. Every row also read "left
-    // <date>", so a guest checking out in a month was reported as having left on a
-    // future date. The real to-do is the Needs-you strip and the assistant's
-    // "deposits to return" answer, both correctly gated on hasCheckedOut().
-    const today = todayDashed();
-    const depState = (it) => {
-        // "waiting for Square to take it" asserted something we had not checked. Reported
-        // live: Square had ALREADY taken this one — out of the Square balance, since the
-        // money had never reached the bank — while the row insisted it was still coming.
-        // What we actually know is that we issued the refund and OUR ledger has not seen
-        // it settle, which is a statement about our records, not about Square.
-        // The pointer to "Check Square now" is only offered when this row has NO confirm
-        // button of its own — otherwise the row gives two instructions for one job.
-        if (Number(it.awaiting || 0) > 0) {
-            return {
-                when: 'left',
-                date: it.check_out,
-                note: 'Refunded — not yet confirmed settled here' + (it.booking_id ? '' : ' (tap “Check Square now” below)'),
-            };
-        }
-        // NOT ARRIVED is its own state. "Still staying" was said of a guest whose stay
-        // had not started — the deposit is charged with the first payment, so it is held
-        // from the moment they book, which can be months out. The arrival is the useful
-        // date on that row; the checkout is the useful one once they are in.
-        if (it.check_in && it.check_in > today) return { when: 'arrives', date: it.check_in, note: 'Not arrived yet — held until after the stay' };
-        // On checkout day the guest is still in until the checkout time, so "left today"
-        // would be wrong for most of it — hasCheckedOut's reasoning, at the resolution
-        // this payload carries (a date, no time).
-        if (it.check_out && it.check_out >= today) return { when: 'leaves', date: it.check_out, note: 'Still staying — nothing to hand back yet' };
-        return { when: 'left', date: it.check_out, note: 'Ready to return' };
-    };
-    const rows = (L.items || [])
-        .map((it) => {
-            const st = depState(it);
-            return `<div class="act-row" style="display:block;">
-                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${st.date ? ` · ${st.when} ${st.date === today ? 'today' : fmtDate(st.date)}` : ''}</span>
-                        <span style="white-space:nowrap;">${gbp(it.net)}</span>
-                    </div>
-                    <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">${st.note}</div>
-                    ${/* the button for these rows is lifted out of the fold — see needsConfirm */ ''}
-                </div>`;
-        })
-        .join('');
-
-    // PER TRANSACTION, SPLIT BY WHERE THE MONEY ACTUALLY IS — Square settles a
-    // charge and pays out a day or two LATER, so only the "In the bank" group may
-    // count as movable, and what Square hasn't vouched for is its own group rather
-    // than rounded into either. payouts-lib.php owns that reasoning.
-    const T = L.transactions || null;
-    const P = L.payouts || null;
-    // WHY A CHARGE IS UNKNOWN, WHICH IS NOT ALWAYS "GIVE IT A DAY". The note claimed the
-    // charges were not in the payout data YET — a temporary wait the screen has no basis
-    // for. Reported live: payouts checked THAT DAY, no error, two charges unknown, one 23
-    // days old. The answer was already in the payload — the server sends `known` (how many
-    // charges the payout data covers at all) and renderSweep never read it.
-    //   known === 0 → Square returned NO payout records: a Square-side setting, not a wait.
-    //   known  >  0 → the feed works but skipped these; only then is age the story.
-    const PO_LATE_DAYS = 7; // 1-2 working days is normal; a week clears any weekend
-    const unknownRows = (P && P.items && P.items.unknown) || [];
-    // UTC-anchored both ends — a local-in/UTC-out mix is a day out for an hour every
-    // night under BST (see ukShiftDays).
-    const daysSince = (iso) =>
-        !/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
-            ? 0
-            : Math.round((Date.parse(todayDashed() + 'T00:00:00Z') - Date.parse(iso + 'T00:00:00Z')) / 86400000);
-    const lateUnknown = unknownRows.filter((it) => daysSince(it.paid_on) > PO_LATE_DAYS);
-    // WHY NOTHING IS BEING PAID OUT, as a FACT where Square will tell us one. This
-    // used to end "usually a Square-side setting (payouts paused, or no bank account
-    // linked)" — a guess, because nothing in the app could see the bank account. It can
-    // now: bank_read() (bank-lib.php) turns ListBankAccounts into one state, and only
-    // the `unknown` state falls back to the old hedge, because "we could not ask" must
-    // never be rendered as "you have no bank account".
-    const B = L.bank || null;
-    // NAMING ONE ACCOUNT IS ONLY HONEST WHEN THERE IS ONE. Square keeps a single
-    // primary payout account but does not say WHICH of the linked accounts it is, so
-    // the first version picked the first verified one and asserted it — reported live,
-    // it named a Lloyds account on a business paid out to Monzo. With more than one,
-    // list them and say plainly that Square has not told us.
-    const bankList = (B && Array.isArray(B.all) ? B.all : []).filter((x) => x && x.label);
-    const bankMany = bankList.length > 1;
-    const bankWhy = !B
-        ? ''
-        : B.state === 'none'
-          ? ' <strong>No bank account is linked to Square</strong>, so there is nowhere for it to pay out to — that is the thing to fix.'
-          : B.state === 'verifying'
-            ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked but Square is still verifying it, so nothing will be paid out until that finishes.`
-            : B.state === 'blocked'
-              ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked but Square cannot pay into it — it looks disabled at their end.`
-              : B.state === 'ready'
-                ? (bankMany
-                    ? ` You have ${bankList.length} bank accounts linked (${bankList.map((x) => escapeHtml(x.label || 'unnamed') + (x.state === 'ready' ? '' : x.state === 'verifying' ? ' — still being verified' : ' — Square cannot pay into it')).join(', ')}). Square does not say which one it pays into, so check that the right one is set as your payout account.`
-                    : ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked and verified, so the hold-up is something else — worth checking whether payouts are paused in Square.`)
-                : '';
-    // WHOSE PAYOUTS THESE ARE. Square answers for the seller's MAIN location when the
-    // app does not name one, so a multi-location seller can be shown a complete-looking
-    // "no payouts at all" about a shop that is not this business — measured, sixty days
-    // of it. Only said when there is more than one location, because with one there is
-    // no other shop it could have meant.
-    const LOC = L.location || null;
-    const locAll = (LOC && Array.isArray(LOC.all) ? LOC.all : []).filter((x) => x && x.id);
-    const locName = (id) => (locAll.find((x) => x.id === id) || {}).name || '';
-    const locWhy = locAll.length < 2
-        ? ''
-        : LOC && LOC.id
-          ? ` These figures are for <strong>${escapeHtml(locName(LOC.id) || LOC.id)}</strong> only.`
-          : ` You have ${locAll.length} Square locations and this site has not been told which it is, so these figures are for whichever Square treats as your MAIN one — set it in Manage → Payments.`;
-    const unknownWhy = !P
-        ? ''
-        : P.known === 0
-          ? ` Square hasn't reported <strong>any</strong> payouts at all${P.lookback ? ` in the last ${P.lookback} days` : ''} — not just these — so there is nothing to match them against.${bankWhy || ' That is usually a Square-side setting (payouts paused, or no bank account linked) rather than a delay.'}`
-          : lateUnknown.length
-            ? ` ${lateUnknown.length === 1 ? 'One of these was' : lateUnknown.length + ' of these were'} taken over a week ago, and Square normally pays out within a day or two — so ${lateUnknown.length === 1 ? 'it' : 'they'} should have shown up by now. Worth checking Square directly.`
-            : '';
-    // ONE FIGURE PER CUSTOMER: what you can transfer. The row carried the whole
-    // derivation ("£677.97 settled · £73.92 held back"), restating the ring fence
-    // a third time and putting the GROSS beside the figure you act on — two
-    // similar amounts on one line is how the wrong one reaches a bank transfer.
-    // The sub-line survives only where it says what the figure cannot: when an
-    // unpaid charge is due, and that a fee is estimated.
-    // `canMark` is the LANDED group only, and that is the same rule the server
-    // enforces: money Square has not paid out cannot have left the bank, so a row
-    // on its way or unvouched-for offers nothing to tick. No confirm on a single
-    // row — unlike the whole-lot button, which acts on a set you cannot see from
-    // where it sits, this one names its guest and its figure directly above itself
-    // and the undo is one tap in the group below.
-    const txRow = (it, canMark) => {
-        const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : '');
-        const notes = [];
-        if (it.landed === false && it.arrival) notes.push(`due ${fmtDate(it.arrival)}`);
-        if (!it.fee_actual) notes.push('fee estimated');
-        const when = it.paid_on ? ` · ${fmtDate(it.paid_on)}` : '';
-        return `<div class="act-row" style="display:block;">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                <span>${who}${when}</span>
-                <span style="white-space:nowrap;font-weight:600;">${gbp(it.movable)}</span>
-            </div>
-            ${notes.length ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">${notes.join(' · ')}</div>` : ''}
-            ${canMark && it.txn_id != null
-                ? `<div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" aria-label="Mark ${escapeHtml(it.name || 'this guest')}${when}, ${gbp(it.movable)}, as transferred out" ${chbAttrs('sweepMarkOneTransferred', String(it.txn_id))}>I've transferred this one</button></div>`
-                : ''}
-        </div>`;
-    };
-    const txGroup = (rows, label, total, note, canMark) =>
-        !rows || !rows.length
-            ? ''
-            : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                <div class="label">${label}</div>
-                ${note ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">${note}</p>` : '<div style="height:6px;"></div>'}
-                <div>${rows.map((r) => txRow(r, canMark)).join('')}</div>
-                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
-                    <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
-                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(total)}</span>
-                </div>
-               </div>`;
-    // Fallback for an install with no payout data at all (Square off, or the cron
-    // hasn't run yet): show the flat list rather than nothing, and say the freshness
-    // is unknown. Better a stated caveat than a hidden one.
-    const txFlat = ((T && T.items) || []).map(txRow).join('');
-    // The caveat that holds in EVERY branch, stated once so the two cannot drift:
-    // even with payouts known, these are the recent payments and not the balance.
-    const notBalance =
-        'This is what those payments brought in — not the account balance, which also holds older money and whatever you\'ve already moved or spent.';
-
-    // ---- THE ANSWER FIRST, THEN ONLY WHAT IS WRONG -------------------------
-    // The page has ONE question in its name and used to answer it LAST, below the
-    // ring fence, the deposit list and three groups of per-charge workings — ~15
-    // figures on a phone before the one the owner came for. The same deposit was
-    // also stated three times (headline, own row, "held back" on the charge that
-    // carries it), which reads as three liabilities. Order now: the answer, what
-    // NEEDS the owner, then the workings on demand. Nothing is deleted — a money
-    // screen has to be checkable — just one tap away instead of in the way.
-    // NB "still to return" is the wording removed for calling a deposit a to-do
-    // when its guest has not arrived; it must not creep back. And the breakdown is
-    // printed only when it BREAKS DOWN — with one component it restated the total
-    // ("Leaves £73.92 behind — £73.92 for the deposit").
-    const ringParts = [`${gbp(L.net)} for the deposit${L.count === 1 ? '' : 's'} still held`]
-        .concat(disp > 0 ? [`${gbp(disp)} under dispute`] : [])
-        .concat(buf > 0 ? [`your ${gbp(buf)} cushion`] : []);
-    const ringNote = ringParts.length > 1
-        ? `Leaves ${gbp(ring)} behind — ${ringParts.join(', ')}.`
-        : `Leaves ${gbp(ring)} behind for the deposit${L.count === 1 ? '' : 's'} still held.`;
-    // THE NUMBER YOU TYPE INTO THE BANK, up front. The page led with what to KEEP
-    // (£73.92) — the constraint, not the instruction — and gave the figure you act
-    // on only after you typed a balance. Square's payout data already answers most
-    // of it: P.inBank sums the charges Square has actually paid into the account,
-    // each already net of its fee AND of any deposit ringfenced out of it. So there
-    // is a real transfer figure before anything is typed.
-    //
-    // It is a FLOOR, not the balance — the account also holds older money, and
-    // whatever has already been moved or spent, so this can overstate if some of it
-    // has gone. That caveat is not optional next to a number labelled "transfer
-    // out"; the typed balance stays the authoritative answer and says so.
-    const landedItems = (P && P.items && P.items.inBank) || [];
-    const movedItems = (P && P.items && P.items.moved) || [];
-    const landed = P && Number(P.inBank) > 0 ? Number(P.inBank) : null;
-    const transferOut = hasBal ? safe : landed;
-    const answer = `<div class="accounts-stat" style="max-width:620px;">
-            <div class="label">Transfer out</div>
-            ${hasBal && short > 0
-                ? `<p style="margin:6px 0 0;color:var(--danger-text);font-size:var(--fs-body);"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
-                : transferOut === null
-                  ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">${movedItems.length
-                        ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
-                        : `Type what the account holds below and I'll work it out.`}</p>`
-                  : `<div class="sweep-fig" style="font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
-                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">${hasBal
-                        ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
-                        : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}${movedItems.length ? `, and not counting ${gbp(P.moved)} you have already transferred` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;">
-                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:var(--fs-caption);color:var(--text-muted);margin-bottom:4px;">Balance now</span>
-                    <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
-                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:var(--fs-caption);color:var(--text-muted);margin-bottom:4px;">Extra cushion (optional)</span>
-                    <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
-            </div>
-            <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">${est
-                ? `Starting from the ${gbp(est.from)} you recorded on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
-                : `There's no bank feed, so the balance is the one figure this page cannot work out.`}</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                ${hasBal && short <= 0
-                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
-                    : ''}
-                ${/* RECORDING A TRANSFER IS THE ONLY WAY THIS SCREEN CAN KNOW. Square
-                      reports what it paid IN; nothing reports what the owner moved
-                      OUT, so without this the same money is offered again on every
-                      visit. `!hasBal` keeps it to ONE recording action per state:
-                      with a balance typed the headline is the BALANCE's figure while
-                      this confirms `P.inBank` — measured at £2000, "transfer out
-                      £1852.62" over a dialog asking to mark £294.75. "Remember this
-                      balance" is the recording action there, and already marks
-                      everything landed. */ ''}
-                ${/* "I've transferred this" while every row carries its own tick
-                      reads as though it acts on whichever one you last looked at.
-                      It acts on the LOT, and with one landed payment there is no
-                      lot — the per-row control is the same act with a clearer
-                      label, so this one stands down rather than saying the same
-                      thing twice about the same money. */ ''}
-                ${!hasBal && landedItems.length > 1
-                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepMarkTransferred')}>I've transferred all ${landedItems.length}</button>`
-                    : ''}
-            </div>
-        </div>`;
-
-    // WHAT IS WRONG STAYS IN THE OPEN — the only things here that ask anything of
-    // the owner, so never behind the disclosure (ui-test-money asserts the DOM).
-    const alerts = [];
-    if (disp > 0) {
-        alerts.push(['danger', `${gbp(disp)} under dispute — ${L.disputes.count === 1 ? 'a card payment is' : L.disputes.count + ' card payments are'} being challenged and Square may take it back. Held back above until it is settled.`]);
-    }
-    if (L.disputes && L.disputes.error) {
-        alerts.push(['muted', `Couldn't check for disputes — ${escapeHtml(String(L.disputes.error))}. Anything under dispute is NOT included above.`]);
-    }
-    if (P && P.failed && P.failed.count) {
-        alerts.push(['danger', `<strong>${P.failed.count} payout${P.failed.count === 1 ? '' : 's'} FAILED (${gbp(P.failed.amount)})</strong> — that money never arrived, and it usually means the bank details need fixing.`]);
-    }
-    // WHY money is unaccounted for is an exception; WHICH charges is detail. This
-    // sentence lived inside the unknown GROUP, so burying the groups would have
-    // buried the one line saying Square is paying out nothing at all.
-    if (P && P.unknown > 0) {
-        alerts.push(['warn', `${gbp(P.unknown)} of charges aren't in the payout data, so there's no telling whether they've landed. Not counted as movable.${unknownWhy}`]);
-    }
-    if (P && P.error) {
-        alerts.push(['warn', `Payout data may be out of date — ${escapeHtml(String(P.error))}.`]);
-    }
-    // A refund issued but not seen to settle is the only row here that asks
-    // anything of the owner, so it stays out of the fold with its button.
-    const needsConfirm = (L.items || []).filter((it) => Number(it.awaiting || 0) > 0 && it.booking_id);
-    const confirmHtml = !needsConfirm.length
-        ? ''
-        : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-            <div class="label">Waiting on your confirmation</div>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">Refunded, but our records haven't seen it leave your Square balance — so it is still held back from the figure above.</p>
-            ${needsConfirm.map((it) => `<div class="act-row" style="display:block;">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                    <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}</span>
-                    <span style="white-space:nowrap;">${gbp(it.net)}</span>
-                </div>
-                <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('confirmReturnSettled', String(it.booking_id))}>It has gone — confirm settled</button></div>
-            </div>`).join('')}
-           </div>`;
-    const alertHtml = !alerts.length
-        ? ''
-        : `<div class="accounts-stat sweep-alerts" style="max-width:620px;margin-top:14px;">
-            ${alerts.map(([tone, html]) => `<p style="font-size:var(--fs-sub);margin:0 0 8px;color:var(--${tone === 'danger' ? 'danger' : tone === 'warn' ? 'warn-text' : 'text-muted'});">${html}</p>`).join('')}
-           </div>`.replace(/<\/p>\s*<\/div>/, '</p></div>');
-
-    // THE WORKINGS — checkable, one tap away. <details> is native, keyboard-
-    // operable and needs no script.
-    // WHAT IS HELD BACK, itemised — in the WORKINGS. It was a card of its own,
-    // headed with the figure to LEAVE IN, directly under the figure to take out:
-    // two competing headlines for one decision, and the wrong one was the
-    // instruction. The transfer figure is already net of the fence and its
-    // sentence names it, so the fence is a derivation now, not an answer. NB one
-    // part cannot fold away — see `needsConfirm`.
-    const held = !L.count
-        ? ''
-        : `<div class="accounts-stat" style="max-width:620px;">
-            <div class="label">Keep in the account</div>
-            <div class="sweep-fig" style="font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
-            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
-            <div>${rows}</div>
-           </div>`;
-
-    const workings =
-        held +
-        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0 4px;max-width:620px;">
-            ${L.count === 0
-                ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
-                : `Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
-         </p>` +
-        `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;max-width:620px;">${notBalance}</p>` +
-        (T && T.count && P
-            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it. Tick one off once you've moved it.", true) +
-              txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
-              txGroup(P.items.unknown, "Square hasn't said", P.unknown, 'Not counted as movable.') +
-              (movedItems.length
-                ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                    <div class="label">Already transferred out</div>
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">You told me these have left the account, so they are not counted above. Put one back if that was wrong.</p>
-                    ${movedItems.map((it) => `<div class="act-row" style="display:block;">
-                        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                            <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
-                            <span style="white-space:nowrap;color:var(--text-muted);">${gbp(it.movable)}</span>
-                        </div>
-                        ${/* WHEN the owner said so. `moved_at` was computed on the
-                              server, sent to the client and rendered NOWHERE — the
-                              built-with-no-way-in shape. It is the fact that makes
-                              this group checkable against a bank statement, and
-                              without it the group's own "you told me" claim cannot
-                              be dated. Labelled, because the row already carries the
-                              date the money came IN and two bare dates would be
-                              indistinguishable. */ ''}
-                        ${Number(it.moved_at) > 0
-                            ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">You marked this on ${fmtDate(new Date(Number(it.moved_at) * 1000).toISOString().slice(0, 10))}</div>`
-                            : ''}
-                        <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('sweepUnmarkTransferred', String(it.txn_id != null ? it.txn_id : ''))}>Not transferred after all</button></div>
-                    </div>`).join('')}
-                    <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
-                        <span><strong>${movedItems.length} transferred</strong></span>
-                        <span style="white-space:nowrap;color:var(--text-muted);">${gbp(P.moved)}</span>
-                    </div>
-                   </div>`
-                : '') +
-              `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;max-width:620px;">
-                    ${P.fees > 0 ? `Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.<br>` : ''}
-                    ${locWhy ? locWhy.trim() + '<br>' : ''}
-                    ${P.truncated ? 'Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
-               </p>`
-            : T && T.count
-              ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                <div class="label">Movable, payment by payment</div>
-                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
-                <div>${txFlat}</div>
-                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
-                    <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
-                    <span class="sweep-fig" style="white-space:nowrap;font-size:var(--fs-headline);">${gbp(T.movable)}</span>
-                </div>
-                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
-               </div>`
-              : '');
-
-    box.innerHTML =
-        answer +
-        alertHtml +
-        confirmHtml +
-        `<details class="sweep-detail"${__sweepWorkingsOpen ? ' open' : ''} style="max-width:620px;margin-top:14px;">
-            <summary>Show how these figures are worked out</summary>
-            <div style="padding-top:4px;">${workings}</div>
-         </details>` +
-        `<p class="sweep-checked">${P
-                ? P.checked
-                    ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
-                    : 'Payouts have not been checked yet.'
-                : 'No payout data yet.'}</p>
-         <div class="u-acts is-bare sweep-acts"><button class="btn-sm btn-edit" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button></div>`;
-}
-function sweepSet(which, value) {
-    if (which === 'balance') {
-        __sweepBalance = String(value || '');
-        __sweepBalTouched = true; // never let a re-render overwrite what they typed
-    } else __sweepBuffer = String(value || '');
-    renderSweep(false); // recompute from the cached liability — no round trip
-}
-// ---- TRANSFERS THE OWNER HAS ALREADY MADE ---------------------------------
-// Square's API answers what it paid INTO the bank. Nothing answers what the owner
-// moved OUT — there is no bank feed, and Square has no balance endpoint (asked and
-// confirmed; see the sweep notes). So the only way this screen can stop offering
-// the same money twice is for the owner to say when they have moved it.
-//
-// The marks live under the internal content key `sweep-moved`, a map of charge id
-// => when it was marked, written through the ordinary content save like the dated
-// balance beside it. payouts_split_totals() applies them server-side, so the
-// figure and the rows can never disagree about which charges were counted.
-//
-// MIRROR-FIRST is deliberately NOT used here (unlike the search pins): renderSweep
-// refetches the whole liability payload anyway, and a local mirror of a money
-// figure that the server also computes is exactly the kind of second definition
-// this file keeps removing.
-// The owner's WHOLE record of what they have transferred out, as the server holds
-// it — deliberately not rebuilt from the `moved` ROWS on screen. Those are only the
-// marks whose charge is still inside the payout window, so amending that and saving
-// it back would drop every older mark: recording one transfer would silently forget
-// another. The server sends the raw map for exactly this.
-function sweepMovedMap() {
-    const P = (__sweepLiab && __sweepLiab.payouts) || null;
-    const raw = (P && P.movedMap) || {};
-    const out = {};
-    Object.keys(raw).forEach((k) => { if (Number(raw[k]) > 0) out[k] = Number(raw[k]); });
-    return out;
-}
-async function sweepSaveMoved(map) {
-    await saveContent('sweep-moved', JSON.stringify(map));
-    await renderSweep(); // refetch — the server owns the arithmetic
-}
-// The MANUAL override: everything currently counted as movable has just been sent.
-// Confirmed first, because it changes a money figure and the owner may have tapped
-// it meaning to read it.
-async function sweepMarkTransferred() {
-    const P = (__sweepLiab && __sweepLiab.payouts) || null;
-    const items = (P && P.items && P.items.inBank) || [];
-    if (!items.length) return;
-    const ok = await glassConfirm(
-        `Mark ${gbp(P.inBank)} as transferred out?\n\n${items.length === 1 ? 'This payment stops' : 'These ' + items.length + ' payments stop'} counting towards what you can move. You can put ${items.length === 1 ? 'it' : 'them'} back if you change your mind.`,
-        'Yes, I have transferred it',
-    );
-    if (!ok) return;
-    const map = sweepMovedMap();
-    const now = Math.floor(Date.now() / 1000);
-    items.forEach((it) => { if (it.txn_id != null) map[String(it.txn_id)] = now; });
-    try {
-        await sweepSaveMoved(map);
-        toast('Recorded — these no longer count as movable', 'success');
-    } catch (e) {
-        return; // saveContent has already told them, and it rethrows on purpose
-    }
-}
-// ONE booking's money, ticked off where it is listed. The whole-lot button suits
-// "I moved everything"; in practice a payout is often moved on its own, and
-// without this the only way to say so was to mark the lot and put the rest back.
-// No confirm, deliberately: the row above it names the guest, the date and the
-// figure, so the tap is unambiguous in a way the set-level one is not — and the
-// undo sits in the group directly below. `landed` is enforced by the SERVER, so a
-// mark on money still on its way is ignored even if this button ever leaks onto
-// one; the button is only rendered on the landed group.
-async function sweepMarkOneTransferred(id) {
-    if (id === '' || id == null) return;
-    const map = sweepMovedMap();
-    map[String(id)] = Math.floor(Date.now() / 1000);
-    try {
-        await sweepSaveMoved(map);
-        toast('Recorded — that one no longer counts as movable', 'success');
-    } catch (e) {
-        // saveContent has already told them, and it rethrows on purpose.
-    }
-}
-// The other half of the override: put one back. A mark is the owner's memory, and
-// a memory can be wrong — without this, one mistaken tap hides that money for good.
-async function sweepUnmarkTransferred(id) {
-    if (id === '' || id == null) return;
-    const map = sweepMovedMap();
-    delete map[String(id)];
-    try {
-        await sweepSaveMoved(map);
-        toast('Put back — it counts as movable again', 'success');
-    } catch (e) {}
-}
-
-// Store the balance WITH today's date. A bare remembered figure would be stale; a
-// dated one is a starting point, and the estimate refuses to roll one older than 30
-// days forward rather than compounding drift.
-async function sweepRememberBalance() {
-    const amt = parseFloat(__sweepBalance);
-    if (isNaN(amt) || amt < 0) return;
-    const now = Math.floor(Date.now() / 1000);
-    try {
-        await saveContent('sweep-balance', JSON.stringify({ amount: Math.round(amt * 100) / 100, at: now }));
-        // THE AUTOMATIC HALF. A stated balance is the truth about the account AT
-        // THAT MOMENT, so every payment Square has already paid in is inside it —
-        // counting those again next visit would offer the same money twice. This
-        // is the same reasoning payouts_balance_estimate already uses when it
-        // counts only movements strictly AFTER the stated instant; here it just
-        // has to hold for the DERIVED figure too.
-        const map = sweepMovedMap();
-        let marked = 0;
-        ((__sweepLiab && __sweepLiab.payouts && __sweepLiab.payouts.items && __sweepLiab.payouts.items.inBank) || [])
-            .forEach((it) => { if (it.txn_id != null) { map[String(it.txn_id)] = now; marked++; } });
-        await saveContent('sweep-moved', JSON.stringify(map));
-        // SAY WHAT IT DID. This marks payments as already transferred — a change to
-        // a money figure the owner did not explicitly ask for — and "Balance noted"
-        // reported none of it, so charges silently stopped counting as movable.
-        // Named here rather than hidden as a side effect of noting a number; the
-        // rows themselves are in "Already transferred out", with an undo each.
-        toast(marked
-            ? `Balance noted — ${marked} payment${marked === 1 ? '' : 's'} already in it won't be offered again`
-            : 'Balance noted', 'success');
-    } catch (e) {
-        return; // saveContent has already told them, and it rethrows on purpose
-    }
-    __sweepBalTouched = false;
-    renderSweep(); // refetch so the stored figure and the estimate agree
-}
-// The owner asking Square directly. Normally the daily cron fills the payout cache
-// so no page ever waits on Square; this is the one place a wait is fair, because
-// they chose it. A refusal (a token without PAYOUTS_READ is the predictable one)
-// comes back as a plain sentence and is shown as-is — never a status code.
-async function sweepRefreshPayouts() {
-    try {
-        await apiPost('square-setup.php', { action: 'payouts_refresh' });
-        toast('Payouts up to date', 'success');
-    } catch (e) {
-        // The endpoint refuses with a 502 + sentence now, so the server's own
-        // words arrive here — a checked-for error inside a 200 body is the shape
-        // the resend work banned, and this was the last caller modelling it.
-        toast((e && e.message) || 'Couldn\'t reach Square — check your connection.', 'error');
-    }
-    renderSweep(); // refetch: the liability figures move with the new payout data
-}
-
 function renderExpenses() {
     const wrap = document.getElementById('expenses-body');
     if (!wrap) return;
@@ -17665,7 +17045,7 @@ let __pmAct = [];
 let __pmActEnd = false;
 let __pmShown = 20;
 let __pmFilter = 'all';
-let __pmOpen = null; // 'stay:<id>' | 'payout:<id>' | 'move' | 'books' | null
+let __pmOpen = null; // 'stay:<id>' | 'payout:<id>' | 'way' | 'bank' | 'books' | null
 let __pmFig = null;
 let __pmYear = 0;
 const __pmBooks = {};
@@ -17835,7 +17215,7 @@ function pmKind(e) {
         case 'back': return { ic: 'out', icon: PM_IC.shield, t: name, sub: 'Deposit returned' + (e.status === 'pending' ? ' · on its way' : ''), v: '−' + gbp(e.amount), vc: '', act: stay ? 'stay' : '', arg: stay };
         case 'kept': return { ic: 'in', icon: PM_IC.shield, t: name, sub: 'Deposit kept · counts as income', v: gbp(e.amount), vc: 'muted', act: stay ? 'stay' : '', arg: stay };
         case 'expense': return { ic: 'out', icon: PM_IC.receipt, t: e.who || e.what, sub: `${e.what} · expense${e.prop ? ' · ' + pmProp(e.prop) : ''}`, v: '−' + gbp(e.amount), vc: '', act: 'books', arg: '' };
-        case 'moved': return { ic: '', icon: PM_IC.out, t: 'Moved out', sub: 'from your bank, recorded by you', v: gbp(e.amount), vc: 'muted', act: 'move', arg: '' };
+        case 'moved': return { ic: '', icon: PM_IC.out, t: 'Moved out', sub: 'from your bank, recorded by you', v: gbp(e.amount), vc: 'muted', act: '', arg: '' };
         case 'payout': {
             const arr = pmIso(e.arrival);
             const sub = e.state === 'way' ? `On its way${arr ? ' · ' + pmDdm(arr) : ''}` : e.state === 'failed' ? 'Didn’t arrive · check your bank details in Square' : e.state === 'landed' ? 'In your bank' : 'Sent by Square';
@@ -18111,35 +17491,6 @@ async function pmLanded(ids, on) {
     });
     await pmLoad(true);
 }
-function pmMovePage() {
-    const P = __pm && __pm.position;
-    if (!P) return pmHead('Move money out') + `<div class="pm-dbody"><p class="pm-note">${__pmErr ? 'Couldn’t load the figures. Check your connection.' : 'Working it out…'}</p></div>`;
-    const items = __pm.bank_items || [];
-    const byDay = {};
-    items.forEach((it) => { const k = it.by_owner ? 'you' : it.arrival || ''; byDay[k] = (byDay[k] || 0) + it.settled; });
-    const held = items.filter((it) => it.fenced > 0.005);
-    const bank = P.bank || 'your bank';
-    const since = P.last_moved ? 'since you last moved money out, ' + pmDm(P.last_moved * 1000) : 'Square has paid in';
-    const checked = pmCheckedLine(P);
-    return pmHead('Move money out', escapeHtml(P.last_moved ? 'What has reached your bank since you last moved money out' : 'What Square has paid into your bank')) + `<div class="pm-dbody">
-        <section class="pm-hero"><div class="pm-hero-top"><span>Ready to move out</span><b class="pm-okword">${gbp(P.ready)}</b></div>
-            <div class="pm-hero-sub">Everything Square has paid into ${escapeHtml(bank)} ${escapeHtml(since)}, less the deposits you will give back.</div></section>
-        <div class="pm-dcap">Paid into your bank</div>
-        <div class="pm-kvs pm-calc">${Object.keys(byDay).sort().map((k) => `<div class="pm-kv"><span>${k === 'you' ? 'Card payments you said are in your bank' : 'Square payout' + (k ? ' · ' + pmDdm(pmIso(k)) : '')}</span><b>${gbp(byDay[k])}</b></div>`).join('') || '<div class="pm-kv"><span>Nothing yet</span><b>£0.00</b></div>'}
-            <div class="pm-kv total"><span>In your bank</span><b>${gbp(P.in_bank)}</b></div></div>
-        <div class="pm-dcap">Guests’ deposits you hold</div>
-        <div class="pm-kvs pm-calc">${held.length ? held.map((it) => {
-            const b = findBookingById(it.booking_id);
-            const gone = b && (hasCheckedOut(b) || b.guestCheckedOutAt);
-            const sub = b ? (gone ? 'left ' + pmDm(pmIso(b.checkOut)) + ' · to return' : 'goes back after ' + pmDm(pmIso(b.checkOut))) : '';
-            return `<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="b${it.booking_id}"><span><span class="pm-ink">${escapeHtml(it.name || 'A guest')}</span>${sub ? `<br><span class="pm-s">${sub}</span>` : ''}</span><b>${gbp(it.fenced)}</b></button>`;
-        }).join('') : '<div class="pm-kv"><span>None</span><b>£0.00</b></div>'}
-            <div class="pm-kv total"><span>Kept back</span><b>−${gbp(P.held)}</b></div></div>
-        <p class="pm-note">${P.with_square > 0.005 ? `${gbp(P.with_square)} more is with Square and joins this when it lands.` : 'Nothing is with Square right now.'} ${escapeHtml(checked)}</p>
-        <div class="pm-acts"><button type="button" class="pm-btn primary" data-pm="moved"${P.ready > 0.005 ? '' : ' disabled'}>I’ve moved ${gbp(P.ready)} out</button></div>
-        <div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="check">Check Square now</button><button type="button" class="pm-linkbtn" data-pm="balance">Work it out from your bank balance</button></div>
-    </div>`;
-}
 function pmBooksPage() {
     const years = ((__pm && __pm.years) || []).map(Number).filter(Boolean).sort((a, z) => a - z).slice(-3);
     const y = __pmYear || (__pm && __pm.books && __pm.books.year) || taxYearStartOf(todayDashed());
@@ -18177,7 +17528,7 @@ function pmRenderDetail() {
     const arg = i < 0 ? '' : key.slice(i + 1);
     const body = pane.querySelector('.pm-dbody');
     const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
-    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : k === 'due' ? pmSplitDuePage() : pmBooksPage();
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : k === 'due' ? pmSplitDuePage() : pmBooksPage();
     pane.__pmKey = key;
     const nb = pane.querySelector('.pm-dbody');
     if (nb) nb.scrollTop = keepTop;
@@ -18278,7 +17629,6 @@ function pmOpen(key) {
     if (key.indexOf('payout:') === 0 && !__pmPayout[key.slice(7)]) pmLoadPayout(key.slice(7));
     if (key === 'books' && __pmYear && __pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear);
     if (key === 'books') chbNavRemember('accounts:income');
-    else if (key === 'move') chbNavRemember('accounts:sweep');
     else if (key === 'way') chbNavRemember('accounts:way');
     else if (key === 'bank') chbNavRemember('accounts:bank');
     if (!pmWide()) {
@@ -18518,26 +17868,6 @@ function pmAskSheet() {
         /** @type {any} */ (s).__pick = (k, a) => { if (k === 'who') { pick = a; draw(); } };
     };
     draw();
-}
-// "I've moved it out": every payment counted as in the bank is marked in the
-// sweep's record (sweep-moved), which the server reads. The WHOLE stored map is
-// amended, never rebuilt from what is on screen.
-async function pmMoved() {
-    const P = __pm && __pm.position;
-    const items = (__pm && __pm.bank_items) || [];
-    if (!P || !items.length) return;
-    const prev = Object.assign({}, (__pm && __pm.moved_map) || {});
-    const map = Object.assign({}, prev);
-    const now = Math.floor(Date.now() / 1000);
-    items.forEach((it) => { if (it.txn_id) map[String(it.txn_id)] = now; });
-    try {
-        await saveContent('sweep-moved', JSON.stringify(map));
-    } catch (e) { return; }
-    toast(`Recorded: ${gbp(P.ready)} moved out.${P.held > 0.005 ? ` ${gbp(P.held)} of deposits stays put.` : ''}`, 'success', {
-        label: 'Undo',
-        fn: async () => { try { await saveContent('sweep-moved', JSON.stringify(prev)); } catch (e) { return; } pmLoad(); },
-    });
-    await pmLoad(true);
 }
 async function pmExport(kind) {
     const y = __pmYear || taxYearStartOf(todayDashed());
@@ -19617,7 +18947,6 @@ const PM_ACT = {
         const ok = await glassConfirm(`Count ${late.length} card payments (${gbp(sum)}) as in your bank?\n\n${late.map((it) => `${it.name || 'A guest'} · ${gbp(it.settled)}`).join('\n')}\n\nThis moves no money. It only stops them counting as with Square.`, `Mark all ${late.length}`);
         if (ok) await pmLanded(late.map((it) => it.txn_id), true);
     },
-    move() { pmOpen('move'); },
     books() { pmOpen('books'); },
     stay(id) { if (id) pmOpen('stay:' + id); },
     payout(id) { if (id) pmOpen('payout:' + id); },
@@ -19646,7 +18975,6 @@ const PM_ACT = {
     async return(id) { await returnDeposit(id); pmRender(); pmLoad(true); },
     async keep(id) { await keepDeposit(id); pmRender(); pmLoad(true); },
     hub(id) { openBookingHub(id); },
-    async moved() { await pmMoved(); },
     async check() {
         try {
             await apiPost('square-setup.php', { action: 'payouts_refresh' });
@@ -19655,7 +18983,6 @@ const PM_ACT = {
         Object.keys(__pmPayout).forEach((k) => delete __pmPayout[k]);
         await pmLoad();
     },
-    balance() { accountsOpen('balance'); },
     expenses() { accountsOpen('expenses'); },
     csv() { pmExport('csv'); },
     pdf() { pmExport('pdf'); },
@@ -20930,28 +20257,6 @@ async function offerUpdatedConfirmationEmail(bookingId) {
         },
     });
 }
-// THE OWNER CONFIRMING WHAT THEY CAN ALREADY SEE. Square's API lags: a deposit refund
-// taken out of the Square balance read "not yet confirmed settled here" while the money
-// was demonstrably gone. This says so once, and the ledger stops fencing it.
-//
-// It asks first, and the confirm states the CONSEQUENCE rather than the mechanism —
-// under-fencing is how an account goes short, so this is one of the few places where a
-// wrong tap costs real money later.
-async function confirmReturnSettled(bookingId) {
-    const ok = await glassConfirm(
-        'Only do this if you can see the refund has actually left your Square balance or bank account.\n\n'
-            + 'It stops being held back from what you can move out, so if it has NOT gone you could end up short.',
-        'Yes, it has gone',
-    );
-    if (!ok) return;
-    try {
-        const r = await apiPost('bookings.php', { action: 'confirm_return_settled', id: Number(bookingId) });
-        toast(r && r.confirmed ? 'Marked as settled — it is no longer held back.' : (r && r.note) || 'Nothing was waiting.');
-        await renderSweep(true);
-    } catch (e) {
-        glassAlert("Couldn't record that: " + e.message);
-    }
-}
 // WHICH SQUARE LOCATION THIS SITE TRADES UNDER. Only offered when there is a genuine
 // choice: with one location there is nothing to get wrong, and a picker showing a single
 // option is a question the owner should not have to answer. The list rides the cached
@@ -20973,9 +20278,9 @@ async function saveSquareLocation() {
         // changes with it.
         let reread = true;
         try { await apiPost('square-setup.php', { action: 'payouts_refresh' }); } catch (e) { reread = false; }
-        // renderSweep(true) re-fetches accounts.php, so the money screen stops showing
-        // figures gathered for the location the owner has just moved away from.
-        try { await renderSweep(true); } catch (e) {}
+        // Re-read the Payments page, so it stops showing figures gathered for the
+        // location the owner has just moved away from.
+        try { await pmLoad(true); } catch (e) {}
         try { await loadSquareWebhookStatus(); } catch (e) {}
         // "The money screens now read this location" is a claim about the RE-READ,
         // not the save — when the re-read failed it was false, and the cached
@@ -20989,7 +20294,7 @@ async function saveSquareLocation() {
     }
 }
 // Driven by square-setup.php's `status`, which the Payments screen already fetches.
-// It first read __sweepLiab — the Move-money-out screen's cache — so opening Settings
+// It first read another money screen's cache (since removed), so opening Settings
 // directly left it null and the card hid itself EVERY time: a control that could not
 // appear. Reported from the live account, and the reason this now takes its data as an
 // argument rather than reaching for a global filled somewhere else.
@@ -23430,18 +22735,17 @@ function chbDutiesAll() {
             });
         });
     } catch (e) {}
-    // 1b) A FAILED payout or a disputed payment. Move-money-out refuses to count
-    // either as movable, but silently — and bad bank details stop every later
-    // transfer. Off the bootstrap payload, so no request of its own ($feeds).
+    // 1b) A FAILED payout or a disputed payment: bad bank details stop every later
+    // transfer, and a dispute may need evidence. Off the bootstrap payload, so no request of its own ($feeds).
     const pt = /** @type {any} */ (window).__payoutTroublePre;
     if (pt && pt.failed && pt.failed.count > 0) {
         out.push({
             kind: 'payout', sev: 'danger', ic: 'alert',
             label: `Square couldn’t pay ${gbp(pt.failed.amount)} into your bank`,
             sub: pt.failed.count === 1 ? 'The transfer failed — usually the bank details' : `${pt.failed.count} transfers failed — usually the bank details`,
-            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'sweep'),
+            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'way'),
             board: 'money', scope: 'bookings',
-            run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
+            run: () => { closeCmdK(); cmdkOpenAccounts('way'); },
         });
     }
     if (pt && pt.disputed && pt.disputed.count > 0) {
@@ -23449,9 +22753,9 @@ function chbDutiesAll() {
             kind: 'dispute', sev: 'danger', ic: 'alert',
             label: `${gbp(pt.disputed.amount)} is under dispute`,
             sub: pt.disputed.count === 1 ? 'A card payment is being challenged — evidence may be due' : `${pt.disputed.count} card payments are being challenged`,
-            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'sweep'),
+            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'way'),
             board: 'money', scope: 'bookings',
-            run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
+            run: () => { closeCmdK(); cmdkOpenAccounts('way'); },
         });
     }
     // 2) Enquiries waiting for an answer — the money-makers, oldest first.

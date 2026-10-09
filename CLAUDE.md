@@ -776,7 +776,7 @@ account, which the app can't see. The approved demo was v10 of the "who earned w
 - **The Payments page** (admin.js `pmView()`): the flow card (Owed / With Square / In your bank / Ready to move
   out) and Coming in are GONE for everyone — one **"Guests still to pay"** card (`pmOwedCardHtml`, `#pm-coming`
   kept as the anchor) lists who owes, overdue included, so Needs you no longer repeats overdue rows. Square
-  payouts and Move money out moved to the + menu. **Holder**: their cottages' guests only, a Needs-you row
+  payouts moved to the + menu (Move money out went too, then was REMOVED — see below). **Holder**: their cottages' guests only, a Needs-you row
   "Pay George for Pimpernel", and "Your cottages" + "Pimpernel is George's" in place of the books card (Open the
   books stays a row). **Paid-out host**: only "Sent to you this tax year", what is still with the holder (a sheet
   of the bookings), their cottages' guests still to pay, and the transfers from the holder; on a computer the
@@ -803,6 +803,18 @@ account, which the app can't see. The approved demo was v10 of the "who earned w
   demo was not built (the booking page's ledger serves); the weekly digest, search and the CSV/PDF don't follow
   the split; the books page is still the whole business's. NOT re-aimed (merge without CI): ui-test-money and the
   layout/onelook scenes that read `.pm-flow`/`.pm-stop`.
+
+## Move money out is GONE (owner's ask: "no longer needed")
+
+The Payments detail page (`pmMovePage`, "I've moved it out"), the old typed-balance worksheet behind it
+(`#asec-sweep`, `renderSweep` and every `sweep*` helper, `confirmReturnSettled`), the + menu item, the search action
+and the "how much can I move out" answer (`CHB_SWEEP_Q`, `cmdkSweepMerge`) were all removed. Old links
+(`accountsOpen('sweep'|'balance')`, a remembered `accounts:sweep`) land on the Payments landing; the failed-payout and
+dispute duties open Square payouts instead. **The server is untouched**: accounts.php's `deposit_liability`,
+sweep-lib.php and payouts-lib.php still feed the Square payouts page and the books, and test-sweep/test-payouts keep
+their arithmetic checks (only their source-scans of the removed screen went). Activity rows recorded as "Moved out"
+still list, no longer tappable. The browser scenes that opened the screen (a11y, layout, ui-test-radii §3,
+ui-test-ownerref §2) were removed with it; nothing was run, at the owner's ask.
 
 ## The live link to Monzo Business (built and pushed to main without a PR or CI, at the owner's ask)
 

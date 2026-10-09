@@ -8,12 +8,7 @@
 //     query asked for (`nlgBody`, which cmdkRowHtml has always rendered) stopped
 //     appearing on screen the moment the hero existed. Asserted as EQUALITY with
 //     the composer's own data, so the hero cannot render a different answer.
-//  §2 THE MONEY IS IN THE SERIF. Four figures on Move money out were painted
-//     with an inline `font-family: var(--font-display)` — a token declared in
-//     none of the three sheets — so all four fell back to Montserrat while the
-//     Income & tax headline beside them is Playfair. The check reads the
-//     COMPUTED family, which is the one thing a non-existent token cannot fake:
-//     a stylesheet scan sees a plausible `var(...)` and says nothing.
+//  §2 (removed with the Move money out screen it measured)
 //  §3 NOTHING LOSES ITS WORDS. The subs, labels and money lines on six owner
 //     surfaces, at 360 / 390 / 1280. Measured as INK — a Range over each
 //     element's contents against its own content box — never `scrollWidth`,
@@ -202,42 +197,6 @@ const READ_SELS = [
     await page.waitForTimeout(300);
 
     // =====================================================================
-    console.log('\n§2 Move money out: the money is in the serif');
-    // =====================================================================
-    await page.evaluate(async () => { await openAccounts(); });
-    await page.waitForTimeout(700);
-    await page.evaluate(() => accountsOpen('sweep'));
-    await page.waitForTimeout(900);
-    const serif = await page.evaluate(() => {
-        // The workings live behind the disclosure — open it so every figure is
-        // measured as PAINTED rather than as a computed style nobody can see.
-        const det = document.querySelector('#sweep-body details');
-        if (det) det.open = true;
-        const figs = [...document.querySelectorAll('#sweep-body .sweep-fig')];
-        const body = getComputedStyle(document.body).fontFamily;
-        return {
-            n: figs.length,
-            fams: figs.map((f) => ({ t: (f.textContent || '').trim(), ff: getComputedStyle(f).fontFamily })),
-            bodyFf: body,
-            tokenFf: (() => { const pr = document.createElement('span'); pr.style.fontFamily = 'var(--font-serif)'; document.body.appendChild(pr); const v = getComputedStyle(pr).fontFamily; pr.remove(); return v; })(),
-            painted: figs.filter((f) => f.getClientRects().length).length,
-        };
-    });
-    // FOUR CALL SITES, but one of them is inside `txGroup` — called once per
-    // payout group — so the count on screen follows the data. The floor is what
-    // matters: if this ever drops below four the sweep has stopped rendering
-    // figures and the family check has nothing to measure.
-    ok(serif.n >= 4, `(vacuity guard) every money figure on the screen is being measured (${serif.n})`);
-    ok(serif.painted === serif.n, `…and every one of them is painted (${serif.painted})`);
-    const sans = /Montserrat/i;
-    // The back office sets --font-serif to the sans (ONE FONT), so "the house serif"
-    // is whatever the TOKEN resolves to: a figure must come from the token, not a hardcoded face.
-    const bad = serif.fams.filter((f) => f.ff !== serif.tokenFf);
-    ok(bad.length === 0, `every sweep figure computes the house serif token${bad.length ? ' — ' + bad.map((f) => `"${f.t}" is ${f.ff}`).join('; ') : ''}`);
-    ok(serif.fams.every((f) => f.ff === serif.tokenFf), 'and none of them has drifted from the token');
-    ok(sans.test(serif.bodyFf), '(fixture) the body sans IS Montserrat, so the fallback would be visible to this check');
-
-    // =====================================================================
     console.log('\n§3 No sub, label or money line loses its words');
     // =====================================================================
     // Every owner surface this PR touched, driven for real. A screen that
@@ -378,9 +337,6 @@ const READ_SELS = [
         }
         await openAccounts();
         await new Promise((r) => setTimeout(r, 400));
-        accountsOpen('sweep');
-        await new Promise((r) => setTimeout(r, 800));
-        grab();
         await openKeysafe();
         await new Promise((r) => setTimeout(r, 600));
         grab();

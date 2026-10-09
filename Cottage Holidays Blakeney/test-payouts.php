@@ -581,17 +581,7 @@ pochk('the daily cron is what fills the cache, and only when it is stale',
     strpos($rep, 'payouts_stale(payouts_cached()') !== false && strpos($rep, 'payouts_refresh()') !== false);
 pochk('the owner can also ask Square directly',
     strpos($setup, "\$action === 'payouts_refresh'") !== false
-    && strpos($adm, 'sweepRefreshPayouts') !== false
     && strpos($adm, "action: 'payouts_refresh'") !== false);
-pochk('the screen counts only the in-the-bank total as movable',
-    preg_match('/txGroup\(P\.items\.inBank[^)]*P\.inBank/', $adm) === 1
-    && preg_match('/txGroup\(P\.items\.onWay[^)]*P\.onWay/', $adm) === 1
-    && preg_match('/txGroup\(P\.items\.unknown[^)]*P\.unknown/', $adm) === 1);
-pochk('…and says how fresh the payout data is', strpos($adm, 'Payouts checked') !== false && strpos($adm, 'have not been checked yet') !== false);
-// An install with Square off, or before the first cron run, still has to show
-// something — with the caveat stated rather than implied.
-pochk('with no payout data the flat list still renders, caveat stated',
-    strpos($adm, 'No payout data yet') !== false && strpos($adm, 'txFlat') !== false);
 pochk('the cache key is classified internal so the public content GET cannot serve it',
     strpos((string) file_get_contents(__DIR__ . '/db.php'), "\$key === 'square-payouts'") !== false);
 
@@ -627,44 +617,10 @@ pochk('a failed payout becomes a DUTY, not just an excluded total',
     preg_match("/kind: 'payout'[\s\S]{0,200}couldn.{0,3}t pay/", $adm) === 1);
 pochk('money under dispute becomes a duty too', preg_match("/kind: 'dispute'[\s\S]{0,160}under dispute/", $adm) === 1);
 
-// The ring fence must actually INCLUDE the disputed money, or fencing it is a label.
-pochk('the disputed amount is added to what must stay in the account',
-    preg_match('/const ring = Number\(L\.net \|\| 0\) \+ disp \+ buf;/', $adm) === 1);
-pochk('an issued-but-undebited refund is labelled, not shown as a job still to do',
-    strpos($adm, 'not yet confirmed settled here') !== false);
-// It used to read "waiting for Square to take it". Reported live: Square had ALREADY
-// taken it, out of the Square balance, because the money had never reached the bank —
-// so the row asserted something about Square that nothing had checked. What we can say
-// is what OUR ledger has seen.
-// Matched with the closing quote so this sees the STRING the owner reads, not the
-// comment beside it explaining why the wording changed — the comment necessarily
-// quotes the old phrase, and a bare substring search fails on that.
-pochk('…and does not assert what Square has done, which nothing had checked',
-    strpos($adm, "waiting for Square to take it'") === false);
-
-// The balance: stored WITH its date, rolled forward, and never overwritten mid-type.
-// Scoped to the FUNCTION that saves it. A document-wide search for the literal
-// `at: Math.floor(Date.now() / 1000)` broke the moment that expression was hoisted
-// to a const the same statement then used — a true change to the source's shape and
-// no change at all to the claim, which is that the balance is stored with its date.
-$remember = pofn($adm, 'async function sweepRememberBalance');
-pochk('the balance is stored with its date under the internal key',
-    strpos($remember, "saveContent('sweep-balance'") !== false
-    && preg_match('/\bat:\s*\w/', $remember) === 1
-    && strpos($remember, 'Math.floor(Date.now() / 1000)') !== false
-    && strpos($db, "\$key === 'sweep-balance'") !== false);
-pochk('the field starts from the rolled-forward estimate, labelled as one',
-    strpos($adm, '__sweepBalTouched') !== false && strpos($adm, '<strong>estimate</strong>') !== false);
-pochk('…and typing is never overwritten by a re-render',
-    preg_match('/__sweepBalance === .{2} && est && !__sweepBalTouched/', $adm) === 1);
+// The Move money out screen (its ring fence, the typed balance and the search answer
+// that linked to it) was removed at the owner's ask. The server still rolls the balance
+// forward for the books.
 pochk('accounts.php rolls it forward server-side', strpos($acct, 'payouts_balance_estimate(') !== false);
-
-// Search ANSWERS the question rather than opening the screen that holds the answer.
-pochk('a move-money question is answered in the window',
-    strpos($adm, 'CHB_SWEEP_Q') !== false && strpos($adm, 'cmdkSweepMerge') !== false
-    && preg_match('/if \(CHB_SWEEP_Q\.test\(ql\)\) \{ try \{ cmdkSweepMerge\(\)/', $adm) === 1);
-pochk('…stamp-guarded, so a late answer never lands over a newer query',
-    preg_match('/__cmdkSweepStamp[\s\S]{0,600}stamp !== __cmdkSweepStamp \|\| gen !== __cmdkQueryGen/', $adm) === 1);
 
 // ============================================================
 //  THE ENDPOINT'S REFUSAL IS A REFUSAL. square-setup.php's payouts_refresh

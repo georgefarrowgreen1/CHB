@@ -11,7 +11,6 @@
 //       radius; a .bk-row LIST CELL is the cell radius too (it was the SHEET
 //       radius — 28 on a phone, 40 on a desktop — on four screens)
 //    §2 the picker's cells are 44px tall and the card is padded to fit seven at 390
-//    §3 Move money out's fields are 44px at 17px type (no iOS zoom on focus)
 //    §4 the chat header is a 52px bar; the terms sheet carries ONE close
 //    §5 the system check's mark is a 28px symbol, Re-run is a text button,
 //       the income headline has no stripe
@@ -92,13 +91,6 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   // card radius (the Payments landing's own rule, gated in ui-test-money).
   ok(r1.n >= 3 && r1.firstTL === '20px' && r1.lastBL === '20px', `a fold run's outer corners are the CARD radius (${r1.firstTL} / ${r1.lastBL})`);
   ok(r1.card === '20px', `the to-do card is the CARD radius (${r1.card})`);
-
-  console.log('§3 Move money out — the fields are 44px at 17px type');
-  await open(page, "(async () => { await openAccounts(); accountsOpen('sweep'); })()", 1200);
-  const sweep = await page.evaluate(() => ['#sweep-balance', '#sweep-buffer'].map((s) => { const el = document.querySelector(s); if (!el) return null; const cs = getComputedStyle(el); return { h: Math.round(el.getBoundingClientRect().height), fs: Math.round(parseFloat(cs.fontSize)), r: cs.borderTopLeftRadius }; }));
-  ok(sweep.every((f) => f && f.h >= 44), `both money fields stand at 44 (${sweep.map((f) => f && f.h).join('/')})`);
-  ok(sweep.every((f) => f && f.fs >= 16), `…at 16px or more, so iOS does not zoom on focus (${sweep.map((f) => f && f.fs).join('/')})`);
-  ok(sweep.every((f) => f && f.r === '12px'), `…with the cell radius (${sweep.map((f) => f && f.r).join('/')})`);
 
   console.log('§5 System check — the card radius, a pill at the floor, no stripe');
   await open(page, "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", 1200);

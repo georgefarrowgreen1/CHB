@@ -602,7 +602,6 @@ const stub = (page) => page.route(/\.php/, (r) => {
         // The money-out screen: two number inputs whose only accessible name comes
         // from the <span> inside their wrapping <label>, on the one screen in the
         // app where a mistyped figure moves real money.
-        ['admin-money-out', "(async()=>{await openAccounts();accountsOpen('sweep');await new Promise(r=>setTimeout(r,600));sweepSet('balance','2000');await new Promise(r=>setTimeout(r,300));})()"],
         // The SEARCH WINDOW, open and answering. It is the owner's primary
         // interface now — the crown is the only route in — and it was absent from
         // this gate entirely, which is how a 23px quick-action row and 10.2px group

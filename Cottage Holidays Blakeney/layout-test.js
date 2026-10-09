@@ -329,7 +329,6 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
       { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
-      { key: 'admin-money-sweep', open: "(async () => { await openAccounts(); accountsOpen('sweep'); await new Promise(r => setTimeout(r, 500)); if (window.sweepSet) sweepSet('balance', '2000'); await new Promise(r => setTimeout(r, 250)); })()", mustSee: ['#sweep-balance', '#sweep-buffer'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#money-overview'] },
       { key: 'admin-manage', open: "(async () => { await openArea('manage'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpenAccom('21a'); })()", mustSee: ['#sec-accom'] },

@@ -6985,18 +6985,6 @@ div.mo-landed { display: block; } /* the row lists under each figure */
   }
 }
 
-/* Move money out: the two fields the owner TYPES money into stand at 44px and
-   17px — the one screen with a figure to enter, and 17px is also what stops iOS
-   zooming the page on focus. */
-#sweep-balance, #sweep-buffer { min-height: 44px; font-size: var(--fs-headline); padding: 8px 14px; }
-/* MONEY IS IN THE SERIF, and it was not: the sweep's four money figures were
-   painted with an inline `font-family: var(--font-display)` — a token declared
-   in none of the three sheets — so all four fell back to Montserrat while the
-   Income & tax headline beside them is Playfair. Stated ONCE as a class (the
-   `.bhub-payline-fig` discipline); ui-test-ownerref §2 reads the COMPUTED
-   family, which is what a non-existent token cannot fake. */
-.sweep-fig { font-family: var(--font-serif); }
-
 /* ── ONE DISCLOSURE VOCABULARY ────────────────────────────────────────────
    Six <details> on the owner's screens wore three chevrons ('▾', '›', the UA
    ▶) and two heights, two of them 29px — under the app's own 44px floor. ONE
@@ -7005,8 +6993,7 @@ div.mo-landed { display: block; } /* the row lists under each figure */
    whole `.help-disclosure` block moved here from app.css with it — the markup
    is owner-only, so every guest was paying for it. */
 .help-disclosure { max-width: 640px; margin: 14px 0 0; }
-.help-disclosure > summary,
-.sweep-detail > summary {
+.help-disclosure > summary {
   cursor: pointer; list-style: none;
   display: flex; align-items: center; gap: 8px;
   min-height: 44px; padding: 4px 0;
@@ -7018,22 +7005,17 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 
 /* The mid-light accent fails contrast on the light theme (~2.9:1) — these
    summaries are interactive text, so use the dark ink there. */
-body.light-mode .help-disclosure > summary,
-body.light-mode .sweep-detail > summary { color: var(--accent-ink); }
-.help-disclosure > summary::-webkit-details-marker,
-.sweep-detail > summary::-webkit-details-marker { display: none; }
-.help-disclosure > summary::after,
-.sweep-detail > summary::after {
+body.light-mode .help-disclosure > summary { color: var(--accent-ink); }
+.help-disclosure > summary::-webkit-details-marker { display: none; }
+.help-disclosure > summary::after {
   content: ''; width: 14px; height: 14px; flex: 0 0 auto;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
   transition: transform 0.2s var(--fluid-bezier);
 }
-.help-disclosure[open] > summary::after,
-.sweep-detail[open] > summary::after { transform: rotate(90deg); }
-.help-disclosure > summary:focus-visible,
-.sweep-detail > summary:focus-visible {
+.help-disclosure[open] > summary::after { transform: rotate(90deg); }
+.help-disclosure > summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
@@ -8758,9 +8740,6 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .ks-info { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; border-color: var(--u-pill-edge); }
 :is(main, div).one-look .ks-list { padding: 0; overflow: hidden; }
 :is(main, div).one-look :is(.ks-row, .ks-trow) { min-height: var(--u-h-row); padding: 12px var(--u-pad); }
-/* Move money out: when the payouts were last read, then the one way to read them again. */
-:is(main, div).one-look .sweep-checked { margin: 16px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); max-width: 620px; }
-:is(main, div).one-look .sweep-acts { padding-top: 8px; }
 /* A caption over the list of safes: the page is a flex column with its own gap. */
 :is(main, div).one-look #view-keysafe .ks-cap { margin: 8px 4px -8px; }
 
@@ -8807,7 +8786,7 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
 
 /* ---------- 19. SMALL PARTS THE AUDIT FOUND ---------- */
 /* Fields that an id rule held at 44px take the one field's height. */
-:is(main, div).one-look :is(#msg-search, #sweep-balance, #sweep-buffer) { min-height: var(--u-h-field); padding: 12px 16px; }
+:is(main, div).one-look #msg-search { min-height: var(--u-h-field); padding: 12px 16px; }
 /* A short list inside a card (a guest's other stays, what history says about them) is the
    card's inset panel: one caption, rows on hairlines, a chevron where "open →" was. */
 :is(main, div).one-look .bhub-stays-cap { margin: 16px 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }

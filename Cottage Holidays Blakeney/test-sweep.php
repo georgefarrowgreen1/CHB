@@ -201,8 +201,6 @@ swchk('transaction display fields are carried through',
 // the real call sites, because the previous version of this feature could have
 // shipped with a correct library and a screen that computed its own figures.
 $acct = (string) file_get_contents(__DIR__ . '/accounts.php');
-$adm = (string) file_get_contents(__DIR__ . '/admin.js');
-$views = (string) file_get_contents(__DIR__ . '/admin-views.html');
 
 swchk('accounts.php uses the shared library, not its own copy of the maths',
     strpos($acct, "require_once __DIR__ . '/sweep-lib.php'") !== false
@@ -259,26 +257,8 @@ if (preg_match('/PER TRANSACTION(.*?)\} catch/s', $acct, $mt)) {
     swchk('the per-transaction block is present in accounts.php', false, 'block not found');
     $fail += 3;
 }
-swchk('the screen shows the movable figure per payment and a total',
-    strpos($adm, 'L.transactions') !== false
-    && preg_match('/gbp\(it\.movable\)/', $adm) === 1
-    && preg_match('/gbp\(T\.movable\)/', $adm) === 1);
-
-// The index row is GONE by design (the five-verdict landing) — the way in is
-// the To-move-out verdict's own actions, composed in admin.js via chbAttrs.
-swchk('the screen exists and is reachable from the Money landing',
-    strpos($adm, 'function renderSweep(') !== false
-    && preg_match("/section === 'sweep'\s*\)\s*\{\s*renderSweep\(\)/", $adm) === 1
-    && preg_match("/sweep:\s*'Move money out'/", $adm) === 1
-    && strpos($views, 'asec-sweep') !== false
-    && strpos($views, 'sweep-body') !== false
-    && substr_count($adm, "chbAttrs('accountsOpen', 'sweep')") >= 1);
-swchk('the screen renders the SERVER figure, never its own fee maths',
-    strpos($adm, 'rep.deposit_liability') !== false
-    && preg_match('/__sweepBalance[^\n]*(saveContent|localStorage|sessionStorage)/', $adm) === 0
-    && preg_match('/(saveContent|localStorage|sessionStorage)[^\n]*__sweepBalance/', $adm) === 0);
-swchk('typing a balance recomputes from cache instead of re-querying',
-    preg_match('/renderSweep\(false\)/', $adm) === 1 && strpos($adm, 'if (refetch !== false) __sweepLiab = null;') !== false);
+// The Move money out screen that showed these figures was removed at the owner's ask; the
+// arithmetic above stays because the Square payouts page and the books still read it.
 
 echo "\n== Summary ==\n";
 if ($fail) {
