@@ -15757,7 +15757,7 @@ function accountsOpen(section) {
     // The old money pages are parts of the one Payments page now: Income & tax is
     // the books, Move money out its own detail, the balances and the feed are the
     // landing. The typed-balance worksheet stays one tap from Move money out.
-    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move', way: 'way' };
+    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move', way: 'way', bank: 'bank' };
     if (Object.prototype.hasOwnProperty.call(PM_ROUTE, section)) {
         accountsShowIndex();
         if (PM_ROUTE[section]) pmOpen(PM_ROUTE[section]);
@@ -17745,6 +17745,8 @@ function pmNeedsHtml(rows) {
             <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="keep" data-arg="${id}">Keep it</button><button type="button" class="pm-btn primary" data-pm="return" data-arg="${id}">Return ${gbp(d.held)}</button></div>
         </div>`);
     });
+    const bank = pmBankNeedHtml();
+    if (bank) out.push(bank);
     return out.length ? `<div class="pm-capline is-attn"><span>Needs you</span></div><div class="pm-rows">${out.join('')}</div>` : '';
 }
 function pmComingHtml(rows) {
@@ -17847,7 +17849,7 @@ function pmRenderList() {
     const rows = pmOwed();
     pmPill(rows);
     const keep = lp.scrollTop;
-    lp.innerHTML = pmFlowHtml(rows) + pmNeedsHtml(rows) + pmComingHtml(rows) + pmActivityHtml() + pmBooksCardHtml();
+    lp.innerHTML = pmFlowHtml(rows) + pmBankCardHtml() + pmNeedsHtml(rows) + pmComingHtml(rows) + pmActivityHtml() + pmBooksCardHtml();
     lp.scrollTop = keep;
     // A figure that changed settles, so the owner sees what moved; the first paint stays still.
     const P = __pm && __pm.position;
@@ -18098,7 +18100,7 @@ function pmRenderDetail() {
     const arg = i < 0 ? '' : key.slice(i + 1);
     const body = pane.querySelector('.pm-dbody');
     const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
-    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : pmBooksPage();
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : k === 'bank' ? pmBankPage() : pmBooksPage();
     pane.__pmKey = key;
     const nb = pane.querySelector('.pm-dbody');
     if (nb) nb.scrollTop = keepTop;
@@ -18132,6 +18134,7 @@ function pmRefresh() {
 }
 async function pmLoad(expectNew) {
     const stamp = ++__pmStamp;
+    pmBankLoad();
     const before = new Set(__pmAct.map((e) => e.id));
     try {
         const r = await apiPost('money.php', { action: 'summary' });
@@ -18199,6 +18202,7 @@ function pmOpen(key) {
     if (key === 'books') chbNavRemember('accounts:income');
     else if (key === 'move') chbNavRemember('accounts:sweep');
     else if (key === 'way') chbNavRemember('accounts:way');
+    else if (key === 'bank') chbNavRemember('accounts:bank');
     if (!pmWide()) {
         r.classList.add('is-detail');
         document.body.classList.add('pm-detail-open');
@@ -18322,11 +18326,7 @@ function pmRecordSheet(id) {
 // One payment received, added to what is already recorded. set_payment stores the
 // CUMULATIVE rental (and the cash deposit only in full), so the sum is worked out
 // here from the booking's own figures, exactly as the Record dialog does.
-async function pmRecordSave(r, how) {
-    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
-    const v = pmNum(inp ? inp.value : '');
-    if (!r) return;
-    if (!(v > 0)) { if (inp) inp.focus(); return; }
+function pmPaymentPlan(r, v, how, date) {
     const b = r.b;
     const p = b.agreedPrice || priceBreakdown(r.pk, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const rental = bookingRentalPure(b, p);
@@ -18338,10 +18338,19 @@ async function pmRecordSave(r, how) {
     const extra = cum > rental + 0.005 && !withDep ? Math.round((cum - rental) * 100) / 100 : 0;
     if (cum > rental) cum = rental;
     const status = cum >= rental - 0.001 ? 'paid' : cum > 0.001 ? 'deposit' : 'unpaid';
-    const body = { action: 'set_payment', id: b.dbId, payment: status, payment_date: todayDashed(), payment_method: how };
+    const body = { action: 'set_payment', id: b.dbId, payment: status, payment_date: date || todayDashed(), payment_method: how };
     if (status === 'deposit') body.deposit = Math.round(cum * 100) / 100;
     if (withDep && status === 'paid') body.deposit_collected = true;
     const prev = { payment: b.payment || 'unpaid', depositPaid: Number(b.depositPaid) || 0, date: b.paymentDate || '', method: b.paymentMethod || '' };
+    return { body, extra, prev };
+}
+async function pmRecordSave(r, how) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
+    const v = pmNum(inp ? inp.value : '');
+    if (!r) return;
+    if (!(v > 0)) { if (inp) inp.focus(); return; }
+    const b = r.b;
+    const { body, extra, prev } = pmPaymentPlan(r, v, how);
     pmSheetClose();
     try {
         const send = Object.assign({}, body);
@@ -18465,6 +18474,489 @@ async function pmExport(kind) {
     else downloadYearStatement(y);
 }
 
+/* ── THE BUSINESS BANK, FROM ITS STATEMENTS ──
+   Monzo Business can't be read live (Monzo's developer access is built for personal
+   and joint accounts), so the owner exports a CSV statement and adds it here. The
+   server stores each payment ONCE (statements.php) and decides only what needs no
+   question (a Square payout, a pot move). What every other payment WAS is the owner's
+   call, made here with a suggestion worked out from the bookings and expenses this
+   page already holds. Recording goes through the existing writes (set_payment,
+   expenses add), so a transfer recorded from the bank is the same record as one typed in. */
+let __pmBank = null; // statements.php status: the last good copy
+let __pmBankShown = 20;
+const PM_BANK_HIDE = 'chb-pm-bank-hide';
+/** @type {Array<[RegExp, string]>} */
+const PM_BANK_PLATFORMS = [[/airbnb/i, 'Airbnb'], [/booking\.?com/i, 'Booking.com'], [/vrbo|expedia|homeaway/i, 'Vrbo']];
+const PM_BANK_AS = { payment: 'A guest’s payment', expense: 'Expense', platform: 'Platform payout', ignore: 'Not the business', tax: 'Tax · left out of costs', income: 'Other income', square: 'Square payout', pot: 'Pot' };
+// Words in a bank reference that say nothing about who paid.
+const PM_BANK_STOP = new Set(['THE', 'AND', 'LTD', 'MRS', 'MISS', 'FOR', 'FROM', 'PAYMENT', 'FASTER', 'TRANSFER', 'BALANCE', 'DEPOSIT', 'BOOKING', 'REF', 'STAY', 'HOLIDAY', 'COTTAGE', 'BLAKENEY', 'CHB']);
+// A first guess at what an expense was, from the payee. Only ever a suggestion.
+/** @type {Array<[RegExp, string]>} */
+const PM_BANK_CATS = [
+    [/laund|linen|dry ?clean/i, 'Laundry'],
+    [/clean/i, 'Cleaning'],
+    [/plumb|electric|repair|builder|joiner|glaz|roof|screwfix|toolstation|wickes|b ?& ?q|handyman|locksmith/i, 'Maintenance'],
+    [/octopus|british gas|edf|e\.?on|ovo|water|bt group|broadband|council|virgin media|sky /i, 'Utilities'],
+    [/insur/i, 'Insurance'],
+    [/facebook|meta platforms|google ads|instagram/i, 'Marketing'],
+];
+
+const pmBankLines = () => (__pmBank && Array.isArray(__pmBank.lines) ? __pmBank.lines : []);
+const pmBankOn = () => !!(__pmBank && __pmBank.ready && __pmBank.on);
+function pmBankHidden() {
+    try { return localStorage.getItem(PM_BANK_HIDE) === '1'; } catch (e) { return false; }
+}
+// Where the next export should start: the day after the last statement, or the
+// start of this tax year the first time.
+function pmBankFrom() {
+    const last = __pmBank && __pmBank.last;
+    return last && last.to ? ukShiftDays(last.to, 1) : `${taxYearStartOf(todayDashed())}-04-06`;
+}
+let __pmBankQ = null;
+function pmBankLoad() {
+    if (__pmBankQ) return __pmBankQ;
+    __pmBankQ = (async () => {
+        try {
+            __pmBank = await apiPost('statements.php', { action: 'status' });
+        } catch (e) { /* the last good copy stays on screen */ }
+        __pmBankQ = null;
+        pmRenderList();
+        if (__pmOpen === 'bank') pmRenderDetail();
+    })();
+    return __pmBankQ;
+}
+function pmBankLearned(name) {
+    const n = String(name || '').trim().toUpperCase();
+    if (!n || !__pmBank || !Array.isArray(__pmBank.learned)) return null;
+    return __pmBank.learned.find((x) => String(x.name || '').trim().toUpperCase() === n) || null;
+}
+// Who a payment in is from: the booking reference first, then a surname shared with
+// someone who owes, then exactly the sum someone owes.
+/** @returns {{b: any, r: any, why: string}|null} */
+function pmBankGuest(l) {
+    const text = `${l.name} ${l.description} ${l.notes}`;
+    const m = /CHB[-\s]?0*(\d{1,6})\b/i.exec(text);
+    if (m) {
+        /** @type {any} */
+        let hit = null;
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => { if (Number(b.dbId) === Number(m[1])) hit = { pk, b }; }));
+        if (hit) return { b: hit.b, r: pmOwedRow(hit.pk, hit.b), why: 'ref' };
+    }
+    const words = text.toUpperCase().split(/[^A-Z]+/).filter((w) => w.length >= 3 && !PM_BANK_STOP.has(w));
+    const owing = pmOwed();
+    const named = owing.filter((r) => String(r.b.name || '').toUpperCase().split(/[^A-Z]+/).some((w) => w.length >= 3 && !PM_BANK_STOP.has(w) && words.includes(w)));
+    const same = (r) => Math.abs(r.dg.balance - l.amount) < 0.01;
+    if (named.filter(same).length === 1) { const r = named.filter(same)[0]; return { b: r.b, r, why: 'exact' }; }
+    if (named.length === 1) return { b: named[0].b, r: named[0], why: 'name' };
+    if (owing.filter(same).length === 1) { const r = owing.filter(same)[0]; return { b: r.b, r, why: 'amount' }; }
+    return null;
+}
+// What the owner is offered for one payment: a sentence and the taps that answer it.
+function pmBankSuggest(l) {
+    const text = `${l.name} ${l.description}`;
+    const was = pmBankLearned(l.name);
+    if (l.amount > 0) {
+        const g = pmBankGuest(l);
+        if (g && g.r) {
+            const who = g.b.name || 'The guest';
+            const say = g.why === 'ref' ? `${who} owes ${gbp(g.r.dg.balance)}, and the reference is their booking.`
+                : g.why === 'exact' ? `${who} owes exactly this.`
+                    : g.why === 'amount' ? `Exactly what ${who} owes.`
+                        : `Looks like ${who}, who owes ${gbp(g.r.dg.balance)}.`;
+            return { say, acts: [{ k: 'pay:' + g.b.id, label: `Record ${pmFirst(g.b.name)}’s payment`, primary: true }, { k: 'guest', label: 'Someone else' }] };
+        }
+        if (g) return { say: `The reference is ${g.b.name || 'a guest'}’s booking, which has nothing left to pay.`, acts: [{ k: 'income', label: 'Other income' }, { k: 'ignore', label: 'Not income' }] };
+        const plat = PM_BANK_PLATFORMS.find(([re]) => re.test(text));
+        if (plat) return { say: `${/^[aeiou]/i.test(plat[1]) ? 'An' : 'A'} ${plat[1]} payout. Its stays come from your calendar.`, acts: [{ k: `platform:${plat[1]} payout`, label: 'That’s it', primary: true }, { k: 'income', label: 'Something else' }], same: `platform:${plat[1]} payout` };
+        if (was && was.as !== 'expense') {
+            const k = was.as === 'platform' ? 'platform:' + (was.label || 'Platform payout') : was.as;
+            return { say: `${was.label || PM_BANK_AS[was.as]}, as last time.`, acts: [{ k, label: 'Same again', primary: true }, { k: 'guest', label: 'A guest’s payment' }], same: k };
+        }
+        return { say: 'Who was this from?', acts: [{ k: 'guest', label: 'A guest’s payment', primary: true }, { k: 'income', label: 'Other income' }, { k: 'ignore', label: 'Not income' }] };
+    }
+    if (/\bhmrc\b/i.test(text)) return { say: 'Tax. It isn’t a cottage cost.', acts: [{ k: 'tax', label: 'Leave it out', primary: true }, { k: 'cat', label: 'It’s a cottage cost' }], same: 'tax' };
+    if (was && was.as === 'expense' && was.label) return { say: `${was.label}, as last time.`, acts: [{ k: 'expense:' + was.label, label: 'Add as an expense', primary: true }, { k: 'cat', label: 'Something else' }], same: 'expense:' + was.label };
+    if (was && was.as === 'ignore') return { say: 'Not the business, as last time.', acts: [{ k: 'ignore', label: 'Not the business', primary: true }, { k: 'cat', label: 'An expense' }], same: 'ignore' };
+    const cat = (PM_BANK_CATS.find(([re]) => re.test(text)) || [])[1];
+    if (cat) return { say: `Looks like ${cat.toLowerCase()}.`, acts: [{ k: 'expense:' + cat, label: `Add as ${cat}`, primary: true }, { k: 'cat', label: 'Something else' }] };
+    return { say: 'What was it for?', acts: [{ k: 'cat', label: 'An expense', primary: true }, { k: 'ignore', label: 'Not the business' }] };
+}
+function pmBankRow(l) {
+    const desc = l.description && l.description.toUpperCase() !== String(l.name || '').toUpperCase() && l.description.length <= 40 ? ' · ' + escapeHtml(l.description) : '';
+    const head = `<span class="pm-mic ${l.amount > 0 ? 'in' : 'out'}" aria-hidden="true">${l.amount > 0 ? PM_IC.in : PM_IC.out}</span>
+        <span class="pm-main"><span class="pm-t">${escapeHtml(l.name || l.description || 'Payment')}</span><span class="pm-s">${pmDdm(pmIso(l.date))}${desc}</span></span>
+        <span class="pm-v${l.amount > 0 ? ' plus' : ''}">${l.amount > 0 ? '+' : '−'}${gbp(Math.abs(l.amount))}</span>`;
+    if (l.as) {
+        const auto = l.as === 'square' || l.as === 'pot';
+        // A payment recorded on a booking is changed on the booking, where the rest of its money is.
+        const bk = l.as === 'payment' && l.booking_id ? findBookingById(l.booking_id) : null;
+        const act = auto ? '' : bk ? `<button type="button" class="pm-linkbtn" data-pm="stay" data-arg="${escapeHtml(String(bk.id))}">Open</button>` : l.as === 'payment' ? '' : `<button type="button" class="pm-linkbtn" data-pm="bank-undo" data-arg="${l.id}">Undo</button>`;
+        return `<div class="pm-needrow pm-wrow">${head}<div class="pm-bsugg"><span>${escapeHtml(l.label || PM_BANK_AS[l.as] || '')}</span>${pmCap('ok', auto ? 'Matched' : 'Sorted')}${act}</div></div>`;
+    }
+    const s = pmBankSuggest(l);
+    const n = s.same ? pmBankLines().filter((x) => !x.as && x.name === l.name && Math.sign(x.amount) === Math.sign(l.amount)).length : 0;
+    return `<div class="pm-needrow pm-wrow" id="pm-bl-${l.id}">${head}
+        <div class="pm-bsugg"><span>${escapeHtml(s.say)}</span></div>
+        <div class="pm-acts-row">${s.acts.map((a) => `<button type="button" class="pm-btn ${a.primary ? 'primary' : 'second'}" data-pm="bank-do" data-arg="${l.id}|${escapeHtml(a.k)}">${escapeHtml(a.label)}</button>`).join('')}</div>
+        ${n > 1 ? `<div class="pm-bsame"><button type="button" class="pm-linkbtn" data-pm="bank-all" data-arg="${l.id}|${escapeHtml(s.same)}">Do the same for all ${n} from ${escapeHtml(l.name)}</button></div>` : ''}
+    </div>`;
+}
+// On the landing: the way in, the monthly ask, or the account in one row.
+function pmBankCardHtml() {
+    const B = __pmBank;
+    if (!B || !B.ready) return '';
+    if (!B.on) {
+        if (pmBankHidden()) return '';
+        return `<section class="pm-bankcard" aria-label="Your business bank account">
+            <div class="pm-bc-top"><span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span><span class="pm-main"><span class="pm-t">Add your Monzo Business statements</span><span class="pm-s">Every payment in and out of the business account, matched to bookings. About a minute a month.</span></span></div>
+            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="bank-hide">Not now</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add a statement</button></div></section>`;
+    }
+    const d = B.due || {};
+    if (d.due) {
+        return `<section class="pm-bankcard is-attn" aria-label="A bank statement is due">
+            <div class="pm-bc-top"><span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span><span class="pm-main"><span class="pm-t">${d.month ? `Time for ${escapeHtml(d.month)}’s statement` : 'Time for a new statement'}</span><span class="pm-s">Export from ${pmDm(pmIso(d.from))} in the Monzo app and add it here. About a minute.</span></span></div>
+            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="bank">Your bank</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add statement</button></div></section>`;
+    }
+    const last = B.last;
+    return `<div class="pm-rows pm-bankstrip"><button type="button" class="pm-mrow" data-pm="bank" aria-label="Monzo Business, ${last ? 'statements up to ' + pmDm(pmIso(last.to)) : 'no statement yet'}">
+        <span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span>
+        <span class="pm-main"><span class="pm-t">Monzo Business</span><span class="pm-s">${last ? 'Statements up to ' + pmDm(pmIso(last.to)) : 'No statement yet'}</span></span>
+        <span class="pm-r">${PM_IC.chev}</span></button></div>`;
+}
+// The Needs-you row: payments the owner hasn't said what they were.
+function pmBankNeedHtml() {
+    if (!pmBankOn() || !(__pmBank.unsorted > 0)) return '';
+    const n = __pmBank.unsorted;
+    return `<div class="pm-needrow">
+        <span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span>
+        <button type="button" class="pm-main pm-plain" data-pm="bank"><span class="pm-t">${n} bank payment${n === 1 ? '' : 's'} to sort</span><span class="pm-s">from your Monzo Business statement</span></button>
+        <span class="pm-r">${pmCap('warn', String(n))}</span></div>`;
+}
+function pmBankPage() {
+    const B = __pmBank;
+    const head = pmHead('Monzo Business', 'Business account · from your statements');
+    if (!B) return head + '<div class="pm-dbody"><p class="pm-note">Loading…</p></div>';
+    if (!B.ready) return head + '<div class="pm-dbody"><p class="pm-note">Bank statements need a database update first. Open Manage, then Status, and run the updates.</p></div>';
+    const lines = pmBankLines();
+    const add = `<div class="pm-acts"><button type="button" class="pm-btn primary" data-pm="bank-add">${PM_IC.plus}Add a statement</button></div>`;
+    if (!B.last && !lines.length) {
+        return head + `<div class="pm-dbody"><section class="pm-hero"><div class="pm-hero-top"><span>No statement yet</span></div>
+            <div class="pm-hero-sub">Export a CSV from Monzo Business and add it here. Every payment in and out is then matched to bookings and expenses, and a reminder on the 1st asks for the next one.</div></section>${add}</div>`;
+    }
+    const d = B.due || {};
+    const balAt = B.balance_at ? pmIso(B.balance_at) : 0;
+    const toSort = lines.filter((l) => !l.as);
+    const done = lines.filter((l) => l.as).slice(0, 60);
+    let h = `<section class="pm-hero"><div class="pm-hero-top"><span>${B.balance != null ? 'Balance on ' + pmDm(balAt) : 'Balance'}</span><b>${B.balance != null ? gbp(B.balance) : '—'}</b></div>
+        <div class="pm-hero-sub">${B.balance != null ? 'From your statement. The next one brings it up to date.' : 'Your statement didn’t include a balance.'}</div></section>`;
+    h += `<div class="pm-rows">
+        <div class="pm-needrow"><span class="pm-mic pay" aria-hidden="true">${PM_IC.receipt}</span><span class="pm-main"><span class="pm-t">Statements</span><span class="pm-s">${B.first && B.last ? escapeHtml(pmDm(pmIso(B.first)) + ' to ' + pmDm(pmIso(B.last.to))) : ''}${B.uploads ? ` · ${B.uploads} added` : ''}</span></span>
+            <span class="pm-r">${d.due ? pmCap('warn', d.month ? d.month + ' due' : 'Due') : pmCap('ok', 'Up to date')}</span></div>
+        <div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.clock}</span><span class="pm-main"><span class="pm-t">Remind me on the 1st</span><span class="pm-s">On your phone, or by email</span></span>
+            <span class="pm-r"><label class="chb-switch"><input type="checkbox" data-pm="bank-remind"${B.remind ? ' checked' : ''} aria-label="Remind me on the 1st of each month"><span class="chb-switch-track" aria-hidden="true"></span></label></span></div>
+        <div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.plus}</span><span class="pm-main"><span class="pm-t">Add a statement</span><span class="pm-s">${d.due ? 'From ' + pmDm(pmIso(d.from)) + ' to today' : 'A CSV, any dates'}</span></span>
+            <span class="pm-r"><button type="button" class="pm-mini${d.due ? ' ok' : ''}" data-pm="bank-add">Add</button></span></div></div>`;
+    if (toSort.length) {
+        h += `<div class="pm-dcap is-attn">To sort · ${B.unsorted || toSort.length}</div><div class="pm-rows">${toSort.slice(0, __pmBankShown).map(pmBankRow).join('')}</div>`;
+        if (toSort.length > __pmBankShown) h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-more">Show ${Math.min(40, toSort.length - __pmBankShown)} more</button></div>`;
+    } else if (lines.length) {
+        h += '<p class="pm-note">Everything is sorted.</p>';
+    }
+    if (done.length) {
+        let day = '';
+        h += `<div class="pm-dcap">Sorted</div><div class="pm-rows">${done.map((l) => {
+            const cap = l.date !== day ? `<div class="pm-daycap">${pmDayLabel(pmIso(l.date))}</div>` : '';
+            day = l.date;
+            return cap + pmBankRow(l);
+        }).join('')}</div>`;
+    }
+    h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-remove">Stop adding statements</button></div>
+        <p class="pm-note">A statement is read once and kept as payments. The app never signs in to your bank, and a payment already here is never added twice.</p>`;
+    return head + `<div class="pm-dbody">${h}</div>`;
+}
+
+// ── Adding a statement: Export → Add → Check, in the page's own sheet ──
+function pmBankSheet() {
+    const first = !(__pmBank && __pmBank.last);
+    const defSince = first ? `${taxYearStartOf(todayDashed())}-04-06` : '';
+    const st = { step: 1, name: '', text: '', pv: null, err: '', since: defSince, busy: false, done: null };
+    const steps = () => `<div class="pm-steps" aria-hidden="true">${['Export', 'Add', 'Check'].map((t, i) => `<span class="${st.done || i + 1 < st.step ? 'done' : i + 1 === st.step ? 'now' : ''}"><i></i>${t}</span>`).join('')}</div>`;
+    const kv = (k, v) => `<div class="pm-skv"><span>${k}</span><b>${v}</b></div>`;
+    const preview = async () => {
+        st.busy = true;
+        st.err = '';
+        draw();
+        try {
+            const r = await apiPost('statements.php', { action: 'preview', csv: st.text, filename: st.name, since: st.since });
+            st.pv = r.summary;
+            st.step = 3;
+        } catch (e) {
+            st.err = chbActErrSay(e);
+            st.pv = null;
+        }
+        st.busy = false;
+        draw();
+    };
+    const pick = async (file) => {
+        if (!file) return;
+        st.name = file.name;
+        st.err = '';
+        const lower = file.name.toLowerCase();
+        // Named here for what it is, rather than uploading a PDF to be told so.
+        if (/\.pdf$/.test(lower)) st.err = 'That’s a PDF. Export the statement again and pick CSV.';
+        else if (/\.qif$/.test(lower)) st.err = 'That’s a QIF file. Export the statement again and pick CSV.';
+        else if (/\.(xlsx?|numbers|ofx)$/.test(lower)) st.err = 'That isn’t a CSV file. Export the statement again and pick CSV.';
+        else if (file.size > 4000000) st.err = 'That file is too big. Export a shorter stretch of dates.';
+        if (st.err) { draw(); return; }
+        try { st.text = await file.text(); } catch (e) { st.err = 'Couldn’t read that file.'; draw(); return; }
+        await preview();
+    };
+    const doImport = async () => {
+        if (st.busy || !st.pv || !(st.pv.adding > 0)) return;
+        st.busy = true;
+        draw();
+        try {
+            const body = { action: 'import', csv: st.text, filename: st.name, since: st.since };
+            body.op_id = chbOpFor(['statement', st.text, st.since]);
+            const r = await apiPost('statements.php', body);
+            chbOpBump();
+            st.done = r.summary;
+            try { localStorage.removeItem(PM_BANK_HIDE); } catch (e) {}
+        } catch (e) {
+            st.err = 'Couldn’t add it. ' + chbActErrSay(e);
+        }
+        st.busy = false;
+        await pmBankLoad();
+        draw();
+    };
+    const draw = () => {
+        let html = '';
+        let save = null;
+        if (st.done) {
+            const s = st.done;
+            const to = pmIso(s.to);
+            const next = new Date(new Date(to).getFullYear(), new Date(to).getMonth() + 1, 1).getTime();
+            const left = (__pmBank && __pmBank.unsorted) || 0;
+            html = `<h3>${s.added ? `${s.added} payment${s.added === 1 ? '' : 's'} added` : 'Nothing new in that file'}</h3>
+                <div class="pm-skvs">${kv('Up to', pmDm(to))}${s.already ? kv('Already here, skipped', String(s.already)) : ''}${s.auto ? kv('Matched by themselves', String(s.auto)) : ''}${kv('For you to sort', String(left))}${kv('Next statement', pmDm(next) + ((__pmBank && __pmBank.remind) ? ', with a reminder' : ''))}</div>
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Done</button><button type="button" class="pm-btn primary" data-pms="save">See your bank</button></div>`;
+            save = () => { pmSheetClose(); pmOpen('bank'); };
+        } else if (st.step === 1) {
+            const from = pmBankFrom();
+            html = `${steps()}<h3>Export a statement from Monzo Business</h3>
+                <ol class="pm-howto">
+                    <li><span><b>In the Monzo app, tap ⋯ on your business card</b><small>On a computer, it’s at business.monzo.com</small></span></li>
+                    <li><span><b>Choose Bank statements, then CSV</b><small>Not PDF: the app reads CSV</small></span></li>
+                    <li><span><b>From ${pmDm(pmIso(from))} to today</b><small>${first ? 'The start of this tax year. Earlier is fine too.' : 'The day after your last statement.'}</small></span></li>
+                </ol>
+                <p>Statements can overlap: a payment already here is skipped, so nothing counts twice.</p>
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">I have the file</button></div>`;
+            save = () => { st.step = 2; draw(); };
+        } else if (st.step === 2) {
+            html = `${steps()}<h3>Add the statement</h3>
+                <label class="pm-drop${st.err ? ' bad' : ''}${st.busy ? ' busy' : ''}" id="pm-drop">
+                    <input type="file" id="pm-stmt-file" accept=".csv,text/csv" aria-label="Choose the statement file"${st.busy ? ' disabled' : ''}>
+                    <span class="pm-drop-ic" aria-hidden="true">${st.busy ? '<span class="pm-spin"></span>' : PM_IC.receipt}</span>
+                    <b>${st.busy ? 'Reading ' + escapeHtml(st.name) : 'Choose the CSV file'}</b>
+                    <span>${st.busy ? 'Checking every payment against what is already here' : 'or drop it here'}</span>
+                </label>
+                ${st.err ? `<p class="pm-serr" role="alert">${escapeHtml(st.err)}</p>` : ''}
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="back">Back</button></div>`;
+        } else {
+            const p = st.pv;
+            const older = p.older > 0 || (first && p.from && p.from < defSince);
+            html = `${steps()}<h3>Check before it goes in</h3>
+                <div class="pm-skvs">
+                    ${kv('Dates', escapeHtml(pmDm(pmIso(p.from)) + ' to ' + pmDm(pmIso(p.to))))}
+                    ${kv('Payments in the file', String(p.rows))}
+                    ${kv('Already here', p.already ? `${p.already} · skipped` : 'None')}
+                    ${p.older ? kv('Before ' + pmDm(pmIso(st.since)), `${p.older} · left out`) : ''}
+                    ${kv('Money in', gbp(p.money_in))}
+                    ${kv('Money out', gbp(p.money_out))}
+                    ${p.balance != null ? kv('Balance on ' + pmDm(pmIso(p.balance_at)), gbp(p.balance)) : ''}
+                </div>
+                ${older ? `<div class="pm-field"><span class="pm-flabel">Start from</span>${pmChips('since', [[defSince || p.from, pmDm(pmIso(defSince || p.from))], ['', 'Everything in the file']], st.since)}</div>` : ''}
+                ${p.unreadable || p.other_currency ? `<p>${p.unreadable ? `${p.unreadable} line${p.unreadable === 1 ? '' : 's'} had no date or amount and ${p.unreadable === 1 ? 'is' : 'are'} left out. ` : ''}${p.other_currency ? `${p.other_currency} in another currency ${p.other_currency === 1 ? 'is' : 'are'} left out.` : ''}</p>` : ''}
+                <p>Card payouts from Square and moves between pots sort themselves. You say what the rest were.</p>
+                ${st.err ? `<p class="pm-serr" role="alert">${escapeHtml(st.err)}</p>` : ''}
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="back">Choose a different file</button><button type="button" class="pm-btn primary" data-pms="save"${p.adding > 0 && !st.busy ? '' : ' disabled'}>${st.busy ? 'Adding…' : p.adding > 0 ? `Add ${p.adding} payment${p.adding === 1 ? '' : 's'}` : 'Nothing new to add'}</button></div>`;
+            save = doImport;
+        }
+        const s = pmSheet(html, save);
+        /** @type {any} */ (s).__pick = (k, a) => {
+            if (k === 'back') { st.step = st.step === 3 ? 2 : 1; st.err = ''; st.pv = null; draw(); }
+            else if (k === 'since') { st.since = a; preview(); }
+        };
+        const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-stmt-file'));
+        if (inp) inp.addEventListener('change', () => pick(inp.files && inp.files[0]));
+        const drop = document.getElementById('pm-drop');
+        if (drop) {
+            ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+            drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+            drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer && e.dataTransfer.files[0]); });
+        }
+    };
+    draw();
+}
+
+// ── Sorting one payment ──
+async function pmBankMark(l, as, label, extra, quiet) {
+    const body = Object.assign({ action: 'mark', id: l.id, as, label }, extra || {});
+    await apiPost('statements.php', body);
+    Object.assign(l, { as, label, booking_id: (extra && extra.booking_id) || null, expense_id: (extra && extra.expense_id) || null });
+    if (__pmBank) {
+        __pmBank.unsorted = Math.max(0, (__pmBank.unsorted || 0) - 1);
+        if (Array.isArray(__pmBank.learned) && as !== 'payment' && l.name) __pmBank.learned.unshift({ name: l.name, as, label });
+    }
+    if (!quiet) { pmRenderList(); pmRenderDetail(); }
+}
+async function pmBankUnmark(l) {
+    await apiPost('statements.php', { action: 'unmark', id: l.id });
+    Object.assign(l, { as: null, label: '', booking_id: null, expense_id: null });
+    if (__pmBank) __pmBank.unsorted = (__pmBank.unsorted || 0) + 1;
+    pmRenderList();
+    pmRenderDetail();
+}
+async function pmBankPay(l, bookingId) {
+    const b = findBookingById(bookingId);
+    const loc = b ? findBookingLocation(bookingId) : null;
+    const r = loc ? pmOwedRow(loc.propKey, b) : null;
+    if (!r) { toast('Nothing is owed on that booking.'); return; }
+    const plan = pmPaymentPlan(r, l.amount, 'Bank transfer', l.date);
+    const send = Object.assign({}, plan.body);
+    send.op_id = chbOpFor(['set_payment', send]);
+    try {
+        await apiPost('bookings.php', send);
+        chbOpBump();
+        await pmBankMark(l, 'payment', `${b.name || 'Guest'} · payment`, { booking_id: b.dbId }, true);
+        await loadData();
+        pmRender();
+        toast(`Recorded ${gbp(l.amount - plan.extra)} from ${b.name || 'the guest'}.${plan.extra ? ` The extra ${gbp(plan.extra)} isn’t recorded: a deposit is recorded in full or not at all.` : ''}`, 'success', {
+            label: 'Undo',
+            fn: async () => { await pmRecordUndo(b, plan.prev); try { await pmBankUnmark(l); } catch (e) {} },
+        });
+        pmLoad(true);
+        offerUpdatedConfirmationEmail(b.id);
+    } catch (e) {
+        glassAlert('Couldn’t record the payment. ' + chbActErrSay(e));
+    }
+}
+async function pmBankExpense(l, cat, quiet) {
+    const body = { action: 'add', date: l.date, category: cat, amount: Math.abs(l.amount), prop: '', description: l.name || l.description || '', recurring: 0 };
+    body.op_id = chbOpFor(['bank-expense', l.id, body]);
+    const res = await apiPost('expenses.php', body);
+    const eid = Number(res && res.id) || 0;
+    await pmBankMark(l, 'expense', cat, { expense_id: eid }, true);
+    return eid;
+}
+async function pmBankUndoExpense(l, eid) {
+    try { if (eid) await apiPost('expenses.php', { action: 'delete', id: eid }); } catch (e) {}
+    await pmBankUnmark(l);
+    pmBankBooksChanged();
+}
+function pmBankBooksChanged() {
+    delete __pmBooks[taxYearStartOf(todayDashed())];
+    try { loadExpenses(); } catch (e) {}
+    pmLoad(true);
+}
+const PM_BANK_SAID = { ignore: 'Not the business', income: 'Other income', tax: 'Tax · left out of costs' };
+async function pmBankDo(id, k) {
+    const l = pmBankLines().find((x) => x.id === id);
+    if (!l || l.as) return;
+    try {
+        if (k.indexOf('pay:') === 0) { await pmBankPay(l, k.slice(4)); return; }
+        if (k === 'guest') { pmBankGuestSheet(l); return; }
+        if (k === 'cat') { pmBankCatSheet(l); return; }
+        if (k.indexOf('expense:') === 0) {
+            const cat = k.slice(8);
+            const eid = await pmBankExpense(l, cat);
+            pmRenderList();
+            pmRenderDetail();
+            pmBankBooksChanged();
+            toast(`${cat} ${gbp(Math.abs(l.amount))} added.`, 'success', { label: 'Undo', fn: () => pmBankUndoExpense(l, eid) });
+            return;
+        }
+        const as = k.indexOf('platform:') === 0 ? 'platform' : k;
+        const label = as === 'platform' ? k.slice(9) : PM_BANK_SAID[as] || PM_BANK_AS[as] || '';
+        if (l.amount > 0 && as === 'ignore') await pmBankMark(l, as, 'Not income');
+        else await pmBankMark(l, as, label);
+        toast(as === 'platform' ? `${label} noted.` : 'Sorted.', 'success', { label: 'Undo', fn: () => pmBankUnmark(l) });
+    } catch (e) {
+        glassAlert('Couldn’t sort that payment. ' + chbActErrSay(e));
+    }
+}
+// Do the same for every unsorted payment from the same payee, one at a time.
+async function pmBankAll(id, k) {
+    const l = pmBankLines().find((x) => x.id === id);
+    if (!l) return;
+    const list = pmBankLines().filter((x) => !x.as && x.name === l.name && Math.sign(x.amount) === Math.sign(l.amount));
+    const what = k.indexOf('expense:') === 0 ? `as ${k.slice(8)}` : k.indexOf('platform:') === 0 ? `as ${k.slice(9)}` : `as “${PM_BANK_SAID[k] || PM_BANK_AS[k] || k}”`;
+    const ok = await glassConfirm(`Sort all ${list.length} payments from ${l.name} ${what}?\n\n${list.slice(0, 8).map((x) => `${pmDm(pmIso(x.date))} · ${gbp(Math.abs(x.amount))}`).join('\n')}${list.length > 8 ? `\n…and ${list.length - 8} more` : ''}`, `Sort all ${list.length}`);
+    if (!ok) return;
+    let n = 0;
+    for (const x of list) {
+        try {
+            if (k.indexOf('expense:') === 0) await pmBankExpense(x, k.slice(8));
+            else {
+                const as = k.indexOf('platform:') === 0 ? 'platform' : k;
+                await pmBankMark(x, as, as === 'platform' ? k.slice(9) : (x.amount > 0 && as === 'ignore' ? 'Not income' : PM_BANK_SAID[as] || ''), null, true);
+            }
+            n++;
+        } catch (e) { break; }
+    }
+    pmRenderList();
+    pmRenderDetail();
+    if (k.indexOf('expense:') === 0) pmBankBooksChanged();
+    toast(n === list.length ? `${n} payments sorted.` : `${n} of ${list.length} sorted. Try the rest again.`);
+}
+function pmBankGuestSheet(l) {
+    const owing = pmOwed();
+    if (!owing.length) { toast('Nobody owes you anything, so there is no booking to record it on.'); return; }
+    let pick = String(owing[0].b.id);
+    const draw = () => {
+        const r = owing.find((x) => String(x.b.id) === pick) || owing[0];
+        const s = pmSheet(`<h3>Who was ${gbp(l.amount)} from?</h3><p>${escapeHtml(l.name || 'A payment')} · ${pmDm(pmIso(l.date))}</p>
+            <div class="pm-field"><span class="pm-flabel">Guest</span>${pmChips('who', owing.map((o) => [String(o.b.id), pmFirst(o.b.name)]), pick)}</div>
+            ${pmWhoCard(r)}
+            <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">Record ${gbp(l.amount)}</button></div>`, async () => { pmSheetClose(); await pmBankPay(l, pick); });
+        /** @type {any} */ (s).__pick = (k, a) => { if (k === 'who') { pick = a; draw(); } };
+    };
+    draw();
+}
+function pmBankCatSheet(l) {
+    const s = pmSheet(`<h3>What was ${gbp(Math.abs(l.amount))} for?</h3><p>${escapeHtml(l.name || 'A payment')} · ${pmDm(pmIso(l.date))}</p>
+        <div class="pm-field"><span class="pm-flabel">An expense</span>${pmChips('cat', EXPENSE_CATS.map((c) => [c, c]), '')}</div>
+        <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn second" data-pms="ignore">Not the business</button></div>`, null);
+    /** @type {any} */ (s).__pick = (k, a) => {
+        pmSheetClose();
+        if (k === 'cat') pmBankDo(l.id, 'expense:' + a);
+        else if (k === 'ignore') pmBankDo(l.id, 'ignore');
+    };
+}
+async function pmBankRemind(on) {
+    try {
+        await apiPost('statements.php', { action: 'settings', remind: !!on });
+        if (__pmBank) __pmBank.remind = !!on;
+        toast(on ? 'A reminder on the 1st, on your phone or by email.' : 'No reminder. This page still says when a statement is due.');
+    } catch (e) {
+        toast('Couldn’t save that. ' + chbActErrSay(e), 'error');
+        pmRenderDetail();
+    }
+}
+async function pmBankRemove() {
+    const ok = await glassConfirm('Stop adding Monzo Business statements?\n\nNo more reminders. The payments already added, and everything recorded from them, stay as they are.', 'Stop');
+    if (!ok) return;
+    try {
+        await apiPost('statements.php', { action: 'remove' });
+        toast('Statements stopped. Add one any time from +.');
+        __pmOpen = null;
+        pmClose();
+        await pmBankLoad();
+    } catch (e) {
+        glassAlert('Couldn’t do that. ' + chbActErrSay(e));
+    }
+}
+
 /* ── What a tap does ── */
 const PM_ACT = {
     menu() { const m = document.getElementById('pm-menu'); pmMenuShow(!!(m && m.hidden)); },
@@ -18525,6 +19017,26 @@ const PM_ACT = {
     expenses() { accountsOpen('expenses'); },
     csv() { pmExport('csv'); },
     pdf() { pmExport('pdf'); },
+    bank() { pmOpen('bank'); },
+    'bank-add'() { pmMenuShow(false); pmBankSheet(); },
+    'bank-hide'() {
+        try { localStorage.setItem(PM_BANK_HIDE, '1'); } catch (e) {}
+        pmRenderList();
+        toast('Hidden. Add a statement any time from +.');
+    },
+    'bank-do'(arg) { const [id, ...k] = String(arg).split('|'); pmBankDo(Number(id), k.join('|')); },
+    'bank-all'(arg) { const [id, ...k] = String(arg).split('|'); pmBankAll(Number(id), k.join('|')); },
+    async 'bank-undo'(arg) {
+        const l = pmBankLines().find((x) => x.id === Number(arg));
+        if (!l) return;
+        try {
+            if (l.as === 'expense') await pmBankUndoExpense(l, l.expense_id);
+            else if (l.as !== 'payment') await pmBankUnmark(l);
+        } catch (e) { glassAlert('Couldn’t undo it. ' + chbActErrSay(e)); }
+    },
+    'bank-more'() { __pmBankShown += 40; pmRenderDetail(); },
+    'bank-remind'(a, el) { pmBankRemind(!!(el && /** @type {HTMLInputElement} */ (el).checked)); },
+    'bank-remove'() { pmBankRemove(); },
 };
 function pmWire() {
     const v = /** @type {any} */ (document.getElementById('view-accounts'));

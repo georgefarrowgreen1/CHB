@@ -265,6 +265,7 @@ const PEOPLE_POLICY = [
     'accounts.php' => ['*' => 'money'],
     'money.php' => ['*' => 'money'],
     'expenses.php' => ['*' => 'money'],
+    'statements.php' => ['*' => 'money'],
     'square-setup.php' => ['payouts_refresh' => 'money'],
     // Prices and cottages.
     'rates.php' => ['*' => 'prices'],
