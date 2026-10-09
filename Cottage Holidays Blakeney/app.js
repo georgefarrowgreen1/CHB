@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 726;
+const ADMIN_BUNDLE_V = 728;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 365;
+const ADMIN_CSS_V = 367;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -13458,7 +13458,7 @@ async function chbOpenTarget(target) {
     // Three folders behind one view id, so "the screen you were on" is the FOLDER. The
     // tab is applied after it: switching to email kicks the lazy loadMailbox(), which no
     // longer resets the tab (that reset was a live bug of its own).
-    const inbox = /^inbox:(enquiries|messages|email)(?::(sent))?$/.exec(target);
+    const inbox = /^inbox:(enquiries|messages|email|done)(?::(sent))?$/.exec(target);
     if (inbox) {
         await openInbox();
         inboxFolder(inbox[1]);
@@ -21475,7 +21475,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'oneinboxdel1';
+    const BUILD = 'inboxdonefold2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

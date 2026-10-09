@@ -7,7 +7,8 @@
 //  5. Done, Remind me, Link: the owner's record is saved to inbox-state
 //  6. search
 //  7. Delete from the ⋯ menu: asks first, names what goes and what stays
-//  8. the computer's panes and its keyboard
+//  8. the Done folder: the switch and its motion, month captions, moving back, search
+//  9. the computer's panes and its keyboard
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -186,7 +187,7 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.click('#ib-rows .ib-rowwrap[data-key="e:pete@holtlinen.co.uk"] .ib-row');
     await page.waitForTimeout(600);
     await page.click('#ib-conv [data-ib="done"]');
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1300);
     ok(!(await keys()).includes('e:pete@holtlinen.co.uk'), 'Done takes the row out of the list');
     ok(state && state.done && state.done['e:pete@holtlinen.co.uk'] > 0, 'and saves it in inbox-state');
     await page.click('#ib-toast-undo');
@@ -198,8 +199,8 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.waitForTimeout(200);
     await shot('ph-menu');
     await page.click('#ib-conv [data-ib="remind"][data-arg="tomorrow"]');
-    await page.waitForTimeout(700);
-    ok(/Reminders/.test(await capOf('e:daniel@example.com')), 'Remind me moves him under Reminders');
+    await page.waitForTimeout(1300);
+    ok(/Reminders/.test(await capOf('e:daniel@example.com')), 'Remind me moves the row under Reminders');
     ok(state && state.remind && state.remind['e:daniel@example.com'] > Date.now(), 'and saves the time');
     await page.click('#ib-rows .ib-rowwrap[data-key="e:d.okafor@arup.com"] .ib-row');
     await page.waitForTimeout(700);
@@ -208,7 +209,7 @@ const SHOTS = process.env.IB_SHOTS || '';
     await shot('ph-link');
     await page.click('#ib-ctxdrop [data-ib="link"]');
     await page.waitForTimeout(700);
-    ok(!(await keys()).includes('e:d.okafor@arup.com'), 'linking joins the second address to his row');
+    ok(!(await keys()).includes('e:d.okafor@arup.com'), 'linking joins the second address to their row');
     ok(state && state.links && state.links['d.okafor@arup.com'] === 'e:daniel@example.com', 'and saves the link');
     await page.click('#ib-conv .ib-back');
     await page.waitForTimeout(600);
@@ -261,10 +262,10 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.click('#ib-conv .ib-menu [data-ib="delete"]');
     await page.waitForTimeout(400);
     await page.click('#glass-dialog-ok');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1400);
     const lp = delPosts();
-    ok(lp.length === 1 && lp[0].__url === 'mailbox.php' && JSON.stringify(lp[0].uids) === '["u3"]', `Delete takes her email from the mailbox, in one call (${JSON.stringify(lp)})`);
-    ok(!(await keys()).includes('e:lucy@example.com'), 'and she leaves the Inbox');
+    ok(lp.length === 1 && lp[0].__url === 'mailbox.php' && JSON.stringify(lp[0].uids) === '["u3"]', `Delete takes the email from the mailbox, in one call (${JSON.stringify(lp)})`);
+    ok(!(await keys()).includes('e:lucy@example.com'), 'and the row leaves the Inbox');
     const lt = await page.$eval('#ib-toast-msg', (e) => e.textContent);
     ok(/Deleted your conversation with Lucy/.test(lt), `it says so (${lt})`);
     ok(await page.$eval('#ib-toast-undo', (e) => e.hidden), 'with no Undo: the mailbox cannot give it back');
@@ -273,20 +274,118 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.click('#ib-conv .ib-menu [data-ib="delete"]');
     await page.waitForTimeout(400);
     g = await dlg();
-    ok(/2 emails from them and the email you sent are deleted for good/.test(g.msg), `both his addresses and what you sent (${g.msg.replace(/\s+/g, ' ')})`);
+    ok(/2 emails from them and the email you sent are deleted for good/.test(g.msg), `both their addresses and what you sent (${g.msg.replace(/\s+/g, ' ')})`);
     ok(/Their booking at Jollyboat stays, with the emails sent about it\./.test(g.msg), 'and it says the booking stays');
     const n0 = delPosts().length;
     await page.click('#glass-dialog-ok');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1400);
     const dp = delPosts().slice(n0);
     const mb = dp.find((p) => p.__url === 'mailbox.php' && p.action === 'delete');
-    ok(mb && mb.uids.slice().sort().join(',') === 'u1,u2', `his emails from both addresses go (${mb && mb.uids})`);
-    ok(dp.some((p) => p.action === 'delete_sent' && p.to === 'daniel@example.com'), 'and what was sent to him');
+    ok(mb && mb.uids.slice().sort().join(',') === 'u1,u2', `the emails from both addresses go (${mb && mb.uids})`);
+    ok(dp.some((p) => p.action === 'delete_sent' && p.to === 'daniel@example.com'), 'and what was sent to them');
     ok(!dp.some((p) => p.__url === 'bookings.php'), 'the booking is never touched');
-    ok(state && state.done && state.done['e:daniel@example.com'] > 0 && !(state.remind || {})['e:daniel@example.com'], 'he moves to Done, his reminder cleared');
+    ok(state && state.done && state.done['e:daniel@example.com'] > 0 && !(state.remind || {})['e:daniel@example.com'], 'the conversation moves to Done, the reminder cleared');
     ok(/booking stays on Today/.test(await page.$eval('#ib-toast-msg', (e) => e.textContent)), 'and the toast says where the booking is');
 
-    console.log('8. a computer');
+    console.log('8. the Done folder');
+    const capsDone = () => page.$$eval('#ib-rows .ib-cap', (xs) => xs.filter((x) => x.textContent.trim() === 'Done').length);
+    const folderOn = () => page.$eval('#ib-folders', (f) => f.getAttribute('data-on'));
+    const pillX = () => page.$eval('#ib-folders .ib-folders-pill', (e) => Math.round(e.getBoundingClientRect().left - e.parentElement.getBoundingClientRect().left));
+    await page.waitForTimeout(400);
+    ok(!(await page.$('[data-ib="toggle-done"]')), 'no "Show N done" at the foot of the list');
+    ok((await capsDone()) === 0 && !(await keys()).includes('e:daniel@example.com'), 'the Inbox holds no done rows and no Done capsules');
+    ok((await folderOn()) === 'inbox' && (await page.$eval('#ib-f-inbox', (b) => b.getAttribute('aria-pressed'))) === 'true', 'the switch starts on Inbox');
+    const x0 = await pillX();
+    const cross = await page.evaluate(async () => {
+        document.getElementById('ib-f-done').click();
+        const pill = document.querySelector('#ib-folders .ib-folders-pill'), host = document.getElementById('ib-rows');
+        const base = pill.parentElement.getBoundingClientRect().left;
+        const fr = [];
+        const t0 = performance.now();
+        while (performance.now() - t0 < 750) {
+            await new Promise((r) => requestAnimationFrame(r));
+            fr.push({ x: Math.round(pill.getBoundingClientRect().left - base), o: +getComputedStyle(host).opacity, tx: getComputedStyle(host).transform, done: !!host.querySelector('.ib-rowwrap[data-key="e:daniel@example.com"]') });
+        }
+        return fr;
+    });
+    const xs = cross.map((f) => f.x);
+    ok(xs[xs.length - 1] > x0 + 100 && new Set(xs).size > 5, `the pill travels to Done (${x0} → ${xs[xs.length - 1]}, ${new Set(xs).size} positions)`);
+    ok(Math.max(...xs) <= xs[xs.length - 1] + 2, 'and settles without swinging wide');
+    const arrive = cross.find((f) => f.done && f.o < 0.9);
+    ok(cross.some((f) => !f.done && f.o < 0.9 && /matrix\(1, 0, 0, 1, -/.test(f.tx)), 'the Inbox steps away to the left as it fades');
+    ok(arrive && /matrix\(1, 0, 0, 1, [1-9]/.test(arrive.tx), `Done arrives from the right (${arrive && arrive.tx})`);
+    ok(cross[cross.length - 1].o === 1, 'and settles fully visible');
+    ok((await folderOn()) === 'done' && (await keys()).includes('e:daniel@example.com'), 'Done shows the done conversations');
+    await shot('ph-done');
+    ok((await capsDone()) === 0, 'with no Done capsule on any row');
+    const doneCaps = await page.$$eval('#ib-rows .ib-capline span', (xs) => xs.map((x) => x.textContent));
+    ok(doneCaps.length && doneCaps.every((c) => /^(January|February|March|April|May|June|July|August|September|October|November|December)( \d{4})?$/.test(c)), `grouped under month captions (${doneCaps.join(', ')})`);
+    ok(/Anyone in Done who writes again/.test(await page.$eval('#ib-rows .ib-foot', (f) => f.textContent)), 'and says who comes back');
+    ok(/"t":"inbox:done"/.test(await page.evaluate(() => sessionStorage.getItem('chb-nav') || '')), 'the folder is remembered for a reload');
+    await page.click('#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"] .ib-row');
+    await page.waitForTimeout(700);
+    ok((await page.$eval('#ib-conv .ib-back', (b) => b.textContent.trim())) === 'Done', 'the back link names the folder');
+    ok(await page.$eval('#ib-conv [data-ib="undone"]', (b) => b.classList.contains('is-on')), 'the tick shows it is done');
+    await page.click('#ib-conv [data-ib="undone"]');
+    const fold = await page.evaluate(async () => {
+        const fr = []; const t0 = performance.now();
+        while (performance.now() - t0 < 1200) {
+            await new Promise((r) => requestAnimationFrame(r));
+            const w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"]');
+            fr.push({ h: w ? Math.round(w.getBoundingClientRect().height) : -1, landed: document.getElementById('ib-f-inbox').classList.contains('is-landed') });
+        }
+        return fr;
+    });
+    const hs = fold.map((f) => f.h).filter((h) => h > 0);
+    ok(hs.length && new Set(hs).size > 4 && fold[fold.length - 1].h === -1, `moving back folds the row away (${new Set(hs).size} heights, then gone)`);
+    ok(fold.some((f) => f.landed), 'and the Inbox side of the switch settles as it lands');
+    ok(!(state.done || {})['e:daniel@example.com'], 'saved: no longer done');
+    ok(/back in your Inbox/.test(await page.$eval('#ib-toast-msg', (e) => e.textContent)), 'the toast says where it went');
+    await page.click('#ib-toast-undo');
+    await page.waitForTimeout(500);
+    ok((await keys()).includes('e:daniel@example.com') && (state.done || {})['e:daniel@example.com'] > 0, 'Undo puts it back in Done');
+    const row = await (await page.$('#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"] .ib-row')).boundingBox();
+    ok(/Inbox/.test(await page.$eval('#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"] .ib-reveal', (e) => e.textContent)), 'a swipe in Done reveals Inbox');
+    await page.mouse.move(row.x + row.width - 30, row.y + row.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(row.x + row.width - 30 - i * 18, row.y + row.height / 2);
+    await page.mouse.up();
+    await page.waitForTimeout(1200);
+    ok(!(await keys()).includes('e:daniel@example.com') && !(state.done || {})['e:daniel@example.com'], 'and swiping left moves it back');
+    await page.click('#ib-toast-undo');
+    await page.waitForTimeout(500);
+    await page.click('#ib-f-inbox');
+    await page.waitForTimeout(800);
+    ok((await folderOn()) === 'inbox' && (await keys()).includes('e:pete@holtlinen.co.uk'), 'back on the Inbox');
+    // Pete to Done from the list, then search reaches both folders
+    await page.click('#ib-rows .ib-rowwrap[data-key="e:pete@holtlinen.co.uk"] .ib-row');
+    await page.waitForTimeout(600);
+    await page.click('#ib-conv [data-ib="done"]');
+    await page.waitForTimeout(1300);
+    ok(/Pete moved to Done/.test(await page.$eval('#ib-toast-msg', (e) => e.textContent)), 'Done says where it went');
+    await page.fill('#ib-q', 'invoice');
+    await page.waitForTimeout(400);
+    ok(await page.$eval('#ib-folders-wrap', (w) => w.classList.contains('is-away')), 'the switch steps aside while searching');
+    const hitCap = await page.$eval('#ib-rows .ib-rowwrap[data-key="e:pete@holtlinen.co.uk"]', (w) => (w.querySelector('.ib-cap') || {}).textContent || '').catch(() => '');
+    ok(hitCap === 'Done', `a result in Done says so (${hitCap})`);
+    await page.fill('#ib-q', '');
+    await page.dispatchEvent('#ib-q', 'input');
+    await page.waitForTimeout(400);
+    ok(!(await page.$eval('#ib-folders-wrap', (w) => w.classList.contains('is-away'))), 'and returns when the search is cleared');
+    // nothing waiting: one card, not an empty page
+    const saved = await page.evaluate(() => { const was = JSON.stringify(ibState().done); __ibPeople.forEach((p) => { ibState().done[p.key] = Date.now(); }); ibBuild(); ibRenderAll(); return was; });
+    ok(/Nothing waiting on you/.test(await page.$eval('#ib-rows .ib-empty.is-card', (e) => e.textContent).catch(() => '')), 'with everyone done the Inbox shows one calm card');
+    await page.evaluate((was) => { ibState().done = JSON.parse(was); ibBuild(); ibRenderAll(); }, saved);
+    // a remembered place opens the folder
+    await page.evaluate(() => chbOpenTarget('inbox:done'));
+    await page.waitForTimeout(600);
+    ok((await folderOn()) === 'done', 'inbox:done reopens the Done folder');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.click('#ib-f-inbox');
+    ok((await keys()).includes('e:hannah@example.com'), 'with reduced motion the folder changes at once');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    console.log('9. a computer');
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(800);
     await page.evaluate(() => ibSoon());
@@ -305,6 +404,20 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.waitForTimeout(400);
     const after = await page.evaluate(() => __ibOpen);
     ok(after && after !== before, `J moves to the next person (${before} → ${after})`);
+    await page.click('#ib-f-done');
+    await page.waitForTimeout(800);
+    const d0 = await page.evaluate(() => __ibOpen);
+    ok(d0 && (state.done || {})[d0] > 0, `on a computer Done opens its newest conversation (${d0})`);
+    await shot('dk-done');
+    await page.focus('#ib-rows .ib-row');
+    await page.keyboard.press('e');
+    await page.waitForTimeout(100);
+    const d1 = await page.evaluate(() => __ibOpen);
+    ok(!(state.done || {})[d0] && d1 !== d0, `E moves it back and the next opens at once (${d0} → ${d1})`);
+    await page.waitForTimeout(700);
+    ok(!(await keys()).includes(d0), 'the moved row has folded out of Done');
+    await page.click('#ib-f-inbox');
+    await page.waitForTimeout(800);
 
     if (SHOTS) {
         await page.evaluate(() => { document.body.classList.toggle('light-mode'); });
