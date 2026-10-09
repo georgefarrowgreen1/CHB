@@ -1345,6 +1345,11 @@ function is_internal_content_key($key)
         return true; // Status → Email's per-day sent count (mailer.php) — the
                      // owner's own mail volume, never public
     }
+    if ($key === 'bank-statements') {
+        return true; // whether the business bank's statements are on, the monthly
+                     // reminder, and the month it last went (statements.php) — the
+                     // owner's own banking routine; never public
+    }
     if ($key === 'search-watchers') {
         return true; // the owner's standing queries (watchers-lib.php) — their own
                      // reminders, naming cottages and dates; never public

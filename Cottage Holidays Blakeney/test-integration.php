@@ -3459,6 +3459,79 @@ $rootDb->exec("DELETE FROM admins WHERE id = $eId");
 $rootDb->exec("UPDATE admins SET mail_prefs = NULL WHERE id = $ownerId");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
 
+echo "\n== §53 Bank statements: read once, never counted twice ==\n";
+// The owner adds a CSV statement exported from Monzo Business. Driven through the
+// real endpoint against the real tables (migration-135): a statement is read
+// once, a payment already here is never added twice (however the files overlap
+// or a reply is lost), only a Square payout and a pot move sort themselves, and
+// sorting the rest is the owner's.
+$stHead = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Balance,Balance currency\n";
+$stLine = fn($id, $d, $t, $type, $name, $amt, $bal, $desc = '') => "$id,$d,$t,$type,$name,,General,$amt,GBP,$amt,GBP,,,,$desc,,$bal,GBP\n";
+$stA = $stHead
+    . $stLine('tx_it53_1', '03/09/2026', '09:12:00', 'Faster payment', 'SQUARE PAYOUT', '612.40', '1612.40', 'SQ *PAYOUT')
+    . $stLine('tx_it53_2', '10/09/2026', '14:00:00', 'Faster payment', 'R PEMBERTON', '340.00', '1952.40', 'CHB-000053')
+    . $stLine('tx_it53_3', '15/09/2026', '08:30:00', 'Faster payment', 'NORFOLK CLEAN CO', '-86.40', '1866.00', 'INV 2201')
+    . $stLine('tx_it53_4', '30/09/2026', '23:10:00', 'Pot transfer', 'Tax pot', '-631.44', '1234.56', '');
+$stCount = fn() => (int) $rootDb->query('SELECT COUNT(*) FROM bank_lines')->fetchColumn();
+$stAnon = [];
+$r = http($stAnon, 'POST', '/statements.php', ['action' => 'status']);
+it_check('§53 a visitor is refused', $r['code'] === 401, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+it_check('§53 before any statement: the tables exist and nothing is switched on', $r['code'] === 200 && ($r['json']['ready'] ?? false) === true && ($r['json']['on'] ?? true) === false && ($r['json']['unsorted'] ?? -1) === 0 && array_key_exists('last', $r['json'] ?? []) && $r['json']['last'] === null, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => '%PDF-1.4 …', 'filename' => 'statement.pdf']);
+it_check('§53 a PDF is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'pick CSV') !== false, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
+$sm = $r['json']['summary'] ?? [];
+it_check('§53 the preview says what would be added, and writes nothing', $r['code'] === 200 && ($sm['adding'] ?? 0) === 4 && ($sm['already'] ?? -1) === 0 && abs((float) ($sm['balance'] ?? 0) - 1234.56) < 0.001 && $sm['to'] === '2026-09-30' && $stCount() === 0, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stA, 'filename' => 'monzo.csv', 'op_id' => 'it53-import-a']);
+$sm = $r['json']['summary'] ?? [];
+it_check('§53 adding it stores four payments, two of which sorted themselves', $r['code'] === 200 && ($sm['added'] ?? 0) === 4 && ($sm['auto'] ?? 0) === 2 && $stCount() === 4, $r['raw']);
+$auto = $rootDb->query("SELECT ext_key, sorted_as FROM bank_lines WHERE sorted_as IS NOT NULL ORDER BY ext_key")->fetchAll(PDO::FETCH_KEY_PAIR);
+it_check('§53 …the Square payout and the pot move, nothing else', $auto === ['m:tx_it53_1' => 'square', 'm:tx_it53_4' => 'pot'], json_encode($auto));
+$r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stA, 'filename' => 'monzo.csv', 'op_id' => 'it53-import-a']);
+it_check('§53 a retried import is answered from the ledger, adding nothing', ($r['json']['replayed'] ?? false) === true && $stCount() === 4, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stA, 'filename' => 'monzo-again.csv', 'op_id' => 'it53-import-a2']);
+it_check('§53 the same file added again adds nothing', $r['code'] === 200 && ($r['json']['summary']['added'] ?? -1) === 0 && ($r['json']['summary']['already'] ?? 0) === 4 && $stCount() === 4, $r['raw']);
+$stB = $stHead
+    . $stLine('tx_it53_3', '15/09/2026', '08:30:00', 'Faster payment', 'NORFOLK CLEAN CO', '-86.40', '1866.00', 'INV 2201')
+    . $stLine('tx_it53_4', '30/09/2026', '23:10:00', 'Pot transfer', 'Tax pot', '-631.44', '1234.56', '')
+    . $stLine('tx_it53_5', '02/10/2026', '10:00:00', 'Faster payment', 'NORFOLK CLEAN CO', '-72.00', '1162.56', 'INV 2207');
+$r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stB, 'filename' => 'october.csv', 'op_id' => 'it53-import-b']);
+it_check('§53 an overlapping statement adds only the payment that is new', ($r['json']['summary']['added'] ?? -1) === 1 && ($r['json']['summary']['already'] ?? 0) === 2 && $stCount() === 5, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+$st = $r['json'] ?? [];
+$byKey = [];
+foreach ($rootDb->query('SELECT id, ext_key FROM bank_lines')->fetchAll() as $row) {
+    $byKey[$row['ext_key']] = (int) $row['id'];
+}
+it_check('§53 the status: on, three to sort, the latest statement and its closing balance',
+    ($st['on'] ?? false) === true && ($st['unsorted'] ?? 0) === 3 && ($st['last']['to'] ?? '') === '2026-10-02' && abs((float) ($st['balance'] ?? 0) - 1162.56) < 0.001 && ($st['uploads'] ?? 0) === 3 && count($st['lines'] ?? []) === 5, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => $byKey['m:tx_it53_2'], 'as' => 'payment']);
+it_check('§53 a guest payment must name its booking', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => $byKey['m:tx_it53_2'], 'as' => 'square']);
+it_check('§53 the owner cannot claim a payment is a Square payout', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => 999999, 'as' => 'ignore']);
+it_check('§53 a payment that is not here says so', $r['code'] === 404, $r['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => $byKey['m:tx_it53_3'], 'as' => 'expense', 'expense_id' => 4242, 'label' => 'Cleaning']);
+$r2 = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+$learnt = array_values(array_filter($r2['json']['learned'] ?? [], fn($x) => $x['name'] === 'NORFOLK CLEAN CO'));
+it_check('§53 sorting one as an expense keeps the link and teaches the next suggestion', $r['code'] === 200 && ($r2['json']['unsorted'] ?? 0) === 2 && $learnt && $learnt[0]['as'] === 'expense' && $learnt[0]['label'] === 'Cleaning'
+    && (int) $rootDb->query('SELECT expense_id FROM bank_lines WHERE id = ' . $byKey['m:tx_it53_3'])->fetchColumn() === 4242, $r2['raw']);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'unmark', 'id' => $byKey['m:tx_it53_3']]);
+$row = $rootDb->query('SELECT sorted_as, expense_id FROM bank_lines WHERE id = ' . $byKey['m:tx_it53_3'])->fetch();
+it_check('§53 undo puts it back to sort, link and all', $r['code'] === 200 && $row['sorted_as'] === null && $row['expense_id'] === null, json_encode($row));
+$r = http($admin, 'POST', '/statements.php', ['action' => 'settings', 'remind' => false]);
+$r2 = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+it_check('§53 the monthly reminder can be switched off', ($r2['json']['remind'] ?? true) === false, $r2['raw']);
+$r = http($stAnon, 'GET', '/content.php');
+it_check('§53 the setting never reaches the public content', $r['code'] === 200 && !isset($r['json']['content']['bank-statements']), mb_substr($r['raw'], 0, 160));
+$r = http($admin, 'POST', '/statements.php', ['action' => 'remove']);
+$r2 = http($admin, 'POST', '/statements.php', ['action' => 'status']);
+it_check('§53 stopping keeps every payment already added', $r['code'] === 200 && ($r2['json']['on'] ?? true) === false && $stCount() === 5, $r2['raw']);
+$rootDb->exec('DELETE FROM bank_lines');
+$rootDb->exec('DELETE FROM bank_imports');
+$rootDb->exec("DELETE FROM content WHERE item_key = 'bank-statements'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

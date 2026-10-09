@@ -710,6 +710,46 @@ causes, both in payouts-lib.php:
   (marks, read-time verdict, merge, a second refresh not re-reading a PAID payout, the wiring), break-tested on the
   merge and the marks. Not run: test-integration (no MySQL here) and the money ui suites (not re-aimed since #1379).
 
+## The business bank, from its statements (Monzo Business; built without CI at the owner's ask)
+
+**Asked for after the MTD/Monzo demos, for a BUSINESS account.** Monzo's developer API is built for personal
+and joint accounts and can't be confirmed to read Monzo Business, so the app reads the statement the owner
+exports (Monzo app → ⋯ on the business card → Bank statements → CSV). A live link waits on the owner's own test
+at developers.monzo.com; nothing here assumes it.
+- **Server**: `statement-lib.php` is PURE (CSV parse, loose header match, a PDF/QIF/xlsx refused in words, the
+  closing balance = the one after the LATEST date+time whatever the file's order, `statement_auto`,
+  `statement_due`, `statement_reminder_due`), gated by **test-statements.php** (60, CI-wired, deploy-excluded,
+  counter `stc()`). `statements.php` (admin, area `money`) stores it: migration-135 `bank_lines` (UNIQUE
+  `ext_key` = `m:<Monzo transaction id>`, or `h:<fingerprint>:<occurrence>` when a file has no ids, so the same
+  payment twice in one file is two payments) + `bank_imports`. `import` rides the op ledger AND INSERT IGNORE,
+  so statements may overlap freely and nothing is ever added twice. Settings live in the internal key
+  `bank-statements` {on, remind, reminded}.
+- **Only two things sort themselves** (`statement_auto`): a Square payout (money IN only — it is card money
+  already in the books, so counting it again would count it twice) and a move to or from a pot (the owner's own
+  money changing places). Everything else is the owner's call; `mark` refuses `square`/`pot` and a `payment`
+  with no booking.
+- **Suggestions are worked out in the BROWSER** (`pmBankSuggest`), from the live bookings, never stored: the
+  booking reference (`CHB-000123`), then a surname shared with someone who owes, then exactly the sum someone
+  owes; platform payouts (Airbnb/Booking.com/Vrbo) are NOTED for reconciliation and change no books; HMRC is tax
+  and left out of costs; a payee sorted before is "as last time" (`learned` from the server); a category guess
+  from the payee name. **Recording reuses the existing writes** — `pmPaymentPlan` (extracted from pmRecordSave,
+  one derivation) posts `set_payment` dated the day the money ARRIVED with method Bank transfer; an expense goes
+  through `expenses.php add` on its own date. statements.php only stores the link (`booking_id`/`expense_id`).
+  A recorded transfer's row offers **Open** (its booking), never Undo: un-marking it would leave the payment
+  recorded and the line back to sort, i.e. a way to record it twice.
+- **The page**: a way-in card on the landing ("Not now" hides it per device), then one "Monzo Business" row,
+  or "Time for <month>'s statement" once the last statement stops short of last month's end; "N bank payments to
+  sort" in Needs you; the bank page (`pmOpen('bank')`, `accounts:bank`) with the closing balance FROM THE
+  STATEMENT (dated — never mixed into the In-your-bank stop, which is Square's money), the reminder switch, To
+  sort and Sorted. The add sheet is Export → Add → Check; Check writes nothing (`preview`) and its button says
+  what it will add. A monthly reminder on the 1st rides self-repair → `alert_owner` (email fallback), once a
+  month at most.
+- Gates: test-statements, test-integration **§53** (the real endpoint and tables: refused for a visitor, the
+  preview writes nothing, auto-sort exactly two, the replay, the same file again, an overlap adds only the new
+  line, the mark refusals, the link, undo, the reminder, never public, stop keeps the payments) and
+  **ui-test-statements.js** (the screens, with the REAL parser run through the php CLI behind a stubbed endpoint;
+  also driven by hand at 360/1280 in both themes). Budgets: admin.js +9.5KB, admin.css +0.5KB gz (owner-only).
+
 ## The Money area is FIVE ANSWERS, not an index
 
 **CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.

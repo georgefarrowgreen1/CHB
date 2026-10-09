@@ -70,6 +70,33 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 0c. The monthly bank statement ------------------------------------------
+// The business account is read from statements the owner adds (statements.php).
+// Once one is due (the last stops short of the end of last month) the owner is
+// told ONCE that month, on their phone or by email, and the Payments page says so
+// until it is added. Off when they turned statements or the reminder off.
+try {
+    require_once __DIR__ . '/statement-lib.php';
+    $stSet = content_json('bank-statements', []);
+    $stLast = null;
+    if (!empty($stSet['on'])) {
+        $stLast = db()->query('SELECT MAX(to_date) FROM bank_imports')->fetchColumn() ?: null;
+    }
+    $stToday = date('Y-m-d');
+    if (statement_reminder_due($stSet, $stLast, $stToday)) {
+        $stDue = statement_due($stLast, $stToday);
+        require_once __DIR__ . '/webpush.php';
+        alert_owner(
+            $stDue['month'] !== '' ? 'Time for ' . $stDue['month'] . '’s bank statement' : 'Time for a new bank statement',
+            'Export it from Monzo Business from ' . uk_date($stDue['from']) . ' and add it on the Payments page. About a minute.',
+            ['url' => './?open=accounts:bank', 'category' => 'money', 'tag' => 'statement', 'email' => true],
+        );
+        $stSet['reminded'] = substr($stToday, 0, 7);
+        content_set_scalar('bank-statements', $stSet);
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 1. Dead gallery references -------------------------------------------
 // 'images-<prop>' content keys hold JSON arrays of image URLs; locally-uploaded
 // ones are relative 'uploads/<file>'. If the file is gone (manual FTP cleanup,

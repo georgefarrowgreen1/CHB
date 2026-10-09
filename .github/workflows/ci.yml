@@ -208,6 +208,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-bank.php
 
+      - name: Bank statements — read once, never counted twice
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-statements.php
+
       - name: Calendar sync — a bad feed must never empty the calendar
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php
