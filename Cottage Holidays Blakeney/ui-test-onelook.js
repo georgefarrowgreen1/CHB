@@ -768,14 +768,14 @@ async function open(browser, base, width) {
   // Calendar sync beside Payments' Needs attention).
   const J = await page.evaluate(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-    const run = (els) => {
+    const run = (els, minR = 16) => {
       els = els.filter((e) => e.getClientRects().length);
       const b = els.map((e) => e.getBoundingClientRect());
       const rad = (e, c) => parseFloat(getComputedStyle(e)['border' + c + 'Radius']) || 0;
       return {
         n: els.length,
         flush: els.length > 1 && b.slice(1).every((r, i) => Math.abs(r.top - b[i].bottom) <= 1 && Math.abs(r.left - b[i].left) <= 1),
-        ends: els.length > 1 && rad(els[0], 'TopLeft') >= 16 && rad(els[0], 'BottomLeft') === 0 && rad(els[els.length - 1], 'TopLeft') === 0 && rad(els[els.length - 1], 'BottomLeft') >= 16,
+        ends: els.length > 1 && rad(els[0], 'TopLeft') >= minR && rad(els[0], 'BottomLeft') === 0 && rad(els[els.length - 1], 'TopLeft') === 0 && rad(els[els.length - 1], 'BottomLeft') >= minR,
       };
     };
     const out = {};
@@ -826,7 +826,9 @@ async function open(browser, base, width) {
     await openInbox(); inboxFolder('email'); await wait(200);
     const mb = document.getElementById('mailbox-body'); const was = mb.innerHTML;
     mb.innerHTML = skelRows(3);
-    out.skel = run([...mb.querySelectorAll('.skel-row')]);
+    // Below 1200px the folder lives INSIDE a fold, where a run is the inset panel on the CELL radius.
+    out.skel = run([...mb.querySelectorAll('.skel-row')], mb.closest('.bhub-fold') ? 12 : 16);
+    out.skelInFold = !!mb.closest('.bhub-fold');
     mb.innerHTML = was;
     return out;
   });
