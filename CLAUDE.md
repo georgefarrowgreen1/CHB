@@ -1227,6 +1227,15 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   (`--ib-top`); the toast is placed where it covers nothing (`ibToastPlace`).
 - **Markup uses `data-ib`, never `data-act`**, and `ib-` classes, so the app's dispatcher and the
   one-look restyler leave it alone.
+- **DELETE CONVERSATION is the last item of the ⋯ menu** (`ibDeletePlan` decides, `IB_ACT.delete`
+  acts). It asks first (`glassConfirm`, danger) naming what goes, and has **NO Undo** — the
+  mailbox cannot restore a deleted email. What GOES: their chats (messages.php `delete`), the
+  emails they sent (mailbox.php `delete` with a `uids` list — one POP3 session, missing uids
+  skipped), the emails sent TO them (mailbox.php `delete_sent` → `mail_sent` rows) and their
+  pending and declined enquiries (enquiries.php `delete`, a hard delete). What STAYS: bookings and
+  the emails about them — with a booking left the person is marked done. Nothing is sent to the
+  guest. Hidden when only a booking is left (nothing to delete) and during an approval's Undo
+  window. The three new actions are `'all'` in PEOPLE_POLICY. Gated by ui-test-inbox §7.
 - **NOT re-aimed, by the owner's "merge without CI"**: ui-test-mailbox, ui-test-onelook (§9 crashes on
   the missing folders), ui-test-needs-you (the enquiry row now opens the conversation; the pip counts
   waiting), ui-test-resume (folder places), ui-test-hub (no auto-dock in the Inbox),

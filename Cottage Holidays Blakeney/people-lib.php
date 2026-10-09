@@ -215,7 +215,7 @@ const PEOPLE_POLICY = [
     'chat-upload.php' => ['*' => 'all'],
     'customers.php' => ['directory' => 'all', 'audit' => 'all'],
     'keysafe.php' => ['state' => 'all', 'confirm' => 'all', 'set_enabled' => 'all'],
-    'mailbox.php' => ['new' => 'all', 'list' => 'all', 'read' => 'all', 'attachment' => 'all', 'mark_unread' => 'all', 'sent' => 'all', 'send' => 'all', 'delete' => 'all'],
+    'mailbox.php' => ['new' => 'all', 'list' => 'all', 'read' => 'all', 'attachment' => 'all', 'mark_unread' => 'all', 'sent' => 'all', 'send' => 'all', 'delete' => 'all', 'delete_sent' => 'all'],
     'my-bookings.php' => ['*' => 'all'], // the read-only preview of a guest's account
     'search.php' => ['*' => 'all'],
     'watchers.php' => ['list' => 'all', 'set' => 'all', 'stop' => 'all'],
@@ -230,7 +230,7 @@ const PEOPLE_POLICY = [
     ],
     'ical-import.php' => ['sync' => 'all', 'blocks' => 'all', 'add_block' => 'all', 'delete_block' => 'all', 'list' => 'all', 'overview' => 'all', 'save_feeds' => 'prices'],
     'enquiries.php' => [
-        '' => 'all', 'submit' => 'all', 'declined' => 'all', 'seen' => 'all', 'decline' => 'all', 'restore' => 'all', 'undecline' => 'all',
+        '' => 'all', 'submit' => 'all', 'declined' => 'all', 'seen' => 'all', 'decline' => 'all', 'restore' => 'all', 'undecline' => 'all', 'delete' => 'all',
         'approve_preview' => 'all', 'approve' => 'all', 'email_preview' => 'all', 'email_guest' => 'all',
         'set_terms' => 'payments',
     ],

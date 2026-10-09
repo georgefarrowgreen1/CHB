@@ -36,7 +36,7 @@ require_admin();
 $in = $_SERVER['REQUEST_METHOD'] === 'GET' ? $_GET : body();
 $action = $in['action'] ?? '';
 
-$MBX_MUTATING = ['send', 'delete', 'mark_unread'];
+$MBX_MUTATING = ['send', 'delete', 'delete_sent', 'mark_unread'];
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && in_array($action, $MBX_MUTATING, true)) {
     json_out(['error' => 'This action must be sent as a POST.'], 405);
 }
@@ -409,6 +409,66 @@ if ($action === 'send') {
         'entity_id' => $to,
     ]);
     json_out(['ok' => true]);
+}
+
+// Several at once (the Inbox deleting a whole conversation): one session, so the
+// mailbox is opened once however many there are. A message already gone counts
+// as deleted, because what the owner asked for is already true.
+if ($action === 'delete' && is_array($in['uids'] ?? null)) {
+    $uids = array_values(array_unique(array_filter(array_map(fn($u) => clean((string) $u), array_slice($in['uids'], 0, 100)))));
+    if (!$uids) {
+        json_out(['error' => 'Missing message ids'], 400);
+    }
+    [$fp, $uidl] = mbx_open_listed();
+    $refused = 0;
+    foreach ($uids as $uid) {
+        $no = array_search($uid, $uidl, true);
+        if ($no === false) {
+            continue;
+        }
+        fwrite($fp, "DELE {$no}\r\n");
+        $first = fgets($fp, 1024);
+        if (!(is_string($first) && $first !== '' && $first[0] === '+')) {
+            $refused++;
+        }
+    }
+    mbx_quit($fp); // QUIT commits the deletions
+    $done = count($uids) - $refused;
+    if ($done > 0) {
+        log_activity('email', 'email.mailbox_delete', $done === 1 ? 'Email deleted from the admin mailbox' : $done . ' emails deleted from the admin mailbox', [
+            'entity' => 'mailbox',
+            'entity_id' => $uids[0],
+        ]);
+    }
+    if ($refused) {
+        json_out(['error' => 'The mailbox refused to delete ' . ($refused === 1 ? 'one email' : $refused . ' emails') . '.', 'deleted' => $done], 502);
+    }
+    json_out(['ok' => true, 'deleted' => $done]);
+}
+
+// Forget what was sent to one address (the Inbox deleting a conversation). Only
+// the Sent list's copies go: a booking's own email history is part of the
+// booking and stays with it. No index on to_email, and old rows may carry
+// capitals, so the comparison is folded on both sides.
+if ($action === 'delete_sent') {
+    $to = strtolower(trim((string) ($in['to'] ?? '')));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        json_out(['error' => 'Missing email address'], 400);
+    }
+    try {
+        $st = db()->prepare('DELETE FROM mail_sent WHERE LOWER(to_email) = ?');
+        $st->execute([$to]);
+        $n = $st->rowCount();
+    } catch (\Throwable $e) {
+        json_out(['ok' => true, 'deleted' => 0]);
+    }
+    if ($n > 0) {
+        log_activity('email', 'email.sent_delete', ($n === 1 ? 'A sent email' : $n . ' sent emails') . ' to ' . $to . ' deleted', [
+            'entity' => 'mailbox',
+            'entity_id' => $to,
+        ]);
+    }
+    json_out(['ok' => true, 'deleted' => $n]);
 }
 
 if ($action === 'delete') {

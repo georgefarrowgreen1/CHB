@@ -31029,7 +31029,36 @@ function ibMenuHtml(p) {
         ${p.kind === 'unlinked' ? '<button type="button" role="menuitem" data-ib="link"><span class="ib-mi">Link to a guest</span></button>' : ''}
         ${p.emails.length ? `<button type="button" role="menuitem" data-ib="copy" data-arg="${ibEsc(p.emails[0])}"><span class="ib-mi">Copy email address</span></button>` : ''}
         ${s ? '<button type="button" role="menuitem" data-ib="record"><span class="ib-mi">Open the booking</span></button>' : p.enq ? '<button type="button" role="menuitem" data-ib="record"><span class="ib-mi">Open the enquiry</span></button>' : ''}
+        ${ibDeletePlan(p).any ? '<hr><button type="button" role="menuitem" class="is-danger" data-ib="delete"><span class="ib-mi">Delete conversation</span></button>' : ''}
     </div>`;
+}
+// What Delete can take, and what it must leave. Their chats, the emails they sent
+// (from the mailbox itself), the emails sent to them from here and their
+// enquiries go; a booking and the emails sent about it are the booking's record
+// and stay. Nothing deletable (a booking alone) means no Delete is offered, and
+// an approval still inside its Undo window is never deleted out from under it.
+function ibDeletePlan(p) {
+    const threads = p.threads.map((t) => t.thread_id).filter(Boolean);
+    const uids = p.mails.map((m) => m.uid).filter(Boolean);
+    const sentTo = p.sent.length ? p.emails.filter((e) => p.sent.some((s) => ibEmail(s.to_email) === e)) : [];
+    const enqs = (p.enq ? [p.enq] : []).concat(p.declined).map((q) => q.dbId).filter((x) => x != null);
+    const any = !p.approving && !!(threads.length || uids.length || sentTo.length || enqs.length);
+    return { threads, uids, sentTo, enqs, any };
+}
+function ibDeleteWords(p) {
+    const n = (k, one, many) => (k === 1 ? one : k + ' ' + many);
+    const parts = [];
+    if (p.threads.length) parts.push(n(p.threads.length, 'their chat', 'chats'));
+    if (p.mails.length) parts.push(n(p.mails.length, 'the email from them', 'emails from them'));
+    if (p.sent.length) parts.push(n(p.sent.length, 'the email you sent', 'emails you sent'));
+    if (p.enq) parts.push('their enquiry');
+    if (p.declined.length) parts.push(n(p.declined.length, 'their declined enquiry', 'declined enquiries'));
+    const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0] || '';
+    const lines = [list.charAt(0).toUpperCase() + list.slice(1) + (parts.length > 1 || /^\d/.test(list) ? ' are' : ' is') + ' deleted for good' + (p.mails.length ? ', from the mailbox too.' : '.')];
+    if (p.kind !== 'auto') lines[0] += ` Nothing is sent to ${ibFirst(p)}.`;
+    const s = ibCurrentStay(p);
+    if (s) lines.push(`Their booking at ${ibPropName(s.pk)} stays, with the emails sent about it.`);
+    return lines.join('\n\n');
 }
 const ibWide = () => { const r = ibRoot(); return !!r && r.getBoundingClientRect().width >= 880; };
 const ibTriple = () => { const r = ibRoot(); return !!r && r.getBoundingClientRect().width >= 1180; };
@@ -31706,6 +31735,60 @@ const IB_ACT = {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
         __ibMenuOpen = false;
         if (p) ibRecord(p);
+    },
+    async delete() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        __ibMenuOpen = false;
+        ibRenderConv();
+        if (!p) return;
+        const plan = ibDeletePlan(p);
+        if (!plan.any) return;
+        // For good, so it asks first, naming what goes and what stays. No Undo:
+        // the mailbox cannot give back an email it has deleted.
+        const ok = await glassConfirm(ibDeleteWords(p), 'Delete', { title: `Delete the conversation with ${p.name}?`, danger: true });
+        if (!ok) return;
+        ibCommitHold();
+        const failed = [];
+        const run = (label, job) => job.catch((e) => { failed.push({ label, e }); });
+        const jobs = [];
+        plan.threads.forEach((tid) => jobs.push(run('their chat', apiPost('messages.php', { action: 'delete', thread_id: tid }).then(() => {
+            __msgThreads = (__msgThreads || []).filter((t) => t.thread_id !== tid);
+            __ibArchived = (__ibArchived || []).filter((t) => t.thread_id !== tid);
+            delete __ibThreadMsgs[tid];
+        }))));
+        if (plan.uids.length) jobs.push(run('the emails from them', apiPost('mailbox.php', { action: 'delete', uids: plan.uids }).then(() => {
+            __mbxMessages = (__mbxMessages || []).filter((m) => plan.uids.indexOf(m.uid) < 0);
+            plan.uids.forEach((u) => { delete __ibMailBody[u]; });
+        })));
+        plan.sentTo.forEach((to) => jobs.push(run('the emails you sent', apiPost('mailbox.php', { action: 'delete_sent', to }).then(() => {
+            __mbxSent = (__mbxSent || []).filter((s) => ibEmail(s.to_email) !== to);
+        }))));
+        plan.enqs.forEach((id) => jobs.push(run('their enquiry', apiPost('enquiries.php', { action: 'delete', id }).then(() => {
+            const keep = (q) => String(q.dbId) !== String(id);
+            if (Array.isArray(enquiries)) enquiries = enquiries.filter(keep);
+            __declinedEnq = (__declinedEnq || []).filter(keep);
+        }))));
+        await Promise.all(jobs);
+        const st = ibState();
+        ['remind', 'reminded', 'unread', 'cleared'].forEach((k) => { delete st[k][p.key]; });
+        delete __ibDecline[p.key];
+        delete __ibLocal[p.key];
+        ibDraftSet(p.key, '');
+        // A booking keeps them in the Inbox's records; Done takes them off the list.
+        // Anything that would not delete stays where it was, in the list or not.
+        const stay = ibCurrentStay(p);
+        if (!failed.length) {
+            if (stay) st.done[p.key] = ibNow();
+            else delete st.done[p.key];
+        }
+        ibStateSave();
+        ibLeave(p);
+        try { refreshInboxBadge(); } catch (e) {}
+        if (failed.length) {
+            const what = [...new Set(failed.map((f) => f.label))];
+            const list = what.length > 1 ? what.slice(0, -1).join(', ') + ' and ' + what[what.length - 1] : what[0];
+            ibToast(`Couldn’t delete ${list}. ${chbActErrSay(failed[0].e).replace(/\.?$/, '.')}`);
+        } else ibToast(stay ? `Deleted. ${ibFirst(p)}’s booking stays on Today.` : `Deleted your conversation with ${ibFirst(p)}.`);
     },
 };
 let __ibSwallow = null;

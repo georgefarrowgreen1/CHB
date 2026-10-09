@@ -619,6 +619,27 @@ if ($action === 'restore' || $action === 'undecline') {
     json_out($r);
 }
 
+// Delete for good (the Inbox deleting a conversation). Decline is the soft
+// delete with a way back; this is the one the owner asked for when they meant
+// it, and it sends the guest nothing. The name is read first so the log can say
+// whose it was once the row has gone.
+if ($action === 'delete') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    if ($id <= 0) {
+        json_out(['error' => 'Missing enquiry id'], 400);
+    }
+    $nm = db()->prepare('SELECT name FROM enquiries WHERE id = ?');
+    $nm->execute([$id]);
+    $name = (string) ($nm->fetchColumn() ?: '');
+    $st = db()->prepare('DELETE FROM enquiries WHERE id = ?');
+    $st->execute([$id]);
+    if ($st->rowCount() > 0) {
+        log_activity('enquiry', 'enquiry.delete', 'Enquiry deleted' . ($name !== '' ? ' (' . $name . ')' : ''), ['entity' => 'enquiry', 'entity_id' => (string) $id]);
+    }
+    json_out(['ok' => true]);
+}
+
 // Render the confirmation email an approval would send, so the owner can review
 // it before approving. No booking is created and nothing is sent.
 if ($action === 'approve_preview') {
