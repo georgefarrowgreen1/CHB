@@ -9492,9 +9492,9 @@ function cmdkSheetOpen(section, title) {
     box.innerHTML =
         `<div class="cmdk-group-label">Edit · ${escapeHtml(title || section)}</div>` +
         `<button type="button" class="cmdk-ex cmdk-back" data-act="cmdkSheetClose">‹ Back to results</button>` +
-        `<div class="cmdk-sheet-host" id="cmdk-sheet-host"></div>`;
+        `<div class="cmdk-sheet-host one-look" id="cmdk-sheet-host"></div>`;
     const host = document.getElementById('cmdk-sheet-host');
-    if (host) { sec.style.display = ''; host.appendChild(sec); }
+    if (host) { sec.style.display = ''; host.appendChild(sec); oneLookWatch(host); }
     if (cmdk) cmdk.classList.add('cmdk-sheet');
 }
 // Put the borrowed section node back where it belongs — used on Back AND on any
@@ -12518,15 +12518,16 @@ function settingsOpen(section) {
     if (cap) cap.innerHTML = '';
     // The two Reviews sub-pages go back to Reviews, not to the index; the
     // account's three pages go back to the account.
-    settingsBackTarget = /^reviews-/.test(section)
-        ? () => settingsOpen('reviews')
+    const backTo = /^reviews-/.test(section)
+        ? 'reviews'
         : section === 'person'
-          ? () => settingsOpen('people')
+          ? 'people'
           : section === 'emails'
-            ? () => settingsOpen(__oaEmailsFrom)
+            ? __oaEmailsFrom
             : OA_DEPTH[section] === 2
-            ? () => settingsOpen('acct')
-            : () => settingsShowIndex();
+              ? 'acct'
+              : '';
+    settingsSetBack(backTo ? () => settingsOpen(backTo) : () => settingsShowIndex(), backTo ? SETTINGS_TITLES[backTo] : 'Manage');
     settingsRenderSection(section);
     // The rail's Cottages row goes current the moment the cottages section
     // paints — settingsOpen doesn't nav() when Manage is already up, so the
@@ -12582,6 +12583,53 @@ function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
     else settingsShowIndex();
 }
+// The back link names where it goes ("‹ Manage", "‹ Reviews"), as the account
+// pages' always did — a bare "‹ Back" left the owner guessing which back.
+const BACK_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+function settingsSetBack(fn, label) {
+    settingsBackTarget = fn;
+    const b = document.getElementById('settings-back');
+    if (b) b.innerHTML = `${BACK_CHEV}<span>${escapeHtml(label || 'Manage')}</span>`;
+}
+// ONE LOOK: every button on a Manage screen is one of THREE kinds — the accent
+// pill (u-btn1, the one thing a card is for), the outlined pill (u-btn2) and the
+// outlined pill in danger ink (u-btn3). Before, forty renderers carried fifteen
+// looks between them. The kind is decided HERE, at the choke point (an observer
+// over the Manage views), not in each template: a class you have to remember is
+// one the next renderer forgets — the email_dark_hooks rule. It reads the label,
+// because what a button DOES is what decides its weight. A button keeps its kind
+// once given one, so "Save" passing through "Saving…" does not change shape.
+const ONE_LOOK_OLD = ['btn-sm', 'btn-edit', 'btn-delete', 'btn-glass', 'btn-accent', 'pay-btn', 'pay-btn2', 'mod-ok', 'mod-no', 'rv-act', 'rv-copy', 'ana-export', 'sp-again', 'mo-tool', 'sp-on', 'etpl-del', 'cal-all', 'rvi-add', 'sp-fix', 'ga-link', 'ga-photolink'];
+const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|Send to subscribers|Back up now|Send test text|Connect|Update|Add it|Check again|Paste a new link)/i;
+const ONE_LOOK_DANGER = /^(Delete|Remove|Clear)\b/i;
+const ONE_LOOK_KINDS = ['u-btn1', 'u-btn2', 'u-btn3'];
+// Switchers, folds and the season strip's own controls are not buttons of this kind.
+const ONE_LOOK_NOT = '.pay-seg *, .ana-seg *, .al-tabs *, .rvi-chips *, .chb-switch *, .sg-sum, .bhub-fold-row, .sg-usesug, .sg-dbtn, .sg-date, .sg-dates, .u-addrow';
+function oneLookKind(label) {
+    const t = String(label || '').replace(/\s+/g, ' ').trim().replace(/[›→]\s*$/, '').trim();
+    return ONE_LOOK_DANGER.test(t) ? 'u-btn3' : ONE_LOOK_PRIMARY.test(t) || t === 'Done' ? 'u-btn1' : 'u-btn2';
+}
+function oneLookButtons(root) {
+    if (!root) return;
+    root.querySelectorAll('button, a.btn-sm').forEach((bt) => {
+        const old = ONE_LOOK_OLD.filter((c) => bt.classList.contains(c));
+        const has = ONE_LOOK_KINDS.some((c) => bt.classList.contains(c));
+        // A plain "Cancel" in an editor is the outlined pill too.
+        const cancel = !has && !old.length && bt.textContent.trim() === 'Cancel';
+        if (!old.length && !cancel && (has || !bt.closest('.exp-edit, .sg-foldin, .u-acts'))) return;
+        if (bt.matches(ONE_LOOK_NOT)) return;
+        old.forEach((c) => bt.classList.remove(c));
+        if (!has) bt.classList.add(oneLookKind(bt.textContent));
+    });
+}
+function oneLookWatch(root) {
+    if (!root || root.__oneLook) return;
+    oneLookButtons(root);
+    // Every repaint is covered — a section's own in-place refresh included — and
+    // the kinds land before the next paint (observer callbacks are microtasks).
+    root.__oneLook = new MutationObserver(() => oneLookButtons(root));
+    root.__oneLook.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+}
 
 // ===================================================================
 //  THE OWNER'S ACCOUNT (approved demo), built the way the guest account is:
@@ -12611,13 +12659,25 @@ function listAnd(a) {
 // (a save, a list landing) does not move.
 function oaPage(sec, html) {
     let cls = '';
+    let style = '';
     if (!__oaStill) {
         const a = OA_DEPTH[__oaFrom] || 0;
         const b = OA_DEPTH[sec] || 0;
         cls = b > a ? ' ga-in' : b < a ? ' ga-in-back' : '';
         __oaFrom = sec;
+    } else {
+        // A repaint that lands while the page is still sliding in (the people list
+        // arriving and adding the Host profile row) carries the slide on from where
+        // it was, instead of snapping the page into place mid-way.
+        const cur = document.querySelector('#' + sec + '-body > .ga-page');
+        const run = cur && cur.getAnimations ? cur.getAnimations().find((x) => x.playState === 'running') : null;
+        const was = cur ? (cur.classList.contains('ga-in') ? ' ga-in' : cur.classList.contains('ga-in-back') ? ' ga-in-back' : '') : '';
+        if (run && was) {
+            cls = was;
+            style = ` style="animation-delay:-${Math.round(Number(run.currentTime) || 0)}ms"`;
+        }
     }
-    return `<div class="ga-page${cls}">${html}</div>`;
+    return `<div class="ga-page${cls}"${style}>${html}</div>`;
 }
 function oaBack(to, label) {
     return `<button type="button" class="ga-back oa-back" ${chbAttrs('oaGo', to)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>${escapeHtml(label)}</button>`;
@@ -14551,7 +14611,7 @@ function settingsOpenAccom(k) {
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
-    settingsBackTarget = () => settingsShowIndex();
+    settingsSetBack(() => settingsShowIndex(), 'Manage');
     __settingsPath = { section: 'accom', prop: k };
     try { chbFrameSync(); } catch (e) {}
     chbScroll(window, { top: 0 });
@@ -14870,7 +14930,7 @@ function renderCalendarList() {
         else list.innerHTML = calListHtml();
         if (!__calOv) calLoadOverview();
     }
-    settingsBackTarget = () => settingsShowIndex();
+    settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.calendar;
 }
@@ -15044,7 +15104,7 @@ async function settingsOpenCalendar(k) {
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
-    settingsBackTarget = () => settingsOpen('calendar');
+    settingsSetBack(() => settingsOpen('calendar'), SETTINGS_TITLES.calendar);
     __settingsPath = { section: 'calendar', prop: k };
     await loadCalendarSyncProp(k);
     chbScroll(window, { top: 0 });
@@ -15072,7 +15132,7 @@ function renderCancelList() {
         list.style.display = '';
         list.innerHTML = `<div class="settings-group">${cancelRowsHtml()}</div>`;
     }
-    settingsBackTarget = () => settingsShowIndex();
+    settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.cancel;
 }
@@ -15103,7 +15163,7 @@ function settingsOpenCancel(propKey) {
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[propKey] ? propertyMeta[propKey].name : propKey;
-    settingsBackTarget = () => settingsOpen('cancel');
+    settingsSetBack(() => settingsOpen('cancel'), SETTINGS_TITLES.cancel);
     __settingsPath = { section: 'cancel', prop: propKey };
     chbScroll(window, { top: 0 });
 }
@@ -19293,9 +19353,9 @@ function sqLocOpen() {
         ov.id = 'sq-loc-modal';
         ov.className = 'modal-overlay rvq-overlay';
         ov.innerHTML = `<div class="modal-box rvq-box sql-box" role="dialog" aria-modal="true" aria-labelledby="sql-title">
-                <div class="rvq-head"><h2 id="sql-title">Square location</h2>
-                    <button type="button" class="rvq-close" aria-label="Close" data-act="sqLocClose"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+                <div class="rvq-head"><h2 id="sql-title">Square location</h2></div>
                 <div class="acr-well rv-well sql-list" id="sql-list" role="listbox" aria-labelledby="sql-title"></div>
+                <div class="rvq-acts"><button type="button" class="u-btn2" data-act="sqLocClose">Cancel</button></div>
             </div>`;
         ov.addEventListener('click', (e) => { if (e.target === ov) sqLocClose(); });
         document.body.appendChild(ov);
@@ -26484,7 +26544,7 @@ function renderTestCentreList() {
         detail.style.display = 'none';
         detail.innerHTML = '';
     }
-    settingsBackTarget = () => settingsShowIndex();
+    settingsSetBack(() => settingsShowIndex(), 'Manage');
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES.testcentre;
     if (!list) return;
@@ -26510,7 +26570,7 @@ function tcOpen(page) {
     const title = document.getElementById('settings-panel-title');
     if (title)
         title.innerHTML = `${SETTINGS_TITLES.testcentre} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
-    settingsBackTarget = () => renderTestCentreList();
+    settingsSetBack(() => renderTestCentreList(), SETTINGS_TITLES.testcentre);
     if (page === 'stage') detail.innerHTML = tcPageStage();
     else if (page === 'features') detail.innerHTML = tcPageFeatures();
     else if (page === 'preview') detail.innerHTML = tcPagePreview();
@@ -27471,9 +27531,9 @@ function reviewQrOpen(k) {
         ov.id = 'rv-qr-modal';
         ov.className = 'modal-overlay rvq-overlay';
         ov.innerHTML = `<div class="modal-box rvq-box" role="dialog" aria-modal="true" aria-labelledby="rvq-title">
-                <div class="rvq-head"><span class="rv-dot" id="rvq-dot" aria-hidden="true"></span><h2 id="rvq-title"></h2>
-                    <button type="button" class="rvq-close" aria-label="Close" data-act="reviewQrClose"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+                <div class="rvq-head"><span class="rv-dot" id="rvq-dot" aria-hidden="true"></span><h2 id="rvq-title"></h2></div>
                 <div class="rvq-code" id="rvq-code"></div>
+                <div class="rvq-acts"><button type="button" class="u-btn2" data-act="reviewQrClose">Done</button><button type="button" class="u-btn1" id="rvq-copy">Copy link</button></div>
             </div>`;
         // A tap on the scrim closes it, like every other sheet.
         ov.addEventListener('click', (e) => { if (e.target === ov) reviewQrClose(); });
@@ -27486,8 +27546,14 @@ function reviewQrOpen(k) {
     if (dot) dot.style.background = `var(--prop-${k}, var(--accent))`;
     const code = document.getElementById('rvq-code');
     if (code) code.innerHTML = chbQrSvg(reviewLinkUrl(k) + '?from=qr');
+    // Every window ends the same way: its answers at the foot, never a corner ✕.
+    const cp = document.getElementById('rvq-copy');
+    if (cp) {
+        cp.setAttribute('data-act', 'copyReviewLink');
+        cp.setAttribute('data-args', JSON.stringify([k]));
+    }
     ov.classList.add('open');
-    const c = ov.querySelector('.rvq-close');
+    const c = ov.querySelector('[data-act="reviewQrClose"]');
     if (c) /** @type {HTMLElement} */ (c).focus();
 }
 function reviewQrClose() {
@@ -33242,6 +33308,8 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 // restored straight onto Inbox or Payments must not wait for a Today visit
 // (renderNeedsYou) to see the day and the rail's counts.
 try { chbFrameSync(); } catch (e) {}
+// The Manage screens' buttons take their kind from here on (oneLookButtons).
+try { ['view-settings', 'view-activity-log'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

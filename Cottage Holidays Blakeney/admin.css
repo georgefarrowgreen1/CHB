@@ -8465,3 +8465,376 @@ div.ga-row.oa-swrow { cursor: default; }
   .em-tog .ga-ava { transition: none; }
   .em-tog.is-nudge { animation: none; }
 }
+
+/* ============================================================================
+   ONE LOOK ACROSS MANAGE (approved demo, "One look for Manage")
+   Every Manage page and every window opened from one: one card, one row, one
+   caption, one field, three kinds of button, one switcher, one stat tile, one
+   window shape. The parts are the account pages' (ga-*), which already looked
+   like this; every other page used to carry its own variant (fifteen button
+   looks, ten cards, seven captions, four window shapes).
+   SCOPE: P = the Manage view, the activity log and the search sheet that hosts
+   a Manage section (`.one-look`, (0,1,1) like the owner-mode rules it follows);
+   W = a window opened while one of those is up. Nothing outside Manage moves.
+   Every value reads a token: change the token, not the rule.
+   ========================================================================== */
+
+/* ---------- 0. TOKENS ---------- */
+body.owner-mode {
+  --u-ground: var(--glass-bg);                 /* a card */
+  --u-edge: var(--glass-border);               /* a card's edge, a row's hairline */
+  --u-inset: color-mix(in srgb, var(--text-light) 4%, transparent); /* a panel inside a card */
+  --u-pill-edge: color-mix(in srgb, var(--text-light) 16%, transparent);
+  --u-track: color-mix(in srgb, var(--text-light) 6%, transparent);
+  --u-field: rgba(0, 0, 0, 0.14);
+  --u-ring: var(--accent-text);
+  --u-r-card: var(--r-lg);                     /* 20 */
+  --u-r-cell: var(--r-sm);                     /* 12 */
+  --u-h-row: 56px;
+  --u-h-field: 48px;
+  --u-h-control: 44px;
+  --u-h-small: 36px;
+  --u-pad: 16px;
+  --u-gap: 12px;                               /* card to card */
+  --u-gap-section: 24px;                       /* a caption's air above */
+  --u-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E");
+  --u-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
+  --u-photo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2.5'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='M21 15.5l-4.5-4.5L8 19'/%3E%3C/svg%3E");
+}
+body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
+
+/* ---------- 1. PAGE HEADER: a back link that names where it goes, then the title ---------- */
+:is(main, div).one-look .back-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: var(--u-h-control); margin: 0 0 0 -4px; padding: 0 4px;
+  background: none; border: 0; border-radius: var(--u-r-cell);
+  color: var(--accent-text); font: inherit; font-size: var(--fs-body); font-weight: 500;
+}
+:is(main, div).one-look .back-link svg { width: 20px; height: 20px; }
+:is(main, div).one-look :is(.settings-sec, #settings-panel) .section-title:not(.ga-h1),
+#view-activity-log.one-look .section-title:not(.ga-h1) { margin: 4px 0; text-align: left; font-family: var(--font-sans); font-size: var(--fs-display); font-weight: 400; }
+:is(main, div).one-look .settings-panel-head { margin-bottom: 8px; }
+
+/* ---------- 2. CAPTION: one tier, sentence case, above its card ---------- */
+:is(main, div).one-look :is(.acr-cap, .sp-cap, .sp-h2, .ana-group-title, .u-cap, .bo-sec-title, .settings-section-label, .bhub-grpcap, .exp-pubcap),
+:is(main, div).one-look #sg-count {
+  font-family: var(--font-sans); font-size: var(--fs-caption); font-weight: 600; line-height: 1.5;
+  color: var(--text-muted); text-transform: none; letter-spacing: 0;
+  margin: var(--u-gap-section) 4px 8px; padding: 0; text-align: left;
+}
+:is(main, div).one-look :is(.rv-sec > .acr-cap:first-child, .u-cap.is-first, .acr-body > .acr-cap:first-child) { margin-top: 16px; }
+/* A label inside a card (a stat's name, a sub-heading) is the same type, without the air. */
+:is(main, div).one-look .acw-cap { font-size: var(--fs-caption); font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+
+/* ---------- 3. CARD: the account group, everywhere ---------- */
+:is(main, div).one-look :is(.acr-well, .accounts-stat, .mo-card, .sl-card, .sp-need, .sp-hero, .sp-tsum, .mg-sum, .al-card, .al-week, .sp-off,
+  .ana-insights, .u-win, .sp-card, .ac-card, .settings-sec .bhub-fold-grp, .sp-week, .sg-band,
+  .cancel-card, .sg-addcard, .cal-well, .exp-edit, .u-listcard),
+:is(main, div).one-look #sec-newsletter .glass-panel, :is(main, div).one-look #replies-body {
+  background: var(--u-ground); border: 1px solid var(--u-edge); border-style: solid;
+  border-radius: var(--u-r-card); box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+/* A content card holds its content 16px in; a list card holds its rows edge to edge. */
+:is(main, div).one-look :is(.accounts-stat, .mo-card, .sl-card, .sp-hero, .mg-sum, .al-card, .ana-insights, .u-win.is-pad) { padding: var(--u-pad); max-width: none; }
+:is(main, div).one-look #sec-newsletter .glass-panel { padding: var(--u-pad); max-width: none; }
+:is(main, div).one-look :is(.sp-need, .sp-off) { padding: 12px var(--u-pad); }
+:is(main, div).one-look #replies-body { overflow: hidden; }
+/* Stat tiles stand on the page, not in a card of their own. */
+:is(main, div).one-look .sl-card:has(.sl-stat) { background: none; border: 0; padding: 0; }
+/* A panel inside a card (a comparison, a guest's facts): the one inset surface. */
+:is(main, div).one-look :is(.pr-cmp, .gst-facts) { background: var(--u-inset); border: 0; border-radius: var(--u-r-cell); }
+/* Cards of one kind that stack are ONE list: a hairline between, corners at the ends. */
+:is(main, div).one-look :is(.sp-need, .sp-off, .ac-card, .settings-sec .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .cancel-card, .u-join):has(+ :is(.sp-need, .sp-off, .ac-card, .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .sg-addcard, .cancel-card, .u-join)) {
+  border-bottom-width: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0 !important;
+}
+:is(main, div).one-look :is(.sp-need, .sp-off, .ac-card, .settings-sec .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .cancel-card, .u-join) + :is(.sp-need, .sp-off, .ac-card, .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .sg-addcard, .cancel-card, .u-join) {
+  margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0;
+}
+:is(main, div).one-look :is(.sg-list, .sg-bands, .sg-cards, .cancel-cards, #sg-grid) { gap: 0 !important; }
+:is(main, div).one-look .settings-sec .bhub-fold-grp { margin-bottom: 0; }
+:is(main, div).one-look .settings-sec .bhub-fold-grp + :not(.bhub-fold-grp) { margin-top: var(--u-gap); }
+:is(main, div).one-look #accom-detail { gap: 0; }
+:is(main, div).one-look #accom-detail > :not(.ac-card) { margin-top: var(--u-gap); }
+/* Each cottage's calendar keeps its own card and air — the owner asked for that. */
+:is(main, div).one-look #calendar-list .bhub-fold-grp { margin: 0 0 16px !important; border-radius: var(--u-r-card) !important; border-width: 1px !important; }
+/* The status card's ring carries the state; the card does not shout it too. */
+:is(main, div).one-look .sp-hero { border-color: var(--u-edge); }
+:is(main, div).one-look .cancel-card.selected { background: color-mix(in srgb, var(--text-light) 5%, var(--u-ground)); }
+/* Inside an open section a card's own sub-groups are inset panels, not cards within a card. */
+:is(main, div).one-look .bhub-fold .acr-well { background: var(--u-inset); border: 0; border-radius: var(--u-r-cell); }
+
+/* ---------- 4. ROW: the account row ---------- */
+:is(main, div).one-look :is(.acr-row, .pay-row, .rv-go, .bhub-fold-row, .acw-frow) { min-height: var(--u-h-row); padding: 12px var(--u-pad); gap: var(--u-gap); }
+:is(main, div).one-look :is(.acr-lbl, .pay-lbl, .bhub-fold-lbl, .sp-sysname, .sp-nlabel, .rv-name, .sg-sum-name, .etpl-row-name, .settings-sec .settings-row-label),
+:is(main, div).one-look #settings-panel .settings-row-label {
+  font-size: var(--fs-body); font-weight: 500; color: var(--text-light);
+}
+:is(main, div).one-look :is(.acr-lbl small, .pr-rsub, .sp-ndetail, .sp-offsub, .bhub-fold-sub, .etpl-row-sub) { font-size: var(--fs-sub); color: var(--text-muted); font-weight: 400; }
+:is(main, div).one-look :is(.pay-val, .ga-v) { font-size: var(--fs-body); color: var(--text-muted); }
+:is(main, div).one-look .settings-row { padding-left: var(--u-pad); padding-right: var(--u-pad); }
+:is(main, div).one-look #replies-body .etpl-mrow { padding: 12px var(--u-pad); border-top: 1px solid var(--u-edge); margin: 0; }
+:is(main, div).one-look #replies-body .etpl-mrow:first-child { border-top: 0; }
+/* A review link row: the cottage, then its two actions on the right. */
+:is(main, div).one-look .rv-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--u-gap); min-height: var(--u-h-row); padding: 8px var(--u-pad); }
+:is(main, div).one-look .rv-row .rv-acts { display: flex; gap: 8px; padding: 0; border: 0; grid-template-columns: none; }
+:is(main, div).one-look .rv-row .rv-acts button { padding: 0 16px; }
+:is(main, div).one-look .gst-acts { background: none; border: 0; border-top: 1px solid var(--u-edge); border-radius: 0; }
+
+/* ---------- 5. ICON: one tile, the accent on the page's ground ---------- */
+:is(main, div).one-look :is(.settings-row-ic:not(.oa-ic), .sp-sysic, .sp-offic, .al-ic) {
+  flex: 0 0 32px; width: 32px; height: 32px; margin: 0; padding: 0;
+  display: grid; place-items: center; border-radius: var(--u-r-cell);
+  background: var(--well-bg); color: var(--accent-text); border: 0;
+}
+:is(main, div).one-look :is(.settings-row-ic:not(.oa-ic), .sp-sysic, .sp-offic, .al-ic) svg { width: 18px; height: 18px; color: var(--accent-text); }
+:is(main, div).one-look .settings-row-ic:not(.oa-ic) + .settings-row-main { margin-left: 4px; }
+:is(main, div).one-look .settings-row[data-act="addAccommodationPrompt"] .settings-row-label { color: var(--accent-text); }
+
+/* ---------- 6. CHEVRON: one, drawn the same everywhere ---------- */
+:is(main, div).one-look .settings-row-chev {
+  flex: 0 0 16px; width: 16px; height: 16px; font-size: 0; color: var(--text-muted);
+  background: currentColor; -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+  transition: transform 0.32s var(--unfold);
+}
+:is(main, div).one-look :is(.bhub-chev, .ga-chev, .sp-syshead > svg:last-child, .al-row > svg:last-child) { width: 16px; height: 16px; color: var(--text-muted); }
+:is(main, div).one-look [aria-expanded="true"] > .settings-row-chev { transform: rotate(90deg); }
+
+/* ---------- 7. BUTTONS: three kinds (oneLookButtons decides which), and the add row ---------- */
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: auto !important; min-height: var(--u-h-control); height: auto; padding: 0 20px; margin: 0;
+  border-radius: var(--r-pill); border: 1px solid var(--u-pill-edge);
+  background: transparent; color: var(--text-light);
+  font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; line-height: 1.2;
+  text-transform: none; letter-spacing: 0; box-shadow: none; filter: none; text-decoration: none; white-space: nowrap;
+  flex-direction: row; cursor: pointer;
+}
+/* Primary: the one thing a card is for. */
+:is(main, div).one-look .u-btn1 { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+/* Destructive: the outlined pill in danger ink — never a red border. */
+:is(main, div).one-look .u-btn3 { color: var(--danger-text); }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3) svg { width: 18px; height: 18px; margin: 0; }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3):disabled { opacity: 0.5; cursor: default; }
+/* A press moves the pill 4px in, whatever its width (chbPressDepth), and springs back. */
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3) { transition: transform 320ms var(--settle); }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3):active { transform: scale(var(--sc, 0.97)); transition: transform 80ms var(--in); }
+/* The states the old button classes carried, kept for every kind: working (a
+   spinner, never a dimmed button), copied and sent (the ok tint), settled (a beat). */
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-busy { cursor: progress; pointer-events: none; }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-busy:disabled { opacity: 1; }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-busy:not(:has(svg))::before {
+  content: ''; display: inline-block; width: 13px; height: 13px; flex: none;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
+  border-radius: 50%; animation: chbSpin 1s linear infinite;
+}
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-busy svg { animation: chbSpin 0.9s linear infinite; }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3):is(.is-copied, .is-sent) { background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 35%, transparent); color: var(--ok-text); }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-copied svg path { stroke-dasharray: 26; animation: chbDraw 400ms var(--out) both; }
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3).is-settle { animation: chbSettle 340ms var(--settle); }
+@media (prefers-reduced-motion: reduce) {
+  :is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3):is(.is-copied svg path, .is-settle) { animation: none; }
+  /* A check in progress still says so: its spinner is information, not decoration. */
+  :is(main, div).one-look #sp-again.is-busy svg { animation: chbSpin 1s linear infinite !important; }
+}
+/* Adding something is a row at the foot of the list it adds to. */
+:is(main, div).one-look .u-addrow {
+  display: flex; align-items: center; gap: var(--u-gap); width: 100%;
+  min-height: var(--u-h-row); padding: 12px var(--u-pad); margin: 0;
+  background: none; border: 0; border-top: 1px solid var(--u-edge); border-radius: 0;
+  color: var(--accent-text); font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 500; text-align: left; cursor: pointer;
+}
+:is(main, div).one-look .u-addrow .u-addic { flex: 0 0 32px; width: 32px; height: 32px; border-radius: var(--u-r-cell); background: var(--well-bg); display: grid; place-items: center; }
+:is(main, div).one-look .u-addrow .u-addic i { width: 18px; height: 18px; background: currentColor; -webkit-mask: var(--u-plus) center / 18px no-repeat; mask: var(--u-plus) center / 18px no-repeat; }
+:is(main, div).one-look :is(.u-addrow.is-first, .u-join > .u-addrow, .sg-addcard > .u-addrow, .ga-group > .u-addrow:first-child, .acr-well > .u-addrow:first-child) { border-top: 0; }
+/* A card's actions: one row at its foot, primary first. */
+:is(main, div).one-look :is(.acw-acts, .u-acts, .mod-acts, .acw-modacts) {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start;
+  grid-template-columns: none; padding: 12px var(--u-pad); border-top: 1px solid var(--u-edge);
+}
+:is(main, div).one-look :is(.mo-tools, .u-acts.is-bare) { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 0; border-top: 0; }
+:is(main, div).one-look .sg-acts { display: flex; flex-wrap: wrap; gap: 8px; grid-template-columns: none; }
+:is(main, div).one-look .sg-acts button { flex: 0 0 auto; white-space: nowrap; }
+:is(main, div).one-look [data-act="runSelfRepair"] { align-self: flex-start; justify-self: start; }
+/* A row's own trailing action, and a suggestion inside a field: the outlined pill, small. */
+:is(main, div).one-look :is(.sp-on, .sg-usesug) {
+  min-height: var(--u-h-small); padding: 0 16px; border-radius: var(--r-pill); white-space: nowrap;
+  background: transparent; border: 1px solid var(--u-pill-edge); color: var(--text-light);
+  font-size: var(--fs-sub); font-weight: 600;
+}
+
+/* ---------- 8. SWITCHER: one pill track ---------- */
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) {
+  display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control); align-items: stretch;
+  background: var(--u-track); border: 0; border-radius: var(--r-pill); box-shadow: none; backdrop-filter: none;
+}
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button {
+  flex: 1 1 auto; min-height: var(--u-h-small); padding: 0 12px; border: 0; border-radius: var(--r-pill); white-space: nowrap;
+  background: transparent; color: var(--text-light);
+  font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; box-shadow: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button:is(.is-on, .on, .is-active, [aria-pressed="true"], [aria-selected="true"]) {
+  background: var(--accent) !important; color: var(--accent-ink) !important;
+}
+:is(main, div).one-look :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .rvi-chips) .chb-pill { display: none; }
+/* Choices that wrap: the same item, outlined until chosen. */
+:is(main, div).one-look .rvi-chip {
+  min-height: var(--u-h-small); padding: 0 16px; border-radius: var(--r-pill);
+  border: 1px solid var(--u-pill-edge); background: transparent; color: var(--text-light);
+  font-size: var(--fs-sub); font-weight: 600;
+}
+:is(main, div).one-look .rvi-chip:is([aria-pressed="true"], .is-on) { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: transparent !important; }
+:is(main, div).one-look .u-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- 9. STAT TILE: a figure over its name ---------- */
+:is(main, div).one-look :is(.gst-stat, .sl-stat, .mo-kpi, .sp-vital, .u-stat) {
+  background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--u-r-card);
+  padding: 16px var(--u-pad); box-shadow: none; text-align: left;
+}
+:is(main, div).one-look :is(.gst-stat b, .gst-n, .sl-stat-n, .mo-value, .sp-vbig, .u-stat-n) {
+  font-family: var(--font-sans); font-size: var(--fs-title); font-weight: 600; color: var(--text-light); line-height: 1.2;
+}
+:is(main, div).one-look :is(.sl-stat-l, .mo-label, .sp-vcap, .u-stat-l, .gst-stat span:not(.gst-n)) {
+  font-size: var(--fs-sub); font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: 0;
+}
+:is(main, div).one-look :is(.mo-sub, .sp-vsmall) { font-size: var(--fs-caption); color: var(--text-muted); }
+:is(main, div).one-look .u-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---------- 10. FIELD: one, always under its label ---------- */
+:is(main, div).one-look .settings-sec :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
+:is(main, div).one-look .al-search input, body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-box .input-glass {
+  min-height: var(--u-h-field); height: auto; padding: 12px 16px; margin: 0;
+  background: var(--u-field) !important; border: 1px solid var(--u-edge);
+  border-radius: var(--u-r-cell); color: var(--text-light); box-shadow: none;
+  font-family: var(--font-sans) !important; font-size: var(--fs-headline); text-align: left; width: 100%;
+}
+:is(main, div).one-look .settings-sec textarea:is(.input-glass, .rvi-paste) { min-height: 96px; }
+:is(main, div).one-look .settings-sec .pay-in { height: var(--u-h-field); }
+:is(main, div).one-look :is(.settings-sec .input-glass[type="search"], .gst-search .input-glass) { padding-left: 40px; }
+:is(main, div).one-look :is(.al-search, .sg-nameline) { background: var(--u-field); border: 1px solid var(--u-edge); border-radius: var(--u-r-cell); min-height: var(--u-h-field); }
+:is(main, div).one-look .sg-nameline { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 0; overflow: hidden; }
+:is(main, div).one-look .sg-nameline .sg-name { flex: 1 1 auto; min-width: 0; background: none; border: 0; }
+/* Selects that sit in a row keep to their content. */
+:is(main, div).one-look .acr-row select.acw-pill { width: auto; min-width: 104px; min-height: var(--u-h-field); padding: 8px 12px; font-size: var(--fs-body); }
+/* The label: one style, above the field. */
+:is(main, div).one-look :is(.acw-frow > label, .modal-label, .pay-flbl, .u-flabel, .sg-namecap label),
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-fields label {
+  display: block; margin: 0 0 8px; font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted);
+  text-transform: none; letter-spacing: 0;
+}
+:is(main, div).one-look .acw-frow { display: block; }
+:is(main, div).one-look .pay-row:has(.pay-in) { display: flex !important; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; height: auto; min-height: 0; }
+:is(main, div).one-look .pay-row:has(.pay-in) .pay-lbl { flex: 0 0 auto; margin: 0; font-size: var(--fs-sub); color: var(--text-muted); font-weight: 600; }
+/* A typed price is a field like any other, and the whole box is its tap target. */
+:is(main, div).one-look .acr-ota { display: inline-flex; align-items: center; gap: 8px; min-height: var(--u-h-field); min-width: 104px; padding: 0 16px; border-radius: var(--u-r-cell); background: var(--u-field); border: 1px solid var(--u-edge); }
+:is(main, div).one-look .acr-ota input { min-width: 0; width: 64px; background: none; border: 0; }
+
+/* ---------- 11. WINDOW: one shape ---------- */
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
+  border-radius: var(--u-r-card); padding: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  background: var(--sheet-surface); border: 1px solid var(--u-edge);
+  backdrop-filter: none; -webkit-backdrop-filter: none; text-align: left;
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-title, .ga-sheet-t, .glass-dialog-box h3, .dp-title, .rvq-head h2), body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #dp-title {
+  font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; text-align: left; margin: 0 0 8px;
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-msg, .ga-sheet-s) { font-size: var(--fs-body); color: var(--text-muted); text-align: left; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns, #date-picker .dp-foot, .rvq-acts) { display: flex; gap: 8px; margin-top: 24px; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .rvq-acts { margin-top: 8px; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .rvq-acts > button { flex: 1 1 0; cursor: pointer; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button) {
+  min-height: var(--u-h-control); height: var(--u-h-control); padding: 0 20px; border-radius: var(--r-pill);
+  font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; box-shadow: none; filter: none;
+}
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog-cancel, .ga-sheet-cancel, #dp-clear, .rvq-acts > .u-btn2) { background: transparent; color: var(--text-light); border: 1px solid var(--u-pill-edge); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog-ok:not(.is-danger), #dp-done, .rvq-acts > .u-btn1) { background: var(--accent); color: var(--accent-ink); border: 1px solid transparent; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #glass-dialog-ok.is-danger { background: transparent; color: var(--danger-text); border: 1px solid var(--u-pill-edge); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .dp-foot > button { flex: 1 1 0; }
+@keyframes uSheetUp { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes uScrimIn { from { opacity: 0; } to { opacity: 1; } }
+/* On a phone every window rises from the bottom edge, as the photo sheet already did. */
+@media (max-width: 640px) {
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog, #ga-photo-sheet, #rv-qr-modal, #date-picker) { align-items: flex-end !important; padding: 0 !important; animation: uScrimIn 200ms var(--out); }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
+    max-width: none !important; width: 100% !important; margin: 0 !important;
+    border-radius: var(--u-r-card) var(--u-r-card) 0 0; border-bottom: 0;
+    padding: 28px 20px calc(20px + var(--safe-b)); position: relative;
+    animation: uSheetUp 420ms var(--sheet) both !important;
+  }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card)::before {
+    content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%);
+    border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
+  }
+  /* Two answers share the row; two LONG answers stack, the action on top (the app's own rule) — never clip. */
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-btns { flex-wrap: wrap-reverse; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-btns > button { flex: 1 1 auto; min-width: max-content; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .ga-sheet-cancel { width: 100%; }
+}
+
+/* ---------- 12. REACH AND FOCUS ---------- */
+/* A 36px control still reaches 44: the region grows, the drawing does not. */
+:is(main, div).one-look :is(.rvi-chip, .sp-on, .sg-usesug, .al-clear, .sg-blk, :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button) { position: relative; }
+:is(main, div).one-look :is(.rvi-chip, .sp-on, .sg-usesug, :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button)::after { content: ""; position: absolute; inset: -4px 0; }
+:is(main, div).one-look .sg-blk::after { content: ""; position: absolute; inset: -8px -10px; }
+:is(main, div).one-look .al-clear::after { content: ""; position: absolute; inset: -6px; }
+/* Keyboard focus: one ring, everywhere. */
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3, .u-addrow, .back-link, .rvi-chip, .sp-on, .sg-usesug, .ga-row, .settings-row, .bhub-fold-row, .sg-sum, .al-row, .sp-syshead,
+  :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button):focus-visible,
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button):focus-visible {
+  outline: 2px solid var(--u-ring); outline-offset: 2px;
+}
+:is(main, div).one-look :is(.ga-row, .settings-row, .bhub-fold-row, .sg-sum, .al-row, .sp-syshead, .u-addrow):focus-visible { outline-offset: -2px; border-radius: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) { animation: none !important; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog, #ga-photo-sheet, #rv-qr-modal, #date-picker) { animation: none !important; }
+  :is(main, div).one-look .settings-row-chev { transition: none; }
+}
+
+/* ---------- 13. ONE-OFFS the pages needed ---------- */
+/* A place's editor is one column with one gap: the rows the app groups fields into step aside. */
+:is(main, div).one-look .exp-edit { display: flex; flex-direction: column; gap: var(--u-gap); padding: var(--u-pad) !important; margin: 0 0 var(--u-gap) !important; }
+:is(main, div).one-look .exp-edit > div:not(.u-field):not(.u-acts), :is(main, div).one-look .exp-edit > div > div:not(.u-field):not(.exp-edit-thumb) { display: contents !important; }
+:is(main, div).one-look .exp-edit .u-field { display: block; width: 100%; margin: 0 !important; }
+:is(main, div).one-look .exp-edit > .u-acts { margin-top: 4px; }
+:is(main, div).one-look .exp-edit .u-btn2[aria-label^="Move"] { width: 44px !important; padding: 0; }
+:is(main, div).one-look .exp-edit textarea { min-height: 96px; }
+/* Opened inside its own row, the editor is that row's content, not a card within the card. */
+:is(main, div).one-look .bhub-fold .exp-edit { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+/* A place's photo keeps its own square; no photo yet, and the square says so. */
+:is(main, div).one-look .exp-edit-thumb { width: 64px; height: 64px; flex: 0 0 64px; border-radius: var(--u-r-cell); }
+:is(main, div).one-look .exp-edit-thumb[style*="url('')"] { position: relative; background-color: var(--u-inset); border-style: dashed; }
+:is(main, div).one-look .exp-edit-thumb[style*="url('')"]::after { content: ''; position: absolute; inset: 0; background: var(--text-muted); -webkit-mask: var(--u-photo) center / 24px no-repeat; mask: var(--u-photo) center / 24px no-repeat; }
+/* On a phone the two everyday actions share the first line; moving and deleting take the second. */
+@media (max-width: 640px) {
+  :is(main, div).one-look .exp-edit > .u-acts > :is([data-act="expSave"], [data-act="expUpload"]) { flex: 1 1 calc(50% - 4px); }
+}
+/* A season's dates and prices are fields like any other. */
+:is(main, div).one-look .sg-dates { display: flex; align-items: center; gap: 8px; max-width: 100%; flex-wrap: wrap; min-height: var(--u-h-field); padding: 0 !important; background: none !important; border: 0 !important; }
+:is(main, div).one-look .sg-dates .sg-dt { display: inline-flex; align-items: center; min-height: var(--u-h-field); padding: 0 16px; border-radius: var(--u-r-cell); background: var(--u-field); border: 1px solid var(--u-edge); font-size: var(--fs-body); font-weight: 500; color: var(--text-light); }
+:is(main, div).one-look .sg-price { min-height: var(--u-h-field); border-radius: var(--u-r-cell); background: var(--u-field); border: 1px solid var(--u-edge); }
+/* An open season fits the phone (its dates and prices used to run off the right edge). */
+:is(main, div).one-look .sg-fold { grid-template-columns: minmax(0, 1fr); }
+:is(main, div).one-look .sg-foldin { min-width: 0; }
+/* Seasons are one list at every width (two columns tore the list in half on a computer). */
+:is(main, div).one-look .sg-cards { grid-template-columns: minmax(0, 1fr) !important; }
+/* Nothing the app hides is ever shown by these rules. */
+:is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3, .u-addrow, .acw-acts, .u-acts, .mo-tools, .pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg)[hidden] { display: none; }
+/* A caption inside a card lines up with the card's own content. */
+:is(main, div).one-look :is(.accounts-stat, .acr-well, .u-win, .mo-card, .sl-card, .cal-well) :is(.acr-cap, .u-cap, .sp-cap, .acw-cap) { margin: 16px 0 8px; }
+/* A list card holds its rows edge to edge. */
+:is(main, div).one-look .al-card.al-list { padding: 0; overflow: hidden; }
+
+/* ---------- 14. ONE COLUMN, ONE TITLE, AT EVERY WIDTH ---------- */
+/* Every Manage page reads in the same 640px column on a computer, its header included. */
+:is(main, div).one-look :is(.settings-sec, #sec-seasongrid), :is(main, div).one-look #settings-panel .settings-sec.oa-sec { max-width: 640px; }
+:is(main, div).one-look #settings-panel .settings-panel-head, :is(main, div).one-look #settings-panel > .back-link { max-width: 640px; }
+:is(main, div).one-look .cancel-cards { max-width: none; }
+/* The account pages' title is the same size as every other page's (it grew to 48px on a computer). */
+:is(main, div).one-look .ga-h1 { font-size: var(--fs-display); line-height: 1.2; }
+/* The menu's captions carry their air as padding, so two columns start level. */
+:is(main, div).one-look #settings-index .settings-section-label { margin-top: 0; padding-top: var(--u-gap-section); }
+/* …except "Needs a look": under your account row it keeps the group gap (24px on a phone; on two
+   columns the row brings 20 of its own), not the caption air on top of that. */
+:is(main, div).one-look #manage-verdicts .settings-section-label { margin-top: var(--u-gap-section); padding-top: 0; }
+@media (min-width: 900px) { :is(main, div).one-look #manage-verdicts .settings-section-label { margin-top: 4px; } }

@@ -138,7 +138,7 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
     await page.click('#sp-again');
     const mid = await page.evaluate(() => document.getElementById('sp-hero').className);
     await page.waitForFunction(() => { const h = document.getElementById('sp-hero'); return h && !h.classList.contains('is-revealing') && !h.classList.contains('is-checking'); }, null, { timeout: 8000 });
-    const s4 = await page.evaluate(() => ({ tone: document.getElementById('sp-hero').className, title: document.getElementById('sp-htitle').textContent, off: parseFloat(document.getElementById('sp-arc').style.strokeDashoffset), need: [...document.querySelectorAll('.sp-need .sp-nlabel')].map((e) => e.textContent), auto: document.querySelector('.sp-sys[data-k="auto"] .sp-badge').textContent.trim(), fix: !!document.querySelector('.sp-fix') }));
+    const s4 = await page.evaluate(() => ({ tone: document.getElementById('sp-hero').className, title: document.getElementById('sp-htitle').textContent, off: parseFloat(document.getElementById('sp-arc').style.strokeDashoffset), need: [...document.querySelectorAll('.sp-need .sp-nlabel')].map((e) => e.textContent), auto: document.querySelector('.sp-sys[data-k="auto"] .sp-badge').textContent.trim(), fix: !!document.querySelector('#diagnostics-body [data-act="runSelfRepair"]') }));
     ok(runs.n === before + 1, `one fresh run (${runs.n - before})`);
     ok(/is-checking|is-revealing/.test(mid), `the hero says it is checking while it does (${mid})`);
     ok(/is-bad/.test(s4.tone) && s4.title === '1 issue needs you', `the new verdict ("${s4.title}")`);
@@ -153,7 +153,7 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
     ok(!/is-revealing/.test(s5.cls) && s5.off === 0, `lands on the verdict at once (${s5.off})`);
     ok(s5.bar === 'none' && s5.mark === '1', `nothing is held at its starting frame by a delay (bar ${s5.bar}, mark ${s5.mark})`);
     if (shots) await page.screenshot({ path: shots + '/status-light.png', fullPage: true });
-    await page.click('.sp-off .sp-on');
+    await page.click('.sp-off button');
     await page.waitForTimeout(400);
     ok(await page.evaluate(() => { const s = document.getElementById('sec-apis'); return !!s && s.style.display !== 'none'; }), 'Turn on opens the page that switches it on');
     await page.close();
