@@ -2604,6 +2604,30 @@ owner's side of the product barely moved. Gated by **`ui-test-backoffice-motion.
   that neither is in the deploy's comment-strip list, which covers the four guest
   assets only, so those bytes are shipped bytes rather than prose.
 
+## Today moves (owner-asked, built and pushed to main without tests or CI)
+
+**Asked for as "fix the outline, add animations to the whole today page"**, after a
+redesign demo the owner declined ("prefer how it currently is") — so the layout is
+untouched and only motion was added. The "TODAY MOVES" blocks in admin.js and at the
+foot of admin.css.
+- **The outline**: `.bk-row.is-open` (the docked hub's selection) is only given, and
+  only styled, where a row and its docked booking sit side by side (`bookingsSplitWide()`
+  and `@media (min-width: 1200px)`). On a phone the last opened booking kept an outline
+  that meant nothing.
+- **ARRIVAL ONCE PER VISIT, NEVER ON A REFRESH**: a MutationObserver arms `__tdArmed`
+  when `#view-backoffice` gains `active`, and initBackOffice's first render after it
+  plays `tdArrive()`: the header, the Needs-you rows (half-step stagger), the calendar
+  bar and panel, the bars drawing in again (`__tlDrew` reset), the now-line dropping and
+  pinging, today's number ringed, the bookings caption and first rows. Each element is
+  tagged on its own (`tdTag`, cleared after 2.2s), so a re-render just appears.
+- **Supersedes "THE FILTER SWITCH is a FADE, never a cascade"**: Upcoming|Past has a
+  travelling pill (`chbSeatPill` on `#bookings-filters`) and the rows slide in from the
+  side the switch moved to (`bkListSwapped` — still keyed on filter + search TEXT, so a
+  data refresh replays nothing); a search rises.
+- New Needs-you rows slide in (`__nySeen`, by duty key), the empty state's mark draws
+  itself, the + turns to × while its menu is open.
+- Reduced motion and the offline day sheet (`tdMotionOk`) skip all of it.
+
 ## Five small motions — the snaps in the booking flow (approved demo, built)
 
 **Asked for as "what other little ui upgrades/animations can be added", demoed

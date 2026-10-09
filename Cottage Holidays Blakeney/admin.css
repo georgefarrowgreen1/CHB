@@ -370,9 +370,15 @@ body.light-mode {
    replaced --glass-bg (0.78 white in light) at equal specificity and later in
    the file, so the docked row was the one GREY card among white ones, and
    `border-color` blanked whichever traffic-light edge .pay-* had set. */
-}.bk-row.is-open {
-  background: var(--glass-hover);
-  --bk-ring: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* Only where a row and its docked booking sit side by side (1200px+). On a phone
+   the booking opens as its own page, so the last one opened kept an outline that
+   meant nothing. */
+@media (min-width: 1200px) {
+  .bk-row.is-open {
+    background: var(--glass-hover);
+    --bk-ring: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
 }.bk-row-body {
   flex: 1;
   min-width: 0;
@@ -6793,17 +6799,11 @@ div.mo-landed { display: block; } /* the row lists under each figure */
   from { transform: scaleX(0.02); opacity: 0.35; }
 }
 
-/* --- THE FILTER SWITCH: a FADE of the whole body, never a staggered entrance.
-   renderBookings runs on every data refresh as well as every filter change, so
-   a cascade would replay dozens of times a session. Fires only when the filter
-   or the search actually changed — a change of subject. */
-.bk-list-swap { animation: bkListSwap 200ms var(--out); }
-@keyframes bkListSwap {
-  from { opacity: 0; }
-}
+/* --- THE FILTER SWITCH slides the rows in (TODAY MOVES, at the foot): keyed on a
+   change of subject, never on the data refreshes renderBookings also runs for. */
 
 @media (prefers-reduced-motion: reduce) {
-  .mo-landed, .bk-verdict-settle, .dock-badge-pop, .tl-bar.tl-draw, .bk-list-swap {
+  .mo-landed, .bk-verdict-settle, .dock-badge-pop, .tl-bar.tl-draw {
     animation: none;
   }
 }
@@ -9641,3 +9641,45 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
 .cmp-done path { fill: none; stroke: var(--cmp-okc); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22; stroke-dashoffset: 22; animation: cmpDraw 420ms 100ms var(--out) forwards; }
 @keyframes cmpDraw { to { stroke-dashoffset: 0; } }
 @keyframes cmpPopIn { from { transform: scale(0.4); opacity: 0; } }
+
+/* ── TODAY MOVES ───────────────────────────────────────────────────────────
+   admin.js tdArrive / bkListSwapped / renderNeedsYou tag elements one by one;
+   each class comes off again after its run. */
+/* Arriving: each block settles in, in reading order. */
+.td-in { animation: tdIn 520ms var(--out) backwards; animation-delay: calc(var(--td-i, 0) * 55ms); }
+@keyframes tdIn { from { opacity: 0; transform: translateY(10px); } }
+/* The now-line drops into place under today's date, and its dot pings once. */
+.tl-nowline.td-now { animation: tdNowDrop 560ms var(--out) 280ms backwards; transform-origin: top center; }
+@keyframes tdNowDrop { from { transform: scaleY(0); opacity: 0; } }
+.tl-nowline.td-now::before { animation: tdNowPing 1200ms var(--out) 760ms; }
+@keyframes tdNowPing {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  to { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+/* Today's date fades in with a ring that settles (it is an inline span, so no scale). */
+.tl-num.td-pop { animation: tdPop 640ms var(--out) 180ms backwards; }
+@keyframes tdPop { from { opacity: 0; box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 45%, transparent); } }
+/* Upcoming / Past: the accent pill travels to the chosen side. */
+#view-backoffice #bookings-filters.inbox-sort.seg { position: relative; }
+#view-backoffice #bookings-filters.inbox-sort.seg > .chb-pill { display: block; background: var(--accent); border-radius: var(--r-pill); }
+#view-backoffice #bookings-filters.inbox-sort.seg > button { position: relative; z-index: 1; transition: color 260ms var(--out); }
+#view-backoffice #bookings-filters.inbox-sort.seg.has-pill > button.is-on { background: transparent !important; color: var(--accent-ink) !important; }
+/* The list slides in from the side you switched to; a search's results rise. */
+.bk-in-r { animation: bkInR 400ms var(--out) backwards; animation-delay: calc(var(--td-i, 0) * 40ms); }
+.bk-in-l { animation: bkInL 400ms var(--out) backwards; animation-delay: calc(var(--td-i, 0) * 40ms); }
+.bk-in-u { animation: tdIn 360ms var(--out) backwards; animation-delay: calc(var(--td-i, 0) * 40ms); }
+@keyframes bkInR { from { opacity: 0; transform: translateX(18px); } }
+@keyframes bkInL { from { opacity: 0; transform: translateX(-18px); } }
+/* An empty list draws its calendar mark. */
+.bk-empty svg.bk-draw :is(rect, path) { stroke-dasharray: 1; animation: bkDraw 720ms var(--out) 140ms backwards; }
+@keyframes bkDraw { from { stroke-dashoffset: 1; } }
+/* A to-do that was not there before slides into the list. */
+.ny-row.ny-arrive { animation: nyArrive 460ms var(--out) backwards; }
+@keyframes nyArrive { from { opacity: 0; transform: translateY(-8px); } }
+/* The + turns into a × while its menu is open. */
+.cal-actions .cal-add-btn span { transition: rotate 320ms var(--sheet); }
+.cal-actions .cal-add-btn[aria-expanded="true"] span { rotate: 45deg; }
+@media (prefers-reduced-motion: reduce) {
+  .td-in, .tl-nowline.td-now, .tl-nowline.td-now::before, .tl-num.td-pop, .bk-in-r, .bk-in-l, .bk-in-u, .bk-empty svg.bk-draw :is(rect, path), .ny-row.ny-arrive { animation: none; }
+  .cal-actions .cal-add-btn span, #view-backoffice #bookings-filters.inbox-sort.seg > button { transition: none; }
+}

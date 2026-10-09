@@ -10328,6 +10328,7 @@ function bookingsSetFilter(f) {
             : '';
     }
     renderBookings();
+    bkSeatPill(false);
 }
 function bookingsSetSearch(v) {
     __bookingsSearch = String(v || '')
@@ -10342,14 +10343,92 @@ function bookingsSetSearch(v) {
 // keyed on the filter and the search TEXT rather than on the render: a refresh
 // that leaves you looking at the same list must not flicker it.
 let __bkListSubject = null;
+// ── TODAY MOVES ───────────────────────────────────────────────────────────
+// Today settles in once per VISIT: armed when the view becomes active, played by
+// the first render after it (initBackOffice), never by a data refresh. What
+// changes says so: the Upcoming/Past pill travels, the list slides in from the
+// side you switched to, a new to-do arrives. Elements are tagged one by one,
+// never through a class on their container, so a row re-rendered mid-entrance
+// simply appears instead of starting over. Reduced motion and the offline day
+// sheet skip all of it.
+let __tdArmed = true;
+try {
+    const tdView = document.getElementById('view-backoffice');
+    if (tdView) {
+        let tdWas = tdView.classList.contains('active');
+        new MutationObserver(() => {
+            const on = tdView.classList.contains('active');
+            if (on && !tdWas) __tdArmed = true;
+            tdWas = on;
+        }).observe(tdView, { attributes: true, attributeFilter: ['class'] });
+    }
+} catch (e) {}
+function tdMotionOk() {
+    if (document.body.classList.contains('offline-snap')) return false;
+    try { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return true; }
+}
+// Start (or restart) one element's entrance; `i` staggers it.
+/** @param {any} el @param {number} [i] @param {string} [cls] */
+function tdTag(el, i, cls) {
+    if (!el || !el.getClientRects().length) return false;
+    const c = cls || 'td-in';
+    el.style.setProperty('--td-i', String(i || 0));
+    el.classList.remove(c);
+    void (/** @type {HTMLElement} */ (el)).offsetWidth;
+    el.classList.add(c);
+    clearTimeout(el.__tdT);
+    el.__tdT = setTimeout(() => el.classList.remove(c), 2200);
+    return true;
+}
+function tdArrive() {
+    const v = document.getElementById('view-backoffice');
+    if (!v || !v.classList.contains('active') || !tdMotionOk()) return;
+    const q = (sel) => v.querySelector(sel);
+    let i = 0;
+    if (tdTag(q('.dashboard-header'), i)) i++;
+    const ny = q('#needs-you');
+    if (ny && ny.getClientRects().length) {
+        tdTag(q('#needs-you > .bo-sec-title'), i);
+        ny.querySelectorAll('.ny-row, .ny-more').forEach((r, k) => tdTag(r, i + 0.5 + Math.min(k, 4) * 0.5));
+        i += 2;
+    }
+    if (tdTag(q('.cal-header-bar'), i)) i++;
+    if (tdTag(q('.cal-panel'), i)) i++;
+    tdTag(q('.tl-nowline'), 0, 'td-now');
+    tdTag(q('.tl-day.is-today .tl-num'), 0, 'td-pop');
+    if (tdTag(q('.bk-caprow'), i)) i++;
+    const list = q('#bookings-list');
+    if (list) Array.from(list.children).slice(0, 8).forEach((r, k) => tdTag(r, i + k * 0.6));
+    tdTag(q('#bookings-list .bk-empty svg'), 0, 'bk-draw');
+    bkSeatPill(true);
+}
+// The Upcoming/Past switch: the accent pill travels to the chosen side.
+function bkSeatPill(instant) {
+    const host = document.getElementById('bookings-filters');
+    if (!host || !host.getClientRects().length || typeof chbSeatPill !== 'function') return;
+    chbSeatPill(host, instant);
+    if (!(/** @type {any} */ (host)).__bkRo) {
+        /** @type {any} */ (host).__bkRo = true;
+        try { new ResizeObserver(() => chbSeatPill(host, true)).observe(host); } catch (e) {}
+    }
+}
+let __bkPrevFilter = null;
+// A change of SUBJECT (the filter or the search), never a plain refresh: the rows
+// slide in from the side you switched to (Past lies to the right of Upcoming), and
+// rise for a search. Returns whether the subject changed.
 function bkListSwapped(list) {
     const now = __bookingsFilter + '\u0000' + __bookingsSearch;
     const was = __bkListSubject;
     __bkListSubject = now;
-    if (was === null || was === now) return; // first paint, or a plain refresh
-    list.classList.remove('bk-list-swap');
-    void (/** @type {HTMLElement} */ (list)).offsetWidth;
-    list.classList.add('bk-list-swap');
+    const fromF = __bkPrevFilter;
+    __bkPrevFilter = __bookingsFilter;
+    if (was === null || was === now) return false; // first paint, or a plain refresh
+    if (!tdMotionOk()) return true;
+    const ord = (f) => (f === 'upcoming' ? 0 : f === 'past' ? 1 : -1);
+    const a = ord(fromF), b = ord(__bookingsFilter);
+    const dir = fromF !== __bookingsFilter && a >= 0 && b >= 0 ? (b > a ? 'bk-in-r' : 'bk-in-l') : 'bk-in-u';
+    Array.from(list.children).slice(0, 10).forEach((r, k) => tdTag(r, k * 0.6, dir));
+    return true;
 }
 function renderBookings() {
     const list = document.getElementById('bookings-list');
@@ -10434,11 +10513,12 @@ function renderBookings() {
                 ? ['No past bookings', 'Stays that have finished will appear here.']
                 : ['No bookings here', 'Nothing matches this filter right now.'];
         list.innerHTML =
-            '<div class="bk-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><p>' + emptyWords[0] + '</p><small>' + emptyWords[1] + '</small></div>';
+            '<div class="bk-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" pathLength="1"/><path d="M3.5 10h17M8 3v4M16 3v4" pathLength="1"/></svg><p>' + emptyWords[0] + '</p><small>' + emptyWords[1] + '</small></div>';
         // A filter with nothing in it is a subject change too — and calling it on
         // BOTH branches is what keeps the memo honest: recording the subject only
         // when rows exist would make the return trip read as unchanged.
-        bkListSwapped(list);
+        if (bkListSwapped(list) && tdMotionOk()) tdTag(list.querySelector('.bk-empty svg'), 0, 'bk-draw');
+        if (!document.querySelector('#bookings-filters > .chb-pill')) bkSeatPill(true);
         // A selection whose booking no longer exists must not linger in the pane.
         if (__hubBookingId && !findBookingById(__hubBookingId)) {
             __hubBookingId = null;
@@ -10450,6 +10530,7 @@ function renderBookings() {
     }
     list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
     bkListSwapped(list);
+    if (!document.querySelector('#bookings-filters > .chb-pill')) bkSeatPill(true);
     // Wide split: keep the docked pane in sync — drop a selection whose booking
     // is gone, and open the first listed booking when nothing is selected yet
     // so the dashboard never sits with an empty pane.
@@ -10505,7 +10586,7 @@ function bookingListRow(propKey, b, today) {
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
     return `
-        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + payLabel + ' ' + (past ? 'past' : 'upcoming')).toLowerCase())}" ${chbAttrs('openBookingHub', String(b.id))}>
+        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId && bookingsSplitWide() ? ' is-open' : ''}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + payLabel + ' ' + (past ? 'past' : 'upcoming')).toLowerCase())}" ${chbAttrs('openBookingHub', String(b.id))}>
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
@@ -23461,6 +23542,8 @@ function needsYouExpand() {
 // five-line comment inside the window pushed it past — the CI-only failure
 // this comment is standing where it can't repeat. Measured headroom is small;
 // put new prose HERE, above the declaration, never inside the body.
+/** @type {Set<string>|null} */
+let __nySeen = null; // the to-dos on screen at the last render; null before the first
 function renderNeedsYou() {
     try { chbFrameSync(); } catch (e) {}
     try { refreshInboxBadge(); } catch (e) {}
@@ -23480,6 +23563,11 @@ function renderNeedsYou() {
     // opportunity (gap offers, pacing ideas) is just "worth a look" — the
     // badge counts the duties when there are any, and turns calm green when
     // everything shown is optional.
+    // A to-do that was not on screen last time slides in (never on the first paint).
+    const nyId = (it) => String(it.key || it.label || '');
+    const nySeen = __nySeen;
+    __nySeen = new Set(items.map(nyId));
+    const nyNew = (it) => !!nySeen && !nySeen.has(nyId(it)) && tdMotionOk();
     const duties = items.filter((it) => !it.opp).length;
     const word = document.getElementById('needs-you-word');
     if (word) word.textContent = duties ? 'Needs you' : 'Worth a look';
@@ -23504,7 +23592,7 @@ function renderNeedsYou() {
         shown
             .map(
                 (it) => `
-        <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}${it.key ? ` data-nykey="${escapeHtml(it.key)}" aria-describedby="ny-hint" aria-keyshortcuts="Delete"` : ''}>
+        <button type="button" class="ny-row glass-panel ny-${it.sev}${nyNew(it) ? ' ny-arrive' : ''}" ${it.go}${it.key ? ` data-nykey="${escapeHtml(it.key)}" aria-describedby="ny-hint" aria-keyshortcuts="Delete"` : ''}>
             <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
             <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
             <span class="ny-act">${it.act}<span class="ny-chev"> ›</span></span>
@@ -25431,10 +25519,20 @@ async function initBackOffice() {
             })
             .catch(() => {});
     } catch (e) {}
+    // Arriving on Today: the bars draw in again, then everything settles in order.
+    const tdArriving = __tdArmed;
+    __tdArmed = false;
+    if (tdArriving && tdMotionOk()) {
+        const ch = document.getElementById('cal-body');
+        if (ch) /** @type {any} */ (ch).__tlDrew = false;
+    }
     renderCalendar();
     try {
         renderBookings(); // the bookings workspace shares the dashboard now
     } catch (e) {}
+    if (tdArriving) {
+        try { tdArrive(); } catch (e) {}
+    }
     renderInbox();
     try {
         refreshModerationCounts();
