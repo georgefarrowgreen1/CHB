@@ -32633,6 +32633,11 @@ function ibRender() {
     const root = ibRoot();
     if (!root) return;
     ibWire(root);
+    const rf = document.getElementById('ib-refresh');
+    if (rf && !(/** @type {any} */ (rf).__ibWired)) {
+        /** @type {any} */ (rf).__ibWired = true;
+        rf.addEventListener('click', () => { ibRefresh(); });
+    }
     ibListShell();
     if (ibStReady() && !ibState().since) {
         ibState().since = ibNow();
@@ -32647,9 +32652,44 @@ function ibRender() {
     ibRenderAll();
     try { refreshInboxBadge(); } catch (e) {}
 }
+// The refresh button: everything the list is built from, asked again at once.
+// The arrows turn while it works and become a tick when it lands; a dropped
+// connection says so rather than leaving the old list looking current.
+let __ibRefreshing = false;
+async function ibRefresh() {
+    if (__ibRefreshing) return;
+    __ibRefreshing = true;
+    const b = document.getElementById('ib-refresh');
+    if (b) { b.classList.remove('is-done'); b.classList.add('is-busy'); b.setAttribute('aria-busy', 'true'); }
+    const t0 = Date.now();
+    let ok = true;
+    try {
+        if (typeof __mbxFailed !== 'undefined') __mbxFailed = false;
+        const [r] = await Promise.all([
+            Promise.resolve(loadData()).catch(() => ({ ok: false })),
+            Promise.resolve(loadAdminMessages()).catch(() => {}),
+            Promise.resolve(ibLoadAll(true)).catch(() => {}),
+        ]);
+        ok = !r || r.ok !== false;
+    } finally {
+        // Long enough to be seen turning, even when the answer is instant.
+        const wait = Math.max(0, 600 - (Date.now() - t0));
+        setTimeout(() => {
+            __ibRefreshing = false;
+            ibSoon();
+            if (!b) return;
+            b.classList.remove('is-busy');
+            b.removeAttribute('aria-busy');
+            if (ok) {
+                b.classList.add('is-done');
+                setTimeout(() => b.classList.remove('is-done'), 1400);
+            } else toast('Couldn’t check for new messages. Check your connection.', 'error');
+        }, wait);
+    }
+}
 // The other stores the one list needs. Each loader keeps its own failure honest.
 function ibLoadAll(force) {
-    if (__ibLoaded && !force) return;
+    if (__ibLoaded && !force) return Promise.resolve();
     __ibLoaded = true;
     const jobs = [];
     if (typeof __mbxOpenedOnce !== 'undefined' && (!__mbxOpenedOnce || force)) {
@@ -32665,6 +32705,7 @@ function ibLoadAll(force) {
     jobs.push(Promise.resolve(loadBookingEmailLogs()).catch(() => {}));
     jobs.forEach((j) => j.then(ibSoon));
     ibSoon();
+    return Promise.all(jobs);
 }
 function ibAutoOpen() {
     const live = __ibPeople.filter(ibInList);

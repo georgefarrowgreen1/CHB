@@ -1518,6 +1518,13 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   (`--ib-top`); the toast is placed where it covers nothing (`ibToastPlace`).
 - **Markup uses `data-ib`, never `data-act`**, and `ib-` classes, so the app's dispatcher and the
   one-look restyler leave it alone.
+- **A refresh button sits beside the status pill** (`#ib-refresh` in `.ib-head-r`, the Payments + circle's
+  shape). The header is outside `#ib`, so `ibRender` wires it directly. `ibRefresh()` asks everything again
+  at once: `loadData()` (bookings, enquiries), `loadAdminMessages()` (chats) and `ibLoadAll(true)` (the
+  mailbox, declined enquiries, archived chats, email logs; it now returns its promise). The arrows turn for at
+  least 600ms, then show a green tick for 1.4s. A failed `loadData` says "Couldn't check for new messages"
+  rather than leaving the old list looking current. Checked by a throwaway browser drive at 390 dark and 1280
+  light; no suite asserts it.
 - **DONE IS A FOLDER** (approved demo, built without CI at the owner's ask). An Inbox | Done switch
   (the one switcher, its accent pill travelling on `--sheet`) sits under the search; `__ibFolder`
   decides what `ibRenderList` shows. Inbox = Waiting / Earlier / Reminders, a calm card when nothing

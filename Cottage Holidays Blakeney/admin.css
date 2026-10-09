@@ -8985,6 +8985,17 @@ body.owner-mode.light-mode #ib {
 
 /* ── the list ── */
 #ib .ib-list { min-width: 0; padding: 0 0 40px; }
+/* The refresh button beside the status pill: Payments' + circle, the arrows turning while it asks. */
+.ib-head-r { display: flex; align-items: center; gap: 8px; }
+.ib-refresh { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--u-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; cursor: pointer; padding: 0; transition: transform 0.32s var(--settle); }
+.ib-refresh svg { width: 20px; height: 20px; }
+.ib-refresh .ib-rf-tick { display: none; }
+.ib-refresh.is-busy svg { animation: ibSpin 0.8s linear infinite; }
+.ib-refresh.is-done { color: var(--ok-text); }
+.ib-refresh.is-done .ib-rf-arc { display: none; }
+.ib-refresh.is-done .ib-rf-tick { display: inline; }
+.ib-refresh:active { transform: scale(var(--sc, 0.97)); transition-duration: 0.08s; transition-timing-function: var(--in); }
+@keyframes ibSpin { to { rotate: 360deg; } }
 #ib .ib-search { position: relative; display: block; }
 #ib .ib-search > svg { position: absolute; left: 14px; top: 50%; translate: 0 -50%; width: 17px; height: 17px; color: var(--text-muted); pointer-events: none; }
 #ib .ib-search input { width: 100%; min-height: 48px; border-radius: var(--r-sm); border: 1px solid var(--ib-edge); background: var(--ib-field); color: var(--text-light); padding: 0 44px; font-size: var(--fs-body); }
