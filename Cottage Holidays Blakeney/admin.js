@@ -10624,7 +10624,10 @@ try {
         const active = (document.querySelector('.page-view.active') || {}).id;
         try {
             if (active === 'view-backoffice' || active === 'view-booking-hub') {
-                if (__hubBookingId && findBookingById(__hubBookingId)) openBookingHub(__hubBookingId);
+                // Today's auto-selected booking is not one the owner opened: narrowing the window
+                // (an iPad turning to portrait) must leave them on Today, not open it full screen.
+                if (active === 'view-backoffice' && __hubAuto && !tlMq.matches) return;
+                if (__hubBookingId && findBookingById(__hubBookingId)) openBookingHub(__hubBookingId, active === 'view-backoffice' && __hubAuto);
             } else if (active === 'view-inbox' || active === 'view-enquiry-hub') {
                 if (__enqHubId && enquiries.find((x) => x.id === __enqHubId)) openEnquiryHub(__enqHubId);
             }
@@ -10701,6 +10704,8 @@ function closeEmailPreview() {
 //  row and search hit routes here (app.js showDetails → openBookingHub).
 // ==================================================================
 let __hubBookingId = null;
+// The docked hub was Today's own auto-select, not a booking the owner opened (see onSplitChange).
+let __hubAuto = false;
 // A settled booking's Money card folds to one line; the full breakdown opens
 // as a pop-up window (renderBookingHub stashes its HTML here).
 // ---- Hub header overflow menu (⋯ More): one open at a time; click-away and
@@ -10882,10 +10887,10 @@ function bhubFoldToggle(key) {
 // "›" text glyph). Every row that discloses — fold groups, the payline, the
 // cottage sections, the mailbox context — carries this same span.
 const BHUB_CHEV = '<span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
-function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs) {
+function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs, cls) {
     const open = __bhubOpenFolds.has(key) || (BHUB_KIDS[key] || []).some((k) => __bhubOpenFolds.has(k));
     return `
-        <section class="bhub-card glass-panel bhub-fold-grp" data-grp="${key}"${attrs || ''}>
+        <section class="bhub-card glass-panel bhub-fold-grp${cls ? ' ' + cls : ''}" data-grp="${key}"${attrs || ''}>
             <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${key}">
                 <span class="bhub-fold-lbl">${label}${sub ? `<small class="bhub-fold-sub">${sub}</small>` : ''}</span>
                 <span class="bhub-fold-right">${sumHtml || ''}${BHUB_CHEV}</span>
@@ -10938,6 +10943,7 @@ async function openBookingHub(bookingId, quiet) {
         ['money', 'guest', 'history', 'intel', 'rating', 'note', 'emails', 'activity', 'register'].forEach((k) => __bhubOpenFolds.delete(k));
     }
     __hubBookingId = bookingId;
+    __hubAuto = !!quiet;
     try { chbStampRecent('booking', bookingId, b && b.name); } catch (e) {} // cross-page memory
     const content = document.getElementById('booking-hub-content');
     if (bookingsSplitWide()) {
@@ -11879,9 +11885,29 @@ function renderBookingHub() {
                 <button class="bhub-actlink" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>`;
     const moneyMore = `<div class="bhub-money-more bhub-fold" id="bhub-money-more"${moreWasOpen ? '' : ' hidden'}><div class="bhub-foldin">${fullBox}${agreedNote}${planPanel}${depositLine}${moneyActs}</div></div>`;
+    // ---- Needs attention — outstanding DUTIES surface; what is fine says
+    // nothing (the exception rule). Only the register qualifies today. Stands
+    // down when the to-do card already carries the ask. ----
+    const regNeeded = !past && b.regUrl && (!b.regSubmitted || !bookingRegComplete(b));
+    // It sits BETWEEN the decision card and the money, the Payments landing's order, so Money,
+    // Guest and History stay ONE card below it instead of the money row being cut off on its own.
+    // The wrapper keeps the register row from joining the money group (both are fold groups).
+    const attnHtml = regNeeded && !(__hubNext && __hubNext.regAsk)
+        ? `<div class="bhub-attn"><span class="bhub-grpcap is-attn">Needs attention</span>` +
+          bhubFoldGrp('reg',
+              `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Guest register — ${b.regSubmitted ? `${b.regCount} of ${Math.max(1, Number(b.adults) || 1)} recorded` : 'not submitted'}`,
+              'Required before arrival (UK guest records)',
+              '',
+              `<div class="bhub-btn-row bhub-act-links">
+                  <button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy the details link</button>
+                  <button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>Fill in the guest register</button>
+              </div>`) + '</div>'
+        : '';
+
     const payBlock = `
         <div class="bhub-headpay">
             ${payAsk}
+            ${attnHtml}
             <div class="bhub-money-grp bhub-card glass-panel bhub-fold-grp" data-grp="money">
             ${payline}
             ${moneyMore}
@@ -11948,22 +11974,6 @@ function renderBookingHub() {
             ${pipeHtml}
             ${payBlock}
         </div>`;
-
-    // ---- Needs attention — outstanding DUTIES surface; what is fine says
-    // nothing (the exception rule). Only the register qualifies today. Stands
-    // down when the to-do card already carries the ask. ----
-    const regNeeded = !past && b.regUrl && (!b.regSubmitted || !bookingRegComplete(b));
-    const attnHtml = regNeeded && !(__hubNext && __hubNext.regAsk)
-        ? `<span class="bhub-grpcap is-attn">Needs attention</span>` +
-          bhubFoldGrp('reg',
-              `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Guest register — ${b.regSubmitted ? `${b.regCount} of ${Math.max(1, Number(b.adults) || 1)} recorded` : 'not submitted'}`,
-              'Required before arrival (UK guest records)',
-              '',
-              `<div class="bhub-btn-row bhub-act-links">
-                  <button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy the details link</button>
-                  <button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>Fill in the guest register</button>
-              </div>`)
-        : '';
 
     // ---- Emails — the summary states the latest send (hub_bundle fills
     // #bhub-emails-sum when the booking itself can't answer). ----
@@ -12140,7 +12150,7 @@ function renderBookingHub() {
     const guestAll = bhubFoldGrp('guest', 'Guest', `In ${escapeHtml(b.checkInTime || '15:00')} · out ${escapeHtml(b.checkOutTime || '10:00')}`, guestSum, `${guestFold}${intelCard}${ratingCard}${noteCard}`);
     const refLine = ref ? `<div class="bhub-mut bhub-facts">Reference ${escapeHtml(ref)}</div>` : '';
     const historyAll = bhubFoldGrp('history', 'History', '', '', `${refLine}${emailsCard}${historyCard}`);
-    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${guestAll}${historyAll}</div>${sticky}`;
+    el.innerHTML = `${header}<div class="bhub-grid">${guestAll}${historyAll}</div>${sticky}`;
     // The page settles in ONCE per booking opened (a data refresh re-renders this and must not replay it).
     if (__hubDrewId !== b.id) {
         __hubDrewId = b.id;
@@ -13898,15 +13908,16 @@ function renderSearchLearning() {
         ['Dead-ends waiting', misses.length],
     ].map(([lbl, n]) => `<div class="sl-stat"><span class="sl-stat-n">${n}</span><span class="sl-stat-l">${esc(lbl)}</span></div>`).join('');
     // A "Test the assistant" sandbox — type any phrasing, see how it reads it.
-    const probeHtml = `
-        <section class="glass-panel sl-card">
-            <label class="sl-probe-label" for="sl-probe-input">Test the assistant</label>
-            <input id="sl-probe-input" class="input-glass" autocomplete="off" placeholder="e.g. who still hasn't coughed up" ${chbInput('slProbe')} data-pass="value">
-            <div id="sl-probe-out" class="sl-probe-out"></div>
-        </section>`;
+    // The figures are stat tiles on the page and the sandbox is a field under them, as Guest list
+    // has its tiles and its search — the sandbox was a card of its own beside nothing.
     const statusHtml = `
         <section class="glass-panel sl-card">
             <div class="sl-stats">${statTiles}</div>
+            <div class="sl-probe">
+                <label class="sl-probe-label" for="sl-probe-input">Test the assistant</label>
+                <input id="sl-probe-input" class="input-glass" autocomplete="off" placeholder="e.g. who still hasn't coughed up" ${chbInput('slProbe')} data-pass="value">
+                <div id="sl-probe-out" class="sl-probe-out"></div>
+            </div>
         </section>`;
 
     // The answerable question-types — options for the "teach to any answer" picker.
@@ -13993,7 +14004,7 @@ function renderSearchLearning() {
     const taughtSum = learned.length ? stCap('ok', learned.length + ' phrasing' + (learned.length === 1 ? '' : 's')) : stCap('unk', 'none yet');
     const supSum = suppressed.length ? stCap('unk', String(suppressed.length)) : stCap('unk', 'none');
     wrap.innerHTML =
-        statusHtml + probeHtml +
+        statusHtml +
         bhubFoldGrp('sl-teach', 'Teach the assistant', teachSub, teachSum, `<div class="sl-fold-body">${missRows}</div>`) +
         (guestQs.length ? bhubFoldGrp('sl-guest', 'Guests asked these', guestSub, guestSum, `<div class="sl-fold-body">${guestRows}</div>`) : '') +
         bhubFoldGrp('sl-taught', 'What you’ve taught it', '', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
@@ -14194,33 +14205,34 @@ async function renderSms() {
     });
 
 }
-// One sentence for the state, so the page always leads with what is true. Styled
-// from the tokens directly rather than through new classes: the settings CSS
-// lives in app.css, which every anonymous visitor downloads and which is held
-// flat — and the surrounding markup in this panel is inline-styled anyway.
+// The page's state is the Manage pill beside its title (the one look's status rule); its words
+// carry the full sentence as the pill's name. The one fact a pill cannot carry stays as a quiet
+// line: settings set on the server make this page read-only.
 function smsPaintState(st) {
     const el = document.getElementById('sms-state');
-    if (!el) return;
-    const say = (text, colour) => {
-        el.textContent = text;
-        el.style.color = colour;
+    const pill = (tone, text, label) => {
+        if (settingsShowing('sms')) headPillSet('settings-panel-cap', headPill(tone, text, { label }));
     };
-    if (st === null) return say('Checking…', 'var(--text-muted)');
-    if (st === 'error') return say("Couldn't check whether texts are set up.", 'var(--warn-text)');
+    if (el) {
+        el.textContent = '';
+        el.hidden = true;
+    }
+    if (st === null) return pill('unk', 'Checking…', 'Checking whether texts are set up');
+    if (st === 'error') return pill('unk', 'Couldn’t check', "Couldn't check whether texts are set up.");
     if (st.from_config) {
-        return say('Texts are already set up on the server, and those settings win — so this page is read-only.', 'var(--ok-text)');
+        if (el) {
+            el.textContent = 'Set on the server, so this page is read-only.';
+            el.hidden = false;
+        }
+        return pill('ok', 'Set on the server', 'Texts are already set up on the server, and those settings win — so this page is read-only.');
     }
-    if (st.ready) {
-        return say('Texts are on.', 'var(--ok-text)');
-    }
-    if (st.on) {
-        return say('Switched on, but not usable yet — fill in all three Twilio details below.', 'var(--warn-text)');
-    }
-    return say('Texts are off.', 'var(--text-muted)');
+    if (st.ready) return pill('ok', 'Texts on', 'Texts are on.');
+    if (st.on) return pill('warn', 'Not ready', 'Switched on, but not usable yet — fill in all three Twilio details below.');
+    return pill('unk', 'Texts off', 'Texts are off.');
 }
 async function saveSmsSettings() {
     const msg = document.getElementById('sms-msg');
-    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger)'; msg.textContent = t; } };
+    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)'; msg.textContent = t; } };
     const val = (id) => ((smsEl(id) || { value: '' }).value || '').trim();
     const on = !!(smsEl('sms-on') || { checked: false }).checked;
     const sid = val('sms-sid');
@@ -14249,7 +14261,7 @@ async function saveSmsSettings() {
 }
 async function sendSmsTest() {
     const msg = document.getElementById('sms-test-msg');
-    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger)'; msg.textContent = t; } };
+    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)'; msg.textContent = t; } };
     const to = ((smsEl('sms-test-to') || { value: '' }).value || '').trim();
     if (!to) { say('Type your mobile number first.', false); return; }
     say('Sending…', true);
@@ -14279,12 +14291,12 @@ async function saveApiKey(which) {
         if (adminPrivateContent) adminPrivateContent['apikey-tides'] = val;
         __tideData = null; // re-fetch with the new key next time
         if (msg) {
-            msg.style.color = 'var(--ok)';
+            msg.style.color = 'var(--ok-text)';
             msg.textContent = val ? 'Saved ✓' : 'Cleared — tide widget hidden.';
         }
     } catch (e) {
         if (msg) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = "Couldn't save: " + e.message;
         }
     }
@@ -14529,31 +14541,25 @@ function settingsOpenAccom(k) {
         const privateRow = arch
             ? ''
             : priv
-              ? `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), false)}>
+              ? `<button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), false)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">List on the website</span></span><span class="settings-row-chev">›</span>
-                        </button>
-                    </div>`
-              : `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), true)}>
+                        </button>`
+              : `<button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), true)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.16 3.19M6.6 6.6C3.6 8.3 2 12 2 12s3.5 7 10 7a9.3 9.3 0 0 0 5.4-1.6M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">Make private</span></span><span class="settings-row-chev">›</span>
-                        </button>
-                    </div>`;
-        const removeRow = arch
-            ? `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" ${chbAttrs('restoreAccommodation', String(k))}>
+                        </button>`;
+        // The cottage's own on/off controls are rows of ONE group, as every Manage group is
+        // (they were two groups 14px apart, which read as two unrelated cards).
+        const removeRow = (arch
+            ? `<button class="settings-row" ${chbAttrs('restoreAccommodation', String(k))}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">Restore to the site</span></span><span class="settings-row-chev">›</span>
-                        </button>
-                    </div>`
-            : `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" ${chbAttrs('archiveAccommodation', String(k))}>
+                        </button>`
+            : `<button class="settings-row" ${chbAttrs('archiveAccommodation', String(k))}>
                             <span class="settings-row-ic" style="color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger-text);">Remove this accommodation</span></span><span class="settings-row-chev">›</span>
-                        </button>
-                    </div>`;
+                        </button>`);
         // THE FOLD ANATOMY (the approved demo): every section is a verdict
         // fold group with its REAL editor inside — the menu→subpage hop is
         // gone, and each editor's own ids, save buttons and in-place
@@ -14605,7 +14611,7 @@ function settingsOpenAccom(k) {
         // (a working setAccommodationPrivate, the `unlisted` column, the public site
         // honouring it) had no way in. Third time this shape has been found here: see
         // the mailbox's Sent list and the status page. The affordance IS the fix.
-        }).join('') + privateRow + removeRow;
+        }).join('') + `<div class="settings-group" style="margin-top:14px;">${privateRow}${removeRow}</div>`;
         acrSync(k, true); // paint the derived lines (quiet — no whisper on open)
     }
     const title = document.getElementById('settings-panel-title');
@@ -14959,13 +14965,18 @@ function calListHtml() {
     const newest = ages.length ? Math.min(...ages) : null;
     const s = (__calOv ? `${linked} of ${keys.length} cottages linked` : `${linked} cottage${linked === 1 ? '' : 's'} importing`)
         + (newest != null ? ' · newest ' + (newest < 1.5 ? 'just now' : calAgo(newest) + ' ago') : '');
-    const summary = `<div class="cal-top">
-        <div class="mg-sum cal-sum">
+    // THE PAYMENTS WINDOW (owner-asked, from a screenshot of Needs attention): a line of facts, then
+    // captions over ONE joined card each — a problem is a row whose fold holds its fix, and a cottage
+    // is a row titled by its dot and name, never a card of its own with air around it.
+    // With nothing linked the pill says "None linked" and every row "not linked" — a third
+    // statement of it would be the line saying it twice.
+    const summary = !linked && __calOv ? '' : `<div class="cal-top">
+        <div class="cal-sum">
           <span class="mg-txt"><span class="mg-s">${escapeHtml(s)}</span></span>
           ${linked ? `<button type="button" class="btn-sm btn-accent cal-all" ${__calSyncAll ? 'disabled' : ''} ${chbAttrs('calSyncAll')}>${__calSyncAll ? '<span class="mg-spin" aria-hidden="true"></span>Syncing' : 'Sync all'}</button>` : ''}
         </div></div>`;
     const probs = calProblems();
-    const probHtml = probs.length ? `<div class="bhub-grpcap">Needs a look</div>` + probs.map((x) => {
+    const probHtml = probs.length ? `<div class="bhub-grpcap is-attn">Needs attention</div>` + probs.map((x) => {
         const p = calPlat(x.source);
         const name = (propertyMeta[x.k] || {}).name || x.k;
         const n = (x.s && x.s.events) || 0;
@@ -14974,19 +14985,20 @@ function calListHtml() {
             ? `Still using the ${n} ${p.name} stay${n === 1 ? '' : 's'} from ${since}. New ${p.name} bookings won’t show until it’s fixed.`
             : `Nothing has come in from it yet, so ${p.name} bookings aren’t on your calendar.`;
         const fixing = __calLink && __calLink.pk === x.k && __calLink.mode === 'fix' && __calLink.source === x.source;
-        return `<div class="cal-prob" data-calprob="${escapeHtml(x.k + ':' + x.source)}">
-            <div class="cal-prob-h"><span class="cal-tile" style="background:${p.c};color:#fff" aria-hidden="true">${escapeHtml(p.l)}</span>
-              <span><b>${escapeHtml(name)} · ${escapeHtml(p.name)}</b><small>Not responding${x.s && x.s.fails > 1 ? ' · failed ' + x.s.fails + ' times in a row' : ''}</small></span></div>
-            <p>${escapeHtml(body)}</p>
+        const key = 'calprob-' + x.k + '-' + x.source;
+        return bhubFoldGrp(key, escapeHtml(name + ' · ' + p.name),
+            escapeHtml('not responding' + (x.s && x.s.fails > 1 ? ' · failed ' + x.s.fails + ' times in a row' : '')),
+            stCap('bad', 'failing'),
+            `<p class="cal-prob-say">${escapeHtml(body)}</p>
             ${fixing ? calLinkFormHtml(x.k, x.source) : `<div class="cal-prob-acts">
               <button type="button" class="btn-sm btn-accent" ${chbAttrs('calLinkOpen', String(x.k), String(x.source), 'fix')}>Paste a new link</button>
-              <button type="button" class="cal-txt" ${chbAttrs('runSync', String(x.k))}>Try again</button></div>`}
-          </div>`;
-    }).join('') + `<div class="bhub-grpcap">Cottages</div>` : '';
+              <button type="button" class="cal-txt" ${chbAttrs('runSync', String(x.k))}>Try again</button></div>`}`,
+            ` data-calprob="${escapeHtml(x.k + ':' + x.source)}"`, 'cal-prob');
+    }).join('') : '';
     const rows = vs.map(({ k, v }) => bhubFoldGrp('cal-' + k,
-        `<span class="prop-tag tag-${escapeHtml(k)}">${escapeHtml((propertyMeta[k] || {}).name || k)}</span>`,
+        `<span class="cal-cot"><i class="cot-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent))" aria-hidden="true"></i>${escapeHtml((propertyMeta[k] || {}).name || k)}</span>`,
         calSubHtml(k, v), calCapHtml(k, v), calFoldHtml(k))).join('');
-    return summary + probHtml + rows;
+    return summary + probHtml + `<div class="bhub-grpcap">Cottages</div>` + rows;
 }
 async function calLoadOverview() {
     const stamp = ++__calOvStamp;
@@ -15120,7 +15132,7 @@ function cancelRowsHtml() {
         .map((k) => {
             const pol = CANCELLATION_POLICIES[cancelPolicyOf(k)];
             return `<button class="settings-row" ${chbAttrs('settingsOpenCancel', String(k))}>
-                    <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
+                    <span class="cot-dot" style="background:var(--prop-${escapeHtml(k)}, var(--accent))" aria-hidden="true"></span>
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span><span class="settings-row-sub">${pol.name}</span></span><span class="settings-row-chev">›</span>
                 </button>`;
         })
@@ -15234,11 +15246,10 @@ function calendarPropBoxHtml(key, label, data) {
     const stays = linked.reduce((n, p) => n + ((status[p.source] && status[p.source].events) || 0), 0);
     // Its status is the title's pill, set by loadCalendarSyncProp once this is on screen.
     __calPropPill = !linked.length ? headPill('unk', 'Not linked', { label: 'No platforms linked yet' })
-        : failing.length ? headPill('warn', `${calPlat(failing[0].source).name} not responding`)
+        : failing.length ? headPill('bad', `${calPlat(failing[0].source).name} not responding`)
           : newest == null ? headPill('unk', 'Not synced yet')
             : headPill('ok', 'Synced ' + (newest < 1 / 60 ? 'just now' : calAgo(newest) + ' ago'));
-    const s = !linked.length ? 'Paste a platform’s calendar link below'
-        : `${stays} stay${stays === 1 ? '' : 's'} imported · ${linked.length} of ${SYNC_SOURCES.length} platforms linked`;
+    const s = `${stays} stay${stays === 1 ? '' : 's'} imported · ${linked.length} of ${SYNC_SOURCES.length} platforms linked`;
     const rows = SYNC_SOURCES.map((p) => {
         const P = calPlat(p.source);
         const f = feeds.find((x) => x.source === p.source);
@@ -15260,11 +15271,13 @@ function calendarPropBoxHtml(key, label, data) {
             <div class="cal-hint" id="cal-hint-${p.source}-${key}">${url ? '' : escapeHtml(P.where)}</div>
           </div>`;
     }).join('');
+    // The facts line, as on the list: words with the action beside them, no card. Nothing linked
+    // says nothing here — the pill and every row already say "Not linked".
     return `<div class="cal-detail">
-        <div class="mg-sum cal-sum">
+        ${linked.length ? `<div class="cal-sum">
           <span class="mg-txt"><span class="mg-s">${escapeHtml(s)}</span></span>
-          ${linked.length ? `<button type="button" class="btn-sm btn-accent cal-all" ${chbAttrs('runSync', String(key))}>Sync now</button>` : ''}
-        </div>
+          <button type="button" class="btn-sm btn-accent cal-all" ${chbAttrs('runSync', String(key))}>Sync now</button>
+        </div>` : ''}
         <div class="bhub-grpcap">Platforms</div>
         <div class="cal-well">${rows}</div>
         <div class="bhub-grpcap">Your calendar link</div>
@@ -15832,6 +15845,9 @@ function accountsOpen(section) {
     // The pricing coach moved INTO Manage → Pricing; old links, saved history and
     // recents land there.
     if (section === 'pricingcoach') { openPricingCoach(); return; }
+    // A section that no longer exists (an old remembered screen, a stale link) lands on the
+    // landing rather than an empty page titled "Payments".
+    if (!document.getElementById('asec-' + section)) { accountsShowIndex(); return; }
     adminHistPush('view-accounts', section);
     // Remember the SECTION, not just the Payments index — an owner deep in Income &
     // tax should come back to it, not to the list of links.
@@ -16877,7 +16893,7 @@ function renderExpenses() {
     // The row is .xp-row, NOT .exp-row: the guest's Things-to-do rows already own
     // that class (app.css), and their display:flex was silently winning over this
     // list's grid, squeezing every line into a wrapped column at phone width.
-    const list = years.length
+    const blocks = years.length
         ? years
               .map((y) => {
                   // Newest first — the expense you just logged is the one you look for.
@@ -16899,13 +16915,10 @@ function renderExpenses() {
                         .join('')}
                 </div>`;
               })
-              .join('')
-        : '';
-
-    // Adding is a row at the foot of the lists; it opens the form in place.
-    wrap.innerHTML = `
-                ${chart}
-                ${list}
+        : [];
+    // Adding is a row at the foot of the NEWEST year's list (joined to it, one card), and opens the
+    // form in place — it sat as a card of its own below every year, a second window for one list.
+    const addRow = `
                 <div class="u-win u-listcard xp-add">
                 <details class="exp-add-details" id="exp-add-details">
                   <summary class="exp-add-summary u-addrow is-first"><span class="u-addic" aria-hidden="true"><i></i></span><span class="u-addt">Add an expense</span></summary>
@@ -16924,6 +16937,7 @@ function renderExpenses() {
                   </div>
                 </details>
                 </div>`;
+    wrap.innerHTML = chart + (blocks.length ? blocks[0] + addRow + blocks.slice(1).join('') : addRow);
 }
 // Load an existing expense back into the form to edit it.
 let __editingExpenseId = null;
@@ -22958,7 +22972,8 @@ function keysafeView(pk) {
     const staying = !!next && (st === 'inres' || next.checkIn < today);
     const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
     const first = (n) => (n && n.ota ? n.name : chbSayFirst((n && n.name) || 'the next guest'));
-    const arrives = next ? (next.checkIn === today ? 'arrives today' : 'arrives ' + fmtDate(next.checkIn)) : '';
+    // A guest already in (a code never recorded for them) has not "arrived 07/10" — they are staying.
+    const arrives = next ? (next.checkIn === today ? 'arrives today' : next.checkIn < today ? 'is staying until ' + fmtDate(next.checkOut) : 'arrives ' + fmtDate(next.checkIn)) : '';
     const seesNow = next && (next.checkIn <= today || keysafeRevealOpen(next, today));
     return { pk, rec, d0, next, st, needs, due: st === 'due', forGuest, staying, revealFrom, first, arrives, seesNow,
         name: rec.name || (propertyMeta[pk] || {}).name || pk };
@@ -22987,7 +23002,11 @@ function renderKeysafe() {
     headPillSet('ks-pill', todos.length
         ? headPill(anyRed ? 'bad' : 'warn', todos.length === 1 ? '1 code to set' : todos.length + ' codes to set', { label: (todos.length === 1 ? '1 safe needs' : todos.length + ' safes need') + ' a new code' })
         : headPill('ok', views.length === 1 ? 'Ready' : 'All ' + views.length + ' ready', { label: views.length === 1 ? 'The safe is ready' : 'All ' + views.length + ' safes are ready' }));
-    const todoHtml = todos.map((v) => {
+    // One to-do is a card with its one button (Today's single task). Two or more are rows of ONE
+    // card under "Needs attention", as Payments and Calendar sync list theirs — four stacked cards
+    // with air between them read as four separate pages.
+    const many = todos.length > 1;
+    const todoHtml = (many ? '<span class="ks-cap is-attn">Needs attention</span><div class="ks-list ks-todos glass-panel">' : '') + todos.map((v) => {
         const n = v.next;
         const head = !v.rec.code
             ? v.name + ' has no code recorded'
@@ -23004,10 +23023,25 @@ function renderKeysafe() {
                 ? 'The ' + n.name + ' ' + v.arrives + '. Set the safe, then share it in your ' + n.name.replace(' guest', '') + ' message thread — platform guests don’t see this site.'
                 : (n.name || 'The next guest') + ' ' + v.arrives + ' and sees the new code on their booking page once you confirm.';
         const btn = !v.rec.code && !n ? 'Record the code' : 'Set a new code for ' + (n && !n.ota ? chbSayFirst(n.name || 'them') : 'them');
+        if (many) {
+            // A row's sub is the short form of the card's sentence — a list row is two lines, not four.
+            const brief = !n
+                ? 'Tell the keeper what is on the safe now'
+                : v.d0.dep
+                  ? 'Rotate after ' + v.d0.dep.name + ' leaves at ' + v.d0.dep.out
+                  : n.ota
+                    ? 'The ' + n.name + ' ' + v.arrives + ' · share it in your ' + n.name.replace(' guest', '') + ' message thread'
+                    : (n.name || 'The next guest') + ' ' + v.arrives + ' · sees it once you confirm';
+            return '<button type="button" class="ks-trow' + (isRed(v) ? ' is-bad' : '') + '" data-pk="' + e(v.pk) + '" ' + chbAttrs('keysafeRotate', String(v.pk))
+                + ' aria-label="' + e(head + '. ' + btn) + '">'
+                + '<span class="ks-swatch" style="background:var(--prop-' + e(v.pk) + ', var(--accent))" aria-hidden="true"></span>'
+                + '<span class="ks-row-txt"><b>' + e(head) + '</b><small class="ks-row-sub ks-say">' + e(brief) + '</small></span>'
+                + stCap(isRed(v) ? 'bad' : 'warn', v.d0.dep ? 'After ' + v.d0.dep.out : isRed(v) ? 'Set now' : 'Soon') + BHUB_CHEV + '</button>';
+        }
         return '<section class="ks-todo glass-panel' + (isRed(v) ? ' is-bad' : '') + '" data-pk="' + e(v.pk) + '">'
             + '<h2 class="ks-todo-h">' + e(head) + '</h2><p class="ks-say">' + e(say) + '</p>'
             + '<button type="button" class="ks-rotate is-primary" ' + chbAttrs('keysafeRotate', String(v.pk)) + '>' + e(btn) + '</button></section>';
-    }).join('');
+    }).join('') + (many ? '</div>' : '');
     const rows = views.map((v) => {
         const n = v.next;
         const line = !v.rec.code
@@ -24728,7 +24762,7 @@ async function accomSaveText(k) {
         }
         if (m) {
             m.textContent = 'Saved.';
-            m.style.color = 'var(--ok)';
+            m.style.color = 'var(--ok-text)';
             setTimeout(() => {
                 m.textContent = '';
             }, 1500);
@@ -24760,7 +24794,7 @@ async function accomSaveAmenities(k) {
         siteContent['amenities-' + k] = items;
         if (m) {
             m.textContent = 'Saved.';
-            m.style.color = 'var(--ok)';
+            m.style.color = 'var(--ok-text)';
             setTimeout(() => {
                 m.textContent = '';
             }, 1500);
@@ -25747,18 +25781,18 @@ async function backfillWebp(btn) {
         const r = await apiPost('webp-backfill.php', {});
         if (!msg) return;
         if (!r.ok) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = r.error || "Couldn't optimise photos.";
             return;
         }
-        msg.style.color = 'var(--ok)';
+        msg.style.color = 'var(--ok-text)';
         const more = r.remaining > 0 ? ` ${r.remaining} more to go — click again to continue.` : '';
         msg.textContent =
             `Done — optimised ${r.created} photo${r.created === 1 ? '' : 's'}` +
             ` (${r.skipped} already done${r.failed ? `, ${r.failed} skipped` : ''}).${more}`;
     } catch (e) {
         if (msg) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = 'Could not run: ' + (e.message || 'error');
         }
     }
@@ -25799,7 +25833,7 @@ async function runMigrations(btn) {
             );
         }
         if (msg) {
-            msg.style.color = data.ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = data.ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = !data.ok
                 ? "Some updates didn't install — see below."
                 : changed.length
@@ -25823,7 +25857,7 @@ async function runMigrations(btn) {
     } catch (e) {
         if (row) spToolSay(row, false, escapeHtml('Could not install updates: ' + (e.message || 'error')));
         if (msg) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = 'Could not install updates: ' + (e.message || 'error');
         }
     }
@@ -26492,7 +26526,7 @@ async function sendTestEmail(btn) {
             if (t === 'Sending…') spToolBusy(row);
             else spToolSay(row, ok, escapeHtml(t));
         } else if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -26635,7 +26669,7 @@ async function tcSeedStage(btn) {
                     : '';
                 msg.innerHTML = `✓ The stage is set — ${r.bookings} booking${r.bookings === 1 ? '' : 's'}, ${r.enquiries} enquiries, a chat, a pending review, ${r.expenses} expenses and a waitlist entry${skipped}. Start on <strong>Today</strong>, then work through the list below.`;
             } else {
-                msg.style.color = 'var(--danger)';
+                msg.style.color = 'var(--danger-text)';
                 msg.textContent = r.error || 'Could not set the stage.';
             }
         }
@@ -26647,7 +26681,7 @@ async function tcSeedStage(btn) {
         } catch (e) {}
     } catch (e) {
         if (msg) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = 'Could not set the stage: ' + (e.message || 'error');
         }
     } finally {
@@ -26716,7 +26750,7 @@ async function tcSeedFeatures(btn) {
                 msg.style.color = 'var(--ok-text)';
                 msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Manage → Pricing</strong> for the suggestions.`;
             } else {
-                msg.style.color = 'var(--danger)';
+                msg.style.color = 'var(--danger-text)';
                 msg.textContent = r.error || 'Seeding failed.';
             }
         }
@@ -26729,7 +26763,7 @@ async function tcSeedFeatures(btn) {
         } catch (e) {}
     } catch (e) {
         if (msg) {
-            msg.style.color = 'var(--danger)';
+            msg.style.color = 'var(--danger-text)';
             msg.textContent = 'Could not seed: ' + (e.message || 'error');
         }
     } finally {
@@ -26788,7 +26822,7 @@ async function tcSendEmail(which, btn) {
     const msg = document.getElementById('tc-email-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.innerHTML = t;
         }
     };
@@ -26893,7 +26927,7 @@ async function tcCreateBooking(preset, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -27014,7 +27048,7 @@ async function tcAutomation(id, which, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -27046,7 +27080,7 @@ async function tcPay(id, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -27077,7 +27111,7 @@ async function tcBookingEmail(id, action, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -27203,7 +27237,7 @@ async function sendBroadcast() {
     const bodyText = ((bodyEl && bodyEl.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -27268,7 +27302,7 @@ async function saveGoogleReviewUrl() {
     siteContent['google-review-url'] = val;
     rvGoogleCap();
     if (msg) {
-        msg.style.color = 'var(--ok)';
+        msg.style.color = 'var(--ok-text)';
         msg.textContent = val ? 'Saved ✓' : 'Cleared.';
     }
 }
@@ -27592,7 +27626,7 @@ function otaSourceName(src, fallback) {
 function leadStatusPill(s) {
     if (s === 'approved') return '<span style="color:var(--ok-text);font-weight:600;">Published</span>';
     if (s === 'declined') return '<span style="color:var(--text-muted);">Hidden</span>';
-    return '<span style="color:var(--warn);font-weight:600;">Awaiting you</span>';
+    return '<span style="color:var(--warn-text);font-weight:600;">Awaiting you</span>';
 }
 function leadCardHtml(l) {
     const stars = '★'.repeat(Math.max(1, Math.min(5, parseInt(l.stars) || 5)));
@@ -27612,7 +27646,7 @@ function leadCardHtml(l) {
             : `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'approved')}>Approve &amp; publish</button>` +
               (l.status === 'pending' ? `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'declined')}>Decline</button>` : '');
     const excluded = ar > 0 && ar < 3
-        ? `<div style="font-size:var(--fs-caption);color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
+        ? `<div style="font-size:var(--fs-caption);color:var(--warn-text);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
         : '';
     return `<div class="adm-row">
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">

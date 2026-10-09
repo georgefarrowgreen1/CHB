@@ -3148,7 +3148,7 @@ body.light-mode .cmdk-editor-input {
    under reduced motion (the killswitch + the reveal's own check).
    ============================================================ */
 #diagnostics-body { display: flex; flex-direction: column; gap: 20px; max-width: 640px; }
-.sp-sec { display: flex; flex-direction: column; gap: 8px; }
+.sp-sec { display: flex; flex-direction: column; gap: 8px; --fold-gap: 8px; }
 .sp-cap { margin: 0; padding: 0 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
 .sp-capnote { font-weight: 500; opacity: 0.8; }
 .sp-card { border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); }
@@ -3557,6 +3557,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
 }
 
 /* Search learning — test sandbox + teach-to-any picker */
+.sl-probe { margin-top: 16px; }
 .sl-probe-label {
   display: block;
   font-size: var(--fs-sub);
@@ -5058,6 +5059,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
+/* The enquiry's message never folds, but it is the first row of the card the quote and the guest's
+   details join — not a card of its own beside them. */
+.bhub-msg + .bhub-fold-grp { margin-top: calc(-1 * var(--fold-gap, 0px)); border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.bhub-msg:has(+ .bhub-fold-grp) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .bhub-fold-row {
   /* A <button>: the FULL reset (the .cmdk-qa-row lesson). */
   display: flex;
@@ -5154,6 +5159,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   .bhub-fold[hidden] { display: none; }
 }
 .bhub-money-grp .bhub-payline { max-width: none; }
+/* Needs attention sits between the decision card and the money, so the money card below it keeps the
+   same air every card on the page has. */
+.bhub-attn { margin-bottom: 12px; }
 .bhub-payline-subfull { flex: 1 1 100%; }
 /* The when-line's in/out pair never splits across the wrap point — a
    dangling "· in" at a line end read as a typo (measured at 390px). */
@@ -5180,11 +5188,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 @media (min-width: 900px) {
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
-#calendar-list .bhub-fold-grp { max-width: 640px; margin-bottom: 16px; } /* owner-asked: clear air between the cottages */
-/* …so the cottages do NOT join into one inset group: each keeps its own corners
-   and hairline. An owner's ask outranks the list rule (gated in ui-test-manage §3). */
-#calendar-list .bhub-fold-grp + .bhub-fold-grp { margin-top: 0; border-top-width: 1px; border-top-left-radius: var(--r-sm); border-top-right-radius: var(--r-sm); }
-#calendar-list .bhub-fold-grp:has(+ .bhub-fold-grp) { border-bottom-left-radius: var(--r-sm); border-bottom-right-radius: var(--r-sm); }
 /* Pricing coach + Recent payments wear the unified anatomy (owner-asked).
    pc-well/mf-recon reuse the .acr-well ink-mix ground; the feed keeps its
    gated row classes and takes the well framing by CSS alone. */
@@ -6116,8 +6119,8 @@ body.offline-snap .ods-mark {
 .ks-rotate.is-primary { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
 .ks-cap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); padding: 0 4px; margin-bottom: -8px; }
 .ks-list { padding: 0; border-radius: var(--r-lg); overflow: hidden; }
-.ks-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; }
-.ks-row + .ks-row { border-top: 1px solid var(--glass-border); }
+:is(.ks-row, .ks-trow) { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; }
+:is(.ks-row + .ks-row, .ks-trow + .ks-trow) { border-top: 1px solid var(--glass-border); }
 .ks-row.is-flash { animation: ksFlash 1.2s ease both; }
 @keyframes ksFlash { from { background: color-mix(in srgb, var(--ok) 20%, transparent); } }
 .ks-swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; }
@@ -6128,7 +6131,10 @@ body.offline-snap .ods-mark {
 .ks-row-sub.is-bad { color: var(--danger-text); }
 .ks-row-code { flex: none; font-size: var(--fs-title); font-weight: 600; letter-spacing: 0.12em; color: var(--accent-text); font-variant-numeric: tabular-nums; }
 .ks-row-code.is-none { font-size: var(--fs-sub); letter-spacing: 0; color: var(--text-muted); }
-.ks-row .bhub-chev { flex: none; color: var(--text-muted); }
+:is(.ks-row, .ks-trow) .bhub-chev { flex: none; color: var(--text-muted); }
+/* Two or more to-dos are rows of one card, the "Needs attention" caption over them. */
+.ks-trow .st-cap { flex: none; }
+.ks-trow .ks-row-txt b { text-wrap: pretty; }
 /* the sheet behind a row (a .chb-sheet overlay: a bottom sheet on a phone) */
 .ks-sheet-box { display: flex; flex-direction: column; gap: 16px; max-width: 480px; }
 .ks-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -7353,17 +7359,19 @@ body.light-mode .tl-cell:active {
    money group in the header, the grid, and the guest book inside its own host div — so only the runs that
    happened to be adjacent siblings joined (Emails/Activity/Note) and the rest floated as separate cards.
    The host is transparent to the join (display: contents + rules that look THROUGH it), and the money
-   group abuts the grid below it on phones/tablets. */
+   group abuts the grid below it. */
 #gb-card-host { display: contents; }
 .bhub-fold-grp + #gb-card-host > .bhub-fold-grp { margin-top: calc(-1 * var(--fold-gap, 0px)); border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .bhub-fold-grp:has(+ #gb-card-host) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 #gb-card-host + .bhub-fold-grp { margin-top: calc(-1 * var(--fold-gap, 0px)); border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 #gb-card-host:has(+ .bhub-fold-grp) > .bhub-fold-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-@media (max-width: 1199px) {
-  .bhub-head:has(+ .bhub-grid) .bhub-money-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; }
-  .bhub-head + .bhub-grid { margin-top: 0; }
-  .bhub-head + .bhub-grid > .bhub-fold-grp:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
-}
+/* At every width: the hub is one column wherever it stands (docked or not), so the money joins the
+   list below it on a computer too — it was phone-only, a separate card above Guest/History at ≥1200. */
+.bhub-head:has(+ .bhub-grid) .bhub-money-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; }
+/* Only a head that ENDS in the money group closes the gap: the enquiry's ends in its decision card,
+   and closing it there left the message card 2px under that card. */
+.bhub-head:has(.bhub-money-grp) + .bhub-grid { margin-top: 0; }
+.bhub-head:has(.bhub-money-grp) + .bhub-grid > .bhub-fold-grp:first-child { border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 
 /* THREE ROWS (approved simplification): the groups nested inside Guest and History are the same groups,
    rendered FLAT — no card, no border — as hairline-separated sections inside their parent's fold. */
@@ -8018,24 +8026,26 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 /* ---- CALENDAR SYNC (approved demo): a summary with Sync all, the failing
    platform first with its fix, each cottage a verdict whose sub carries a chip
    per linked platform. ---- */
-.cal-top { max-width: 640px; margin: 0 auto 12px; }
-.cal-sum { cursor: default; }
+/* The facts line: what is linked and how fresh, with Sync all beside it — words on the page,
+   not a card of their own (the Payments landing's headline is words too). */
+.cal-top { max-width: 640px; margin: 0 0 4px; }
+.cal-sum { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.cal-sum .mg-s { font-size: var(--fs-body); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cal-sum .cal-all { flex: none; display: inline-flex; align-items: center; gap: 8px; }
-.cal-sum .mg-s { font-variant-numeric: tabular-nums; }
+/* A cottage row is titled the way every list row is: its dot, then its name. */
+.cal-cot { display: inline-flex; align-items: center; gap: 12px; min-width: 0; }
+/* A cottage is marked by its dot beside its name, in every list (Calendar sync, Cancellation policy, Key safes'
+   swatch, the timeline's lanes). */
+.cot-dot { flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); }
+.settings-row > .cot-dot { margin: 0 4px 0 8px; }
+.cal-prob-say { margin: 0 0 12px; font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+/* One column on every width: a joined list split across two columns is two lists. */
+#calendar-list.settings-index { column-count: 1; max-width: 640px; }
 .cal-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; white-space: nowrap; }
 .cal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex: none; }
 .cal-dot.is-ok { background: var(--ok); }
 .cal-dot.is-bad { background: var(--danger); }
 .cal-sep { margin-right: 8px; }
-.cal-prob {
-  max-width: 640px; margin: 0 auto 12px; padding: 16px; border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--danger) 7%, var(--glass-bg));
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--glass-border));
-}
-.cal-prob-h { display: flex; align-items: center; gap: 12px; }
-.cal-prob-h b { display: block; font-weight: 600; }
-.cal-prob-h small { display: block; font-size: var(--fs-sub); color: var(--danger-text); }
-.cal-prob p { margin: 8px 0 12px; font-size: var(--fs-sub); color: var(--text-light); text-wrap: pretty; }
 .cal-prob-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cal-tile {
   flex: none; width: 32px; height: 32px; border-radius: var(--r-sm); display: grid; place-items: center;
@@ -8063,18 +8073,12 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .cal-hint.is-bad { color: var(--danger-text); }
 .cal-form-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cal-go:disabled { opacity: 0.5; cursor: default; }
-#calendar-list > .bhub-grpcap { max-width: 640px; margin-left: auto; margin-right: auto; }
 .cal-txt {
   flex: none; min-height: 44px; padding: 0 4px; border: 0; background: none; cursor: pointer;
   font: 600 var(--fs-sub) var(--font-sans); color: var(--accent-text); white-space: nowrap;
 }
 .cal-txt:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cal-pmain small { overflow-wrap: anywhere; }
-@media (max-width: 639px) {
-  .cal-sum { flex-wrap: wrap; }
-  .cal-sum .mg-txt { flex-basis: calc(100% - 48px); }
-  .cal-sum .cal-all { flex-basis: 100%; justify-content: center; min-height: 44px; }
-}
 /* The calendar fold's actions: the .mo-tool tiles, four across. */
 .cal-tools { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; }
 /* Uniform tiles: the icon on one line, the label on the next, every label one
@@ -8087,8 +8091,8 @@ body.owner-mode .cal-tools .mo-tool {
 .cal-tools .mo-tool span:not(.mg-spin) { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The per-cottage sync page: the same wells as the rest of Manage. */
 .cal-detail { max-width: 640px; }
-.cal-detail .cal-top, .cal-detail .cal-sum { margin-bottom: 4px; }
-.cal-detail > .bhub-grpcap { margin: 20px 0 8px; }
+.cal-detail > .bhub-grpcap { margin: 20px 4px 8px; }
+.cal-detail > .bhub-grpcap:first-child { margin-top: 16px; }
 .cal-well { padding: 4px 16px 12px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
 .cal-plat { padding: 8px 0 4px; }
 .cal-plat + .cal-plat { border-top: 1px solid var(--glass-border); }
@@ -8098,7 +8102,6 @@ body.owner-mode .cal-tools .mo-tool {
 .cal-plat .cal-hint:empty { display: none; }
 .cal-copy { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
 .cal-copy .btn-sm { flex: none; min-height: 44px; }
-.cal-detail .cal-sum { display: flex; }
 
 /* ---- MANAGE → GUESTS (approved demo): stat tiles that filter, groups by what to
    do, two-line rows that open into stays + one clear action, and an animated card
@@ -8442,7 +8445,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 }
 /* A content card holds its content 16px in; a list card holds its rows edge to edge. */
 :is(main, div).one-look :is(.accounts-stat, .mo-card, .sl-card, .sp-hero, .mg-sum, .al-card, .ana-insights, .u-win.is-pad) { padding: var(--u-pad); max-width: none; }
-:is(main, div).one-look #sec-newsletter .glass-panel { padding: var(--u-pad); max-width: none; }
+:is(main, div).one-look #sec-newsletter .glass-panel:not(.bhub-fold-grp) { padding: var(--u-pad); max-width: none; }
 :is(main, div).one-look :is(.sp-need, .sp-off) { padding: 12px var(--u-pad); }
 :is(main, div).one-look #replies-body { overflow: hidden; }
 /* Stat tiles stand on the page, not in a card of their own. */
@@ -8454,15 +8457,20 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
   border-bottom-width: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0 !important;
 }
 :is(main, div).one-look :is(.sp-need, .sp-off, .ac-card, .settings-sec .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .cancel-card, .u-join) + :is(.sp-need, .sp-off, .ac-card, .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .sg-addcard, .cancel-card, .u-join) {
-  margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0;
+  /* Cancels the container's own gap where it declares one (--fold-gap; 0 elsewhere): forcing 0 here left
+     Home page & menu's and Search learning's rows 12px apart with their corners already squared. */
+  margin-top: calc(-1 * var(--fold-gap, 0px)) !important; border-top-left-radius: 0; border-top-right-radius: 0;
 }
-:is(main, div).one-look :is(.sg-list, .sg-bands, .sg-cards, .cancel-cards, #sg-grid) { gap: 0 !important; }
+:is(main, div).one-look :is(.sg-list, .sg-bands, .sg-cards, .cancel-cards, #sg-grid, .pr-ideas) { gap: 0 !important; }
+/* Price ideas come from two lists (the profit ideas, then what guests searched for); side by side they are
+   ONE list of ideas, so the seam between the two containers joins like the seams inside them. */
+:is(main, div).one-look #pr-profit:has(+ #pr-search-ideas > .pr-scard) > .pr-pcard:last-child { border-bottom-width: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+:is(main, div).one-look #pr-profit + #pr-search-ideas > .pr-scard:first-child { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+:is(main, div).one-look #pr-search-ideas > .pr-scard:first-child { margin-top: 0; }
 :is(main, div).one-look .settings-sec .bhub-fold-grp { margin-bottom: 0; }
 :is(main, div).one-look .settings-sec .bhub-fold-grp + :not(.bhub-fold-grp) { margin-top: var(--u-gap); }
 :is(main, div).one-look #accom-detail { gap: 0; }
 :is(main, div).one-look #accom-detail > :not(.ac-card) { margin-top: var(--u-gap); }
-/* Each cottage's calendar keeps its own card and air — the owner asked for that. */
-:is(main, div).one-look #calendar-list .bhub-fold-grp { margin: 0 0 16px !important; border-radius: var(--u-r-card) !important; border-width: 1px !important; }
 /* The status card's ring carries the state; the card does not shout it too. */
 :is(main, div).one-look .sp-hero { border-color: var(--u-edge); }
 :is(main, div).one-look .cancel-card.selected { background: color-mix(in srgb, var(--text-light) 5%, var(--u-ground)); }
@@ -8679,7 +8687,7 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .dp-fo
 
 /* ---------- 12. REACH AND FOCUS ---------- */
 /* A 36px control still reaches 44: the region grows, the drawing does not. */
-:is(main, div).one-look :is(.rvi-chip, .sp-on, .sg-usesug, .al-clear, .sg-blk, :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button) { position: relative; }
+:is(main, div).one-look :is(.rvi-chip, .sp-on, .sg-usesug, .al-clear, :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button) { position: relative; }
 :is(main, div).one-look :is(.rvi-chip, .sp-on, .sg-usesug, :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button)::after { content: ""; position: absolute; inset: -4px 0; }
 :is(main, div).one-look .sg-blk::after { content: ""; position: absolute; inset: -8px -10px; }
 :is(main, div).one-look .al-clear::after { content: ""; position: absolute; inset: -6px; }
@@ -8779,6 +8787,9 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 /* A 32px glyph whose region reaches 44 sideways (::before, -6px), 12px apart so two regions never overlap. */
 :is(main, div).one-look .xp-row .feed-del::before { inset: 0 -6px; }
 :is(main, div).one-look .xp-add { margin-top: var(--u-gap); overflow: hidden; }
+/* Under a list it is that list's last row: one card, the list's own hairline between them. */
+:is(main, div).one-look .xp-list + .xp-add { margin-top: 0; border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+:is(main, div).one-look .xp-list:has(+ .xp-add) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 :is(main, div).one-look .xp-add > details > summary { list-style: none; }
 :is(main, div).one-look .xp-add > details > summary::-webkit-details-marker { display: none; }
 :is(main, div).one-look .xp-add > details > summary::after { content: none; }
@@ -8795,7 +8806,7 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .ks-rotate.is-primary { border-color: transparent; }
 :is(main, div).one-look .ks-info { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; border-color: var(--u-pill-edge); }
 :is(main, div).one-look .ks-list { padding: 0; overflow: hidden; }
-:is(main, div).one-look .ks-row { min-height: var(--u-h-row); padding: 12px var(--u-pad); }
+:is(main, div).one-look :is(.ks-row, .ks-trow) { min-height: var(--u-h-row); padding: 12px var(--u-pad); }
 /* Move money out: when the payouts were last read, then the one way to read them again. */
 :is(main, div).one-look .sweep-checked { margin: 16px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); max-width: 620px; }
 :is(main, div).one-look .sweep-acts { padding-top: 8px; }
@@ -8875,7 +8886,16 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
 /* The enquiry's quote breakdown sits in the inset panel, not a black stain on its own corner. */
 :is(main, div).one-look [data-grp='equote'] .price-box { background: var(--u-inset); border: 0; border-radius: var(--u-r-cell); }
 /* A loading row takes the cell's corner, like the rows it stands in for. */
-:is(main, div).one-look .skel-row { border-radius: var(--u-r-cell); }
+/* A loading list is shaped like the list it stands in for: ONE card, rows on hairlines. */
+:is(main, div).one-look .skel-row { border-radius: 0; margin-bottom: 0; border-color: var(--u-edge); background: var(--u-ground); }
+:is(main, div).one-look .skel-row + .skel-row { border-top-width: 0; }
+:is(main, div).one-look .skel-row:not(.skel-row + .skel-row) { border-top-left-radius: var(--u-r-card); border-top-right-radius: var(--u-r-card); }
+:is(main, div).one-look .skel-row:not(:has(+ .skel-row)) { border-bottom-left-radius: var(--u-r-card); border-bottom-right-radius: var(--u-r-card); margin-bottom: 12px; }
+/* …and inside an open fold, the inset panel the real list is there: no edge, the cell's corners. */
+:is(main, div).one-look .bhub-fold .skel-row { background: var(--u-inset); border-color: transparent; }
+:is(main, div).one-look .bhub-fold .skel-row + .skel-row { border-top: 1px solid var(--u-edge); }
+:is(main, div).one-look .bhub-fold .skel-row:not(.skel-row + .skel-row) { border-top-left-radius: var(--u-r-cell); border-top-right-radius: var(--u-r-cell); }
+:is(main, div).one-look .bhub-fold .skel-row:not(:has(+ .skel-row)) { border-bottom-left-radius: var(--u-r-cell); border-bottom-right-radius: var(--u-r-cell); margin-bottom: 0; }
 /* The guest book's detail toggle reads like the hub's other quiet links, with the drawn chevron. */
 :is(main, div).one-look .gb-more { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sub); font-weight: 600; }
 :is(main, div).one-look .gb-more::after {
@@ -8981,3 +9001,22 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sh
 #view-activity-log .settings-panel-head { max-width: 640px; }
 #view-activity-log .settings-panel-head .al-h1 { margin: 0; }
 
+/* ---------- 24. THE FIRST CAPTION SITS 24px UNDER THE TITLE ROW, on every page ----------
+   (the title row's 8px + the caption's 16). Measured across Manage: Reviews, Follow-ups, Guest chat,
+   Integrations and Seasonal rates sat at 24; Calendar sync and Payments settings at 32, a cottage's
+   sync page at 8 and Backups at 16 (its caption's margin collapsed into the title row's). */
+:is(main, div).one-look #calendar-list > .bhub-grpcap:first-child,
+:is(main, div).one-look .rv-sec > .pay-caprow:first-child > .acr-cap,
+:is(main, div).one-look #sec-sms > div > .acr-cap:first-of-type { margin-top: 16px; }
+/* …where the caption's margin would collapse into the title row's, the container holds it. */
+:is(main, div).one-look :is(#backups-body, #sec-sms > div, .cal-detail) { display: flow-root; }
+/* A caption row (caption + its saved tick) is the caption: its own bottom air would double the row's. */
+:is(main, div).one-look .pay-caprow > .acr-cap { margin-bottom: 0; }
+/* ONE TITLE ROW: no rule under it on any screen. Today's was cleared when its sentence went, and Payments
+   never drew one, while Manage, the Inbox, Key safes and the Activity log kept the old hairline — three
+   screens with a line, two without. The 1px stays (transparent) so every measured gap below a title holds. */
+:is(main, div).one-look .dashboard-header { border-bottom-color: transparent; }
+/* The Guest list's group captions are the one caption tier: muted, the caption size. They were tinted by group
+   (blue "Coming back", amber "Worth inviting back") at the sub size — the only coloured captions in Manage. */
+:is(main, div).one-look .gst-cap { font-size: var(--fs-caption); }
+:is(main, div).one-look .gst-grp .gst-cap > span { color: inherit; }

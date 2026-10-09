@@ -106,6 +106,12 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // THE MENU STAYS ON THE SCREEN: the + sits at the RIGHT edge now and its menu hangs off the
   // wrapper's right edge; measured at phone width.
   await page.setViewportSize({ width: 390, height: 850 });
+  // Narrowing the window (an iPad turning to portrait) must not open the AUTO-docked booking full
+  // screen: the owner never tapped it. It used to, whenever the width change landed after the nav
+  // below — which is how this step timed out on a + that was hidden behind the booking page.
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => document.querySelector('.page-view.active').id) === 'view-backoffice',
+    'narrowing past 1200px leaves the owner on Today — the auto-docked booking does not open full screen');
   await page.evaluate(() => window.nav('view-backoffice'));
   await page.waitForTimeout(500);
   await page.click('.cal-actions .cal-add-btn');

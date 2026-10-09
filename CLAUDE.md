@@ -946,6 +946,41 @@ the title's line — `.dashboard-header.settings-head` + `.settings-head-titles`
   ui-test-backoffice-motion §3, ui-test-round8, ui-test-workspace, ui-test-needs-you. NB onelook's fixture
   SERVES §16's booking, because its background refresh empties `dbBookings` and the pill then rightly says nothing.
 
+## One window, wherever the rows are one list (owner-asked, from screenshots)
+
+**Asked for from Payments' "Needs attention" card beside Calendar sync's separate cottage cards**: "give them
+the same treatment", sitewide, "regardless of how small". Rows of one kind that stack are ONE joined window —
+a hairline between, the card corners only on the run's ends — and a caption names each run. Gated by
+**ui-test-onelook §17** (break-tested eight ways) plus re-aims in ui-test-manage §3/§3b and ui-test-keysafe.
+- **The generic join** (admin.css one-look block) covers `.sp-need, .sp-off, .ac-card, .settings-sec
+  .bhub-fold-grp, .pr-scard, .pr-pcard, .sg-band, .cancel-card, .u-join`. Its top margin is
+  `calc(-1 * var(--fold-gap, 0px))`: a container with a flex gap DECLARES it as `--fold-gap` and the join cancels
+  it (`.sp-sec` 8px, the content editor 12px). Forcing `margin-top: 0` instead left rows squared-but-apart.
+- **Calendar sync**: one "Cottages" caption over one window of rows (`.cal-cot` + a `cot-dot` in the cottage
+  colour); failing platforms are their own fold rows under "Needs attention" (`cal-prob`, red "failing"
+  capsule); the facts line (`.cal-sum`) shows only when something is linked — "3 of 4 cottages linked" about
+  nothing linked was dropped. The list is ONE column at 640px at every width.
+- **Key safes**: two or more to-dos are rows of one window under "Needs attention" (`.ks-trow`, the duty's
+  severity as a capsule — Set now / Soon / After <time>); one to-do keeps the card with its full-width button.
+  A guest past check-in reads "is staying until <date>", never "arrives".
+- **Also joined**: the cottage page's Private/Remove rows, Search learning's stats + probe, the expense list +
+  its add row, the booking hub's money group with the grid below at EVERY width (docked included), the
+  enquiry message with the group under it, Price ideas' two lists, loading skeleton rows, the Status page's
+  Needs-a-look rows. The hub's "Needs attention" sits directly under the payask now.
+- **A page's first caption sits 24px under its title** (section 24 of the block; flow-root on the hosts whose
+  first child's margin collapsed through) — calendar and Payments read 32, the cottage calendar page 8,
+  Backups and Text messages 16.
+- **Text messages' state is the title pill** (Texts on / Texts off / Not ready / Set on the server / Couldn't
+  check), the quiet line under it only when it adds something.
+- **The season strip had gone BLANK**: section 12's generic `position: relative` reach rule caught `.sg-blk`,
+  the absolutely-positioned blocks, and they painted 0px tall. Removed from that rule; ui-test-manage asserts the
+  blocks paint.
+- **An auto-docked hub must not take over the screen** (`__hubAuto`): the wide split docks the first booking
+  quietly; narrowing below the split used to open it full-screen and hide the + menu (CI caught it in
+  ui-test-workspace). Only a hub the owner opened follows the width change.
+- NB the probes that found these live in the scratch stack, not the repo: "squared corners but apart" and
+  "title→first caption gap" are the two measurements worth re-running after any layout pass.
+
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
 **Supersedes the summary row below.** The status is said once, by `#health-pill` beside the Manage title, its dot
@@ -2398,10 +2433,9 @@ capsule — 2/4/1/1/1 fire).
   the shadow stayed while the gate said "none" on the rule; restated at that
   specificity, with the glass-panel hover LIFT opted out (a list cell does not rise).
   The Needs-you rail (`border-left`) and the icon tile fill are gone: the capsule
-  says the state once. **ONE EXEMPTION, gated**: `#calendar-list`'s per-cottage
-  groups keep their own corners and 16px of air — an owner's ask ("clear air
-  between the cottages", ui-test-manage §3) outranks the list rule, and the join
-  rule left them 5px apart, which is neither.
+  says the state once. (The `#calendar-list` exemption that once kept the cottages
+  apart is GONE — the owner later asked for Calendar sync to be one joined window
+  like Payments; see "One window, wherever the rows are one list".)
 - **THE CHEVRON IS `BHUB_CHEV`** — one stroke-SVG span constant used at all seven
   disclosure sites (one of them string-concatenated, hence the constant rather than
   a template). `.bhub-chev` is a 14px box; the `›` glyph is gone. ui-test-hub and

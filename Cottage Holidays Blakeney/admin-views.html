@@ -581,7 +581,7 @@
                  the server, so the field is left blank and blank means "keep it". -->
             <div class="settings-sec" id="sec-sms" style="display:none;">
                 <div style="max-width:640px;">
-                <p id="sms-state" role="status" aria-live="polite" style="font-size:var(--fs-body);font-weight:600;margin:0 0 4px;line-height:1.45;">Checking…</p>
+                <p id="sms-state" hidden style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 4px;line-height:1.45;"></p>
                 <div class="acr-cap">Twilio account</div>
                 <div class="acr-well">
                     <div class="acr-row"><span class="acr-lbl">Send booking texts</span><span class="chb-switch"><input type="checkbox" id="sms-on" aria-label="Send booking texts"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
@@ -691,6 +691,7 @@
                     <!-- Per-cottage review links for Airbnb / Vrbo guests (renderReviewLinks). -->
                     <div id="review-links"></div>
                     <section class="rv-sec">
+                        <h3 class="acr-cap">Tools</h3>
                         <div class="acr-well rv-well">
                             <button type="button" class="rv-go" data-act="settingsOpen" data-arg="reviews-import">
                                 <span class="rv-go-txt"><span class="rv-name">Import</span></span>

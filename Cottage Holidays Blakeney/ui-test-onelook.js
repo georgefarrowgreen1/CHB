@@ -34,6 +34,9 @@
 //  §16 every page states its status the Manage way: ONE pill, the Manage pill's own look, right of the
 //      title on its line — Today, Key safes, Payments, the Activity log and the Manage pages that carry
 //      one — and none of the three looks it replaced (a card row, green words, a tinted panel) is left.
+//  §17 a list is ONE window (the Payments "Needs attention" shape): Calendar sync's cottages, Key safes'
+//      to-dos, the cottage page's own controls, the newest expenses list and its add row, a loading list,
+//      and both hubs (attention above the money; the enquiry's message heading the quote's card).
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -66,6 +69,11 @@ async function open(browser, base, width) {
     return json({ ok: true, bookings: liveBookings, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
   });
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  // Nothing in this suite navigates after the first load, so a second load is a defect to NAME:
+  // CI once lost the page mid-§16 ("execution context was destroyed") with no clue what moved it.
+  // ('load', not 'framenavigated': history.pushState fires the latter on every screen change.)
+  await page.waitForLoadState('load').catch(() => {});
+  page.on('load', () => { console.log('  ✗ the page reloaded mid-suite:', page.url()); fails++; });
   await page.waitForTimeout(1200);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
@@ -711,6 +719,7 @@ async function open(browser, base, width) {
     ['Reviews', "await openArea(); settingsOpen('reviews');"],
     ['Seasonal rates', "await openArea(); settingsOpen('seasongrid');"],
     ['Payments settings', "await openArea(); settingsOpen('payments');"],
+    ['Text messages', "await openArea(); settingsOpen('sms');"],
   ];
   const pills = [];
   for (const [name, go] of PAGES) {
@@ -752,6 +761,155 @@ async function open(browser, base, width) {
     weekCap: !!document.querySelector('#al-week .st-cap'),
   }));
   ok(gone.rowsLeft === 0 && !gone.weekCap, `none of the old status looks is left — no card row, green line, tinted panel or capsule beside a title (${gone.rowsLeft})`);
+
+  console.log('§17 a list is ONE window: the Payments "Needs attention" shape, everywhere');
+  // Each page's rows must abut — every row starting where the one above ends, the card's corners only
+  // on the run's ends — where they used to be separate cards with air between (the owner's screenshot of
+  // Calendar sync beside Payments' Needs attention).
+  const J = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const run = (els) => {
+      els = els.filter((e) => e.getClientRects().length);
+      const b = els.map((e) => e.getBoundingClientRect());
+      const rad = (e, c) => parseFloat(getComputedStyle(e)['border' + c + 'Radius']) || 0;
+      return {
+        n: els.length,
+        flush: els.length > 1 && b.slice(1).every((r, i) => Math.abs(r.top - b[i].bottom) <= 1 && Math.abs(r.left - b[i].left) <= 1),
+        ends: els.length > 1 && rad(els[0], 'TopLeft') >= 16 && rad(els[0], 'BottomLeft') === 0 && rad(els[els.length - 1], 'TopLeft') === 0 && rad(els[els.length - 1], 'BottomLeft') >= 16,
+      };
+    };
+    const out = {};
+    // Calendar sync: the cottages are rows of one card; a failing platform is a fold row under
+    // "Needs attention", on the same ground as the rows — not a tinted card of its own.
+    await openArea(); settingsOpen('calendar'); await wait(500);
+    __calOv = { '21a': { feeds: [{ source: 'airbnb', url: 'https://www.airbnb.com/calendar/ical/x.ics' }], status: { sources: { airbnb: { ok: false, fails: 2, at: '2026-10-01 10:00:00', events: 3, ok_at: '2026-09-20 10:00:00', error: 'HTTP 404' } } } }, jollyboat: { feeds: [], status: { sources: {} } } };
+    renderCalendarList(); await wait(200);
+    const L = document.getElementById('calendar-list');
+    out.cal = run([...L.querySelectorAll('.bhub-fold-grp:not(.cal-prob)')]);
+    const prob = L.querySelector('.cal-prob'), row = L.querySelector('.bhub-fold-grp:not(.cal-prob)');
+    const cap = prob && prob.previousElementSibling;
+    out.calProb = !!prob && prob.classList.contains('bhub-fold-grp') && !!cap && /Needs attention/.test(cap.textContent)
+      && getComputedStyle(prob).backgroundColor === getComputedStyle(row).backgroundColor && getComputedStyle(prob).borderTopColor === getComputedStyle(row).borderTopColor;
+    // Key safes: two to-dos are rows of one card; one stays the card with its button.
+    await openKeysafe(); await wait(300);
+    const keep = __keysafe;
+    __keysafe = { '21a': { code: '', history: [], enabled: true }, jollyboat: { code: '', history: [], enabled: true } };
+    renderKeysafe();
+    // The rows sit inside the card, so the card carries the corners.
+    out.ks = run([...document.querySelectorAll('#keysafe-body .ks-todos .ks-trow')]);
+    const ksc = document.querySelector('#keysafe-body .ks-todos');
+    out.ks.ends = !!ksc && parseFloat(getComputedStyle(ksc).borderTopLeftRadius) >= 16 && getComputedStyle(ksc).borderTopStyle !== 'none';
+    out.ksCards = document.querySelectorAll('#keysafe-body .ks-todo').length;
+    __keysafe = { '21a': { code: '', history: [], enabled: true }, jollyboat: { code: '4821', history: [], enabled: true } };
+    renderKeysafe();
+    out.ksSolo = document.querySelectorAll('#keysafe-body .ks-todo .ks-rotate').length === 1 && !document.querySelector('#keysafe-body .ks-todos');
+    __keysafe = keep; renderKeysafe();
+    // The cottage page's own controls: one group, two rows.
+    await openArea(); settingsOpenAccom('21a'); await wait(400);
+    const groups = [...document.querySelectorAll('#accom-detail > .settings-group')];
+    out.accom = groups.length + ':' + (groups[0] ? groups[0].querySelectorAll('.settings-row').length : 0);
+    // Search learning: the tiles and the sandbox are not two cards.
+    settingsOpen('search-learning'); await wait(300);
+    // The tiles sit bare on the page (the stat-tile rule), the sandbox a field under them in the same block.
+    const slc = [...document.querySelectorAll('#search-learning-body .sl-card')];
+    out.sl = slc.length + ':' + (slc[0] ? getComputedStyle(slc[0]).borderTopWidth + '/' + getComputedStyle(slc[0]).backgroundColor : '') + ':' + !!(slc[0] && slc[0].querySelector('#sl-probe-input'));
+    // Expenses: "Add an expense" is the newest list's last row.
+    await openAccounts(); await wait(300);
+    allExpenses.splice(0, allExpenses.length,
+      { id: 1, date: '2026-10-02', category: 'Laundry', description: 'Linen', amount: 42.5, prop_key: '21a', recurring: 0 },
+      { id: 2, date: '2025-11-02', category: 'Cleaning', description: 'Clean', amount: 85, prop_key: '', recurring: 0 });
+    accountsOpen('expenses'); renderExpenses(); await wait(200);
+    const lists = [...document.querySelectorAll('#expenses-body .xp-list')], add = document.querySelector('#expenses-body .xp-add');
+    out.xpLists = lists.length;
+    out.xp = !!add && lists[0] && lists[0].nextElementSibling === add && run([lists[0], add]);
+    // A loading mailbox is shaped like the list it stands in for.
+    await openInbox(); inboxFolder('email'); await wait(200);
+    const mb = document.getElementById('mailbox-body'); const was = mb.innerHTML;
+    mb.innerHTML = skelRows(3);
+    out.skel = run([...mb.querySelectorAll('.skel-row')]);
+    mb.innerHTML = was;
+    return out;
+  });
+  ok(J.cal.n >= 2 && J.cal.flush && J.cal.ends, `Calendar sync: the cottages are rows of ONE card (${JSON.stringify(J.cal)})`);
+  ok(J.calProb, 'Calendar sync: a failing platform is a fold row under "Needs attention", on the rows\' own ground — not a tinted card');
+  ok(J.ks.n === 2 && J.ks.flush && J.ks.ends && J.ksCards === 0, `Key safes: two to-dos are rows of one card, not two cards (${JSON.stringify(J.ks)}, ${J.ksCards} cards)`);
+  ok(J.ksSolo, 'Key safes: ONE to-do keeps its card and its one button (Today\'s single task)');
+  ok(J.accom === '1:2', `the cottage page's private/remove controls are one group of rows (${J.accom})`);
+  ok(J.sl === '1:0px/rgba(0, 0, 0, 0):true', `Search learning: the sandbox is a field under the bare tiles, not a second card (${J.sl})`);
+  ok(J.xpLists === 2 && J.xp && J.xp.flush, `Expenses: "Add an expense" is the newest year's last row, joined (${JSON.stringify(J.xp)})`);
+  ok(J.skel.n === 3 && J.skel.flush && J.skel.ends, `a loading list is one card of rows, not separate cards (${JSON.stringify(J.skel)})`);
+
+  // The two hubs: Needs attention sits between the decision card and the money, so Money, Guest and
+  // History stay one card; the enquiry's message heads the card the quote joins — and clears the
+  // decision card above it (the head/grid join used to leave it 2px under that card).
+  const H = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const raw = { id: 93, prop_key: '21a', name: 'Rhian Moss', email: 'rhian@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(20), check_out: iso(23), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'deposit', deposit_paid: 120,
+      agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0,
+      agreed_on: iso(-5), hold_status: 'none', reg_url: 'guest-details.php?t=y', reg_submitted: 0 };
+    const c = document.getElementById('booking-hub-content');
+    nav('view-backoffice'); await wait(200);
+    for (let k = 0; k < 5; k++) {
+      dbBookings['21a'] = [mapBookingFromApi(raw)];
+      await openBookingHub(93); await wait(500);
+      if (/Rhian/.test(c.textContent) && c.querySelector('.bhub-attn')) break;
+    }
+    // The page settles in once per booking opened; measure the resting layout, not the entrance.
+    for (let k = 0; k < 40 && c.getAnimations({ subtree: true }).some((x) => x.playState === 'running'); k++) await wait(50);
+    const attn = c.querySelector('.bhub-attn'), money = c.querySelector('.bhub-money-grp');
+    const first = c.querySelector('.bhub-grid > .bhub-fold-grp');
+    const out = {
+      order: !!attn && !!money && !!(attn.compareDocumentPosition(money) & Node.DOCUMENT_POSITION_FOLLOWING),
+      joined: !!money && !!first && Math.abs(first.getBoundingClientRect().top - money.getBoundingClientRect().bottom) <= 1,
+      air: !!attn && !!money && Math.round(money.getBoundingClientRect().top - attn.getBoundingClientRect().bottom),
+    };
+    enquiries.splice(0, enquiries.length, mapEnquiryFromApi({ id: 94, prop_key: '21a', name: 'Iris Penn', email: 'iris@example.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB',
+      check_in: iso(70), check_out: iso(73), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Is late checkout possible?', created_at: iso(-1) + ' 09:00:00' }));
+    await openEnquiryHub('e94'); await wait(600);
+    const E = document.getElementById('enquiry-hub-content');
+    for (let k = 0; k < 40 && E.getAnimations({ subtree: true }).some((x) => x.playState === 'running'); k++) await wait(50);
+    const card = E.querySelector('.bhub-head .bhub-next'), msg = E.querySelector('.bhub-msg'), q = msg && msg.nextElementSibling;
+    out.msgAir = card && msg ? Math.round(msg.getBoundingClientRect().top - card.getBoundingClientRect().bottom) : -1;
+    out.msgJoined = !!q && q.classList.contains('bhub-fold-grp') && Math.abs(q.getBoundingClientRect().top - msg.getBoundingClientRect().bottom) <= 1
+      && parseFloat(getComputedStyle(msg).borderBottomLeftRadius) === 0 && parseFloat(getComputedStyle(q).borderTopLeftRadius) === 0;
+    return out;
+  });
+  ok(H.order && H.joined, `the booking page: Needs attention above the money, and the money joined to Guest and History (${JSON.stringify(H)})`);
+  ok(H.air >= 12, `…with the card's own air between the attention row and the money (${H.air}px)`);
+  ok(H.msgAir >= 12, `the enquiry page: the message clears the decision card above it (${H.msgAir}px)`);
+  ok(H.msgJoined, 'the enquiry page: the message heads the card the quote and the guest\'s details join');
+  // …and on a computer, docked beside Today's list, the money joins the list below it too (the join
+  // used to be phone-only, leaving the money row a card of its own in the pane).
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const D = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    nav('view-backoffice'); await wait(300);
+    await openBookingHub(93); await wait(400);
+    const c = document.getElementById('booking-hub-content');
+    for (let k = 0; k < 40 && c.getAnimations({ subtree: true }).some((x) => x.playState === 'running'); k++) await wait(50);
+    const money = c.querySelector('.bhub-money-grp'), first = c.querySelector('.bhub-grid > .bhub-fold-grp');
+    return { docked: c.parentElement && c.parentElement.id, gap: money && first ? Math.round(first.getBoundingClientRect().top - money.getBoundingClientRect().bottom) : null };
+  });
+  ok(D.docked === 'bookings-detail-pane' && D.gap === 0, `docked on a computer, the money still joins Guest and History (${D.docked}, gap ${D.gap})`);
+  await page.setViewportSize({ width: 390, height: 900 });
+
+  // The first caption on a page sits the same distance under its title row everywhere (24px: the row's
+  // 8 + the caption's 16). Calendar sync and Payments settings sat at 32, a cottage's sync page at 8 and
+  // Backups at 16, where the caption's margin collapsed into the title row's.
+  const gaps = [];
+  for (const sec of ['reviews', 'calendar', 'payments', 'sms', 'backups', 'follow-ups', 'chat-away']) {
+    gaps.push(await page.evaluate(async (sec) => {
+      __calOv = null; // §17 left a failing feed, whose facts line rightly leads the calendar page
+      await openArea(); settingsOpen(sec);
+      await new Promise((r) => setTimeout(r, 400));
+      const head = document.querySelector('#settings-panel .settings-panel-head');
+      const cap = [...document.querySelectorAll('#sec-' + sec + ' :is(.bhub-grpcap, .acr-cap, .u-cap)')].filter((e) => e.getClientRects().length).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+      return sec + ':' + (head && cap ? Math.round(cap.getBoundingClientRect().top - head.getBoundingClientRect().bottom) : 'none');
+    }, sec));
+  }
+  ok(gaps.every((g) => /:24$/.test(g)), `every page's first caption sits 24px under its title row (${gaps.join(' ')})`);
 
   await page.close();
   await t.done(fails);

@@ -75,7 +75,8 @@ const OFF = { on: false, ready: false, sid_set: false, sid_tail: '', token_set: 
     const sec = document.getElementById('sec-sms');
     return {
       shown: !!sec && getComputedStyle(sec).display !== 'none',
-      state: (document.getElementById('sms-state') || {}).textContent || '',
+      // The state is the pill beside the title now; its name carries the sentence.
+      state: (((document.querySelector('#settings-panel-cap .head-pill') || { getAttribute: () => '' }).getAttribute('aria-label') || '') + ' ' + ((document.getElementById('sms-state') || {}).textContent || '')).trim(),
       token: (document.getElementById('sms-token') || {}).value,
       tokenNote: (document.getElementById('sms-token') || {}).placeholder || '',
       sidPlaceholder: (document.getElementById('sms-sid') || {}).placeholder || '',
@@ -140,7 +141,8 @@ const OFF = { on: false, ready: false, sid_set: false, sid_tail: '', token_set: 
   ({ page } = await open(browser, base, { status: Object.assign({}, READY, { from_config: true }), sms: true, owner: true }));
   await openSmsPage(page);
   v = await page.evaluate(() => ({
-    state: (document.getElementById('sms-state') || {}).textContent || '',
+    // The state is the pill beside the title now; its name carries the sentence.
+      state: (((document.querySelector('#settings-panel-cap .head-pill') || { getAttribute: () => '' }).getAttribute('aria-label') || '') + ' ' + ((document.getElementById('sms-state') || {}).textContent || '')).trim(),
     locked: ['sms-on', 'sms-sid', 'sms-from', 'sms-token'].every((id) => (document.getElementById(id) || {}).disabled === true),
   }));
   // Re-aimed: the claim is that the page NAMES where the live settings come from,

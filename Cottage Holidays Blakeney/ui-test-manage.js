@@ -256,23 +256,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(500);
   const cal = await page.evaluate(() => {
     const list = document.getElementById('calendar-list');
-    // The cottages breathe (owner-asked): measured air between VERTICALLY
-    // consecutive cards. At desktop width the settings section flows in CSS
-    // columns, so DOM order is not screen order — group by column (left edge),
-    // sort by top, and measure within each column.
-    const cards = list ? [...list.querySelectorAll('.bhub-fold-grp')] : [];
-    const byCol = {};
-    cards.forEach((el) => {
-      const b = el.getBoundingClientRect();
-      (byCol[Math.round(b.left / 50)] = byCol[Math.round(b.left / 50)] || []).push(b);
-    });
-    let minGap = 999;
-    Object.values(byCol).forEach((col) => {
-      col.sort((a, b) => a.top - b.top);
-      for (let i = 1; i < col.length; i++) minGap = Math.min(minGap, col[i].top - col[i - 1].bottom);
-    });
+    // The cottages are ONE card, as Payments' Needs attention is (owner-asked, superseding the
+    // earlier "clear air between the cottages"): one column, every row flush with the next, the
+    // card's corners only on the run's ends.
+    const cards = list ? [...list.querySelectorAll('.bhub-fold-grp:not(.cal-prob)')] : [];
+    const bs = cards.map((el) => el.getBoundingClientRect());
+    const gaps = bs.slice(1).map((b, i) => Math.round(b.top - bs[i].bottom));
+    const rad = (el, c) => parseFloat(getComputedStyle(el)['border' + c + 'Radius']) || 0;
     return {
-      minGap,
+      gaps, oneCol: new Set(bs.map((b) => Math.round(b.left))).size === 1,
+      ends: cards.length ? [rad(cards[0], 'TopLeft'), rad(cards[0], 'BottomLeft'), rad(cards[cards.length - 1], 'TopLeft'), rad(cards[cards.length - 1], 'BottomLeft')] : [],
+      dotName: !!list.querySelector('[data-grp="cal-jollyboat"] .cal-cot .cot-dot') && !list.querySelector('[data-grp="cal-jollyboat"] .prop-tag'),
       grps: list ? list.querySelectorAll('.bhub-fold-grp').length : 0,
       jbWarn: !!list.querySelector('[data-grp="cal-jollyboat"] .st-cap.is-warn .st-wic'),
       a21ok: !!list.querySelector('[data-grp="cal-21a"] .st-cap.is-ok .st-tick'),
@@ -282,7 +276,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(cal.grps >= 2, `every cottage is a verdict group (${cal.grps})`);
-  ok(cal.minGap >= 12, `…with clear air between the cottages (${Math.round(cal.minGap)}px)`);
+  ok(cal.oneCol && cal.gaps.length && cal.gaps.every((g) => g === 0), `…joined into ONE card in one column, no air between rows (${cal.gaps.join(',')})`);
+  ok(cal.ends[0] >= 16 && cal.ends[1] === 0 && cal.ends[2] === 0 && cal.ends[3] >= 16, `…the card's corners only on the run's ends (${cal.ends.join('/')})`);
+  ok(cal.dotName, 'a cottage row is titled by its dot and name, not a pill');
   ok(cal.jbWarn && cal.a21ok, 'the stalled feed wears the triangle, the fresh one the ✓');
   ok(/last imported 3 days ago/.test(cal.jbSub), `the sub states the staleness (${cal.jbSub})`);
   ok(cal.runInFold && cal.editRoute, 'Run-the-sync + the feed-link editor sit inside the fold');
@@ -315,6 +311,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       state: pill && pill.dataset.tone, t: pill ? pill.textContent.trim() : '', label: pill ? pill.getAttribute('aria-label') || '' : '', s: (L.querySelector('.cal-sum .mg-s') || {}).textContent || '',
       oldMark: !!L.querySelector('.mg-mark, .mg-t'),
       probs: L.querySelectorAll('.cal-prob').length, probTxt: (L.querySelector('.cal-prob') || {}).textContent || '',
+      probRow: !!L.querySelector('.cal-prob.bhub-fold-grp > .bhub-fold-row .st-cap.is-bad'),
+      attnCap: [...L.querySelectorAll('.bhub-grpcap.is-attn')].some((c) => /Needs attention/.test(c.textContent) && c.nextElementSibling && c.nextElementSibling.classList.contains('cal-prob')),
       badDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-bad'),
       okDot: !!L.querySelector('[data-grp="cal-21a"] .bhub-fold-sub .cal-dot.is-ok'),
       cap21: !!L.querySelector('[data-grp="cal-21a"] .st-cap.is-bad'),
@@ -359,8 +357,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!c1.oldMark, 'the summary card carries the facts only — no second verdict of its own');
   ok(/2 of 3 cottages linked/.test(c1.s), `…and how many cottages are linked (${c1.s})`);
   ok(c1.probs === 1 && /21A Westgate · Airbnb/.test(c1.probTxt) && /Still using the 4 Airbnb stays/.test(c1.probTxt), 'the failing platform leads, saying what it still has');
+  ok(c1.probRow && c1.attnCap, 'the problem is a fold row under the "Needs attention" caption, as on Payments — not a tinted card of its own');
   ok(c1.badDot && c1.okDot && c1.cap21, 'each platform wears its own dot; the cottage reads failing');
   ok(!c1.explain, 'the explanation line is gone');
+  // Its fix is inside the fold, as every Needs-attention row's is.
+  await page.click('.cal-prob .bhub-fold-row');
+  await page.waitForSelector('.cal-prob .u-btn1', { state: 'visible' });
   await page.click('.cal-prob .u-btn1');
   await page.waitForSelector('#cal-link-in');
   await page.fill('#cal-link-in', 'not a link');
@@ -1344,6 +1346,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       closed: document.getElementById(`sg-fold-${i0}`).hidden,
       bar0: document.getElementById('sg-savebar').hidden,
       blocks: document.querySelectorAll('#sg-strip .sg-blk').length,
+      // PAINTED, not just present: a general hit-region rule once set these absolutely-placed blocks
+      // back to position:relative, so every one sat in the DOM at 0px tall and the strip drew nothing.
+      blocksPainted: [...document.querySelectorAll('#sg-strip .sg-blk')].filter((x) => x.getBoundingClientRect().height >= 20 && getComputedStyle(x).position === 'absolute').length,
       noIntro: !/Each season is one card/.test(document.getElementById('sec-seasongrid').textContent),
     };
     document.getElementById(`sg-sum-${i0}`).click();
@@ -1404,7 +1409,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(sb.closed && sb.opened, 'a season starts closed and its summary opens it');
   ok(sb.bar0 && sb.bar1 && /1 unsaved change/.test(sb.msg1), `no save bar until something changes, then it counts (${sb.msg1})`);
   ok(/on usual £/.test(sb.diff), `each price says how it compares with the usual rate (${sb.diff})`);
-  ok(sb.blocks === 2, `the year strip draws each coming season (${sb.blocks})`);
+  ok(sb.blocks === 2 && sb.blocksPainted === 2, `the year strip draws each coming season, painted at the strip's height (${sb.blocks} / ${sb.blocksPainted} painted)`);
   ok(sb.noIntro, 'the explanatory sentence is gone');
   ok(sb.easterName === 'Easter' && /Suggested/.test(sb.easterTag) && /Your name/.test(sb.myTag), `an unnamed season is named from its dates; a typed name is kept (${sb.easterName})`);
   ok(sb.rep.from === sb.rep.want && sb.rep.name === 'Easter' && sb.rep.open, `Repeat next year moves Easter with Easter (${sb.rep.from} = ${sb.rep.want})`);
