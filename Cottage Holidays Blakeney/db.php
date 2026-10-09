@@ -1864,9 +1864,6 @@ function mailbox_own_address()
     $addr = strtolower(trim((string) $addr));
     return strpos($addr, '@') !== false ? $addr : '';
 }
-// A message FROM us is one of our own notifications, never a customer email.
-// With no address configured this is always false — a mailbox that cannot
-// identify itself must show everything rather than hide everything.
 // Which mailbox UIDLs the owner has already opened. It lived inside mailbox.php,
 // which is a ROUTED endpoint — requiring it to ask the question would run the
 // route — so the one place that knows what "already read" means is here, and
@@ -1923,10 +1920,36 @@ function payment_decline_message($code, $fallback = '')
     return $f !== '' ? $f : 'The payment was declined. Please check the card and try again, or use another one.';
 }
 
-function mailbox_is_self_notification($fromAddr)
+// A message FROM us is one of our own notifications only when THIS SITE wrote it.
+// The owner's phone sends as the same address the site does, so "from info@" also
+// covers what a person typed: a test email to themselves, or a reply to a guest-chat
+// alert, both of which this used to hide as the site's own voice. Given the header
+// block, it asks for the site's fingerprint (mailbox_is_site_sent); with none, it
+// keeps the old address-only answer. No address configured → never ours.
+function mailbox_is_self_notification($fromAddr, $head = null)
 {
     $own = mailbox_own_address();
-    return $own !== '' && strtolower(trim((string) $fromAddr)) === $own;
+    if ($own === '' || strtolower(trim((string) $fromAddr)) !== $own) {
+        return false;
+    }
+    return $head === null || mailbox_is_site_sent($head);
+}
+// Did smtp_transmit write this? Mail sent from now on carries X-CHB-Origin; mail
+// already in the box is recognised by what smtp_transmit has always written: its
+// own MIME boundary names, or a Message-ID of 24 hex or a msg.<thread token>. A
+// phone's mail app writes none of these. TOP-LEVEL headers only: a forwarded
+// message carries its original's headers further down.
+function mailbox_is_site_sent($head)
+{
+    $head = preg_replace('/\r?\n[ \t]+/', ' ', str_replace("\r\n", "\n", (string) $head));
+    $head = explode("\n\n", $head, 2)[0];
+    if (preg_match('/^X-CHB-Origin:\s*site\b/mi', $head)) {
+        return true;
+    }
+    if (preg_match('/^Content-Type:.*boundary="?chb(alt|mix)_/mi', $head)) {
+        return true;
+    }
+    return preg_match('/^Message-ID:\s*<([0-9a-f]{24}|msg\.\d+[xy][0-9a-f]{16,32})@[^>\s]+>\s*$/mi', $head) === 1;
 }
 // …and the OTHER kind of mail that is not a person: automated authentication
 // reports. Any domain publishing a DMARC record gets these daily from every

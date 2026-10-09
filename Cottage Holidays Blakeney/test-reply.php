@@ -327,6 +327,50 @@ if ($own === '') {
     chk('…case- and space-insensitively', mailbox_is_self_notification('  ' . strtoupper($own) . ' '));
     chk('a guest is never mistaken for us', !mailbox_is_self_notification('guest@example.test'));
 }
+
+// WHAT THE SITE WROTE, NOT WHO IT IS FROM. The owner's phone sends as the same
+// address, so a test email to themselves and a reply to a guest-chat alert were
+// both hidden as the site's voice (reported: "why is it not picking up my email").
+echo "\n== The site's own mail, by its fingerprint ==\n";
+$ownA = $own !== '' ? $own : 'info@example.test';
+$dom = substr(strrchr($ownA, '@'), 1);
+$siteNew = "From: Cottage Holidays Blakeney <{$ownA}>\nMessage-ID: <x1@{$dom}>\nX-CHB-Origin: site\nSubject: =?UTF-8?B?eA==?=";
+$siteAlt = "From: <{$ownA}>\nMessage-ID: <AB12@{$dom}>\nContent-Type: multipart/alternative; boundary=\"chbalt_0a1b2c3d4e5f6a7b\"";
+$siteMix = "From: <{$ownA}>\nContent-Type: multipart/mixed;\n\tboundary=\"chbmix_0a1b2c3d4e5f6a7b\"";
+$sitePlain = "From: <{$ownA}>\nMessage-ID: <0123456789abcdef01234567@{$dom}>\nContent-Type: text/plain; charset=UTF-8";
+$siteMsg = "From: <{$ownA}>\nMessage-ID: <msg.17x0123456789abcdef0123456789abcdef@{$dom}>\nSubject: New message [#17x0123456789abcdef]";
+// What iPhone Mail wrote in the report: Apple's boundary, a UUID Message-ID.
+$phone = "From: George Farrow-Green <{$ownA}>\nTo: George Farrow-Green <{$ownA}>\nSubject: Booking\nMessage-ID: <6F9619FF-8B86-D011-B42D-00C04FC964FF@{$dom}>\n"
+    . "Content-Type: multipart/alternative; boundary=Apple-Mail-6F9619FF-8B86-D011-B42D-00C04FC964FF\nX-Mailer: iPhone Mail (22A3354)";
+chk('the new marker is the site', mailbox_is_site_sent($siteNew));
+chk('mail already in the box: our alternative boundary', mailbox_is_site_sent($siteAlt));
+chk('…our mixed boundary, folded onto a second line', mailbox_is_site_sent($siteMix));
+chk('…our 24-hex Message-ID on a plain-text send', mailbox_is_site_sent($sitePlain));
+chk('…our msg.<token> Message-ID', mailbox_is_site_sent($siteMsg));
+chk('an email typed on a phone is not the site', !mailbox_is_site_sent($phone));
+// A reply quotes our Message-ID in In-Reply-To / References. Only ITS OWN
+// Message-ID may count, or every reply to an alert would be hidden as the alert.
+chk('a reply to our alert is not the site', !mailbox_is_site_sent($phone . "\nIn-Reply-To: <msg.17x0123456789abcdef0123456789abcdef@{$dom}>\nReferences: <0123456789abcdef01234567@{$dom}>"));
+// A forwarded message carries its original's headers in the BODY.
+chk('a forward of one of our alerts is not the site', !mailbox_is_site_sent($phone . "\n\n--x\nContent-Type: message/rfc822\n\nX-CHB-Origin: site\nContent-Type: multipart/alternative; boundary=\"chbalt_00\""));
+chk('rubbish in, false out', !mailbox_is_site_sent('') && !mailbox_is_site_sent('not headers'));
+if ($own !== '') {
+    chk('our own alert is hidden', mailbox_is_self_notification($own, $siteAlt));
+    chk('THE REPORT: a test email typed on the phone is shown', !mailbox_is_self_notification($own, $phone));
+    chk('someone else using our boundary is still not us', !mailbox_is_self_notification('guest@example.test', $siteAlt));
+    chk('no header block → the old address-only answer', mailbox_is_self_notification($own));
+}
+// The new marker is written on every send — smtp_transmit is the one place.
+$mailerSrc = file_get_contents(__DIR__ . '/mailer.php');
+chk('smtp_transmit writes the marker', preg_match('/function smtp_transmit\([\s\S]{0,4000}X-CHB-Origin: site/', $mailerSrc) === 1);
+// THE WIRING: both readers pass the header block. Without it they fall back to
+// the address-only answer and hide the owner's own words again.
+$mbxSrc = file_get_contents(__DIR__ . '/mailbox.php');
+chk('the mailbox list passes the headers', strpos($mbxSrc, 'mailbox_is_self_notification($fromAddr, $head)') !== false);
+chk('the reply poll passes the headers', preg_match('/\$isSelf = mailbox_is_self_notification\(\$fromAddr, explode\(/', file_get_contents(__DIR__ . '/mailbox-read.php')) === 1);
+// An owner's emailed reply becomes a chat message, so the list must not show it
+// a second time as a person waiting — but only one the poll would route.
+chk('the list sets aside an owner reply the poll routes', strpos($mbxSrc, "))[1] === 'owner') {") !== false && strpos($mbxSrc, 'people_mail_senders()') !== false);
 // The addresses come through mailbox_from_addr, so the pairing must survive the
 // display form the mailbox actually reads ("Name <addr>").
 chk('a display-name From resolves to its address', mailbox_from_addr('Cottage Holidays Blakeney <info@example.test>') === 'info@example.test');

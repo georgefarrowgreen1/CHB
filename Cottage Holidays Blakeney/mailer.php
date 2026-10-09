@@ -314,6 +314,9 @@ function smtp_transmit(
             ? preg_replace('/[^A-Za-z0-9._+\-]/', '', (string) $messageId)
             : bin2hex(random_bytes(12));
     $headers .= "Message-ID: <{$mid}@{$fromDomain}>\r\n";
+    // Marks mail this site wrote, so the mailbox can tell it from mail a person
+    // sent from the same address (mailbox_is_site_sent).
+    $headers .= "X-CHB-Origin: site\r\n";
     // Caller-supplied extra headers (e.g. List-Unsubscribe on marketing sends).
     // Names/values sanitised so they can never inject additional headers.
     foreach ((array) $extraHeaders as $hn => $hv) {

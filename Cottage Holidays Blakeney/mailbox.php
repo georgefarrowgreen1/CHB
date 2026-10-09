@@ -237,6 +237,7 @@ if ($action === 'list') {
     $out = [];
     $ownHidden = 0;
     $robotHidden = 0;
+    $mbxSenders = null;
     foreach ($nos as $no) {
         fwrite($fp, "TOP {$no} 0\r\n");
         $first = fgets($fp, 1024);
@@ -256,7 +257,21 @@ if ($action === 'list') {
         // shows. They are counted, not silently swallowed: the client says how
         // many were set aside, so an owner who wonders where a mail went has an
         // answer on screen (the no-silent-caps rule).
-        if (mailbox_is_self_notification($fromAddr)) {
+        if (mailbox_is_self_notification($fromAddr, $head)) {
+            $ownHidden++;
+            continue;
+        }
+        // An email the owner wrote from this address answering a guest-chat
+        // alert becomes a chat message: mailbox-read.php routes it on the same
+        // two facts (an OWNER token, a sender on the allow-list). It is in that
+        // guest's conversation already, so listing it too would read as a new
+        // person waiting. One the poll would NOT route stays listed.
+        if ($fromAddr === mailbox_own_address() && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)
+            && msg_reply_parse(mailbox_token_in([
+                'in_reply_to' => mbx_header($head, 'In-Reply-To'),
+                'references' => mbx_header($head, 'References'),
+                'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')),
+            ]))[1] === 'owner') {
             $ownHidden++;
             continue;
         }

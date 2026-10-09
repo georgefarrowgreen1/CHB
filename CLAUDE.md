@@ -1525,6 +1525,18 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   least 600ms, then show a green tick for 1.4s. A failed `loadData` says "Couldn't check for new messages"
   rather than leaving the old list looking current. Checked by a throwaway browser drive at 390 dark and 1280
   light; no suite asserts it.
+- **MAIL FROM OUR OWN ADDRESS IS HIDDEN ONLY WHEN THE SITE WROTE IT** (reported: an email George typed on his
+  iPhone from info@ to info@ never reached the Inbox). `mailbox_is_self_notification($from, $head)` used to hide
+  everything from MAIL_FROM. The owner's phone sends as that same address, so his own test emails were hidden. So were
+  his emailed replies to guest-chat alerts: the reply poll dropped them as "self-notification", and they never reached
+  the chat. It now asks `mailbox_is_site_sent($head)`: the `X-CHB-Origin: site` header (smtp_transmit writes it on
+  every send from now on), or, for mail already in the box, smtp_transmit's own `chbalt_`/`chbmix_` boundary or its
+  24-hex / `msg.<token>` Message-ID. It reads top-level headers only, so a forward of an alert is not "ours". The
+  mailbox list also sets aside an owner's emailed reply that the poll routes into a chat (an owner token + a sender
+  on the allow-list), because the chat already shows it. Earlier replies that were dropped stay unposted. Gated by
+  test-reply ("The site's own mail, by its fingerprint", break-tested on the rule and the marker), and driven once
+  through the real `mailbox.php` list and the poll's debug trace against a fake POP3 mailbox: before the fix 1 of 5
+  shown and the reply dropped, after it 2 of 5 and the reply delivered.
 - **DONE IS A FOLDER** (approved demo, built without CI at the owner's ask). An Inbox | Done switch
   (the one switcher, its accent pill travelling on `--sheet`) sits under the search; `__ibFolder`
   decides what `ibRenderList` shows. Inbox = Waiting / Earlier / Reminders, a calm card when nothing

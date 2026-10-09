@@ -317,7 +317,9 @@ function poll_mailbox_replies($force = false, $preview = false)
             // notification carrying a thread token would route as an "admin
             // reply" and post the site's own alert into the guest's chat. The
             // sender test comes first, before any routing.
-            $isSelf = mailbox_is_self_notification($fromAddr);
+            // The SITE'S own mail, by its fingerprint: an email the owner typed from
+            // the same address (a reply to a chat alert) must still route.
+            $isSelf = mailbox_is_self_notification($fromAddr, explode("\n\n", str_replace("\r\n", "\n", (string) $raw), 2)[0]);
             $route = 'drop';
             if ($tid > 0 && $body !== '' && !$isSelf) {
                 if ($senderOk && $tokAud === 'owner') {
