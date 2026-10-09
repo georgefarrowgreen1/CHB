@@ -10912,6 +10912,7 @@ async function openBookingHub(bookingId, quiet) {
     const prev = document.querySelector('.page-view.active');
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
+    hubBackName();
     // A NEW booking opens CLOSED: the fold set is one shared memory, so opening
     // Guest on one stay used to leave the next stay's Guest open too. Only the
     // booking hub's own groups are forgotten — other pages keep theirs. A rating
@@ -11064,6 +11065,13 @@ function hubEmailsSum(r) {
         .reduce((a, x) => (!a || String(x.at || '') > String(a.at || '') ? x : a), null);
     if (!e) return 'Nothing sent yet';
     return /confirmation/i.test(String(e.summary || '')) ? stCap('ok', 'Confirmation sent') : stCap('ok', 'Sent');
+}
+// The back link names where it goes (the one look's rule): the screen bookingHubBack
+// really returns to — Payments, the Inbox, or Today for everything else.
+function hubBackName() {
+    const b = document.querySelector('#view-booking-hub > .back-link');
+    const to = { 'view-accounts': 'Payments', 'view-inbox': 'Inbox' }[__hubReturnView] || 'Today';
+    if (b) b.innerHTML = `${BACK_CHEV}<span>${to}</span>`;
 }
 function bookingHubBack() {
     const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-backoffice';
@@ -11653,7 +11661,7 @@ function hubIntelCardHtml(intel) {
 function hubIntelMentionRowsHtml(mentions) {
     const snip = (s) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > 110 ? s.slice(0, 109) + '…' : s; };
     return (mentions || [])
-        .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span><span class="bhub-mut">open →</span></button>`)
+        .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span>${BHUB_CHEV}</button>`)
         .join('');
 }
 // The when-line's STATE as one capsule (Past stay / Staying now / Arrives in 4 days) — the fact the
@@ -11978,14 +11986,15 @@ function renderBookingHub() {
         otherStays.sort((a, z) => (z.x.checkIn || '').localeCompare(a.x.checkIn || ''));
     }
     const staysHtml = otherStays.length
-        ? `<div class="bhub-mut" style="margin-top:14px;">Also stayed (${otherStays.length}):</div>` +
+        ? `<div class="bhub-stays-cap">Also stayed · ${otherStays.length}</div><div class="bhub-stays">` +
           otherStays
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span>${BHUB_CHEV}</button>`,
               )
-              .join('')
+              .join('') +
+          '</div>'
         : '';
     // Only fields that HAVE a value render — a card of "—" rows is noise.
     // Terms always shows (it's the acceptance evidence, present or not).
@@ -12612,7 +12621,7 @@ const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|
 const ONE_LOOK_DANGER = /^(Delete|Remove|Clear)\b/i;
 const ONE_LOOK_KINDS = ['u-btn1', 'u-btn2', 'u-btn3'];
 // Switchers, folds and the season strip's own controls are not buttons of this kind.
-const ONE_LOOK_NOT = '.pay-seg *, .ana-seg *, .al-tabs *, .rvi-chips *, .chb-switch *, .sg-sum, .bhub-fold-row, .sg-usesug, .sg-dbtn, .sg-date, .sg-dates, .u-addrow';
+const ONE_LOOK_NOT = '.pay-seg *, .ana-seg *, .al-tabs *, .rvi-chips *, .chb-switch *, .sg-sum, .bhub-fold-row, .sg-usesug, .sg-dbtn, .sg-date, .sg-dates, .u-addrow, .bhub-menu-btn, .bhub-next-btn, .bhub-next-alt, .bhub-sticky-btn';
 function oneLookKind(label) {
     const t = String(label || '').replace(/\s+/g, ' ').trim().replace(/[›→]\s*$/, '').trim();
     return ONE_LOOK_DANGER.test(t) ? 'u-btn3' : ONE_LOOK_PRIMARY.test(t) || t === 'Done' ? 'u-btn1' : 'u-btn2';
@@ -19845,7 +19854,7 @@ function hubPlanHtml(b, ps, gt, past) {
             ? `Link sent ${day(b.balanceRequestedAt || b.depositRequestedAt)}`
             : 'Not asked yet');
         return `<div class="bhub-plan">
-        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag is-std">default</span></span>
+        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag is-std">Default</span></span>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(gt.balance)} in full, due now</strong><span class="bhub-plan-why">${escapeHtml(`booked within ${paymentTerms.balanceDays || 30} days of arrival`)}</span></span><span class="bhub-plan-state">${askState}</span></div>
         ${!past ? `<button type="button" class="bhub-actlink" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan</button>` : ''}
     </div>`;
@@ -19856,7 +19865,7 @@ function hubPlanHtml(b, ps, gt, past) {
               a custom plan announces itself as a small accent badge rather
               than two muted words in the caption. Owner's report: the whole
               panel read as washed-out grey beside the payline above it. */ ''}
-        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag${custom ? '' : ' is-std'}">${custom ? 'custom' : 'default'}</span></span>
+        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag${custom ? '' : ' is-std'}">${custom ? 'Custom' : 'Default'}</span></span>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong><span class="bhub-plan-why">${escapeHtml(depFrom)}</span></span><span class="bhub-plan-state">${depState}</span></div>
         ${apPlanLive(b) && !gt.fullyPaid
             ? hubPlanMonthlyHtml(b, ps)
@@ -32595,12 +32604,12 @@ function mbxContextHtml(fromEmail, shownName) {
             const meta = propertyMeta[pk] || { name: pk };
             const past = (b.checkOut || '') < today;
             chips.push(
-                `<button type="button" class="bhub-stay-row" ${chbAttrs('openBookingHub', String(b.id))}><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span><span class="bhub-mut">open →</span></button>`,
+                `<button type="button" class="bhub-stay-row" ${chbAttrs('openBookingHub', String(b.id))}><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span>${BHUB_CHEV}</button>`,
             );
         });
     g.enquiries.slice(0, 3).forEach((q) => {
         chips.push(
-            `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+            `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span>${BHUB_CHEV}</button>`,
         );
     });
     const name = g.name || g.email;
@@ -33267,7 +33276,7 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 try { chbFrameSync(); } catch (e) {}
 // The back office's buttons take their kind from here on (oneLookButtons) — Manage
 // first, then each area as it joined the one look.
-try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
+try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox', 'view-backoffice', 'booking-hub-content', 'enquiry-hub-content'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

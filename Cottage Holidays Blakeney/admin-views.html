@@ -899,17 +899,17 @@
     </template>
 
 <template data-view="view-booking-hub">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack">← Back</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Today</span></span>
         <!-- Record-scoped Assist Bar: act on THIS booking by typing ("take payment",
              "email them", "return deposit"). Pre-scoped via __cmdkEntity. -->
-        <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
+        <div id="booking-hub-content" class="one-look"><!-- admin.js injects the hub here --></div>
     </template>
 
 <template data-view="view-enquiry-hub">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack">← Back</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Inbox</span></span>
         <!-- Record-scoped Assist Bar: act on THIS enquiry by typing ("approve",
              "email them", "change the price"). Pre-scoped via __cmdkEntity. -->
-        <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
+        <div id="enquiry-hub-content" class="one-look"><!-- admin.js injects the enquiry hub here --></div>
     </template>
 
 <template data-view="view-search" data-host="body">

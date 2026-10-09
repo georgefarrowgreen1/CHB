@@ -11,14 +11,20 @@
 //      the actions;
 //   §5 every field in the place editor has a label of its own;
 //   §6 a window opened from Manage is a bottom sheet on a phone — and the same
-//      window opened outside Manage is untouched (the scope is the point);
+//      window on the guest side is untouched (the scope is the point);
 //   §7 one caption tier on Manage, the old tracked capitals left alone outside it;
 //   §8 Payments and Key safes joined: tools as rows, one caption tier, a back link
 //      that names Payments, an expense as one line in one card (its rows were
 //      wearing the guest Things-to-do class, whose display:flex broke the grid);
 //   §9 the Inbox joined: no sentence under the title, one chevron, the conversations
 //      one list card under one search with chips, and two verdicts that no longer
-//      claim more than they know (a read-but-unanswered chat, a mailbox that failed).
+//      claim more than they know (a read-but-unanswered chat, a mailbox that failed);
+//  §10 the booking and enquiry pages joined: a back link naming its screen, cards on the
+//      one radius, the one caption tier, sentence-case tags, Approve a filled pill;
+//  §11 Today joined: the one switcher, the Bookings caption on its count's line, and the
+//      booking window's one action the accent pill;
+//  §12 small parts: a guest's other stays as one inset list with the drawn chevron, an
+//      action link's chevron drawn too, and the message search at the one field height.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -195,20 +201,22 @@ async function open(browser, base, width) {
     return out;
   });
   ok(Math.abs(inManage.bottom) <= 1 && inManage.width >= 388 && inManage.okRadius > 100, `opened from Manage it sits on the bottom edge, full width, pill buttons (${inManage.bottom}px from the bottom, ${inManage.width}px)`);
+  // Every back-office screen wears the one look now (and an owner is always sent to one), so
+  // the scope is proven where it must NOT reach: the same window on the GUEST side.
   const outside = await page.evaluate(async () => {
-    nav('view-backoffice');
-    await new Promise((r) => setTimeout(r, 300));
-    const p = glassConfirm('Delete this?', 'Delete', { danger: true });
+    document.body.classList.remove('owner-mode');
+    const p = glassConfirm('Sign out?', 'Sign out');
     await new Promise((r) => setTimeout(r, 600));
     const box = document.querySelector('#glass-dialog .glass-dialog-box').getBoundingClientRect();
     const out = { bottom: Math.round(innerHeight - box.bottom) };
     document.getElementById('glass-dialog-cancel').click();
     await p;
     await new Promise((r) => setTimeout(r, 450));
+    document.body.classList.add('owner-mode');
     await openArea();
     return out;
   });
-  ok(outside.bottom > 40, `the same window over Today keeps its own shape (${outside.bottom}px clear of the bottom)`);
+  ok(outside.bottom > 40, `the same window on the guest side keeps its own shape (${outside.bottom}px clear of the bottom)`);
   const qr = await page.evaluate(async () => {
     settingsOpen('reviews');
     await new Promise((r) => setTimeout(r, 300));
@@ -288,14 +296,21 @@ async function open(browser, base, width) {
       { thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Can we check in early?', last_at: now, last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
       { thread_id: 'b2', name: 'Mark Ellis', email: 'm@example.com', last_body: 'No dogs, sorry.', last_at: now, last_role: 'admin', unread: 0, archived: 0, is_guest: 0 },
     ];
+    const fixture = __msgThreads;
     __msgShowArchived = false;
-    document.getElementById('messages-list').dataset.loaded = '1';
     inboxFolder('messages');
     const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
     if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
-    renderMessagesList();
-    inboxVerdicts();
-    await wait(120);
+    // The Inbox's own message fetch can land after the fixture under load and repaint the
+    // list; re-lay it until the rendered list is really the fixture's.
+    for (let k = 0; k < 5; k++) {
+      __msgThreads = fixture;
+      document.getElementById('messages-list').dataset.loaded = '1';
+      renderMessagesList();
+      inboxVerdicts();
+      await wait(150);
+      if (document.getElementById('msg-search') && document.querySelectorAll('#messages-list .msg-thread-row').length === 2) break;
+    }
     const list = document.getElementById('messages-list');
     const cards = list.querySelectorAll('.msg-threads');
     const rowsIn = cards[0] ? cards[0].querySelectorAll('.msg-thread-row').length : 0;
@@ -343,6 +358,147 @@ async function open(browser, base, width) {
     return r;
   });
   ok(focus.box && focus.id !== 'msg-canned', `the thread sheet takes focus itself, not the quick-replies picker (${focus.id || (focus.box ? 'the sheet' : '?')})`);
+
+  console.log('§10 the booking and enquiry pages wear the same parts');
+  const hub = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const raw = { id: 91, prop_key: '21a', name: 'Priya Chandra', email: 'priya@example.com', phone: '07700 900000', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(40), check_out: iso(44), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'unpaid', deposit_paid: 0,
+      agreed_total: 590, agreed_per_night: 135, agreed_nights: 4, agreed_nightly: 540, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0,
+      agreed_on: iso(0), hold_status: 'none', deposit_pct_override: 30, reg_url: 'guest-details.php?t=x', reg_submitted: 0 };
+    // Every screen change may reload the stores from the stub, so the fixture is laid down
+    // again immediately before each open.
+    const seed = () => { dbBookings['21a'] = [mapBookingFromApi(raw)]; };
+    seed();
+    const enq = { id: 92, prop_key: '21a', name: 'Grace Holloway', email: 'grace@example.com', phone: '',
+      address: '2 Lane', postcode: 'NR25 7AB', check_in: iso(60), check_out: iso(63), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+      message: 'Is the cottage free?', created_at: iso(-1) + ' 09:00:00' };
+    const back = () => ((document.querySelector('.page-view.active > .back-link') || {}).textContent || '').trim();
+    // The back link names the screen it returns to.
+    await openAccounts();
+    await wait(300);
+    seed();
+    await openBookingHub(91);
+    await wait(500);
+    const fromPay = back();
+    nav('view-backoffice');
+    await wait(200);
+    // Under load a background refresh can land mid-open and blank the hub; wait on STATE.
+    const c = document.getElementById('booking-hub-content');
+    for (let k = 0; k < 5; k++) {
+      seed();
+      await openBookingHub(91);
+      await wait(500);
+      if (/Priya/.test(c.textContent) && c.querySelector('.bhub-grpcap')) break;
+    }
+    const fromToday = back();
+    const grp = [...c.querySelectorAll('.bhub-fold-grp')].find((g) => g.getClientRects().length);
+    const cap = c.querySelector('.bhub-grpcap');
+    const tag = c.querySelector('.bhub-plan-tag');
+    const out = {
+      fromPay, fromToday,
+      radius: grp ? getComputedStyle(grp).borderTopLeftRadius : '',
+      cap: cap ? cap.textContent.trim() + ' / ' + getComputedStyle(cap).textTransform : '',
+      tag: tag ? tag.textContent.trim() + ' / ' + getComputedStyle(tag).textTransform : '',
+    };
+    enquiries.splice(0, enquiries.length, mapEnquiryFromApi(enq));
+    await openEnquiryHub('e92');
+    await wait(600);
+    const okv = getComputedStyle(document.body).getPropertyValue('--ok').trim();
+    const probe = document.createElement('span'); probe.style.color = okv; document.body.appendChild(probe);
+    const okRgb = getComputedStyle(probe).color; probe.remove();
+    const appr = document.querySelector('#enquiry-hub-content .bhub-next .btn-approve');
+    const card = document.querySelector('#enquiry-hub-content .bhub-next');
+    out.enqBack = back();
+    out.approve = appr ? { bg: getComputedStyle(appr).backgroundColor, okRgb, h: Math.round(appr.getBoundingClientRect().height), full: appr.getBoundingClientRect().width >= card.getBoundingClientRect().width - 48 } : null;
+    return out;
+  });
+  ok(hub.fromPay === 'Payments' && hub.fromToday === 'Today', `the booking page's back link names where it goes ("${hub.fromPay}", "${hub.fromToday}")`);
+  ok(hub.enqBack === 'Inbox', `…and the enquiry page's ("${hub.enqBack}")`);
+  ok(hub.radius === '20px', `its groups are cards on the one radius (${hub.radius})`);
+  ok(/^Needs attention \/ none$/.test(hub.cap), `its caption is the one tier, sentence case (${hub.cap})`);
+  ok(/^Custom \/ none$/.test(hub.tag), `a state tag is sentence case (${hub.tag})`);
+  ok(hub.approve && hub.approve.bg === hub.approve.okRgb && hub.approve.h >= 48 && hub.approve.full,
+    `on a phone Approve is the card's filled pill, in its own green (${JSON.stringify(hub.approve)})`);
+
+  console.log('§11 Today and the booking window wear the same parts');
+  const today = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    nav('view-backoffice');
+    await wait(400);
+    const accRgb = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
+    const on = document.querySelector('#bookings-filters .inbox-sort-btn.is-on');
+    const cap = document.querySelector('#bookings-main .bk-caprow .bo-sec-title').getBoundingClientRect();
+    const sum = document.querySelector('#bookings-main .bk-caprow').getBoundingClientRect();
+    openAddBooking();
+    await wait(500);
+    const save = document.getElementById('modal-save-btn');
+    const out = {
+      accRgb, tab: on ? getComputedStyle(on).backgroundColor : '',
+      // The caption sits on its row's own centre line, beside the count and the switcher.
+      capRow: Math.abs((cap.top + cap.bottom) / 2 - (sum.top + sum.bottom) / 2),
+      sumW: sum.width,
+      save: save ? getComputedStyle(save).backgroundColor : '',
+    };
+    try { closeModal(); } catch (e) {}
+    return out;
+  });
+  ok(today.tab === today.accRgb, `Today's Upcoming|Past is the one switcher, the chosen side in the accent (${today.tab})`);
+  ok(today.sumW > 0 && today.capRow <= 4, `the Bookings caption sits on its row's centre line, beside its count (${today.capRow.toFixed(1)}px off)`);
+  ok(today.save === today.accRgb, `the booking window's one action is the accent pill (${today.save})`);
+
+  console.log('§12 the small parts the audit found');
+  const small = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const mk = (id, ci, co) => mapBookingFromApi({ id, prop_key: '21a', name: 'Sofia Laurent', email: 'sofia@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(ci), check_out: iso(co), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440,
+      agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(0), hold_status: 'none' });
+    nav('view-backoffice');
+    await wait(200);
+    // A background data refresh can replace dbBookings mid-open under load (the §10
+    // race), leaving an empty hub. Wait on STATE: re-seed and re-open until the hub
+    // is really showing the seeded guest with her other stays.
+    const c = document.getElementById('booking-hub-content');
+    for (let k = 0; k < 5; k++) {
+      dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
+      await openBookingHub(95);
+      await wait(400);
+      if ((document.getElementById('bhub-fold-guest') || {}).hidden) bhubFoldToggle('guest');
+      await wait(450);
+      if (/Sofia/.test(c.textContent) && c.querySelector('.bhub-stays-cap')) break;
+    }
+    const list = c.querySelector('.bhub-stays');
+    const rows = list ? [...list.querySelectorAll('.bhub-stay-row')] : [];
+    const cap = (c.querySelector('.bhub-stays-cap') || {}).textContent || '';
+    const act = c.querySelector('.bhub-actlink');
+    const actAfter = act ? getComputedStyle(act, '::after') : null;
+    const out = {
+      cap, rows: rows.length, chev: rows.every((r) => r.querySelector('.bhub-chev') && !/open →/.test(r.textContent)),
+      inset: list ? getComputedStyle(list).borderTopLeftRadius : '', rowBorder: rows[0] ? getComputedStyle(rows[0]).borderTopWidth : '',
+      seam: rows[1] ? getComputedStyle(rows[1]).borderTopWidth : '',
+      actGlyph: actAfter ? actAfter.content : '', actMask: actAfter ? (actAfter.maskImage || actAfter.webkitMaskImage || '') : '',
+    };
+    await openInbox();
+    await wait(300);
+    inboxFolder('messages');
+    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
+    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
+    __msgThreads = [{ thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Hi', last_at: new Date().toISOString().slice(0, 19).replace('T', ' '), last_role: 'guest', unread: 0, archived: 0, is_guest: 1 }];
+    document.getElementById('messages-list').dataset.loaded = '1';
+    renderMessagesList();
+    await wait(100);
+    const ms = document.getElementById('msg-search');
+    out.searchH = ms ? Math.round(ms.getBoundingClientRect().height) : 0;
+    return out;
+  });
+  ok(small.cap === 'Also stayed · 2', `a guest's other stays carry one caption ("${small.cap}")`);
+  ok(small.rows === 2 && small.inset === '12px' && small.rowBorder === '0px' && small.seam === '1px',
+    `…over one inset panel, rows on hairlines (${small.rows} rows, ${small.inset}, ${small.rowBorder}/${small.seam})`);
+  ok(small.chev, 'each ends in the drawn chevron, not "open →"');
+  ok(small.actGlyph === '""' && /url\(/.test(small.actMask), `an action link ends in the drawn chevron too, not a '›' glyph (${small.actGlyph})`);
+  ok(small.searchH === 48, `the message search is the one field's height (${small.searchH}px)`);
 
   await page.close();
   await t.done(fails);

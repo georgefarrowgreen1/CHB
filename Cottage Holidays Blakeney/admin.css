@@ -8877,3 +8877,39 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .msg-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 :is(main, div).one-look .msg-markread { font-family: var(--font-sans); cursor: pointer; }
 :is(main, div).one-look #messages-head-actions:empty { display: none; }
+
+/* ---------- 17. THE BOOKING AND ENQUIRY PAGES ---------- */
+/* Scoped on the content node too, so a docked hub matches a standalone one. */
+#view-booking-hub.one-look > .back-link, #view-enquiry-hub.one-look > .back-link {
+  display: flex; width: fit-content; margin: 0 0 4px max(-4px, calc((100% - 760px) / 2 - 4px));
+}
+:is(main, div).one-look .bhub-plan-tag { text-transform: none; font-size: var(--fs-caption); font-weight: 600; padding: 2px 8px; }
+/* The card's one action is a filled pill at every width; Approve keeps its own green. */
+:is(main, div).one-look .bhub-next > .bhub-next-btn {
+  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 12px; padding: 0 20px;
+  border-radius: var(--r-pill); border-color: transparent; background: var(--accent); color: var(--accent-ink);
+  font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600;
+}
+:is(main, div).one-look .bhub-next > .bhub-next-btn.btn-approve { background: var(--ok); }
+
+/* ---------- 18. TODAY, AND THE BOOKING WINDOW ---------- */
+/* The caption shares its row with the count: no section air inside the row. */
+:is(main, div).one-look .bk-caprow .bo-sec-title { margin: 0; }
+/* The booking window's one action is the accent pill. */
+body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+
+/* ---------- 19. SMALL PARTS THE AUDIT FOUND ---------- */
+/* Fields that an id rule held at 44px take the one field's height. */
+:is(main, div).one-look :is(#msg-search, #sweep-balance, #sweep-buffer) { min-height: var(--u-h-field); padding: 12px 16px; }
+/* A short list inside a card (a guest's other stays, what history says about them) is the
+   card's inset panel: one caption, rows on hairlines, a chevron where "open →" was. */
+:is(main, div).one-look .bhub-stays-cap { margin: 16px 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions:not(:empty)) { margin-top: 8px; background: var(--u-inset); border-radius: var(--u-r-cell); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row { justify-content: flex-start; min-height: 48px; margin: 0; padding: 8px 12px 8px var(--u-pad); background: none; border: 0; border-radius: 0; }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row + .bhub-stay-row { border-top: 1px solid var(--u-edge); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row > .bhub-chev { flex: 0 0 auto; margin-left: auto; }
+/* An action link ends in the drawn chevron every row uses, not a '›' glyph. */
+:is(main, div).one-look .bhub-actlink::after {
+  content: ''; width: 16px; height: 16px; background: var(--text-muted); opacity: 0.6;
+  -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+}

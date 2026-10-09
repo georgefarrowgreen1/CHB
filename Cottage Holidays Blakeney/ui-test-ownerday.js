@@ -455,19 +455,19 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         const row = document.querySelector('#booking-hub-content .bhub-stay-row');
         if (!row) return null;
         const when = row.querySelector('.bhub-stay-when');
-        const link = row.querySelector('.bhub-mut');
+        const chev = row.querySelector('.bhub-chev');
         const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getClientRects().length; };
         return {
             when: when ? (when.textContent || '').trim() : '',
             whenLines: when ? lines(when) : 0,
-            linkLines: link ? lines(link) : 0,
+            chev: !!chev,
             tagCut: (() => { const t = row.querySelector('.prop-tag'); return !!t && t.scrollWidth - t.clientWidth > 1; })(),
         };
     });
     ok(!!stay && stay.when !== '' && !/\d{2}\/\d{2}\/\d{4}\s*→/.test(stay.when),
         `the other stay speaks the house range form (“${stay && stay.when}”)`);
-    ok(!!stay && stay.whenLines === 1 && stay.linkLines === 1 && !stay.tagCut,
-        `…on one line each, with the cottage name whole (${stay && stay.whenLines}/${stay && stay.linkLines} lines)`);
+    ok(!!stay && stay.whenLines === 1 && stay.chev && !stay.tagCut,
+        `…on one line, with the cottage name whole and the one chevron where "open →" was (${stay && stay.whenLines} line)`);
 
     // (K) The intel row says it once: the ordinal + lifetime ride the SUB, and
     // the fold no longer restates them.

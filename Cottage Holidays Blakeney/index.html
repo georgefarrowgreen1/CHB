@@ -1102,7 +1102,7 @@
     <!-- ================= OWNER HOME (friendly landing after login) ================= -->
     <!-- ================= STAFF BACK OFFICE VIEW ================= -->
     <!-- ================= UNIFIED BACK OFFICE ================= -->
-    <main id="view-backoffice" class="page-view container wide">
+    <main id="view-backoffice" class="page-view container wide one-look">
     </main>
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
@@ -1116,14 +1116,14 @@
     <!-- ================= ENQUIRY HUB — one screen per enquiry ================= -->
     <!-- Same pattern as the booking hub: rendered entirely by admin.js
          renderEnquiryHub(); this is just the shell. -->
-    <main id="view-enquiry-hub" class="page-view container">
+    <main id="view-enquiry-hub" class="page-view container one-look">
     </main>
 
     <!-- ================= BOOKING HUB — one screen per booking ================= -->
     <!-- Everything about a single booking in one place: status pipeline + next
          action, money, emails, guest history and change history. Rendered
          entirely by admin.js renderBookingHub(); this is just the shell. -->
-    <main id="view-booking-hub" class="page-view container">
+    <main id="view-booking-hub" class="page-view container one-look">
     </main>
 
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
@@ -1888,7 +1888,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1126"></script>
+    <script defer src="app.js?v=1127"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

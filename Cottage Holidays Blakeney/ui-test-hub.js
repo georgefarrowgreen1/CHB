@@ -1322,7 +1322,7 @@ let approveWill409 = false;
     probe.remove();
     return { up: tag.getBoundingClientRect().height > 0, text: tag.textContent.trim(), quiet: getComputedStyle(tag).color === muted };
   });
-  ok(stdBadge.up && stdBadge.text === 'default' && stdBadge.quiet, `a standard plan wears the quiet "default" badge (${stdBadge.text})`);
+  ok(stdBadge.up && stdBadge.text === 'Default' && stdBadge.quiet, `a standard plan wears the quiet "Default" badge (${stdBadge.text})`);
   ok(await page.evaluate(() => !document.querySelector('[data-act="sendPaymentReminder"]')),
     'no reminder button before anything has been asked for (the server would refuse it)');
   // Paid ✓ follows the FOLDED figure via gt (displayGrand): a charged deposit
@@ -1481,7 +1481,7 @@ let approveWill409 = false;
     };
   });
   ok(planEmphasis.figWeight >= 600, `the plan's facts carry sentence weight (${planEmphasis.figWeight})`);
-  ok(planEmphasis.tagUp && planEmphasis.tagText === 'custom' && planEmphasis.tagLoud,
+  ok(planEmphasis.tagUp && planEmphasis.tagText === 'Custom' && planEmphasis.tagLoud,
     'a custom plan announces itself with the accent badge, not two muted words');
   // The reminder: appears only once something has been asked, sends through
   // request_payment with the reminder flag, and the panel records it at once.

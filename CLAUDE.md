@@ -818,6 +818,32 @@ guard removed, the window scope removed — each fails its own checks).
   answered, so a `msgNeedsReply` thread keeps it amber ("1 to answer"). And the enquiry hub's dock repeated the state
   card's Approve while the card was on screen — `hubWatchSticky` now runs for both hubs, its observers kept in a
   WeakMap per hub node so one hub never unhooks the other's.
+- **THE BOOKING AND ENQUIRY PAGES JOIN** (section 17). The scope class sits on the hub's CONTENT node
+  (`#booking-hub-content` / `#enquiry-hub-content`, `:is(main, div).one-look`) as well as on its page, because those
+  nodes re-parent into Today's and the Inbox's side panes at ≥1200px — scoping the page alone would dress a hub
+  differently docked than standing alone. What moved: the back link names where it goes (`hubBackName()` from
+  `__hubReturnView`: "‹ Payments", "‹ Inbox", else "‹ Today" — exactly the screens `bookingHubBack` returns to; the
+  enquiry's is "‹ Inbox"), the groups are cards on the card radius (`--fold-r`), "Needs attention" is the one caption
+  tier, the plan badge reads "Custom"/"Default" in sentence case. The hub's own decision buttons are kept OUT of the
+  button classifier (`ONE_LOOK_NOT`: the ⋯ circle, the next-action pill, its outlined twin, the sticky bar) — they
+  already are the house look and a label-read kind would have turned "Record a payment" into an outlined pill.
+  **Approve keeps its own green** (gated in ui-test-ownerday): it was a ghost on a phone because the sticky bar
+  carried the fill, and that bar now stands down while the card is on screen, so the card's pill is filled at every
+  width.
+- **TODAY JOINS LAST, AND WITH IT EVERY WINDOW** (section 18). Today's Upcoming|Past is the same `.inbox-sort.seg`
+  control as the Inbox's, so it takes the one switcher (the chosen side in the accent) rather than the hairline
+  segmented control the simpler-Today pass gave it; the Bookings caption joins the tier with its section air
+  REMOVED inside `.bk-caprow` (the tier's top margin dropped "Bookings" 8px below its own count — gated in §11,
+  break-tested). The booking window's one action ("Add booking"/"Save", `#modal-save-btn`) is the accent pill.
+  **With Today in, every back-office screen is a one-look screen** — an owner is always routed to one (`nav()` sends
+  a signed-in admin's customer views to Today) — so the window rule now reaches every glass dialog an owner opens,
+  and §6's "outside the scope" probe moved to the GUEST side (`owner-mode` off), which is the boundary that remains.
+- **WHAT THE AUDIT FOUND AFTER ALL FOUR AREAS** (section 19, re-running the vocabulary audit over every non-Manage
+  route): a guest's other stays ("Also stayed (3):" over separate mini-cards ending "open →") are one caption over the
+  card's INSET panel, rows on hairlines, each ending in the drawn chevron — and "open →" became that chevron at all four
+  `.bhub-stay-row` sites (the hub, its intel mentions, the email reader's guest context); an action link's `'›'` glyph
+  is the drawn chevron as a mask at the same 0.6; and two fields an id rule held at 44px (`#msg-search`,
+  `#sweep-balance`/`#sweep-buffer`) take the one field height. Gated in ui-test-onelook §12.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
@@ -832,8 +858,11 @@ guard removed, the window scope removed — each fails its own checks).
   scope), **§9** (the Inbox: no sentence under the title, the drawn chevron, one conversations card, the chips, the
   empty archive's way back, and the three honest-verdict fixes — each break-tested), ui-test-hig (a run inside an open
   fold is the inset panel on the CELL radius), ui-test-mailbox (no sentence under the title; the declined row's
-  buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down), search-test (the occupancy
-  check went with the function).
+  buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down; the plan badge says "Custom"/"Default"), **§10** (the booking and
+  enquiry pages: the named back link from two screens, the card radius, the caption tier, the sentence-case tag, a
+  filled green Approve on a phone — break-tested on the back link and the content node's scope), **§11** (Today: the
+  one switcher, the caption on its row's line, the window's accent Save), §6 (the scope probe on the guest side),
+  search-test (the occupancy check went with the function).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
@@ -1847,7 +1876,8 @@ Now eight.
   it changes (never on first paint). With no bookings loaded it claims nothing.
 - **REMOVED, said plainly**: the Bookings ⋯ with its **Custom plans only** and **Show every booking**
   audits. `bookingsSetFilter('customplan'|'all')` still works but nothing on screen offers it.
-- **THE BOOKINGS BLOCK WEARS THE HOUSE VOCABULARY (second pass).** The tabs are the hairline segmented
+- **THE BOOKINGS BLOCK WEARS THE HOUSE VOCABULARY (second pass).** (Its tabs are SUPERSEDED by the one look: the
+  one switcher, the chosen side in the accent.) The tabs were the hairline segmented
   control (bordered container, active segment a flat fill, no floating shadow); `#bookings-owed` is a
   ROW — ✓ "Nobody owes you anything" or an amber "£528 to collect · from 1 guest · View ›" — and an
   empty list is the standard empty state (`.bk-empty`: mark, a title that says what is true, one line on
