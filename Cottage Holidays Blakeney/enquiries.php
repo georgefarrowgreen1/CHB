@@ -742,7 +742,7 @@ if ($action === 'email_preview') {
         json_out(['error' => 'Email buttons have been removed. Reload the page and send it again.'], 409);
     }
     require_once __DIR__ . '/mailer.php';
-    $m = build_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry');
+    $m = build_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry', reply_email_opts($in));
     json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
 }
 
@@ -781,7 +781,7 @@ if ($action === 'email_guest') {
     $atts = sanitize_email_attachments($in['attachments'] ?? []);
     $r = ['ok' => false, 'error' => 'send failed'];
     try {
-        $r = send_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry', $atts);
+        $r = send_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry', $atts, reply_email_opts($in));
     } catch (\Throwable $e) {
         $r = ['ok' => false, 'error' => $e->getMessage()];
     }
@@ -793,7 +793,7 @@ if ($action === 'email_guest') {
     try {
         db()
             ->prepare('INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES (?, NULL, ?, ?)')
-            ->execute([$row['email'], $subject !== '' ? $subject : 'Your enquiry', $message]);
+            ->execute([$row['email'], $subject !== '' ? $subject : 'Your enquiry about ' . (prop_display($row['prop_key'] ?? '')['name'] ?? ''), $message]);
     } catch (\Throwable $e) {
         // The sent log appears after the next migrate run; the email itself went.
     }

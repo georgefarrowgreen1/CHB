@@ -338,7 +338,10 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => { bookingsSetSearch(''); openBookingEmail('b1'); });
     await page.waitForTimeout(300);
     (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');
-    ((await page.locator('#enq-email-subject').inputValue()) || '').includes('Your booking') ? pass('composer prefilled for the booking') : fail('composer subject not prefilled');
+    // Wait on the value, not a clock: under a loaded runner the read can land first.
+    await page.waitForFunction(() => /Your stay at/.test((document.getElementById('enq-email-subject') || {}).value || ''), null, { timeout: 4000 }).catch(() => {});
+    const cmpSubj = (await page.locator('#enq-email-subject').inputValue()) || '';
+    cmpSubj.includes('Your stay at') ? pass('composer prefilled for the booking') : fail('composer subject not prefilled (' + cmpSubj + ')');
     // Preview before sending: type a message, hit Preview → the email renders in the iframe.
     await page.fill('#enq-email-body', 'Parking is on the street out front.');
     await page.evaluate(() => previewComposedEmail());

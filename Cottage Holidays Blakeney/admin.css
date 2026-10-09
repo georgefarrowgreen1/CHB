@@ -226,81 +226,7 @@ body.light-mode {
 #inbox-folder-enquiries.showing-declined #inbox-badge {
   display: none;
 }
-.compose-attach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  font-size: var(--fs-caption);
-  color: var(--text-light);
-  max-width: 100%;
-}.compose-attach-chip button {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--fs-body);
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
-}.compose-attach-chip button:hover {
-  color: var(--danger-text);
-}.enq-ctx-who {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--glass-border);
-}.enq-ctx-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-size: var(--fs-headline);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-}.enq-ctx-name {
-  font-weight: 600;
-  font-size: var(--fs-body);
-  line-height: 1.35;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}.enq-ctx-row {
-  display: flex;
-  align-items: flex-start;
-  font-size: var(--fs-sub);
-  padding: 3px 0;
-}.enq-ctx-txt {
-  flex: 1;
-  min-width: 0; /* wrapped lines stay aligned after the icon column */
-}.enq-ctx-ic {
-  width: 22px;
-  margin-top: 2px;
-  flex-shrink: 0;
-  color: var(--text-muted);
-  display: inline-flex;
-}.enq-ctx-mut {
-  color: var(--text-muted);
-  font-size: var(--fs-sub);
-}.enq-ctx-quote {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-left: 2px solid var(--accent);
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  font-size: var(--fs-sub);
-  font-style: italic;
-  color: var(--text-muted);
-  max-height: 84px;
-  overflow-y: auto;
-}.area-ov-grid {
+.area-ov-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
@@ -6093,54 +6019,6 @@ body.offline-snap .ods-mark {
 .ks-how-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.5; }
 .ks-how-list b { color: var(--text-light); font-weight: 600; }
 
-/* The composer, iOS-restyled (scoped — the modal only ever opens for the
-   owner, after the bundle loads, so its restyle lives in the owner-only
-   sheet). Sentence case everywhere: SUBJECT/MESSAGE shouting over quiet
-   grouped fields is the pre-restyle look the rest of the back office has
-   already left behind. */
-#enq-email-modal .modal-label { text-transform: none; letter-spacing: 0.02em; font-size: var(--fs-sub); font-weight: 600; margin-bottom: 6px; }
-#enq-email-modal .btn-sm { text-transform: none; letter-spacing: 0; font-size: var(--fs-sub); font-weight: 600; padding: 9px 14px; min-height: 40px; border-radius: 999px; }
-#enq-email-modal .enq-ctx { border-radius: var(--r-lg); }
-/* The context card under a long name + long email at 390px: the who-row WRAPS
-   (the cottage tag drops under rather than squeezing the name to a mid-word
-   break), the name block owns the leftover width, and the address — which has
-   no natural break points — may break anywhere. */
-#enq-email-modal .enq-ctx-who { flex-wrap: wrap; }
-#enq-email-modal .enq-ctx-name { flex: 1 1 160px; min-width: 0; }
-#enq-email-modal .enq-ctx-name .enq-ctx-mut { overflow-wrap: anywhere; }
-/* THE CONTEXT IS REFERENCE, SO IT FOLDS. ~340px of avatar/name/pill/dates/
-   party/price/quote above the Subject field opened the Message box half off
-   the screen at 390 and Send below the card's own bottom edge at BOTH widths.
-   A native <details>: no state to keep, no re-render, and the summary is the
-   one line that says whose email this is. */
-#enq-email-modal .enq-ctx-fold { margin: 0 0 12px; }
-#enq-email-modal .enq-ctx-sum {
-  display: flex; align-items: center; gap: 8px; cursor: pointer;
-  list-style: none; min-height: 44px; padding: 0 2px;
-  font-size: var(--fs-body); font-weight: 600; color: var(--text-light);
-}
-#enq-email-modal .enq-ctx-sum::-webkit-details-marker { display: none; }
-#enq-email-modal .enq-ctx-sum > span:first-child { flex: 1 1 auto; min-width: 0; }
-#enq-email-modal .enq-ctx-sum .bhub-chev { flex: none; }
-#enq-email-modal .enq-ctx-fold[open] .enq-ctx-sum .bhub-chev { transform: rotate(90deg); }
-#enq-email-modal .enq-ctx-fold .enq-ctx { margin-top: 4px; }
-/* Attach meets the 44px floor like every other control in the modal. */
-#enq-email-modal .enq-email-attach { min-height: 44px; }
-/* SEND IS ALWAYS IN REACH. The body is the scroller, so the action row sticks
-   to its floor rather than sitting 281px below the card's own bottom edge.
-   An OPAQUE ground (the registered sheet surface) — the glass ground is
-   translucent and the message would scroll visibly through the buttons. */
-#enq-email-modal .enq-email-foot {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  gap: 8px;
-  margin: 0 -2px;
-  padding: 12px 2px calc(4px + var(--safe-b, 0px));
-  background: var(--sheet-surface);
-  border-top: 1px solid var(--glass-border);
-}
 /* The arrival-review composer's read-only facts panel: what the template adds
    under the owner's message. Shown so they don't retype the address and the
    guest read everything twice. */
@@ -7263,16 +7141,6 @@ body.light-mode .tl-cell:active {
 .bhub-namerow { margin-top: 8px; }
 .bhub-next-acts .bhub-next-alt { justify-content: center; justify-items: center; text-align: center; }
 
-/* THE EMAIL COMPOSER IS ONE SURFACE ("the background is inconsistent"). The box was translucent glass
-   (mid-grey over the scrim) while its sticky footer was the opaque sheet surface (cream), so the footer
-   read as a different, square-cornered card poking past the edge. The box takes the sheet surface too, the
-   footer sits flush on it, and Preview wears the same type as Send. */
-#enq-email-modal .reviews-modal-box { background: var(--sheet-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
-#enq-email-modal .enq-email-foot { margin: 0; padding-left: 0; padding-right: 0; }
-#enq-email-modal .enq-email-foot .toggle-btn { font-size: var(--fs-body); font-weight: 600; border-radius: var(--r-pill); text-transform: none; letter-spacing: 0; min-height: 48px; }
-#enq-email-modal .enq-email-foot .btn-accent { min-height: 48px; }
-#enq-email-modal .input-glass:focus-visible { outline-offset: 0; }
-#enq-email-modal .enq-email-foot .toggle-btn { color: var(--text-light); }
 
 /* ONE ROW OF THREE: call, email and ⋯ are the same 44px circles on one line, top-right, level with the
    cottage tag; the name takes the full width beneath. */
@@ -8790,23 +8658,24 @@ body.owner-mode:where(:has(main.one-look.active)) #messages-modal :is(#msg-canne
 /* The timeline's Earlier / Later carry the drawn chevron too. */
 .tl-seg button svg { display: block; margin: auto; }
 
-/* ---------- 21. THE TWO LONG WINDOWS: the booking form and the email composer ---------- */
-/* Both were centred cards with their own title (22px bold / the old serif) and their own
-   field heights (54-58px). They take the window's ground, title, field, caption and switcher,
-   and on a phone they rise from the bottom edge like every other window. */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box) {
+/* ---------- 21. THE LONG WINDOW: the booking form ---------- */
+/* A centred card with its own title (22px bold / the old serif) and its own field heights
+   (54-58px). It takes the window's ground, title, field, caption and switcher, and on a phone
+   rises from the bottom edge like every other window. (The email composer is its own sheet:
+   "Email a guest" at the foot of this file.) */
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box {
   background: var(--sheet-surface); border: 1px solid var(--u-edge); border-radius: var(--u-r-card);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { background: var(--sheet-surface); border-top-color: var(--u-edge); border-radius: 0 0 var(--u-r-card) var(--u-r-card); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#modal-title, #enq-email-title) { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-sec { font-size: var(--fs-caption); border-top-color: var(--u-edge); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) .modal-label { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) :is(.input-glass, .date-range-trigger) {
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-label { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal :is(.input-glass, .date-range-trigger) {
   min-height: var(--u-h-field); padding: 12px 16px; background: var(--u-field); border: 1px solid var(--u-edge);
   border-radius: var(--u-r-cell); box-shadow: none; font-family: var(--font-sans); font-size: var(--fs-headline);
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) :is(input.input-glass, select.input-glass, .date-range-trigger) { height: var(--u-h-field); }
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal :is(input.input-glass, select.input-glass, .date-range-trigger) { height: var(--u-h-field); }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode {
   display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control); background: var(--u-track); border: 0; border-radius: var(--r-pill);
 }
@@ -8816,26 +8685,24 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-
 }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode > .hs-mode-btn.is-on { background: var(--accent) !important; color: var(--accent-ink) !important; }
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .hs-mode .chb-pill { display: none; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #enq-email-modal .reviews-modal-box { position: relative; }
 /* A window's close is the hub's icon button: one 44px outlined circle (they were 36, a filled 38 and 44). */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-x, #enq-email-modal .reviews-modal-close, #ks-sheet .ks-sheet-x) {
+body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-x, #ks-sheet .ks-sheet-x) {
   width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; flex: none;
   border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); corner-shape: round; background: none; color: var(--text-light);
 }
 /* The key-safe sheet's title is the window's too, and its lone "Got it" the one answer. */
 body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sheet .ks-sheet-head h2 { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
 @media (max-width: 640px) {
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal) { align-items: flex-end; padding: max(20px, var(--safe-t)) 0 0; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box) {
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal { align-items: flex-end; padding: max(20px, var(--safe-t)) 0 0; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box {
     max-width: none !important; width: 100%; margin: 0; max-height: calc(100dvh - var(--safe-t) - 20px);
     border-radius: var(--u-r-card) var(--u-r-card) 0 0; border-bottom: 0;
   }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal).open :is(.modal-box, .reviews-modal-box) { animation: chbSheetUp 420ms var(--sheet); }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal, #enq-email-modal).closing:not(.open) :is(.modal-box, .reviews-modal-box) { animation: chbSheetDown 280ms var(--in) forwards; }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.open .modal-box { animation: chbSheetUp 420ms var(--sheet); }
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.closing:not(.open) .modal-box { animation: chbSheetDown 280ms var(--in) forwards; }
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-head { padding-top: 20px; }
   body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-foot { border-radius: 0; padding-bottom: calc(14px + var(--safe-b)); }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #enq-email-modal .reviews-modal-box { padding: 28px 20px calc(20px + var(--safe-b)); }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-box, #enq-email-modal .reviews-modal-box)::before {
+  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box::before {
     content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%); z-index: 4;
     border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
   }
@@ -9562,3 +9429,216 @@ body.owner-mode #pm.is-wide .pm-dbody { padding: 20px 24px 40px; }
 .oa-wb[aria-checked="true"] { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
 .oa-wb .ga-ava.oa-face { width: 30px; height: 30px; font-family: var(--font-sans); font-size: var(--fs-micro); }
 @media (prefers-reduced-motion: reduce) { .oa-fold .ga-chev, .oa-wb { transition: none; } }
+
+/* ============================================================
+   EMAIL A GUEST — the one sheet for a booking, an enquiry and the
+   arrival review (admin.js "Email a guest"). Mail's shape: Send at the
+   top, To unfolding the stay, the greeting and sign-off around the
+   message, what is added listed with a switch each, Write | Preview.
+   On a phone it rises from the bottom and drags down to close; from
+   641px it is a card in the middle. The overlay keeps .reviews-modal
+   for the shared Escape and Tab handling, so its own look is undone here.
+   ============================================================ */
+#enq-email-modal.cmp-ov {
+  --cmp-scrim: rgba(0, 0, 0, 0.55);
+  background: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+  padding: 0; align-items: flex-end; justify-content: center;
+}
+body.light-mode #enq-email-modal.cmp-ov { --cmp-scrim: rgba(10, 12, 16, 0.38); }
+#enq-email-modal.cmp-ov.open, #enq-email-modal.cmp-ov.closing:not(.open) { animation: none; }
+.cmp-scrim { position: absolute; inset: 0; background: var(--cmp-scrim); }
+#enq-email-modal.open .cmp-scrim { animation: chbFadeIn 320ms var(--out); }
+#enq-email-modal.closing:not(.open) .cmp-scrim { animation: chbFadeOut 280ms var(--in) forwards; }
+.cmp-sheet {
+  position: relative; z-index: 1; width: 100%; height: calc(100dvh - max(28px, var(--safe-t) + 12px));
+  display: flex; flex-direction: column; background: var(--sheet-surface); color: var(--text-light);
+  border: 1px solid var(--u-edge); border-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18); font-family: var(--font-sans); font-size: var(--fs-body); line-height: 1.55;
+}
+#enq-email-modal.open .cmp-sheet { animation: cmpUp 520ms var(--sheet); }
+#enq-email-modal.closing:not(.open) .cmp-sheet { animation: cmpDown 300ms var(--in) forwards; }
+#enq-email-modal.cmp-dragged .cmp-sheet { animation: none; }
+@keyframes cmpUp { from { transform: translateY(100%); } }
+@keyframes cmpDown { to { transform: translateY(105%); } }
+@media (min-width: 641px) {
+  #enq-email-modal.cmp-ov { align-items: center; padding: max(32px, var(--safe-t)) 24px 32px; }
+  .cmp-sheet { max-width: 600px; height: min(820px, 100%); border-bottom: 1px solid var(--u-edge); border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35); }
+  .cmp-grab { display: none; }
+  #enq-email-modal.open .cmp-sheet { animation: cmpPop 420ms var(--sheet); }
+  #enq-email-modal.closing:not(.open) .cmp-sheet { animation: cmpPopOut 220ms var(--in) forwards; }
+}
+@keyframes cmpPop { from { opacity: 0; transform: translateY(24px) scale(0.98); } }
+@keyframes cmpPopOut { to { opacity: 0; transform: translateY(16px) scale(0.98); } }
+
+.cmp-top { flex: none; touch-action: none; }
+.cmp-grab { width: 36px; height: 5px; border-radius: var(--r-pill); background: var(--u-pill-edge); margin: 8px auto 0; }
+.cmp-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 8px 16px 12px; }
+.cmp-head h2 { margin: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-icb {
+  justify-self: start; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--u-pill-edge);
+  background: none; color: var(--text-light); display: grid; place-items: center; cursor: pointer; transition: transform 320ms var(--out);
+}
+.cmp-icb svg { width: 20px; height: 20px; }
+.cmp-send {
+  justify-self: end; border: 0; border-radius: var(--r-pill); min-height: 44px; padding: 0 16px 0 20px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font-family: var(--font-sans); font-weight: 600; font-size: var(--fs-body);
+  display: inline-flex; align-items: center; gap: 8px; transition: transform 320ms var(--out), opacity 300ms var(--out);
+}
+.cmp-send svg { width: 16px; height: 16px; transition: transform 320ms var(--out); }
+.cmp-icb:active, .cmp-send:active { transform: scale(0.94); transition-duration: 80ms; }
+.cmp-send:active svg { transform: translateY(-2px); }
+.cmp-send[aria-disabled="true"] { opacity: 0.45; }
+.cmp-send.cmp-ready { animation: cmpReady 400ms var(--out); }
+@keyframes cmpReady { from { transform: scale(0.94); } }
+
+/* The one switcher: a track, the chosen side in the accent, the pill travelling. */
+.cmp-seg { position: relative; display: flex; flex: none; padding: 4px; margin: 0 16px 8px; border-radius: var(--r-pill); background: var(--u-track); }
+.cmp-seg button {
+  position: relative; z-index: 1; flex: 1; border: 0; background: none; border-radius: var(--r-pill); cursor: pointer;
+  min-height: 36px; padding: 0 16px; font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted);
+  white-space: nowrap; transition: color 250ms var(--out);
+}
+.cmp-seg button[aria-selected="true"] { color: var(--accent-ink); }
+.cmp-pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: var(--r-pill); background: var(--accent); transition: translate 460ms var(--sheet), width 460ms var(--sheet); }
+.cmp-seg-xs { display: inline-flex; margin: 0; }
+.cmp-seg-xs button { flex: none; min-height: 32px; padding: 0 12px; font-size: var(--fs-caption); }
+
+.cmp-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px calc(24px + var(--safe-b)); }
+.cmp-in-r { animation: cmpInR 360ms var(--out) both; }
+.cmp-in-l { animation: cmpInL 360ms var(--out) both; }
+@keyframes cmpInR { from { opacity: 0; transform: translateX(16px); } }
+@keyframes cmpInL { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes cmpSwapIn { from { opacity: 0; transform: translateY(8px); } }
+
+/* To, Subject: label-value rows on one hairline each. */
+.cmp-fld { display: grid; grid-template-columns: 72px 1fr; align-items: start; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--u-edge); transition: border-color 250ms var(--out); }
+.cmp-fld:focus-within { border-bottom-color: var(--accent-text); }
+.cmp-fl { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); padding-top: 4px; }
+.cmp-fld-to .cmp-fl { padding-top: 12px; }
+.cmp-to { display: flex; align-items: center; gap: 12px; min-width: 0; width: 100%; min-height: 44px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: transform 320ms var(--out); }
+.cmp-to:active { transform: scale(0.98); transition-duration: 80ms; }
+.cmp-ava { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-caption); font-weight: 700; background: color-mix(in srgb, var(--text-light) 10%, transparent); }
+.cmp-to-txt { flex: 1; min-width: 0; display: grid; }
+.cmp-to-txt b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-to-txt span { font-size: var(--fs-sub); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-chev { flex: none; width: 16px; height: 16px; color: var(--text-muted); transition: rotate 360ms var(--out); }
+.cmp-to[aria-expanded="true"] .cmp-chev { rotate: 180deg; }
+.cmp-to-blk { border-bottom: 1px solid var(--u-edge); }
+.cmp-to-blk > .cmp-fld { border-bottom: 0; }
+/* The stay unfolds a row at a time under the guest's name. */
+.cmp-ctx { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 360ms var(--unfold), visibility 0s var(--in) 360ms; }
+.cmp-ctx > div { overflow: hidden; }
+.cmp-ctx.on { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+.cmp-ctx-in { margin: 0; padding: 0 0 16px; display: grid; grid-template-columns: 72px 1fr; column-gap: 8px; row-gap: 12px; align-items: baseline; }
+.cmp-ctx.on .cmp-ctx-in > * { animation: cmpCtxIn 400ms var(--out) both; animation-delay: calc(var(--i, 0) * 50ms + 60ms); }
+@keyframes cmpCtxIn { from { opacity: 0; transform: translateY(-6px); } }
+.cmp-ctx-in dt { font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.cmp-ctx-in dd { margin: 0; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.cmp-ctx-in dd small { display: block; margin-top: 2px; font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
+.cmp-main { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.cmp-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.cmp-quote { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-sub); color: var(--text-muted); }
+#enq-email-subject {
+  width: 100%; min-height: 22px; margin: 0; padding: 0; border: 0; background: none; resize: none; overflow: hidden; outline: none;
+  color: inherit; font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; line-height: 1.45;
+}
+#enq-email-subject[readonly] { color: var(--text-muted); }
+/* The letter has no box: light mode's field ground (an !important on every textarea) stays off it. */
+body.light-mode :is(#enq-email-subject, #enq-email-body) { background-color: transparent !important; }
+
+/* The letter: the email's own greeting and sign-off sit around what you write. */
+.cmp-letter { padding: 16px 0 8px; }
+.cmp-letter.cmp-nudge { animation: cmpNudge 380ms var(--out); }
+@keyframes cmpNudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.cmp-frame { margin: 0; color: var(--text-muted); }
+.cmp-frame small { margin-left: 8px; font-size: var(--fs-caption); }
+#enq-email-body {
+  display: block; width: 100%; min-height: 132px; margin: 0; padding: 12px 0; border: 0; background: none; resize: none; overflow: hidden; outline: none;
+  color: inherit; font-family: var(--font-sans); font-size: var(--fs-body); line-height: 1.6;
+}
+#enq-email-body::placeholder, #enq-email-subject::placeholder { color: var(--text-muted); opacity: 0.8; }
+.cmp-letter-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cmp-saved { font-size: var(--fs-caption); color: var(--text-muted); opacity: 0; transform: translateY(2px); transition: opacity 350ms var(--out), transform 350ms var(--out); }
+.cmp-saved.on { opacity: 1; transform: none; }
+.cmp-saved b { color: var(--ok-text); }
+.cmp-err { margin: 0 0 8px; font-size: var(--fs-sub); font-weight: 500; color: var(--danger-text); animation: cmpSwapIn 300ms var(--out) both; }
+.cmp-err:empty { display: none; }
+
+/* Added below the message: one card, a row each, a switch each. */
+.cmp-cap { margin: 16px 0 8px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.cmp-card { overflow: hidden; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--r-lg); transition: border-color 250ms var(--out), box-shadow 250ms var(--out); }
+.cmp-card.dropping { border-color: var(--accent-text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.cmp-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+button.cmp-row { cursor: pointer; }
+.cmp-card > * + *, #enq-email-attach-list > .cmp-row + .cmp-row { border-top: 1px solid var(--u-edge); }
+#enq-email-attach-list:empty, .cmp-add[hidden] { display: none; }
+.cmp-rt { flex: 1; min-width: 0; display: grid; }
+.cmp-rt b { font-weight: 600; overflow-wrap: anywhere; }
+.cmp-sub { font-size: var(--fs-sub); font-weight: 400; color: var(--text-muted); text-wrap: pretty; }
+.cmp-sub.cmp-swap { animation: cmpSwapIn 320ms var(--out) both; }
+.cmp-tile { flex: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--u-track); color: var(--text-muted); transition: background 300ms var(--out), color 300ms var(--out); }
+.cmp-tile svg { width: 18px; height: 18px; }
+.cmp-tile.on, .cmp-plus { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text); }
+.cmp-row .chb-switch { flex: none; }
+.cmp-row .chb-switch input:disabled { cursor: default; }
+.cmp-row .chb-switch input:disabled + .chb-switch-track { opacity: 0.5; }
+.cmp-x { flex: none; width: 44px; height: 44px; margin-right: -12px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; }
+.cmp-x svg { width: 16px; height: 16px; }
+.cmp-note { margin: 12px 4px 0; font-size: var(--fs-sub); color: var(--text-muted); }
+/* The arrival review: its own email greets and signs, and adds its own facts. */
+#enq-email-modal.cmp-arrival :is(#cmp-adds-wrap, #cmp-greet, #cmp-sign) { display: none; }
+#enq-email-modal.cmp-arrival .cmp-letter-foot { justify-content: flex-end; }
+
+/* Preview: their inbox line first, then the email itself. */
+.cmp-pv-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 8px; }
+.cmp-pv-bar .cmp-cap { margin: 0; }
+.cmp-inbox { display: flex; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border-radius: var(--r-sm); background: var(--u-ground); border: 1px solid var(--u-edge); }
+.cmp-ia { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+.cmp-ia svg { width: 18px; height: 18px; }
+.cmp-ib { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
+.cmp-it { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sub); }
+.cmp-it b { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-it time { flex: none; color: var(--text-muted); }
+.cmp-is { font-size: var(--fs-sub); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-ip { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-sub); color: var(--text-muted); }
+.cmp-pv-wrap { position: relative; min-height: 260px; margin: 0 -12px; border-radius: var(--r-lg); overflow: hidden; }
+.cmp-pv-frame { display: block; width: 100%; height: 440px; border: 0; background: transparent; transition: opacity 400ms var(--out); }
+.cmp-pv-wrap.loading .cmp-pv-frame { opacity: 0; }
+.cmp-sk {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 300ms var(--out);
+  background: linear-gradient(100deg, var(--u-track) 40%, color-mix(in srgb, var(--text-light) 9%, transparent) 50%, var(--u-track) 60%) 0 0 / 220% 100%;
+}
+.cmp-pv-wrap.loading .cmp-sk { opacity: 1; animation: cmpShimmer 1.2s linear infinite; }
+@keyframes cmpShimmer { to { background-position: -220% 0; } }
+
+/* A draft waiting on the envelope that opens it. */
+.cmp-has-draft { position: relative; }
+.cmp-draft-dot {
+  position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--dark-grey); animation: cmpPopIn 340ms var(--out) both;
+}
+
+/* The send's countdown with Undo, then its tick. */
+.cmp-toast {
+  --cmp-act: color-mix(in srgb, var(--accent) 60%, black); --cmp-okc: color-mix(in srgb, var(--ok) 70%, black);
+  position: fixed; left: 50%; bottom: calc(20px + var(--safe-b)); z-index: 6050; width: min(420px, calc(100% - 24px));
+  translate: -50% 0; transform: translateY(160%); visibility: hidden; overflow: hidden; min-height: 60px;
+  border-radius: var(--r-lg); background: var(--text-light); color: var(--sheet-surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  transition: transform 460ms var(--sheet), visibility 0s var(--in) 460ms;
+}
+body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
+.cmp-toast.on { transform: translateY(0); visibility: visible; transition-delay: 0s; }
+.cmp-tin { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 8px 8px 16px; animation: cmpSwapIn 320ms var(--out) both; }
+.cmp-tt { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 500; }
+.cmp-tt small { display: block; font-size: var(--fs-sub); font-weight: 400; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-tin button { flex: none; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--r-sm); background: none; color: var(--cmp-act); font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 700; cursor: pointer; }
+.cmp-ring { position: relative; flex: none; width: 30px; height: 30px; display: grid; place-items: center; }
+.cmp-ring svg { position: absolute; inset: 0; width: 30px; height: 30px; rotate: -90deg; }
+.cmp-ring .trk { fill: none; stroke: color-mix(in srgb, var(--sheet-surface) 22%, transparent); stroke-width: 2.5; }
+.cmp-ring .arc { fill: none; stroke: var(--cmp-act); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 69.12; stroke-dashoffset: 0; }
+.cmp-ring b { font-size: var(--fs-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
+.cmp-done { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--cmp-okc) 22%, transparent); animation: cmpPopIn 420ms var(--out) both; }
+.cmp-done svg { width: 18px; height: 18px; }
+.cmp-done path { fill: none; stroke: var(--cmp-okc); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22; stroke-dashoffset: 22; animation: cmpDraw 420ms 100ms var(--out) forwards; }
+@keyframes cmpDraw { to { stroke-dashoffset: 0; } }
+@keyframes cmpPopIn { from { transform: scale(0.4); opacity: 0; } }

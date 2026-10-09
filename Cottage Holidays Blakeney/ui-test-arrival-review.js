@@ -134,7 +134,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       subjectRO: !!(document.getElementById('enq-email-subject') || {}).readOnly,
     };
   });
-  ok(/Email guest/.test(restored.title) && restored.facts === '' && !restored.subjectRO,
+  ok(/^Email Tom$/.test(restored.title) && restored.facts === '' && !restored.subjectRO,
     `an ordinary compose gets its own chrome back (${restored.title}, facts cleared, subject editable)`);
   await page.evaluate(async () => { await chbOpenTarget('arrival-40'); });
   await page.waitForTimeout(600);
@@ -160,7 +160,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('4. sending goes through the arrival template with the edited words');
   await page.evaluate(() => {
     document.getElementById('enq-email-body').value = "We've left the milk in the fridge for you.";
-    return window.sendEnquiryEmail();
+    window.sendEnquiryEmail();
+    // Send waits five seconds for an Undo; leaving the page sends at once (composeFlush).
+    return window.composeFlush();
   });
   await page.waitForTimeout(500);
   const sent = posts.filter((p) => p.action === 'send_arrival').pop();

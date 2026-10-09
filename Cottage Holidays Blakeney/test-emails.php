@@ -54,21 +54,47 @@ $b = [
     'agreed_txn_fee' => 16.2, 'price_override' => null,
 ];
 
-echo "== Booking with an agreed snapshot ==\n";
+echo "== A booking says where its money stands, never the price again ==\n";
 $price = booking_price($rateToday, $b);
-$m = build_enquiry_reply_email(array_merge($b, ['price' => $price]), 'About your stay', 'Hello — a quick note.', 'booking');
+$m = build_enquiry_reply_email(array_merge($b, ['price' => $price, 'pay_paid' => 214.05, 'pay_due' => 417.15, 'pay_due_by' => '2026-07-02']), 'About your stay', 'A quick note.', 'booking', ['from' => 'George']);
 $all = $m['html'] . "\n" . $m['text'];
-chk('email shows the locked total £556.20', strpos($all, '556.20') !== false);
-chk('email shows the locked £135.00/night', strpos($all, '135.00') !== false);
+chk('what is paid so far (£214.05)', strpos($all, '214.05') !== false);
+chk('what is still to pay (£417.15), and by when', strpos($all, '417.15') !== false && strpos($m['text'], 'by Thu 2 Jul') !== false);
+chk('no total or nightly price restated (556.20 / 135.00)', strpos($all, '556.20') === false && strpos($all, '135.00') === false);
 chk("no live-rate total leaks in (£679.80)", strpos($all, '679.80') === false);
 chk("no live per-night leaks in (£165.00)", strpos($all, '165.00') === false);
-chk('deposit line intact (£75.00 refundable)', strpos($all, '75.00') !== false);
-chk('booking context label is "Price", not an estimate', strpos($m['text'], 'Price: ') !== false && strpos($m['text'], 'Estimated price:') === false);
+chk('the link back into the booking', strpos($all, 'open=stay') !== false);
+chk('signed by the person who wrote it', strpos($m['text'], "George\nCottage Holidays Blakeney") !== false);
+chk('the subject is the title', strpos($m['html'], 'About your stay') !== false);
+$paidUp = build_enquiry_reply_email(array_merge($b, ['pay_paid' => 631.2, 'pay_due' => 0]), '', 'Note.', 'booking');
+chk('paid in full says so', strpos($paidUp['text'], 'Payment: paid in full') !== false && strpos($paidUp['html'], 'Paid in full') !== false);
+chk('an empty subject reads "Your stay at <cottage>"', $paidUp['subject'] === 'Your stay at jollyboat' || strpos($paidUp['subject'], 'Your stay at ') === 0);
 
-echo "== Old booking with NO snapshot (live fallback) ==\n";
+echo "== The two switches ==\n";
+$noStay = build_enquiry_reply_email(array_merge($b, ['pay_paid' => 214.05, 'pay_due' => 417.15]), 'S', 'Note.', 'booking', ['stay' => false]);
+chk('stay off: no Arrive / Leave', strpos($noStay['text'], 'Arrive:') === false && strpos($noStay['html'], 'Arrive') === false);
+chk('…the payment still there', strpos($noStay['text'], '417.15') !== false);
+$noMoney = build_enquiry_reply_email(array_merge($b, ['pay_paid' => 214.05, 'pay_due' => 417.15]), 'S', 'Note.', 'booking', ['money' => false]);
+chk('money off: no figures at all', strpos($noMoney['html'] . $noMoney['text'], '417.15') === false && strpos($noMoney['html'] . $noMoney['text'], '214.05') === false);
+chk('…the stay still there', strpos($noMoney['text'], 'Arrive:') !== false);
+$bare = build_enquiry_reply_email(array_merge($b, ['pay_paid' => 214.05, 'pay_due' => 417.15]), 'S', 'Note.', 'booking', ['stay' => false, 'money' => false]);
+chk('both off: just the message', strpos($bare['text'], '---') === false && strpos($bare['html'], 'open=stay') === false);
+
+echo "== An enquiry's quote adds up to itself ==\n";
+$q = build_enquiry_reply_email(array_merge($b, ['price' => booking_price($rateToday, $b)]), 'Your dates', 'Note.', 'enquiry');
+$qa = $q['html'] . "\n" . $q['text'];
+chk('nights at the agreed rate (4 at £135.00 = £540.00)', strpos($q['text'], '4 nights at £135.00: £540.00') !== false);
+chk('the fee is its own line (£16.20)', strpos($q['text'], 'Transaction fee (3%): £16.20') !== false);
+chk('the total (£556.20)', strpos($q['text'], 'Total: £556.20') !== false);
+chk('the refundable deposit (£75.00)', strpos($qa, '75.00') !== false);
+$custom = booking_price($rateToday, array_merge($b, ['price_override' => 500]));
+$qc = build_enquiry_reply_email(array_merge($b, ['price' => $custom]), 'Your dates', 'Note.', 'enquiry');
+chk('a custom price is one agreed line (£500.00)', strpos($qc['text'], 'Agreed price for your stay: £500.00') !== false);
+chk('…never "nights at" lines that cannot add up to it', strpos($qc['html'] . $qc['text'], 'nights at') === false);
 $bOld = array_merge($b, ['agreed_total' => null]);
-$mOld = build_enquiry_reply_email(array_merge($bOld, ['price' => booking_price($rateToday, $bOld)]), '', 'Note.', 'booking');
-chk('falls back to live rates (679.80)', strpos($mOld['html'] . $mOld['text'], '679.80') !== false);
+$qOld = build_enquiry_reply_email(array_merge($bOld, ['price' => booking_price($rateToday, $bOld)]), '', 'Note.', 'enquiry');
+chk('no snapshot: the live quote (679.80)', strpos($qOld['html'] . $qOld['text'], '679.80') !== false);
+chk('an empty subject reads "Your enquiry about <cottage>"', strpos($qOld['subject'], 'Your enquiry about ') === 0);
 
 echo "\n";
 exit($fail ? 1 : 0);

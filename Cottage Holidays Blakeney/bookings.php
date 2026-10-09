@@ -1307,6 +1307,32 @@ if ($action === 'send_confirmation') {
     json_out(['error' => $reason, 'email' => $result], 500);
 }
 
+// Where a booking's money stands, for the owner's email: what has been paid and what
+// is still to pay, counted the way the booking page counts it — the refundable
+// deposit is paid once the card has taken it (or the cash covered it) and owed while
+// it rides the next payment. "By" only while something is both paid and owed and the
+// date is still ahead.
+function reply_pay_facts($b)
+{
+    try {
+        $amt = booking_amount_due($b, 'balance');
+        $damDue = booking_damages_due($b);
+        $hs = (string) ($b['hold_status'] ?? 'none');
+        $depCharged = in_array($hs, ['charged', 'captured', 'kept'], true)
+            ? round((float) ($b['hold_amount'] ?? ($b['agreed_booking_fee'] ?? 0)), 2) : 0.0;
+        $paid = round((float) $amt['alreadyPaid'] + $depCharged, 2);
+        $due = round((float) $amt['due'] + $damDue, 2);
+        $by = ($paid > 0.005 && $due > 0.005) ? (string) booking_balance_due_date($b) : '';
+        if ($by !== '' && $by < date('Y-m-d')) {
+            $by = '';
+        }
+        return ['pay_paid' => $paid, 'pay_due' => $due, 'pay_due_by' => $by];
+    } catch (\Throwable $e) {
+        // Unknown money is left out, never guessed.
+        return [];
+    }
+}
+
 // Build the branded email HTML for the composer's live preview (no send).
 if ($action === 'email_preview') {
     require_admin();
@@ -1340,7 +1366,7 @@ if ($action === 'email_preview') {
         json_out(['error' => 'Email buttons have been removed. Reload the page and send it again.'], 409);
     }
     require_once __DIR__ . '/mailer.php';
-    $m = build_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking');
+    $m = build_enquiry_reply_email(array_merge($b, ['price' => $priceEst], reply_pay_facts($b)), $subject, $message, 'booking', reply_email_opts($in));
     json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
 }
 
@@ -1377,7 +1403,7 @@ if ($action === 'email_guest') {
     }
     $r = ['ok' => false, 'error' => 'send failed'];
     try {
-        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking', $atts);
+        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst], reply_pay_facts($b)), $subject, $message, 'booking', $atts, reply_email_opts($in));
     } catch (\Throwable $e) {
         $r = ['ok' => false, 'error' => $e->getMessage()];
     }
@@ -1389,7 +1415,7 @@ if ($action === 'email_guest') {
         'entity_id' => (string) $id,
         'prop_key' => $b['prop_key'] ?? '',
         // Keep the message so the Bookings page email log can show what was sent.
-        'meta' => ['subject' => $subject, 'body' => mb_substr($message, 0, 3000)],
+        'meta' => ['subject' => $subject !== '' ? $subject : 'Your stay at ' . (prop_display($b['prop_key'] ?? '')['name'] ?? ''), 'body' => mb_substr($message, 0, 3000)],
     ]);
     json_out(['ok' => true]);
 }

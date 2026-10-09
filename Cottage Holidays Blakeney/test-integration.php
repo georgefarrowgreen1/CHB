@@ -1829,8 +1829,18 @@ it_check('…and greets the guest exactly once (' . $prevGreets . ')', $prevGree
 // Without the flag the SAME request is still the reply composer — so the flag
 // is what routes it, and the two templates really are different.
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'subject' => 'You arrive', 'message' => $prevMsg]);
-it_check('…while the ordinary preview is still the reply shell (the flag is the switch)',
-    strpos((string) ($r['json']['html'] ?? ''), 'About your booking') !== false, substr((string) ($r['json']['html'] ?? ''), 0, 300));
+$ordHtml = (string) ($r['json']['html'] ?? '');
+it_check('…while the ordinary preview is still the reply email (the flag is the switch)',
+    strpos($ordHtml, 'See you') === false && strpos($ordHtml, 'comes straight to') !== false, substr($ordHtml, 0, 300));
+// THE ROUTE FILLS THE BUILDER (the email-guest sheet's two switches and the booking's
+// payment facts): test-emails drives the builder with them already on its payload, so
+// only a real request through the endpoint shows that anything puts them there.
+it_check('the reply states where the booking\'s money stands (the route fills the pay facts)',
+    preg_match('/Paid in full|Still to pay/', $ordHtml) === 1 && strpos($ordHtml, 'Arrive') !== false, substr(strip_tags($ordHtml), 0, 400));
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'subject' => 'S', 'message' => $prevMsg, 'include_stay' => 0, 'include_money' => 0]);
+$offHtml = (string) ($r['json']['html'] ?? '');
+it_check('…and switching both off leaves just the message',
+    $offHtml !== '' && preg_match('/Paid in full|Still to pay|Paid so far/', $offHtml) === 0 && strpos($offHtml, 'Arrive') === false, substr(strip_tags($offHtml), 0, 400));
 
 // THE HOUSE RULES RIDE THE ARRIVAL EMAIL — the WIRING half. test-emails-render
 // drives the composer with rules ON its payload and passes whether or not

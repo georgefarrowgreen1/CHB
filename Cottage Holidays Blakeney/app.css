@@ -7078,24 +7078,7 @@ body.owner-mode .chat-widget {
   width: 12px;
   height: 12px;
 }
-/* Compose-email sheet: key enquiry details pinned above the message box. */
-.enq-ctx {
-  background: rgba(128, 128, 128, 0.08);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 14px 16px;
-  margin: 0 0 18px;
-}
 
-
-
-
-
-
-.enq-ctx-ic .ic {
-  width: 14px;
-  height: 14px;
-}
 
 
 .btn-sm {

@@ -635,8 +635,10 @@ async function open(browser, base, width) {
       dbBookings['21a'] = [bk]; // a refresh may have landed since
       openBookingEmail(bk.id);
       await wait(600);
-      const mail = read('#enq-email-modal .reviews-modal-box', '#enq-email-title', '#enq-email-subject');
-      mail.x = xs('#enq-email-modal .reviews-modal-close');
+      // The composer is its own sheet now ("Email a guest"): the same edge, ground, title and close,
+      // but its Subject is a label-value row with no box, so it has no field to compare.
+      const mail = read('#enq-email-modal .cmp-sheet', '#enq-email-title', '#enq-email-subject');
+      mail.x = xs('#cmp-close');
       try { closeEnquiryEmailModal(); } catch (e) {}
       await wait(400);
       return { ground, book, mail };
@@ -647,7 +649,8 @@ async function open(browser, base, width) {
   ok(phone.mail.edge && phone.mail.corners === '20px/0px', `…and so does the email composer (${phone.mail.corners})`);
   ok(phone.book.bg === phone.ground && phone.mail.bg === phone.ground, `both stand on the window's own ground (${phone.book.bg} / ${phone.mail.bg} vs ${phone.ground})`);
   ok(phone.book.title === '17px 600' && phone.mail.title === '17px 600', `both titles are the window's (${phone.book.title} / ${phone.mail.title})`);
-  ok(phone.book.field === '48 12px' && phone.mail.field === '48 12px', `their fields are the one field (${phone.book.field} / ${phone.mail.field})`);
+  ok(phone.book.field === '48 12px', `the booking form's fields are the one field (${phone.book.field})`);
+  ok(/ 0px$/.test(phone.mail.field), `the composer's subject is a row, not a box (${phone.mail.field})`);
   ok(/^9+px 36$/.test(phone.book.seg), `the booking form's choices are the one pill switcher (${phone.book.seg})`);
   ok(phone.book.x === '44 rgba(0, 0, 0, 0) 1px' && phone.mail.x === phone.book.x, `a window's close is the one outlined 44px circle (${phone.book.x} / ${phone.mail.x})`);
   const desk = await longWin(1280);

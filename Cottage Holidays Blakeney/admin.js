@@ -12067,6 +12067,7 @@ function renderBookingHub() {
         el.classList.add('bhub-enter');
     }
     hubWatchSticky(el);
+    composeDraftDots(el);
 }
 let __hubDrewId = null;
 // The sticky bar repeats the decision card's button, so it only exists while that card is OFF screen.
@@ -22390,11 +22391,11 @@ function prOfferExtension(pk, bookingId, nights, total) {
     if (!b) return;
     openBookingEmail(bookingId);
     const n = Number(nights);
-    const subj = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
-    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
     const nm = (propertyMeta[pk] || {}).name || pk;
-    if (subj) subj.value = `Fancy staying on at ${nm}?`;
-    if (body) body.value = `The ${n === 1 ? 'night' : n + ' nights'} after your stay ${n === 1 ? 'is' : 'are'} still free, and we'd love you to stay on. You can have ${n === 1 ? 'it' : 'them'} for ${prGbp(Number(total))} in total — 10% off our usual price. Just reply and we'll add ${n === 1 ? 'it' : 'them'} to your booking.`;
+    composeSetText(
+        `Fancy staying on at ${nm}?`,
+        `The ${n === 1 ? 'night' : n + ' nights'} after your stay ${n === 1 ? 'is' : 'are'} still free, and we'd love you to stay on. You can have ${n === 1 ? 'it' : 'them'} for ${prGbp(Number(total))} in total — 10% off our usual price. Just reply and we'll add ${n === 1 ? 'it' : 'them'} to your booking.`,
+    );
 }
 // The minimum-stay row's sub: the standard, then any dated minimums.
 function prMinSummary(pk) {
@@ -33762,23 +33763,370 @@ function renderEnquiryHub() {
         ${sticky}`;
     // The dock repeats the state card's own button, so it stands down while that card is on screen.
     hubWatchSticky(el);
+    composeDraftDots(el);
 }
 
-// ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
+// ---- Email a guest: one sheet for a booking, an enquiry and the arrival review ----
+//
+// THE SHEET IS MAIL'S SHAPE: Send at the top (the keyboard covers the bottom of a
+// phone), the To row names who it goes to and unfolds their stay, the email's own
+// greeting and sign-off sit around the message box so neither is typed twice, and
+// what is ADDED below the message is listed, each with a switch. Write | Preview
+// slide across; Preview shows the inbox line first, then the email itself, built by
+// the server (build_enquiry_reply_email) so it cannot drift from what is sent.
+// Send gives five seconds to undo, drafts are kept per device, and on a phone the
+// sheet drags down to close. Element ids the rest of the app reads are unchanged:
+// enq-email-modal / -subject / -body / -send / -title / -preview-frame, arv-facts-host.
 
-// One shared composer (#enq-email-modal). __composeTarget carries which kind of
-// record we're emailing so sendEnquiryEmail() posts to the right endpoint.
+// Which record the sheet is for: { kind: 'booking'|'enquiry', b|enq, propKey, arrival? }.
 let __composeTarget = null;
-// The composer's context fold shows ONE line closed: who this email is going to
-// and for which stay. Written by both openers, so the summary and the panel
-// beneath it can never describe different records.
-function composeCtxSummary(text) {
-    const el = document.getElementById('enq-email-ctxsum');
-    if (el) el.textContent = String(text || 'Their details');
-    // Always opens CLOSED: the Subject and Message fields are the work, and a
-    // panel that reopens itself every time is the 340px this fold removed.
-    const fold = /** @type {HTMLDetailsElement|null} */ (document.getElementById('enq-email-ctxfold'));
-    if (fold) fold.open = false;
+let __composeAttachments = [];
+const COMPOSE_ATTACH_MAX = 4;
+const COMPOSE_ATTACH_MAX_EACH = 4 * 1024 * 1024; // 4 MB per file
+const COMPOSE_ATTACH_MAX_TOTAL = 8 * 1024 * 1024; // 8 MB total (keeps the POST + email deliverable)
+const COMPOSE_HOLD_MS = 5000;
+const COMPOSE_DRAFT_DAYS = 30;
+let __cmpInc = { stay: true, money: true };
+let __cmpFacts = null;
+let __cmpPane = 'write';
+let __cmpPvMode = null; // 'light' | 'dark' once picked; null follows the back office's theme
+let __cmpPvT = null;
+let __cmpPvStamp = 0;
+let __cmpSavedT = null;
+let __cmpToastT = null;
+// The send waiting out its five seconds: { timer, tick, commit, snap }.
+let __cmpHold = null;
+
+const CMP_FILE_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+const CMP_X_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function cmpRec(t) {
+    return t ? (t.kind === 'booking' ? t.b : t.enq) : null;
+}
+function cmpFirst(name) {
+    return String(name || '').trim().split(/\s+/)[0] || 'Guest';
+}
+function cmpReduced() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
+function cmpReplay(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+}
+// A spoken day: "Fri 16 Oct", with the year only when it is not this one.
+function cmpDay(iso, forceYear) {
+    const d = new Date(String(iso || '').slice(0, 10) + 'T12:00:00Z');
+    if (isNaN(d.getTime())) return '';
+    const yr = d.getUTCFullYear();
+    const thisYr = Number(todayDashed().slice(0, 4));
+    const s = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).replace(',', '');
+    return s + (forceYear || yr !== thisYr ? ' ' + yr : '');
+}
+// "Fri 16 – Mon 19 Oct", or across months "Fri 30 Oct – Mon 2 Nov".
+function cmpRange(a, b) {
+    const da = new Date(String(a || '').slice(0, 10) + 'T12:00:00Z');
+    const db = new Date(String(b || '').slice(0, 10) + 'T12:00:00Z');
+    if (isNaN(da.getTime()) || isNaN(db.getTime())) return cmpDay(a);
+    const thisYr = Number(todayDashed().slice(0, 4));
+    const yr = db.getUTCFullYear() !== thisYr ? ' ' + db.getUTCFullYear() : '';
+    const wd = (d) => d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
+    const mo = (d) => d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+    if (da.getUTCMonth() === db.getUTCMonth() && da.getUTCFullYear() === db.getUTCFullYear()) {
+        return `${wd(da)} ${da.getUTCDate()} – ${wd(db)} ${db.getUTCDate()} ${mo(db)}${yr}`;
+    }
+    return `${wd(da)} ${da.getUTCDate()} ${mo(da)} – ${wd(db)} ${db.getUTCDate()} ${mo(db)}${yr}`;
+}
+// When the stay is, from today: "past stay", "staying now", "today", "tomorrow", "in 7 days".
+function cmpWhen(checkIn, checkOut) {
+    const t = todayDashed();
+    if (checkOut && checkOut <= t) return 'past stay';
+    if (checkIn && checkIn <= t) return 'staying now';
+    const n = Math.round((new Date(checkIn + 'T12:00:00Z').getTime() - new Date(t + 'T12:00:00Z').getTime()) / 86400000);
+    return n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`;
+}
+// Who signs it: the person signed in, else the host, else the business alone —
+// the same order the server's reply_email_opts() follows.
+function cmpSigner() {
+    const me = /** @type {any} */ (window).__me;
+    const mine = me && me.name ? cmpFirst(me.name) : '';
+    if (mine && mine !== 'Guest') return mine;
+    const host = String((typeof siteContent !== 'undefined' && siteContent['host-name']) || '').trim();
+    return host ? cmpFirst(host) : '';
+}
+
+// ---- What the sheet knows about the record: the To block and the two switches ----
+function cmpFactsFor(t) {
+    const rec = cmpRec(t);
+    const pk = t.kind === 'booking' ? t.propKey : rec.propKey;
+    const meta = propertyMeta[pk] || {};
+    const propName = meta.name || pk;
+    const dot = meta.accent || `var(--prop-${pk}, var(--accent))`;
+    const nights = typeof nightsBetween === 'function' ? nightsBetween(rec.checkIn, rec.checkOut) : 0;
+    const range = cmpRange(rec.checkIn, rec.checkOut);
+    const guests = rec.guests || '';
+    const f = {
+        name: rec.name || 'Guest',
+        first: cmpFirst(rec.name),
+        email: rec.email || '',
+        propName,
+        dot,
+        rows: [],
+        stayLbl: t.kind === 'booking' ? 'Their stay' : 'Their dates',
+        staySub: [range, guests].filter(Boolean).join(' · '),
+        stayOn: true,
+        stayOff: 'Left out',
+        moneyLbl: t.kind === 'booking' ? 'Payment' : 'Your quote',
+        moneySub: '',
+        moneyOn: true,
+        moneyOff: 'Left out',
+        hasMoney: true,
+    };
+    const when = cmpWhen(rec.checkIn, rec.checkOut);
+    const stayMain = `<span class="cmp-main"><i class="cmp-dot" style="background:${escapeHtml(dot)}"></i>${escapeHtml(propName)}</span>`;
+    if (t.kind === 'booking') {
+        const b = rec;
+        f.rows.push(['Stay', stayMain, `${range} · ${nights} night${nights === 1 ? '' : 's'} · ${when} · ${bookingRef(b.id)}`]);
+        f.rows.push(['Guests', `<span class="cmp-main">${escapeHtml(guests || '—')}</span>`, b.phone || '']);
+        try {
+            const gt = bookingDue(pk, b);
+            const by = (() => { try { return bookingPlanDueDate(b); } catch (e) { return ''; } })();
+            const showBy = gt.paid > 0.005 && gt.balance > 0.005 && by && by >= todayDashed();
+            if (gt.fullyPaid) {
+                f.rows.push(['Payment', stCap('ok', 'Paid in full'), `${gbp(gt.total)} received`]);
+                f.moneySub = 'Paid in full';
+                f.moneyOff = 'Left out: paid in full';
+                f.moneyOn = false;
+            } else {
+                f.rows.push(['Payment', stCap('warn', escapeHtml(gbp(gt.balance) + ' to pay')), showBy ? 'by ' + cmpDay(by) : gt.paid > 0.005 ? `${gbp(gt.paid)} paid so far` : 'nothing paid yet']);
+                f.moneySub = `${gbp(gt.balance)} still to pay${showBy ? ', by ' + cmpDay(by) : ''}`;
+            }
+        } catch (e) {
+            f.moneySub = 'What is paid and what is left';
+        }
+        if (typeof hasCheckedOut === 'function' && hasCheckedOut(b)) {
+            f.stayOn = false;
+            f.stayOff = 'Left out: the stay is over';
+        }
+    } else {
+        const e = rec;
+        let av = null;
+        try { av = enquiryAvailability(e); } catch (err) {}
+        f.rows.push(['Dates', stayMain, `${range} · ${nights} night${nights === 1 ? '' : 's'}${av ? ' · ' + (av.free ? 'free' : av.text.toLowerCase()) : ''}`]);
+        f.rows.push(['Guests', `<span class="cmp-main">${escapeHtml(guests || '—')}</span>`, e.phone || '']);
+        let fig = null;
+        try { fig = enquiryAskFigures(e); } catch (err) {}
+        if (fig && fig.total != null) {
+            const dep = fig.dmg ? `plus a ${gbp(fig.dmg)} refundable deposit` : '';
+            f.rows.push(['Quote', `<span class="cmp-main">${escapeHtml(gbp(fig.total))}</span>`, dep]);
+            f.moneySub = gbp(fig.total) + (dep ? ', ' + dep : '');
+        } else {
+            f.hasMoney = false;
+            f.moneyOn = false;
+            f.moneySub = 'No price for these dates';
+            f.moneyOff = 'No price for these dates';
+        }
+        if (e.message) f.rows.push(['They wrote', `<span class="cmp-quote">${escapeHtml(e.message)}</span>`, '']);
+    }
+    return f;
+}
+
+// ---- Drafts, per device ----
+// Keyed by the record, so a half-written email waits for that guest alone. The
+// arrival review never drafts: its message is prefilled from the server each time.
+function cmpDraftKey(t) {
+    const rec = cmpRec(t);
+    return t && rec && rec.dbId && !t.arrival ? 'chb-cmp-draft:' + t.kind + ':' + rec.dbId : '';
+}
+function cmpDraftRead(key) {
+    if (!key) return null;
+    try {
+        const d = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!d || typeof d !== 'object' || typeof d.msg !== 'string') return null;
+        if (!d.at || Date.now() - Number(d.at) > COMPOSE_DRAFT_DAYS * 86400000) {
+            localStorage.removeItem(key);
+            return null;
+        }
+        return d;
+    } catch (e) {
+        return null;
+    }
+}
+function cmpDraftWrite() {
+    const t = __composeTarget;
+    const key = cmpDraftKey(t);
+    if (!key) return;
+    const msg = cmpVal('enq-email-body');
+    try {
+        if (!msg.trim()) localStorage.removeItem(key);
+        else localStorage.setItem(key, JSON.stringify({ subj: cmpVal('enq-email-subject'), msg, stay: __cmpInc.stay, money: __cmpInc.money, at: Date.now() }));
+    } catch (e) {}
+}
+function cmpDraftDrop(key) {
+    try { if (key) localStorage.removeItem(key); } catch (e) {}
+}
+// A dot on every envelope whose guest has a draft waiting.
+function composeDraftDots(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-act="openBookingEmail"], [data-act="openEnquiryEmail"]').forEach((btn) => {
+        let id = null;
+        try { id = JSON.parse(btn.getAttribute('data-args') || '[]')[0]; } catch (e) {}
+        const booking = btn.getAttribute('data-act') === 'openBookingEmail';
+        let rec = null;
+        try { rec = booking ? findBookingById(id) : enquiries.find((x) => x.id === id); } catch (e) {}
+        const has = !!(rec && rec.dbId && cmpDraftRead('chb-cmp-draft:' + (booking ? 'booking' : 'enquiry') + ':' + rec.dbId));
+        // A child, not a pseudo-element: those already carry the buttons' 44px reach.
+        let dot = btn.querySelector(':scope > .cmp-draft-dot');
+        if (has && !dot) {
+            dot = document.createElement('i');
+            dot.className = 'cmp-draft-dot';
+            dot.setAttribute('aria-hidden', 'true');
+            btn.appendChild(dot);
+        } else if (!has && dot) dot.remove();
+        btn.classList.toggle('cmp-has-draft', has);
+    });
+}
+
+function cmpVal(id) {
+    const el = /** @type {HTMLTextAreaElement|null} */ (document.getElementById(id));
+    return el ? el.value : '';
+}
+function cmpGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+// The switcher's pill sits on the chosen side.
+function cmpSeat(seg) {
+    if (!seg) return;
+    const on = seg.querySelector('[aria-selected="true"]');
+    const pill = /** @type {HTMLElement|null} */ (seg.querySelector('.cmp-pill'));
+    if (!pill) return;
+    if (!on || !(/** @type {HTMLElement} */ (on)).offsetWidth) { pill.style.width = '0px'; return; }
+    const b = /** @type {HTMLElement} */ (on);
+    pill.style.width = b.offsetWidth + 'px';
+    pill.style.translate = b.offsetLeft + 'px 0';
+}
+function cmpChoose(seg, btn) {
+    if (!seg) return;
+    seg.querySelectorAll('[role="tab"]').forEach((x) => x.setAttribute('aria-selected', x === btn ? 'true' : 'false'));
+    cmpSeat(seg);
+}
+
+function cmpPaintSwitches(changed) {
+    const f = __cmpFacts;
+    if (!f) return;
+    const set = (k, lbl, sub, off) => {
+        const on = __cmpInc[k];
+        const l = document.getElementById('cmp-' + k + '-lbl');
+        if (l) l.textContent = lbl;
+        const s = document.getElementById('cmp-' + k + '-sub');
+        if (s) s.textContent = on ? sub : off;
+        const sr = document.getElementById('cmp-' + k + '-sr');
+        if (sr) sr.textContent = 'Include ' + lbl.toLowerCase();
+        const cb = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-inc-' + k));
+        if (cb) cb.checked = on;
+        const tile = document.getElementById('cmp-' + k + '-tile');
+        if (tile) tile.classList.toggle('on', on);
+        if (changed === k) cmpReplay(s, 'cmp-swap');
+    };
+    set('stay', f.stayLbl, f.staySub, f.stayOff);
+    set('money', f.moneyLbl, f.moneySub, f.moneyOff);
+    const mcb = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-inc-money'));
+    if (mcb) mcb.disabled = !f.hasMoney;
+}
+function cmpPaintSend() {
+    const b = document.getElementById('enq-email-send');
+    if (!b) return;
+    const empty = !cmpVal('enq-email-body').trim();
+    const was = b.getAttribute('aria-disabled') === 'true';
+    b.setAttribute('aria-disabled', empty ? 'true' : 'false');
+    if (was && !empty) cmpReplay(b, 'cmp-ready');
+}
+function cmpSay(msg) {
+    const el = document.getElementById('enq-email-msg');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('show', !!msg);
+}
+
+// ---- Opening ----
+// `restore` reopens with exactly what was there (Undo, or a send that failed).
+function cmpOpen(t, restore) {
+    __composeTarget = t;
+    const rec = cmpRec(t);
+    const f = (__cmpFacts = cmpFactsFor(t));
+    // Undo whatever an arrival review dressed the sheet in: the title, the
+    // read-only subject, the facts panel and the hidden extras.
+    const modal = document.getElementById('enq-email-modal');
+    if (modal) modal.classList.toggle('cmp-arrival', !!t.arrival);
+    const ttl = document.getElementById('enq-email-title');
+    if (ttl) ttl.textContent = t.arrival ? 'Arrival email' : 'Email ' + f.first;
+    const fh = document.getElementById('arv-facts-host');
+    if (fh) fh.innerHTML = restore && restore.arvHtml ? restore.arvHtml : '';
+    const subj = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-subject'));
+    if (subj) subj.readOnly = !!t.arrival;
+    // To, and the stay it unfolds.
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const ini = (rec.name || rec.email || '?').trim().split(/\s+/).map((w) => w.charAt(0)).slice(0, 2).join('').toUpperCase();
+    set('cmp-ava', ini);
+    set('cmp-to-name', f.name);
+    set('cmp-to-mail', f.email);
+    const ctx = document.getElementById('enq-email-context');
+    if (ctx) {
+        ctx.innerHTML = f.rows
+            .map(([label, main, sub], i) => `<dt style="--i:${i}">${escapeHtml(label)}</dt><dd style="--i:${i}">${main}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</dd>`)
+            .join('');
+    }
+    const to = document.getElementById('cmp-to');
+    if (to) to.setAttribute('aria-expanded', 'false');
+    const cx = document.getElementById('cmp-ctx');
+    if (cx) cx.classList.remove('on');
+    // What goes in the boxes: what was there, else a draft, else the defaults.
+    const draft = restore ? null : cmpDraftRead(cmpDraftKey(t));
+    const src = restore || draft;
+    __cmpInc = {
+        stay: src && typeof src.stay === 'boolean' ? src.stay : f.stayOn,
+        money: f.hasMoney && (src && typeof src.money === 'boolean' ? src.money : f.moneyOn),
+    };
+    if (subj) subj.value = src && src.subj != null ? src.subj : t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`;
+    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (body) body.value = src ? src.msg || '' : '';
+    __composeAttachments = restore && restore.atts ? restore.atts.slice() : [];
+    set('cmp-greet', 'Hello ' + f.first + ',');
+    const signer = cmpSigner();
+    const sign = document.getElementById('cmp-sign');
+    if (sign) sign.innerHTML = signer ? `${escapeHtml(signer)}<small>· signed as you</small>` : 'Cottage Holidays Blakeney';
+    set('cmp-reply-note', `When ${f.first} replies, it comes back to your Inbox.`);
+    cmpSay(restore && restore.err ? restore.err : '');
+    set('cmp-file-err', '');
+    const saved = document.getElementById('cmp-saved');
+    if (saved) saved.classList.toggle('on', !!draft);
+    cmpPaintSwitches();
+    renderComposeAttachChips();
+    cmpPaintSend();
+    cmpSetPane('write', true);
+    // A drag's own exit may still hold the sheet off screen: let it go first, so
+    // the CSS rise below starts from the bottom edge.
+    const sheet = document.getElementById('cmp-sheet');
+    if (sheet) {
+        sheet.style.transform = '';
+        sheet.getAnimations().forEach((a) => { if (!(typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation)) a.cancel(); });
+    }
+    if (modal) modal.classList.remove('cmp-dragged');
+    if (modal && !modal.classList.contains('open')) overlayHistPush(); // Back closes the composer
+    if (modal) {
+        modal.classList.remove('closing');
+        modal.classList.add('open');
+    }
+    requestAnimationFrame(() => {
+        cmpGrow(subj);
+        cmpGrow(body);
+        cmpSeat(document.getElementById('cmp-pane-seg'));
+    });
+    if (body) setTimeout(() => { try { body.focus({ preventScroll: true }); } catch (e) { body.focus(); } }, 150);
+    composeDraftDots();
 }
 // Takes an id OR the enquiry itself. The object form is load-bearing: declining
 // is a soft delete, so once loadData() has run the row is out of `enquiries`
@@ -33787,161 +34135,216 @@ function composeCtxSummary(text) {
 function openEnquiryEmail(enqId) {
     const enq = enqId && typeof enqId === 'object' ? enqId : enquiries.find((e) => e.id === enqId);
     if (!enq) return;
-    // UNDO THE ARRIVAL-REVIEW DRESSING, exactly as openBookingEmail does. The
-    // two openers SHARE one modal, and the arrival review re-dresses it (title
-    // "Arrival email", the send controls hidden, a read-only subject, the
-    // booking's facts panel filled). Only the booking opener took the dressing
-    // back off, so reviewing an arrival and then replying to an ENQUIRY opened a
-    // composer titled "Arrival email", with a subject that could not be edited
-    // and another guest's address still on screen.
-    const t0 = document.getElementById('enq-email-title');
-    if (t0) t0.textContent = 'Email guest';
-    const fh0 = document.getElementById('arv-facts-host');
-    if (fh0) fh0.innerHTML = '';
-    const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
-    if (s0) s0.readOnly = false;
     if (!enq.email) {
         glassAlert('This enquiry has no email address.');
         return;
     }
-    __composeTarget = { kind: 'enquiry', enq };
-    __composeAttachments = [];
-    renderComposeAttachChips();
-    backToComposeEdit();
-    const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
-    // Key details, visible while writing: who + cottage + dates + party + phone
-    // + the price the site quoted + their original message — everything needed
-    // to reply without closing the sheet.
-    const ctx = document.getElementById('enq-email-context');
-    if (ctx) {
-        let priceRow = '';
-        try {
-            const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
-            if (p && p.total) {
-                priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(p.total)}</strong><span class="enq-ctx-mut"> · ${p.nights} night${p.nights === 1 ? '' : 's'} × ${gbp(p.perNight)}${p.damagesDeposit ? ` · +${gbp(p.damagesDeposit)} refundable deposit` : ''}</span></span></div>`;
-            }
-        } catch (e) { chbSwallow(e, 'enquiry-ctx-quote'); }
-        const initial = (enq.name || enq.email || '?').trim().charAt(0).toUpperCase();
-        ctx.innerHTML = `
-            <div class="enq-ctx-who">
-                <span class="enq-ctx-avatar">${escapeHtml(initial)}</span>
-                <span class="enq-ctx-name">${escapeHtml(enq.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(enq.email)}</span></span>
-                <span class="prop-tag tag-${enq.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
-            </div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(enq.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(enq.checkOut))}</strong></span></div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(enq.guests)}${enq.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(enq.phone)}</span>` : ''}</span></div>
-            ${priceRow}
-            ${enq.message ? `<div class="enq-ctx-quote">“${escapeHtml(enq.message)}”</div>` : ''}`;
-        // The fold's one visible line: who this is going to and for which stay.
-        composeCtxSummary(`${enq.name || 'Guest'} · ${propName} · ${fmtStayRange(enq.checkIn, enq.checkOut)}`);
-    }
-    const subj = document.getElementById('enq-email-subject');
-    if (subj) subj.value = `Your enquiry — ${propName}, ${fmtDate(enq.checkIn)} to ${fmtDate(enq.checkOut)}`;
-    const body = document.getElementById('enq-email-body');
-    if (body) body.value = '';
-    const msg = document.getElementById('enq-email-msg');
-    if (msg) {
-        msg.textContent = '';
-        msg.classList.remove('show');
-    }
-    const m = document.getElementById('enq-email-modal');
-    if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
-    if (m) m.classList.add('open');
-    if (body) setTimeout(() => body.focus(), 150);
+    cmpOpen({ kind: 'enquiry', enq });
 }
-function closeEnquiryEmailModal() {
+function openBookingEmail(bookingId) {
+    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
+    const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;
+    if (!b || !loc) return;
+    if (!b.email) {
+        glassAlert('This booking has no email address on file.');
+        return;
+    }
+    cmpOpen({ kind: 'booking', b, propKey: loc.propKey });
+}
+// Fill the boxes from elsewhere (the Pricing page's offer to stay on).
+function composeSetText(subject, message) {
+    const s = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-subject'));
+    const m = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (s && subject != null) s.value = subject;
+    if (m && message != null) m.value = message;
+    composeTyped();
+}
+
+// ---- Closing ----
+// Closing keeps what was written: a draft for this guest, and a dot on the envelope.
+// `quiet` closes without the draft notice (the send, which shows its own).
+function closeEnquiryEmailModal(quiet) {
     const m = document.getElementById('enq-email-modal');
-    if (m && m.classList.contains('open')) overlayHistConsume();
-    if (m) m.classList.remove('open');
-    backToComposeEdit(); // reset to the compose view for next time
+    const wasOpen = !!(m && m.classList.contains('open'));
+    if (wasOpen) overlayHistConsume();
+    const t = __composeTarget;
+    const msg = cmpVal('enq-email-body').trim();
+    if (t && wasOpen && quiet !== true) {
+        cmpDraftWrite();
+        if (msg && !t.arrival && cmpDraftKey(t)) {
+            const f = __cmpFacts || { first: 'them' };
+            const key = cmpDraftKey(t);
+            composeToast(`<span class="cmp-tt">Draft kept for ${escapeHtml(f.first)}<small>Tap the envelope to carry on</small></span><button type="button" id="cmp-discard">Discard</button>`, 4500);
+            const d = document.getElementById('cmp-discard');
+            if (d) d.onclick = () => {
+                cmpDraftDrop(key);
+                composeDraftDots();
+                composeToast('<span class="cmp-tt">Draft discarded</span>', 1800);
+            };
+        }
+    }
+    if (m) {
+        if (typeof chbCloseOverlay === 'function') chbCloseOverlay(m);
+        else m.classList.remove('open');
+    }
+    clearTimeout(__cmpPvT);
+    __cmpPvStamp++;
     __composeTarget = null;
     __composeAttachments = [];
     renderComposeAttachChips();
+    composeDraftDots();
 }
-// Toggle the composer back from the preview to the editing view.
-function backToComposeEdit() {
-    const pv = document.getElementById('enq-email-preview');
+
+// ---- Write | Preview ----
+function cmpSetPane(p, quiet) {
+    const seg = document.getElementById('cmp-pane-seg');
+    cmpChoose(seg, document.getElementById(p === 'preview' ? 'enq-email-preview-btn' : 'cmp-tab-write'));
+    const changed = p !== __cmpPane;
+    __cmpPane = p;
     const ed = document.getElementById('enq-email-edit');
-    if (pv) pv.style.display = 'none';
-    if (ed) ed.style.display = '';
+    const pv = document.getElementById('enq-email-preview');
+    if (ed) ed.style.display = p === 'write' ? '' : 'none';
+    if (pv) pv.style.display = p === 'preview' ? '' : 'none';
+    const body = document.getElementById('cmp-body');
+    if (body) body.scrollTop = 0;
+    if (changed && !quiet && !cmpReduced()) cmpReplay(p === 'preview' ? pv : ed, p === 'preview' ? 'cmp-in-r' : 'cmp-in-l');
+    if (p === 'write') requestAnimationFrame(() => { cmpGrow(document.getElementById('enq-email-subject')); cmpGrow(document.getElementById('enq-email-body')); });
 }
-// Render the exact email the guest will receive, in an iframe, before sending.
-// Built server-side (build_enquiry_reply_email) so the preview can't drift from
-// what actually goes out.
+function backToComposeEdit() {
+    cmpSetPane('write');
+}
+// Show the email exactly as the guest will receive it.
 async function previewComposedEmail() {
+    if (!__composeTarget) return;
+    cmpSetPane('preview');
+    if (!__cmpPvMode) cmpChoose(document.getElementById('cmp-pv-mode'), document.querySelector(`#cmp-pv-mode [data-args='["${cmpThemeNow()}"]']`));
+    await composeRenderPreview(true);
+}
+function cmpThemeNow() {
+    return document.body.classList.contains('light-mode') ? 'light' : 'dark';
+}
+function composePvMode(m) {
+    __cmpPvMode = m === 'dark' ? 'dark' : 'light';
+    cmpChoose(document.getElementById('cmp-pv-mode'), document.querySelector(`#cmp-pv-mode [data-args='["${__cmpPvMode}"]']`));
+    const frame = /** @type {HTMLIFrameElement|null} */ (document.getElementById('enq-email-preview-frame'));
+    if (frame && /** @type {any} */ (frame).__raw) cmpFill(frame, /** @type {any} */ (frame).__raw);
+}
+// The email carries its own dark twin behind prefers-color-scheme, and a frame
+// cannot be told which to use — so the chosen look is written into the document.
+function cmpForceScheme(html, mode) {
+    return String(html)
+        .split('@media (prefers-color-scheme: dark){').join(mode === 'dark' ? '@media all{' : '@media not all{')
+        .split('content="light dark"').join('content="' + mode + '"');
+}
+function cmpFit(frame) {
+    try {
+        const d = frame.contentDocument;
+        if (d && d.documentElement) frame.style.height = Math.max(240, d.documentElement.scrollHeight) + 'px';
+    } catch (e) {}
+}
+function cmpFill(frame, raw) {
+    /** @type {any} */ (frame).__raw = raw;
+    const html = cmpForceScheme(raw, __cmpPvMode || cmpThemeNow());
+    const wrap = document.getElementById('cmp-pv-wrap');
+    if (wrap) wrap.classList.add('loading');
+    frame.onload = () => {
+        cmpFit(frame);
+        setTimeout(() => cmpFit(frame), 300);
+        setTimeout(() => { if (wrap) wrap.classList.remove('loading'); }, cmpReduced() ? 0 : 220);
+    };
+    frame.srcdoc = html;
+}
+async function composeRenderPreview(now) {
     const t = __composeTarget;
     if (!t) return;
-    const body = (document.getElementById('enq-email-body') || {}).value || '';
-    const subject = (document.getElementById('enq-email-subject') || {}).value || '';
-    const msgEl = document.getElementById('enq-email-msg');
-    const note = (m) => {
-        if (msgEl) {
-            msgEl.textContent = m;
-            msgEl.classList.add('show');
+    const subj = cmpVal('enq-email-subject').trim();
+    const msg = cmpVal('enq-email-body').trim();
+    const f = __cmpFacts || { propName: '' };
+    const ps = document.getElementById('cmp-pv-subj');
+    if (ps) ps.textContent = subj || (t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`);
+    const pp = document.getElementById('cmp-pv-pre');
+    if (pp) pp.textContent = msg.replace(/\s+/g, ' ').slice(0, 140) || 'Your message';
+    clearTimeout(__cmpPvT);
+    if (__cmpPane !== 'preview') return;
+    const stamp = ++__cmpPvStamp;
+    const run = async () => {
+        const rec = cmpRec(t);
+        try {
+            const r = await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
+                action: 'email_preview',
+                id: rec.dbId,
+                subject: subj,
+                message: msg,
+                include_stay: __cmpInc.stay ? 1 : 0,
+                include_money: __cmpInc.money ? 1 : 0,
+                // THE ARRIVAL REVIEW PREVIEWS ITS OWN TEMPLATE, as it sends through it.
+                ...(t.arrival ? { arrival: true } : {}),
+            });
+            if (stamp !== __cmpPvStamp || __composeTarget !== t) return;
+            if (r && r.subject && ps) ps.textContent = r.subject;
+            const frame = /** @type {HTMLIFrameElement|null} */ (document.getElementById('enq-email-preview-frame'));
+            if (frame) cmpFill(frame, r && r.html ? r.html : '<p style="font-family:sans-serif;padding:24px;color:#57524a;">Preview unavailable.</p>');
+        } catch (e) {
+            if (stamp !== __cmpPvStamp) return;
+            cmpSay("Couldn't build the preview: " + (e && e.message ? e.message : e));
         }
     };
-    if (!body.trim()) {
-        note('Write a message first to preview it.');
-        return;
-    }
-    const btn = document.getElementById('enq-email-preview-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Loading…';
-    }
-    try {
-        const rec = t.kind === 'booking' ? t.b : t.enq;
-        const r = await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
-            action: 'email_preview',
-            id: rec.dbId,
-            subject: subject.trim(),
-            message: body.trim(),
-            // THE ARRIVAL REVIEW PREVIEWS ITS OWN TEMPLATE. sendEnquiryEmail
-            // already routes this target to send_arrival; without the same flag
-            // here the preview rendered the reply shell instead — a different
-            // email from the one that sends, greeting the guest twice.
-            ...(t.arrival ? { arrival: true } : {}),
-        });
-        const frame = document.getElementById('enq-email-preview-frame');
-        if (frame)
-            frame.srcdoc =
-                r && r.html
-                    ? r.html
-                    : '<p style="font-family:sans-serif;padding:24px;color:#57524a;">Preview unavailable.</p>';
-        document.getElementById('enq-email-edit').style.display = 'none';
-        document.getElementById('enq-email-preview').style.display = '';
-    } catch (e) {
-        note("Couldn't build the preview: " + (e && e.message ? e.message : e));
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Preview';
-        }
-    }
+    if (now) await run();
+    else __cmpPvT = setTimeout(run, 350);
 }
-// ---- Custom-email attachments ----
-// Files chosen in the composer, read to base64 for the email_guest payload.
-let __composeAttachments = [];
-const COMPOSE_ATTACH_MAX = 4;
-const COMPOSE_ATTACH_MAX_EACH = 4 * 1024 * 1024; // 4 MB per file
-const COMPOSE_ATTACH_MAX_TOTAL = 8 * 1024 * 1024; // 8 MB total (keeps the POST + email deliverable)
+
+// ---- Typing ----
+function composeTyped() {
+    const subj = document.getElementById('enq-email-subject');
+    const body = document.getElementById('enq-email-body');
+    if (subj && /** @type {HTMLTextAreaElement} */ (subj).value.indexOf('\n') !== -1) /** @type {HTMLTextAreaElement} */ (subj).value = /** @type {HTMLTextAreaElement} */ (subj).value.replace(/\n/g, ' ');
+    cmpGrow(subj);
+    cmpGrow(body);
+    if (cmpVal('enq-email-body').trim()) cmpSay('');
+    cmpPaintSend();
+    const saved = document.getElementById('cmp-saved');
+    if (saved) saved.classList.remove('on');
+    clearTimeout(__cmpSavedT);
+    __cmpSavedT = setTimeout(() => {
+        cmpDraftWrite();
+        if (saved && cmpDraftKey(__composeTarget) && cmpVal('enq-email-body').trim()) saved.classList.add('on');
+    }, 600);
+    composeRenderPreview(false);
+}
+function composeToToggle() {
+    const to = document.getElementById('cmp-to');
+    const on = !!to && to.getAttribute('aria-expanded') !== 'true';
+    if (to) to.setAttribute('aria-expanded', on ? 'true' : 'false');
+    const cx = document.getElementById('cmp-ctx');
+    if (cx) cx.classList.toggle('on', on);
+}
+function composeIncToggle(which, on) {
+    if (which !== 'stay' && which !== 'money') return;
+    __cmpInc[which] = !!on;
+    cmpPaintSwitches(which);
+    cmpDraftWrite();
+}
+
+// ---- Files ----
 async function addComposeAttachments(fileList) {
     const files = Array.from(fileList || []);
-    const input = document.getElementById('enq-email-file-input');
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-file-input'));
     if (input) input.value = ''; // allow re-picking the same file later
+    const refused = [];
+    let full = false;
     for (const f of files) {
         if (__composeAttachments.length >= COMPOSE_ATTACH_MAX) {
-            glassAlert(`You can attach up to ${COMPOSE_ATTACH_MAX} files.`);
+            full = true;
             break;
         }
         if (f.size > COMPOSE_ATTACH_MAX_EACH) {
-            glassAlert(`"${f.name}" is too big (max ${Math.round(COMPOSE_ATTACH_MAX_EACH / 1024 / 1024)} MB each).`);
+            refused.push(f.name);
             continue;
         }
         const total = __composeAttachments.reduce((s, a) => s + a.size, 0) + f.size;
         if (total > COMPOSE_ATTACH_MAX_TOTAL) {
-            glassAlert('That would exceed the total attachment size (12 MB).');
-            break;
+            refused.push(f.name);
+            continue;
         }
         try {
             const content = await new Promise((resolve, reject) => {
@@ -33950,100 +34353,279 @@ async function addComposeAttachments(fileList) {
                 r.onerror = () => reject(new Error('read failed'));
                 r.readAsDataURL(f);
             });
-            __composeAttachments.push({
-                filename: f.name || 'attachment',
-                mime: f.type || 'application/octet-stream',
-                size: f.size,
-                content,
-            });
+            __composeAttachments.push({ filename: f.name || 'attachment', mime: f.type || 'application/octet-stream', size: f.size, content, fresh: true });
         } catch (e) {
-            glassAlert(`Couldn't read "${f.name}".`);
+            refused.push(f.name);
         }
+    }
+    const err = document.getElementById('cmp-file-err');
+    if (err) {
+        err.textContent = refused.length
+            ? `${refused.join(', ')} ${refused.length === 1 ? 'is' : 'are'} too big to send (4MB each, 8MB together), so ${refused.length === 1 ? 'it was' : 'they were'} left off.`
+            : full ? `That's the most: ${COMPOSE_ATTACH_MAX} files.` : '';
     }
     renderComposeAttachChips();
 }
 function removeComposeAttachment(i) {
-    __composeAttachments.splice(i, 1);
-    renderComposeAttachChips();
+    const list = document.getElementById('enq-email-attach-list');
+    const row = /** @type {HTMLElement|null} */ (list ? list.querySelector(`[data-i="${Number(i)}"]`) : null);
+    const done = () => {
+        __composeAttachments.splice(Number(i), 1);
+        renderComposeAttachChips();
+    };
+    if (!row || cmpReduced() || typeof row.animate !== 'function') return done();
+    row.animate([{ height: row.offsetHeight + 'px', opacity: 1, minHeight: '0px' }, { height: '0px', opacity: 0, minHeight: '0px', paddingTop: '0px', paddingBottom: '0px' }], { duration: 280, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }).finished.then(done, done);
 }
 function renderComposeAttachChips() {
     const el = document.getElementById('enq-email-attach-list');
     if (!el) return;
     el.innerHTML = __composeAttachments
         .map((a, i) => {
-            const kb = a.size < 1024 * 1024 ? Math.round(a.size / 1024) + ' KB' : (a.size / 1024 / 1024).toFixed(1) + ' MB';
-            return `<span class="compose-attach-chip">${escapeHtml(a.filename)} <span style="color:var(--text-muted);">· ${kb}</span><button type="button" aria-label="Remove" ${chbAttrs('removeComposeAttachment', i)}>×</button></span>`;
+            const size = a.size < 1024 * 1024 ? Math.max(1, Math.round(a.size / 1024)) + ' KB' : (a.size / 1024 / 1024).toFixed(1) + ' MB';
+            return `<div class="cmp-row cmp-file" data-i="${i}"><span class="cmp-tile on" aria-hidden="true">${CMP_FILE_IC}</span><span class="cmp-rt"><b>${escapeHtml(a.filename)}</b><span class="cmp-sub">${size}</span></span><button type="button" class="cmp-x" aria-label="Remove ${escapeHtml(a.filename)}" ${chbAttrs('removeComposeAttachment', i)}>${CMP_X_IC}</button></div>`;
         })
         .join('');
+    const add = document.getElementById('cmp-attach');
+    if (add) add.hidden = __composeAttachments.length >= COMPOSE_ATTACH_MAX;
+    // A file that has just arrived slides in.
+    __composeAttachments.forEach((a, i) => {
+        if (!a.fresh) return;
+        a.fresh = false;
+        const row = /** @type {HTMLElement|null} */ (el.querySelector(`[data-i="${i}"]`));
+        if (row && !cmpReduced() && typeof row.animate === 'function') {
+            row.animate([{ height: '0px', opacity: 0, minHeight: '0px', paddingTop: '0px', paddingBottom: '0px' }, { height: row.offsetHeight + 'px', opacity: 1, minHeight: '0px' }], { duration: 360, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+        }
+    });
 }
 
-async function sendEnquiryEmail() {
+// ---- The toast: a countdown with Undo while a send waits, then a tick ----
+function composeToast(html, ms) {
+    const t = document.getElementById('cmp-toast');
+    if (!t) return;
+    clearTimeout(__cmpToastT);
+    t.innerHTML = `<div class="cmp-tin">${html}</div>`;
+    t.classList.add('on');
+    if (ms) __cmpToastT = setTimeout(() => t.classList.remove('on'), ms);
+}
+function cmpToastHide() {
+    clearTimeout(__cmpToastT);
+    const t = document.getElementById('cmp-toast');
+    if (t) t.classList.remove('on');
+}
+
+// ---- Sending: five seconds to change your mind ----
+// The sheet closes at once and the email waits; Undo puts everything back in the
+// sheet. Leaving the page sends what is waiting — the window is a courtesy, never a
+// way to lose an email. A send that fails reopens the sheet with the words in it.
+function sendEnquiryEmail() {
     const t = __composeTarget;
     if (!t) return;
-    const body = (document.getElementById('enq-email-body') || {}).value || '';
-    const subject = (document.getElementById('enq-email-subject') || {}).value || '';
-    const msgEl = document.getElementById('enq-email-msg');
-    const note = (m) => {
-        if (msgEl) {
-            msgEl.textContent = m;
-            msgEl.classList.add('show');
-        }
-    };
-    if (!body.trim()) {
-        note('Please write a message first.');
+    const msg = cmpVal('enq-email-body').trim();
+    if (!msg) {
+        cmpSay('Write a message first.');
+        cmpReplay(document.getElementById('cmp-letter'), 'cmp-nudge');
+        const b = document.getElementById('enq-email-body');
+        if (b) b.focus();
         return;
     }
-    const btn = document.getElementById('enq-email-send');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Sending…';
-    }
+    composeFlush(); // one email waits at a time
+    const rec = cmpRec(t);
+    const f = __cmpFacts || { first: cmpFirst(rec.name) };
+    const snap = {
+        t,
+        subj: cmpVal('enq-email-subject'),
+        msg: cmpVal('enq-email-body'),
+        stay: __cmpInc.stay,
+        money: __cmpInc.money,
+        atts: __composeAttachments.slice(),
+        arvHtml: (document.getElementById('arv-facts-host') || { innerHTML: '' }).innerHTML,
+        draftKey: cmpDraftKey(t),
+        first: f.first,
+        err: '',
+    };
+    cmpDraftWrite(); // kept until the email has really gone
+    closeEnquiryEmailModal(true);
+    const subjShown = snap.subj.trim() || (t.arrival ? 'Arrival email' : '');
+    composeToast(
+        `<span class="cmp-ring" aria-hidden="true"><svg viewBox="0 0 26 26"><circle class="trk" cx="13" cy="13" r="11"/><circle class="arc" id="cmp-arc" cx="13" cy="13" r="11"/></svg><b id="cmp-ring-n">5</b></span><span class="cmp-tt">Sending to ${escapeHtml(snap.first)}${subjShown ? `<small>${escapeHtml(subjShown)}</small>` : ''}</span><button type="button" id="cmp-undo">Undo</button>`,
+    );
+    const arc = document.getElementById('cmp-arc');
+    if (arc && !cmpReduced() && typeof arc.animate === 'function') arc.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: 69.12 }], { duration: COMPOSE_HOLD_MS, easing: 'linear', fill: 'forwards' });
+    let left = Math.round(COMPOSE_HOLD_MS / 1000);
+    const hold = {
+        snap,
+        tick: setInterval(() => {
+            left -= 1;
+            const n = document.getElementById('cmp-ring-n');
+            if (n && left > 0) n.textContent = String(left);
+        }, 1000),
+        timer: 0,
+        commit: () => cmpDeliver(snap),
+    };
+    hold.timer = window.setTimeout(composeFlush, COMPOSE_HOLD_MS);
+    __cmpHold = hold;
+    const undo = document.getElementById('cmp-undo');
+    if (undo) undo.onclick = () => {
+        if (__cmpHold !== hold) return;
+        clearTimeout(hold.timer);
+        clearInterval(hold.tick);
+        __cmpHold = null;
+        cmpToastHide();
+        setTimeout(() => cmpOpen(snap.t, snap), cmpReduced() ? 0 : 120);
+    };
+}
+// Send what is waiting, now (the timer, the next send, leaving the page).
+function composeFlush() {
+    const h = __cmpHold;
+    if (!h) return Promise.resolve();
+    __cmpHold = null;
+    clearTimeout(h.timer);
+    clearInterval(h.tick);
+    return h.commit();
+}
+async function cmpDeliver(snap) {
+    const t = snap.t;
+    const rec = cmpRec(t);
     try {
-        const rec = t.kind === 'booking' ? t.b : t.enq;
         // THE ARRIVAL REVIEW sends through the arrival TEMPLATE, not the reply
         // composer: what the owner edited is the email's MESSAGE, and the dates,
-        // address, map link and "Open my booking" button are still generated —
-        // so the guest gets the designed email with the owner's own words in it.
+        // address, map link and "Open my booking" button are still generated.
         if (t.arrival) {
-            await apiPost('bookings.php', { action: 'send_arrival', id: rec.dbId, note: body.trim() });
-            closeEnquiryEmailModal();
-            toast(`Arrival email sent to ${rec.name || rec.email}.`);
-            try {
-                await loadData();
-                if (typeof renderNeedsYou === 'function') renderNeedsYou();
-                if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
-            } catch (e) {}
-            return;
-        }
-        await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
-            action: 'email_guest',
-            id: rec.dbId,
-            subject: subject.trim(),
-            message: body.trim(),
-            attachments: __composeAttachments.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
-        });
-        closeEnquiryEmailModal();
-        toast(`Email sent to ${rec.name || rec.email}.`);
-        try { chbHistoryDirty(); } catch (e) {} // new sent email → semantic recall refreshes on the next query
-        // Refresh the per-booking email log so the new send appears immediately.
-        if (t.kind === 'booking') {
-            try {
-                await loadBookingEmailLogs();
-                if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice')
-                    renderBookings();
-            } catch (e) {}
+            await apiPost('bookings.php', { action: 'send_arrival', id: rec.dbId, note: snap.msg.trim() });
+        } else {
+            await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
+                action: 'email_guest',
+                id: rec.dbId,
+                subject: snap.subj.trim(),
+                message: snap.msg.trim(),
+                include_stay: snap.stay ? 1 : 0,
+                include_money: snap.money ? 1 : 0,
+                attachments: snap.atts.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
+            });
         }
     } catch (e) {
-        note("Couldn't send: " + e.message);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Send email';
-        }
+        // Not sent: the sheet comes back with the words in it, and says why.
+        cmpToastHide();
+        snap.err = "Couldn't send: " + (e && e.message ? e.message : e);
+        if (!__composeTarget) cmpOpen(t, snap);
+        else toast(snap.err);
+        return;
     }
+    cmpDraftDrop(snap.draftKey);
+    composeDraftDots();
+    composeToast(`<span class="cmp-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="cmp-tt">Sent to ${escapeHtml(snap.first)}</span>`, 2600);
+    try { chbHistoryDirty(); } catch (e) {} // new sent email → semantic recall refreshes on the next query
+    try {
+        if (t.arrival) {
+            await loadData();
+            if (typeof renderNeedsYou === 'function') renderNeedsYou();
+            if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
+        } else if (t.kind === 'booking') {
+            // The per-booking email log shows the new send straight away.
+            await loadBookingEmailLogs();
+            if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
+        }
+    } catch (e) {}
 }
-// Compose a free-text email to a confirmed booking's guest (Bookings page).
-// Reuses the enquiry composer; the booking details + price ride along.
+try {
+    window.addEventListener('pagehide', () => { composeFlush(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') composeFlush(); });
+} catch (e) {}
+
+// ---- Keys, drops and the drag to close ----
+document.addEventListener('keydown', (e) => {
+    const m = document.getElementById('enq-email-modal');
+    if (!m || !m.classList.contains('open')) return;
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        sendEnquiryEmail();
+    } else if (e.key === 'Enter' && e.target && /** @type {HTMLElement} */ (e.target).id === 'enq-email-subject') {
+        e.preventDefault(); // the subject is one line; Return moves on to the message
+        const b = document.getElementById('enq-email-body');
+        if (b) b.focus();
+    }
+});
+(function cmpWireSheet() {
+    const sheet = document.getElementById('cmp-sheet');
+    const adds = document.getElementById('cmp-adds');
+    if (!sheet) return;
+    // A file dropped anywhere on the sheet is attached.
+    sheet.addEventListener('dragover', (e) => {
+        if (!__composeTarget || __composeTarget.arrival) return;
+        e.preventDefault();
+        if (adds) adds.classList.add('dropping');
+    });
+    sheet.addEventListener('dragleave', (e) => {
+        if (!sheet.contains(/** @type {Node|null} */ (e.relatedTarget)) && adds) adds.classList.remove('dropping');
+    });
+    sheet.addEventListener('drop', (e) => {
+        if (!__composeTarget || __composeTarget.arrival) return;
+        e.preventDefault();
+        if (adds) adds.classList.remove('dropping');
+        if (__cmpPane !== 'write') cmpSetPane('write');
+        if (e.dataTransfer && e.dataTransfer.files.length) addComposeAttachments(e.dataTransfer.files);
+    });
+    // On a phone the sheet drags down to close; let go early and it springs back.
+    const top = document.getElementById('cmp-top');
+    const scrim = /** @type {HTMLElement|null} */ (document.querySelector('#enq-email-modal .cmp-scrim'));
+    if (!top) return;
+    let y0 = 0, dy = 0, h = 0, lastY = 0, lastT = 0, v = 0, active = false;
+    const phone = () => window.matchMedia('(max-width: 640px)').matches;
+    top.addEventListener('pointerdown', (e) => {
+        if (!__composeTarget || !phone() || e.button > 0 || (e.target && /** @type {HTMLElement} */ (e.target).closest('button'))) return;
+        active = true;
+        y0 = lastY = e.clientY;
+        lastT = performance.now();
+        dy = 0;
+        v = 0;
+        h = sheet.offsetHeight;
+        sheet.getAnimations().forEach((a) => a.cancel());
+        sheet.classList.add('dragging');
+        try { top.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    top.addEventListener('pointermove', (e) => {
+        if (!active) return;
+        const raw = e.clientY - y0;
+        dy = raw < 0 ? raw * 0.15 : raw; // a little give upwards, none past it
+        const now = performance.now();
+        v = (e.clientY - lastY) / Math.max(1, now - lastT);
+        lastY = e.clientY;
+        lastT = now;
+        sheet.style.transform = `translateY(${dy}px)`;
+        if (scrim) scrim.style.opacity = String(Math.max(0, Math.min(1, 1 - dy / h)));
+    });
+    const end = () => {
+        if (!active) return;
+        active = false;
+        sheet.classList.remove('dragging');
+        const from = sheet.style.transform || 'translateY(0px)';
+        // A finger that stopped before letting go is not a flick.
+        if (performance.now() - lastT > 100) v = 0;
+        if (dy > h * 0.22 || v > 0.55) {
+            const m = document.getElementById('enq-email-modal');
+            if (m) m.classList.add('cmp-dragged'); // its own exit, from where the finger left it
+            const a = sheet.animate([{ transform: from }, { transform: 'translateY(105%)' }], { duration: cmpReduced() ? 1 : 260, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
+            if (scrim) scrim.animate([{ opacity: scrim.style.opacity || '1' }, { opacity: '0' }], { duration: cmpReduced() ? 1 : 260, fill: 'forwards' });
+            a.finished.then(() => {
+                closeEnquiryEmailModal();
+                setTimeout(() => {
+                    sheet.getAnimations().forEach((x) => x.cancel());
+                    if (scrim) { scrim.getAnimations().forEach((x) => x.cancel()); scrim.style.opacity = ''; }
+                    sheet.style.transform = '';
+                    if (m) m.classList.remove('cmp-dragged');
+                }, 340);
+            }, () => {});
+        } else {
+            sheet.style.transform = '';
+            if (scrim) scrim.style.opacity = '';
+            if (!cmpReduced()) sheet.animate([{ transform: from }, { transform: 'translateY(0)' }], { duration: 420, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
+        }
+    };
+    top.addEventListener('pointerup', end);
+    top.addEventListener('pointercancel', end);
+    try { new ResizeObserver(() => { cmpSeat(document.getElementById('cmp-pane-seg')); cmpSeat(document.getElementById('cmp-pv-mode')); }).observe(sheet); } catch (e) {}
+})();
+
 // ============================================================================
 //  CONFIRM IT IS YOU — the step-up in front of every refund.
 //
@@ -34133,7 +34715,8 @@ async function chbWithReauth(what, fn) {
 // write them out again by hand and the guest will read everything twice.
 async function openArrivalReview(bookingId) {
     const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
-    if (!b) {
+    const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;
+    if (!b || !loc) {
         glassAlert("That booking isn't loaded — open it from Today and try again.");
         return;
     }
@@ -34141,11 +34724,12 @@ async function openArrivalReview(bookingId) {
         glassAlert('This booking has no email address on file, so there is nothing to send.');
         return;
     }
-    openBookingEmail(b.id);
-    if (!__composeTarget) return;
-    __composeTarget.arrival = true;
+    // The same sheet, dressed for the review: titled "Arrival email", the subject
+    // read-only, the extras hidden, the facts panel shown (cmpOpen + .cmp-arrival).
+    const t = { kind: 'booking', b, propKey: loc.propKey, arrival: true };
+    cmpOpen(t);
     const bodyEl = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
-    const subjEl = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
+    const subjEl = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-subject'));
     if (bodyEl) bodyEl.value = 'Loading the arrival email…';
     let pv = null;
     try {
@@ -34155,34 +34739,22 @@ async function openArrivalReview(bookingId) {
         glassAlert("Couldn't load the arrival email just now: " + e.message);
         return;
     }
+    if (__composeTarget !== t) return; // closed, or another email opened, while it loaded
     // The SUBJECT is generated and stays that way — it names the arrival date,
     // and an edited one would disagree with the email under it.
-    if (subjEl) {
-        subjEl.value = pv.subject || '';
-        subjEl.readOnly = true;
-    }
+    if (subjEl) subjEl.value = pv.subject || '';
     if (bodyEl) {
         bodyEl.value = pv.message || '';
-        bodyEl.focus();
-        try { bodyEl.setSelectionRange(0, 0); bodyEl.scrollTop = 0; } catch (e) {}
+        try { bodyEl.setSelectionRange(0, 0); } catch (e) {}
     }
-    // NAME THE SCREEN FOR WHAT IT IS. The owner tapped "review the arrival
-    // email"; a modal headed "Email guest" makes them check they opened the
-    // right thing. Restored by openBookingEmail on the next ordinary compose.
-    const ttl = document.getElementById('enq-email-title');
-    if (ttl) ttl.textContent = 'Arrival email';
+    composeTyped();
     const f = pv.facts || {};
     const factRows = [
         ['Arrive', f.arrive],
         ['Leave', f.leave],
         ['Address', f.address],
     ].filter((r) => r[1]);
-    let host = document.getElementById('arv-facts-host');
-    if (!host) {
-        const after = document.getElementById('enq-email-body');
-        if (after) after.insertAdjacentHTML('afterend', '<div id="arv-facts-host"></div>');
-        host = document.getElementById('arv-facts-host');
-    }
+    const host = document.getElementById('arv-facts-host');
     if (host) {
         host.innerHTML = `<div class="arv-facts">
             <div class="arv-cap">Added automatically, below your message</div>
@@ -34194,69 +34766,6 @@ async function openArrivalReview(bookingId) {
             <p class="arv-note">The key safe code is never emailed — it appears on their booking page.</p>
         </div>`;
     }
-}
-function openBookingEmail(bookingId) {
-    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
-    const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;
-    if (!b || !loc) return;
-    // Undo whatever an arrival review left behind — this is the ordinary
-    // composer again (openArrivalReview calls THIS first, then re-dresses it).
-    const t0 = document.getElementById('enq-email-title');
-    if (t0) t0.textContent = 'Email guest';
-    const fh = document.getElementById('arv-facts-host');
-    if (fh) fh.innerHTML = '';
-    const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
-    if (s0) s0.readOnly = false;
-    if (!b.email) {
-        glassAlert('This booking has no email address on file.');
-        return;
-    }
-    __composeTarget = { kind: 'booking', b, propKey: loc.propKey };
-    __composeAttachments = [];
-    renderComposeAttachChips();
-    backToComposeEdit();
-    const propName = (propertyMeta[loc.propKey] && propertyMeta[loc.propKey].name) || loc.propKey;
-    const ctx = document.getElementById('enq-email-context');
-    if (ctx) {
-        let priceRow = '';
-        try {
-            const p =
-                b.agreedPrice ||
-                priceBreakdown(loc.propKey, b.adults, b.children, b.checkIn, b.checkOut);
-            const ps = paymentSummary(loc.propKey, b);
-            const gt = displayGrand(p, ps, b.holdStatus, b);
-            const status = gt.fullyPaid
-                ? 'Paid in full'
-                : gt.paid > 0
-                  ? `${gbp(gt.balance)} balance due`
-                  : `${gbp(gt.balance)} due`;
-            priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(gt.total)}</strong><span class="enq-ctx-mut"> · ${status} · ${bookingRef(b.id)}</span></span></div>`;
-        } catch (e) {}
-        const initial = (b.name || b.email || '?').trim().charAt(0).toUpperCase();
-        ctx.innerHTML = `
-            <div class="enq-ctx-who">
-                <span class="enq-ctx-avatar">${escapeHtml(initial)}</span>
-                <span class="enq-ctx-name">${escapeHtml(b.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(b.email)}</span></span>
-                <span class="prop-tag tag-${loc.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
-            </div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
-            ${priceRow}`;
-        composeCtxSummary(`${b.name || 'Guest'} · ${propName} · ${fmtStayRange(b.checkIn, b.checkOut)}`);
-    }
-    const subj = document.getElementById('enq-email-subject');
-    if (subj) subj.value = `Your booking — ${propName}, ${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}`;
-    const body = document.getElementById('enq-email-body');
-    if (body) body.value = '';
-    const msg = document.getElementById('enq-email-msg');
-    if (msg) {
-        msg.textContent = '';
-        msg.classList.remove('show');
-    }
-    const m = document.getElementById('enq-email-modal');
-    if (m && !m.classList.contains('open')) overlayHistPush(); // Back closes the composer
-    if (m) m.classList.add('open');
-    if (body) setTimeout(() => body.focus(), 150);
 }
 
 async function declineEnquiry(enqId) {

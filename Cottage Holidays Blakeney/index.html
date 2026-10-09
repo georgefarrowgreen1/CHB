@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=374">
+    <link rel="stylesheet" href="app.css?v=375">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1378,53 +1378,96 @@
          external iCal blocks are read-only pills on the calendar — the sync
          owns their lifecycle, so there's nothing to open or remove by hand.) -->
 
-    <!-- Email an enquirer from the Inbox (admin) — sent in the house email style
-         with the enquiry's details attached (enquiries.php action email_guest). -->
-    <div id="enq-email-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="enq-email-title">
-        <div class="reviews-modal-box glass-panel" style="max-width:560px;">
-            <div class="reviews-modal-head">
-                <h2 class="section-title" id="enq-email-title">Email guest</h2>
-                <button class="reviews-modal-close" data-act="closeEnquiryEmailModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
-            <div class="reviews-modal-body" style="display:block;">
-                <!-- Compose view -->
-                <div id="enq-email-edit">
-                    <!-- The context folds (admin.css .enq-ctx-fold); both
-                         openers fill it via composeCtxSummary. -->
-                    <details class="enq-ctx-fold" id="enq-email-ctxfold">
-                        <summary class="enq-ctx-sum"><span id="enq-email-ctxsum">Their details</span><span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></summary>
-                        <div class="enq-ctx" id="enq-email-context"></div>
-                    </details>
-                    <label class="modal-label" for="enq-email-subject">Subject</label>
-                    <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
-                    <label class="modal-label" for="enq-email-body">Message</label>
-                    <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
-                    <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 10px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
-                    <!-- Optional file attachments (images / PDFs / docs). -->
-                    <div style="margin:0 0 12px;">
-                        <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" data-act-change="addComposeAttachments" data-pass="files">
-                        <button type="button" class="btn-sm btn-edit enq-email-attach" data-act="clickTarget" data-target="enq-email-file-input">Attach a file</button>
-                        <div id="enq-email-attach-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
-                    </div>
-                    <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
-                    <!-- Sticky footer — admin.css .enq-email-foot. -->
-                    <div class="enq-email-foot">
-                        <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" data-act="previewComposedEmail">Preview</button>
-                        <button class="btn-glass btn-accent" id="enq-email-send" style="flex:1;padding:14px;" data-act="sendEnquiryEmail">Send email</button>
-                    </div>
+    <!-- EMAIL A GUEST (admin) — one sheet for a booking, an enquiry and the arrival
+         review (admin.js "Email a guest"). Send sits at the top, the To row unfolds the
+         stay, and what is added under the message is listed with a switch each. Keeps
+         the reviews-modal class for the shared Escape/Tab handling. -->
+    <div id="enq-email-modal" class="reviews-modal cmp-ov" role="dialog" aria-modal="true" aria-labelledby="enq-email-title">
+        <div class="cmp-scrim" data-act="closeEnquiryEmailModal" aria-hidden="true"></div>
+        <div class="cmp-sheet" id="cmp-sheet">
+            <div class="cmp-top" id="cmp-top">
+                <div class="cmp-grab" aria-hidden="true"></div>
+                <div class="cmp-head">
+                    <button type="button" class="cmp-icb" id="cmp-close" data-act="closeEnquiryEmailModal" aria-label="Close and keep the draft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <h2 id="enq-email-title">Email guest</h2>
+                    <button type="button" class="cmp-send" id="enq-email-send" data-act="sendEnquiryEmail" title="Send (⌘ Return)">Send <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
                 </div>
-                <!-- Preview view (the exact email the guest will receive) -->
-                <div id="enq-email-preview" style="display:none;">
-                    <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">This is exactly what your guest will receive.</p>
-                    <iframe id="enq-email-preview-frame" title="Email preview" sandbox="allow-same-origin" style="width:100%;height:440px;border:1px solid var(--glass-border);border-radius:12px;background:#ECE5D7;"></iframe>
-                    <div style="display:flex;gap:10px;margin-top:14px;">
-                        <button class="toggle-btn" style="flex:1;padding:14px;" data-act="backToComposeEdit">← Back to editing</button>
-                        <button class="btn-glass btn-accent" style="flex:1;padding:14px;" data-act="sendEnquiryEmail">Send email</button>
+            </div>
+            <div class="cmp-seg" role="tablist" aria-label="Write or preview" id="cmp-pane-seg">
+                <button type="button" role="tab" id="cmp-tab-write" aria-selected="true" aria-controls="enq-email-edit" data-act="backToComposeEdit">Write</button>
+                <button type="button" role="tab" id="enq-email-preview-btn" aria-selected="false" aria-controls="enq-email-preview" data-act="previewComposedEmail">Preview</button>
+                <i class="cmp-pill" aria-hidden="true"></i>
+            </div>
+            <div class="cmp-body" id="cmp-body">
+                <div id="enq-email-edit" role="tabpanel" aria-labelledby="cmp-tab-write">
+                    <div class="cmp-to-blk">
+                        <div class="cmp-fld cmp-fld-to">
+                            <span class="cmp-fl">To</span>
+                            <button type="button" class="cmp-to" id="cmp-to" aria-expanded="false" aria-controls="cmp-ctx" data-act="composeToToggle">
+                                <span class="cmp-ava" id="cmp-ava" aria-hidden="true"></span>
+                                <span class="cmp-to-txt"><b id="cmp-to-name"></b><span id="cmp-to-mail"></span></span>
+                                <svg class="cmp-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                            </button>
+                        </div>
+                        <div class="cmp-ctx" id="cmp-ctx"><div><dl class="cmp-ctx-in" id="enq-email-context"></dl></div></div>
                     </div>
+                    <div class="cmp-fld"><label class="cmp-fl" for="enq-email-subject">Subject</label><textarea id="enq-email-subject" rows="1" maxlength="150" data-act-input="composeTyped"></textarea></div>
+                    <div class="cmp-letter" id="cmp-letter">
+                        <p class="cmp-frame" id="cmp-greet"></p>
+                        <label for="enq-email-body" class="sr-only">Message</label>
+                        <textarea id="enq-email-body" placeholder="Write your message" maxlength="5000" data-act-input="composeTyped"></textarea>
+                        <div class="cmp-letter-foot">
+                            <p class="cmp-frame" id="cmp-sign"></p>
+                            <span class="cmp-saved" id="cmp-saved" role="status"><b aria-hidden="true">✓</b> Saved on this device</span>
+                        </div>
+                    </div>
+                    <p class="cmp-err" id="enq-email-msg" role="alert"></p>
+                    <div id="arv-facts-host"></div>
+                    <div id="cmp-adds-wrap">
+                        <p class="cmp-cap">Added below your message</p>
+                        <div class="cmp-card" id="cmp-adds">
+                            <div class="cmp-row">
+                                <span class="cmp-tile" id="cmp-stay-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+                                <span class="cmp-rt"><b id="cmp-stay-lbl">Their stay</b><span class="cmp-sub" id="cmp-stay-sub"></span></span>
+                                <label class="chb-switch"><input type="checkbox" id="cmp-inc-stay" role="switch" data-act-change="composeIncToggle" data-args='["stay"]' data-pass="checked"><span class="chb-switch-track" aria-hidden="true"></span><span class="sr-only" id="cmp-stay-sr">Include their stay</span></label>
+                            </div>
+                            <div class="cmp-row">
+                                <span class="cmp-tile" id="cmp-money-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7.5A4 4 0 0 0 9 10v8M7 13.5h6M7 18h10"/></svg></span>
+                                <span class="cmp-rt"><b id="cmp-money-lbl">Payment</b><span class="cmp-sub" id="cmp-money-sub"></span></span>
+                                <label class="chb-switch"><input type="checkbox" id="cmp-inc-money" role="switch" data-act-change="composeIncToggle" data-args='["money"]' data-pass="checked"><span class="chb-switch-track" aria-hidden="true"></span><span class="sr-only" id="cmp-money-sr">Include the payment</span></label>
+                            </div>
+                            <div id="enq-email-attach-list"></div>
+                            <button type="button" class="cmp-row cmp-add" id="cmp-attach" data-act="clickTarget" data-target="enq-email-file-input">
+                                <span class="cmp-tile cmp-plus" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                                <span class="cmp-rt"><b>Attach a file</b><span class="cmp-sub">Up to 4, 4MB each</span></span>
+                            </button>
+                        </div>
+                        <p class="cmp-err" id="cmp-file-err" role="alert"></p>
+                        <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" hidden data-act-change="addComposeAttachments" data-pass="files">
+                    </div>
+                    <p class="cmp-note" id="cmp-reply-note"></p>
+                </div>
+                <div id="enq-email-preview" role="tabpanel" aria-labelledby="enq-email-preview-btn" style="display:none;">
+                    <div class="cmp-pv-bar">
+                        <p class="cmp-cap">In their inbox</p>
+                        <div class="cmp-seg cmp-seg-xs" role="tablist" aria-label="Their phone's look" id="cmp-pv-mode">
+                            <button type="button" role="tab" aria-selected="false" data-act="composePvMode" data-args='["light"]'>Light</button>
+                            <button type="button" role="tab" aria-selected="false" data-act="composePvMode" data-args='["dark"]'>Dark</button>
+                            <i class="cmp-pill" aria-hidden="true"></i>
+                        </div>
+                    </div>
+                    <div class="cmp-inbox">
+                        <span class="cmp-ia" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.5 17.5h17l-1.6-9.2-4.2 3.6L12 5.2l-2.7 6.7-4.2-3.6z"/><rect x="3.5" y="18.8" width="17" height="1.8" rx=".9"/></svg></span>
+                        <span class="cmp-ib"><span class="cmp-it"><b>Cottage Holidays Blakeney</b><time>now</time></span><span class="cmp-is" id="cmp-pv-subj"></span><span class="cmp-ip" id="cmp-pv-pre"></span></span>
+                    </div>
+                    <p class="cmp-cap">The email</p>
+                    <div class="cmp-pv-wrap" id="cmp-pv-wrap"><div class="cmp-sk" aria-hidden="true"></div><iframe class="cmp-pv-frame" id="enq-email-preview-frame" title="Email preview" sandbox="allow-same-origin"></iframe></div>
                 </div>
             </div>
         </div>
     </div>
+    <!-- The send's five seconds to undo, then its tick (admin.js composeToast). -->
+    <div class="cmp-toast" id="cmp-toast" role="status" aria-live="polite"></div>
 
     <!-- ALL REVIEWS MODAL (per-cottage "read all reviews"). At BODY level, like every
          other overlay: it used to sit inside the home view's <main>, which is display:none
@@ -1886,7 +1929,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1156"></script>
+    <script defer src="app.js?v=1157"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

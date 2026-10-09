@@ -236,8 +236,9 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
             'Reply to an enquiry',
             fn() => send_enquiry_reply_email(
                 $enqSample,
-                'About your stay at ' . $propName,
-                "Hello,\n\nYes — the dates you asked about are free, and there's parking for one car right outside. "
+                'Your enquiry about ' . $propName,
+                // No greeting: the email opens with its own "Hello <name>,".
+                "Yes — the dates you asked about are free, and there's parking for one car right outside. "
                     . "A late arrival is no trouble at all; just let us know roughly when to expect you.\n\n"
                     . '(This is sample text — your own reply goes here.)',
                 'enquiry',

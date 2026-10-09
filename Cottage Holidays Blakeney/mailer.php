@@ -2248,122 +2248,179 @@ function send_enquiry_ack($enq, $accountExists = false)
     return smtp_send_reliable('enquiry-ack', $email, $name, $subject, $text, $html);
 }
 
-// Owner's direct reply to an enquirer, sent from the back office Inbox. The
-// owner writes the message; the guest's enquiry details ride along underneath
-// (cottage, dates, times, party, estimated price) in the house email style.
-// Replies come back to the site address (smtp_send's default Reply-To).
-// Build the branded reply email (subject + text + HTML) WITHOUT sending it, so the
-// same output can be shown as a live preview in the composer and then sent. Single
-// source of truth for both the preview endpoint and send_enquiry_reply_email().
-function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
+// THE OWNER'S OWN EMAIL TO A GUEST — the Email guest sheet's one template, for a
+// booking and for an enquiry. Built WITHOUT sending, so the composer's preview and
+// the send are byte for byte the same document. Pure: the sender's name and the
+// booking's payment facts are resolved by the CALLER and passed in.
+//
+// The shape is the house one: the stay (dot + cottage + dates), the SUBJECT as the
+// title (not "About your booking" on every email), the template's own greeting
+// ("Hello <first name>," — so a body must never greet), the owner's words, then the
+// person who wrote them. Below that, what the owner chose to add:
+//   - `stay`  (default on): the arrive/leave pair and the party, plus for a
+//     booking the link back into it (pay, directions and the door code live there);
+//   - `money` (default on): for a BOOKING what is paid and what is left — never the
+//     price again — and for an ENQUIRY the quote, one coherent line when the price
+//     is custom (an agreed figure or a fee folded in never reads "3 nights at £130,
+//     £401.70" again).
+// $opts: from (sender's first name, '' = the business only), stay, money.
+// $e may carry pay_paid / pay_due / pay_due_by (a booking's payment facts).
+function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $opts = [])
 {
-    $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
-    $prop = function_exists('prop_display')
-        ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
-        : $e['prop_key'] ?? '';
-    $accent = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '')['accent'] ?? '#C6885E' : '#C6885E';
-    $name = first_name($e['name'], 'Guest');
-    $party =
-        (int) ($e['adults'] ?? 0) .
-        ' adult' .
-        ((int) ($e['adults'] ?? 0) === 1 ? '' : 's') .
-        ((int) ($e['children'] ?? 0)
-            ? ' + ' . (int) $e['children'] . ' child' . ((int) $e['children'] === 1 ? '' : 'ren')
-            : '');
-    $p = is_array($e['price'] ?? null) ? $e['price'] : null;
+    $booking = $ctx === 'booking';
+    $noun = $booking ? 'booking' : 'enquiry';
+    $pd = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '') : [];
+    $prop = (string) (($pd['name'] ?? '') !== '' ? $pd['name'] : ($e['prop_key'] ?? ''));
+    $dot = (string) ($pd['accent'] ?? '#C6885E');
+    $name = first_name($e['name'] ?? '', 'Guest');
+    $from = trim((string) ($opts['from'] ?? ''));
+    $incStay = !array_key_exists('stay', $opts) || !empty($opts['stay']);
+    $incMoney = !array_key_exists('money', $opts) || !empty($opts['money']);
     $money = fn($n) => '£' . number_format((float) $n, 2);
-    $agreed = $p && !empty($p['agreedQuote']);
-    $priceLine = $p
-        ? $money($p['total']) .
-            ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
-            ($agreed ? ', agreed price' : ' × ' . $money($p['perNight'] ?? 0)) . ')' .
-            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (charged with your first payment, refunded after your stay)' : '')
-        : '';
-    $times = 'Arrive ' . email_time(($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . email_time(($e['check_out_time'] ?? '') ?: '10:00');
+    $sans = email_sans();
+    $adults = (int) ($e['adults'] ?? 0);
+    $kids = (int) ($e['children'] ?? 0);
+    $party = $adults . ' adult' . ($adults === 1 ? '' : 's') . ($kids ? ', ' . $kids . ' child' . ($kids === 1 ? '' : 'ren') : '');
+    $inT = trim((string) ($e['check_in_time'] ?? '')) !== '' ? (string) $e['check_in_time'] : '15:00';
+    $outT = trim((string) ($e['check_out_time'] ?? '')) !== '' ? (string) $e['check_out_time'] : '10:00';
+    $stayUrl = site_base_url() . 'index.html?open=stay';
 
-    $subject = trim((string) $subject) ?: 'Your ' . $noun . ' — ' . $prop;
+    $subject = trim((string) $subject);
+    if ($subject === '') {
+        $subject = $booking ? 'Your stay at ' . $prop : 'Your enquiry about ' . $prop;
+    }
+    $message = trim((string) $message);
 
+    // ---- what is added below the message ----
+    $stayRows = [];
+    $stayText = '';
+    if ($incStay && !empty($e['check_in'])) {
+        $stayText = 'Arrive: ' . email_date($e['check_in']) . ', from ' . email_time($inT) . "\n"
+            . 'Leave:  ' . email_date($e['check_out'] ?? '') . ', by ' . email_time($outT) . "\n"
+            . "Party:  {$party}\n";
+        $stayRows[] = ['Party', email_esc($party)];
+    }
+    $payRows = [];
+    $payText = '';
+    $hasPay = array_key_exists('pay_due', $e) || array_key_exists('pay_paid', $e);
+    if ($booking && $incMoney && $hasPay) {
+        $due = round((float) ($e['pay_due'] ?? 0), 2);
+        $paid = round((float) ($e['pay_paid'] ?? 0), 2);
+        $by = trim((string) ($e['pay_due_by'] ?? ''));
+        if ($due > 0.005) {
+            if ($paid > 0.005) {
+                $payRows[] = ['Paid so far', email_esc($money($paid))];
+                $payText .= 'Paid so far: ' . $money($paid) . "\n";
+            }
+            $payRows[] = ['Still to pay', email_esc($money($due))
+                . ($by !== '' ? '<div style="font-size:13px;font-weight:400;color:' . email_muted_ink() . ';">by ' . email_esc(email_date($by, false)) . '</div>' : '')];
+            $payText .= 'Still to pay: ' . $money($due) . ($by !== '' ? ', by ' . email_date($by, false) : '') . "\n";
+        } else {
+            $payRows[] = ['Payment', email_cap('ok', 'Paid in full')];
+            $payText .= "Payment: paid in full\n";
+        }
+    }
+    $quote = '';
+    $quoteText = '';
+    $p = is_array($e['price'] ?? null) ? $e['price'] : null;
+    if (!$booking && $incMoney && $p && isset($p['total'])) {
+        $nights = (int) ($p['nights'] ?? 0);
+        $nightly = (float) ($p['nightly'] ?? ((float) ($p['perNight'] ?? 0) * $nights));
+        $fee = (float) ($p['txFee'] ?? 0);
+        $custom = !empty($p['agreedQuote']) || abs(($nightly + $fee) - (float) $p['total']) > 0.005;
+        $q = [];
+        if ($custom) {
+            $q[] = [email_esc('Agreed price for your stay (' . $nights . ' night' . ($nights === 1 ? '' : 's') . ')'), email_esc($money($p['total']))];
+            $quoteText = 'Agreed price for your stay: ' . $money($p['total']) . "\n";
+        } else {
+            $q[] = [email_esc($nights . ' night' . ($nights === 1 ? '' : 's') . ' at ' . $money($p['perNight'] ?? 0)), email_esc($money($nightly))];
+            $quoteText = $nights . ' night' . ($nights === 1 ? '' : 's') . ' at ' . $money($p['perNight'] ?? 0) . ': ' . $money($nightly) . "\n";
+            if ($fee > 0.005) {
+                $pct = (float) ($p['transactionPct'] ?? 0);
+                $feeLbl = 'Transaction fee' . ($pct > 0 ? ' (' . rtrim(rtrim(number_format($pct, 2), '0'), '.') . '%)' : '');
+                $q[] = [email_esc($feeLbl), email_esc($money($fee))];
+                $quoteText .= $feeLbl . ': ' . $money($fee) . "\n";
+            }
+            $q[] = ['<strong>Total</strong>', '<strong>' . email_esc($money($p['total'])) . '</strong>'];
+            $quoteText .= 'Total: ' . $money($p['total']) . "\n";
+        }
+        if (!empty($p['damagesDeposit'])) {
+            $q[] = ['Refundable damage deposit', email_esc($money($p['damagesDeposit']))];
+            $quoteText .= 'Refundable damage deposit: ' . $money($p['damagesDeposit']) . "\n";
+        }
+        $quote = email_caption('Your quote') . email_money_rows($q)
+            . (!empty($p['damagesDeposit']) ? email_footnote('The damage deposit is charged with your first payment and refunded after your stay.') : '');
+    }
+    $link = '<p style="font-family:' . $sans . ';font-size:15px;margin:8px 0 0;"><a href="' . email_esc($stayUrl)
+        . '" style="color:' . email_accent_ink() . ';font-weight:600;text-decoration:none;">Open my booking &rsaquo;</a></p>';
+    $added = '';
+    if ($stayRows) {
+        $added .= email_caption($booking ? 'Your stay' : 'Your dates')
+            . email_dates($e['check_in'], $inT, $e['check_out'] ?? $e['check_in'], $outT)
+            . email_rows(array_merge($stayRows, $payRows))
+            . ($booking ? $link : '');
+    } elseif ($payRows) {
+        $added .= email_caption('Payment') . email_rows($payRows) . $link;
+    }
+    $added .= $quote;
+
+    $signHtml = ($from !== '' ? email_esc($from) . '<br>' : '')
+        . '<span style="color:' . email_muted_ink() . ';">Cottage Holidays Blakeney</span>';
+    $replyTo = $from !== '' ? $from : 'us';
+    $inner =
+        email_eyebrow($dot, $prop . (!empty($e['check_in']) ? ' · ' . email_range($e['check_in'], $e['check_out'] ?? '') : '')) .
+        email_h($subject) .
+        email_p('Hello ' . email_esc($name) . ',') .
+        // Owner-typed words: escaped here, line breaks kept (email_p expects pre-escaped HTML).
+        email_p(nl2br(email_esc($message))) .
+        email_p($signHtml) .
+        $added .
+        email_footnote('Reply to this email and it comes straight to ' . email_esc($replyTo) . '.');
+    // The preheader finishes the thought: the start of what the owner wrote, not
+    // the subject again. Plain text — the shell escapes it.
+    $pre = mb_substr(preg_replace('/\s+/u', ' ', $message), 0, 110);
+    $html = email_shell($pre !== '' ? $pre : $subject, $inner);
+
+    $added = trim($stayText . $payText . $quoteText);
+    $addedCap = $stayText !== '' ? ($booking ? 'Your stay' : 'Your dates') : ($booking ? 'Payment' : 'Your quote');
     $text =
         "Hello {$name},\n\n" .
-        trim((string) $message) .
-        "\n\n---\nYour {$noun} details\n" .
-        "Cottage: {$prop}\n" .
-        'Dates: ' . email_date($e['check_in'] ?? '') . ' to ' . email_date($e['check_out'] ?? '') . "\n" .
-        $times . "\n" .
-        "Party: {$party}\n" .
-        ($priceLine !== '' ? ($noun === 'booking' ? 'Price: ' : ($agreed ? 'Agreed price: ' : 'Estimated price: ')) . $priceLine . "\n" : '') .
-        "\nJust reply to this email to reach us.\nCottage Holidays Blakeney";
-
-    // Owner-typed message: escape, then preserve their line breaks.
-    $msgHtml = nl2br(email_esc(trim((string) $message)));
-    // THE HOUSE ROWS, not a private table. This composer carried its own 13px
-    // label/14px value pairs at 4px padding — the only place in the file that did —
-    // so the owner's reply looked like a different product from the confirmation
-    // that follows it. email_rows() is the same block every other stay-detail
-    // summary uses, and it puts the value on its own right-aligned rail.
-    $dRows = [];
-    if ($prop !== '') {
-        $dRows[] = ['Cottage', email_esc($prop)];
-    }
-    if (!empty($e['check_in'])) {
-        $dRows[] = ['Dates', '<strong>' . email_esc(email_date($e['check_in'])) . '</strong> &rarr; ' . email_esc(email_date($e['check_out'] ?? ''))];
-    }
-    $dRows[] = ['Times', email_esc($times)];
-    if ($party !== '') {
-        $dRows[] = ['Party', email_esc($party)];
-    }
-
-    // THE PRICE IS THE ANSWER, so it gets the money panel rather than being the
-    // fifth row of a details table. It had been one long run-on value — total,
-    // nights, per-night and the refundable deposit's whole explanation inside a
-    // single cell — which at phone width wrapped into an unreadable block and put
-    // the figure the guest is actually reading for in the middle of it. Split into
-    // its own rows, the total leads and the deposit is a line of its own.
-    $quote = '';
-    if ($p) {
-        $nightsN = (int) ($p['nights'] ?? 0);
-        $qRows = [
-            [
-                email_esc($agreed
-                    ? 'Agreed price for your stay (' . $nightsN . ' night' . ($nightsN === 1 ? '' : 's') . ')'
-                    : $nightsN . ' night' . ($nightsN === 1 ? '' : 's') . ' at ' . $money($p['perNight'] ?? 0) . ' a night'),
-                '<strong>' . email_esc($money($p['total'])) . '</strong>',
-            ],
-        ];
-        if (!empty($p['damagesDeposit'])) {
-            $qRows[] = ['Refundable damage deposit', email_esc($money($p['damagesDeposit']))];
-        }
-        $quote =
-            email_p('<strong style="color:#1B2A34;">' . ($noun === 'booking' ? 'Your price' : 'Your quote') . '</strong>', true) .
-            email_money_rows($qRows) .
-            (!empty($p['damagesDeposit'])
-                ? email_footnote('The damage deposit is charged with your first payment and refunded after your stay.')
-                : '');
-    }
-
-    $inner =
-        email_h('About your ' . $noun, $accent) .
-        email_p('Hello ' . email_esc($name) . ',') .
-        email_p($msgHtml) .
-        $quote .
-        email_p('<strong style="color:#1B2A34;">Your ' . $noun . ' details</strong>', true) .
-        email_rows($dRows) .
-        email_p('Just reply to this email to reach us.<br>Cottage Holidays Blakeney', true);
-    $html = email_shell($subject, $inner, $accent);
+        $message . "\n\n" .
+        ($from !== '' ? $from . "\n" : '') . "Cottage Holidays Blakeney\n" .
+        ($added !== '' ? "\n---\n" . $addedCap . "\n" . $added . "\n" : '') .
+        ($booking && ($stayText !== '' || $payText !== '') ? "Open my booking: {$stayUrl}\n" : '') .
+        "\nReply to this email and it comes straight to {$replyTo}.";
 
     return ['email' => $e['email'] ?? '', 'name' => $name, 'subject' => $subject, 'text' => $text, 'html' => $html];
 }
-// Send the branded reply email (owner writes the message; the guest's details
-// ride along underneath). Builds via build_enquiry_reply_email() so the sent
-// email is byte-identical to the composer preview.
-function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $attachments = [])
+// Send it: built by build_enquiry_reply_email() so the sent email is byte-identical
+// to the composer's preview.
+function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $attachments = [], $opts = [])
 {
     $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
     if (empty($e['email'])) {
         return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
     }
-    $m = build_enquiry_reply_email($e, $subject, $message, $ctx);
+    $m = build_enquiry_reply_email($e, $subject, $message, $ctx, $opts);
     return smtp_send($m['email'], $m['name'], $m['subject'], $m['text'], $m['html'], is_array($attachments) ? $attachments : []);
+}
+// The reply's options from the composer's request: who signs it (the person signed
+// in, else the host) and the two "added below" switches, both on unless switched off.
+// Resolved here, by the sender, so the composer above stays pure.
+function reply_email_opts(array $in): array
+{
+    $me = function_exists('admin_me') ? admin_me() : null;
+    $from = first_name((string) ($me['name'] ?? ''), '');
+    if ($from === '') {
+        // The host's name — but never the business's, which the sign-off already prints.
+        $host = email_host_name();
+        $from = (defined('SITE_NAME') && $host === SITE_NAME) || $host === 'us' ? '' : first_name($host, '');
+    }
+    return [
+        'from' => $from,
+        'stay' => !array_key_exists('include_stay', $in) || !empty($in['include_stay']),
+        'money' => !array_key_exists('include_money', $in) || !empty($in['include_money']),
+    ];
 }
 
 // Validate + normalise attachments from a JSON email_guest payload (admin-only)

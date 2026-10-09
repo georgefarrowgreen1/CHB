@@ -858,8 +858,10 @@ foreach (['html', 'text'] as $half) {
 // Asserting this keeps the check above from passing on a template that greets
 // nobody: it proves the counter can tell one greeting from two.
 $dbl = build_enquiry_reply_email($ENQ, 'About your dates', "Hi {$firstName},\n\n" . $replyBody, 'enquiry');
+// At least two, not exactly: the preheader is the start of the message, so a body that
+// greets carries its greeting there too.
 chk('…and the counter really counts (a self-greeting body renders two)',
-    preg_match_all('/\b(?:Hello|Hi|Dear)\s+' . preg_quote($firstName, '/') . '\b/i', (string) $dbl['html']) === 2);
+    preg_match_all('/\b(?:Hello|Hi|Dear)\s+' . preg_quote($firstName, '/') . '\b/i', (string) $dbl['html']) >= 2);
 
 // ---------------------------------------------------------------------------
 //  §7  A MANUAL REPLY CARRIES NO BUTTONS. They went with Saved replies; the
@@ -988,7 +990,7 @@ chk('§9 …and the prefilled message greets Wren exactly once (' . ($avDefGreet
 $avOld = build_enquiry_reply_email(array_merge($B, ['name' => $avB['name']]), 'You arrive', $avDefMsg, 'booking');
 $avOldGreet = $greetCount((string) $avOld['html']);
 chk('§9 …and the reply shell it used to use really did greet twice (' . ($avOldGreet['Wren'] ?? 0) . ')',
-    ($avOldGreet['Wren'] ?? 0) === 2);
+    ($avOldGreet['Wren'] ?? 0) >= 2); // its preheader repeats the message's own greeting too
 // The reply shell is what it must NOT be — asserted as an absence, because the
 // wrong template renders perfectly well and only looks wrong.
 chk('§9 …and is the ARRIVAL template, not the reply shell',

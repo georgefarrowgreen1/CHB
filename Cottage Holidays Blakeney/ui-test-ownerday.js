@@ -367,7 +367,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
             const b = document.getElementById('enq-email-send');
             if (!b) return null;
             const r = b.getBoundingClientRect();
-            const box = document.querySelector('#enq-email-modal .reviews-modal-box');
+            const box = document.querySelector('#enq-email-modal .cmp-sheet');
             const br = box ? box.getBoundingClientRect() : null;
             const body = document.getElementById('enq-email-body');
             const yr = body ? body.getBoundingClientRect() : null;
@@ -377,7 +377,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
                 // How far INTO the card the Message box starts — the guest
                 // context used to spend ~340px above it.
                 msgFromTop: yr && br ? Math.round(yr.top - br.top) : null,
-                ctxOpen: !!(document.getElementById('enq-email-ctxfold') || {}).open,
+                ctxOpen: !!(document.getElementById('cmp-ctx') || { classList: { contains: () => false } }).classList.contains('on'),
             };
         });
         ok(!!send && send.h > 0, `${w}: the Send button renders`);

@@ -642,6 +642,55 @@ The email composer is a Subject, a Message box, attachments, Preview and Send. G
   reply carries no buttons, ui-test-hub asserts the composer opens empty. ui-test-replies.js was deleted;
   ui-test-onelook, ui-test-people and ui-test-arrival-review were re-aimed (onelook and people not run).
 
+## Email a guest: one sheet, and the email it sends (approved demo v3, built and pushed to main without CI)
+
+**Asked for as "overhaul guest email", demoed three times, then "Build and merge without CI".** One sheet for a
+booking, an enquiry and the arrival review (`#enq-email-modal`, the "Email a guest" block in admin.js, `cmp-*`
+in admin.css). The ids the rest of the app reads are unchanged (`enq-email-subject` / `-body` / `-send` /
+`-title` / `-preview-frame`, `arv-facts-host`), and so are the function names on the stub list.
+- **The sheet is Mail's shape.** Send at the top (the keyboard covers a phone's bottom), To with the guest's name
+  and address unfolding their stay (`cmpFactsFor`: Stay, Guests, Payment or Quote, and what an enquirer wrote),
+  the email's own "Hello <first>," above the box and the signer below it, then "Added below your message": a
+  switch for their stay and one for the payment (or the quote), the files, and Attach. Write | Preview.
+- **The switches default from the record**: a finished stay leaves its stay out, a paid-up booking leaves the
+  payment out (each row says why); an enquiry with no price has no money switch. They post as `include_stay` /
+  `include_money` (absent = on, so the Inbox's own replies keep both).
+- **Send waits five seconds** with a countdown and Undo (`#cmp-toast`); Undo reopens the sheet with everything
+  in it. `composeFlush()` sends what is waiting at once: the timer, the next send, `pagehide` and a hidden tab
+  all call it. **`sendEnquiryEmail` returns nothing, not a promise**, so the dispatcher never locks the Send
+  button over the wait; a suite that wants the post calls `composeFlush()` after it. A failed send reopens
+  the sheet with the words and the reason.
+- **Drafts are per device** (`chb-cmp-draft:<kind>:<dbId>`, 30 days, "Saved on this device"). Closing keeps
+  one and says so, with Discard; a dot (`.cmp-draft-dot`, a CHILD of the envelope button, because the
+  buttons' pseudo-elements carry their 44px reach) marks every envelope whose guest has one
+  (`composeDraftDots`, run after each hub render). The arrival review never drafts.
+- **The arrival review is the same sheet** (`openArrivalReview` → `cmpOpen` with `arrival: true`): titled
+  "Arrival email", the subject read-only, the greeting, sign-off and extras hidden (`.cmp-arrival`), its facts
+  panel shown, sending through `send_arrival`. Any other opener takes all of that back off.
+- **Preview** is the server's email (`email_preview`, the switches included, debounced 350ms, stamp-guarded)
+  under their inbox line; Light/Dark rewrites the email's own `prefers-color-scheme` block (`cmpForceScheme`).
+- **On a phone it drags down to close** (past 22% or a flick; a finger that stopped before letting go is not a
+  flick, which the gate found); from 641px it is a 600px card. The overlay keeps `.reviews-modal` for the
+  shared Escape and Tab handling, and its own look is undone in admin.css.
+- **Light mode's `textarea { background-color … !important }`** reaches the letter's boxes; the sheet restates
+  `transparent` at id specificity.
+- **The email** (`build_enquiry_reply_email($e, $subject, $message, $ctx, $opts)`, mailer.php): the stay's
+  eyebrow, the SUBJECT as the title (empty → "Your stay at <cottage>" / "Your enquiry about <cottage>"), the
+  greeting, the message, the signer's first name over the business name, then what was switched on. A booking
+  states **where its money stands** (paid so far, still to pay by the plan's date, or Paid in full) and links
+  back into the booking, never the price again; an enquiry gets its quote, **one "Agreed price for your stay"
+  line when the price is custom**, so the lines always add up to the total. The preheader is the start of the
+  message. Pure: the sender (`reply_email_opts($in)`: the signed-in person's first name, else the host's, never
+  the business twice) and the booking's payment facts (`reply_pay_facts($b)` in bookings.php, counting the
+  refundable deposit the way the booking page does) are resolved by the caller.
+- Gates: **`ui-test-composer.js`** (50 checks: the person, the facts, the defaults, the empty send, the draft and
+  its dot, the preview's choices, the five-second hold and Undo, composeFlush, the enquiry endpoint, the arrival
+  dressing on and off, the bottom sheet and its drag, the desktop card); test-emails re-aimed (the payment
+  position, the switches, the quote adding up); test-integration §23 gains the ROUTE half (the pay facts and both
+  switches through the real `email_preview`); test-emails-render's two double-greeting controls count "at least
+  two" (the preheader repeats a greeting the message brings); onelook §14, ownerday §5, arrival-review and e2e
+  re-aimed. ui-test-mailbox was already stale on main (it expects a drafted reply) and was not touched.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
