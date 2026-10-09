@@ -149,7 +149,11 @@ function money_sort_events(array $events, int $limit = 80): array
 //                less deposit money that has already gone back
 //   ready        what of that is the owner's: the sweep's own movable figure
 //   held         the gap between the two: guests' deposits still to go back
-function money_position(array $payouts): array
+// A charge Square has not reported a payout for, taken more than this many days
+// ago. Square pays out in a working day or two, so by then "with Square, in the next
+// payout" is no longer a fair description of it — the screen asks the owner instead.
+const MONEY_UNREPORTED_DAYS = 7;
+function money_position(array $payouts, string $today = ''): array
 {
     $items = is_array($payouts['items'] ?? null) ? $payouts['items'] : [];
     $sum = function (array $list, callable $f) {
@@ -164,6 +168,8 @@ function money_position(array $payouts): array
     $settled = fn($it) => (float) ($it['settled'] ?? 0) - (float) ($it['alreadyOut'] ?? 0);
     $inBank = $sum($inBankItems, $settled);
     $ready = round((float) ($payouts['inBank'] ?? 0), 2);
+    $cut = $today !== '' ? gmdate('Y-m-d', (int) strtotime($today . ' 12:00:00 UTC') - MONEY_UNREPORTED_DAYS * 86400) : '';
+    $unreported = array_values(array_filter($items['unknown'] ?? [], fn($it) => $cut !== '' && (string) ($it['paid_on'] ?? '') !== '' && (string) $it['paid_on'] < $cut));
     $lastMoved = 0;
     foreach ($items['moved'] ?? [] as $it) {
         $lastMoved = max($lastMoved, (int) ($it['moved_at'] ?? 0));
@@ -172,6 +178,8 @@ function money_position(array $payouts): array
         'with_square' => $sum($waiting, $settled),
         'with_square_count' => count($waiting),
         'unknown' => $sum($items['unknown'] ?? [], $settled),
+        'unreported' => $sum($unreported, $settled),
+        'unreported_count' => count($unreported),
         'next_arrival' => (string) ($payouts['nextArrival'] ?? ''),
         'in_bank' => $inBank,
         'ready' => min($ready, $inBank),

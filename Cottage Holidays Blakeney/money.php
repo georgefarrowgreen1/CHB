@@ -143,6 +143,9 @@ function money_items(array $list): array
         'movable' => round((float) ($it['movable'] ?? 0), 2),
         'arrival' => (string) ($it['arrival'] ?? ''),
         'moved_at' => (int) ($it['moved_at'] ?? 0),
+        // the owner said it is in the bank (sweep-landed), and when
+        'by_owner' => (int) ($it['landed_by_owner'] ?? 0),
+        'failed' => strtoupper((string) ($it['payout_status'] ?? '')) === 'FAILED',
     ], $list));
 }
 
@@ -156,7 +159,7 @@ route_actions([
         json_out([
             'ok' => true,
             'at' => time(),
-            'position' => money_position($po) + [
+            'position' => money_position($po, date('Y-m-d')) + [
                 'error' => !empty($liab['error']),
                 'checked' => (int) ($po['checked'] ?? 0),
                 'payout_error' => $po['error'] ?? null,
@@ -170,6 +173,8 @@ route_actions([
             // the WHOLE stored record of moved-out marks, which the page amends and
             // saves back (the payouts-lib rule: never rebuild it from visible rows)
             'moved_map' => $po['movedMap'] ?? (object) [],
+            // the owner's "it's in my bank" marks, amended whole and saved back the same way
+            'landed_map' => $po['landedMap'] ?? (object) [],
             'way_items' => money_items(array_merge($items['onWay'] ?? [], $items['unknown'] ?? [])),
             'books' => money_books($report, money_year_expenses($year), $year),
             'years' => $report['years'] ?? [$year],

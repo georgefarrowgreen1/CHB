@@ -15757,7 +15757,7 @@ function accountsOpen(section) {
     // The old money pages are parts of the one Payments page now: Income & tax is
     // the books, Move money out its own detail, the balances and the feed are the
     // landing. The typed-balance worksheet stays one tap from Move money out.
-    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move' };
+    const PM_ROUTE = { payments: '', recent: '', income: 'books', sweep: 'move', way: 'way' };
     if (Object.prototype.hasOwnProperty.call(PM_ROUTE, section)) {
         accountsShowIndex();
         if (PM_ROUTE[section]) pmOpen(PM_ROUTE[section]);
@@ -17529,6 +17529,7 @@ function chbAutopayUptakeHtml() {
    restyler leave it alone (the Inbox's rule).
    ═══════════════════════════════════════════════════════════════════════════ */
 const PM_IC = {
+    tick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
     in: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M15 17H7V9"/></svg>',
     out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></svg>',
     bank: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg>',
@@ -17682,7 +17683,9 @@ function pmFlowHtml(rows) {
     const bad = !!(P && P.error);
     const fig = (v) => (!P ? '…' : bad ? '—' : gbp(v));
     const wait = !P ? (__pmErr ? 'couldn’t check' : 'working it out') : bad ? 'couldn’t work it out' : '';
-    const waySub = wait || (P.next_arrival ? pmArrives(P.next_arrival) : P.with_square > 0.005 ? 'in the next payout' : 'nothing on its way');
+    // Money Square has not reported a payout for, a week after it was taken, is not
+    // fairly "in the next payout": the subtitle says so and the page asks the owner.
+    const waySub = wait || (P.unreported_count > 0 ? `Square hasn’t reported ${P.unreported_count}` : P.next_arrival ? pmArrives(P.next_arrival) : P.with_square > 0.005 ? 'in the next payout' : 'nothing on its way');
     const bankSub = wait || (P.last_moved ? 'since ' + pmDm(P.last_moved * 1000) : 'not moved out yet');
     const stop = (cls, ic, k, v, s, act, label) =>
         `<button type="button" class="pm-stop ${cls}" data-pm="${act}" aria-label="${escapeHtml(label)}"><span class="pm-stop-dot" aria-hidden="true">${ic}</span><span class="pm-stop-k">${k}</span><span class="pm-stop-v">${v}</span><span class="pm-stop-s">${escapeHtml(s)}</span></button>`;
@@ -17708,6 +17711,15 @@ function pmNeedsHtml(rows) {
             <span class="pm-mic bad" aria-hidden="true">${PM_IC.alert}</span>
             <span class="pm-main"><span class="pm-t">A Square payout didn’t arrive</span><span class="pm-s">check the bank account in Square</span></span>
             <span></span></div>`);
+    }
+    if (P && P.unreported_count > 0) {
+        const n = P.unreported_count;
+        out.push(`<div class="pm-needrow pm-wrow">
+            <span class="pm-mic out" aria-hidden="true">${PM_IC.card}</span>
+            <button type="button" class="pm-main pm-plain" data-pm="to-way"><span class="pm-t">${n === 1 ? 'A card payment' : 'Card payments'} to check</span><span class="pm-s">Square hasn’t reported ${n}</span></button>
+            <span class="pm-v">${gbp(P.unreported)}</span>
+            <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="to-way">Check them</button></div>
+        </div>`);
     }
     rows.filter((r) => r.overdue).forEach((r) => {
         const id = escapeHtml(String(r.b.id));
@@ -17885,7 +17897,9 @@ function pmStayPage(id) {
                 : e.status === 'pending' ? 'Card · processing'
                     : po && po.landed ? `Card${fee} · reached your bank ${pmDm(pmIso(po.arrival))}`
                         : po && po.payout ? `Card${fee} · <button type="button" data-pm="payout" data-arg="${escapeHtml(po.payout)}">on its way${po.arrival ? ', ' + pmDdm(pmIso(po.arrival)) : ''}</button>`
-                            : `Card${fee} · with Square, in the next payout`;
+                            : (__pm && __pm.landed_map && __pm.landed_map[String(e.id).slice(1)]) ? `Card${fee} · in your bank, you said`
+                                : -pmDaysFrom(e.at * 1000) > PM_UNREPORTED_DAYS ? `Card${fee} · Square hasn’t reported its payout`
+                                    : `Card${fee} · with Square, in the next payout`;
             tl.push(`<li class="in"><span class="pm-tl-dot">${PM_IC.in}</span><span><span class="pm-tl-t">${escapeHtml(e.what)}${e.deposit > 0 ? ` <span class="pm-tl-s">(includes ${gbp(e.deposit)} refundable deposit)</span>` : ''}</span><br><span class="pm-tl-s">${when} · ${where}</span></span><span class="pm-tl-v plus">+${gbp(e.amount)}</span></li>`);
         } else if (e.kind === 'refund') {
             tl.push(`<li class="out"><span class="pm-tl-dot">${PM_IC.out}</span><span><span class="pm-tl-t">Refund</span><br><span class="pm-tl-s">${when} · back to their card${e.status === 'pending' ? ', on its way' : ''}</span></span><span class="pm-tl-v">−${gbp(e.amount)}</span></li>`);
@@ -17955,21 +17969,85 @@ function pmPayoutPage(id) {
         ${d.unmatched ? `<p class="pm-note">${d.unmatched === 1 ? 'One payment' : d.unmatched + ' payments'} in it ${d.unmatched === 1 ? 'isn’t' : 'aren’t'} in this app’s records, such as a sale taken in Square itself.</p>` : ''}
     </div>`;
 }
+const pmCheckedLine = (P) => (P && P.checked
+    ? `Square was last checked ${pmDayLabel(P.checked * 1000).toLowerCase()} at ${new Date(P.checked * 1000).toTimeString().slice(0, 5)}.`
+    : 'Square hasn’t been checked yet.');
+// WITH SQUARE: what the figure counts and why, and the owner's way to say a card
+// payment Square has not reported is already in the bank (the sweep-landed record,
+// which the server reads; Square's own report wins whenever it has one). Bank
+// transfers and cash are listed only to say they are never counted here.
+const PM_UNREPORTED_DAYS = 7; // money-lib's MONEY_UNREPORTED_DAYS
+function pmWayLate() {
+    return ((__pm && __pm.way_items) || []).filter((it) => !it.arrival && !it.failed && -pmDaysFrom(pmIso(it.paid_on)) > PM_UNREPORTED_DAYS);
+}
+function pmWayPage() {
+    const P = __pm && __pm.position;
+    if (!P) return pmHead('With Square') + `<div class="pm-dbody"><p class="pm-note">${__pmErr ? 'Couldn’t load the figures. Check your connection.' : 'Working it out…'}</p></div>`;
+    const items = __pm.way_items || [];
+    const late = pmWayLate();
+    const lateIds = new Set(late.map((it) => it.txn_id));
+    const way = items.filter((it) => it.arrival && !it.failed);
+    const failed = items.filter((it) => it.failed);
+    const recent = items.filter((it) => !it.arrival && !it.failed && !lateIds.has(it.txn_id));
+    const mine = (__pm.bank_items || []).filter((it) => it.by_owner > 0);
+    const since = pmNow() - 60 * 864e5;
+    const direct = __pmAct.filter((e) => e.kind === 'in' && e.method !== 'card' && e.at * 1000 >= since).slice(0, 8);
+    const taken = (it) => (it.paid_on ? 'taken ' + pmDm(pmIso(it.paid_on)) : '');
+    const who = (it) => escapeHtml(it.name || 'A guest');
+    const row = (it, sub, extra) => `<div class="pm-needrow pm-wrow">${pmAva(it.name)}
+        <button type="button" class="pm-main pm-plain" data-pm="stay" data-arg="b${Number(it.booking_id) || 0}"><span class="pm-t">${who(it)}</span><span class="pm-s">${pmDot(it.prop)}${escapeHtml(pmProp(it.prop))}${sub ? ' · ' + sub : ''}</span></button>
+        <span class="pm-r"><span class="pm-v">${gbp(it.settled)}</span>${extra || ''}</span></div>`;
+    const mark = (it, on) => `<button type="button" class="pm-mini${on ? ' ok' : ''}" data-pm="${on ? 'landed' : 'unland'}" data-arg="${Number(it.txn_id) || 0}" aria-label="${on ? `${who(it)}’s ${gbp(it.settled)} is in my bank` : `Put ${who(it)}’s ${gbp(it.settled)} back with Square`}">${on ? PM_IC.tick + 'In my bank' : 'Put back'}</button>`;
+    const sec = (cap, list, note) => (list ? `${cap}<div class="pm-rows">${list}</div>${note ? `<p class="pm-note">${note}</p>` : ''}` : '');
+    const lateSum = late.reduce((s, it) => s + it.settled, 0);
+    let h = `<section class="pm-hero"><div class="pm-hero-top"><span>Card payments not yet in your bank</span><b>${gbp(P.with_square)}</b></div>
+        <div class="pm-hero-sub">${escapeHtml(pmCheckedLine(P))}</div></section>
+        <div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="check">Check Square now</button></div>`;
+    if (!items.length) h += '<p class="pm-note">Nothing is with Square right now.</p>';
+    h += sec('<div class="pm-dcap">On its way</div>', way.map((it) => row(it, `${taken(it)} · ${escapeHtml(pmArrives(it.arrival))}`)).join(''), '');
+    h += sec('<div class="pm-dcap is-attn">Didn’t arrive</div>', failed.map((it) => row(it, taken(it))).join(''), 'Square says this payout failed. Check the bank account in Square.');
+    h += sec('<div class="pm-dcap">Not paid out yet</div>', recent.map((it) => row(it, taken(it))).join(''), 'Square usually pays out in a working day or two.');
+    h += sec(`<div class="pm-dcap pm-dcap-row is-attn"><span>Not reported by Square</span>${late.length > 1 ? `<button type="button" class="pm-linkbtn" data-pm="landedall">All ${late.length} are in my bank</button>` : ''}</div>`,
+        late.map((it) => row(it, `${taken(it)} · <span class="pm-warnword">${-pmDaysFrom(pmIso(it.paid_on))} days ago</span>`, mark(it, true))).join(''),
+        'These are older than Square’s usual payout time, so they may already be in your bank. If they are, mark them here. It moves no money; it only stops them counting as with Square.');
+    h += sec('<div class="pm-dcap">You said these are in your bank</div>', mine.map((it) => row(it, `${taken(it)} · marked ${pmDm(it.by_owner * 1000)}`, mark(it, false))).join(''),
+        'If Square reports their payout after all, its date replaces your mark.');
+    h += sec('<div class="pm-dcap">Not through Square</div>', direct.map((e) => `<div class="pm-needrow pm-wrow"><span class="pm-mic in" aria-hidden="true">${PM_IC.in}</span>
+        <button type="button" class="pm-main pm-plain"${e.booking_id ? ` data-pm="stay" data-arg="b${Number(e.booking_id)}"` : ''}><span class="pm-t">${escapeHtml(e.name || 'A guest')}</span><span class="pm-s">${escapeHtml(String(e.method || 'Payment').toLowerCase())} · ${pmDm(e.at * 1000)}</span></button>
+        <span class="pm-r"><span class="pm-v">${gbp(e.amount)}</span>${pmCap('unk', 'Not counted here')}</span></div>`).join(''),
+        'Bank transfers and cash come to you directly, so they never count as With Square.');
+    return pmHead('With Square', late.length ? `${gbp(lateSum)} Square hasn’t reported` : '') + `<div class="pm-dbody">${h}</div>`;
+}
+// Save the owner's "it's in my bank" record. The WHOLE stored map is amended (the
+// moved-out rule), the figures move at once and the refetch confirms them.
+async function pmLanded(ids, on) {
+    const prev = Object.assign({}, (__pm && __pm.landed_map) || {});
+    const map = Object.assign({}, prev);
+    const now = Math.floor(Date.now() / 1000);
+    ids.forEach((id) => { if (!id) return; if (on) map[String(id)] = now; else delete map[String(id)]; });
+    try { await saveContent('sweep-landed', JSON.stringify(map)); } catch (e) { return; }
+    if (__pm) __pm.landed_map = map;
+    toast(on ? (ids.length === 1 ? 'Counted as in your bank.' : `${ids.length} payments counted as in your bank.`) : 'Counted as with Square again.', 'success', {
+        label: 'Undo',
+        fn: async () => { try { await saveContent('sweep-landed', JSON.stringify(prev)); } catch (e) { return; } if (__pm) __pm.landed_map = prev; pmLoad(true); },
+    });
+    await pmLoad(true);
+}
 function pmMovePage() {
     const P = __pm && __pm.position;
     if (!P) return pmHead('Move money out') + `<div class="pm-dbody"><p class="pm-note">${__pmErr ? 'Couldn’t load the figures. Check your connection.' : 'Working it out…'}</p></div>`;
     const items = __pm.bank_items || [];
     const byDay = {};
-    items.forEach((it) => { const k = it.arrival || ''; byDay[k] = (byDay[k] || 0) + it.settled; });
+    items.forEach((it) => { const k = it.by_owner ? 'you' : it.arrival || ''; byDay[k] = (byDay[k] || 0) + it.settled; });
     const held = items.filter((it) => it.fenced > 0.005);
     const bank = P.bank || 'your bank';
     const since = P.last_moved ? 'since you last moved money out, ' + pmDm(P.last_moved * 1000) : 'Square has paid in';
-    const checked = P.checked ? `Square was last checked ${pmDayLabel(P.checked * 1000).toLowerCase()} at ${new Date(P.checked * 1000).toTimeString().slice(0, 5)}.` : 'Square hasn’t been checked yet.';
+    const checked = pmCheckedLine(P);
     return pmHead('Move money out', escapeHtml(P.last_moved ? 'What has reached your bank since you last moved money out' : 'What Square has paid into your bank')) + `<div class="pm-dbody">
         <section class="pm-hero"><div class="pm-hero-top"><span>Ready to move out</span><b class="pm-okword">${gbp(P.ready)}</b></div>
             <div class="pm-hero-sub">Everything Square has paid into ${escapeHtml(bank)} ${escapeHtml(since)}, less the deposits you will give back.</div></section>
         <div class="pm-dcap">Paid into your bank</div>
-        <div class="pm-kvs pm-calc">${Object.keys(byDay).sort().map((k) => `<div class="pm-kv"><span>Square payout${k ? ' · ' + pmDdm(pmIso(k)) : ''}</span><b>${gbp(byDay[k])}</b></div>`).join('') || '<div class="pm-kv"><span>Nothing yet</span><b>£0.00</b></div>'}
+        <div class="pm-kvs pm-calc">${Object.keys(byDay).sort().map((k) => `<div class="pm-kv"><span>${k === 'you' ? 'Card payments you said are in your bank' : 'Square payout' + (k ? ' · ' + pmDdm(pmIso(k)) : '')}</span><b>${gbp(byDay[k])}</b></div>`).join('') || '<div class="pm-kv"><span>Nothing yet</span><b>£0.00</b></div>'}
             <div class="pm-kv total"><span>In your bank</span><b>${gbp(P.in_bank)}</b></div></div>
         <div class="pm-dcap">Guests’ deposits you hold</div>
         <div class="pm-kvs pm-calc">${held.length ? held.map((it) => {
@@ -18020,7 +18098,7 @@ function pmRenderDetail() {
     const arg = i < 0 ? '' : key.slice(i + 1);
     const body = pane.querySelector('.pm-dbody');
     const keepTop = pane.__pmKey === key && body ? body.scrollTop : 0;
-    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : pmBooksPage();
+    pane.innerHTML = k === 'stay' ? pmStayPage(arg) : k === 'payout' ? pmPayoutPage(arg) : k === 'move' ? pmMovePage() : k === 'way' ? pmWayPage() : pmBooksPage();
     pane.__pmKey = key;
     const nb = pane.querySelector('.pm-dbody');
     if (nb) nb.scrollTop = keepTop;
@@ -18120,6 +18198,7 @@ function pmOpen(key) {
     if (key === 'books' && __pmYear && __pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear);
     if (key === 'books') chbNavRemember('accounts:income');
     else if (key === 'move') chbNavRemember('accounts:sweep');
+    else if (key === 'way') chbNavRemember('accounts:way');
     if (!pmWide()) {
         r.classList.add('is-detail');
         document.body.classList.add('pm-detail-open');
@@ -18394,10 +18473,15 @@ const PM_ACT = {
         if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
         else toast('Nobody owes you anything.');
     },
-    'to-way'() {
-        const way = __pmAct.find((e) => e.kind === 'payout' && e.state === 'way');
-        if (way) pmOpen('payout:' + way.payout);
-        else toast(__pm && __pm.position && __pm.position.with_square > 0.005 ? 'Taken recently: it joins Square’s next payout.' : 'Nothing is with Square right now.');
+    'to-way'() { pmOpen('way'); },
+    async landed(id) { await pmLanded([id], true); },
+    async unland(id) { await pmLanded([id], false); },
+    async landedall() {
+        const late = pmWayLate();
+        if (!late.length) return;
+        const sum = late.reduce((s, it) => s + it.settled, 0);
+        const ok = await glassConfirm(`Count ${late.length} card payments (${gbp(sum)}) as in your bank?\n\n${late.map((it) => `${it.name || 'A guest'} · ${gbp(it.settled)}`).join('\n')}\n\nThis moves no money. It only stops them counting as with Square.`, `Mark all ${late.length}`);
+        if (ok) await pmLanded(late.map((it) => it.txn_id), true);
     },
     move() { pmOpen('move'); },
     books() { pmOpen('books'); },

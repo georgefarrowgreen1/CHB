@@ -268,6 +268,54 @@ pochk('a FAILED payout is never movable', $eq($failed['inBank'], 0));
 pochk('…and is not announced as arriving, because it is not', $eq($failed['onWay'], 0) && $eq($failed['unknown'], 50));
 pochk('an empty list totals zero rather than erroring', $eq(payouts_split_totals([])['inBank'], 0));
 
+// ---- THE OWNER'S WORD THAT IT IS IN THE BANK ------------------------------
+// Square's payout data can be silent about a charge (older than the data, or never
+// reported). The owner can say it is in their bank; Square's own answer still wins.
+$own = payouts_split_totals([
+    ['txn_id' => 31, 'movable' => 300.00, 'landed' => null, 'arrival' => '', 'payout_status' => ''],
+    ['txn_id' => 32, 'movable' => 200.00, 'landed' => false, 'arrival' => '2026-08-02', 'payout_status' => 'SENT'],
+    ['txn_id' => 33, 'movable' => 100.00, 'landed' => false, 'arrival' => '2026-07-20', 'payout_status' => 'FAILED'],
+    ['txn_id' => 34, 'movable' => 50.00, 'landed' => true, 'arrival' => '2026-07-27', 'payout_status' => 'PAID'],
+], [], ['31' => 1760000000, '32' => 1760000000, '33' => 1760000000, '34' => 1760000000]);
+pochk('an unreported charge the owner marks counts as in the bank', $eq($own['inBank'], 300.00 + 200.00 + 50.00), 'got ' . $own['inBank']);
+pochk('…carrying WHEN the owner said so', (int) ($own['items']['inBank'][0]['landed_by_owner'] ?? 0) === 1760000000);
+pochk('a mark never overrides a FAILED payout — Square knows it did not arrive', $eq($own['onWay'], 100.00) && $own['counts']['onWay'] === 1);
+pochk('Square\'s own "landed" is not relabelled as the owner\'s word', empty($own['items']['inBank'][2]['landed_by_owner']));
+$ownMoved = payouts_split_totals([['txn_id' => 41, 'movable' => 80.00, 'landed' => null, 'arrival' => '']], ['41' => 1760000100], ['41' => 1760000000]);
+pochk('an owner-marked charge can then be marked moved out', $eq($ownMoved['moved'], 80.00) && $eq($ownMoved['inBank'], 0));
+$SQ_STORE[SWEEP_LANDED_KEY] = '{"p1":1760000000,"":5,"p2":0}';
+pochk('the owner\'s marks are read through the same sanitiser', payouts_landed_marks() === ['p1' => 1760000000]);
+$SQ_STORE[SWEEP_LANDED_KEY] = '';
+
+// ---- THE VERDICT IS RE-JUDGED WHEN IT IS READ -----------------------------
+// The cache stores "landed" as of its refresh; a payout cached as arriving tomorrow
+// must read as landed tomorrow, not on the next refresh.
+$rj = payouts_apply([['square_payment_id' => 'sq_r', 'rental' => 10, 'fee' => 0]],
+    ['sq_r' => ['payout_id' => 'po', 'status' => 'SENT', 'arrival' => '2026-07-30', 'landed' => false, 'fee' => 0.2]], '2026-07-30');
+pochk('a SENT payout whose arrival day has come reads as landed when read', $rj[0]['landed'] === true);
+pochk('…and the payout status rides along for the owner-mark rule', $rj[0]['payout_status'] === 'SENT');
+$rj2 = payouts_apply([['square_payment_id' => 'sq_r', 'rental' => 10, 'fee' => 0]],
+    ['sq_r' => ['payout_id' => 'po', 'status' => 'SENT', 'arrival' => '2026-07-30', 'landed' => false, 'fee' => 0.2]], '2026-07-29');
+pochk('…and not the day before', $rj2[0]['landed'] === false);
+
+// ---- WHAT SQUARE SAID IS KEPT AFTER THE FETCH WINDOW MOVES ON ---------------
+// Reported live: money the owner had moved out came back as "with Square" once its
+// payout aged out of the fetch, because the map was rebuilt from the window alone.
+$prevMap = [
+    'old_paid' => ['payout_id' => 'po_old', 'status' => 'PAID', 'arrival' => '2026-04-01', 'landed' => true, 'fee' => 1.5],
+    'old_failed' => ['payout_id' => 'po_f', 'status' => 'FAILED', 'arrival' => '2026-04-01', 'landed' => false, 'fee' => 1.0],
+    'ancient' => ['payout_id' => 'po_a', 'status' => 'PAID', 'arrival' => '2024-01-01', 'landed' => true, 'fee' => 1.0],
+    'undated' => ['payout_id' => 'po_u', 'status' => 'SENT', 'arrival' => '', 'landed' => null, 'fee' => null],
+    'both' => ['payout_id' => 'po_x', 'status' => 'SENT', 'arrival' => '2026-07-30', 'landed' => false, 'fee' => 2.0],
+];
+$fresh = ['both' => ['payout_id' => 'po_x', 'status' => 'PAID', 'arrival' => '2026-07-30', 'landed' => true, 'fee' => 2.0]];
+$mg = payouts_charge_merge($fresh, $prevMap, '2026-08-10');
+pochk('a PAID charge that aged out of the fetch is kept', isset($mg['old_paid']) && $mg['old_paid']['landed'] === true);
+pochk('…a FAILED one is not (Square re-pays it as an adjustment)', !isset($mg['old_failed']));
+pochk('…nor one older than the keep window', !isset($mg['ancient']));
+pochk('…nor one with no date to age it by', !isset($mg['undated']));
+pochk('the fresh fetch wins where it has an answer', $mg['both']['status'] === 'PAID' && $mg['both']['landed'] === true);
+
 // ---- WHEN TO REFRESH -----------------------------------------------------
 pochk('no cache at all is stale', payouts_stale(null, 1000) === true);
 pochk('a cache with no timestamp is stale', payouts_stale(['charges' => []], 1000) === true);
@@ -429,6 +477,24 @@ payouts_refresh();
 pochk('unset sends no location_id, leaving Square its own default',
     strpos($SQ_CALLS[0], 'location_id=') === false);
 
+// A SECOND REFRESH DOES NOT RE-READ A PAID PAYOUT, and keeps its charge and refund.
+$SQ_CALLS = [];
+payouts_refresh();
+pochk('a PAID payout already read in full is not asked about again',
+    count(array_filter($SQ_CALLS, fn($c) => strpos($c, 'po_ok/payout-entries') !== false)) === 0
+    && count(array_filter($SQ_CALLS, fn($c) => strpos($c, 'po_bad/payout-entries') !== false)) === 1,
+    implode(' | ', $SQ_CALLS));
+$again = po_cache();
+pochk('…its charge is still known', isset($again['charges']['sq_live']) && $again['charges']['sq_live']['landed'] === true);
+pochk('…and its refund line is still there for the roll-forward', count($again['refunds'] ?? []) === 1, json_encode($again['refunds'] ?? null));
+// The payout leaves Square's answer altogether (aged out of the window): its charge stays.
+$keepReply = $SQ_REPLY['/v2/payouts?'];
+$SQ_REPLY['/v2/payouts?'] = ['status' => 200, 'body' => ['payouts' => []]];
+payouts_refresh();
+pochk('a charge whose payout aged out of the fetch keeps its "landed"',
+    (po_cache()['charges']['sq_live']['landed'] ?? null) === true, json_encode(po_cache()['charges'] ?? null));
+$SQ_REPLY['/v2/payouts?'] = $keepReply;
+
 // A REFUSAL the owner must be told about in words, not as a status code.
 $SQ_REPLY['/v2/payouts?'] = ['status' => 403, 'body' => []];
 $prevCache = $SQ_STORE[PAYOUTS_CACHE_KEY];
@@ -482,7 +548,18 @@ pochk('accounts.php tags its transactions and splits them',
 $movedVar = preg_match('/(\$\w+)\s*=\s*payouts_moved_map\(\)/', $acct, $mv) ? preg_quote($mv[1], '/') : '';
 pochk('…giving it what the owner has already transferred out',
     preg_match('/payouts_split_totals\([^;]*payouts_moved_map\(\)/s', $acct) === 1
-    || ($movedVar !== '' && preg_match('/payouts_split_totals\([^;]*,\s*' . $movedVar . '\s*\)/s', $acct) === 1));
+    || ($movedVar !== '' && preg_match('/payouts_split_totals\([^;]*,\s*' . $movedVar . '\s*[,)]/s', $acct) === 1));
+// The owner's "it's in my bank" marks, wired the same way — a third optional argument
+// defaulting to none would otherwise leave the button doing nothing.
+$landedVar = preg_match('/(\$\w+)\s*=\s*payouts_landed_marks\(\)/', $acct, $lv) ? preg_quote($lv[1], '/') : '';
+pochk('…and the charges the owner says are in the bank',
+    $landedVar !== '' && preg_match('/payouts_split_totals\([^;]*,\s*' . $landedVar . '\s*\)/s', $acct) === 1
+    && preg_match('/\[.landedMap.\]\s*=/', $acct) === 1);
+pochk('…and the payout verdict is re-judged against today when read',
+    preg_match('/payouts_apply\(\$txns,[^;]*date\(\'Y-m-d\'\)\)/', $acct) === 1);
+pochk('the owner\'s marks key is classified internal and counts as money',
+    strpos((string) file_get_contents(__DIR__ . '/db.php'), "'sweep-landed'") !== false
+    && strpos((string) file_get_contents(__DIR__ . '/people-lib.php'), "'sweep-landed'") !== false);
 // The client amends the stored map and saves it back, so it has to be given the
 // WHOLE record — rebuilt from the rows on screen, one recorded transfer silently
 // forgets every mark whose charge has aged out of the payout window.

@@ -687,6 +687,29 @@ admin.css. Markup uses `data-pm` and `pm-` classes (the Inbox's rule), wired onc
   and layout scenes that read `#money-overview`. Follow-ups: Today, the dock badge and search still compute owed
   their own way; the CSV/PDF keep their own profit arithmetic.
 
+**"With Square" kept money that was already in the bank** (reported live: £1,291.97 "in the next payout", all of it
+transferred). Bank transfers and cash were never counted there (only `kind deposit|balance` Square charges are). Two
+causes, both in payouts-lib.php:
+- **The payout cache was rebuilt from the fetch window alone.** A charge whose payout aged out of the 60 days lost
+  its "landed", so its moved-out mark (which only applies to landed money) stopped applying and it read as with
+  Square again. And the sweep lists charges from 90 days back (plus any still holding a deposit), so a charge 60–90
+  days old could never be matched at all. Now: `payouts_charge_merge` carries PAID/SENT charges forward for 400 days
+  (a FAILED one is dropped: Square re-pays it as an adjustment), the fresh fetch always wins, the window is 100 days,
+  a PAID payout already read in full (`entries_read`) is not re-read, and the carry-over only happens for the same
+  location. `payouts_apply(…, $today)` re-judges `landed` when read, so a cached "arrives Thursday" is landed on
+  Thursday without waiting for a refresh.
+- **The owner can say so** (the demo they asked for): `sweep-landed` (internal, Money overview in people-lib) is a
+  map of txn id → when, read by `payouts_landed_marks()` and applied in `payouts_split_totals(…, $owner)`: a charge
+  Square has not called landed counts as landed, carrying `landed_by_owner`. Square's own answer wins, and a mark
+  never overrides a FAILED payout. Charges already lost from the cache before this fix need the owner's tap.
+- **The page**: tapping With Square opens `pmWayPage` (On its way / Not paid out yet / Not reported by Square, with
+  "In my bank" per row and "All N are in my bank" behind a confirm / You said these are in your bank, with Put back /
+  Not through Square). `money_position` adds `unreported` (unknown charges over `MONEY_UNREPORTED_DAYS` 7 old): the
+  stop's subtitle then says "Square hasn't reported N", not "in the next payout", and Needs you gets a "Card payments
+  to check" row. The stay page's card rows stop saying "in the next payout" for those too. Gated by test-payouts
+  (marks, read-time verdict, merge, a second refresh not re-reading a PAID payout, the wiring), break-tested on the
+  merge and the marks. Not run: test-integration (no MySQL here) and the money ui suites (not re-aimed since #1379).
+
 ## The Money area is FIVE ANSWERS, not an index
 
 **CONNECTION + LOADING (owner-asked).** A dropped request no longer flips the app offline by itself: `chbNetFail()` (app.js) needs `version.php` to fail a 3.5s probe too, `navigator.onLine === false` stays an instant verdict, and `apiGet` retries once after 600ms on a FAST transport failure (never after a 15s timeout, never while known-off). The outage still gets its toast only after the existing 8s "noticed" rule — an early probe was tried and removed because it pre-empted that rule (ui-test-offline). Work is visible: `chbBusy()` lights `body.chb-busy` (a 3px sweep bar, admin.css) 500ms after any request starts, except `version.php`; `adminLoading` paints skeleton rows (`.sk`) with the words kept in an `.sr-only` live region; the Payments placeholders pulse (`.mo-run`, removed by `moLand`) but still never play the arrival animation (ui-test-backoffice-motion, re-aimed). `apiPost`/`apiGet` are thin wrappers over `apiPostCore`/`apiGetCore` and carry `@returns {Promise<any>}` — without it tsc infers `{}` and the budget moves.
