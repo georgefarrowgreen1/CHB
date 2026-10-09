@@ -1386,6 +1386,10 @@ function is_internal_content_key($key)
     if ($key === 'activity-seen') {
         return true; // the owner's "Seen it" record on the Activity log (activity_log ids)
     }
+    if ($key === 'inbox-state') {
+        return true; // the Inbox's own record (ibState): who is done, reminders, linked
+                     // addresses — names guests by email; rides the admin boot payload
+    }
     if ($key === 'duty-dismissed') {
         return true; // which Needs-you rows the owner has swiped away (chbDutyDismiss) —
                      // names guests and bookings by id; rides the admin boot payload

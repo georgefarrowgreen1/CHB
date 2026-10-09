@@ -7391,9 +7391,9 @@ function cmdkServerItem(x) {
     // flashed on its screen. (cmdkReveal* helpers below.)
     const routes = {
         booking: () => { closeCmdK(); openBookingHub(x.id); },
-        enquiry: () => { closeCmdK(); openEnquiryHub(x.id); },
+        enquiry: () => { closeCmdK(); inboxOpenEnquiry(x.id); },
         guest: () => { closeCmdK(); cmdkRevealGuest(x.email || ''); },
-        message: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => { inboxFolder('messages'); if (x.thread_id) openMessageThread(x.thread_id); }); },
+        message: () => { closeCmdK(); if (x.thread_id) inboxOpenThread(x.thread_id); else openInbox(); },
         review: () => { closeCmdK(); cmdkRevealReview(x.id); },
         email: () => { closeCmdK(); cmdkOpenEmail(x.id); },
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
@@ -10062,6 +10062,8 @@ async function openInbox() {
     }
     nav('view-inbox'); // nav() calls renderInboxScreen() for us
     adminHistPush('view-inbox');
+    try { ibLoadAll(); } catch (e) {}
+    ibSoon();
     // nav() remembers the plain view id, which would DOWNGRADE a remembered folder: tap
     // Inbox while reading email and the next reload lands on Enquiries. Re-assert it.
     inboxRemember();
@@ -10160,70 +10162,12 @@ function ivToggle(which) {
     inboxFolder(which);
 }
 function inboxFolder(which) {
-    if (!['enquiries', 'messages', 'email'].includes(which)) which = 'enquiries';
-    __inboxFolder = which;
-    inboxLayoutSync();
-    const stacked = inboxStacked();
-    document.querySelectorAll('#inbox-folders [data-ifolder]').forEach((b) => {
-        const on = b.dataset.ifolder === which;
-        b.classList.toggle('is-on', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    ['enquiries', 'messages', 'email'].forEach((f) => {
-        const el = document.getElementById('inbox-folder-' + f);
-        if (el) el.style.display = f === which ? '' : 'none';
-        const fold = document.getElementById('iv-fold-' + f);
-        const row = document.querySelector(`#inbox-landing .bhub-fold-row[data-arg="${f}"]`);
-        if (fold) fold.hidden = !(stacked && f === which);
-        if (row) row.setAttribute('aria-expanded', stacked && f === which ? 'true' : 'false');
-    });
-    // Apple-Mail desktop: the reading pane serves EVERY folder — the enquiry
-    // hub, the docked chat window, or the email reader — so swap its content
-    // (and the empty-state hint) with the folder.
-    const split = document.querySelector('#view-inbox .enq-split');
-    if (split) split.classList.remove('no-pane');
-    const pane = document.getElementById('inbox-detail-pane');
-    const hint = document.getElementById('inbox-detail-empty');
-    const msgModal = document.getElementById('messages-modal');
-    if (pane && msgModal) {
-        if (which === 'messages' && inboxSplitWide()) {
-            if (msgModal.parentElement !== pane) pane.appendChild(msgModal);
-        } else if (msgModal.parentElement === pane) {
-            msgModal.classList.remove('open');
-            document.body.appendChild(msgModal);
-        }
-    }
-    const mbxDock = document.getElementById('mbx-pane-dock');
-    if (mbxDock && which !== 'email') {
-        mbxDock.innerHTML = '';
-        __mbxSelUid = null;
-        __mbxSelSent = null;
-    }
-    // Leaving Enquiries: give the hub content back to its standalone screen so
-    // the pane is free for the other folders.
-    if (which !== 'enquiries') {
-        const ehc = document.getElementById('enquiry-hub-content');
-        const home = document.getElementById('view-enquiry-hub');
-        if (ehc && home && pane && ehc.parentElement === pane) home.appendChild(ehc);
-    }
-    if (hint) {
-        hint.textContent =
-            which === 'messages'
-                ? 'Select a conversation on the left — it opens here.'
-                : which === 'email'
-                  ? 'Select an email on the left — it opens here.'
-                  : 'Select an enquiry on the left — its details and actions appear here.';
-        hint.style.display = '';
-    }
-    inboxRemember();
-    if (which === 'enquiries') markInboxSelection();
-    // The mailbox is lazy: first open fetches, after that the rendered list
-    // stays live in the DOM and the Refresh button re-pulls on demand.
-    if (which === 'email' && !__mbxOpenedOnce) {
-        __mbxOpenedOnce = true;
-        loadMailbox();
-    }
-    inboxSubline();
+    // THERE ARE NO FOLDERS: the Inbox is one list of people (ibRender). Every
+    // caller that still asks for a folder — search, help, notifications, a
+    // remembered place — lands on that list, and asking wakes its loaders.
+    __inboxFolder = 'enquiries';
+    try { ibLoadAll(); } catch (e) {}
+    ibSoon();
 }
 // The header's LIVING subline — the Today-dashboard treatment applied to
 // comms: one quiet sentence saying what's waiting for a reply, composed from
@@ -10364,6 +10308,7 @@ async function loadBookingEmailLogs() {
     try {
         const r = await apiPost('bookings.php', { action: 'email_logs' });
         bookingEmailLogs = r && r.logs ? r.logs : {};
+        ibSoon();
     } catch (e) {
         // Keep the last good history: emptying it tells the owner NO emails have
         // been sent to this guest, which invites sending them a second time.
@@ -21813,9 +21758,9 @@ function chbDutiesAll() {
                 kind: 'enquiry', key: 'enquiry:' + q.dbId, sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
                 label: `${q.name || 'A guest'}’s enquiry — ${age}`,
                 sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${pname(q.propKey)}`,
-                act: 'Answer', go: chbAttrs('openEnquiryHub', String(q.id)),
+                act: 'Answer', go: chbAttrs('inboxOpenEnquiry', String(q.dbId)),
                 board: 'waiting', scope: 'inbox',
-                run: () => { closeCmdK(); openEnquiryHub(q.id); },
+                run: () => { closeCmdK(); inboxOpenEnquiry(q.dbId); },
             });
         });
     // 3) Damages deposits to give back (guest has checked out) and
@@ -21918,7 +21863,7 @@ function chbDutiesAll() {
         out.push({
             kind: 'chat', sev: 'warn', ic: 'chat',
             label: __nyChats === 1 ? 'A guest chat needs a reply' : `${__nyChats} guest chats need a reply`,
-            sub: 'Website chat · Inbox → Messages',
+            sub: 'Website chat · Inbox',
             act: 'Reply', go: 'data-act="openInboxMessages"',
             board: 'waiting', scope: 'inbox',
             run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); },
@@ -21940,7 +21885,7 @@ function chbDutiesAll() {
             label: nmN === 1
                 ? (whoName ? `${whoName} emailed you` : 'A new email is waiting')
                 : `${nmN} new emails are waiting`,
-            sub: nmN === 1 && who.subject ? String(who.subject) : 'Inbox → Email',
+            sub: nmN === 1 && who.subject ? String(who.subject) : 'Inbox',
             act: 'Read', go: 'data-act="openInboxEmail"',
             board: 'waiting', scope: 'inbox',
             run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); },
@@ -22300,7 +22245,7 @@ function renderNeedsYou() {
 // replaced), so the dock stays byte-identical there; admin.css swaps the two
 // at the one boundary and every dock gate keeps measuring at 390 untouched.
 // Every count is the surface's OWN derivation said again, never a second one:
-// Today = chbDuties().length (the Home-badge number), Inbox = unseenEnquiries()
+// Today = chbDuties().length (the Home-badge number), Inbox = inboxCount()
 // (the dock pip's number), Payments = chbOpsParts(chbDayTuples()).owed (the
 // ops line's figure), Key safes = the keysafe duties in the same list.
 // The dock's own stroke glyphs (kept byte-identical so the two navs read as
@@ -22422,7 +22367,7 @@ function chbRailSync(duties, owed) {
     };
     set('rail-cnt-today', duties.length ? String(duties.length) : '', duties.some((d) => d.sev === 'danger'));
     let enq = 0;
-    try { enq = unseenEnquiries(); } catch (e) {}
+    try { enq = inboxCount(); } catch (e) {}
     set('rail-cnt-inbox', enq > 0 ? String(enq) : '', enq > 0);
     set('rail-cnt-money', owed > 0.005 ? '£' + Math.round(owed).toLocaleString('en-GB') : '', false);
     const ks = duties.filter((d) => d.kind === 'keysafe');
@@ -24435,6 +24380,7 @@ async function loadAdminMessages() {
     if (!list) return;
     __msgThreads = threads;
     renderMessagesList();
+    ibSoon();
     // (The chat-answers / away-reply editors render on demand from Manage →
     //  Messages via settingsOpen() now — no longer painted on every inbox load.)
 }
@@ -30153,6 +30099,7 @@ function inboxPaint(list, barHtml, paneHtml) {
 }
 function renderInbox() {
     refreshInboxBadge();
+    ibSoon(); // the one list reads the same store
     // Place the folder divs for the current width (into the landing's folds
     // when stacked, back beside the rail when wide) BEFORE anything reads them.
     inboxLayoutSync();
@@ -30288,6 +30235,1612 @@ function renderInbox() {
         }
         markInboxSelection();
     }
+}
+
+// =====================================================================
+//  THE INBOX IS ONE LIST OF PEOPLE (the approved "One Inbox" demo, built).
+//  Enquiries, guest chat and the mailbox were three folders of the same
+//  people. Each PERSON is now one row, joined by exact email, else phone,
+//  never by a name (chbCustomerKey's rule), and their conversation runs in
+//  time order across every channel.
+//  The three stores are still filled by their own loaders (renderInbox,
+//  loadAdminMessages, loadMailbox); their old list markup sits hidden in
+//  #inbox-legacy so the badges, search and notifications that count from
+//  them keep working. This module only READS those stores.
+//  Its markup uses data-ib and ib- classes, never data-act, so the app's
+//  dispatcher and the one-look restyler leave it alone.
+// =====================================================================
+const IB_STATE_KEY = 'inbox-state';
+const IB_HOLD_MS = 5000;
+const IB_STATE_DAYS = 180;
+// Automatic senders: platforms and payment processors, and the no-reply family.
+// Their mail shows as a quiet row that never waits and has no reply box.
+const IB_AUTO_RE = /^(no-?reply|do-?not-?reply|donotreply|notifications?|notify|mailer-daemon|postmaster|bounces?|alerts?|automated)[+@.]|@([a-z0-9-]+\.)*(airbnb|booking|vrbo|expedia|homeaway|squareup|stripe|paypal)\.[a-z.]+$/i;
+const IB_LEAD_RE = /\b(availab\w*|book(ing)?|stay|nights?|weekend|week|dates?|cottage|holiday|break|price|cost|free)\b/i;
+
+let __ibOpen = null; // person key on screen
+let __ibQ = '';
+let __ibShowDone = false;
+let __ibCtxOpen = false;
+let __ibMenuOpen = false;
+let __ibJump = null;
+let __ibOrder = [];
+let __ibPeople = [];
+let __ibPeopleMap = new Map();
+let __ibThreadMsgs = {}; // thread_id → full messages, once opened
+let __ibMailBody = {}; // uid → {text, quoted, attach}, once opened
+let __ibLocal = {}; // person key → items sent from here (sending, then sent)
+let __ibArchived = null; // archived chat threads, fetched once
+let __ibLoaded = false;
+let __ibStayPick = {};
+let __ibChan = {};
+let __ibDecline = {}; // person key → true while "write to them?" is asked
+const __ibApproving = new Set(); // enquiry ids inside their Undo window: already decided here
+const __ibFresh = new Set();
+const __ibFreshMsgs = new Set();
+let __ibHold = null;
+let __ibToastT = null;
+let __ibToastAt = 0;
+let __ibRenderQ = 0;
+let __ibRendered = null;
+
+/* ── The owner's own record: done, reminders, cleared, links, the first-open line ── */
+let __ibSt = null;
+let __ibStSeen;
+let __ibStPending = 0;
+let __ibStQ = Promise.resolve();
+function ibStateClean(raw) {
+    let v = raw;
+    if (typeof v === 'string') {
+        try { v = JSON.parse(v); } catch (e) { v = null; }
+    }
+    const out = { since: 0, done: {}, remind: {}, reminded: {}, unread: {}, cleared: {}, links: {} };
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+    out.since = Number(v.since) || 0;
+    const cutoff = Date.now() - IB_STATE_DAYS * 864e5;
+    ['done', 'remind', 'reminded', 'unread', 'cleared'].forEach((k) => {
+        const m = v[k];
+        if (!m || typeof m !== 'object' || Array.isArray(m)) return;
+        Object.keys(m).slice(0, 800).forEach((key) => {
+            const n = Number(m[key]);
+            if (key.length <= 200 && n > 0 && (k === 'remind' || n > cutoff)) out[k][key] = n;
+        });
+    });
+    const L = v.links;
+    if (L && typeof L === 'object' && !Array.isArray(L)) {
+        Object.keys(L).slice(0, 300).forEach((em) => {
+            const t = String(L[em] || '');
+            if (/^[^@\s]+@[^@\s]+$/.test(em) && /^[ep]:/.test(t) && t.length <= 200) out.links[em.toLowerCase()] = t;
+        });
+    }
+    return out;
+}
+// A new boot payload is adopted only while none of our saves is in flight (chbDutyMap's rule).
+function ibState() {
+    const pre = /** @type {any} */ (window).__inboxStatePre;
+    if (pre !== __ibStSeen && !__ibStPending) {
+        __ibStSeen = pre;
+        __ibSt = ibStateClean(pre);
+    }
+    if (!__ibSt) __ibSt = ibStateClean(null);
+    return __ibSt;
+}
+// Mirror first, save after, on a chain that always saves the CURRENT record.
+function ibStateSave() {
+    ibState();
+    __ibStPending++;
+    __ibStQ = __ibStQ.then(async () => {
+        try {
+            await apiPost('content.php', { action: 'set', key: IB_STATE_KEY, value: __ibSt });
+        } catch (e) {
+            chbSwallow(e, 'inbox-state');
+        } finally {
+            __ibStPending--;
+        }
+    });
+}
+
+/* ── Small helpers ── */
+const ibEsc = (s) => escapeHtml(String(s == null ? '' : s));
+const IB_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const IB_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function ibT(s) {
+    if (s == null || s === '') return 0;
+    if (typeof s === 'number') return s;
+    const str = String(s);
+    if (/^\d{4}-\d\d-\d\d$/.test(str)) return new Date(str + 'T12:00:00').getTime() || 0;
+    if (/^\d{4}-\d\d-\d\d \d\d:\d\d/.test(str)) return new Date(str.replace(' ', 'T')).getTime() || 0;
+    return new Date(str).getTime() || 0;
+}
+function ibEmail(s) {
+    const v = String(s || '').trim().toLowerCase();
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? v : '';
+}
+function ibPhone(s) {
+    const d = String(s || '').replace(/[^0-9]/g, '');
+    return d.length >= 7 ? d.slice(-10) : '';
+}
+function ibKeyOf(email, phone, fallback) {
+    const e = ibEmail(email);
+    if (e) return ibState().links[e] || 'e:' + e;
+    const p = ibPhone(phone);
+    return p ? 'p:' + p : fallback;
+}
+const ibNow = () => Date.now();
+const ibDayStart = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+const ibDaysAgo = (t) => Math.round((ibDayStart(ibNow()) - ibDayStart(t)) / 864e5);
+const ibClock = (t) => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+function ibRel(t) {
+    if (!t) return '';
+    const d = new Date(t), n = ibDaysAgo(t);
+    if (n <= 0) return ibClock(t);
+    if (n === 1) return 'Yesterday';
+    if (n < 7) return IB_DAY[d.getDay()];
+    return d.getDate() + ' ' + IB_MON[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+}
+function ibSep(t) {
+    const d = new Date(t), n = ibDaysAgo(t);
+    if (n <= 0) return 'Today';
+    if (n === 1) return 'Yesterday';
+    return IB_DAY[d.getDay()] + ' ' + d.getDate() + ' ' + IB_MON[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+}
+const ibIso = (s) => { const [y, m, d] = String(s || '').split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+function ibRange(a, b) {
+    if (!a || !b) return '';
+    const x = ibIso(a), y = ibIso(b), cy = new Date().getFullYear();
+    const yr = (d) => (d.getFullYear() !== cy ? ' ' + d.getFullYear() : '');
+    if (x.getMonth() === y.getMonth() && x.getFullYear() === y.getFullYear()) return `${x.getDate()}–${y.getDate()} ${IB_MON[x.getMonth()]}${yr(y)}`;
+    return `${x.getDate()} ${IB_MON[x.getMonth()]}${x.getFullYear() !== y.getFullYear() ? yr(x) : ''} – ${y.getDate()} ${IB_MON[y.getMonth()]}${yr(y)}`;
+}
+const ibNights = (a, b) => Math.max(0, Math.round((+ibIso(b) - +ibIso(a)) / 864e5));
+function ibWhen(t) {
+    const d = new Date(t);
+    const n = Math.round((ibDayStart(t) - ibDayStart(ibNow())) / 864e5);
+    const h = d.getHours();
+    const hh = h === 0 ? '12am' : h < 12 ? h + 'am' : h === 12 ? '12pm' : h - 12 + 'pm';
+    return (n === 1 ? 'tomorrow' : IB_DAY[d.getDay()] + ' ' + d.getDate() + ' ' + IB_MON[d.getMonth()]) + ' at ' + hh;
+}
+const ibWhenShort = (t) => { const d = new Date(t); return IB_DAY[d.getDay()] + ' ' + d.getDate() + ' ' + IB_MON[d.getMonth()]; };
+const ibPropName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || 'the cottage';
+const ibDot = (k) => `<i class="ib-cd" style="background:var(--prop-${ibEsc(k)}, var(--accent))"></i>`;
+const ibFirst = (p) => String(p.name || '').trim().split(/[\s&]/)[0] || 'them';
+const ibSized = (svg, n) => svg.replace('<svg', `<svg width="${n}" height="${n}"`);
+const IB_IC = {
+    chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12z"/></svg>',
+    email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>',
+    form: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    bolt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+    dots: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg>',
+    send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+    chev: '<svg class="ib-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5 12.5 19a4.6 4.6 0 0 1-6.5-6.5l7.5-7.5a3 3 0 0 1 4.3 4.3L10.3 16.8a1.5 1.5 0 0 1-2.1-2.1L15 8"/></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+    phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5h2.6l1.6 4.2-2 1.3a11 11 0 0 0 6.2 6.2l1.3-2 4.2 1.6v2.6a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/></svg>',
+    house: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/></svg>',
+};
+const ibChIcon = (ch) => (ch === 'chat' ? IB_IC.chat : ch === 'form' ? IB_IC.form : IB_IC.email);
+const ibChWord = (ch) => (ch === 'chat' ? 'Chat' : ch === 'form' ? 'Enquiry form' : 'Email');
+
+/* ── Building the people ── */
+function ibBuild() {
+    const st = ibState();
+    /** @type {Map<string, any>} */
+    const map = new Map();
+    const get = (key) => {
+        let p = map.get(key);
+        if (!p) {
+            p = { key, name: '', nameRank: 0, emails: [], phone: '', bookings: [], enq: null, declined: [], threads: [], mails: [], sent: [] };
+            map.set(key, p);
+        }
+        return p;
+    };
+    const addEmail = (p, e) => { const v = ibEmail(e); if (v && p.emails.indexOf(v) < 0) p.emails.push(v); };
+    const named = (p, n, rank) => { const v = String(n || '').trim(); if (v && (!p.name || rank > p.nameRank)) { p.name = v; p.nameRank = rank; } };
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+            if (!b || b.id == null) return;
+            const p = get(ibKeyOf(b.email, b.phone, 'b:' + b.id));
+            p.bookings.push({ b, pk });
+            addEmail(p, b.email);
+            if (!p.phone && b.phone) p.phone = b.phone;
+            named(p, b.name, 3);
+        }));
+    } catch (e) { chbSwallow(e, 'inbox-bookings'); }
+    (Array.isArray(enquiries) ? enquiries : []).forEach((q) => {
+        const p = get(ibKeyOf(q.email, q.phone, 'q:' + q.dbId));
+        if (__ibApproving.has(q.dbId)) p.approving = q;
+        else if (!p.enq || ibT(q.receivedAt) > ibT(p.enq.receivedAt)) p.enq = q;
+        addEmail(p, q.email);
+        if (!p.phone && q.phone) p.phone = q.phone;
+        named(p, q.name, 2);
+    });
+    (Array.isArray(__declinedEnq) ? __declinedEnq : []).forEach((q) => {
+        const p = get(ibKeyOf(q.email, q.phone, 'q:' + q.dbId));
+        p.declined.push(q);
+        addEmail(p, q.email);
+        if (!p.phone && q.phone) p.phone = q.phone;
+        named(p, q.name, 2);
+    });
+    const seenT = new Set();
+    (Array.isArray(__msgThreads) ? __msgThreads : []).concat((__ibArchived || []).map((t) => Object.assign({}, t, { archived: 1 }))).forEach((t) => {
+        if (!t || seenT.has(t.thread_id)) return;
+        seenT.add(t.thread_id);
+        const p = get(ibKeyOf(t.email, '', 't:' + t.thread_id));
+        p.threads.push(t);
+        addEmail(p, t.email);
+        named(p, t.name, 1);
+    });
+    (Array.isArray(__mbxMessages) ? __mbxMessages : []).forEach((m) => {
+        const from = ibEmail(m.from);
+        if (!from) return;
+        const p = get(ibKeyOf(from, '', 'e:' + from));
+        p.mails.push(m);
+        addEmail(p, from);
+        named(p, mbxSender(m.fromRaw, m.from).name, 1);
+    });
+    (Array.isArray(__mbxSent) ? __mbxSent : []).forEach((s) => {
+        const to = ibEmail(s.to_email);
+        if (!to) return;
+        const p = get(ibKeyOf(to, '', 'e:' + to));
+        p.sent.push(s);
+        addEmail(p, to);
+    });
+    const people = [...map.values()];
+    // Who is who. A name alone NEVER joins two people; it only suggests a link.
+    const known = new Map();
+    people.forEach((p) => {
+        if (!p.bookings.length && !p.enq && !p.declined.length) return;
+        const n = String(p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (n.indexOf(' ') < 0) return;
+        known.set(n, known.has(n) ? null : p.key);
+    });
+    people.forEach((p) => {
+        if (!p.name) p.name = p.emails[0] || (p.phone ? p.phone : 'Website visitor');
+        const guest = p.bookings.length || p.enq || p.approving || p.declined.length;
+        const inbound = p.mails.map((m) => m.subject + ' ' + (m.preview || '')).concat(p.threads.map((t) => t.last_role === 'guest' ? t.last_body || '' : '')).join(' ');
+        if (guest) p.kind = 'guest';
+        else if (p.mails.length && !p.threads.length && p.emails.length && p.emails.every((e) => IB_AUTO_RE.test(e))) p.kind = 'auto';
+        else {
+            const n = String(p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const target = known.get(n);
+            if (target && target !== p.key && p.emails.length) { p.kind = 'unlinked'; p.linkTo = target; }
+            else p.kind = IB_LEAD_RE.test(inbound) ? 'lead' : 'other';
+        }
+        p.items = ibItems(p);
+        const h = p.items.filter((i) => i.who !== 'sys');
+        p.lastHuman = h[h.length - 1] || null;
+        p.lastThem = h.filter((i) => i.who === 'them').pop() || null;
+        p.lastAt = p.items.reduce((m, i) => Math.max(m, i.t || 0), st.reminded[p.key] || 0);
+        p.unreadSrc = p.threads.some((t) => !t.archived && (t.unread || 0) > 0) || p.mails.some((m) => !m.seen) || !!(p.enq && !p.enq.seenAt);
+        if (!p.lastAt && p.enq) p.lastAt = ibT(p.enq.receivedAt);
+    });
+    __ibPeople = people.filter((p) => p.items.length || p.enq || p.approving);
+    __ibPeopleMap = new Map(__ibPeople.map((p) => [p.key, p]));
+    return __ibPeople;
+}
+function ibItems(p) {
+    const it = [];
+    const enqs = (p.enq ? [p.enq] : []).concat(p.approving ? [p.approving] : [], p.declined);
+    enqs.forEach((q) => {
+        it.push({ who: 'them', ch: 'form', t: ibT(q.receivedAt || q.received), text: q.message || 'Sent an enquiry without a message.', enq: q });
+        if (q.declinedAt) it.push({ who: 'sys', icon: 'x', t: ibT(q.declinedAt), text: 'Enquiry declined' });
+    });
+    p.bookings.forEach(({ b, pk }) => {
+        if (b.createdAt) it.push({ who: 'sys', icon: 'house', t: ibT(b.createdAt), text: `Booked · ${ibPropName(pk)} · ${ibRange(b.checkIn, b.checkOut)}` });
+        const logs = (bookingEmailLogs && bookingEmailLogs[String(b.dbId)]) || [];
+        logs.forEach((l) => {
+            if (l.body) it.push({ who: 'me', ch: 'email', t: ibT(l.at), subj: l.subject || '', text: l.body });
+            else if (l.summary) it.push({ who: 'sys', icon: 'email', t: ibT(l.at), text: l.summary });
+        });
+    });
+    p.threads.forEach((t) => {
+        const full = __ibThreadMsgs[t.thread_id];
+        if (full) {
+            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '' }));
+        } else if (t.last_at) {
+            it.push({ who: t.last_role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(t.last_at), text: t.last_body || '', summary: true });
+        }
+    });
+    p.mails.forEach((m) => {
+        const full = __ibMailBody[m.uid];
+        it.push({ who: 'them', ch: 'email', t: ibT(m.date), subj: m.subject || '', text: full ? full.text : (m.preview || ''), quoted: full ? full.quoted : '', attach: full ? full.attach : '', uid: m.uid, partial: !full });
+    });
+    p.sent.forEach((s) => it.push({ who: 'me', ch: 'email', t: ibT(s.sent_at), subj: s.subject || '', text: s.body || '' }));
+    (__ibLocal[p.key] || []).forEach((l) => {
+        if (l.pending || !it.some((x) => x.who === 'me' && x.text === l.text && Math.abs(x.t - l.t) < 30 * 60e3)) it.push(l);
+    });
+    return it.filter((i) => i.t).sort((a, b) => a.t - b.t);
+}
+
+/* ── The rules ── */
+const ibPendingEnq = (p) => !!(p && p.enq);
+const ibSnoozed = (p) => { const r = ibState().remind[p.key]; return !!(r && r > ibNow()); };
+function ibDone(p) {
+    const d = ibState().done[p.key];
+    if (!d) return false;
+    return !(p.lastThem && p.lastThem.t > d) && !(p.enq && ibT(p.enq.receivedAt) > d);
+}
+const ibInList = (p) => !ibDone(p) && !ibSnoozed(p);
+const ibReminded = (p) => ibState().reminded[p.key] || 0;
+const ibUnread = (p) => !!(ibState().unread[p.key] || p.unreadSrc);
+function ibWaiting(p) {
+    if (p.kind === 'auto') return false;
+    if (ibPendingEnq(p) || __ibDecline[p.key] || ibReminded(p)) return true;
+    const h = p.lastHuman;
+    if (!h || h.who !== 'them') return false;
+    const cl = ibState().cleared[p.key];
+    if (cl && cl >= h.t) return false;
+    // THE FIRST OPEN DRAWS A LINE: mail and chat already read before the new Inbox
+    // existed were mostly answered somewhere it cannot see, so they do not wait.
+    const since = ibState().since;
+    if (since && h.t < since && !ibUnread(p)) return false;
+    return true;
+}
+function ibWaitSince(p) {
+    const r = ibReminded(p);
+    if (r) return r;
+    const h = p.items.filter((i) => i.who !== 'sys');
+    let since = null;
+    for (let i = h.length - 1; i >= 0; i--) {
+        if (h[i].who === 'me') break;
+        since = h[i].t;
+    }
+    if (since == null && p.enq) since = ibT(p.enq.receivedAt);
+    return since == null ? p.lastAt : since;
+}
+const ibWaitDays = (p) => (ibWaiting(p) ? Math.floor((ibNow() - ibWaitSince(p)) / 864e5) : 0);
+function ibStayState(b) {
+    try {
+        if (hasCheckedOut(b)) return 'past';
+        if (hasCheckedIn(b)) return 'staying';
+    } catch (e) {}
+    return 'upcoming';
+}
+function ibCurrentStay(p) {
+    const live = p.bookings.filter((x) => ibStayState(x.b) !== 'past').sort((a, b) => String(a.b.checkIn).localeCompare(String(b.b.checkIn)));
+    if (live.length) return live[0];
+    return p.bookings.slice().sort((a, b) => String(b.b.checkIn).localeCompare(String(a.b.checkIn)))[0] || null;
+}
+const ibIsStaying = (p) => p.bookings.some((x) => ibStayState(x.b) === 'staying');
+function ibTag(p, mode) {
+    if (mode === 'done') return { tone: 'unk', text: 'Done' };
+    if (mode === 'snoozed') return { tone: 'unk', text: ibWhenShort(ibState().remind[p.key]) };
+    if (ibReminded(p)) return { tone: 'info', text: 'Reminder' };
+    if (ibPendingEnq(p)) return { tone: 'warn', text: 'Decide' };
+    if (ibWaiting(p) && ibIsStaying(p)) return { tone: 'bad', text: 'Reply now' };
+    if (p.declined.length && !p.bookings.length && !p.enq) return { tone: 'unk', text: 'Declined' };
+    return null;
+}
+function ibChanOptions(p) {
+    const o = [];
+    if (p.threads.length) o.push('chat');
+    if (p.emails.length && p.kind !== 'auto') o.push('email');
+    return o;
+}
+function ibChanFor(p) {
+    const opts = ibChanOptions(p);
+    if (__ibChan[p.key] && opts.includes(__ibChan[p.key])) return __ibChan[p.key];
+    const last = p.items.filter((i) => i.who === 'them').pop();
+    const want = last ? (last.ch === 'chat' ? 'chat' : 'email') : opts[0];
+    return opts.includes(want) ? want : opts[0];
+}
+function ibSortWaiting(a, b) {
+    const s = (ibIsStaying(b) ? 1 : 0) - (ibIsStaying(a) ? 1 : 0);
+    return s || ibWaitSince(a) - ibWaitSince(b);
+}
+function ibAvail(q) {
+    try { return enquiryAvailability(q); } catch (e) { return null; }
+}
+function ibEnqFigures(q) {
+    const f = enquiryAskFigures(q);
+    return { total: f.total, deposit: f.askFig, inWindow: f.inWindow };
+}
+function ibCtxLine(p) {
+    if (p.kind === 'auto') return 'Automatic email';
+    if (p.kind === 'unlinked') return ibEsc(p.emails[0]) + ' · not linked';
+    if (p.kind === 'other') return 'Not a guest';
+    if (p.enq) { const q = p.enq; return `${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)}`; }
+    const s = ibCurrentStay(p);
+    if (s) {
+        const st = ibStayState(s.b);
+        return `${ibDot(s.pk)}${ibEsc(ibPropName(s.pk))} · ${st === 'past' ? 'stayed ' : ''}${ibRange(s.b.checkIn, s.b.checkOut)}${st === 'staying' ? ' · staying now' : ''}`;
+    }
+    if (p.declined.length) { const q = p.declined[0]; return `${ibDot(q.propKey)}${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)}`; }
+    if (p.kind === 'lead') return 'Asking about a stay';
+    return 'Not booked yet';
+}
+function ibMoney(s) {
+    try {
+        const g = /** @type {any} */ (bookingDue(s.pk, s.b) || {});
+        return { total: Number(g.total) || 0, paid: Number(g.paid) || 0, due: Math.max(0, Number(g.balance) || 0) };
+    } catch (e) {
+        return { total: 0, paid: 0, due: 0 };
+    }
+}
+function ibDepositBack(s) {
+    const b = s.b;
+    if (ibStayState(b) !== 'past') return 0;
+    const hs = b.holdStatus;
+    if (hs !== 'charged' && hs !== 'captured') return 0;
+    const back = (Number(b.holdAmount) || 0) - (Number(b.damagesReturned) || 0);
+    return back > 0.004 ? back : 0;
+}
+function ibStayLine(p) {
+    if (p.kind === 'auto') return `Automatic email from ${ibEsc(p.name)}`;
+    if (p.kind === 'unlinked') return `${ibEsc(p.emails[0])} · <span class="ib-warnword">not linked to a guest</span>`;
+    if (p.kind === 'other') return `${ibEsc(p.emails[0] || p.phone || '')} · not a guest`;
+    if (p.enq) { const q = p.enq; return `${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)}`; }
+    const s = ibCurrentStay(p);
+    if (s) {
+        const st = ibStayState(s.b);
+        const m = ibMoney(s);
+        let money = m.due > 0.004 ? `<span class="ib-warnword">${gbp(m.due)} to pay</span>` : 'paid in full';
+        if (ibDepositBack(s)) money = '<span class="ib-warnword">deposit to return</span>';
+        return `${ibDot(s.pk)}${ibEsc(ibPropName(s.pk))} · ${ibRange(s.b.checkIn, s.b.checkOut)}${st === 'staying' ? ' · staying now' : ''} · ${money}`;
+    }
+    if (p.kind === 'lead') return 'Not booked · asking about a stay';
+    return 'Not booked yet';
+}
+const ibInitials = (p) => String(p.name || '').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0].toUpperCase()).slice(0, 2).join('') || '?';
+function ibHue(p) {
+    let h = 0;
+    const s = String(p.key || p.name || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return h;
+}
+const ibAva = (p) => (p.kind === 'auto'
+    ? `<span class="ib-ava is-quiet" aria-hidden="true">${IB_IC.bolt}</span>`
+    : `<span class="ib-ava" style="--h:${ibHue(p)}" aria-hidden="true">${ibEsc(ibInitials(p))}</span>`);
+
+/* ── Search ── */
+const ibWords = (q) => q.toLowerCase().split(/\s+/).filter(Boolean);
+function ibHay(p) {
+    return [p.name, ...p.emails, p.phone || '', ...p.items.map((i) => (i.subj || '') + ' ' + (i.text || '')),
+        ...p.bookings.map((x) => ibPropName(x.pk)), p.enq ? ibPropName(p.enq.propKey) : ''].join(' ').toLowerCase();
+}
+const ibMatches = (p, q) => { const h = ibHay(p); return ibWords(q).every((w) => h.includes(w)); };
+function ibHighlight(text, q) {
+    let out = ibEsc(text);
+    ibWords(q).forEach((w) => {
+        const re = new RegExp('(' + ibEsc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+        out = out.replace(/(<[^>]+>)|([^<]+)/g, (m, tag, txt) => (tag || txt.replace(re, '<mark>$1</mark>')));
+    });
+    return out;
+}
+function ibHit(p, q) {
+    const ws = ibWords(q);
+    return p.items.filter((i) => i.who !== 'sys').slice().reverse()
+        .find((i) => ws.some((w) => ((i.subj || '') + ' ' + (i.text || '')).toLowerCase().includes(w))) || null;
+}
+function ibSnippet(text, q) {
+    const s = String(text || '');
+    const low = s.toLowerCase();
+    const w = ibWords(q).find((x) => low.includes(x));
+    const start = Math.max(0, (w ? low.indexOf(w) : 0) - 22);
+    return (start > 0 ? '…' : '') + s.slice(start, start + 110);
+}
+
+/* ── Drafts are kept per person, on this device ── */
+function ibDraft(key) { try { return localStorage.getItem('chb-ib-draft:' + key) || ''; } catch (e) { return ''; } }
+function ibDraftSet(key, v) {
+    try {
+        if (String(v || '').trim()) localStorage.setItem('chb-ib-draft:' + key, String(v).slice(0, 8000));
+        else localStorage.removeItem('chb-ib-draft:' + key);
+    } catch (e) {}
+}
+
+/* ── The list ── */
+function ibRoot() { return document.getElementById('ib'); }
+function ibListShell() {
+    const lp = /** @type {any} */ (document.getElementById('ib-list'));
+    if (!lp || lp.__ibShell) return;
+    lp.__ibShell = true;
+    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search people, cottages, messages" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div id="ib-rows"></div>`;
+    const q = /** @type {HTMLInputElement} */ (document.getElementById('ib-q'));
+    const clr = /** @type {HTMLButtonElement} */ (document.getElementById('ib-q-clear'));
+    q.addEventListener('input', () => { __ibQ = q.value.trim(); clr.hidden = !__ibQ; ibRenderList(); });
+    q.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (__ibQ) { __ibQ = ''; q.value = ''; clr.hidden = true; ibRenderList(); } else q.blur();
+            e.stopPropagation();
+        }
+        if (e.key === 'ArrowDown') { const r = /** @type {HTMLElement|null} */ (document.querySelector('#ib-rows .ib-row')); if (r) { e.preventDefault(); r.focus(); } }
+    });
+    clr.addEventListener('click', () => { __ibQ = ''; q.value = ''; clr.hidden = true; ibRenderList(); q.focus(); });
+}
+function ibRowHtml(p, mode) {
+    const quiet = p.kind === 'auto';
+    const tag = ibTag(p, mode);
+    const d = mode ? 0 : ibWaitDays(p);
+    const time = d >= 1 ? `<span class="ib-time is-age">${d} day${d === 1 ? '' : 's'}</span>` : `<span class="ib-time">${ibRel(p.lastAt)}</span>`;
+    const draft = ibDraft(p.key);
+    const hit = __ibQ ? ibHit(p, __ibQ) : null;
+    let prev = '';
+    if (draft.trim() && !__ibQ) prev = `<span class="ib-draftw">Draft</span><span>${ibEsc(draft)}</span>`;
+    else if (hit) prev = `${ibChIcon(hit.ch)}<span>${hit.who === 'me' ? 'You: ' : ''}${ibHighlight(ibSnippet(hit.text || hit.subj, __ibQ), __ibQ)}</span>`;
+    else {
+        const h = p.lastHuman || p.items[p.items.length - 1];
+        if (h) prev = `${ibChIcon(h.ch)}<span>${h.who === 'me' ? 'You: ' : ''}${ibEsc((quiet || !h.text) && h.subj ? h.subj : h.text)}</span>`;
+    }
+    const unread = ibUnread(p) && !quiet;
+    const label = [p.name, tag && tag.text, d >= 1 && `waiting ${d} day${d === 1 ? '' : 's'}`, unread && 'unread', draft.trim() && 'draft saved'].filter(Boolean).join(', ');
+    return `<div class="ib-rowwrap${__ibFresh.has(p.key) ? ' is-new' : ''}" data-key="${ibEsc(p.key)}">
+        <div class="ib-reveal" aria-hidden="true">${ibSized(IB_IC.check, 18)} Done</div>
+        <button type="button" class="ib-row${unread ? ' is-unread' : ''}${quiet ? ' is-quiet' : ''}${__ibOpen === p.key ? ' is-open' : ''}" data-ib="open" data-arg="${ibEsc(p.key)}" aria-label="${ibEsc(label)}"${__ibOpen === p.key ? ' aria-current="true"' : ''}>
+            ${ibAva(p)}
+            <span class="ib-name">${__ibQ ? ibHighlight(p.name, __ibQ) : ibEsc(p.name)}</span>
+            ${time}
+            <span class="ib-line2"><span class="ib-rctx">${ibCtxLine(p)}</span>${tag ? `<span class="ib-tag"><span class="ib-cap ${tag.tone}">${ibEsc(tag.text)}</span></span>` : ''}</span>
+            <span class="ib-prev">${prev}</span>
+        </button></div>`;
+}
+function ibFireReminders() {
+    const st = ibState();
+    let n = 0;
+    Object.keys(st.remind).forEach((k) => {
+        if (st.remind[k] <= ibNow()) {
+            st.reminded[k] = st.remind[k];
+            st.unread[k] = ibNow();
+            delete st.remind[k];
+            __ibFresh.add(k);
+            n++;
+        }
+    });
+    if (n) ibStateSave();
+    return n;
+}
+function ibRenderList() {
+    const host = document.getElementById('ib-rows');
+    if (!host) return;
+    const all = __ibPeople;
+    const live = all.filter(ibInList);
+    const wait = live.filter(ibWaiting).sort(ibSortWaiting);
+    const rest = live.filter((p) => !ibWaiting(p)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 60);
+    const later = all.filter((p) => !ibDone(p) && ibSnoozed(p)).sort((a, b) => ibState().remind[a.key] - ibState().remind[b.key]);
+    const done = all.filter(ibDone).sort((a, b) => b.lastAt - a.lastAt).slice(0, 60);
+    ibPill(wait);
+    __ibOrder = [];
+    const group = (cap, list, mode, attn) => {
+        if (!list.length) return '';
+        __ibOrder.push(...list.map((p) => p.key));
+        return `<div class="ib-capline${attn ? ' is-attn' : ''}"><span>${cap}</span></div><div class="ib-rows" role="group" aria-label="${ibEsc(cap)}">${list.map((p) => ibRowHtml(p, mode)).join('')}</div>`;
+    };
+    let html = '';
+    if (__ibQ) {
+        const hits = all.filter((p) => ibMatches(p, __ibQ)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 80);
+        html = hits.length
+            ? group(`${hits.length} found`, hits, null)
+            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and every message, done or not.</div>`;
+    } else if (!all.length && !__ibLoaded) {
+        html = skelRows(4);
+    } else {
+        html += group('Waiting on you', wait, null, true);
+        html += group(wait.length ? 'Earlier' : 'Recent', rest, null);
+        html += group('Reminders', later, 'snoozed');
+        if (__ibShowDone) html += group('Done', done, 'done');
+        if (!wait.length && !rest.length && !later.length) html += '<div class="ib-empty"><b>Nothing here yet</b>Enquiries, chats and emails arrive here, one row per person.</div>';
+        html += '<div class="ib-foot">';
+        if (done.length) html += `<button type="button" class="ib-linkbtn" data-ib="toggle-done" aria-expanded="${__ibShowDone}">${__ibShowDone ? 'Hide' : 'Show'} ${done.length} done</button>`;
+        if (__mbxFailed) html += '<p class="ib-note">The mailbox didn’t answer, so emails may be missing. <button type="button" class="ib-linkbtn" data-ib="retry-mail">Try again</button></p>';
+        html += '<p class="ib-kbd"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>E</kbd> done · <kbd>R</kbd> reply · <kbd>/</kbd> search · <kbd>Z</kbd> undo</p></div>';
+    }
+    const ae = document.activeElement;
+    const wrap = ae && ae.closest ? ae.closest('#ib-rows .ib-rowwrap') : null;
+    const focusKey = wrap ? wrap.getAttribute('data-key') : null;
+    host.innerHTML = html;
+    if (focusKey) {
+        const r = /** @type {HTMLElement|null} */ (host.querySelector(`.ib-rowwrap[data-key="${CSS.escape(focusKey)}"] .ib-row`));
+        if (r) r.focus({ preventScroll: true });
+    }
+    __ibFresh.clear();
+}
+// The page's status is the Manage pill beside the title, as on every other page.
+function ibPill(wait) {
+    const n = wait.length;
+    const html = !__ibLoaded && !n
+        ? ''
+        : n
+          ? headPill(wait.some(ibIsStaying) ? 'bad' : 'warn', `${n} waiting`, { label: `${n} ${n === 1 ? 'person is' : 'people are'} waiting on you` })
+          : headPill('ok', 'All answered');
+    headPillSet('ib-pill', html);
+}
+
+/* ── The conversation ── */
+function ibThreadHtml(p) {
+    let out = '', lastDay = null, prevCh = null;
+    const items = p.items;
+    const same = (a, b) => a && b && a.who !== 'sys' && b.who !== 'sys' && a.who === b.who && a.ch === b.ch && Math.abs(b.t - a.t) < 15 * 60000 && ibDayStart(a.t) === ibDayStart(b.t);
+    items.forEach((it, idx) => {
+        if (ibDayStart(it.t) !== lastDay) { out += `<div class="ib-daysep">${ibSep(it.t)}</div>`; lastDay = ibDayStart(it.t); }
+        const fresh = __ibFreshMsgs.has(it) ? ' is-new' : '';
+        if (it.who === 'sys') {
+            const ic = it.icon === 'x' ? IB_IC.x : it.icon === 'house' ? IB_IC.house : it.icon === 'link' ? IB_IC.link : it.icon === 'email' ? IB_IC.email : IB_IC.check;
+            out += `<div class="ib-event${it.tone === 'good' ? ' is-good' : ''}${fresh}">${ic}<span>${ibEsc(it.text)} · ${ibClock(it.t)}</span></div>`;
+            return;
+        }
+        const cont = same(items[idx - 1], it);
+        const tail = !same(it, items[idx + 1]);
+        let body = '';
+        if (it.ch === 'form' && it.enq) {
+            const q = it.enq;
+            body += `<div class="ib-enqh">${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)} · ${ibEsc(q.guests || '')}</div>`;
+        } else if (it.ch === 'email' && it.subj && !cont) body += `<div class="ib-subj">${IB_IC.email}<span>${ibEsc(it.subj)}</span></div>`;
+        body += `<div class="ib-text">${ibEsc(it.text || (it.partial ? 'Opening…' : ''))}</div>`;
+        if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
+        if (it.quoted) {
+            const qid = `ib-q-${idx}`;
+            body += `<button type="button" class="ib-quotebtn" data-ib="quote" data-arg="${qid}" aria-expanded="false" aria-controls="${qid}">Show the rest of the email</button><div class="ib-quoted" id="${qid}" hidden>${ibEsc(it.quoted)}</div>`;
+        }
+        let meta = '';
+        if (tail) {
+            const word = it.ch !== prevCh ? ibChWord(it.ch) + ' · ' : '';
+            const state = it.pending ? 'Sending… <button type="button" class="ib-undo" data-ib="undo-pending" aria-label="Undo: don’t send this">Undo</button>' : it.failed ? '<span class="ib-failed">Not sent</span>' : ibClock(it.t);
+            const seen = it.who === 'me' && it.ch === 'chat' && !it.pending && !it.failed && !it.summary ? (it.seen ? ' · <span class="ib-seen">Seen</span>' : ' · Delivered') : '';
+            meta = `<div class="ib-meta">${ibChIcon(it.ch)}${word}${state}${seen}</div>`;
+        }
+        prevCh = it.ch;
+        out += `<div class="ib-msg is-${it.who}${cont ? ' is-cont' : ''}${tail ? ' is-tail' : ''}${it.pending ? ' is-pending' : ''}${fresh}" data-i="${idx}"><div class="ib-bub">${body}</div>${meta}</div>`;
+    });
+    __ibFreshMsgs.clear();
+    return out;
+}
+function ibDecideHtml(p) {
+    if (__ibDecline[p.key]) {
+        return `<div class="ib-decide is-after"><div class="ib-decide-top"><span class="ib-decide-cap">Declined. ${ibEsc(ibFirst(p))} is waiting to hear back.</span></div>
+            <div class="ib-decide-acts"><button type="button" class="ib-btn is-second" data-ib="decline-quiet">Not now</button><button type="button" class="ib-btn is-primary is-grow" data-ib="decline-write">Write the reply</button></div></div>`;
+    }
+    if (!p.enq) return '';
+    const q = p.enq;
+    const av = ibAvail(q);
+    const n = ibNights(q.checkIn, q.checkOut);
+    if (!av || av.free) {
+        const f = ibEnqFigures(q);
+        return `<div class="ib-decide is-free"><div class="ib-decide-top"><span class="ib-decide-cap">✓ Dates free · ${n} night${n === 1 ? '' : 's'}</span>${f.total != null ? `<span class="ib-decide-fig">${gbp(f.total)} in total</span>` : ''}</div>
+            <div class="ib-decide-acts"><button type="button" class="ib-btn is-second" data-ib="decline">Decline</button><button type="button" class="ib-btn is-approve is-grow" data-ib="approve"${f.deposit != null ? ` aria-label="Approve: sends the confirmation and asks for ${gbp(f.deposit)}${f.inWindow ? ', the full amount' : ' as the deposit'}"` : ''}><span>Approve</span>${f.deposit != null ? `<small>${gbp(f.deposit)} ${f.inWindow ? 'in full' : 'deposit'}</small>` : ''}</button></div></div>`;
+    }
+    let near = [];
+    try { near = enquiryFreeNearby(q) || []; } catch (e) {}
+    const alt = near[0] ? String(near[0]) : '';
+    return `<div class="ib-decide is-taken"><div class="ib-decide-top"><span class="ib-decide-cap">Dates taken</span></div>
+        <p>${ibEsc(av.text || 'Another stay has these dates.')}${near.length ? ` · free ${ibEsc(near.join(' or '))}` : ''}</p>
+        <div class="ib-decide-acts"><button type="button" class="ib-btn is-second" data-ib="decline">Decline</button><button type="button" class="ib-btn is-primary is-grow" data-ib="offer">${alt ? 'Offer ' + ibEsc(alt) : 'Offer other dates'}</button></div></div>`;
+}
+function ibComposerHtml(p) {
+    if (p.kind === 'auto') return `<div class="ib-autonote"><span>Automatic email. Nothing to reply to.</span><button type="button" class="ib-btn is-second" data-ib="done">${IB_IC.check}Done</button></div>`;
+    const opts = ibChanOptions(p);
+    if (!opts.length) return '<div class="ib-autonote"><span>No way to reach them from here: no email address and no chat.</span></div>';
+    const ch = ibChanFor(p);
+    const btn = (k, label) => {
+        const ok = opts.includes(k);
+        const why = k === 'chat' ? `${ibFirst(p)} hasn’t used the chat` : 'No email address';
+        return `<button type="button" aria-pressed="${ch === k}" data-ib="chan" data-arg="${k}"${ok ? '' : ` disabled title="${ibEsc(why)}" aria-label="${ibEsc(label + ': ' + why)}"`}>${k === 'chat' ? IB_IC.chat : IB_IC.email}${label}</button>`;
+    };
+    const lastSubj = p.items.filter((i) => i.who !== 'sys' && i.subj).pop();
+    const note = ch === 'chat' ? (p.emails.length ? `Also emailed to ${ibEsc(ibFirst(p))}` : '') : lastSubj ? ibEsc(/^re:/i.test(lastSubj.subj) ? lastSubj.subj : 'Re: ' + lastSubj.subj) : '';
+    const draft = ibDraft(p.key);
+    const chips = [];
+    if (ibReminded(p)) chips.push('<button type="button" class="ib-chip" data-ib="menu">Remind me again</button>');
+    return `${chips.length ? `<div class="ib-sugg" role="group" aria-label="Suggestions"${draft.trim() ? ' hidden' : ''}>${chips.join('')}</div>` : ''}
+        <div class="ib-comp">
+            <textarea id="ib-reply" rows="1" placeholder="Reply to ${ibEsc(ibFirst(p))}" aria-label="Reply to ${ibEsc(p.name)}">${ibEsc(draft)}</textarea>
+            <div class="ib-compfoot"><div class="ib-chan" role="group" aria-label="Reply by">${btn('chat', 'Chat')}${btn('email', 'Email')}</div><span class="ib-compnote">${note}</span><button type="button" class="ib-send" id="ib-send" data-ib="send" aria-label="Send by ${ch}"${draft.trim() ? '' : ' disabled'}>${IB_IC.send}</button></div>
+        </div>`;
+}
+function ibMoneyHtml(s) {
+    const m = ibMoney(s);
+    if (!m.total) return '';
+    const pct = Math.max(0, Math.min(100, Math.round((m.paid / m.total) * 100)));
+    let dueBy = '';
+    try { const d = bookingPlanDueDate(s.b); if (d && m.due > 0.004) dueBy = ` by ${fmtDate(d)}`; } catch (e) {}
+    let sub = m.due > 0.004 ? `<span class="ib-warnword">${gbp(m.due)} to pay</span>${dueBy}` : 'Paid in full ✓';
+    const back = ibDepositBack(s);
+    if (back) sub = `Paid in full · <span class="ib-warnword">${gbp(back)} deposit to return</span>`;
+    return `<div class="ib-kvs ib-money"><div class="ib-money-top"><span>Paid</span><b>${gbp(m.paid)} <small>of ${gbp(m.total)}</small></b></div>
+        <div class="ib-bar" role="img" aria-label="${pct}% paid"><i style="width:${pct}%"></i></div><div class="ib-money-sub">${sub}</div></div>`;
+}
+function ibCtxHtml(p) {
+    let h = '';
+    const past = p.bookings.filter((x) => ibStayState(x.b) === 'past').length;
+    const n = p.bookings.length;
+    const who = p.kind === 'auto' ? 'Automatic email'
+        : p.kind === 'other' ? 'Not a guest'
+          : p.kind === 'unlinked' ? 'Not linked to a guest'
+            : p.kind === 'lead' ? 'Not a guest yet'
+              : past >= 1 && n > 1 ? `${['', '', 'Second', 'Third', 'Fourth', 'Fifth'][n] || n + 'th'} stay with you`
+                : past >= 1 ? 'Stayed with you' : n ? 'First stay with you' : 'New to you';
+    h += `<div class="ib-person">${ibAva(p)}<div><b>${ibEsc(p.name)}</b><small>${ibEsc(who)}</small></div></div>`;
+    if (p.kind === 'auto') return h + '<p class="ib-ctxnote">Automatic mail never counts as waiting and has no reply box.</p>';
+    const stay = ibCurrentStay(p);
+    h += `<div class="ib-qa">
+        ${p.phone ? `<a href="tel:${ibEsc(String(p.phone).replace(/[^0-9+]/g, ''))}" aria-label="Call ${ibEsc(p.phone)}">${IB_IC.phone}Call</a>` : `<button type="button" disabled aria-label="No phone number">${IB_IC.phone}Call</button>`}
+        <button type="button" data-ib="chan" data-arg="email"${ibChanOptions(p).includes('email') ? '' : ' disabled'} aria-label="Reply by email">${IB_IC.email}Email</button>
+        <button type="button" data-ib="record"${stay || p.enq || p.declined.length ? '' : ' disabled'}>${IB_IC.house}${stay ? 'Booking' : 'Enquiry'}</button>
+    </div>`;
+    if (p.kind === 'unlinked') {
+        const g = __ibPeopleMap.get(p.linkTo);
+        const s = g && ibCurrentStay(g);
+        return h + `<div class="ib-linkcard"><p>This address isn’t on any booking. A guest has the same name:</p>
+            ${g ? `<div class="ib-kvs"><div class="ib-kv is-head"><span>${ibEsc(g.name)}</span></div>${s ? `<div class="ib-kv is-stack"><span>Booking</span><span>${ibDot(s.pk)}${ibEsc(ibPropName(s.pk))} · ${ibRange(s.b.checkIn, s.b.checkOut)}</span></div>` : ''}${g.emails[0] ? `<div class="ib-kv is-stack"><span>Email on the booking</span><span>${ibEsc(g.emails[0])}</span></div>` : ''}</div>` : ''}
+            <button type="button" class="ib-btn is-primary" data-ib="link">${IB_IC.link}Yes, this is ${ibEsc(g ? ibFirst(g) : 'them')}</button>
+            <p class="ib-ctxnote">Names alone never join two conversations. You confirm once, and the address joins ${ibEsc(g ? ibFirst(g) + '’s' : 'their')} conversation.</p></div>`;
+    }
+    if (p.kind === 'lead' || p.kind === 'other') {
+        h += `<div class="ib-linkcard"><p>Not booked. If they are asking about a stay, make it an enquiry to check the calendar and decide here.</p>
+            <button type="button" class="ib-btn is-primary" data-ib="lead-make">Make it an enquiry</button></div>`;
+    }
+    const enq = p.enq || (!n ? p.declined[0] : null);
+    if (enq) {
+        const av = p.enq ? ibAvail(enq) : null;
+        const cap = !p.enq ? '<span class="ib-cap unk">Declined</span>' : !av || av.free ? '<span class="ib-cap ok">✓ Dates free</span>' : '<span class="ib-cap bad">Dates taken</span>';
+        const f = ibEnqFigures(enq);
+        h += `<div class="ib-ctxcap">Enquiry</div><div class="ib-kvs">
+            <div class="ib-kv is-head"><span>${ibDot(enq.propKey)}${ibEsc(ibPropName(enq.propKey))}</span>${cap}</div>
+            <div class="ib-kv"><span>Dates</span><span>${ibRange(enq.checkIn, enq.checkOut)} · ${ibNights(enq.checkIn, enq.checkOut)} nights</span></div>
+            <div class="ib-kv"><span>Party</span><span>${ibEsc(enq.guests || '')}</span></div>
+            ${f.total != null ? `<div class="ib-kv"><span>Quote</span><span>${gbp(f.total)}</span></div>` : ''}
+            ${p.enq && f.deposit != null ? `<div class="ib-kv"><span>${f.inWindow ? 'Asked on approval' : 'Deposit on approval'}</span><span>${gbp(f.deposit)}</span></div>` : ''}</div>`;
+    }
+    if (n) {
+        const sorted = p.bookings.slice().sort((a, b) => String(b.b.checkIn).localeCompare(String(a.b.checkIn)));
+        const idx = __ibStayPick[p.key] != null ? __ibStayPick[p.key] : sorted.indexOf(stay);
+        const s = sorted[idx] || sorted[0];
+        h += `<div class="ib-ctxcap">${sorted.length > 1 ? 'Stays' : 'Stay'}</div>`;
+        if (sorted.length > 1) h += `<div class="ib-staytabs" role="group" aria-label="Their stays">${sorted.map((x, i) => `<button type="button" aria-pressed="${x === s}" data-ib="stay" data-arg="${i}">${IB_MON[ibIso(x.b.checkIn).getMonth()]} ${ibIso(x.b.checkIn).getFullYear()}</button>`).join('')}</div>`;
+        const st = ibStayState(s.b);
+        const days = Math.round((+ibIso(s.b.checkIn) - ibDayStart(ibNow())) / 864e5);
+        const cap = st === 'staying' ? '<span class="ib-cap ok">Staying now</span>' : st === 'upcoming' ? `<span class="ib-cap info">${days <= 0 ? 'Arrives today' : days === 1 ? 'Tomorrow' : 'In ' + days + ' days'}</span>` : '<span class="ib-cap unk">Past</span>';
+        const r = s.b.guestRating && s.b.guestRating.overall;
+        h += `<div class="ib-kvs">
+            <div class="ib-kv is-head"><span>${ibDot(s.pk)}${ibEsc(ibPropName(s.pk))}</span>${cap}</div>
+            <div class="ib-kv"><span>Dates</span><span>${ibRange(s.b.checkIn, s.b.checkOut)} · ${ibNights(s.b.checkIn, s.b.checkOut)} nights</span></div>
+            <div class="ib-kv"><span>Party</span><span>${ibEsc(s.b.guests || '')}</span></div>
+            ${r ? `<div class="ib-kv"><span>Your rating</span><span class="ib-stars" aria-label="${r} stars">${'★'.repeat(r)}</span></div>` : ''}
+        </div>${ibMoneyHtml(s)}`;
+    }
+    const opts = ibChanOptions(p);
+    h += `<div class="ib-ctxcap">Contact</div><div class="ib-kvs">
+        ${p.emails.map((e) => `<div class="ib-kv is-stack"><span>Email</span><span class="ib-copyrow"><span>${ibEsc(e)}</span><button type="button" data-ib="copy" data-arg="${ibEsc(e)}" aria-label="Copy ${ibEsc(e)}">Copy</button></span></div>`).join('')}
+        ${p.phone ? `<div class="ib-kv is-stack"><span>Phone</span><span class="ib-copyrow"><span>${ibEsc(p.phone)}</span><button type="button" data-ib="copy" data-arg="${ibEsc(p.phone)}" aria-label="Copy ${ibEsc(p.phone)}">Copy</button></span></div>` : ''}
+        <div class="ib-kv"><span>Reachable by</span><span>${opts.length ? opts.map((x) => (x === 'chat' ? 'Chat' : 'Email')).join(' and ') : 'Phone only'}</span></div>
+    </div>`;
+    return h;
+}
+function ibMenuHtml(p) {
+    const s = ibCurrentStay(p);
+    const now = new Date();
+    const at9 = (d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); return x; };
+    const tom = at9(now.getTime() + 864e5);
+    const mon = at9(now.getTime() + (((8 - now.getDay()) % 7) || 7) * 864e5);
+    const rem = [['tomorrow', 'Tomorrow', `${IB_DAY[tom.getDay()]} 9am`]];
+    if (mon.getTime() !== tom.getTime()) rem.push(['monday', 'Monday', 'Mon 9am']);
+    if (s && ibStayState(s.b) === 'upcoming') {
+        const d = at9(+ibIso(s.b.checkIn) - 864e5);
+        if (d.getTime() > tom.getTime()) rem.push(['arrival', 'Before they arrive', `${IB_DAY[d.getDay()]} ${d.getDate()} ${IB_MON[d.getMonth()]}`]);
+    }
+    return `<div class="ib-menu" role="menu" aria-label="More for ${ibEsc(p.name)}">
+        <div class="ib-menucap">Remind me</div>
+        ${rem.map(([k, l, w]) => `<button type="button" role="menuitem" data-ib="remind" data-arg="${k}"><span class="ib-mi">${l}</span><small>${w}</small></button>`).join('')}
+        <hr>
+        <button type="button" role="menuitem" data-ib="unread"><span class="ib-mi">Mark as unread</span></button>
+        ${p.kind === 'unlinked' ? '<button type="button" role="menuitem" data-ib="link"><span class="ib-mi">Link to a guest</span></button>' : ''}
+        ${p.emails.length ? `<button type="button" role="menuitem" data-ib="copy" data-arg="${ibEsc(p.emails[0])}"><span class="ib-mi">Copy email address</span></button>` : ''}
+        ${s ? '<button type="button" role="menuitem" data-ib="record"><span class="ib-mi">Open the booking</span></button>' : p.enq ? '<button type="button" role="menuitem" data-ib="record"><span class="ib-mi">Open the enquiry</span></button>' : ''}
+    </div>`;
+}
+const ibWide = () => { const r = ibRoot(); return !!r && r.getBoundingClientRect().width >= 880; };
+const ibTriple = () => { const r = ibRoot(); return !!r && r.getBoundingClientRect().width >= 1180; };
+// The layout follows the room the Inbox has, not the window: the rail and the
+// page gutters take a share of it.
+function ibLayout() {
+    const r = ibRoot();
+    if (!r) return;
+    const wide = ibWide();
+    r.classList.toggle('is-wide', wide);
+    r.classList.toggle('is-triple', wide && ibTriple());
+    if (wide) { r.classList.remove('is-conv'); document.body.classList.remove('ib-conv-open'); }
+}
+function ibRenderConv() {
+    const pane = document.getElementById('ib-conv');
+    if (!pane) return;
+    const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+    if (!p) {
+        pane.innerHTML = '<div class="ib-convempty">Pick someone on the left. Everything they have sent you is in one place.</div>';
+        __ibRendered = null;
+        return;
+    }
+    const active = /** @type {any} */ (document.activeElement);
+    const typing = active && active.id === 'ib-reply' && __ibRendered === __ibOpen ? [active.selectionStart, active.selectionEnd] : null;
+    const prev = pane.querySelector('.ib-thread');
+    const keep = __ibRendered === p.key && prev ? prev.scrollTop : null;
+    const nearBottom = prev ? prev.scrollHeight - prev.scrollTop - prev.clientHeight < 80 : true;
+    const canCall = p.phone && ibIsStaying(p);
+    const done = ibDone(p);
+    pane.innerHTML = `
+        <div class="ib-head">
+            <button type="button" class="ib-back" data-ib="close">${IB_IC.back}Inbox</button>
+            <div class="ib-title">
+                <h2 class="ib-hname">${ibEsc(p.name)}</h2>
+                <button type="button" class="ib-stayline" data-ib="ctx" aria-expanded="${__ibCtxOpen}" aria-controls="ib-ctxdrop"><span class="ib-txt">${ibStayLine(p)}</span>${IB_IC.chev}</button>
+            </div>
+            <div class="ib-acts">
+                ${canCall ? `<a class="ib-iconbtn" href="tel:${ibEsc(String(p.phone).replace(/[^0-9+]/g, ''))}" aria-label="Call ${ibEsc(p.phone)}" title="Call">${IB_IC.phone}</a>` : ''}
+                <button type="button" class="ib-iconbtn${done ? ' is-on' : ''}" data-ib="${done ? 'undone' : 'done'}" aria-label="${done ? 'Done. Put back in the list' : 'Done: leave the list until they write again'}" title="Done (E)">${IB_IC.check}</button>
+                <button type="button" class="ib-iconbtn" data-ib="menu" aria-label="More" aria-haspopup="menu" aria-expanded="${__ibMenuOpen}">${IB_IC.dots}</button>
+                ${__ibMenuOpen ? ibMenuHtml(p) : ''}
+            </div>
+            <div class="ib-ctxdrop${__ibCtxOpen ? ' is-open' : ''}" id="ib-ctxdrop"><div><div class="ib-ctx">${ibCtxHtml(p)}</div></div></div>
+        </div>
+        <div class="ib-thread" id="ib-thread" tabindex="0" aria-label="Messages with ${ibEsc(p.name)}">${ibThreadHtml(p)}</div>
+        <div class="ib-dock">${ibDecideHtml(p)}${ibComposerHtml(p)}</div>`;
+    const th = /** @type {HTMLElement} */ (document.getElementById('ib-thread'));
+    if (__ibJump) {
+        const el = /** @type {HTMLElement|null} */ (th.querySelector(`[data-i="${p.items.indexOf(__ibJump)}"]`));
+        __ibJump = null;
+        if (el) { th.scrollTop = Math.max(0, el.offsetTop - th.clientHeight / 2); el.classList.add('is-flash'); }
+        else th.scrollTop = th.scrollHeight;
+    } else if (keep != null && !nearBottom) th.scrollTop = keep;
+    else ibFollow(th);
+    __ibRendered = p.key;
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('ib-reply'));
+    if (ta) {
+        const send = /** @type {HTMLButtonElement|null} */ (document.getElementById('ib-send'));
+        ta.addEventListener('input', () => {
+            const pin = ibAtBottom(th);
+            ibDraftSet(p.key, ta.value);
+            if (send) send.disabled = !ta.value.trim();
+            const sg = /** @type {HTMLElement|null} */ (pane.querySelector('.ib-sugg'));
+            if (sg) sg.hidden = !!ta.value.trim();
+            ibAutosize(ta);
+            if (pin) th.scrollTop = th.scrollHeight;
+        });
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ibSend(); }
+            if (e.key === 'Escape') { ta.blur(); e.stopPropagation(); }
+        });
+        ta.addEventListener('blur', () => { if (__ibOpen === p.key) ibRenderListSoon(); });
+        const pin = ibAtBottom(th);
+        ibAutosize(ta);
+        if (pin) th.scrollTop = th.scrollHeight;
+        if (typing) { ta.focus({ preventScroll: true }); try { ta.setSelectionRange(typing[0], typing[1]); } catch (e) {} }
+    }
+}
+let __ibListT = null;
+function ibRenderListSoon() { clearTimeout(__ibListT); __ibListT = setTimeout(ibRenderList, 60); }
+const ibAtBottom = (th) => th.scrollHeight - th.scrollTop - th.clientHeight < 80;
+// A new message grows into place, so the bottom keeps moving for a moment: follow it.
+let __ibFollow = 0;
+function ibFollow(th) {
+    const me = ++__ibFollow, until = performance.now() + 700;
+    const step = () => {
+        if (me !== __ibFollow || !th.isConnected) return;
+        th.scrollTop = th.scrollHeight;
+        if (performance.now() < until) requestAnimationFrame(step);
+    };
+    step();
+}
+function ibAutosize(ta) { ta.style.height = 'auto'; ta.style.height = Math.min(132, ta.scrollHeight) + 'px'; }
+function ibRenderCtx() {
+    const pane = document.getElementById('ib-side');
+    if (!pane) return;
+    const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+    pane.innerHTML = p ? `<div class="ib-ctx">${ibCtxHtml(p)}</div>` : '';
+}
+function ibRenderAll() {
+    ibRenderList();
+    ibRenderConv();
+    ibRenderCtx();
+}
+
+/* ── Rendering from the stores ── */
+// Every loader that fills a store calls this; renders coalesce to one frame.
+function ibSoon() {
+    if (__ibRenderQ) return;
+    __ibRenderQ = requestAnimationFrame(() => {
+        __ibRenderQ = 0;
+        ibRender();
+    });
+}
+function ibRender() {
+    const root = ibRoot();
+    if (!root) return;
+    ibWire(root);
+    ibListShell();
+    if (!ibState().since) {
+        ibState().since = ibNow();
+        ibStateSave();
+    }
+    ibFireReminders();
+    ibBuild();
+    if (__ibOpen && !__ibPeopleMap.has(__ibOpen)) __ibOpen = null;
+    if (!__ibOpen && ibWide()) ibAutoOpen();
+    root.classList.toggle('is-conv', !!__ibOpen && !ibWide());
+    ibFit();
+    ibRenderAll();
+    try { refreshInboxBadge(); } catch (e) {}
+}
+// The other stores the one list needs. Each loader keeps its own failure honest.
+function ibLoadAll(force) {
+    if (__ibLoaded && !force) return;
+    __ibLoaded = true;
+    const jobs = [];
+    if (typeof __mbxOpenedOnce !== 'undefined' && (!__mbxOpenedOnce || force)) {
+        __mbxOpenedOnce = true;
+        jobs.push(Promise.resolve(loadMailbox()).catch(() => {}));
+    }
+    jobs.push(apiPost('enquiries.php', { action: 'declined' }).then((r) => {
+        __declinedEnq = ((r && r.enquiries) || []).map(mapEnquiryFromApi);
+    }).catch(() => {}));
+    jobs.push(apiPost('messages.php', { action: 'threads', archived: 1 }).then((r) => {
+        __ibArchived = (r && r.threads) || [];
+    }).catch(() => {}));
+    jobs.push(Promise.resolve(loadBookingEmailLogs()).catch(() => {}));
+    jobs.forEach((j) => j.then(ibSoon));
+    ibSoon();
+}
+function ibAutoOpen() {
+    const live = __ibPeople.filter(ibInList);
+    const top = live.filter(ibWaiting).sort(ibSortWaiting)[0] || live.sort((a, b) => b.lastAt - a.lastAt)[0];
+    if (top) ibOpen(top.key, { quiet: true });
+}
+// On a computer the panes fill the screen below the page title; on a phone the
+// conversation fills the screen below the header.
+function ibFit() {
+    const root = ibRoot();
+    if (!root) return;
+    ibLayout();
+    const hdr = document.querySelector('header');
+    const top = hdr ? Math.max(0, hdr.getBoundingClientRect().bottom) : 0;
+    root.style.setProperty('--ib-top', top + 'px');
+    if (ibWide()) {
+        const r = root.getBoundingClientRect();
+        const h = Math.max(420, window.innerHeight - Math.max(r.top, top) - 16);
+        root.style.height = h + 'px';
+    } else root.style.height = '';
+}
+try { window.addEventListener('resize', () => { if (ibRoot() && ibRoot().offsetParent) { ibFit(); ibSoon(); } }); } catch (e) {}
+
+/* ── Opening someone ── */
+let __ibOpenStamp = 0;
+async function ibOpen(key, opts) {
+    const o = opts || {};
+    const p = __ibPeopleMap.get(key);
+    if (!p) return;
+    if (__ibOpen !== key) { __ibCtxOpen = false; __ibMenuOpen = false; }
+    if (__ibQ) __ibJump = ibHit(p, __ibQ);
+    __ibOpen = key;
+    const st = ibState();
+    if (st.unread[key]) { delete st.unread[key]; ibStateSave(); }
+    if (p.enq) { try { enquirySeen(p.enq); } catch (e) {} }
+    const root = ibRoot();
+    if (root && !ibWide()) {
+        root.classList.add('is-conv');
+        document.body.classList.add('ib-conv-open');
+    }
+    ibFit();
+    ibRenderAll();
+    ibToastPlace();
+    if (o.focusRow) {
+        const r = /** @type {HTMLElement|null} */ (document.querySelector(`#ib-rows .ib-rowwrap[data-key="${CSS.escape(key)}"] .ib-row`));
+        if (r) r.focus();
+    } else if (!ibWide() && o.kbd) setTimeout(() => { const b = /** @type {HTMLElement|null} */ (document.querySelector('#ib-conv .ib-back')); if (b) b.focus({ preventScroll: true }); }, 380);
+    // Fill in what the list only summarised: the whole chat, and each email's words.
+    const stamp = ++__ibOpenStamp;
+    const jobs = [];
+    p.threads.slice().sort((a, b) => ibT(b.last_at) - ibT(a.last_at)).slice(0, 3).forEach((t) => {
+        jobs.push(apiPost('messages.php', { action: 'thread', thread_id: t.thread_id }).then((r) => {
+            __ibThreadMsgs[t.thread_id] = (r && r.messages) || [];
+            t.unread = 0;
+        }).catch(() => {}));
+    });
+    p.mails.slice().sort((a, b) => ibT(b.date) - ibT(a.date)).slice(0, 8).forEach((m) => {
+        if (__ibMailBody[m.uid]) { m.seen = true; return; }
+        jobs.push(apiPost('mailbox.php', { action: 'read', uid: m.uid }).then((r) => {
+            let sp = { body: String((r && r.body) || ''), quoted: '', sig: '' };
+            try { sp = mbxSplit(r && r.body); } catch (e) {}
+            __ibMailBody[m.uid] = {
+                text: String(sp.body || '').trim(),
+                quoted: [sp.quoted, sp.sig].filter(Boolean).join('\n\n').trim(),
+                attach: ((r && r.attachments) || []).map((a) => a.name).join(', '),
+            };
+            m.seen = true;
+        }).catch(() => {}));
+    });
+    if (!jobs.length) return;
+    await Promise.all(jobs);
+    if (stamp !== __ibOpenStamp || __ibOpen !== key) return;
+    try { refreshInboxBadge(); } catch (e) {}
+    ibBuild();
+    ibRenderAll();
+}
+function ibClose() {
+    const key = __ibOpen;
+    const root = ibRoot();
+    if (root) root.classList.remove('is-conv');
+    document.body.classList.remove('ib-conv-open');
+    __ibMenuOpen = false;
+    __ibCtxOpen = false;
+    ibRenderList();
+    ibToastPlace();
+    setTimeout(() => {
+        const r = /** @type {HTMLElement|null} */ (key && document.querySelector(`#ib-rows .ib-rowwrap[data-key="${CSS.escape(key)}"] .ib-row`));
+        if (r) r.focus({ preventScroll: true });
+    }, 50);
+    setTimeout(() => {
+        const rt = ibRoot();
+        if (rt && !rt.classList.contains('is-conv') && !ibWide() && __ibOpen === key) { __ibOpen = null; ibRenderList(); }
+    }, 420);
+}
+function ibNextWaiting(skip) {
+    return __ibPeople.filter((p) => ibInList(p) && p.key !== skip).filter(ibWaiting).sort(ibSortWaiting)[0] || null;
+}
+function ibLeave(p) {
+    __ibMenuOpen = false;
+    if (__ibOpen === p.key) {
+        if (ibWide()) { const n = ibNextWaiting(p.key); __ibOpen = n ? n.key : null; }
+        else { const root = ibRoot(); if (root) root.classList.remove('is-conv'); document.body.classList.remove('ib-conv-open'); __ibOpen = null; }
+    }
+    ibBuild();
+    ibRenderAll();
+}
+
+/* ── The toast: placed where it covers nothing you are using ── */
+// Where the toast sits: over the list on a computer (where the row it talks about
+// was), under the header in a phone conversation (never over the title or the
+// reply box), at the foot of the phone list. Re-placed whenever the screen changes.
+function ibToastPlace() {
+    const t = document.getElementById('ib-toast');
+    if (!t) return;
+    const root = ibRoot();
+    const ar = root ? root.getBoundingClientRect() : t.getBoundingClientRect();
+    if (ibWide()) {
+        const lp = /** @type {HTMLElement} */ (document.getElementById('ib-list')).getBoundingClientRect();
+        Object.assign(t.style, { position: 'absolute', left: (lp.left - ar.left + 16) + 'px', right: (ar.right - lp.right + 16) + 'px', top: 'auto', bottom: '16px' });
+    } else if (root && root.classList.contains('is-conv')) {
+        const h = document.querySelector('#ib-conv .ib-head');
+        Object.assign(t.style, { position: 'fixed', left: '16px', right: '16px', top: ((h ? h.getBoundingClientRect().bottom : 120) + 8) + 'px', bottom: 'auto' });
+    } else Object.assign(t.style, { position: 'fixed', left: '16px', right: '16px', top: 'auto', bottom: 'calc(16px + var(--safe-b, 0px))' });
+}
+function ibToast(msg, opts) {
+    const o = opts || {};
+    const t = document.getElementById('ib-toast');
+    if (!t) { toast(msg); return; }
+    ibToastPlace();
+    /** @type {HTMLElement} */ (document.getElementById('ib-toast-msg')).textContent = msg;
+    const u = /** @type {HTMLButtonElement} */ (document.getElementById('ib-toast-undo'));
+    u.hidden = !o.undo;
+    u.onclick = () => { clearTimeout(__ibToastT); t.classList.remove('is-show'); __ibToastAt = 0; if (o.undo) o.undo(); };
+    t.classList.remove('is-show');
+    void t.offsetWidth;
+    t.classList.add('is-show');
+    __ibToastAt = o.undo ? Date.now() : 0;
+    clearTimeout(__ibToastT);
+    __ibToastT = setTimeout(() => { t.classList.remove('is-show'); __ibToastAt = 0; }, o.undo ? 6000 : 3600);
+}
+function ibAnnounce(text) {
+    const l = document.getElementById('ib-live');
+    if (!l) return;
+    l.textContent = '';
+    setTimeout(() => { l.textContent = text; }, 30);
+}
+/* A message being sent carries its own Undo, on the message, for five seconds. */
+function ibCommitHold() {
+    if (!__ibHold) return;
+    const h = __ibHold;
+    __ibHold = null;
+    clearTimeout(h.timer);
+    h.commit();
+}
+function ibHoldInline(commit, undo, say) {
+    ibCommitHold();
+    __ibHold = { commit, undo, at: Date.now(), timer: setTimeout(ibCommitHold, IB_HOLD_MS) };
+    ibAnnounce(say + ' Undo is on the message for five seconds.');
+}
+// Leaving the page or the app sends what is waiting: the Undo window is a courtesy,
+// never a way to lose a reply.
+try {
+    window.addEventListener('pagehide', ibCommitHold);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') ibCommitHold(); });
+} catch (e) {}
+
+/* ── Sending ── */
+function ibSubjectFor(p) {
+    const last = p.items.filter((i) => i.who !== 'sys' && i.subj).pop();
+    if (last) return /^re:/i.test(last.subj) ? last.subj : 'Re: ' + last.subj;
+    if (p.enq) return `Your enquiry for ${ibPropName(p.enq.propKey)}`;
+    const s = ibCurrentStay(p);
+    if (s) return `Your stay at ${ibPropName(s.pk)}`;
+    return 'Cottage Holidays Blakeney';
+}
+async function ibDeliver(p, ch, text, subj) {
+    if (ch === 'chat') {
+        const t = p.threads.slice().sort((a, b) => ibT(b.last_at) - ibT(a.last_at))[0];
+        await apiPost('messages.php', { action: 'send', thread_id: t.thread_id, body: text, op_id: chbOpFor({ ib: 'chat', t: t.thread_id, text }) });
+        chbOpBump();
+        return;
+    }
+    const s = ibCurrentStay(p);
+    const q = p.enq || p.declined[0];
+    if (s && s.b.email) {
+        await apiPost('bookings.php', { action: 'email_guest', id: s.b.dbId, subject: subj, message: text });
+    } else if (q && q.email) {
+        await apiPost('enquiries.php', { action: 'email_guest', id: q.dbId, subject: subj, message: text });
+    } else {
+        await apiPost('mailbox.php', { action: 'send', to: p.emails[0], subject: subj, body: text });
+    }
+}
+function ibSend() {
+    const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+    if (!p) return;
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('ib-reply'));
+    const text = (ta ? ta.value : ibDraft(p.key)).trim();
+    if (!text) return;
+    const ch = ibChanFor(p);
+    const subj = ch === 'email' ? ibSubjectFor(p) : '';
+    const item = { who: 'me', ch, t: ibNow(), subj, text, pending: true };
+    (__ibLocal[p.key] = __ibLocal[p.key] || []).push(item);
+    __ibFreshMsgs.add(item);
+    const st = ibState();
+    const hadReminded = st.reminded[p.key];
+    if (hadReminded) { delete st.reminded[p.key]; ibStateSave(); }
+    ibDraftSet(p.key, '');
+    ibBuild();
+    ibRenderAll();
+    ibHoldInline(
+        async () => {
+            item.pending = false;
+            ibRenderConv();
+            try {
+                await ibDeliver(p, ch, text, subj);
+                if (ch === 'chat') {
+                    try { const r = await apiPost('messages.php', { action: 'thread', thread_id: p.threads[0].thread_id }); __ibThreadMsgs[p.threads[0].thread_id] = (r && r.messages) || []; } catch (e) {}
+                    try { loadAdminMessages(); } catch (e) {}
+                } else {
+                    try { const r = await apiPost('mailbox.php', { action: 'sent' }); __mbxSent = (r && r.messages) || __mbxSent; } catch (e) {}
+                    try { loadBookingEmailLogs(); } catch (e) {}
+                }
+                ibSoon();
+            } catch (e) {
+                item.failed = true;
+                (__ibLocal[p.key] || []).splice((__ibLocal[p.key] || []).indexOf(item), 1);
+                if (!ibDraft(p.key)) ibDraftSet(p.key, text);
+                ibSoon();
+                ibToast('Not sent. ' + chbActErrSay(e).replace(/\.?$/, '.') + ' Your words are back in the box.');
+            }
+        },
+        () => {
+            const L = __ibLocal[p.key] || [];
+            const i = L.indexOf(item);
+            if (i >= 0) L.splice(i, 1);
+            if (hadReminded) { ibState().reminded[p.key] = hadReminded; ibStateSave(); }
+            ibDraftSet(p.key, text);
+            ibBuild();
+            ibRenderAll();
+            const r = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('ib-reply'));
+            if (r) { r.focus(); r.setSelectionRange(r.value.length, r.value.length); }
+            ibAnnounce('Not sent. Your reply is back in the box.');
+        },
+        ch === 'chat' ? `Sending in ${ibFirst(p)}’s chat.` : `Emailing ${ibFirst(p)}.`,
+    );
+}
+
+/* ── Actions ── */
+function ibMarkDone(key) {
+    const p = __ibPeopleMap.get(key);
+    if (!p) return;
+    const st = ibState();
+    const was = { done: st.done[key], reminded: st.reminded[key], remind: st.remind[key] };
+    st.done[key] = ibNow();
+    delete st.reminded[key];
+    delete st.remind[key];
+    ibStateSave();
+    ibLeave(p);
+    ibToast(`Done. Nothing sent; ${ibFirst(p)} comes back if they write again.`, {
+        undo: () => {
+            const s2 = ibState();
+            if (was.done) s2.done[key] = was.done; else delete s2.done[key];
+            if (was.reminded) s2.reminded[key] = was.reminded;
+            if (was.remind) s2.remind[key] = was.remind;
+            ibStateSave();
+            __ibFresh.add(key);
+            ibBuild();
+            ibRenderAll();
+        },
+    });
+}
+function ibRecord(p) {
+    const s = ibCurrentStay(p);
+    if (s) { openBookingHub(s.b.id); return; }
+    const q = p.enq || p.declined[0];
+    if (q && p.enq) openEnquiryHub(q.id);
+}
+const IB_ACT = {
+    open(arg, el) {
+        const kbd = !!(el && el.matches(':focus-visible'));
+        ibOpen(arg, { focusRow: ibWide() && kbd, kbd });
+    },
+    close() { ibClose(); },
+    'toggle-done'() { __ibShowDone = !__ibShowDone; ibRenderList(); },
+    'retry-mail'() { __mbxFailed = false; ibLoadAll(true); },
+    quote(qid, el) {
+        const q = document.getElementById(qid);
+        if (!q) return;
+        q.hidden = !q.hidden;
+        el.setAttribute('aria-expanded', String(!q.hidden));
+        el.textContent = q.hidden ? 'Show the rest of the email' : 'Hide the rest';
+    },
+    ctx(_, el) {
+        if (ibTriple()) return;
+        __ibCtxOpen = !__ibCtxOpen;
+        el.setAttribute('aria-expanded', String(__ibCtxOpen));
+        const d = document.getElementById('ib-ctxdrop');
+        if (d) d.classList.toggle('is-open', __ibCtxOpen);
+    },
+    menu() {
+        __ibMenuOpen = !__ibMenuOpen;
+        ibRenderConv();
+        if (__ibMenuOpen) { const m = /** @type {HTMLElement|null} */ (document.querySelector('#ib-conv .ib-menu button')); if (m) m.focus(); }
+    },
+    chan(arg) {
+        if (!__ibOpen) return;
+        __ibChan[__ibOpen] = arg;
+        __ibCtxOpen = false;
+        ibRenderConv();
+        const ta = document.getElementById('ib-reply');
+        if (ta) ta.focus();
+    },
+    send() { ibSend(); },
+    'undo-pending'() {
+        if (!__ibHold) return;
+        const h = __ibHold;
+        __ibHold = null;
+        clearTimeout(h.timer);
+        h.undo();
+    },
+    remind(arg) {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        const now = new Date();
+        const at9 = (d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); return x.getTime(); };
+        let at = at9(now.getTime() + 864e5);
+        if (arg === 'monday') at = at9(now.getTime() + (((8 - now.getDay()) % 7) || 7) * 864e5);
+        if (arg === 'arrival') { const s = ibCurrentStay(p); if (s) at = at9(+ibIso(s.b.checkIn) - 864e5); }
+        const st = ibState();
+        const was = st.remind[p.key];
+        st.remind[p.key] = Math.max(at, ibNow() + 3600e3);
+        delete st.reminded[p.key];
+        ibStateSave();
+        ibLeave(p);
+        ibToast(`${ibFirst(p)} comes back ${ibWhen(st.remind[p.key])}.`, {
+            undo: () => { const s2 = ibState(); if (was) s2.remind[p.key] = was; else delete s2.remind[p.key]; ibStateSave(); ibBuild(); ibRenderAll(); },
+        });
+    },
+    done() { if (__ibOpen) ibMarkDone(__ibOpen); },
+    undone() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        delete ibState().done[p.key];
+        ibStateSave();
+        ibBuild();
+        ibRenderAll();
+        ibToast(`${ibFirst(p)} is back in the list.`);
+    },
+    unread() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        ibState().unread[p.key] = ibNow();
+        ibStateSave();
+        __ibMenuOpen = false;
+        if (!ibWide()) ibClose(); else { ibBuild(); ibRenderAll(); }
+        ibToast(`Marked ${ibFirst(p)} as unread.`);
+    },
+    approve() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p || !p.enq) return;
+        const q = p.enq;
+        const f = ibEnqFigures(q);
+        const sys = { who: 'sys', icon: 'check', tone: 'good', t: ibNow(), text: `Approved · ${ibPropName(q.propKey)} booked for ${ibRange(q.checkIn, q.checkOut)}` };
+        const mail = { who: 'me', ch: 'email', t: ibNow() + 1, pending: true, subj: `Your stay at ${ibPropName(q.propKey)} is confirmed`, text: f.deposit != null ? `Your confirmation, with the link to pay the ${gbp(f.deposit)} deposit.` : 'Your booking confirmation.' };
+        const L = (__ibLocal[p.key] = __ibLocal[p.key] || []);
+        L.push(sys, mail);
+        __ibFreshMsgs.add(sys);
+        __ibFreshMsgs.add(mail);
+        __ibApproving.add(q.dbId);
+        ibBuild();
+        ibRenderAll();
+        ibHoldInline(
+            async () => {
+                mail.pending = false;
+                try {
+                    const req = { action: 'approve', id: q.dbId };
+                    if (q.priceOverride != null) req.price_override = q.priceOverride;
+                    if (q.planPct > 0) req.deposit_pct = q.planPct;
+                    if (q.planDue) req.balance_due_date = q.planDue;
+                    const res = await apiPost('enquiries.php', req);
+                    const em = res && res.email;
+                    if (em && em.guest && !em.guest.ok && em.guest.error && em.guest.error !== 'Mail disabled') {
+                        ibToast(`Booked, but the confirmation email didn’t send (${em.guest.error}).`);
+                    }
+                    await loadData();
+                    try { renderCalendar(); } catch (e) {}
+                    try { loadBookingEmailLogs(); } catch (e) {}
+                } catch (e) {
+                    L.splice(L.indexOf(sys), 1);
+                    L.splice(L.indexOf(mail), 1);
+                    __ibApproving.delete(q.dbId);
+                    try { await loadData(); } catch (e2) {}
+                    ibToast('Not approved. ' + chbActErrSay(e).replace(/\.?$/, '.'));
+                }
+                __ibApproving.delete(q.dbId);
+                ibSoon();
+            },
+            () => {
+                L.splice(L.indexOf(sys), 1);
+                L.splice(L.indexOf(mail), 1);
+                __ibApproving.delete(q.dbId);
+                ibBuild();
+                ibRenderAll();
+                ibAnnounce('Not approved. Nothing was sent.');
+            },
+            `Approved. Sending ${ibFirst(p)} the confirmation${f.deposit != null ? ` and a ${gbp(f.deposit)} deposit link` : ''}.`,
+        );
+    },
+    async decline() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p || !p.enq) return;
+        const q = p.enq;
+        try {
+            await apiPost('enquiries.php', { action: 'decline', id: q.dbId });
+        } catch (e) {
+            ibToast(`Couldn’t decline: ${(e && e.message) || 'the server didn’t answer'}.`);
+            return;
+        }
+        if (q.email) __ibDecline[p.key] = true;
+        try { await loadData(); } catch (e) {}
+        try {
+            const r = await apiPost('enquiries.php', { action: 'declined' });
+            __declinedEnq = ((r && r.enquiries) || []).map(mapEnquiryFromApi);
+        } catch (e) {}
+        ibBuild();
+        ibRenderAll();
+        ibToast('Declined. Nothing has been sent.', {
+            undo: async () => {
+                delete __ibDecline[p.key];
+                try {
+                    await apiPost('enquiries.php', { action: 'restore', id: q.dbId });
+                    await loadData();
+                    if (Array.isArray(__declinedEnq)) __declinedEnq = __declinedEnq.filter((x) => String(x.dbId) !== String(q.dbId));
+                } catch (e) {
+                    ibToast(`Couldn’t put it back: ${(e && e.message) || 'the server didn’t answer'}.`);
+                }
+                ibSoon();
+            },
+        });
+    },
+    'decline-quiet'() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        delete __ibDecline[p.key];
+        ibState().cleared[p.key] = ibNow();
+        ibStateSave();
+        ibBuild();
+        ibRenderAll();
+        ibToast(`Nothing sent to ${ibFirst(p)}.`);
+    },
+    'decline-write'() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        delete __ibDecline[p.key];
+        __ibChan[p.key] = 'email';
+        const q = p.declined[0];
+        let text = q ? `I’m so sorry, ${ibPropName(q.propKey)} isn’t available for those dates.` : '';
+        try { if (q && ibAvail(q) && !ibAvail(q).free) text = chbDraftEnquiryReply(q) || text; } catch (e) {}
+        ibDraftSet(p.key, text);
+        ibBuild();
+        ibRenderAll();
+        const ta = document.getElementById('ib-reply');
+        if (ta) ta.focus();
+    },
+    offer() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p || !p.enq) return;
+        __ibChan[p.key] = 'email';
+        let text = '';
+        try { text = chbDraftEnquiryReply(p.enq) || ''; } catch (e) {}
+        ibDraftSet(p.key, text);
+        ibRenderConv();
+        ibRenderList();
+        const ta = document.getElementById('ib-reply');
+        if (ta) ta.focus();
+        ibToast('Draft ready. The enquiry stays open until you decide.');
+    },
+    stay(arg) { if (__ibOpen) { __ibStayPick[__ibOpen] = Number(arg); ibRenderConv(); ibRenderCtx(); } },
+    'lead-make'() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p) return;
+        // The enquiry form, filled with who they are: the dates are yours to set,
+        // and saving it brings the decision into this conversation.
+        try {
+            openAddBooking();
+            /** @type {HTMLElement} */ (document.getElementById('modal-title')).innerText = 'Make it an enquiry';
+            /** @type {HTMLInputElement} */ (document.getElementById('modal-mode')).value = 'enquiry';
+            const set = (id, v) => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id)); if (el && v) el.value = v; };
+            set('modal-name', p.name !== p.emails[0] ? p.name : '');
+            set('modal-email', p.emails[0] || '');
+            set('modal-phone', p.phone || '');
+        } catch (e) {
+            ibToast('Couldn’t open the enquiry form.');
+        }
+    },
+    link() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (!p || !p.linkTo) return;
+        const g = __ibPeopleMap.get(p.linkTo);
+        if (!g) return;
+        const st = ibState();
+        p.emails.forEach((e) => { st.links[e] = g.key; });
+        ibStateSave();
+        const sys = { who: 'sys', icon: 'link', t: ibNow(), text: `${p.emails[0]} linked to ${ibFirst(g)}` };
+        (__ibLocal[g.key] = __ibLocal[g.key] || []).push(sys);
+        __ibFreshMsgs.add(sys);
+        const d = ibDraft(p.key);
+        if (d && !ibDraft(g.key)) ibDraftSet(g.key, d);
+        ibDraftSet(p.key, '');
+        __ibOpen = g.key;
+        __ibMenuOpen = false;
+        __ibFresh.add(g.key);
+        ibBuild();
+        ibRenderAll();
+        ibToast(`Linked. ${p.emails[0]} now belongs to ${ibFirst(g)}.`);
+    },
+    copy(arg) {
+        __ibMenuOpen = false;
+        ibRenderConv();
+        const ok = () => ibToast(`Copied ${arg}`);
+        try { navigator.clipboard.writeText(arg).then(ok, () => ibToast(arg)); } catch (e) { ibToast(arg); }
+    },
+    record() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        __ibMenuOpen = false;
+        if (p) ibRecord(p);
+    },
+};
+let __ibSwallow = null;
+function ibWire(root) {
+    if (root.__ibWired) return;
+    root.__ibWired = true;
+    root.addEventListener('click', (e) => {
+        const tgt = e.target instanceof Element ? e.target : null;
+        const el = tgt ? /** @type {HTMLElement|null} */ (tgt.closest('[data-ib]')) : null;
+        if (!el) {
+            if (__ibMenuOpen && !(tgt && tgt.closest('.ib-menu'))) { __ibMenuOpen = false; ibRenderConv(); }
+            return;
+        }
+        if (/** @type {any} */ (el).disabled) return;
+        const act = el.getAttribute('data-ib') || '';
+        const arg = el.getAttribute('data-arg') || '';
+        if (act === 'open' && __ibSwallow === arg) { __ibSwallow = null; return; }
+        if (__ibMenuOpen && act !== 'menu' && !el.closest('.ib-menu')) __ibMenuOpen = false;
+        const fn = IB_ACT[act];
+        if (fn) fn(arg, el);
+    });
+    // Swipe a row left: done.
+    let drag = null;
+    root.addEventListener('pointerdown', (e) => {
+        const row = e.target instanceof Element ? e.target.closest('.ib-row') : null;
+        if (!row) return;
+        const wrap = row.closest('.ib-rowwrap');
+        const p = wrap ? __ibPeopleMap.get(wrap.getAttribute('data-key') || '') : null;
+        if (!p || ibDone(p) || __ibQ || ibSnoozed(p)) return;
+        drag = { row, key: p.key, x: e.clientX, y: e.clientY, dx: 0, on: false, pid: e.pointerId };
+    });
+    root.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.pid) return;
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (!drag.on) {
+            if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.3 && dx < 0) {
+                drag.on = true;
+                drag.row.classList.add('is-dragging');
+                try { drag.row.setPointerCapture(drag.pid); } catch (er) {}
+            } else if (Math.abs(dy) > 10) { drag = null; return; }
+        }
+        if (drag.on) { drag.dx = Math.min(0, dx); drag.row.style.translate = `${drag.dx}px 0`; }
+    });
+    const end = () => {
+        if (!drag) return;
+        const d = drag;
+        drag = null;
+        if (!d.on) return;
+        d.row.classList.remove('is-dragging');
+        __ibSwallow = d.key;
+        setTimeout(() => { if (__ibSwallow === d.key) __ibSwallow = null; }, 500);
+        const w = d.row.getBoundingClientRect().width;
+        if (d.dx < -Math.min(110, w * 0.3)) { d.row.style.translate = `${-w}px 0`; setTimeout(() => ibMarkDone(d.key), 220); }
+        else d.row.style.translate = '0 0';
+    };
+    root.addEventListener('pointerup', end);
+    root.addEventListener('pointercancel', end);
+}
+// Keyboard on a computer: up and down move, E done, R reply, / search, Z undo.
+// Only while the Inbox is the screen and nothing sits over it.
+function ibKeysActive() {
+    const v = document.querySelector('.page-view.active');
+    if (!v || v.id !== 'view-inbox') return false;
+    if (document.querySelector('.modal-overlay.open, #glass-dialog.open, #cmdk.cmdk-overlay.open, .reviews-modal.open')) return false;
+    return true;
+}
+document.addEventListener('keydown', (e) => {
+    if (!ibKeysActive() || !ibRoot()) return;
+    if (e.key === 'Escape') {
+        if (__ibMenuOpen) { __ibMenuOpen = false; ibRenderConv(); const m = /** @type {HTMLElement|null} */ (document.querySelector('#ib-conv [data-ib="menu"]')); if (m) m.focus(); e.stopPropagation(); return; }
+        if (__ibCtxOpen) { __ibCtxOpen = false; const d = document.getElementById('ib-ctxdrop'); if (d) d.classList.remove('is-open'); e.stopPropagation(); return; }
+        const root = ibRoot();
+        if (root && root.classList.contains('is-conv')) { ibClose(); e.stopPropagation(); }
+        return;
+    }
+    const t = /** @type {HTMLElement} */ (e.target);
+    if (!ibWide() || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!(ibRoot().contains(t) || t === document.body)) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
+    const k = e.key.toLowerCase();
+    if (k === 'arrowdown' || k === 'j' || k === 'arrowup' || k === 'k') {
+        if (!__ibOrder.length) return;
+        e.preventDefault();
+        const i = __ibOrder.indexOf(__ibOpen || '');
+        const next = __ibOrder[Math.max(0, Math.min(__ibOrder.length - 1, i + (k === 'arrowdown' || k === 'j' ? 1 : -1)))];
+        if (next && next !== __ibOpen) ibOpen(next, { focusRow: true });
+    } else if (k === 'e' && __ibOpen) {
+        e.preventDefault();
+        ibMarkDone(__ibOpen);
+        const r = /** @type {HTMLElement|null} */ (__ibOpen && document.querySelector(`#ib-rows .ib-rowwrap[data-key="${CSS.escape(__ibOpen)}"] .ib-row`));
+        if (r) r.focus();
+    } else if (k === 'r' && __ibOpen) {
+        const ta = document.getElementById('ib-reply');
+        if (ta) { e.preventDefault(); ta.focus(); }
+    } else if (k === '/') {
+        e.preventDefault();
+        const q = document.getElementById('ib-q');
+        if (q) q.focus();
+    } else if (k === 'z') {
+        // the most recent thing wins: a message still sending, or the toast's own Undo
+        const u = /** @type {HTMLButtonElement|null} */ (document.getElementById('ib-toast-undo'));
+        const tOk = !!u && !u.hidden && /** @type {HTMLElement} */ (document.getElementById('ib-toast')).classList.contains('is-show');
+        if (__ibHold && (!tOk || __ibHold.at > __ibToastAt)) { e.preventDefault(); IB_ACT['undo-pending'](); }
+        else if (tOk && u) { e.preventDefault(); u.click(); }
+    }
+});
+// The dock pip and the rail say the list's own number (app.js inboxCount).
+function ibWaitingCount() {
+    try {
+        if (!ibState().since) { ibState().since = ibNow(); ibStateSave(); }
+        if (!__ibPeople.length || !ibRoot()) ibBuild();
+        return __ibPeople.filter((p) => ibInList(p) && ibWaiting(p)).length;
+    } catch (e) {
+        return null;
+    }
+}
+// Entry points other screens use to land on a person.
+function ibOpenWhen(test) {
+    let tries = 0;
+    const go = () => {
+        const p = __ibPeople.find(test);
+        if (p) { ibOpen(p.key); return; }
+        if (++tries < 40) setTimeout(go, 150);
+    };
+    go();
+}
+function inboxOpenEnquiry(id) {
+    Promise.resolve(openInbox()).then(() => ibOpenWhen((p) => !!p.enq && (String(p.enq.dbId) === String(id) || String(p.enq.id) === String(id))));
+}
+function inboxOpenThread(tid) {
+    Promise.resolve(openInbox()).then(() => ibOpenWhen((p) => p.threads.some((t) => String(t.thread_id) === String(tid))));
+}
+function inboxOpenEmailAddress(addr) {
+    const a = ibEmail(addr);
+    Promise.resolve(openInbox()).then(() => ibOpenWhen((p) => p.emails.includes(a)));
 }
 
 // ==================================================================
@@ -30431,6 +31984,33 @@ function enqReplyDraft(enquiryId) {
     openEnquiryEmail(enquiryId); // id from a data-act, or the row itself (see above)
     setTimeout(() => { try { draftEnquiryReply(); } catch (err) {} }, 250);
 }
+// WHAT APPROVAL WILL ACTUALLY ASK FOR — stage from booking_payment_kind's
+// window clause (bookingInBalanceWindow reads the same two fields off an
+// enquiry), and the FIGURE: the plan's deposit plus the refundable deposit the
+// first payment carries, the same fold hubDepositAsk makes on the booking side.
+// The plan derivations read the BOOKING fields (depositPctOverride /
+// balanceDueDate), which an enquiry never has — it stores planPct / planDue, so
+// the shim maps them, or the figure quotes the site standard over the owner's
+// plan. ONE definition: the enquiry page and the Inbox's Approve both read it.
+function enquiryAskFigures(e) {
+    let pr = null;
+    try { pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut); } catch (err) {}
+    const std = pr && pr.total > 0 ? pr.total : null;
+    const total = e.priceOverride != null ? Number(e.priceOverride) : std;
+    const dmg = (pr && pr.damagesDeposit) || 0;
+    const ePlan = Object.assign({}, e, {
+        depositPctOverride: e.planPct != null ? e.planPct : e.depositPctOverride,
+        balanceDueDate: e.planDue != null ? e.planDue : e.balanceDueDate,
+    });
+    const inWindow = (() => { try { return bookingInBalanceWindow(ePlan); } catch (err) { return false; } })();
+    let askFig = null;
+    if (total != null) {
+        try {
+            askFig = inWindow ? Math.round((total + dmg) * 100) / 100 : Math.round((bookingPlanDeposit(ePlan, total) + dmg) * 100) / 100;
+        } catch (err) {}
+    }
+    return { pr, std, total, dmg, ePlan, inWindow, askFig };
+}
 function renderEnquiryHub() {
     const el = document.getElementById('enquiry-hub-content');
     if (!el) return;
@@ -30445,32 +32025,7 @@ function renderEnquiryHub() {
     const stale = days >= ENQUIRY_STALE_DAYS;
     const ageRaw = timeAgoLabel(e.receivedAt || e.received) || '';
     const nights = Math.max(1, Math.round((new Date(e.checkOut).getTime() - new Date(e.checkIn).getTime()) / 864e5));
-    let pr = null;
-    try { pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut); } catch (err) {}
-    const std = pr && pr.total > 0 ? pr.total : null;
-    const total = e.priceOverride != null ? Number(e.priceOverride) : std;
-    const dmg = (pr && pr.damagesDeposit) || 0;
-    // WHAT APPROVAL WILL ACTUALLY ASK FOR — stage from booking_payment_kind's
-    // window clause (bookingInBalanceWindow reads the same two fields off an
-    // enquiry), rail honesty with Square off, and now the FIGURE: the plan's
-    // deposit plus the refundable deposit the first payment carries, the same
-    // fold hubDepositAsk makes on the booking side.
-    // The plan derivations read the BOOKING fields (depositPctOverride /
-    // balanceDueDate), which an enquiry never has — it stores planPct / planDue.
-    // Without this shim the green card + first-payment figure + due date quoted
-    // the site-standard 25%/30-day while the fold two rows down (enquiryHasPlan,
-    // which reads planPct) and the actual approval used the plan the owner set.
-    const ePlan = Object.assign({}, e, {
-        depositPctOverride: e.planPct != null ? e.planPct : e.depositPctOverride,
-        balanceDueDate: e.planDue != null ? e.planDue : e.balanceDueDate,
-    });
-    const inWindow = (() => { try { return bookingInBalanceWindow(ePlan); } catch (err) { return false; } })();
-    let askFig = null;
-    if (total != null) {
-        try {
-            askFig = inWindow ? Math.round((total + dmg) * 100) / 100 : Math.round((bookingPlanDeposit(ePlan, total) + dmg) * 100) / 100;
-        } catch (err) {}
-    }
+    const { pr, std, total, dmg, ePlan, inWindow, askFig } = enquiryAskFigures(e);
     const apprAsk = () => {
         const stage = inWindow ? 'the full amount' : 'the deposit';
         const how = squareAdminEnabled ? ' by card' : '';
@@ -32711,6 +34266,7 @@ async function loadMailbox() {
         __mbxHasMore = !!inbox.hasMore;
         __mbxSent = sent.messages || [];
         __mbxFailed = false;
+        ibSoon();
         // NO TAB/QUERY RESET. This is a DATA refresh and its own Refresh button reaches
         // it, so resetting threw the owner from Sent back to Inbox and wiped their search
         // (measured: sent → inbox, "old" → ""). On a first open both are already at their
@@ -32718,6 +34274,7 @@ async function loadMailbox() {
         renderMailboxList();
     } catch (e) {
         __mbxFailed = true;
+        ibSoon();
         el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
             <div class="bhub-btn-row"><button class="btn-sm btn-edit" data-act="loadMailbox">Try again</button></div>`;
         try { inboxVerdicts(); } catch (e2) {}
