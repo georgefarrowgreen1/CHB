@@ -163,19 +163,19 @@ const NEST = (rootSel) => {
     const surfaces = [];
     let railedSeen = 0;
     await open(page, "(async () => { nav('view-backoffice'); })()", 900);
-    surfaces.push(['Today bookings', await page.evaluate(ROWS, '#bookings-list .bk-row')]);
+    surfaces.push(['Today bookings', await page.evaluate(ROWS, '#bookings-list .bk-row'), '#bookings-list']);
     // Below 1200 the Inbox is three FOLDS; a list inside a closed one paints
     // nothing, so the fold rule applies — open it before measuring.
     await open(page, "(async () => { await openInbox(); inboxFolder('enquiries'); })()", 1600);
-    surfaces.push(['Inbox enquiries', await page.evaluate(ROWS, '#inbox-list .bk-row[data-enqid]')]);
+    surfaces.push(['Inbox enquiries', await page.evaluate(ROWS, '#inbox-list .bk-row[data-enqid]'), '#inbox-list']);
     await open(page, "(async () => { await inboxTab('declined'); inboxFolder('enquiries'); })()", 1600);
-    surfaces.push(['declined drawer', await page.evaluate(ROWS, '.enq-declined-row')]);
+    surfaces.push(['declined drawer', await page.evaluate(ROWS, '.enq-declined-row'), '#inbox-list']);
     await open(page, "(async () => { await inboxTab('waiting'); await openAccounts(); })()", 1800);
     const landingPairs = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-fold-grp')].filter((x) => x.getClientRects().length); const out = []; for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push(+(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1)); return out; });
     await open(page, "accountsOpen('payments')", 1400);
-    surfaces.push(['Payments & balances', await page.evaluate(ROWS, '#money-panel .bk-row')]);
+    surfaces.push(['Payments & balances', await page.evaluate(ROWS, '#money-panel .bk-row'), '#money-panel']);
     const cell = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-sm')));
-    for (const [name, r] of surfaces) {
+    for (const [name, r, host] of surfaces) {
       ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the run (vacuity guard — one row cannot fail a join)`);
       if (r.n < 2) continue;
       ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
@@ -183,8 +183,12 @@ const NEST = (rootSel) => {
       // squared against that header and its foot takes the CARD radius, not the cell's.
       const card = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-lg')));
       const bodyOfCard = name === 'Today bookings';
-      ok((bodyOfCard ? r.firstTL === 0 && r.lastBL === card : r.firstTL === cell && r.lastBL === cell) && r.firstBL === 0 && r.lastTL === 0,
-        `${w} ${name}: the outer corners are the CELL radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, cell ${cell})`);
+      // A screen that has joined the one look draws its run of rows as ONE list
+      // card, so the run's ends take the CARD radius; elsewhere they keep the cell's.
+      const oneLook = await page.evaluate((sel) => !!(document.querySelector(sel) || document.body).closest('.one-look'), host);
+      const end = oneLook ? card : cell;
+      ok((bodyOfCard ? r.firstTL === 0 && r.lastBL === card : r.firstTL === end && r.lastBL === end) && r.firstBL === 0 && r.lastTL === 0,
+        `${w} ${name}: the outer corners are the ${oneLook ? 'one look\'s CARD' : 'CELL'} radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, end ${end})`);
       ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
       ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),
         `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')})`);

@@ -12,7 +12,10 @@
 //   §5 every field in the place editor has a label of its own;
 //   §6 a window opened from Manage is a bottom sheet on a phone — and the same
 //      window opened outside Manage is untouched (the scope is the point);
-//   §7 one caption tier on Manage, the old tracked capitals left alone outside it.
+//   §7 one caption tier on Manage, the old tracked capitals left alone outside it;
+//   §8 Payments and Key safes joined: tools as rows, one caption tier, a back link
+//      that names Payments, an expense as one line in one card (its rows were
+//      wearing the guest Things-to-do class, whose display:flex broke the grid).
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -36,6 +39,7 @@ async function open(browser, base, width) {
     ], seasons: {}, occupancy: {} });
     if (url.includes('reviews.php')) return json({ ok: true, reviews: [{ id: 1, status: 'pending', prop: '21a', name: 'Margaret', text: 'Lovely.' }] });
     if (url.includes('ical-import.php')) return json({ ok: true, feeds: [], blocks: [] });
+    if (url.includes('keysafe.php')) return json({ ok: true, safes: { '21a': { code: '4821', setAt: '2026-09-01T10:00:00Z', forBooking: 0, history: [], enabled: true }, 'jollyboat': { code: '', history: [], enabled: true } }, revealDays: 2 });
     if (route.request().method() === 'POST' && b.action === 'admin_status') return json({ ok: true, admin: true });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
   });
@@ -219,15 +223,54 @@ async function open(browser, base, width) {
     settingsOpen('follow-ups');
     const m = document.querySelector('#sec-follow-ups .acr-cap');
     const inside = { tt: getComputedStyle(m).textTransform, ls: getComputedStyle(m).letterSpacing };
-    // The same class outside Manage keeps the look it had.
+    // The same class outside the back office's one look (a guest view) keeps the
+    // look it had — the scope is the class on the admin views, never the page.
     const probe = document.createElement('div'); probe.className = 'acr-cap'; probe.textContent = 'Probe';
-    document.getElementById('view-accounts').appendChild(probe);
+    document.getElementById('view-main').appendChild(probe);
     const outside = { tt: getComputedStyle(probe).textTransform };
     probe.remove();
     return { inside, outside };
   });
   ok(caps.inside.tt === 'none' && (caps.inside.ls === 'normal' || parseFloat(caps.inside.ls) === 0), `on Manage a caption is sentence case, untracked (${caps.inside.tt} / ${caps.inside.ls})`);
-  ok(caps.outside.tt === 'uppercase', `outside Manage the same class keeps its own look (${caps.outside.tt})`);
+  ok(caps.outside.tt === 'uppercase', `outside the one look the same class keeps its own look (${caps.outside.tt})`);
+
+  console.log('§8 Payments and Key safes wear the same parts');
+  const pay = await page.evaluate(async () => {
+    await openAccounts();
+    await new Promise((r) => setTimeout(r, 600));
+    const idx = document.getElementById('accounts-index');
+    const tools = [...idx.querySelectorAll(':scope > .settings-group > .settings-row .settings-row-label')].map((r) => r.textContent.trim());
+    const cap = [...document.querySelectorAll('#accounts-index .bhub-grpcap')].filter((c) => c.getClientRects().length).map((c) => getComputedStyle(c).textTransform);
+    // Expenses: one card per tax year, a line per expense, and adding is the row at the foot.
+    allExpenses.splice(0, allExpenses.length,
+      { id: 1, date: '2026-10-02', category: 'Laundry', description: 'Linen hire for the changeover', amount: 42.5, prop_key: '21a', recurring: 0 },
+      { id: 2, date: '2026-09-28', category: 'Cleaning', description: 'Changeover clean', amount: 85, prop_key: '', recurring: 1 });
+    accountsOpen('expenses');
+    renderExpenses();
+    await new Promise((r) => setTimeout(r, 300));
+    const rows = [...document.querySelectorAll('#expenses-body .xp-row')];
+    const r0 = rows[0];
+    const main = r0 && r0.querySelector('.xp-main').getBoundingClientRect();
+    const amt = r0 && r0.querySelector('.feed-amt').getBoundingClientRect();
+    const back = document.getElementById('accounts-back').textContent.trim();
+    const add = document.querySelector('#expenses-body .xp-add .u-addrow');
+    const kinds = [...document.querySelectorAll('#view-accounts button')].filter((b) => b.getClientRects().length && ['btn-sm', 'btn-edit', 'btn-glass', 'pay-btn', 'mo-tool'].some((c) => b.classList.contains(c))).length;
+    await openKeysafe();
+    await new Promise((r) => setTimeout(r, 400));
+    const ks = document.querySelector('#view-keysafe .ks-list');
+    return {
+      tools, cap, back, rows: rows.length, oneLine: !!(main && amt && Math.abs((main.top + main.bottom) / 2 - (amt.top + amt.bottom) / 2) < 12),
+      rowDisplay: r0 ? getComputedStyle(r0).display : '', add: !!add, kinds,
+      ksRadius: ks ? getComputedStyle(ks).borderTopLeftRadius : '', ksShadow: ks ? getComputedStyle(ks).boxShadow : '',
+    };
+  });
+  ok(pay.tools.join('|') === 'Payments & balances|Expenses', `the Payments tools are rows in a card, like the Manage index (${pay.tools.join(' · ')})`);
+  ok(pay.cap.length >= 1 && pay.cap.every((t) => t === 'none'), `Payments' captions are the one tier, sentence case (${pay.cap.join(',')})`);
+  ok(pay.back === 'Payments', `the drill-down back link names where it goes ("${pay.back}")`);
+  ok(pay.rows === 2 && pay.rowDisplay === 'flex' && pay.oneLine, `an expense is one line: what it was, then its amount beside it (${pay.rows} rows, ${pay.rowDisplay})`);
+  ok(pay.add, 'adding an expense is the row at the foot of the list');
+  ok(pay.kinds === 0, `no Payments button keeps an old look class (${pay.kinds})`);
+  ok(pay.ksRadius === '20px' && pay.ksShadow === 'none', `the key safes list is a card on the one radius, no shadow (${pay.ksRadius}, ${pay.ksShadow})`);
 
   await page.close();
   await t.done(fails);
