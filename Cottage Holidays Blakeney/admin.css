@@ -9366,6 +9366,19 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 #pm .pm-filters > button { flex: none; border: 1px solid var(--pm-pill-edge); background: none; border-radius: var(--r-pill); min-height: 36px; padding: 0 12px; font-size: var(--fs-sub); font-weight: 600; position: relative; }
 #pm .pm-filters > button::after { content: ""; position: absolute; inset: -4px 0; }
 #pm .pm-filters > button[aria-pressed="true"] { background: var(--text-light); color: var(--dark-grey); border-color: transparent; }
+#pm .pm-filters .pm-fn { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 8px; padding: 0 4px; border-radius: var(--r-pill); font-size: var(--fs-micro); background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+#pm .pm-filters > button[aria-pressed="true"] .pm-fn { background: var(--warn); color: var(--accent-ink); }
+
+/* ONE MONEY LIST: the bank's balance with where it came from on one line beside a
+   dot, the line in the list where the bank stops, and an unlinked bank's way in. */
+#pm .pm-bankstrip:first-child, #pm .pm-whole + .pm-bankstrip { margin-top: 4px; }
+#pm .pm-bankstrip + .pm-owe { margin-top: 12px; }
+#pm .pm-sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--text-muted); }
+#pm .pm-sdot.ok { background: var(--ok); }
+#pm .pm-sdot.warn { background: var(--warn); }
+#pm .pm-go { color: var(--accent-text); font-weight: 600; font-size: var(--fs-body); }
+#pm .pm-edge { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 12px 16px; background: color-mix(in srgb, var(--warn) 8%, transparent); }
+#pm .pm-edge :is(.pm-t, .pm-s) { white-space: normal; }
 
 /* the tax year in one card */
 #pm .pm-books { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
@@ -9450,7 +9463,7 @@ body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
 #pm .pm-tl-v.plus { color: var(--ok-text); }
 #pm .pm-tl li.future :is(.pm-tl-t, .pm-tl-v) { color: var(--text-muted); }
 #pm .pm-acts { display: flex; flex-wrap: wrap; gap: 8px; }
-#pm .pm-acts .pm-btn { flex: 1 1 140px; }
+#pm .pm-acts .pm-btn { flex: 1 1 140px; min-width: min(100%, max-content); }
 #pm .pm-note { font-size: var(--fs-caption); color: var(--text-muted); margin: -4px 4px 0; text-wrap: pretty; }
 #pm .pm-yr { display: flex; gap: 4px; padding: 4px; min-height: 44px; background: var(--pm-well); border-radius: var(--r-pill); }
 #pm .pm-yr > button { flex: 1 1 0; border: 0; background: none; border-radius: var(--r-pill); min-height: 36px; font-size: var(--fs-sub); font-weight: 600; }

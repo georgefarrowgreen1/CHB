@@ -710,6 +710,75 @@ causes, both in payouts-lib.php:
   (marks, read-time verdict, merge, a second refresh not re-reading a PAID payout, the wiring), break-tested on the
   merge and the marks. Not run: test-integration (no MySQL here) and the money ui suites (not re-aimed since #1379).
 
+## One money list: Square, the bank and the owner's own records (approved demo v4, built and pushed to main without CI)
+
+**Asked for as "can these be unified into one system, even if monzo is disconnected?"** The Payments landing's
+Activity and the bank page's To sort / Sorted lists are ONE list, captioned **Money** (`pmActivityHtml`, still
+`#pm-activity`). It has three sources, named in a "Where it comes from" card at the foot (`pmSourcesHtml`):
+- **Square**: cards and payouts.
+- **Open Banking**: the bank.
+- **You**: cash, transfers, expenses.
+
+Everything is client-side over data the page already fetched: money.php's events plus statements.php's lines. There
+is no new endpoint and no migration.
+- **EACH POUND SHOWS ONCE** (`pmJoin` → a map of event id → bank line). A bank line that says the same thing as an
+  event is not a second row; it changes the event's row.
+  - Expense line (`expense_id`) → event `x<id>`.
+  - Square payout line → the payout with the same amount arriving within 4 days. Its sub becomes "In your bank"
+    (a FAILED payout keeps its own word).
+  - Recorded transfer (`booking_id`) → a non-card `in` event for that booking within 4 days, whose amount is ≤ the
+    bank figure (the nearest amount wins). The row shows the BANK figure, because set_payment records the rental
+    part only.
+
+  An unjoined bank line is its own row (`pmBankRow`, sorting in place). A line older than the oldest loaded event
+  waits for Show older, except under the To sort filter.
+- **THE BANK IS SEEN UP TO A DATE, and the list says where it stops** (`pmBankSeenTo`):
+  - While Open Banking is live, today.
+  - Otherwise the newest of the last statement's end, the last good sync and the newest line.
+
+  Below that date in All / Money in / Money out, an amber `.pm-edge` row reads "Your bank is seen up to <date>". It
+  says whether Open Banking is disconnected, and offers Connect again (full access, reconnect only) and Add a
+  statement. So everything above it is Square's word or the owner's, never claimed as bank-checked. No bank at all →
+  no edge and no To sort.
+- **To sort is a FILTER** (the second chip, with its count, shown only when something waits) and a Needs-you row
+  ("N bank payments to sort" → `data-pm="tosort"`, which also closes the phone's bank page).
+- **Statement due and the link's trouble moved into Needs you too** (`pmBankNeedHtml`):
+  - Approve in your banking app.
+  - Connect Open Banking again.
+  - Open Banking hasn't synced.
+  - Time for <month>'s statement.
+
+  The way-in card, its Not now (`PM_BANK_HIDE`) and the bank page's two lists are gone. The bank page ("Your bank")
+  keeps the balance, the link, statements, the reminder and Disconnect.
+- **The balance is one row, "In the bank"** (`pmBankCardHtml`, top of the landing). It takes the newer of the live
+  and statement balance (`pmBankBal`). One status line carries a coloured dot (`.pm-sdot`), one of:
+  - Live · 13:51
+  - Waiting for approval
+  - Disconnected · <date>
+  - Statement · <date>
+  - Not linked · Link
+
+  It is the way in when nothing is linked.
+- **A transfer to the owner's own name is an offer, never assumed**: "A transfer to you. Moving money to your own
+  account?" → Moved to my account (`ignore`, labelled "Moved to your own account", not a cost) or An expense. The
+  name is the split holder's, else the signed-in person's (`pmOwnName`).
+- **NAMING: the connection is "Open Banking"**, the account stays "Monzo Business". Every connect/disconnect/sync
+  string, toast, sheet title and + menu item says Open Banking. The Monzo developer-client steps still say Monzo,
+  because that is what the owner types into. smoke-test's Title Case allowlist gained Open, Banking and User.
+- Also fixed: the books page's three buttons overlapped at 1280 (`.pm-acts .pm-btn` now has
+  `min-width: min(100%, max-content)`, the `.pm-acts-row` idiom). And one type error left on main by the Permissions
+  push was fixed (`window.__BUILD`).
+- Checked by a throwaway stubbed browser drive in five states (live, stale, statements only, nothing linked, 1280),
+  at 390 in both themes. It asserted:
+  - each payout and expense once, the transfer once at the bank figure;
+  - To sort 4 → 3 after a sort;
+  - the own-account ask;
+  - the edge only when not live, and where it sits;
+  - no sideways scroll, no page errors.
+
+  That drive is not committed. NOT re-aimed (merge without CI): ui-test-statements (the bank page's lists, the way-in
+  card) and ui-test-money.
+
 ## The business bank, from its statements (Monzo Business; built without CI at the owner's ask)
 
 **Asked for after the MTD/Monzo demos, for a BUSINESS account.** Monzo's developer API is built for personal

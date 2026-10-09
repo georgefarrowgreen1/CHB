@@ -17130,6 +17130,7 @@ const PM_IC = {
     card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/></svg>',
     email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>',
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/></svg>',
+    you: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5"/></svg>',
 };
 const PM_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const PM_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -17331,31 +17332,160 @@ function pmKeep(e) {
         || (f === 'payout' && e.kind === 'payout')
         || (f === 'deposit' && (e.kind === 'back' || e.kind === 'kept' || (e.kind === 'in' && e.deposit > 0)));
 }
+/* ── ONE MONEY LIST: what Square and the owner record, and what the bank shows,
+   each pound once. A bank payment that IS a recorded one (a Square payout, a
+   transfer recorded on a booking, an expense sorted from it) joins that record;
+   the rest are rows of their own, and an unexplained one asks what it was right
+   where it sits. Without a bank the list is exactly the old Activity. ── */
+// The bank's own day for a line, as a timestamp the activity can sort against.
+function pmLineAt(l) {
+    const m = /^(\d{2}):(\d{2})/.exec(String(l.time || ''));
+    return Math.round(pmIso(l.date) / 1000) + (m ? Number(m[1]) * 3600 + Number(m[2]) * 60 : 43200);
+}
+const pmIsoOf = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// Which record each bank payment is the same money as: event id → bank line.
+function pmJoin() {
+    const out = new Map();
+    const used = new Set();
+    const day = 864e5;
+    pmBankLines().forEach((l) => {
+        let ev = null;
+        if (l.as === 'expense' && l.expense_id) {
+            ev = __pmAct.find((e) => e.id === 'x' + l.expense_id && !used.has(e.id)) || null;
+        } else if (l.as === 'square' && l.amount > 0) {
+            ev = __pmAct.find((e) => e.kind === 'payout' && !used.has(e.id) && Math.abs(e.amount - l.amount) < 0.01
+                && !!e.arrival && Math.abs(pmIso(e.arrival) - pmIso(l.date)) <= 4 * day) || null;
+        } else if (l.as === 'payment' && l.booking_id && l.amount > 0) {
+            // A transfer recorded on its booking: the manual row is the rental part,
+            // so it can be smaller than the bank's figure when a deposit rode with it.
+            ev = __pmAct.filter((e) => e.kind === 'in' && e.method !== 'card' && !used.has(e.id) && Number(e.booking_id) === Number(l.booking_id)
+                && e.amount <= l.amount + 0.01 && Math.abs(pmDayStart(e.at * 1000) - pmIso(l.date)) <= 4 * day)
+                .sort((a, z) => Math.abs(a.amount - l.amount) - Math.abs(z.amount - l.amount))[0] || null;
+        }
+        if (ev) { used.add(ev.id); out.set(ev.id, l); }
+    });
+    return out;
+}
+// How far the bank has been seen: today while the link is live, else the newest of
+// the last statement, the link's last sync and the newest payment brought in.
+function pmBankSeenTo() {
+    const B = __pmBank;
+    if (!B || !B.ready) return '';
+    if (pmLiveOk()) return todayDashed();
+    let s = B.last && B.last.to ? String(B.last.to) : '';
+    const L = pmLive();
+    if (L.last_ok) { const d = pmIsoOf(L.last_ok * 1000); if (d > s) s = d; }
+    pmBankLines().forEach((l) => { if (l.date > s) s = l.date; });
+    return s;
+}
+const pmBankToSort = () => (__pmBank && (pmBankOn() || pmLiveOn() || pmBankLines().length) ? Number(__pmBank.unsorted) || 0 : 0);
+function pmMoneyItems() {
+    const join = pmJoin();
+    const hide = new Set([...join.values()].map((l) => l.id));
+    /** @type {Array<{at: number, e: any, l: any}>} */
+    const items = __pmAct.map((e) => ({ at: e.at, e, l: join.get(e.id) || null }));
+    // Older bank payments wait for "Show older" with the activity, so the two stay in
+    // step; one still to sort is always in the To sort filter.
+    const oldest = __pmActEnd || !__pmAct.length ? -Infinity : __pmAct[__pmAct.length - 1].at;
+    pmBankLines().forEach((l) => {
+        if (hide.has(l.id)) return;
+        const at = pmLineAt(l);
+        if (at < oldest && !(__pmFilter === 'tosort' && !l.as)) return;
+        items.push({ at, e: null, l });
+    });
+    items.sort((a, z) => z.at - a.at);
+    return items;
+}
+function pmKeepItem(it) {
+    const f = __pmFilter;
+    if (it.e) return f !== 'tosort' && pmKeep(it.e);
+    const l = it.l;
+    if (f === 'tosort') return !l.as;
+    if (f === 'all') return true;
+    if (f === 'in') return l.amount > 0 && l.as !== 'square' && l.as !== 'pot';
+    if (f === 'out') return l.amount < 0 && l.as !== 'pot';
+    if (f === 'payout') return l.as === 'square';
+    return false;
+}
+// One record as a row. `l` is the bank payment it joined, when there is one: the
+// bank then says what reached the account.
+function pmEvRowHtml(e, l) {
+    const k = pmKind(e);
+    if (!k) return '';
+    let sub = k.sub;
+    let v = k.v;
+    if (l && e.kind === 'payout' && e.state !== 'failed') sub = 'In your bank';
+    if (l && e.kind === 'in' && e.method !== 'card') {
+        sub = `${e.what} · ${String(e.method || 'payment').toLowerCase()}`;
+        v = '+' + gbp(Math.max(e.amount, l.amount));
+    }
+    const tag = k.act ? `button type="button" data-pm="${k.act}" data-arg="${escapeHtml(String(k.arg || ''))}"` : 'div';
+    return `<${tag} class="pm-mrow${__pmFresh.has(e.id) ? ' is-new' : ''}" aria-label="${escapeHtml(k.t)}, ${escapeHtml(sub)}, ${escapeHtml(v)}">
+        <span class="pm-mic ${k.ic}" aria-hidden="true">${k.icon}</span>
+        <span class="pm-main"><span class="pm-t">${escapeHtml(k.t)}</span><span class="pm-s">${escapeHtml(sub)}</span></span>
+        <span class="pm-v ${k.vc}">${v}</span></${k.act ? 'button' : 'div'}>`;
+}
+// Where the bank stops, in the list where it falls: rows above it aren't checked yet.
+function pmEdgeHtml(seen) {
+    const L = pmLive();
+    const off = ['reconnect', 'stale', 'error'].includes(L.state);
+    const acts = [];
+    if (L.state === 'reconnect' && chbMayUse('owner')) acts.push('<button type="button" class="pm-btn primary" data-pm="mz-connect">Connect again</button>');
+    acts.push(`<button type="button" class="pm-btn ${acts.length ? 'second' : 'primary'}" data-pm="bank-add">Add a statement</button>`);
+    return `<div class="pm-edge" role="note"><span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span>
+        <span class="pm-main"><span class="pm-t">Your bank is seen up to ${pmDm(pmIso(seen))}</span><span class="pm-s">${off ? 'Open Banking is disconnected, so nothing above this line is checked against your bank yet.' : 'Nothing above this line is checked against your bank yet.'}</span></span>
+        <div class="pm-acts-row">${acts.join('')}</div></div>`;
+}
 function pmActivityHtml() {
-    let html = `<div class="pm-capline" id="pm-activity"><span>Activity</span></div><div class="pm-filters" role="group" aria-label="Show">${PM_FILTERS.map(([k, l]) => `<button type="button" data-pm="filter" data-arg="${k}" aria-pressed="${__pmFilter === k}">${l}</button>`).join('')}</div><div class="pm-rows">`;
+    const n = pmBankToSort();
+    const F = PM_FILTERS.slice();
+    if (n || __pmFilter === 'tosort') F.splice(1, 0, ['tosort', 'To sort']);
+    let html = `<div class="pm-capline" id="pm-activity"><span>Money</span></div><div class="pm-filters" role="group" aria-label="Show">${F.map(([k, lab]) => `<button type="button" data-pm="filter" data-arg="${k}" aria-pressed="${__pmFilter === k}">${lab}${k === 'tosort' && n ? `<span class="pm-fn">${n}</span>` : ''}</button>`).join('')}</div><div class="pm-rows">`;
     if (!__pm) {
         html += `<div class="pm-empty">${__pmErr ? '<b>Couldn’t load the activity</b>Check your connection. <button type="button" class="pm-linkbtn" data-pm="retry">Try again</button>' : 'Loading…'}</div></div>`;
         return html;
     }
-    const all = __pmAct.filter(pmKeep);
+    const all = pmMoneyItems().filter(pmKeepItem);
     const items = all.slice(0, __pmShown);
+    const more = all.length > __pmShown || (!__pmActEnd && __pmFilter !== 'tosort');
+    const seen = pmBankSeenTo();
+    let edge = !!seen && seen < todayDashed() && ['all', 'in', 'out'].includes(__pmFilter);
     let day = null;
-    items.forEach((e) => {
-        const k = pmKind(e);
-        if (!k) return;
-        const t = e.at * 1000;
+    items.forEach((it) => {
+        const t = it.at * 1000;
+        if (edge && pmIsoOf(t) <= seen) { html += pmEdgeHtml(seen); edge = false; }
         const d = pmDayStart(t);
         if (d !== day) { day = d; html += `<div class="pm-daycap">${pmDayLabel(t)}</div>`; }
-        const tag = k.act ? `button type="button" data-pm="${k.act}" data-arg="${escapeHtml(String(k.arg || ''))}"` : 'div';
-        html += `<${tag} class="pm-mrow${__pmFresh.has(e.id) ? ' is-new' : ''}" aria-label="${escapeHtml(k.t)}, ${escapeHtml(k.sub)}, ${escapeHtml(k.v)}">
-            <span class="pm-mic ${k.ic}" aria-hidden="true">${k.icon}</span>
-            <span class="pm-main"><span class="pm-t">${escapeHtml(k.t)}</span><span class="pm-s">${escapeHtml(k.sub)}</span></span>
-            <span class="pm-v ${k.vc}">${k.v}</span></${k.act ? 'button' : 'div'}>`;
+        html += it.e ? pmEvRowHtml(it.e, it.l) : pmBankRow(it.l, false);
     });
-    if (!items.length) html += '<div class="pm-empty"><b>Nothing here</b>Nothing of this kind yet.</div>';
+    if (edge && items.length && !more) html += pmEdgeHtml(seen);
+    if (!items.length) {
+        html += __pmFilter === 'tosort'
+            ? '<div class="pm-empty"><b>All sorted</b>Every bank payment is in your books, or left out on purpose. <button type="button" class="pm-linkbtn" data-pm="filter" data-arg="all">Show everything</button></div>'
+            : '<div class="pm-empty"><b>Nothing here</b>Nothing of this kind yet.</div>';
+    }
     html += '</div>';
-    if (all.length > __pmShown || !__pmActEnd) html += '<div class="pm-foot"><button type="button" class="pm-linkbtn" data-pm="older">Show older</button></div>';
+    if (more) html += '<div class="pm-foot"><button type="button" class="pm-linkbtn" data-pm="older">Show older</button></div>';
     return html;
+}
+// Where each pound comes from, said once at the foot of the page.
+function pmSourcesHtml() {
+    const B = __pmBank;
+    if (!B || !B.ready) return '';
+    const L = pmLive();
+    const seen = pmBankSeenTo();
+    const upTo = seen ? 'Up to ' + pmDm(pmIso(seen)) : 'Nothing yet';
+    const ob = pmLiveOk() ? ['Monzo Business', 'ok', 'Live']
+        : L.state === 'approve' || L.state === 'syncing' ? ['Waiting for approval', 'warn', 'Approve']
+            : ['reconnect', 'stale', 'error', 'no_business'].includes(L.state) ? [upTo, 'warn', 'Disconnected']
+                : B.on || pmBankLines().length ? [upTo, 'unk', 'Statements']
+                    : ['Your bank, in this list', 'unk', 'Not linked'];
+    const row = (ic, t, s, cap, act) => `<${act ? `button type="button" data-pm="${act}"` : 'div'} class="pm-mrow"><span class="pm-mic pay" aria-hidden="true">${ic}</span><span class="pm-main"><span class="pm-t">${t}</span><span class="pm-s">${escapeHtml(s)}</span></span><span class="pm-r">${cap}</span></${act ? 'button' : 'div'}>`;
+    return `<div class="pm-capline"><span>Where it comes from</span></div><div class="pm-rows">
+        ${row(PM_IC.card, 'Square', 'Cards and payouts', squareAdminEnabled ? pmCap('ok', 'Connected') : pmCap('unk', 'Off'), '')}
+        ${row(PM_IC.bank, 'Open Banking', ob[0], pmCap(ob[1], ob[2]), 'bank')}
+        ${row(PM_IC.you, 'You', 'Cash, transfers, expenses', '', '')}
+    </div>`;
 }
 function pmQuarterNow(year) {
     const t = pmNow();
@@ -17400,7 +17530,7 @@ function pmRenderList() {
         const mine = view === 'holder' ? listAnd((__split.mine || []).map((c) => c.name)) : '';
         const sub = `${n} guest${n === 1 ? '' : 's'}${mine ? ' · ' + mine : ''}`;
         const whole = __pmWhole ? '<div class="pm-whole"><span>The whole business</span><button type="button" class="pm-linkbtn" data-pm="split-mine">Back to yours</button></div>' : '';
-        html = whole + pmOwedCardHtml(rows, 'Guests still to pay', sub) + pmBankCardHtml() + pmNeedsHtml(rows) + pmActivityHtml() + (view === 'holder' ? pmSplitBooksHtml() : pmBooksCardHtml());
+        html = whole + pmBankCardHtml() + pmOwedCardHtml(rows, 'Guests still to pay', sub) + pmNeedsHtml(rows) + pmActivityHtml() + (view === 'holder' ? pmSplitBooksHtml() : pmBooksCardHtml()) + pmSourcesHtml();
     }
     lp.innerHTML = html;
     lp.scrollTop = keep;
@@ -17988,8 +18118,6 @@ async function pmExport(kind) {
    page already holds. Recording goes through the existing writes (set_payment,
    expenses add), so a transfer recorded from the bank is the same record as one typed in. */
 let __pmBank = null; // statements.php status: the last good copy
-let __pmBankShown = 20;
-const PM_BANK_HIDE = 'chb-pm-bank-hide';
 /** @type {Array<[RegExp, string]>} */
 const PM_BANK_PLATFORMS = [[/airbnb/i, 'Airbnb'], [/booking\.?com/i, 'Booking.com'], [/vrbo|expedia|homeaway/i, 'Vrbo']];
 const PM_BANK_AS = { payment: 'A guest’s payment', expense: 'Expense', platform: 'Platform payout', ignore: 'Not the business', tax: 'Tax · left out of costs', income: 'Other income', square: 'Square payout', pot: 'Pot', person: 'Paid to a host' };
@@ -18008,9 +18136,6 @@ const PM_BANK_CATS = [
 
 const pmBankLines = () => (__pmBank && Array.isArray(__pmBank.lines) ? __pmBank.lines : []);
 const pmBankOn = () => !!(__pmBank && __pmBank.ready && __pmBank.on);
-function pmBankHidden() {
-    try { return localStorage.getItem(PM_BANK_HIDE) === '1'; } catch (e) { return false; }
-}
 let __pmBankQ = null;
 function pmBankLoad() {
     if (__pmBankQ) return __pmBankQ;
@@ -18125,47 +18250,56 @@ function pmWhen(sec) {
     if (n === 0) { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; }
     return n === -1 ? 'yesterday' : pmDm(t);
 }
-// On the landing: the way in, what needs the owner, or the account in one row.
+function pmBankBal() {
+    const B = __pmBank;
+    const L = pmLive();
+    // The newer of the two balances: the bank's own through Open Banking, or the
+    // statement's closing one.
+    const live = L.balance != null && L.balance_at ? { v: L.balance, at: L.balance_at * 1000, total: L.total, live: true } : null;
+    const stmt = B && B.balance != null ? { v: B.balance, at: pmIso(B.balance_at), total: null, live: false } : null;
+    return live && (!stmt || live.at >= stmt.at) ? live : stmt;
+}
+// The landing's "In the bank": the balance and, on one line beside a dot, where it
+// came from and when. Every state opens the bank page, where the link is managed.
 function pmBankCardHtml() {
     const B = __pmBank;
     if (!B || !B.ready) return '';
     const L = pmLive();
-    const card = (attn, ic, title, sub, acts, label) => `<section class="pm-bankcard${attn ? ' is-attn' : ''}" aria-label="${escapeHtml(label)}">
-        <div class="pm-bc-top"><span class="pm-mic ${attn ? 'out' : 'pay'}" aria-hidden="true">${ic}</span><span class="pm-main"><span class="pm-t">${title}</span><span class="pm-s">${sub}</span></span></div>
-        <div class="pm-acts-row">${acts}</div></section>`;
-    if (L.state === 'approve') {
-        return card(true, PM_IC.bank, 'Approve access in the Monzo app', 'Monzo sent a notification asking you to allow it. Once you do, the payments come in by themselves.',
-            '<button type="button" class="pm-btn primary" data-pm="bank">Open Monzo Business</button>', 'Monzo is waiting for approval');
-    }
-    if (L.state === 'reconnect' || L.state === 'stale' || L.state === 'error') {
-        return card(true, PM_IC.alert, L.state === 'reconnect' ? 'Connect Monzo again' : 'Monzo hasn’t synced', escapeHtml(L.say || ''),
-            '<button type="button" class="pm-btn primary" data-pm="bank">Open Monzo Business</button>', 'The Monzo link needs you');
-    }
-    if (!B.on && !pmLiveOn()) {
-        if (pmBankHidden()) return '';
-        return card(false, PM_IC.bank, 'Bring in your Monzo Business account', 'Every payment in and out of the business account, matched to bookings: live from Monzo, or a statement a month.',
-            '<button type="button" class="pm-btn second" data-pm="bank-hide">Not now</button><button type="button" class="pm-btn primary" data-pm="bank">Set up</button>', 'Your business bank account');
-    }
-    const d = B.due || {};
-    if (d.due && !pmLiveOk()) {
-        return card(true, PM_IC.bank, d.month ? `Time for ${escapeHtml(d.month)}’s statement` : 'Time for a new statement', `Export from ${pmDm(pmIso(d.from))} in the Monzo app and add it here. About a minute.`,
-            '<button type="button" class="pm-btn second" data-pm="bank">Your bank</button><button type="button" class="pm-btn primary" data-pm="bank-add">Add statement</button>', 'A bank statement is due');
-    }
-    const last = B.last;
-    const sub = pmLiveOk() ? 'Live · synced ' + pmWhen(L.last_ok) : L.state === 'syncing' ? 'Fetching your payments…' : last ? 'Statements up to ' + pmDm(pmIso(last.to)) : 'No statement yet';
-    return `<div class="pm-rows pm-bankstrip"><button type="button" class="pm-mrow" data-pm="bank" aria-label="Monzo Business, ${escapeHtml(sub)}">
+    const bal = pmBankBal();
+    const lines = pmBankLines().length;
+    let tone = '';
+    let say;
+    if (pmLiveOk()) { tone = 'ok'; say = 'Live · ' + pmWhen(L.last_ok); }
+    else if (L.state === 'approve' || L.state === 'syncing') { tone = 'warn'; say = L.state === 'approve' ? 'Waiting for approval' : 'Connecting…'; }
+    else if (['reconnect', 'stale', 'error', 'no_business'].includes(L.state)) { tone = 'warn'; say = 'Disconnected' + (bal ? ' · ' + pmDm(bal.at) : ''); }
+    else if (bal && !bal.live) say = 'Statement · ' + pmDm(bal.at);
+    else if (bal) { tone = 'warn'; say = 'Last seen · ' + pmDm(bal.at); }
+    else if (lines) say = 'Seen up to ' + pmDm(pmIso(pmBankSeenTo()));
+    else say = 'Not linked';
+    const right = bal ? `<span class="pm-v" data-fig="bank">${gbp(bal.v)}</span>` : lines ? '' : '<span class="pm-go">Link</span>';
+    return `<div class="pm-rows pm-bankstrip"><button type="button" class="pm-mrow" data-pm="bank" aria-label="In the bank, ${escapeHtml(say)}${bal ? ', ' + gbp(bal.v) : ''}">
         <span class="pm-mic pay" aria-hidden="true">${PM_IC.bank}</span>
-        <span class="pm-main"><span class="pm-t">Monzo Business</span><span class="pm-s">${escapeHtml(sub)}</span></span>
-        <span class="pm-r">${PM_IC.chev}</span></button></div>`;
+        <span class="pm-main"><span class="pm-t">In the bank</span><span class="pm-s"><i class="pm-sdot${tone ? ' ' + tone : ''}" aria-hidden="true"></i>${escapeHtml(say)}</span></span>
+        <span class="pm-r">${right}</span></button></div>`;
 }
-// The Needs-you row: payments the owner hasn't said what they were.
+// The bank's Needs-you rows: payments nobody has said what they were, a link that
+// needs the owner, and a statement that is due.
 function pmBankNeedHtml() {
-    if (!(pmBankOn() || pmLiveOn()) || !(__pmBank.unsorted > 0)) return '';
-    const n = __pmBank.unsorted;
-    return `<div class="pm-needrow">
-        <span class="pm-mic out" aria-hidden="true">${PM_IC.bank}</span>
-        <button type="button" class="pm-main pm-plain" data-pm="bank"><span class="pm-t">${n} bank payment${n === 1 ? '' : 's'} to sort</span><span class="pm-s">from your Monzo Business account</span></button>
-        <span class="pm-r">${pmCap('warn', String(n))}</span></div>`;
+    const B = __pmBank;
+    if (!B || !B.ready) return '';
+    const L = pmLive();
+    const out = [];
+    const row = (tone, ic, t, s, act, label) => `<div class="pm-needrow">
+        <span class="pm-mic ${tone}" aria-hidden="true">${ic}</span>
+        <button type="button" class="pm-main pm-plain" data-pm="${act}"><span class="pm-t">${t}</span><span class="pm-s">${s}</span></button>
+        <span class="pm-r">${label}</span></div>`;
+    if (L.state === 'approve') out.push(row('out', PM_IC.clock, 'Approve in your banking app', 'Monzo asked you to allow access', 'bank', `<button type="button" class="pm-mini" data-pm="mz-check">Check</button>`));
+    else if (['reconnect', 'stale', 'error'].includes(L.state)) out.push(row('out', PM_IC.alert, L.state === 'reconnect' ? 'Connect Open Banking again' : 'Open Banking hasn’t synced', escapeHtml(L.say || ''), 'bank', ''));
+    const n = pmBankToSort();
+    if (n) out.push(row('out', PM_IC.bank, `${n} bank payment${n === 1 ? '' : 's'} to sort`, 'Not in your books yet', 'tosort', pmCap('warn', String(n))));
+    const d = B.due || {};
+    if (d.due && B.on && !pmLiveOk()) out.push(row('pay', PM_IC.receipt, d.month ? `Time for ${escapeHtml(d.month)}’s statement` : 'Time for a new statement', `From ${pmDm(pmIso(d.from))} · from the Monzo app`, 'bank-add', '<button type="button" class="pm-mini ok" data-pm="bank-add">Add</button>'));
+    return out.join('');
 }
 // The live link as one row of the bank page: what it is doing and the one thing to do.
 function pmLiveRowHtml() {
@@ -18174,41 +18308,36 @@ function pmLiveRowHtml() {
     const mini = (act, label, ok) => `<button type="button" class="pm-mini${ok ? ' ok' : ''}" data-pm="${act}">${label}</button>`;
     const row = (ic, tone, t, sub, right, wrap) => `<div class="pm-needrow${wrap ? ' pm-wrow' : ''}"><span class="pm-mic ${tone}" aria-hidden="true">${ic}</span><span class="pm-main"><span class="pm-t">${t}</span><span class="pm-s">${sub}</span></span><span class="pm-r">${right}</span></div>`;
     switch (L.state) {
-        case 'off': return row(PM_IC.bank, '', 'Live from Monzo', 'Payments arrive by themselves', owner ? mini('mz-setup', 'Set up') : '');
-        case 'ready': return row(PM_IC.bank, '', 'Live from Monzo', 'Client saved · not connected', owner ? mini('mz-connect', 'Connect', true) : '');
-        case 'approve': return row(PM_IC.clock, 'out', 'Approve in the Monzo app', 'Allow access when Monzo asks', mini('mz-check', 'Check'), true);
-        case 'syncing': return row(PM_IC.bank, 'pay', 'Live from Monzo', 'Fetching your payments…', pmCap('info', 'Starting'));
+        case 'off': return row(PM_IC.bank, '', 'Open Banking', 'Payments arrive by themselves', owner ? mini('mz-setup', 'Set up') : '');
+        case 'ready': return row(PM_IC.bank, '', 'Open Banking', 'Client saved · not connected', owner ? mini('mz-connect', 'Connect', true) : '');
+        case 'approve': return row(PM_IC.clock, 'out', 'Approve in your banking app', 'Allow access when Monzo asks', mini('mz-check', 'Check'), true);
+        case 'syncing': return row(PM_IC.bank, 'pay', 'Open Banking', 'Fetching your payments…', pmCap('info', 'Starting'));
         case 'no_business': return row(PM_IC.alert, 'out', 'No business account shared', escapeHtml(L.say || ''), owner ? mini('mz-disconnect', 'Disconnect') : '', true);
         // The title and the green tile already say it is live, so the one thing on the
         // right is Sync; "Business account ending 2842" shortens so the line fits a phone.
-        case 'live': return row(PM_IC.bank, 'in', 'Live from Monzo', `${escapeHtml(String(L.account || '').replace(/^business account ending /i, 'Ending ') || 'Business account')} · synced ${pmWhen(L.last_ok)}`, mini('mz-sync', 'Sync'), true);
-        case 'reconnect': return row(PM_IC.alert, 'bad', 'Connect Monzo again', escapeHtml(L.say || ''), owner ? mini('mz-connect', 'Connect', true) : '', true);
-        default: return row(PM_IC.alert, 'out', 'Monzo hasn’t synced', escapeHtml(L.say || ''), mini('mz-sync', 'Try again'), true);
+        case 'live': return row(PM_IC.bank, 'in', 'Open Banking', `${escapeHtml(String(L.account || '').replace(/^business account ending /i, 'Ending ') || 'Business account')} · synced ${pmWhen(L.last_ok)}`, mini('mz-sync', 'Sync'), true);
+        case 'reconnect': return row(PM_IC.alert, 'bad', 'Connect Open Banking again', escapeHtml(L.say || ''), owner ? mini('mz-connect', 'Connect', true) : '', true);
+        default: return row(PM_IC.alert, 'out', 'Open Banking hasn’t synced', escapeHtml(L.say || ''), mini('mz-sync', 'Try again'), true);
     }
 }
+// The bank page: the account, the link and the statements. Its payments are in the
+// Money list on the landing, sorted there.
 function pmBankPage() {
     const B = __pmBank;
-    const L = pmLive();
-    const sub = pmLiveOk() ? 'Business account · live from Monzo' : B && B.on ? 'Business account · from your statements' : 'Business account';
-    const head = pmHead('Monzo Business', sub);
+    const sub = pmLiveOk() ? 'Monzo Business · live through Open Banking' : B && B.on ? 'Monzo Business · from your statements' : 'Monzo Business';
+    const head = pmHead('Your bank', sub);
     if (!B) return head + '<div class="pm-dbody"><p class="pm-note">Loading…</p></div>';
     if (!B.ready) return head + '<div class="pm-dbody"><p class="pm-note">Bank statements need a database update first. Open Manage, then Status, and run the updates.</p></div>';
     const lines = pmBankLines();
     const d = B.due || {};
-    const toSort = lines.filter((l) => !l.as);
-    const done = lines.filter((l) => l.as).slice(0, 60);
-    // The newer of the two balances: Monzo's own, or the statement's closing one.
-    const liveBal = L.balance != null && L.balance_at ? { v: L.balance, at: L.balance_at * 1000, total: L.total } : null;
-    const stmtBal = B.balance != null ? { v: B.balance, at: pmIso(B.balance_at) } : null;
-    const bal = liveBal && (!stmtBal || liveBal.at >= stmtBal.at) ? liveBal : stmtBal;
+    const bal = pmBankBal();
     let h = '';
     if (bal) {
-        const isLive = bal === liveBal;
-        h += `<section class="pm-hero"><div class="pm-hero-top"><span>${isLive ? (pmDaysFrom(bal.at) === 0 ? 'Balance now' : 'Balance on ' + pmDm(bal.at)) : 'Balance on ' + pmDm(bal.at)}</span><b>${gbp(bal.v)}</b></div>
-            <div class="pm-hero-sub">${isLive ? `From Monzo at ${pmWhen(bal.at / 1000)}${liveBal.total != null && liveBal.total > bal.v + 0.005 ? ` · ${gbp(liveBal.total)} with pots` : ''}.` : 'From your statement. The next one brings it up to date.'}</div></section>`;
+        h += `<section class="pm-hero"><div class="pm-hero-top"><span>${bal.live ? (pmDaysFrom(bal.at) === 0 ? 'Balance now' : 'Balance on ' + pmDm(bal.at)) : 'Balance on ' + pmDm(bal.at)}</span><b>${gbp(bal.v)}</b></div>
+            <div class="pm-hero-sub">${bal.live ? `Through Open Banking at ${pmWhen(bal.at / 1000)}${bal.total != null && bal.total > bal.v + 0.005 ? ` · ${gbp(bal.total)} with pots` : ''}.` : 'From your statement. The next one brings it up to date.'}</div></section>`;
     } else if (!lines.length) {
         h += `<section class="pm-hero"><div class="pm-hero-top"><span>Not set up yet</span></div>
-            <div class="pm-hero-sub">Connect Monzo and every payment in and out of the business account comes in by itself, matched to bookings and expenses. Or add a statement a month.</div></section>`;
+            <div class="pm-hero-sub">Connect Open Banking and every payment in and out of the business account comes in by itself, matched to bookings and expenses. Or add a statement a month.</div></section>`;
     }
     const rows = [pmLiveRowHtml()];
     if (B.on || B.last) {
@@ -18221,26 +18350,17 @@ function pmBankPage() {
     }
     rows.push(`<div class="pm-needrow"><span class="pm-mic" aria-hidden="true">${PM_IC.plus}</span><span class="pm-main"><span class="pm-t">Add a statement</span><span class="pm-s">${pmLiveOk() ? 'For anything older' : d.due ? 'From ' + pmDm(pmIso(d.from)) + ' to today' : 'A CSV, any dates'}</span></span>
         <span class="pm-r"><button type="button" class="pm-mini${d.due && !pmLiveOk() ? ' ok' : ''}" data-pm="bank-add">Add</button></span></div>`);
+    const n = pmBankToSort();
+    if (lines.length) {
+        const seen = pmBankSeenTo();
+        rows.push(`<button type="button" class="pm-mrow" data-pm="tosort"><span class="pm-mic${n ? ' out' : ' in'}" aria-hidden="true">${n ? PM_IC.bank : PM_IC.tick}</span><span class="pm-main"><span class="pm-t">${n ? `${n} payment${n === 1 ? '' : 's'} to sort` : 'Everything is sorted'}</span><span class="pm-s">${seen ? 'Seen up to ' + pmDm(pmIso(seen)) + ' · ' : ''}in the Money list</span></span><span class="pm-r">${PM_IC.chev}</span></button>`);
+    }
     h += `<div class="pm-rows">${rows.join('')}</div>`;
-    if (toSort.length) {
-        h += `<div class="pm-dcap is-attn">To sort · ${B.unsorted || toSort.length}</div><div class="pm-rows">${toSort.slice(0, __pmBankShown).map((l) => pmBankRow(l)).join('')}</div>`;
-        if (toSort.length > __pmBankShown) h += `<div class="pm-acts"><button type="button" class="pm-linkbtn" data-pm="bank-more">Show ${Math.min(40, toSort.length - __pmBankShown)} more</button></div>`;
-    } else if (lines.length) {
-        h += '<p class="pm-note">Everything is sorted.</p>';
-    }
-    if (done.length) {
-        let day = '';
-        h += `<div class="pm-dcap">Sorted</div><div class="pm-rows">${done.map((l) => {
-            const cap = l.date !== day ? `<div class="pm-daycap">${pmDayLabel(pmIso(l.date))}</div>` : '';
-            day = l.date;
-            return cap + pmBankRow(l, false);
-        }).join('')}</div>`;
-    }
     const foot = [];
-    if (pmLiveOn() && chbMayUse('owner')) foot.push('<button type="button" class="pm-linkbtn" data-pm="mz-disconnect">Disconnect Monzo</button>');
+    if (pmLiveOn() && chbMayUse('owner')) foot.push('<button type="button" class="pm-linkbtn" data-pm="mz-disconnect">Disconnect Open Banking</button>');
     if (B.on) foot.push('<button type="button" class="pm-linkbtn" data-pm="bank-remove">Stop adding statements</button>');
     if (foot.length) h += `<div class="pm-acts">${foot.join('')}</div>`;
-    h += `<p class="pm-note">${pmLiveOn() ? 'The link only reads your payments: this app never moves money. ' : 'A statement is read once and kept as payments. '}A payment already here is never added twice.</p>`;
+    h += `<p class="pm-note">${pmLiveOn() ? 'Open Banking only reads your payments: this app never moves money. ' : 'A statement is read once and kept as payments. '}A payment already here is never added twice.</p>`;
     return head + `<div class="pm-dbody">${h}</div>`;
 }
 
@@ -18292,7 +18412,6 @@ function pmBankSheet() {
             const r = await apiPost('statements.php', body);
             chbOpBump();
             st.done = r.summary;
-            try { localStorage.removeItem(PM_BANK_HIDE); } catch (e) {}
         } catch (e) {
             st.err = 'Couldn’t add it. ' + chbActErrSay(e);
         }
@@ -18446,6 +18565,11 @@ async function pmBankDoSplit(l, k) {
         toast('The same money. Counted once.', 'success', undo);
         return true;
     }
+    if (k === 'own') {
+        await pmBankMark(l, 'ignore', 'Moved to your own account');
+        toast('Money moved out to you. Not counted as a cost.', 'success', undo);
+        return true;
+    }
     if (k === 'cashin') {
         await pmBankMark(l, 'ignore', 'Cash paid in · already recorded');
         toast('Cash paid in. Counted once.', 'success', undo);
@@ -18597,7 +18721,7 @@ async function pmMzCheck(quiet) {
         pmMzAdopt(r);
         if (r && r.sync && r.sync.ok) {
             await pmBankLoad();
-            toast(r.sync.added ? `Monzo connected: ${r.sync.added} payment${r.sync.added === 1 ? '' : 's'} brought in.` : 'Monzo connected.', 'success');
+            toast(r.sync.added ? `Open Banking connected: ${r.sync.added} payment${r.sync.added === 1 ? '' : 's'} brought in.` : 'Open Banking connected.', 'success');
             return;
         }
         if (!quiet && pmLive().state === 'approve') toast('Not approved yet. Open the Monzo app and allow access.');
@@ -18614,7 +18738,7 @@ async function pmMzSync(quiet) {
         pmMzAdopt(r);
         const s = (r && r.sync) || {};
         await pmBankLoad();
-        if (!quiet) toast(s.ok ? (s.added ? `${s.added} new payment${s.added === 1 ? '' : 's'} from Monzo.` : 'Up to date: nothing new.') : (s.error || 'Couldn’t sync.'), s.ok ? 'success' : 'error');
+        if (!quiet) toast(s.ok ? (s.added ? `${s.added} new payment${s.added === 1 ? '' : 's'} from your bank.` : 'Up to date: nothing new.') : (s.error || 'Couldn’t sync.'), s.ok ? 'success' : 'error');
     } catch (e) {
         if (!quiet) toast('Couldn’t sync. ' + chbActErrSay(e), 'error');
     }
@@ -18628,12 +18752,12 @@ async function pmMzConnect() {
     }
 }
 async function pmMzDisconnect() {
-    const ok = await glassConfirm('Disconnect Monzo?\n\nNo more payments come in by themselves. Those already here, and everything recorded from them, stay as they are. You can connect again any time.', 'Disconnect');
+    const ok = await glassConfirm('Disconnect Open Banking?\n\nNo more payments come in by themselves. Those already here, and everything recorded from them, stay as they are. You can connect again any time.', 'Disconnect');
     if (!ok) return;
     try {
         const r = await apiPost('monzo.php', { action: 'disconnect' });
         pmMzAdopt(r);
-        toast('Monzo disconnected.');
+        toast('Open Banking disconnected.');
         await pmBankLoad();
     } catch (e) {
         glassAlert('Couldn’t disconnect. ' + chbActErrSay(e));
@@ -18683,14 +18807,14 @@ function pmMzSheet() {
                 draw();
             };
         } else {
-            html = `${steps()}<h3>Connect to Monzo</h3>
+            html = `${steps()}<h3>Connect Open Banking</h3>
                 <ol class="pm-howto">
                     <li><span><b>Monzo emails you a link</b><small>Open it on this phone or computer</small></span></li>
                     <li><span><b>Approve access in the Monzo app</b><small>Do it straight away: Monzo shares this year’s payments only in the first five minutes, then the last 90 days</small></span></li>
                     <li><span><b>Come back here</b><small>The payments come in by themselves from then on</small></span></li>
                 </ol>
                 <p>The link only reads your payments: this app never moves money.</p>
-                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Not now</button><button type="button" class="pm-btn primary" data-pms="save">Connect to Monzo</button></div>`;
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Not now</button><button type="button" class="pm-btn primary" data-pms="save">Connect Open Banking</button></div>`;
             save = () => { pmSheetClose(); pmMzConnect(); };
         }
         const s = pmSheet(html, save);
@@ -18966,12 +19090,27 @@ function pmPlatStay(plat, date) {
     }));
     return hits.length === 1 ? hits[0] : null;
 }
+// Whose account this is: the split's holder when the split is on, else whoever is signed in.
+function pmOwnName() {
+    const S = __split;
+    if (S && S.on && Array.isArray(S.people)) {
+        const h = S.people.find((x) => Number(x.id) === Number(S.holder));
+        if (h && h.name) return String(h.name);
+    }
+    const me = /** @type {any} */ (window).__me;
+    return me && me.name ? String(me.name) : '';
+}
 function pmSplitSuggest(l) {
     const words = pmNameWords(`${l.name} ${l.description}`);
     const named = (b) => pmNameWords(b.name).some((w) => words.includes(w));
     if (l.amount < 0) {
         const p = pmPaidPeople().find((x) => pmNorm(l.name) === pmNorm(x.name) || pmNameLike(l.name, x.name) || (x.payees || []).some((n) => pmNorm(n) === pmNorm(l.name) || pmNameLike(l.name, n)));
         if (p) return { say: `Looks like ${p.first}’s money for ${pmCotNames(p)}.`, acts: [{ k: 'person:' + p.id, label: `Paid to ${p.first}`, primary: true }, { k: 'cat', label: 'Something else' }] };
+        // Money to the account holder's own name is money moved out, not a cost.
+        const own = pmOwnName();
+        if (own && (pmNorm(l.name) === pmNorm(own) || pmNameLike(l.name, own))) {
+            return { say: 'A transfer to you. Moving money to your own account?', acts: [{ k: 'own', label: 'Moved to my account', primary: true }, { k: 'cat', label: 'An expense' }] };
+        }
         const amt = Math.abs(l.amount);
         const back = pmAllStays().filter(({ pk, b }) => {
             if (!named(b)) return false;
@@ -19044,6 +19183,14 @@ const PM_ACT = {
     payout(id) { if (id) pmOpen('payout:' + id); },
     close() { pmClose(); },
     filter(arg) { __pmFilter = arg; __pmShown = 20; pmRenderList(); },
+    tosort() {
+        __pmFilter = 'tosort';
+        __pmShown = 40;
+        if (__pmOpen === 'bank' && !pmWide()) pmClose();
+        pmRenderList();
+        const c = document.getElementById('pm-activity');
+        if (c) c.scrollIntoView({ behavior: chbReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    },
     async older() {
         __pmShown += 40;
         if (__pmAct.filter(pmKeep).length < __pmShown && !__pmActEnd && __pmAct.length) {
@@ -19080,11 +19227,6 @@ const PM_ACT = {
     pdf() { pmExport('pdf'); },
     bank() { pmOpen('bank'); },
     'bank-add'() { pmMenuShow(false); pmBankSheet(); },
-    'bank-hide'() {
-        try { localStorage.setItem(PM_BANK_HIDE, '1'); } catch (e) {}
-        pmRenderList();
-        toast('Hidden. Add a statement any time from +.');
-    },
     'bank-do'(arg) { const [id, ...k] = String(arg).split('|'); pmBankDo(Number(id), k.join('|')); },
     'bank-all'(arg) { const [id, ...k] = String(arg).split('|'); pmBankAll(Number(id), k.join('|')); },
     async 'bank-undo'(arg) {
@@ -19095,14 +19237,11 @@ const PM_ACT = {
             else if (l.as !== 'payment') await pmBankUnmark(l);
         } catch (e) { glassAlert('Couldn’t undo it. ' + chbActErrSay(e)); }
     },
-    'bank-more'() { __pmBankShown += 40; pmRenderDetail(); },
     'bank-remind'(a, el) { pmBankRemind(!!(el && /** @type {HTMLInputElement} */ (el).checked)); },
     'bank-remove'() { pmBankRemove(); },
     'mz-setup'() { pmMzSheet(); },
-    // From the + menu: always a way in, even after "Not now" hid the landing card.
     async 'mz-open'() {
         pmMenuShow(false);
-        try { localStorage.removeItem(PM_BANK_HIDE); } catch (e) {}
         pmOpen('bank');
         if (!__pmBank) await pmBankLoad();
         const st = pmLive().state;
