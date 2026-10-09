@@ -22,7 +22,9 @@
 //  §10 the booking and enquiry pages joined: a back link naming its screen, cards on the
 //      one radius, the one caption tier, sentence-case tags, Approve a filled pill;
 //  §11 Today joined: the one switcher, the Bookings caption on its count's line, and the
-//      booking window's one action the accent pill.
+//      booking window's one action the accent pill;
+//  §12 small parts: a guest's other stays as one inset list with the drawn chevron, an
+//      action link's chevron drawn too, and the message search at the one field height.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -434,6 +436,53 @@ async function open(browser, base, width) {
   ok(today.tab === today.accRgb, `Today's Upcoming|Past is the one switcher, the chosen side in the accent (${today.tab})`);
   ok(today.sumW > 0 && today.capRow <= 4, `the Bookings caption sits on its row's centre line, beside its count (${today.capRow.toFixed(1)}px off)`);
   ok(today.save === today.accRgb, `the booking window's one action is the accent pill (${today.save})`);
+
+  console.log('§12 the small parts the audit found');
+  const small = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const mk = (id, ci, co) => mapBookingFromApi({ id, prop_key: '21a', name: 'Sofia Laurent', email: 'sofia@example.com', phone: '07700 900001', address: '1 Lane', postcode: 'NR25 7AB',
+      check_in: iso(ci), check_out: iso(co), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440,
+      agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: iso(0), hold_status: 'none' });
+    dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
+    nav('view-backoffice');
+    await wait(200);
+    dbBookings['21a'] = [mk(95, 30, 33), mk(96, -40, -37), mk(97, -90, -87)];
+    await openBookingHub(95);
+    await wait(500);
+    const c = document.getElementById('booking-hub-content');
+    if ((document.getElementById('bhub-fold-guest') || {}).hidden) bhubFoldToggle('guest');
+    await wait(450);
+    const list = c.querySelector('.bhub-stays');
+    const rows = list ? [...list.querySelectorAll('.bhub-stay-row')] : [];
+    const cap = (c.querySelector('.bhub-stays-cap') || {}).textContent || '';
+    const act = c.querySelector('.bhub-actlink');
+    const actAfter = act ? getComputedStyle(act, '::after') : null;
+    const out = {
+      cap, rows: rows.length, chev: rows.every((r) => r.querySelector('.bhub-chev') && !/open →/.test(r.textContent)),
+      inset: list ? getComputedStyle(list).borderTopLeftRadius : '', rowBorder: rows[0] ? getComputedStyle(rows[0]).borderTopWidth : '',
+      seam: rows[1] ? getComputedStyle(rows[1]).borderTopWidth : '',
+      actGlyph: actAfter ? actAfter.content : '', actMask: actAfter ? (actAfter.maskImage || actAfter.webkitMaskImage || '') : '',
+    };
+    await openInbox();
+    await wait(300);
+    inboxFolder('messages');
+    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
+    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
+    __msgThreads = [{ thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Hi', last_at: new Date().toISOString().slice(0, 19).replace('T', ' '), last_role: 'guest', unread: 0, archived: 0, is_guest: 1 }];
+    document.getElementById('messages-list').dataset.loaded = '1';
+    renderMessagesList();
+    await wait(100);
+    const ms = document.getElementById('msg-search');
+    out.searchH = ms ? Math.round(ms.getBoundingClientRect().height) : 0;
+    return out;
+  });
+  ok(small.cap === 'Also stayed · 2', `a guest's other stays carry one caption ("${small.cap}")`);
+  ok(small.rows === 2 && small.inset === '12px' && small.rowBorder === '0px' && small.seam === '1px',
+    `…over one inset panel, rows on hairlines (${small.rows} rows, ${small.inset}, ${small.rowBorder}/${small.seam})`);
+  ok(small.chev, 'each ends in the drawn chevron, not "open →"');
+  ok(small.actGlyph === '""' && /url\(/.test(small.actMask), `an action link ends in the drawn chevron too, not a '›' glyph (${small.actGlyph})`);
+  ok(small.searchH === 48, `the message search is the one field's height (${small.searchH}px)`);
 
   await page.close();
   await t.done(fails);

@@ -11661,7 +11661,7 @@ function hubIntelCardHtml(intel) {
 function hubIntelMentionRowsHtml(mentions) {
     const snip = (s) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > 110 ? s.slice(0, 109) + '…' : s; };
     return (mentions || [])
-        .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span><span class="bhub-mut">open →</span></button>`)
+        .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span>${BHUB_CHEV}</button>`)
         .join('');
 }
 // The when-line's STATE as one capsule (Past stay / Staying now / Arrives in 4 days) — the fact the
@@ -11986,14 +11986,15 @@ function renderBookingHub() {
         otherStays.sort((a, z) => (z.x.checkIn || '').localeCompare(a.x.checkIn || ''));
     }
     const staysHtml = otherStays.length
-        ? `<div class="bhub-mut" style="margin-top:14px;">Also stayed (${otherStays.length}):</div>` +
+        ? `<div class="bhub-stays-cap">Also stayed · ${otherStays.length}</div><div class="bhub-stays">` +
           otherStays
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span class="bhub-stay-when">${escapeHtml(fmtStayRange(x.checkIn, x.checkOut))}</span>${BHUB_CHEV}</button>`,
               )
-              .join('')
+              .join('') +
+          '</div>'
         : '';
     // Only fields that HAVE a value render — a card of "—" rows is noise.
     // Terms always shows (it's the acceptance evidence, present or not).
@@ -32603,12 +32604,12 @@ function mbxContextHtml(fromEmail, shownName) {
             const meta = propertyMeta[pk] || { name: pk };
             const past = (b.checkOut || '') < today;
             chips.push(
-                `<button type="button" class="bhub-stay-row" ${chbAttrs('openBookingHub', String(b.id))}><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span><span class="bhub-mut">open →</span></button>`,
+                `<button type="button" class="bhub-stay-row" ${chbAttrs('openBookingHub', String(b.id))}><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span>${BHUB_CHEV}</button>`,
             );
         });
     g.enquiries.slice(0, 3).forEach((q) => {
         chips.push(
-            `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+            `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span>${BHUB_CHEV}</button>`,
         );
     });
     const name = g.name || g.email;

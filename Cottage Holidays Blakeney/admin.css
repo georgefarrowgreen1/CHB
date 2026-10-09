@@ -8897,3 +8897,19 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .bk-caprow .bo-sec-title { margin: 0; }
 /* The booking window's one action is the accent pill. */
 body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+
+/* ---------- 19. SMALL PARTS THE AUDIT FOUND ---------- */
+/* Fields that an id rule held at 44px take the one field's height. */
+:is(main, div).one-look :is(#msg-search, #sweep-balance, #sweep-buffer) { min-height: var(--u-h-field); padding: 12px 16px; }
+/* A short list inside a card (a guest's other stays, what history says about them) is the
+   card's inset panel: one caption, rows on hairlines, a chevron where "open →" was. */
+:is(main, div).one-look .bhub-stays-cap { margin: 16px 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions:not(:empty)) { margin-top: 8px; background: var(--u-inset); border-radius: var(--u-r-cell); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row { justify-content: flex-start; min-height: 48px; margin: 0; padding: 8px 12px 8px var(--u-pad); background: none; border: 0; border-radius: 0; }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row + .bhub-stay-row { border-top: 1px solid var(--u-edge); }
+:is(main, div).one-look :is(.bhub-stays, #hub-intel-mentions) .bhub-stay-row > .bhub-chev { flex: 0 0 auto; margin-left: auto; }
+/* An action link ends in the drawn chevron every row uses, not a '›' glyph. */
+:is(main, div).one-look .bhub-actlink::after {
+  content: ''; width: 16px; height: 16px; background: var(--text-muted); opacity: 0.6;
+  -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
+}

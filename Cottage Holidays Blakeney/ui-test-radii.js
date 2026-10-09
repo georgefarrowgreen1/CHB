@@ -88,7 +88,9 @@ const px = (v) => Math.round(parseFloat(v) || 0);
     return { n: grps.length, firstTL: getComputedStyle(first).borderTopLeftRadius, lastBL: getComputedStyle(last).borderBottomLeftRadius, card: card ? getComputedStyle(card).borderTopLeftRadius : null, rSm: tok('--r-sm'), rLg: tok('--r-lg') };
   });
   ok(r1.rSm === '12px' && r1.rLg === '20px', `the tokens are the cell and the card (${r1.rSm} / ${r1.rLg})`);
-  ok(r1.n >= 3 && r1.firstTL === '12px' && r1.lastBL === '12px', `a fold run's outer corners are the CELL radius (${r1.firstTL} / ${r1.lastBL})`);
+  // The booking page wears the one look: its groups are CARDS, so a run's outer corners take the
+  // card radius (the Payments landing's own rule, gated in ui-test-money).
+  ok(r1.n >= 3 && r1.firstTL === '20px' && r1.lastBL === '20px', `a fold run's outer corners are the CARD radius (${r1.firstTL} / ${r1.lastBL})`);
   ok(r1.card === '20px', `the to-do card is the CARD radius (${r1.card})`);
 
   console.log('§3 Move money out — the fields are 44px at 17px type');

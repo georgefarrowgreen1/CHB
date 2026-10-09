@@ -838,6 +838,12 @@ guard removed, the window scope removed — each fails its own checks).
   **With Today in, every back-office screen is a one-look screen** — an owner is always routed to one (`nav()` sends
   a signed-in admin's customer views to Today) — so the window rule now reaches every glass dialog an owner opens,
   and §6's "outside the scope" probe moved to the GUEST side (`owner-mode` off), which is the boundary that remains.
+- **WHAT THE AUDIT FOUND AFTER ALL FOUR AREAS** (section 19, re-running the vocabulary audit over every non-Manage
+  route): a guest's other stays ("Also stayed (3):" over separate mini-cards ending "open →") are one caption over the
+  card's INSET panel, rows on hairlines, each ending in the drawn chevron — and "open →" became that chevron at all four
+  `.bhub-stay-row` sites (the hub, its intel mentions, the email reader's guest context); an action link's `'›'` glyph
+  is the drawn chevron as a mask at the same 0.6; and two fields an id rule held at 44px (`#msg-search`,
+  `#sweep-balance`/`#sweep-buffer`) take the one field height. Gated in ui-test-onelook §12.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
