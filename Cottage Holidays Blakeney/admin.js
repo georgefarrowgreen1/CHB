@@ -33275,7 +33275,7 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 try { chbFrameSync(); } catch (e) {}
 // The back office's buttons take their kind from here on (oneLookButtons) — Manage
 // first, then each area as it joined the one look.
-try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox', 'booking-hub-content', 'enquiry-hub-content'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
+try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox', 'view-backoffice', 'booking-hub-content', 'enquiry-hub-content'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

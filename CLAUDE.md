@@ -830,6 +830,14 @@ guard removed, the window scope removed — each fails its own checks).
   **Approve keeps its own green** (gated in ui-test-ownerday): it was a ghost on a phone because the sticky bar
   carried the fill, and that bar now stands down while the card is on screen, so the card's pill is filled at every
   width.
+- **TODAY JOINS LAST, AND WITH IT EVERY WINDOW** (section 18). Today's Upcoming|Past is the same `.inbox-sort.seg`
+  control as the Inbox's, so it takes the one switcher (the chosen side in the accent) rather than the hairline
+  segmented control the simpler-Today pass gave it; the Bookings caption joins the tier with its section air
+  REMOVED inside `.bk-caprow` (the tier's top margin dropped "Bookings" 8px below its own count — gated in §11,
+  break-tested). The booking window's one action ("Add booking"/"Save", `#modal-save-btn`) is the accent pill.
+  **With Today in, every back-office screen is a one-look screen** — an owner is always routed to one (`nav()` sends
+  a signed-in admin's customer views to Today) — so the window rule now reaches every glass dialog an owner opens,
+  and §6's "outside the scope" probe moved to the GUEST side (`owner-mode` off), which is the boundary that remains.
 - Re-aimed gates: ui-test-manage (three calendar tools plus the Link-a-platform add row, the review-link row is one
   line, the caption tier, the "Needs a look" gap at 24px, the page called Guest list), ui-test-status / ui-test-intel /
   ui-test-owneraccount (old classes → `data-act`; the hero sub is "9 checks passed"), ui-test-hig (Manage's caption
@@ -846,8 +854,9 @@ guard removed, the window scope removed — each fails its own checks).
   fold is the inset panel on the CELL radius), ui-test-mailbox (no sentence under the title; the declined row's
   buttons found by class, not `btn-sm`), ui-test-hub (the enquiry hub's dock stands down; the plan badge says "Custom"/"Default"), **§10** (the booking and
   enquiry pages: the named back link from two screens, the card radius, the caption tier, the sentence-case tag, a
-  filled green Approve on a phone — break-tested on the back link and the content node's scope), search-test (the
-  occupancy check went with the function).
+  filled green Approve on a phone — break-tested on the back link and the content node's scope), **§11** (Today: the
+  one switcher, the caption on its row's line, the window's accent Save), §6 (the scope probe on the guest side),
+  search-test (the occupancy check went with the function).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
@@ -1861,7 +1870,8 @@ Now eight.
   it changes (never on first paint). With no bookings loaded it claims nothing.
 - **REMOVED, said plainly**: the Bookings ⋯ with its **Custom plans only** and **Show every booking**
   audits. `bookingsSetFilter('customplan'|'all')` still works but nothing on screen offers it.
-- **THE BOOKINGS BLOCK WEARS THE HOUSE VOCABULARY (second pass).** The tabs are the hairline segmented
+- **THE BOOKINGS BLOCK WEARS THE HOUSE VOCABULARY (second pass).** (Its tabs are SUPERSEDED by the one look: the
+  one switcher, the chosen side in the accent.) The tabs were the hairline segmented
   control (bordered container, active segment a flat fill, no floating shadow); `#bookings-owed` is a
   ROW — ✓ "Nobody owes you anything" or an amber "£528 to collect · from 1 guest · View ›" — and an
   empty list is the standard empty state (`.bk-empty`: mark, a title that says what is true, one line on

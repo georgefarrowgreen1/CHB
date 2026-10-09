@@ -11,7 +11,7 @@
 //      the actions;
 //   §5 every field in the place editor has a label of its own;
 //   §6 a window opened from Manage is a bottom sheet on a phone — and the same
-//      window opened outside Manage is untouched (the scope is the point);
+//      window on the guest side is untouched (the scope is the point);
 //   §7 one caption tier on Manage, the old tracked capitals left alone outside it;
 //   §8 Payments and Key safes joined: tools as rows, one caption tier, a back link
 //      that names Payments, an expense as one line in one card (its rows were
@@ -20,7 +20,9 @@
 //      one list card under one search with chips, and two verdicts that no longer
 //      claim more than they know (a read-but-unanswered chat, a mailbox that failed);
 //  §10 the booking and enquiry pages joined: a back link naming its screen, cards on the
-//      one radius, the one caption tier, sentence-case tags, Approve a filled pill.
+//      one radius, the one caption tier, sentence-case tags, Approve a filled pill;
+//  §11 Today joined: the one switcher, the Bookings caption on its count's line, and the
+//      booking window's one action the accent pill.
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -197,20 +199,22 @@ async function open(browser, base, width) {
     return out;
   });
   ok(Math.abs(inManage.bottom) <= 1 && inManage.width >= 388 && inManage.okRadius > 100, `opened from Manage it sits on the bottom edge, full width, pill buttons (${inManage.bottom}px from the bottom, ${inManage.width}px)`);
+  // Every back-office screen wears the one look now (and an owner is always sent to one), so
+  // the scope is proven where it must NOT reach: the same window on the GUEST side.
   const outside = await page.evaluate(async () => {
-    nav('view-backoffice');
-    await new Promise((r) => setTimeout(r, 300));
-    const p = glassConfirm('Delete this?', 'Delete', { danger: true });
+    document.body.classList.remove('owner-mode');
+    const p = glassConfirm('Sign out?', 'Sign out');
     await new Promise((r) => setTimeout(r, 600));
     const box = document.querySelector('#glass-dialog .glass-dialog-box').getBoundingClientRect();
     const out = { bottom: Math.round(innerHeight - box.bottom) };
     document.getElementById('glass-dialog-cancel').click();
     await p;
     await new Promise((r) => setTimeout(r, 450));
+    document.body.classList.add('owner-mode');
     await openArea();
     return out;
   });
-  ok(outside.bottom > 40, `the same window over Today keeps its own shape (${outside.bottom}px clear of the bottom)`);
+  ok(outside.bottom > 40, `the same window on the guest side keeps its own shape (${outside.bottom}px clear of the bottom)`);
   const qr = await page.evaluate(async () => {
     settingsOpen('reviews');
     await new Promise((r) => setTimeout(r, 300));
@@ -404,6 +408,32 @@ async function open(browser, base, width) {
   ok(/^Custom \/ none$/.test(hub.tag), `a state tag is sentence case (${hub.tag})`);
   ok(hub.approve && hub.approve.bg === hub.approve.okRgb && hub.approve.h >= 48 && hub.approve.full,
     `on a phone Approve is the card's filled pill, in its own green (${JSON.stringify(hub.approve)})`);
+
+  console.log('§11 Today and the booking window wear the same parts');
+  const today = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    nav('view-backoffice');
+    await wait(400);
+    const accRgb = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
+    const on = document.querySelector('#bookings-filters .inbox-sort-btn.is-on');
+    const cap = document.querySelector('#bookings-main .bk-caprow .bo-sec-title').getBoundingClientRect();
+    const sum = document.querySelector('#bookings-main .bk-caprow').getBoundingClientRect();
+    openAddBooking();
+    await wait(500);
+    const save = document.getElementById('modal-save-btn');
+    const out = {
+      accRgb, tab: on ? getComputedStyle(on).backgroundColor : '',
+      // The caption sits on its row's own centre line, beside the count and the switcher.
+      capRow: Math.abs((cap.top + cap.bottom) / 2 - (sum.top + sum.bottom) / 2),
+      sumW: sum.width,
+      save: save ? getComputedStyle(save).backgroundColor : '',
+    };
+    try { closeModal(); } catch (e) {}
+    return out;
+  });
+  ok(today.tab === today.accRgb, `Today's Upcoming|Past is the one switcher, the chosen side in the accent (${today.tab})`);
+  ok(today.sumW > 0 && today.capRow <= 4, `the Bookings caption sits on its row's centre line, beside its count (${today.capRow.toFixed(1)}px off)`);
+  ok(today.save === today.accRgb, `the booking window's one action is the accent pill (${today.save})`);
 
   await page.close();
   await t.done(fails);

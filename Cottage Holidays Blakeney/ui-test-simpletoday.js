@@ -174,13 +174,18 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       has: !!e, title: e ? (e.querySelector('p') || {}).textContent : '', sub: e ? (e.querySelector('small') || {}).textContent : '',
       icon: !!(e && e.querySelector('svg')), buttons: e ? e.querySelectorAll('button, a').length : -1,
       joined: !!(er && or) && Math.abs(or.bottom - er.top) <= 1,
-      seg: getComputedStyle(document.getElementById('bookings-filters')).borderTopWidth,
+      // The one look's switcher: a pill track, no floating shadow, the chosen side in the accent.
+      seg: (() => {
+        const f = document.getElementById('bookings-filters'), on = f.querySelector('.is-on');
+        const acc = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
+        return { shadow: getComputedStyle(f).boxShadow, on: on ? getComputedStyle(on).backgroundColor : '', acc };
+      })(),
     };
   });
   ok(emp.has && emp.title === 'No upcoming bookings' && /will appear here/.test(emp.sub), `the empty state names what is true and what fills it ("${emp.title}")`);
   ok(emp.icon && emp.buttons === 0, 'it carries the mark and NO button (the + in the month row is the way to add)');
   ok(emp.joined, 'it joins the status row above into one well (no gap between them) ');
-  ok(emp.seg !== '0px', `the tabs are a bordered segmented control, not a floating pill (${emp.seg})`);
+  ok(emp.seg.shadow === 'none' && emp.seg.on === emp.seg.acc, `the tabs are the one switcher — no floating shadow, the chosen side in the accent (${emp.seg.on})`);
   await page.evaluate(() => { bookingsSetFilter('customplan'); });
   ok(await page.evaluate(() => (document.querySelector('#bookings-list .bk-empty p') || {}).textContent === 'No bookings here'), 'a filter with nothing in it says so in its own words');
   await page.evaluate(() => { bookingsSetFilter('upcoming'); });
