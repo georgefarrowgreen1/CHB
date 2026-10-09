@@ -17914,12 +17914,6 @@ const pmBankOn = () => !!(__pmBank && __pmBank.ready && __pmBank.on);
 function pmBankHidden() {
     try { return localStorage.getItem(PM_BANK_HIDE) === '1'; } catch (e) { return false; }
 }
-// Where the next export should start: the day after the last statement, or the
-// start of this tax year the first time.
-function pmBankFrom() {
-    const last = __pmBank && __pmBank.last;
-    return last && last.to ? ukShiftDays(last.to, 1) : `${taxYearStartOf(todayDashed())}-04-06`;
-}
 let __pmBankQ = null;
 function pmBankLoad() {
     if (__pmBankQ) return __pmBankQ;
@@ -18149,8 +18143,10 @@ function pmBankPage() {
 function pmBankSheet() {
     const first = !(__pmBank && __pmBank.last);
     const defSince = first ? `${taxYearStartOf(todayDashed())}-04-06` : '';
-    const st = { step: 1, name: '', text: '', pv: null, err: '', since: defSince, busy: false, done: null };
-    const steps = () => `<div class="pm-steps" aria-hidden="true">${['Export', 'Add', 'Check'].map((t, i) => `<span class="${st.done || i + 1 < st.step ? 'done' : i + 1 === st.step ? 'now' : ''}"><i></i>${t}</span>`).join('')}</div>`;
+    // Two steps: add the file, then review what it would add. (The how-to-export step
+    // was removed at the owner's ask.)
+    const st = { step: 2, name: '', text: '', pv: null, err: '', since: defSince, busy: false, done: null };
+    const steps = () => `<div class="pm-steps" aria-hidden="true">${[['Add', 2], ['Review', 3]].map(([t, n]) => `<span class="${st.done || n < st.step ? 'done' : n === st.step ? 'now' : ''}"><i></i>${t}</span>`).join('')}</div>`;
     const kv = (k, v) => `<div class="pm-skv"><span>${k}</span><b>${v}</b></div>`;
     const preview = async () => {
         st.busy = true;
@@ -18211,19 +18207,8 @@ function pmBankSheet() {
                 <div class="pm-skvs">${kv('Up to', pmDm(to))}${s.already ? kv('Already here, skipped', String(s.already)) : ''}${s.auto ? kv('Matched by themselves', String(s.auto)) : ''}${kv('For you to sort', String(left))}${kv('Next statement', pmDm(next) + ((__pmBank && __pmBank.remind) ? ', with a reminder' : ''))}</div>
                 <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Done</button><button type="button" class="pm-btn primary" data-pms="save">See your bank</button></div>`;
             save = () => { pmSheetClose(); pmOpen('bank'); };
-        } else if (st.step === 1) {
-            const from = pmBankFrom();
-            html = `${steps()}<h3>Export a statement from Monzo Business</h3>
-                <ol class="pm-howto">
-                    <li><span><b>In the Monzo app, tap ⋯ on your business card</b><small>On a computer, it’s at business.monzo.com</small></span></li>
-                    <li><span><b>Choose Bank statements, then CSV</b><small>Not PDF: the app reads CSV</small></span></li>
-                    <li><span><b>From ${pmDm(pmIso(from))} to today</b><small>${first ? 'The start of this tax year. Earlier is fine too.' : 'The day after your last statement.'}</small></span></li>
-                </ol>
-                <p>Statements can overlap: a payment already here is skipped, so nothing counts twice.</p>
-                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">I have the file</button></div>`;
-            save = () => { st.step = 2; draw(); };
         } else if (st.step === 2) {
-            html = `${steps()}<h3>Add the statement</h3>
+            html = `${steps()}<h3>Add a statement</h3>
                 <label class="pm-drop${st.err ? ' bad' : ''}${st.busy ? ' busy' : ''}" id="pm-drop">
                     <input type="file" id="pm-stmt-file" accept=".csv,text/csv" aria-label="Choose the statement file"${st.busy ? ' disabled' : ''}>
                     <span class="pm-drop-ic" aria-hidden="true">${st.busy ? '<span class="pm-spin"></span>' : PM_IC.receipt}</span>
@@ -18231,11 +18216,11 @@ function pmBankSheet() {
                     <span>${st.busy ? 'Checking every payment against what is already here' : 'or drop it here'}</span>
                 </label>
                 ${st.err ? `<p class="pm-serr" role="alert">${escapeHtml(st.err)}</p>` : ''}
-                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="back">Back</button></div>`;
+                <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button></div>`;
         } else {
             const p = st.pv;
             const older = p.older > 0 || (first && p.from && p.from < defSince);
-            html = `${steps()}<h3>Check before it goes in</h3>
+            html = `${steps()}<h3>Review before it goes in</h3>
                 <div class="pm-skvs">
                     ${kv('Dates', escapeHtml(pmDm(pmIso(p.from)) + ' to ' + pmDm(pmIso(p.to))))}
                     ${kv('Payments in the file', String(p.rows))}
@@ -18254,7 +18239,7 @@ function pmBankSheet() {
         }
         const s = pmSheet(html, save);
         /** @type {any} */ (s).__pick = (k, a) => {
-            if (k === 'back') { st.step = st.step === 3 ? 2 : 1; st.err = ''; st.pv = null; draw(); }
+            if (k === 'back') { st.step = 2; st.err = ''; st.pv = null; draw(); }
             else if (k === 'since') { st.since = a; preview(); }
         };
         const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-stmt-file'));
