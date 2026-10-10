@@ -642,6 +642,49 @@ The email composer is a Subject, a Message box, attachments, Preview and Send. G
   reply carries no buttons, ui-test-hub asserts the composer opens empty. ui-test-replies.js was deleted;
   ui-test-onelook, ui-test-people and ui-test-arrival-review were re-aimed (onelook and people not run).
 
+## Guest chat: one page that says how the chat stands (approved demo, built)
+
+Manage → Guest chat (`#sec-chat-away` → `#gc-page`, `renderGuestChat` and the `gc*` block in admin.js, the GUEST CHAT
+block at the foot of admin.css). The two old editors (`#chat-away-editor`, `#chat-answers-editor`) are gone;
+`renderChatAwayEditor` survives as a one-line alias.
+- **The title's pill** is the page's state: `N to answer` (amber, questions guests asked that nothing answered),
+  else `Away reply on` / `Away reply off`.
+- **Preview → See it as a guest** opens `#gc-sheet`, a bottom sheet on a phone. It draws the guest chat from the chat's
+  OWN classes and composers (`chatHelloHtml`, `chatQuickList`, `chatChipLabel`), so it cannot drift from what guests
+  see. Tapping a button answers in the preview. "They write at 2pm | At 11:40pm" shows the away reply, or "they wait
+  for you", by the server's own rule.
+- **Guests asked**: the `guest-faq-misses` list MOVED here from Search learning (`slAddFaq` / `slDismissGuestQ` and
+  the Search-learning panel are deleted). Manage's "Needs a look" has its own `guestq` row ("Guests asked the
+  chat"), which routes here. Answering one stores it as a typed-only instant answer, for that cottage or every
+  cottage. That is deliberately NOT in `faqs-<prop>`, because that key needs the cottage-pages permission and
+  `chat-chips` is everyday.
+- **When you're away**:
+  - the switch (`chat-away-enabled`);
+  - the hours as `select.acw-pill`, labelled 7am/10pm and still stored as `07`/`22`, with a sentence saying who gets
+    the reply;
+  - the reply as a box that grows with its words.
+
+  **An empty box sends the standard words**: messages.php `CHAT_AWAY_DEFAULT` equals admin.js `GC_AWAY_STD`
+  (smoke-test holds them equal). Before, an empty box sent NOTHING with the switch on, while the box showed those
+  words as its placeholder. The chat-away-* keys are internal, so the page reads `adminPrivateContent` FIRST
+  (`gcVal`) and `gcSave` writes both mirrors.
+- **Instant answers**:
+  - each answer is a fold row with a capsule: Standard, Your words, Added, plus Typed only;
+  - the answer box grows with its words;
+  - "Use the standard answer" (typing the standard back, or clearing the box, stores `''`);
+  - a "Show as a button" switch;
+  - "Add a question" (a glassForm);
+  - "Your cottages' own questions", which opens each cottage's FAQ section.
+- **The data**: new PUBLIC content key **`chat-chips`** `{hide: [standard ids], extra: [{id, q, chip, a, btn, prop}]}`.
+  app.js `chatChipsCfg` is the one sanitiser (malformed entries are simply not there; at most 40). `chatQuickList(all)`
+  is the one list used by the chat's buttons (`renderChatChips`, on open), the on-device matcher (`guestFaqCorpus`),
+  `chatFaq(id)` and the preview. An answer with `prop` is offered only on that cottage's page. **`chat-reply-time`**
+  (public: hour / hours / day / next) feeds `chatReplySay()` in the welcome. Both keys are everyday in
+  `people_content_cap` and on test-content-keys' `$JS_PUBLIC_OK`.
+- Gates: smoke-test's "Guest chat instant answers" block (the sanitiser, buttons per cottage, the corpus, the reply
+  time, the two standard sentences equal), **ui-test-guestchat.js** (the page driven in a browser), plus re-aims in
+  ui-test-manage / -hig / -search-learning.
+
 ## Email a guest: one sheet, and the email it sends (approved demo v3, built and pushed to main without CI)
 
 **Asked for as "overhaul guest email", demoed three times, then "Build and merge without CI".** One sheet for a

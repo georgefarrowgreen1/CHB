@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 750;
+const ADMIN_BUNDLE_V = 751;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 387;
+const ADMIN_CSS_V = 388;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -12438,7 +12438,7 @@ function chatHelloHtml() {
                 <div class="chat-hello-who">${escapeHtml(host)}</div>
                 <div class="chat-hello-role">Owner · Cottage Holidays Blakeney</div>
                 <p class="chat-hello-ask">Ask us anything — about a cottage, your dates, or your stay.</p>
-                <span class="chat-hello-when"><span class="chat-presence-dot" aria-hidden="true"></span>Usually replies within a few hours</span>
+                <span class="chat-hello-when"><span class="chat-presence-dot" aria-hidden="true"></span>${escapeHtml(chatReplySay())}</span>
             </div>`;
 }
 
@@ -12526,6 +12526,7 @@ function toggleChat() {
     overlayHistPush(); // Back closes this overlay
     w.classList.add('open');
     document.getElementById('chat-fab').classList.add('hidden');
+    renderChatChips(); // the owner's buttons, for the cottage this page is about
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay('messages');
     } catch (e) {}
@@ -12874,6 +12875,7 @@ function activeCottageTimes() {
 }
 const CHAT_FAQ = {
     checkin: {
+        chip: 'Check-in time?',
         q: 'What time is check-in and check-out?',
         key: 'chat-ans-checkin',
         // ONE sentence, filled from the cottage's own times when they are knowable
@@ -12888,11 +12890,13 @@ const CHAT_FAQ = {
         },
     },
     parking: {
+        chip: 'Parking?',
         q: 'Is there parking at the cottage?',
         key: 'chat-ans-parking',
         def: "Parking details are in your arrival information, and Blakeney has a large pay-and-display car park down by the quay. Tell us which cottage and we'll give you the specifics.",
     },
     wifi: {
+        chip: 'Wi-Fi?',
         q: 'What is the Wi-Fi like?',
         key: 'chat-ans-wifi',
         def: "There's free Wi-Fi throughout the cottage — fine for browsing, email and streaming.",
@@ -12932,10 +12936,71 @@ function chatFaqAnswer(f) {
     } catch (e) {}
     return live || f.def;
 }
+// THE OWNER'S INSTANT ANSWERS (Manage → Guest chat). The three standard answers
+// keep their own keys; 'chat-chips' says which of them is NOT a button and carries
+// the owner's own answers — a button they added, or a question a guest asked that
+// they answered (typed-only, and only on that cottage when it names one). One
+// reader for the chat's buttons, the on-device matcher and the owner's preview, so
+// the three can never disagree. Owner-written JSON reaching a guest page, so the
+// read sanitises: anything malformed is simply not there.
+const CHAT_REPLY_SAY = { hour: 'within an hour', hours: 'within a few hours', day: 'the same day', next: 'by the next day' };
+function chatReplySay() {
+    const k = typeof siteContent === 'object' && siteContent ? siteContent['chat-reply-time'] : '';
+    return 'Usually replies ' + (CHAT_REPLY_SAY[k] || CHAT_REPLY_SAY.hours);
+}
+function chatChipsCfg() {
+    const raw = typeof siteContent === 'object' && siteContent ? siteContent['chat-chips'] : null;
+    const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const hide = Array.isArray(o.hide) ? o.hide.filter((k) => typeof k === 'string' && CHAT_FAQ[k]) : [];
+    const extra = (Array.isArray(o.extra) ? o.extra : [])
+        .filter((x) => x && typeof x.id === 'string' && /^[a-z0-9]{1,16}$/.test(x.id) && typeof x.a === 'string' && x.a.trim() && (String(x.q || '').trim() || String(x.chip || '').trim()))
+        .slice(0, 40)
+        .map((x) => {
+            const chip = String(x.chip || '').trim().slice(0, 28);
+            const q = String(x.q || '').trim().slice(0, 200) || chip;
+            const prop = typeof x.prop === 'string' && /^[a-z0-9_]{1,32}$/.test(x.prop) ? x.prop : '';
+            return { id: x.id, q, chip, a: x.a.trim().slice(0, 1500), btn: x.btn !== false, prop };
+        });
+    return { hide, extra };
+}
+// A button's words: its own, else the question cut at a word to fit.
+function chatChipLabel(x) {
+    if (x.chip) return x.chip;
+    const q = String(x.q || '');
+    if (q.length <= 28) return q;
+    const cut = q.slice(0, 27);
+    return cut.slice(0, cut.lastIndexOf(' ') > 12 ? cut.lastIndexOf(' ') : 27) + '…';
+}
+// Every instant answer, standard first. `all` keeps the ones that are not buttons
+// and the other cottages' (the owner's list); without it, what this page offers.
+function chatQuickList(all) {
+    const cfg = chatChipsCfg();
+    const here = typeof activeFrontProperty !== 'undefined' && activeFrontProperty ? activeFrontProperty : '';
+    const out = [];
+    Object.keys(CHAT_FAQ).forEach((k) => {
+        const f = CHAT_FAQ[k];
+        out.push({ id: k, std: true, chip: f.chip, q: f.q, a: chatFaqAnswer(f), btn: !cfg.hide.includes(k), prop: '' });
+    });
+    cfg.extra.forEach((x) => out.push(Object.assign({ std: false }, x)));
+    return all ? out : out.filter((x) => !x.prop || !here || x.prop === here);
+}
+// The chat's own buttons, between Check availability and Report an issue.
+function renderChatChips() {
+    const q = document.getElementById('chat-quick');
+    if (!q) return;
+    q.querySelectorAll('.chat-chip:not(.chat-chip-avail):not(.chat-chip-issue)').forEach((n) => n.remove());
+    const html = chatQuickList()
+        .filter((x) => x.btn)
+        .map((x) => `<button type="button" class="chat-chip" ${chbAttrs('chatFaq', x.id)}>${escapeHtml(chatChipLabel(x))}</button>`)
+        .join('');
+    const issue = q.querySelector('.chat-chip-issue');
+    if (issue) issue.insertAdjacentHTML('beforebegin', html);
+    else q.insertAdjacentHTML('beforeend', html);
+}
 function guestFaqCorpus() {
     const out = [];
     try {
-        Object.keys(CHAT_FAQ).forEach((k) => { const f = CHAT_FAQ[k]; out.push({ q: f.q, a: chatFaqAnswer(f) }); });
+        chatQuickList().forEach((x) => out.push({ q: x.q, a: x.a }));
     } catch (e) {}
     try {
         const meta = typeof propertyMeta === 'object' && propertyMeta ? propertyMeta : {};
@@ -13071,11 +13136,11 @@ function chatBot(html) {
     return d;
 }
 function chatFaq(which) {
-    const f = CHAT_FAQ[which];
-    if (!f) return;
+    const x = chatQuickList(true).find((r) => r.id === which);
+    if (!x) return;
     chatClearEmpty();
-    chatAppendMe(f.q);
-    chatBot(escapeHtml(chatFaqAnswer(f)).replace(/\n/g, '<br>'));
+    chatAppendMe(x.q);
+    chatBot(escapeHtml(x.a).replace(/\n/g, '<br>'));
 }
 // An instant FAQ answer to a TYPED question, with a one-tap "reach a person"
 // fallback (re-sends the exact question to the owner, bypassing the matcher).
@@ -21326,7 +21391,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'acctphoto1';
+    const BUILD = 'guestchat1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

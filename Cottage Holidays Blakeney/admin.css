@@ -9890,3 +9890,66 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
   .td-in, .tl-nowline.td-now, .tl-nowline.td-now::before, .tl-num.td-pop, .bk-in-r, .bk-in-l, .bk-in-u, .bk-empty svg.bk-draw :is(rect, path), .ny-row.ny-arrive { animation: none; }
   .cal-actions .cal-add-btn span, #view-backoffice #bookings-filters.inbox-sort.seg > button { transition: none; }
 }
+
+/* ================================================================
+   GUEST CHAT (Manage → Guest chat; the approved demo, built)
+   The one look's parts: captions, wells, rows, fold groups joined into one
+   window, the switch and the pill time fields. What is its own here is small:
+   a field that grows with its words, a quiet text action, the "Saved" mark,
+   and the preview sheet, which draws the guest chat from its own classes.
+   ================================================================ */
+#sec-chat-away #gc-page { max-width: 640px; }
+#gc-page > .gc-prev { margin-bottom: 4px; }
+#gc-page .gc-who { margin: 0; padding: 0 var(--u-pad, 16px) 12px; font-size: var(--fs-sub); line-height: 1.45; color: var(--text-muted); text-wrap: pretty; }
+#gc-page .gc-who b { color: var(--text-light); font-weight: 600; }
+/* The away settings fold under their switch: [hidden] is the collapsed state (the
+   fold's own 0fr discipline), so the switch reads true the instant it changes. */
+#gc-page .gc-awayf { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 320ms var(--unfold), opacity 240ms var(--out); }
+#gc-page .gc-awayf[hidden] { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 320ms var(--unfold), opacity 240ms var(--out), visibility 0s linear 320ms; }
+#gc-page .gc-awayin { min-height: 0; overflow: hidden; overflow: clip; overflow-clip-margin: 4px; }
+#gc-page .gc-awayin > .gc-rowbtn { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+#gc-page .gc-awayin > .gc-who { padding-top: 0; margin-top: -4px; }
+#gc-page .gc-awayin > .acw-frow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }#gc-page .acw-frow > label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* A box as tall as its words: nothing is cut off mid-sentence, and it is never a
+   fixed three lines under an answer twice that long. */
+#gc-page textarea.gc-grow { resize: none; overflow: hidden; min-height: 48px; line-height: 1.5; }
+#gc-page .gc-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 4px; }
+#gc-page .gc-note { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; text-wrap: pretty; }
+#gc-page .gc-link { position: relative; min-height: 44px; padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; }
+#gc-page .gc-link.is-danger { color: var(--danger-text); margin-left: auto; }
+#gc-page .gc-link[hidden], #gc-page .gc-note[hidden] { display: none; }
+#gc-page .gc-saved { font-size: var(--fs-caption); font-weight: 600; color: var(--ok-text); opacity: 0; transition: opacity 240ms var(--out); }
+#gc-page .gc-saved.on { opacity: 1; }
+#gc-page .gc-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; border-top: 0; }
+/* Inside an open answer the fields share the row's own edge, not a second inset. */
+#gc-page .gc-run .bhub-fold :is(.acr-row, .acw-frow) { padding-left: 0; padding-right: 0; }
+#gc-page .gc-run .bhub-fold .acr-row select.acw-pill { max-width: 60%; }
+/* Rows that lead somewhere are buttons: the UA chrome goes, the row's own look stays. */
+#gc-page :is(.gc-cot, .gc-rowbtn) { width: 100%; min-height: 52px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#gc-page .gc-cot { gap: 12px; justify-content: flex-start; }
+#gc-page .gc-cot .acr-lbl { flex: 1 1 auto; }
+#gc-page :is(.gc-n, .gc-v) { flex: none; font-weight: 600; color: var(--text-muted); }
+#gc-page .gc-rowbtn { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+
+/* The preview: the guest chat's own parts in a window. */
+#gc-sheet .gc-sheet-box { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
+#gc-sheet .gc-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#gc-sheet .gc-sheet-head h2 { margin: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
+#gc-sheet .gc-sheet-x { flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: var(--r-pill); corner-shape: round; background: none; color: var(--text-light); cursor: pointer; }
+#gc-sheet .gc-sheet-x svg { width: 18px; height: 18px; }
+#gc-sheet .gc-segwrap .u-seg > button { flex: 1 1 0; }
+#gc-sheet .gc-chat { display: flex; flex-direction: column; border: 1px solid var(--glass-highlight); border-radius: var(--r-panel); overflow: hidden; background: rgba(26, 25, 30, 0.96); }
+body.light-mode #gc-sheet .gc-chat { background: rgba(248, 248, 250, 0.97); }
+#gc-sheet .gc-chat-head { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 4px 16px; border-bottom: 1px solid var(--glass-border); }
+#gc-sheet .gc-thread { height: min(340px, 44dvh); max-height: none; padding: 16px; }
+#gc-sheet .gc-chat-in { display: flex; align-items: center; gap: 8px; margin: 12px 16px 16px; }
+#gc-sheet .gc-chat-in span { flex: 1; min-height: 44px; display: flex; align-items: center; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: var(--r-pill); color: var(--text-muted); font-size: var(--fs-body); }
+#gc-sheet .gc-chat-in i { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); }
+#gc-sheet .gc-chat-in svg { width: 18px; height: 18px; }
+#gc-sheet .gc-wait { align-self: center; margin: 4px 0 0; font-size: var(--fs-caption); color: var(--text-muted); text-align: center; text-wrap: pretty; }
+#gc-sheet .gc-in { animation: gcIn 420ms var(--out) 160ms backwards; }
+@keyframes gcIn { from { opacity: 0; transform: translateY(6px) scale(0.97); } }
+@media (prefers-reduced-motion: reduce) {
+  #gc-sheet .gc-in { animation: none; }
+  #gc-page :is(.gc-saved, .gc-awayf, .gc-awayf[hidden]) { transition: none; }
+}

@@ -800,7 +800,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     settingsOpen('security'); // the two-step switch is drawn when its page opens
     const pay = { bumped: dep.value, twofa: !!document.querySelector('#sec-security .chb-switch #admin-2fa-toggle') };
     settingsOpen('chat-away');
-    const away = { sw: !!document.querySelector('#chat-away-editor .chb-switch input[data-key="chat-away-enabled"]'), pills: document.querySelectorAll('#chat-away-editor select.acw-pill').length };
+    const away = { sw: !!document.querySelector('#gc-page .chb-switch #gc-away-on'), hours: !!document.querySelector('#gc-page [data-act="gcHoursPick"] #gc-hours-v') };
     return { fu, nf, sms, pay, away };
   });
   ok(p1.fu.ids && p1.fu.well, 'Follow-up emails: the REAL toggles wear the switch, in a well');
@@ -809,7 +809,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p1.sms.sw && p1.sms.wells === 2 && p1.sms.token === 'password', `Text messages: switch + two wells, the token stays write-only (${p1.sms.wells})`);
   ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the value (${p1.pay.bumped})`);
   ok(p1.pay.twofa, 'Security: two-step sign-in is the switch on the real toggle');
-  ok(p1.away.sw && p1.away.pills === 2, 'Away auto-reply: the switch + hour pills on the real save keys');
+  ok(p1.away.sw && p1.away.hours, 'Guest chat: the away switch + the hours row (the Quiet hours form)');
 
   console.log('§6b Payments: rows, autosave, and the bank details as three checked fields');
   const py = await page.evaluate(async () => {
@@ -866,7 +866,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('§7 moderation queues + people lists wear the anatomy (batch 2)');
   const p2 = await page.evaluate(async () => {
     settingsOpen('chat-answers');
-    const ca = { frows: document.querySelectorAll('#chat-answers-editor .acr-well .acw-frow').length, saves: /Saves by itself/.test((document.getElementById('chat-answers-editor') || {}).textContent || '') };
+    const ca = { frows: document.querySelectorAll('#gc-page [data-grp^="gcq-"] .acw-frow textarea.gc-grow').length, saves: !!document.querySelector('#gc-page .u-addrow') };
     settingsOpen('waitlist');
     await new Promise((r) => setTimeout(r, 350));
     const wl = {
@@ -893,7 +893,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
     return { ca, wl, ga, rv };
   });
-  ok(p2.ca.frows >= 3 && p2.ca.saves, `Instant chat answers: the chips' questions as labelled boxes in a well (${p2.ca.frows})`);
+  ok(p2.ca.frows >= 3 && p2.ca.saves, `Instant answers: each a fold row with its growing answer box, and an add row (${p2.ca.frows})`);
   ok(p2.wl.rows === 2 && p2.wl.notified && p2.wl.waiting && p2.wl.acts, 'Waitlist: person rows with truth-telling capsules + the real actions');
   ok(p2.ga.rows === 2 && p2.ga.fig && p2.ga.hooks, 'Guest accounts: person rows with serif lifetime spend + the data-gemail hooks');
   ok(p2.ga.resetOnlyWithAccount, 'A reset link is only offered where an account exists');

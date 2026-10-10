@@ -9791,7 +9791,7 @@ function manageVerdicts() {
     try { misses = chbMissList() || []; } catch (err) {}
     let guestQ = [];
     try { guestQ = slGuestQuestions() || []; } catch (err) {}
-    const teachN = misses.length + guestQ.length;
+    const teachN = misses.length;
     // "ALL CLEAR" IS ONLY CLAIMED WHEN IT WAS ASKED: cron and the feeds ride ONE
     // bootstrap request, so a dropped one must read as "couldn't check", never as
     // a clean bill of health. The system check is undefined until it answers
@@ -9822,8 +9822,13 @@ function manageVerdicts() {
     if (mod.ph) probs.push({ id: 'ph', t: 'Guest photos to approve', s: mod.ph === 1 ? '1 shared photo' : mod.ph + ' shared photos', cap: mod.ph + ' waiting', tone: 'warn', go: ['settingsOpen', 'photos'] });
     if (mod.exp) probs.push({ id: 'exp', t: 'Things to do to approve', s: mod.exp === 1 ? '1 guest suggestion' : mod.exp + ' guest suggestions', cap: mod.exp + ' waiting', tone: 'warn', go: ['settingsOpen', 'experiences'] });
     if (teachN) {
-        const q = misses[0] ? String(misses[0].t || '') : guestQ[0] ? String(guestQ[0].q || '') : '';
+        const q = misses[0] ? String(misses[0].t || '') : '';
         probs.push({ id: 'teach', t: 'Teach your assistant', s: q ? '“' + q.slice(0, 28) + '”' + (teachN > 1 ? ' and ' + (teachN - 1) + ' more' : '') : teachN + ' to teach', cap: 'Teach', tone: 'warn', go: ['settingsOpen', 'search-learning'] });
+    }
+    // What guests typed in the chat that nothing answered is answered on Guest chat.
+    if (guestQ.length) {
+        const q = String(guestQ[0].q || '');
+        probs.push({ id: 'guestq', t: 'Guests asked the chat', s: '“' + q.slice(0, 28) + '”' + (guestQ.length > 1 ? ' and ' + (guestQ.length - 1) + ' more' : ''), cap: 'Answer', tone: 'warn', go: ['settingsOpen', 'chat-away'] });
     }
 
     const n = probs.length;
@@ -12555,10 +12560,7 @@ function settingsRenderSection(section) {
         loadContentEditor();
         renderHeroOptCard();
     }
-    else if (section === 'chat-away') {
-        renderChatAwayEditor();
-        renderChatAnswersEditor();
-    }
+    else if (section === 'chat-away') renderGuestChat();
     else if (section === 'backups') renderBackups();
     else if (section === 'follow-ups') hydrateFollowUpToggles();
     else if (section === 'diagnostics') loadDiagnostics();
@@ -13990,11 +13992,14 @@ function slCanonicals() {
 }
 // ---- Guest-side learning: the questions GUESTS typed in chat that the on-device
 // FAQ assistant couldn't answer (captured by guest-faq.php into the internal
-// 'guest-faq-misses' content key; admin siteContent carries it). Surfaced so the
-// owner can turn the recurring ones into an instant answer on the cottage FAQ. ----
+// 'guest-faq-misses' content key). Manage → Guest chat lists them and turns one
+// into an instant answer (gcAskedSave); Manage's "Needs a look" points there. ----
 function slGuestQuestions() {
     try {
-        const list = typeof siteContent === 'object' && siteContent && Array.isArray(siteContent['guest-faq-misses']) ? siteContent['guest-faq-misses'] : [];
+        // adminPrivateContent FIRST: an internal key is absent from the anonymous
+        // boot GET, so siteContent alone read an empty list over real questions.
+        const raw = gcVal('guest-faq-misses');
+        const list = Array.isArray(raw) ? raw : [];
         // Most-asked first, then most-recent.
         return list.filter((r) => r && r.q).slice().sort((a, b) => (b.n || 1) - (a.n || 1) || String(b.at || '').localeCompare(String(a.at || '')));
     } catch (e) { return []; }
@@ -14002,36 +14007,8 @@ function slGuestQuestions() {
 // Persist the guest-question store back (admin can write content.php). Used by
 // dismiss + add-answer so a handled question leaves the list on every device.
 function slGuestQuestionsSave(list) {
-    try { siteContent['guest-faq-misses'] = list; } catch (e) {}
+    try { siteContent['guest-faq-misses'] = list; if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['guest-faq-misses'] = list; } catch (e) {}
     try { apiPost('content.php', { action: 'set', key: 'guest-faq-misses', value: list }).catch(() => {}); } catch (e) {}
-}
-function slDismissGuestQ(q) {
-    const list = slGuestQuestions().filter((r) => r.q !== q);
-    slGuestQuestionsSave(list);
-    renderSearchLearning();
-}
-// One-tap "add an instant answer": ask the owner for the answer, append it to the
-// named cottage's FAQ (faqs-<prop>), and clear the question. Next time a guest
-// types it the on-device matcher answers on the spot — no owner ping.
-async function slAddFaq(q, prop, prefill) {
-    const pk = prop || Object.keys(propertyMeta || {})[0] || '';
-    if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
-    const name = (propertyMeta[pk] || {}).name || pk;
-    let a = '';
-    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || ''), { title: 'Answer this question', okLabel: 'Save the answer' }); } catch (e) { return; }
-    a = (a || '').trim();
-    if (!a) return; // cancelled or empty — leave the question in the list
-    try {
-        const faqs = Array.isArray(siteContent['faqs-' + pk]) ? siteContent['faqs-' + pk].slice() : [];
-        faqs.push({ icon: '', q: String(q).slice(0, 200), a: a.slice(0, 2000) });
-        await saveContent('faqs-' + pk, faqs);
-        siteContent['faqs-' + pk] = faqs;
-        slGuestQuestionsSave(slGuestQuestions().filter((r) => r.q !== q)); // handled → drop it
-        try { toast(`Added — guests asking that about ${name} now get an instant answer.`); } catch (e) {}
-    } catch (e) {
-        try { glassAlert("Couldn't save the answer: " + (e && e.message || e)); } catch (e2) {}
-    }
-    renderSearchLearning();
 }
 // "Test the assistant": read a phrasing through the SAME pipeline search uses and
 // report, in plain words, whether it's understood, by which path, and what it
@@ -14130,22 +14107,6 @@ function renderSearchLearning() {
             </div>`).join('')
         : `<p class="sl-empty">You haven't taught it any wording yet. When a dead-end search is tagged “Means: …”, it appears here.</p>`;
 
-    // 3b) Guests asked these — the questions guests typed in chat that the
-    // on-device FAQ couldn't answer. Each is one tap from becoming an instant
-    // answer on the cottage's FAQ (or a dismiss). Only shown when there are any.
-    let guestQs = [];
-    try { guestQs = slGuestQuestions(); } catch (e) {}
-    const guestRows = guestQs.slice(0, 20).map((r) => {
-            const nm = (propertyMeta[r.prop] || {}).name || '';
-            return `<div class="sl-row">
-                <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
-                <div class="sl-row-acts">
-                    <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
-                    <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
-                </div>
-            </div>`;
-        }).join('');
-
     // 4) Made literal — suppressed phrasings, each restorable.
     const supRows = suppressed.length
         ? suppressed.slice().reverse().map((t) => `<div class="sl-row sl-row-tight">
@@ -14162,14 +14123,11 @@ function renderSearchLearning() {
     const teachSub = misses.length
         ? `“${esc(misses[0].t)}”${misses.length > 1 ? ' + ' + (misses.length - 1) + ' more' : ''} found nothing`
         : '';
-    const guestSum = stCap('warn', guestQs.length + ' unanswered');
-    const guestSub = `“${esc((guestQs[0] || {}).q || '')}”`;
     const taughtSum = learned.length ? stCap('ok', learned.length + ' phrasing' + (learned.length === 1 ? '' : 's')) : stCap('unk', 'none yet');
     const supSum = suppressed.length ? stCap('unk', String(suppressed.length)) : stCap('unk', 'none');
     wrap.innerHTML =
         statusHtml +
         bhubFoldGrp('sl-teach', 'Teach the assistant', teachSub, teachSum, `<div class="sl-fold-body">${missRows}</div>`) +
-        (guestQs.length ? bhubFoldGrp('sl-guest', 'Guests asked these', guestSub, guestSum, `<div class="sl-fold-body">${guestRows}</div>`) : '') +
         bhubFoldGrp('sl-taught', 'What you’ve taught it', '', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
         bhubFoldGrp('sl-literal', 'Made literal', '', supSum, `<div class="sl-fold-body">${supRows}</div>`);
 }
@@ -25912,54 +25870,579 @@ function applyMsgFilter() {
     const card = /** @type {HTMLElement|null} */ (list.querySelector('.msg-threads'));
     if (card) card.style.display = shown === 0 ? 'none' : '';
 }
-// Owner-editable instant answers for the chat quick chips.
-function renderChatAnswersEditor() {
-    const host = document.getElementById('chat-answers-editor');
-    if (!host) return;
-    host.innerHTML =
-        '<div class="acr-cap">Quick-question chips</div>' +
-        '' +
-        '<div class="acr-well">' +
-        CHAT_FAQ_ORDER.map((which) => {
-            const f = CHAT_FAQ[which];
-            const val =
-                siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
-            return (
-                `<div class="acw-frow"><label>\u201c${escapeHtml(f.q)}\u201d</label>` +
-                `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContentField', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
-            );
-        }).join('') +
-        '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:var(--fs-caption);">✓ Saves by itself as you edit</span></div></div>';
+// ---- GUEST CHAT (Manage → Guest chat; the approved demo, built) ----
+// The page the owner runs the chat from. The title's pill says where it stands;
+// "See it as a guest" shows the real chat with these words in it; the questions
+// guests asked that nothing answered are answered here (they used to wait on
+// Search learning); the away reply reads as sentences rather than two bare
+// hours; every instant answer is a row that says whether it is the standard
+// words or the owner's, and the owner can add their own or take one off the
+// buttons. The chat-away-* keys are INTERNAL, so they are read from
+// adminPrivateContent FIRST — the anonymous boot GET never carries them, and
+// reading siteContent alone painted the switch OFF over a real ON (the
+// bacs-details rule).
+const GC_AWAY_STD = 'Thanks for your message — we’re not at the desk right now, but we’ll reply as soon as we can, usually within a few hours.';
+const GC_REPLY = [['hour', 'Within an hour'], ['hours', 'Within a few hours'], ['day', 'The same day'], ['next', 'By the next day']];
+function gcVal(k) {
+    const apc = typeof adminPrivateContent === 'object' && adminPrivateContent ? adminPrivateContent : {};
+    const v = apc[k] !== undefined ? apc[k] : siteContent[k];
+    return v == null ? '' : v;
 }
-// Away / auto-reply settings: enable, message, and optional office hours.
-function renderChatAwayEditor() {
-    const host = document.getElementById('chat-away-editor');
+// Saves, then mirrors into BOTH stores (the chat reads siteContent, this page
+// reads adminPrivateContent first). saveContent alerts and rethrows on a refusal,
+// so a rejected value never reaches either mirror.
+async function gcSave(k, v) {
+    await saveContent(k, v);
+    siteContent[k] = v;
+    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent[k] = v;
+}
+const gcHm = (h) => (+h % 12 || 12) + (+h < 12 ? 'am' : 'pm');
+function gcHours() {
+    const f = String(gcVal('chat-away-from')), t = String(gcVal('chat-away-to'));
+    return f !== '' && t !== '' && f !== t ? { from: +f, to: +t } : null;
+}
+// Who gets the reply, in the server's own terms (messages.php replies outside
+// [from, to), wrapping midnight; anything less than two different hours is any time).
+function gcWho() {
+    const h = gcHours();
+    return h
+        ? `Guests who write between <b>${gcHm(h.to)}</b> and <b>${gcHm(h.from)}</b> get it straight away.`
+        : 'Everyone who writes gets it straight away. Set the hours you’re around to reply only when you’re not.';
+}
+// The owner's own answers and which answers are buttons ('chat-chips', public:
+// the chat reads it). Read through app.js's sanitiser, written back whole.
+function gcChips() {
+    const c = chatChipsCfg();
+    return { hide: c.hide.slice(), extra: c.extra.map((x) => Object.assign({}, x)) };
+}
+async function gcChipsSave(c) {
+    await gcSave('chat-chips', { hide: c.hide, extra: c.extra.map((x) => ({ id: x.id, q: x.q, chip: x.chip, a: x.a, btn: x.btn, prop: x.prop })) });
+}
+function gcStd(id) {
+    const f = CHAT_FAQ[id];
+    if (!f) return '';
+    try {
+        return (f.live && f.live()) || f.def;
+    } catch (e) {
+        return f.def;
+    }
+}
+function gcPill() {
+    if (!settingsShowing('chat-away')) return;
+    const n = slGuestQuestions().length;
+    const on = gcVal('chat-away-enabled') === '1';
+    headPillSet(
+        'settings-panel-cap',
+        n
+            ? headPill('warn', n + ' to answer', { label: n + (n === 1 ? ' question guests asked is' : ' questions guests asked are') + ' waiting for an answer' })
+            : on ? headPill('ok', 'Away reply on') : headPill('unk', 'Away reply off'),
+    );
+}
+// A small "Saved" beside the label of the field that changed, then gone.
+function gcSaved(id) {
+    const el = document.getElementById('gc-saved-' + id);
+    if (!el) return;
+    el.textContent = 'Saved';
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+    clearTimeout(el.__t);
+    el.__t = setTimeout(() => el.classList.remove('on'), 1800);
+}
+function gcGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 2 + 'px';
+}
+// ONE delegated listener grows every box. It cannot ride a data-act-input: an
+// element carries ONE data-pass, and the box's change handler needs its VALUE —
+// with both, the first attribute won and the save stored "[object
+// HTMLTextAreaElement]" (ui-test-guestchat §5 found it).
+document.addEventListener('input', (ev) => {
+    const t = /** @type {HTMLElement|null} */ (ev.target instanceof HTMLElement ? ev.target : null);
+    if (t && t.classList.contains('gc-grow')) gcGrow(t);
+});
+function gcAskedRow(r, i) {
+    const e = escapeHtml;
+    const name = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+    const n = r.n || 1;
+    const sub = 'Asked ' + (n === 1 ? 'once' : n + ' times') + (name ? ' · ' + e(name) : '') + (r.at ? ' · ' + e(relTime(String(r.at).length === 10 ? r.at + 'T12:00:00' : r.at)) : '');
+    const props = Object.keys(propertyMeta || {}).filter((k) => !propertyMeta[k].archived);
+    const forSel =
+        `<select class="acw-pill" id="gc-for-${i}" aria-label="Which cottage this answer is for">` +
+        `<option value=""${r.prop ? '' : ' selected'}>Every cottage</option>` +
+        props.map((k) => `<option value="${e(k)}"${r.prop === k ? ' selected' : ''}>${e(propertyMeta[k].name || k)}</option>`).join('') +
+        `</select>`;
+    return bhubFoldGrp(
+        'gca-' + i,
+        '“' + e(r.q) + '”',
+        sub,
+        stCap('warn', 'No answer'),
+        `<div class="acw-frow"><label for="gc-asked-${i}">Your answer</label><textarea id="gc-asked-${i}" class="input-glass gc-grow" rows="2" maxlength="1500" placeholder="What the chat should say when someone asks this"></textarea></div>` +
+            `<div class="acr-row"><span class="acr-lbl">For</span>${forSel}</div>` +
+            `<div class="acw-acts gc-acts"><button type="button" class="u-btn1" ${chbAttrs('gcAskedSave', i)}>Save the answer</button><button type="button" class="u-btn2" ${chbAttrs('gcAskedDismiss', i)}>Not now</button></div>`,
+        '',
+        'gc-asked',
+    );
+}
+function gcAnsRow(x) {
+    const e = escapeHtml;
+    const mine = x.std && String(gcVal(CHAT_FAQ[x.id].key) || '').trim() !== '';
+    // The page reads the owner's words through gcVal (private map first), so a
+    // stale boot copy can never show the standard text under "Your words".
+    if (x.std) x = Object.assign({}, x, { a: mine ? String(gcVal(CHAT_FAQ[x.id].key)).trim() : gcStd(x.id) });
+    // ONE capsule, so the label keeps its line: off the buttons says so first.
+    const caps = stCap('unk', !x.btn ? 'Typed only' : x.std ? (mine ? 'Your words' : 'Standard') : 'Added');
+    const cot = x.prop && propertyMeta[x.prop] ? propertyMeta[x.prop].name : '';
+    const sub = (cot ? cot + ' · ' : '') + x.a;
+    const id = e(x.id);
+    const extraFields = x.std
+        ? ''
+        : `<div class="acw-frow"><label for="gc-q-${id}">Question</label><input id="gc-q-${id}" class="input-glass" maxlength="200" value="${e(x.q)}" ${chbChange('gcExtraField', x.id, 'q', CHB_VALUE)}></div>` +
+          `<div class="acw-frow"><label for="gc-c-${id}">Button</label><input id="gc-c-${id}" class="input-glass" maxlength="28" placeholder="${e(chatChipLabel(x))}" value="${e(x.chip)}" ${chbChange('gcExtraField', x.id, 'chip', CHB_VALUE)}></div>`;
+    const foot = x.std
+        ? `<button type="button" class="gc-link" ${chbAttrs('gcAnsStd', x.id)}${mine ? '' : ' hidden'}>Use the standard answer</button><span class="gc-note"${mine ? ' hidden' : ''}>${x.id === 'checkin' ? 'The standard follows each cottage’s own times.' : 'You haven’t changed this one.'}</span>`
+        : `<span class="gc-note">${cot ? 'Answered on ' + e(cot) + '’s page only.' : 'Answered on every cottage.'}</span><button type="button" class="gc-link is-danger" ${chbAttrs('gcExtraRemove', x.id)}>Remove</button>`;
+    return bhubFoldGrp(
+        'gcq-' + x.id,
+        e(chatChipLabel(x)),
+        e(sub),
+        caps,
+        extraFields +
+            `<div class="acw-frow"><label for="gc-a-${id}">Answer <span class="gc-saved" id="gc-saved-${id}" aria-live="polite"></span></label><textarea id="gc-a-${id}" class="input-glass gc-grow" rows="2" maxlength="1500" ${chbChange('gcAnswer', x.id, CHB_VALUE)}>${e(x.a)}</textarea><div class="gc-foot">${foot}</div></div>` +
+            `<div class="acr-row"><span class="acr-lbl">Show as a button<small>Typed questions are answered either way</small></span><span class="chb-switch"><input type="checkbox"${x.btn ? ' checked' : ''} ${chbChange('gcBtn', x.id, CHB_CHECKED)} aria-label="Show “${e(chatChipLabel(x))}” as a button"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`,
+        ` data-gcq="${id}"`,
+        'gc-ans',
+    );
+}
+function renderGuestChat() {
+    const host = document.getElementById('gc-page');
     if (!host) return;
-    const sc = (k) => (siteContent[k] != null ? String(siteContent[k]) : '');
-    const enabled = sc('chat-away-enabled') === '1';
-    const msgVal = sc('chat-away-msg');
-    const from = sc('chat-away-from');
-    const to = sc('chat-away-to');
-    const hourOpts = (sel) => {
-        let o = `<option value=""${sel === '' ? ' selected' : ''}>—</option>`;
-        for (let h = 0; h < 24; h++) {
-            const hh = String(h).padStart(2, '0');
-            o += `<option value="${hh}"${sel === hh ? ' selected' : ''}>${hh}:00</option>`;
-        }
-        return o;
-    };
+    const e = escapeHtml;
+    const on = gcVal('chat-away-enabled') === '1';
+    const h = { from: String(gcVal('chat-away-from')), to: String(gcVal('chat-away-to')) };
+    const msg = String(gcVal('chat-away-msg') || '').trim() || GC_AWAY_STD;
+    const asked = slGuestQuestions();
+    const hrs = gcHours();
+    const reply = String(gcVal('chat-reply-time') || 'hours');
+    const replyLbl = (GC_REPLY.find((r) => r[0] === reply) || GC_REPLY[1])[1];
+    const hostName = String(gcVal('host-name') || '').trim() || 'the owner';
+    // The cottages' own written questions (the on-device matcher reads these too).
+    const cots = Object.keys(propertyMeta || {})
+        .filter((k) => !propertyMeta[k].archived)
+        .map((k) => { const f = gcVal('faqs-' + k); return { k, name: propertyMeta[k].name || k, n: Array.isArray(f) ? f.length : 0 }; });
+    const cotTotal = cots.reduce((a, c) => a + c.n, 0);
+    const list = chatQuickList(true);
     host.innerHTML =
-        '<div class="acr-cap">Away reply</div>' +
-        '' +
-        `<div class="acr-well">
-            <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
-            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContentField', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
-            <div class="acr-row"><span class="acr-lbl">Only outside these hours</span>
-                <span style="display:flex;gap:6px;align-items:center;">
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContentField', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContentField', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
-                </span></div>
-        </div>`;
+        `<div class="acr-cap">Preview</div><div class="ga-group gc-prev">${gaRow({ ic: 'chat', t: 'See it as a guest', s: 'The chat, with your words in it', act: 'data-act="gcPreview"', chev: true })}</div>` +
+        (asked.length ? `<div class="acr-cap">Guests asked</div><div class="gc-run">${asked.map(gcAskedRow).join('')}</div>` : '') +
+        `<div class="acr-cap">When you’re away</div>` +
+        `<div class="acr-well gc-away">` +
+        `<div class="acr-row"><span class="acr-lbl">Reply when I’m away<small>An automatic reply, then they wait for you</small></span><span class="chb-switch"><input type="checkbox" id="gc-away-on"${on ? ' checked' : ''} ${chbChange('gcAway', CHB_CHECKED)} aria-label="Reply when I’m away"><span class="chb-switch-track" aria-hidden="true"></span></span></div>` +
+        `<div class="gc-awayf" id="gc-awayf"${on ? '' : ' hidden'}><div class="gc-awayin">` +
+        `<button type="button" class="acr-row gc-rowbtn" data-act="gcHoursPick"><span class="acr-lbl">You’re around</span><span class="gc-v" id="gc-hours-v">${hrs ? gcHm(hrs.from) + ' – ' + gcHm(hrs.to) : 'Not set'}</span>${BHUB_CHEV}</button>` +
+        `<p class="gc-who" id="gc-who">${gcWho()}</p>` +
+        `<div class="acw-frow"><label for="gc-a-away">Your reply <span class="gc-saved" id="gc-saved-away" aria-live="polite"></span></label><textarea id="gc-a-away" class="input-glass gc-grow" rows="2" maxlength="1000" ${chbChange('gcAwayMsg', CHB_VALUE)}>${e(msg)}</textarea>` +
+        `<div class="gc-foot"><button type="button" class="gc-link" id="gc-away-std" data-act="gcAwayStd"${msg === GC_AWAY_STD ? ' hidden' : ''}>Use the standard words</button><span class="gc-note">Sent at most once every 4 hours in a conversation, and emailed to them too.</span></div></div>` +
+        `</div></div></div>` +
+        `<div class="acr-cap">Instant answers</div>` +
+        `<div class="gc-run">${list.map(gcAnsRow).join('')}<div class="u-win u-join">${uAddRow('Add a question', 'data-act="gcAddQ"', true)}</div>` +
+        bhubFoldGrp(
+            'gc-cots',
+            'Your cottages’ own questions',
+            'Typed questions are answered from these too',
+            stCap('unk', String(cotTotal)),
+            cots.map((c) => `<button type="button" class="acr-row gc-cot" ${chbAttrs('settingsOpenAccomSec', c.k, 'faq')}><span class="cot-dot" style="background:var(--prop-${e(c.k)}, var(--accent))" aria-hidden="true"></span><span class="acr-lbl">${e(c.name)}</span><span class="gc-n">${c.n}</span>${BHUB_CHEV}</button>`).join(''),
+            '',
+            'gc-cotsgrp',
+        ) +
+        `</div>` +
+        `<div class="acr-cap">The welcome</div>` +
+        `<div class="acr-well">` +
+        `<button type="button" class="acr-row gc-rowbtn" data-act="gcReplyPick"><span class="acr-lbl">Reply time<small>Shown under your name in the chat</small></span><span class="gc-v" id="gc-reply-v">${e(replyLbl)}</span>${BHUB_CHEV}</button>` +
+        `<button type="button" class="acr-row gc-rowbtn" ${chbAttrs('settingsOpen', 'host')}><span class="acr-lbl">Signed by<small>From your host profile</small></span><span class="gc-v">${e(hostName)}</span>${BHUB_CHEV}</button>` +
+        `</div>`;
+    host.querySelectorAll('textarea.gc-grow').forEach((t) => gcGrow(/** @type {HTMLElement} */ (t)));
+    gcPill();
+}
+// Kept by name: the search sheet and older routes render the section through these.
+function renderChatAwayEditor() {
+    renderGuestChat();
+}
+function renderChatAnswersEditor() {}
+async function gcAway(on) {
+    const fold = document.getElementById('gc-awayf');
+    if (fold) fold.hidden = !on;
+    try {
+        await gcSave('chat-away-enabled', on ? '1' : '');
+        toast(on ? 'Away reply on' : 'Away reply off — guests wait for you');
+    } catch (e) {
+        const sw = /** @type {HTMLInputElement|null} */ (document.getElementById('gc-away-on'));
+        if (sw) sw.checked = !on;
+        if (fold) fold.hidden = on;
+    }
+    gcPill();
+}
+// Both ends or neither (the Quiet hours rule): half a window means "any time" to
+// the server, so the form says so rather than storing a half it would ignore.
+async function gcHoursPick() {
+    const cur = gcHours();
+    const opts = [{ value: '', label: 'Not set' }].concat(Array.from({ length: 24 }, (_, i) => ({ value: String(i).padStart(2, '0'), label: gcHm(i) })));
+    const fields = [
+        { id: 'from', label: 'From', type: 'select', options: opts, value: cur ? String(cur.from).padStart(2, '0') : '' },
+        { id: 'to', label: 'Until', type: 'select', options: opts, value: cur ? String(cur.to).padStart(2, '0') : '' },
+    ];
+    let msg = 'The reply goes to guests who write outside these hours. Leave both unset to reply at any time.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'You’re around', okLabel: 'Save' });
+        if (!v) return;
+        const f = String(v.from || ''), t = String(v.to || '');
+        fields[0].value = f;
+        fields[1].value = t;
+        if ((f === '') !== (t === '')) {
+            msg = 'Set both times, or neither.';
+            continue;
+        }
+        if (f !== '' && f === t) {
+            msg = 'Choose two different times.';
+            continue;
+        }
+        try {
+            await gcSave('chat-away-from', f);
+            await gcSave('chat-away-to', t);
+        } catch (e) {
+            continue;
+        }
+        break;
+    }
+    const h = gcHours();
+    const val = document.getElementById('gc-hours-v');
+    if (val) val.textContent = h ? gcHm(h.from) + ' – ' + gcHm(h.to) : 'Not set';
+    const who = document.getElementById('gc-who');
+    if (who) {
+        who.innerHTML = gcWho();
+        who.classList.remove('bk-verdict-settle');
+        void who.offsetWidth;
+        who.classList.add('bk-verdict-settle');
+    }
+    toast(h ? 'Saved — you’re around ' + gcHm(h.from) + ' to ' + gcHm(h.to) : 'Saved — the reply goes at any time');
+}
+async function gcAwayMsg(v) {
+    const t = String(v || '').trim();
+    // An empty box means the standard words — the server sends them then too.
+    const val = !t || t === GC_AWAY_STD ? '' : t;
+    try {
+        await gcSave('chat-away-msg', val);
+    } catch (e) {
+        return;
+    }
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-away'));
+    if (box && !t) {
+        box.value = GC_AWAY_STD;
+        gcGrow(box);
+    }
+    const std = document.getElementById('gc-away-std');
+    if (std) std.hidden = !val;
+    gcSaved('away');
+}
+async function gcAwayStd() {
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-away'));
+    if (box) box.value = '';
+    await gcAwayMsg('');
+}
+// One standard answer's own words. Typing the standard words back (or clearing
+// the box) is the standard again, never a copy of it that stops following it.
+async function gcAnswer(id, v) {
+    const t = String(v || '').trim();
+    if (CHAT_FAQ[id]) {
+        const val = !t || t === gcStd(id) ? '' : t;
+        try {
+            await gcSave(CHAT_FAQ[id].key, val);
+        } catch (e) {
+            return;
+        }
+        if (!t) {
+            const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-' + id));
+            if (box) {
+                box.value = gcStd(id);
+                gcGrow(box);
+            }
+        }
+    } else {
+        if (!t) {
+            toast('An answer needs some words — use Remove to take it away.');
+            renderGuestChat();
+            return;
+        }
+        const c = gcChips();
+        const x = c.extra.find((r) => r.id === id);
+        if (!x) return;
+        x.a = t.slice(0, 1500);
+        try {
+            await gcChipsSave(c);
+        } catch (e) {
+            return;
+        }
+    }
+    gcRowSync(id);
+    gcSaved(id);
+}
+async function gcAnsStd(id) {
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-' + id));
+    if (box) box.value = '';
+    await gcAnswer(id, '');
+}
+async function gcExtraField(id, field, v) {
+    const c = gcChips();
+    const x = c.extra.find((r) => r.id === id);
+    if (!x) return;
+    const t = String(v || '').trim();
+    if (field === 'q') {
+        if (!t) {
+            toast('The question needs some words.');
+            renderGuestChat();
+            return;
+        }
+        x.q = t.slice(0, 200);
+    } else x.chip = t.slice(0, 28);
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    gcRowSync(id);
+}
+// Repaint ONE row's summary (label, sub, capsules) without touching its open
+// fold — a re-render would close it under the owner's hands.
+function gcRowSync(id) {
+    const x = chatQuickList(true).find((r) => r.id === id);
+    const grp = document.querySelector(`[data-gcq="${CSS.escape(id)}"]`);
+    if (!x || !grp) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = gcAnsRow(x);
+    const fresh = tmp.querySelector('.bhub-fold-row');
+    const row = grp.querySelector('.bhub-fold-row');
+    if (fresh && row) {
+        const lbl = row.querySelector('.bhub-fold-lbl'), right = row.querySelector('.bhub-fold-right');
+        const fl = fresh.querySelector('.bhub-fold-lbl'), fr = fresh.querySelector('.bhub-fold-right');
+        if (lbl && fl) lbl.innerHTML = fl.innerHTML;
+        if (right && fr && right.innerHTML !== fr.innerHTML) {
+            right.innerHTML = fr.innerHTML;
+            const cap = right.querySelector('.st-cap');
+            if (cap) cap.classList.add('bk-verdict-settle');
+        }
+    }
+    const std = grp.querySelector('.gc-foot .gc-link:not(.is-danger)');
+    const note = grp.querySelector('.gc-foot .gc-note');
+    if (x.std && std && note) {
+        const mine = String(gcVal(CHAT_FAQ[id].key) || '').trim() !== '';
+        /** @type {HTMLElement} */ (std).hidden = !mine;
+        /** @type {HTMLElement} */ (note).hidden = mine;
+    }
+}
+async function gcBtn(id, on) {
+    const c = gcChips();
+    if (CHAT_FAQ[id]) {
+        c.hide = c.hide.filter((k) => k !== id);
+        if (!on) c.hide.push(id);
+    } else {
+        const x = c.extra.find((r) => r.id === id);
+        if (!x) return;
+        x.btn = !!on;
+    }
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        renderGuestChat();
+        return;
+    }
+    const x = chatQuickList(true).find((r) => r.id === id);
+    toast(on ? '“' + chatChipLabel(x || { q: '' }) + '” is a button on the chat' : '“' + chatChipLabel(x || { q: '' }) + '” is off the buttons — typed questions still get it');
+    gcRowSync(id);
+}
+const gcNewId = () => Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, '') || 'q' + Date.now().toString(36);
+async function gcAddQ() {
+    const fields = [
+        { id: 'chip', label: 'Button', type: 'text', def: '', placeholder: 'Short, like “Dogs?”', maxlength: 28 },
+        { id: 'a', label: 'Answer', type: 'textarea', def: '', placeholder: 'What the chat says when they tap it', rows: 4 },
+    ];
+    let msg = 'A button on the chat, and an instant answer to anyone who types the question.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Add a question', okLabel: 'Add' });
+        if (!v) return;
+        const chip = String(v.chip || '').trim(), a = String(v.a || '').trim();
+        fields[0].def = chip;
+        fields[1].def = a;
+        if (!chip || !a) {
+            msg = chip ? 'Write the answer the chat should give.' : 'Give the button a few words.';
+            continue;
+        }
+        const c = gcChips();
+        if (c.extra.length >= 40) {
+            glassAlert('That’s the most the chat can hold — remove one first.');
+            return;
+        }
+        c.extra.push({ id: gcNewId(), q: chip, chip: chip.slice(0, 28), a: a.slice(0, 1500), btn: true, prop: '' });
+        try {
+            await gcChipsSave(c);
+        } catch (e) {
+            continue;
+        }
+        toast('Added — “' + chip + '” is a button on the chat now');
+        renderGuestChat();
+        return;
+    }
+}
+async function gcExtraRemove(id) {
+    const c = gcChips();
+    const x = c.extra.find((r) => r.id === id);
+    if (!x) return;
+    if (!(await glassConfirm('Remove “' + chatChipLabel(x) + '”? The chat stops answering it.', 'Remove'))) return;
+    c.extra = c.extra.filter((r) => r.id !== id);
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    toast('Removed');
+    renderGuestChat();
+}
+// A question a guest asked becomes one of the chat's answers — typed-only (it was
+// never a button) and on the cottage it was asked about, or every cottage. It
+// lives with the other instant answers, so anyone who can run the chat can
+// answer it (a cottage's written FAQ needs the cottage-pages permission).
+async function gcAskedSave(i) {
+    const r = slGuestQuestions()[i];
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-asked-' + i));
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('gc-for-' + i));
+    const a = box ? box.value.trim() : '';
+    if (!r) return;
+    if (!a) {
+        if (box) box.focus();
+        toast('Write the answer first.');
+        return;
+    }
+    const prop = sel ? sel.value : '';
+    const c = gcChips();
+    if (c.extra.length >= 40) {
+        glassAlert('That’s the most the chat can hold — remove one first.');
+        return;
+    }
+    c.extra.push({ id: gcNewId(), q: String(r.q).slice(0, 200), chip: '', a: a.slice(0, 1500), btn: false, prop });
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    slGuestQuestionsSave(slGuestQuestions().filter((x) => x.q !== r.q));
+    const name = prop && propertyMeta[prop] ? propertyMeta[prop].name : '';
+    toast('Saved — the chat answers “' + r.q + '”' + (name ? ' about ' + name : '') + ' on the spot now');
+    renderGuestChat();
+}
+function gcAskedDismiss(i) {
+    const r = slGuestQuestions()[i];
+    if (!r) return;
+    slGuestQuestionsSave(slGuestQuestions().filter((x) => x.q !== r.q));
+    toast('Taken off the list');
+    renderGuestChat();
+}
+async function gcReplyPick() {
+    const cur = String(gcVal('chat-reply-time') || 'hours');
+    const v = await glassForm('Shown under your name when a guest opens the chat.', [{ id: 'r', label: 'You usually reply', type: 'select', options: GC_REPLY.map(([value, label]) => ({ value, label })), value: cur }], { title: 'Reply time', okLabel: 'Save' });
+    if (!v) return;
+    const k = GC_REPLY.some((r) => r[0] === v.r) ? v.r : 'hours';
+    try {
+        await gcSave('chat-reply-time', k);
+    } catch (e) {
+        return;
+    }
+    const el = document.getElementById('gc-reply-v');
+    if (el) el.textContent = (GC_REPLY.find((r) => r[0] === k) || GC_REPLY[1])[1];
+    toast('The chat now says “' + chatReplySay() + '”');
+}
+// ---- "See it as a guest": the real chat's parts, with these words in them ----
+// Built from the guest chat's own classes and composers (chatHelloHtml, the chip
+// list, chatChipLabel), so the preview cannot drift from what guests are shown.
+let __gcWhen = 'day';
+function gcPreviewEl() {
+    let el = document.getElementById('gc-sheet');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'gc-sheet';
+        el.className = 'modal-overlay chb-sheet';
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-modal', 'true');
+        el.setAttribute('aria-labelledby', 'gc-sheet-t');
+        el.addEventListener('click', (ev) => {
+            if (ev.target === el) gcPreviewClose();
+        });
+        document.body.appendChild(el);
+    }
+    return el;
+}
+function gcPreviewClose() {
+    const el = document.getElementById('gc-sheet');
+    if (el) chbCloseOverlay(el);
+}
+function gcPreview() {
+    const el = gcPreviewEl();
+    el.innerHTML =
+        `<div class="modal-box glass-panel gc-sheet-box">` +
+        `<div class="gc-sheet-head"><h2 id="gc-sheet-t">As a guest sees it</h2><button type="button" class="gc-sheet-x" aria-label="Close" data-act="gcPreviewClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>` +
+        `<div class="one-look gc-segwrap"><div class="u-seg" role="group" aria-label="When they write">` +
+        `<button type="button" ${chbAttrs('gcWhen', 'day')} aria-pressed="${__gcWhen === 'day'}">They write at 2pm</button>` +
+        `<button type="button" ${chbAttrs('gcWhen', 'night')} aria-pressed="${__gcWhen === 'night'}">At 11:40pm</button></div></div>` +
+        `<div class="gc-chat">` +
+        `<div class="gc-chat-head"><div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt=""></div><div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div></div>` +
+        `<div class="chat-thread gc-thread" id="gc-thread"></div>` +
+        `<div class="chat-quick gc-quick" id="gc-quick"></div>` +
+        `<div class="gc-chat-in" aria-hidden="true"><span>Ask a question…</span><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></i></div>` +
+        `</div></div>`;
+    el.classList.remove('closing');
+    el.classList.add('open');
+    gcPaint();
+    const x = /** @type {HTMLElement|null} */ (el.querySelector('.gc-sheet-x'));
+    if (x) x.focus();
+}
+function gcWhen(w) {
+    __gcWhen = w === 'night' ? 'night' : 'day';
+    document.querySelectorAll('#gc-sheet .u-seg > button').forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-args') === JSON.stringify([__gcWhen]))));
+    gcPaint();
+}
+function gcPaint() {
+    const th = document.getElementById('gc-thread');
+    const qk = document.getElementById('gc-quick');
+    if (!th || !qk) return;
+    th.innerHTML = chatHelloHtml();
+    qk.innerHTML =
+        `<button type="button" class="chat-chip chat-chip-avail" tabindex="-1">Check availability</button>` +
+        chatQuickList(true)
+            .filter((x) => x.btn && !x.prop)
+            .map((x) => `<button type="button" class="chat-chip" ${chbAttrs('gcChip', x.id)}>${escapeHtml(chatChipLabel(x))}</button>`)
+            .join('') +
+        `<button type="button" class="chat-chip chat-chip-issue" tabindex="-1">Report an issue</button>`;
+    if (__gcWhen !== 'night') return;
+    // 23:40 against the owner's hours, the server's rule exactly.
+    const h = gcHours();
+    const around = !!h && (h.from <= h.to ? 23 >= h.from && 23 < h.to : 23 >= h.from || 23 < h.to);
+    const on = gcVal('chat-away-enabled') === '1';
+    const msg = String(gcVal('chat-away-msg') || '').trim() || GC_AWAY_STD;
+    const host = String(gcVal('host-name') || '').trim() || 'The owner';
+    th.innerHTML =
+        `<div class="chat-daysep"><span>Today, 11:40pm</span></div>` +
+        `<div class="chat-msg me">Hi! Is Jollyboat free the weekend of the 24th?</div>` +
+        (on && !around
+            ? `<div class="chat-msg them gc-in">${escapeHtml(msg)}<div class="chat-meta">${escapeHtml(host)} · sent automatically</div></div>`
+            : `<p class="gc-wait gc-in">${on ? 'You’re around at this hour, so no automatic reply.' : 'The away reply is off, so nothing goes back.'} They wait for you.</p>`);
+}
+function gcChip(id) {
+    const x = chatQuickList(true).find((r) => r.id === id);
+    const th = document.getElementById('gc-thread');
+    if (!x || !th) return;
+    const hello = th.querySelector('.chat-hello');
+    if (hello) hello.remove();
+    th.insertAdjacentHTML('beforeend', `<div class="chat-msg me gc-in">${escapeHtml(x.q)}</div><div class="chat-bot gc-in">${escapeHtml(x.a).replace(/\n/g, '<br>')}<div class="cb-meta">Quick answer — type below to reach a person.</div></div>`);
+    th.scrollTop = th.scrollHeight;
 }
 function toggleArchivedMessages() {
     __msgShowArchived = !__msgShowArchived;

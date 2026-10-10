@@ -402,8 +402,8 @@ const NEST = (rootSel) => {
   ok(well && well.radius === '20px', `and wears the CARD radius (${well && well.radius})`);
   // The two pages the box-in-a-box pass touched, driven through their own routes.
   await open(page, "settingsOpen('chat-answers')", 1100);
-  const nestChat = await page.evaluate(NEST, '#chat-answers-editor');
-  ok(nestChat && nestChat.worst > 0, `Instant answers renders its fields (${nestChat && nestChat.worst})`);
+  const nestChat = await page.evaluate(NEST, '#gc-page');
+  ok(nestChat && nestChat.worst > 0, `Guest chat renders its fields (${nestChat && nestChat.worst})`);
   ok(nestChat && nestChat.worst <= 2, `…each inside at most TWO boxes — the field and its well (${nestChat && nestChat.where})`);
   await open(page, "settingsOpen('guests')", 1400);
   const guests = await page.evaluate(() => ({ outer: !!document.querySelector('#sec-guests .accounts-stat'), well: !!document.querySelector('#guest-admin-list .acr-well'), rows: document.querySelectorAll('#guest-admin-list .acw-prow').length }));

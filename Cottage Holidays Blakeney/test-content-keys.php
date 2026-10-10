@@ -113,6 +113,8 @@ $JS_PUBLIC_OK = [
     'host-photo' => 'the host card portrait on the public homepage — uploaded to be shown',
     'square-deposit-pct' => 'the deposit split (%% of total) — siteContent boots from the PUBLIC fetch pre-auth, so hiding it silently resets the Settings field; guests derive it from their own payment anyway',
     'reviews' => 'the public review list (moderation writes the same key the site serves)',
+    'chat-chips' => "the guest chat's instant answers and which are buttons — the chat reads them on the public site",
+    'chat-reply-time' => "the chat welcome's 'Usually replies within…' — shown to every visitor",
 ];
 $jsFound = [];
 foreach (['admin.js', 'app.js'] as $jf) {
