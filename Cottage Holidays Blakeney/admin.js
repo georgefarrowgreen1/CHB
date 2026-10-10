@@ -26436,19 +26436,17 @@ function gcTeamHtml() {
     if (t === null) return `<div class="acr-row"><span class="acr-lbl">Loading…</span></div>`;
     if (t === 'err') return `<div class="acr-row"><span class="acr-lbl">Couldn’t load who answers</span><button type="button" class="u-btn2" data-act="gcTeamLoad">Try again</button></div>`;
     if (!t.ready) return `<div class="acr-row"><span class="acr-lbl">Run the migrations first<small>Manage → System check</small></span></div>`;
-    return (
-        t.members
-            .map((m) => {
-                const sub = !m.named ? 'No name on their account, so replies show the crown' : !m.show ? 'Hidden: replies show the crown' : m.line || 'No line under the name';
-                const lbl = `<span class="acr-lbl">${e(m.first)}${m.you ? ' (you)' : ''}<small>${e(sub)}</small></span>`;
-                return (
-                    `<div class="acr-row gc-mate" data-mate="${m.id}">${gcMateAva(m)}` +
-                    (m.canEdit && m.named ? `<button type="button" class="gc-mate-t" ${chbAttrs('gcMateLine', m.id)} aria-label="${e('The line under ' + m.first + '’s name')}">${lbl}</button>` : lbl) +
-                    `<span class="chb-switch"><input type="checkbox"${m.show ? ' checked' : ''}${m.canEdit ? '' : ' disabled'} ${chbChange('gcMateShow', m.id, CHB_CHECKED)} aria-label="${e('Show ' + m.first + ' in the guest chat')}"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`
-                );
-            })
-            .join('') + `<p class="gc-who">Guests see each first name and account photo. Anyone switched off still answers, signed with the crown.</p>`
-    );
+    return t.members
+        .map((m) => {
+            const sub = !m.named ? 'No name on their account, so replies show the crown' : !m.show ? 'Hidden: replies show the crown' : m.line || 'No line under the name';
+            const lbl = `<span class="acr-lbl">${e(m.first)}${m.you ? ' (you)' : ''}<small>${e(sub)}</small></span>`;
+            return (
+                `<div class="acr-row gc-mate" data-mate="${m.id}">${gcMateAva(m)}` +
+                (m.canEdit && m.named ? `<button type="button" class="gc-mate-t" ${chbAttrs('gcMateLine', m.id)} aria-label="${e('The line under ' + m.first + '’s name')}">${lbl}</button>` : lbl) +
+                `<span class="chb-switch"><input type="checkbox"${m.show ? ' checked' : ''}${m.canEdit ? '' : ' disabled'} ${chbChange('gcMateShow', m.id, CHB_CHECKED)} aria-label="${e('Show ' + m.first + ' in the guest chat')}"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`
+            );
+        })
+        .join('');
 }
 async function gcMateShow(id, on) {
     try {

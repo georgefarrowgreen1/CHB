@@ -9982,7 +9982,6 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
 #gc-page .gc-mate + .gc-mate { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 #gc-page .gc-mate > .acr-lbl, #gc-page .gc-mate-t { flex: 1 1 auto; min-width: 0; }
 #gc-page .gc-mate-t { display: flex; min-height: 44px; align-items: center; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-#gc-page .gc-team .gc-who { padding-top: 4px; }
 
 /* The preview: the guest chat's own parts in a window. */
 #gc-sheet .gc-sheet-box { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }

@@ -722,6 +722,7 @@ Code: the "WHO ANSWERS" blocks in app.js (`chatTeam*`, `chatAva`, `chatHeadHtml`
 - **"Show me in the guest chat"** (Manage → Guest chat → Who answers): `set_member` changes your own row, or anyone's
   for a Super User (403 `not_allowed` otherwise); the line is whitespace-collapsed with control characters removed,
   and over 40 characters is refused in words. Switched off, you still answer, signed by the business with the crown.
+  The card has no explanation line under the rows (removed at the owner's ask).
 - **The header**: the faces and "Sophia & George", and a status line: "Usually reply in a few hours" (the
   `chat-reply-time` setting, in its short form so it fits at 390px), or "Away until 7am" with a moon while the away
   reply would answer (`chat_away_state()`; only an away reply WITH hours knows when someone is back). Tapping it
