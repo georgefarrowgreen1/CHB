@@ -1266,6 +1266,31 @@ function prop_is_marketable($propKey)
     }
 }
 
+// THE GUEST REGISTER FOLLOWS ITS STAY. Its retention date was fixed at submission
+// (checkout + 12 months), so a stay moved later was purged under a year after the
+// real stay, and a cancelled one kept a party's passport numbers for a year after
+// a stay that never happened. Moved: re-dated from the new checkout. Gone: deleted,
+// unless the stay had begun (then someone stayed, and the record is kept for its year).
+function guest_register_follow($bookingId, $checkIn, $checkOut, $gone)
+{
+    try {
+        if (!$gone) {
+            db()->prepare('UPDATE guest_registrations SET expires_at = DATE_ADD(?, INTERVAL 12 MONTH) WHERE booking_id = ?')->execute([$checkOut, (int) $bookingId]);
+        } elseif ((string) $checkIn !== '' && (string) $checkIn <= date('Y-m-d')) {
+            $end = min((string) $checkOut, date('Y-m-d')); // London's today, not the database's
+            db()->prepare('UPDATE guest_registrations SET expires_at = DATE_ADD(?, INTERVAL 12 MONTH) WHERE booking_id = ?')->execute([$end, (int) $bookingId]);
+        } else {
+            db()->prepare('DELETE FROM guest_registrations WHERE booking_id = ?')->execute([(int) $bookingId]);
+        }
+    } catch (\Throwable $e) {
+        // Pre-migration (no register table): nothing to follow. Anything else is
+        // reported, not thrown: the booking change it follows has already happened.
+        if (!db_schema_missing($e)) {
+            log_activity('booking', 'register.follow_failed', 'The guest register could not follow booking #' . (int) $bookingId, ['severity' => 'warn', 'entity' => 'booking', 'entity_id' => (int) $bookingId]);
+        }
+    }
+}
+
 // True if the whole value IS a UK postcode (used for the dedicated postcode field).
 // 'YYYY-MM-DD' → 'DD/MM/YYYY' — the UK display format used wherever a date
 // reaches a guest or the owner (screens, emails, invoices). Storage stays ISO.

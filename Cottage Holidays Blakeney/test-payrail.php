@@ -976,7 +976,9 @@ chk('…parsing BEFORE the lock, so a refusal (which json_out-EXITS) cannot stra
 chk('…and the approval INSERT carries the three plan columns',
     strpos($eaPlan, 'deposit_pct_override,deposit_amount_override,balance_due_date') !== false);
 chk('the plan stores all four fields in one parameterised write',
-    strpos($bkPlan, 'SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ? WHERE id = ?') !== false);
+    strpos($bkPlan, "SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ?' . \$reChase . ' WHERE id = ?") !== false);
+chk('…and a new balance date clears the chase stamps (constant SQL, no value spliced in)',
+    strpos($bkPlan, "? ', balance_requested_at = NULL, balance_reminded_at = NULL' : ''") !== false);
 
 // WIRING — the manual reminder: rides request_payment with reminder wording
 // (the same third argument the cron's reminder pass passes), is refused before
@@ -2112,6 +2114,16 @@ chk('the booking confirmation queues on failure', strpos($mlE, "smtp_send_reliab
 chk('send_people queues each failed owner copy', preg_match("/function send_people\\(.*?email_outbox_add\\('owner-alert'/s", $mlE) === 1);
 $nlSrc = (string) file_get_contents(__DIR__ . '/newsletter.php');
 chk('the newsletter queues failed recipients', strpos($nlSrc, "email_outbox_add('newsletter'") !== false);
+// …AND EACH QUEUED COPY NAMES WHAT IT IS ABOUT, so the drain can tell when it has gone
+// stale (integration §65 owns that decision, but mail is off there and a failed send
+// never queues, so the senders' half is only reachable here). A sender that stops
+// passing its ref still delivers every stale copy, and nothing else would notice.
+$bcl = (string) file_get_contents(__DIR__ . '/booking-confirm-lib.php');
+chk('a queued confirmation names its stay, as stored', strpos($bcl, "'outbox_ref' => email_booking_ref(\$b)") !== false
+    && (bool) preg_match("/smtp_send_reliable\\('confirmation',[^;]*\\\$b\\['outbox_ref'\\]/", $mlE));
+chk('a queued enquiry acknowledgement names its enquiry', (bool) preg_match("/smtp_send_reliable\\('enquiry-ack',[^;]*'enquiry:'/", $mlE));
+chk('a queued owner copy names its person', (bool) preg_match("/email_outbox_add\\('owner-alert',[^;]*'person:'/", $mlE));
+chk('a queued newsletter names its subscriber', (bool) preg_match("/email_outbox_add\\('newsletter',[^;]*'newsletter:'/", $nlSrc));
 foreach (['pre-arrival.php', 'waitlist-lib.php', 'payments-due.php', 'autopay-lib.php'] as $obF) {
     $src = (string) file_get_contents(__DIR__ . '/' . $obF);
     chk("$obF keeps its own stamp-on-success retry (no outbox — double-retry rule)",
@@ -2204,7 +2216,9 @@ for ($i = 0; $i < $bkN; $i++) {
 }
 chk('the scan found the booking locks (vacuity: ' . $bkChecked . ' checked)', $bkChecked >= 8);
 chk('no booking lock ignores a timeout' . ($bkUnchecked ? ' — ' . implode(', ', $bkUnchecked) : ''), !$bkUnchecked);
-chk('the cancellation takes its lock before any money moves', (bool) preg_match('/if \(!book_lock\(\$b\[\'prop_key\'\] \?\? \'\'\)\) \{[^}]*\}\s*\$refundedByCard = 0\.0;/', (string) file_get_contents(__DIR__ . '/bookings.php')));
+// …and RE-READS the booking under it before deciding anything (pay.php charges under
+// the same lock: a deposit charged while this waited took the wrong branch).
+chk('the cancellation takes its lock before any money moves, and re-reads the booking under it', (bool) preg_match('/if \(!book_lock\(\$b\[\'prop_key\'\] \?\? \'\'\)\) \{[^}]*\}\s*(?:\/\/[^\n]*\n\s*)*\$b = booking_by_id\(\$id\);[\s\S]{0,600}?\$refundedByCard = 0\.0;/', (string) file_get_contents(__DIR__ . '/bookings.php')));
 
 echo "\n== A recovered Square payment is dated when Square took it ==\n";
 // record_square_payment is a recovery, often days after the charge, and the books

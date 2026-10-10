@@ -429,6 +429,29 @@ if ($action === 'submit') {
             $noDogsAt,
         ]);
     $enqId = (int) db()->lastInsertId();
+    // AN EDIT IS THE SAME ENQUIRY. Admin Edit/Move is decline + resubmit, so the new row
+    // started over: the guest's text-message consent was lost (approval copies it onto
+    // the booking), and a guest waiting two days read as new today — and was sent the
+    // follow-up nudge a second time. Carried from the row it replaces.
+    $replaces = $isAdminEdit ? (int) ($in['replaces_id'] ?? 0) : 0;
+    if ($replaces > 0) {
+        try {
+            $o = db()->prepare('SELECT sms_opt_in, created_at, seen_at, nudge_sent_at FROM enquiries WHERE id = ?');
+            $o->execute([$replaces]);
+            $orig = $o->fetch();
+            if ($orig) {
+                db()->prepare('UPDATE enquiries SET sms_opt_in = ?, created_at = ?, seen_at = ?, nudge_sent_at = ? WHERE id = ?')->execute([
+                    (int) $orig['sms_opt_in'] && clean($in['phone'] ?? '') !== '' ? 1 : 0,
+                    $orig['created_at'],
+                    $orig['seen_at'],
+                    $orig['nudge_sent_at'],
+                    $enqId,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Pre-migration columns: the edit stands, as before.
+        }
+    }
     // Remembered in THIS browser: an account registered here that has not yet
     // confirmed its email may still see the enquiry it just sent (my-bookings).
     $_SESSION['enq_ids'] = array_slice(array_merge($_SESSION['enq_ids'] ?? [], [$enqId]), -20);
@@ -500,6 +523,7 @@ if ($action === 'submit') {
             if ($ackEmail !== '' && function_exists('send_enquiry_ack')) {
                 send_enquiry_ack(
                     [
+                        'id' => (int) $ownerCtx['id'],
                         'name' => $ackName,
                         'email' => $ackEmail,
                         'prop_key' => $ownerCtx['prop_key'],

@@ -1556,7 +1556,23 @@ switch ($action) {
             $try('DELETE FROM enquiries WHERE email = ?', [$email]);
             $try('DELETE FROM newsletter_subscribers WHERE email = ?', [$email]);
             $try('DELETE FROM waitlist WHERE email = ?', [$email]);
+            // …and the rest filed under the address: the half-typed enquiry, the
+            // "book direct" lead (its marketing email would still have gone), the
+            // owner's own emails to them, unsent queued copies and old sign-in codes.
+            $try('DELETE FROM enquiry_drafts WHERE email = ?', [$email]);
+            $try('DELETE FROM direct_leads WHERE email = ?', [$email]);
+            $try('DELETE FROM mail_sent WHERE to_email = ?', [$email]);
+            $try('DELETE FROM email_outbox WHERE to_email = ? AND sent_at IS NULL', [$email]);
+            $try('DELETE FROM guest_codes WHERE email = ?', [$email]);
+            // A chat started on the website before signing in carries the address,
+            // not the account: theirs too, the owner's replies in it included.
+            $try('DELETE m FROM messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.guest_id IS NULL AND t.email = ?', [$email]);
+            $try('DELETE FROM chat_threads WHERE guest_id IS NULL AND email = ?', [$email]);
         }
+        // THE WHOLE CONVERSATION, not only their own lines: the owner's replies and
+        // their emailed replies carry no guest_id, so they outlived the account and
+        // stayed searchable. By thread, then the threads.
+        $try('DELETE m FROM messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.guest_id = ?', [$gid]);
         $try('DELETE FROM messages WHERE guest_id = ?', [$gid]);
         $try('DELETE FROM chat_threads WHERE guest_id = ?', [$gid]);
         $try('DELETE FROM guest_reviews WHERE guest_id = ?', [$gid]);

@@ -855,7 +855,7 @@ function email_outbox_step($row, $ok, $nowTs)
 // path that is already failing, and losing the queue insert must not turn a
 // lost email into a broken endpoint. Capped so a relay that stays down cannot
 // grow the table without bound.
-function email_outbox_add($ctx, $toEmail, $toName, $subject, $text, $html, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [], $lastError = '')
+function email_outbox_add($ctx, $toEmail, $toName, $subject, $text, $html, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [], $lastError = '', $ref = '')
 {
     // An oversized attachment (the weekly DB backup rides send_owner) is not
     // worth queueing: base64 in a table row, for an email whose next weekly run
@@ -875,30 +875,41 @@ function email_outbox_add($ctx, $toEmail, $toName, $subject, $text, $html, $atta
             smtp_fail_log($toName, 'outbox full — ' . $ctx . ' not queued');
             return false;
         }
-        db()
-            ->prepare(
-                'INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, body_html, reply_to, message_id, extra_headers, attachments, last_error)
-                 VALUES (DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            )
-            ->execute([
-                mb_substr((string) $ctx, 0, 40),
-                mb_substr((string) $toEmail, 0, 190),
-                mb_substr((string) $toName, 0, 190),
-                mb_substr((string) $subject, 0, 300),
-                (string) $text,
-                $html !== null ? (string) $html : null,
-                $replyTo !== null && $replyTo !== '' ? mb_substr((string) $replyTo, 0, 190) : null,
-                $messageId !== null && $messageId !== '' ? mb_substr((string) $messageId, 0, 120) : null,
-                $extraHeaders ? json_encode($extraHeaders) : null,
-                // System one-shots carry at most a ~1KB ICS; the manual composer
-                // (multi-MB attachments) is deliberately never queued.
-                $attachments ? json_encode(array_map(fn($a) => [
-                    'filename' => (string) ($a['filename'] ?? 'attachment'),
-                    'mime' => (string) ($a['mime'] ?? 'application/octet-stream'),
-                    'content_b64' => base64_encode((string) ($a['content'] ?? '')),
-                ], $attachments)) : null,
-                mb_substr((string) $lastError, 0, 220),
-            ]);
+        $sql = 'INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, body_html, reply_to, message_id, extra_headers, attachments, last_error%s)
+                 VALUES (DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?%s)';
+        $params = [
+            mb_substr((string) $ctx, 0, 40),
+            mb_substr((string) $toEmail, 0, 190),
+            mb_substr((string) $toName, 0, 190),
+            mb_substr((string) $subject, 0, 300),
+            (string) $text,
+            $html !== null ? (string) $html : null,
+            $replyTo !== null && $replyTo !== '' ? mb_substr((string) $replyTo, 0, 190) : null,
+            $messageId !== null && $messageId !== '' ? mb_substr((string) $messageId, 0, 120) : null,
+            $extraHeaders ? json_encode($extraHeaders) : null,
+            // System one-shots carry at most a ~1KB ICS; the manual composer
+            // (multi-MB attachments) is deliberately never queued.
+            $attachments ? json_encode(array_map(fn($a) => [
+                'filename' => (string) ($a['filename'] ?? 'attachment'),
+                'mime' => (string) ($a['mime'] ?? 'application/octet-stream'),
+                'content_b64' => base64_encode((string) ($a['content'] ?? '')),
+            ], $attachments)) : null,
+            mb_substr((string) $lastError, 0, 220),
+        ];
+        // What the email is ABOUT (email_outbox_wanted), so a retry can tell it has
+        // gone stale. Before migration-140 there is no column: queued without it.
+        $ref = mb_substr((string) $ref, 0, 190);
+        if ($ref !== '') {
+            try {
+                db()->prepare(sprintf($sql, ', ref', ', ?'))->execute(array_merge($params, [$ref]));
+                return true;
+            } catch (\Throwable $e) {
+                if (!function_exists('db_schema_missing') || !db_schema_missing($e)) {
+                    throw $e;
+                }
+            }
+        }
+        db()->prepare(sprintf($sql, '', ''))->execute($params);
         return true;
     } catch (\Throwable $e) {
         // Un-migrated table / DB trouble: the send already failed and was
@@ -910,13 +921,13 @@ function email_outbox_add($ctx, $toEmail, $toName, $subject, $text, $html, $atta
 // smtp_send + queue-on-failure. For ONE-SHOT emails only — see the module
 // header for the double-retry rule. Returns smtp_send's shape plus
 // 'queued' => true when the message is in the outbox.
-function smtp_send_reliable($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [])
+function smtp_send_reliable($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [], $ref = '')
 {
     $res = smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders);
     if (!empty($res['ok']) || !email_queueable($res)) {
         return $res;
     }
-    $queued = email_outbox_add($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders, $res['error'] ?? '');
+    $queued = email_outbox_add($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders, $res['error'] ?? '', $ref);
     if ($queued) {
         $res['queued'] = true;
     }
@@ -934,7 +945,7 @@ function email_outbox_drain($max = 10)
         return ['sent' => 0, 'retried' => 0, 'gaveup' => 0];
     }
     $draining = true;
-    $out = ['sent' => 0, 'retried' => 0, 'gaveup' => 0];
+    $out = ['sent' => 0, 'retried' => 0, 'gaveup' => 0, 'dropped' => 0];
     try {
         $rows = db()
             ->prepare('SELECT * FROM email_outbox WHERE sent_at IS NULL AND gave_up_at IS NULL AND next_try_at <= NOW() ORDER BY id LIMIT ' . max(1, (int) $max));
@@ -957,6 +968,18 @@ function email_outbox_drain($max = 10)
             $claim->execute([(int) $row['id']]);
             if ($claim->rowCount() !== 1) {
                 continue; // claimed by a concurrent drain
+            }
+            // A QUEUED EMAIL IS SENT ONLY WHILE IT IS STILL TRUE. The send that
+            // succeeds after an outage is what drains the queue — so a confirmation
+            // queued during the outage used to land just AFTER the cancellation, or
+            // after the corrected one with the new dates.
+            if (!email_outbox_wanted($row)) {
+                db()->prepare("UPDATE email_outbox SET gave_up_at = NOW(), last_error = 'no longer current' WHERE id = ?")->execute([(int) $row['id']]);
+                if (function_exists('log_activity')) {
+                    log_activity('system', 'email.dropped', 'Queued email not sent: ' . $row['context'] . ' to ' . $row['to_name'] . ' is no longer current', ['entity' => 'email']);
+                }
+                $out['dropped']++;
+                continue;
             }
             $atts = [];
             if (!empty($row['attachments'])) {
@@ -1021,6 +1044,55 @@ function email_outbox_drain($max = 10)
     return $out;
 }
 
+// What a queued booking confirmation is about: the stay as stored — its dates, its
+// cottage, its party and its price. A change to any is a different confirmation.
+function email_booking_ref($b)
+{
+    if (!is_array($b) || empty($b['id'])) {
+        return '';
+    }
+    $facts = [$b['check_in'] ?? '', $b['check_out'] ?? '', $b['prop_key'] ?? '', (int) ($b['adults'] ?? 0), (int) ($b['children'] ?? 0), (string) ($b['price_override'] ?? ''), (string) ($b['agreed_total'] ?? '')];
+    return 'booking:' . (int) $b['id'] . ':' . substr(sha1(implode('|', $facts)), 0, 16);
+}
+
+// Is a queued email still true? Its ref names what it is about; a stay moved or
+// cancelled, an enquiry answered, an unsubscribe or a person removed since it was
+// queued makes it an email about something that is no longer so. Anything this
+// cannot read (no ref, an unknown kind, a database hiccup) is still sent: delivery
+// is the outbox's job, and only a positive "no longer" stops one.
+function email_outbox_wanted($row)
+{
+    $ref = (string) ($row['ref'] ?? '');
+    if ($ref === '') {
+        return true;
+    }
+    $kind = strstr($ref, ':', true);
+    $rest = (string) substr($ref, strlen((string) $kind) + 1);
+    $one = function ($sql, $args) {
+        $q = db()->prepare($sql);
+        $q->execute($args);
+        return $q->fetch();
+    };
+    try {
+        if ($kind === 'booking') {
+            $b = $one('SELECT * FROM bookings WHERE id = ?', [(int) $rest]);
+            return is_array($b) && email_booking_ref($b) === $ref;
+        }
+        if ($kind === 'enquiry') {
+            return (bool) $one('SELECT id FROM enquiries WHERE id = ? AND declined_at IS NULL', [(int) $rest]);
+        }
+        if ($kind === 'newsletter') {
+            return (bool) $one('SELECT id FROM newsletter_subscribers WHERE email = ? AND unsubscribed_at IS NULL', [$rest]);
+        }
+        if ($kind === 'person') {
+            return (bool) $one('SELECT id FROM admins WHERE id = ? AND removed_at IS NULL', [(int) $rest]);
+        }
+    } catch (\Throwable $e) {
+        return true;
+    }
+    return true;
+}
+
 // Cheap post-success probe: drain a few due rows while the link is provably
 // up. Swallows everything — a queued retry must never break a live send path.
 function email_outbox_kick()
@@ -1069,7 +1141,8 @@ function send_people($kind, $subject, $text, $html = null, array $opts = [])
     $firstQueued = false;
     foreach ($results as $i => $r) {
         if (empty($r['ok']) && email_queueable($r) && isset($msgs[$i])) {
-            email_outbox_add('owner-alert', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], $msgs[$i]['attachments'] ?? [], $msgs[$i]['reply_to'] ?? null, $msgs[$i]['message_id'] ?? null, [], $r['error'] ?? '');
+            $pid = (int) ($rcpts[$i]['row']['id'] ?? 0);
+            email_outbox_add('owner-alert', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], $msgs[$i]['attachments'] ?? [], $msgs[$i]['reply_to'] ?? null, $msgs[$i]['message_id'] ?? null, [], $r['error'] ?? '', $pid > 0 ? 'person:' . $pid : '');
             if ($i === 0) {
                 $firstQueued = true;
             }
@@ -2269,7 +2342,8 @@ function send_enquiry_ack($enq, $accountExists = false)
     $html = email_shell($pre, $inner);
     // One-shot with no stamp-on-success cron behind it: a transport blip used
     // to lose the promise email forever. Queue-on-failure (the outbox rules).
-    return smtp_send_reliable('enquiry-ack', $email, $name, $subject, $text, $html);
+    $eid = (int) ($enq['id'] ?? 0);
+    return smtp_send_reliable('enquiry-ack', $email, $name, $subject, $text, $html, [], null, null, [], $eid > 0 ? 'enquiry:' . $eid : '');
 }
 
 // THE OWNER'S OWN EMAIL TO A GUEST — the Email guest sheet's one template, for a
@@ -2907,7 +2981,7 @@ function send_booking_emails($b)
             : [];
         // Approval deliberately never breaks on an email problem — which made a
         // failed confirmation silently unrecoverable. It queues now.
-        $out['guest'] = smtp_send_reliable('confirmation', $b['email'], $b['name'], $subject, $body, $html, $atts);
+        $out['guest'] = smtp_send_reliable('confirmation', $b['email'], $b['name'], $subject, $body, $html, $atts, null, null, [], (string) ($b['outbox_ref'] ?? ''));
     } else {
         $out['guest']['error'] = 'No guest email on file';
     }

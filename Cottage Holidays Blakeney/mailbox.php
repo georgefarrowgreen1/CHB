@@ -266,15 +266,28 @@ if ($action === 'list') {
         // alert becomes a chat message: mailbox-read.php routes it on the same
         // two facts (an OWNER token, a sender on the allow-list). It is in that
         // guest's conversation already, so listing it too would read as a new
-        // person waiting. One the poll would NOT route stays listed.
-        if ($fromAddr === mailbox_own_address() && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)
-            && msg_reply_parse(mailbox_token_in([
+        // person waiting. One the poll would NOT route stays listed — including a
+        // reply to a chat since deleted, which the poll leaves as ordinary mail.
+        if ($fromAddr === mailbox_own_address() && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)) {
+            [$rTid, $rAud] = msg_reply_parse(mailbox_token_in([
                 'in_reply_to' => mbx_header($head, 'In-Reply-To'),
                 'references' => mbx_header($head, 'References'),
                 'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')),
-            ]))[1] === 'owner') {
-            $ownHidden++;
-            continue;
+            ]));
+            $rLive = false;
+            if ($rAud === 'owner' && (int) $rTid > 0) {
+                try {
+                    $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
+                    $tq->execute([(int) $rTid]);
+                    $rLive = (bool) $tq->fetchColumn();
+                } catch (\Throwable $e) {
+                    $rLive = true; // unreadable: as before
+                }
+            }
+            if ($rLive) {
+                $ownHidden++;
+                continue;
+            }
         }
         // …and the same for automated authentication reports (DMARC and friends
         // — mailbox_is_report_robot). Counted on their OWN tally, not folded into

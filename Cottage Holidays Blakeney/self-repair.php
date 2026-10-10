@@ -459,6 +459,13 @@ try {
     db()->exec("DELETE FROM email_outbox WHERE gave_up_at IS NOT NULL AND gave_up_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
 } catch (\Throwable $e) {
 }
+// Sign-in codes live 30 minutes; the rows were never deleted, so every address that
+// ever asked for one stayed in the table. A day is past any use (the daily wrong-code
+// cap counts login_attempts, not these rows).
+try {
+    db()->exec('DELETE FROM guest_codes WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)');
+} catch (\Throwable $e) {
+}
 
 // ---- 4d-i. Seasonal rates that ended over a year ago -------------------------
 // The editor stops SHOWING a season the day after its last night (the owner asked

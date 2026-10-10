@@ -401,7 +401,20 @@ function poll_mailbox_replies($force = false, $preview = false)
             // the same address (a reply to a chat alert) must still route.
             $isSelf = mailbox_is_self_notification($fromAddr, explode("\n\n", str_replace("\r\n", "\n", (string) $raw), 2)[0]);
             $route = 'drop';
-            if ($tid > 0 && $body !== '' && !$isSelf) {
+            // A THREAD THAT NO LONGER EXISTS takes no reply. The owner's emailed answer
+            // to a deleted chat was inserted as an orphan message, emailed to no one
+            // and marked handled — they believed they had replied. Left as ordinary
+            // mail instead, so it lands in their Inbox where they can see it.
+            $threadGone = false;
+            if ($tid > 0) {
+                try {
+                    $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
+                    $tq->execute([$tid]);
+                    $threadGone = !$tq->fetchColumn();
+                } catch (\Throwable $e) {
+                }
+            }
+            if ($tid > 0 && $body !== '' && !$isSelf && !$threadGone) {
                 if ($senderOk && $tokAud === 'owner') {
                     $route = 'admin';
                 } elseif (mailbox_reply_is_guest($tid, $fromAddr)) {
@@ -412,13 +425,15 @@ function poll_mailbox_replies($force = false, $preview = false)
                 ? 'self-notification'
                 : ($tid <= 0
                     ? 'no-thread-token'
+                    : ($threadGone
+                    ? 'thread-gone'
                     : ($body === ''
                         ? 'empty-after-strip'
                         : ($route === 'admin'
                             ? 'delivered'
                             : ($route === 'guest'
                                 ? 'delivered-guest'
-                                : 'sender-not-recognised'))));
+                                : 'sender-not-recognised')))));
             $info = [
                 'from' => $fromAddr,
                 'subject' => mb_substr($p['subject'], 0, 120),

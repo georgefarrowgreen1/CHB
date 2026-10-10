@@ -147,7 +147,7 @@ if ($action === 'broadcast') {
         // The outbox retries just theirs (per-recipient message, their own
         // unsubscribe token intact).
         if (email_queueable($res) && isset($msgs[$i])) {
-            if (email_outbox_add('newsletter', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], [], null, null, $msgs[$i]['headers'] ?? [], $res['error'] ?? '')) {
+            if (email_outbox_add('newsletter', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], [], null, null, $msgs[$i]['headers'] ?? [], $res['error'] ?? '', 'newsletter:' . $msgs[$i]['to'])) {
                 $queued++;
             }
         }
