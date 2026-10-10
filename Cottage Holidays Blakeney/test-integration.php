@@ -1777,8 +1777,13 @@ it_check('…and a booking made later against that address is NOT shown to it', 
     && empty($r['json']['bookings']) && strpos($r['raw'], 'Real Owner') === false, $r['raw']);
 $r = http($sqA, 'POST', '/welcome.php', ['action' => 'get', 'prop' => $propKey]);
 it_check('…nor any stay-scoped endpoint (welcome book refuses it in words)', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
+// A chat someone started on the website under that address, before any account.
+$rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Real Owner', ?)")->execute(['sq19-' . bin2hex(random_bytes(6)), $squatEmail]);
+$sqTid = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body) VALUES (NULL, ?, 'guest', 'SQUAT-ANON-CHAT')")->execute([$sqTid]);
 $r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_export_data']);
 it_check('…and its data export carries no bookings', ($r['json']['ok'] ?? false) === true && empty($r['json']['data']['bookings']), $r['raw']);
+it_check('…nor a chat filed under the address it has not proven', strpos($r['raw'], 'SQUAT-ANON-CHAT') === false, '');
 // The rightful owner proves the address from THEIR browser: the squatter's password
 // is cleared, its session revoked, and the stay is theirs alone.
 $sqGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = " . $rootDb->quote($squatEmail))->fetchColumn();
@@ -1799,6 +1804,9 @@ it_check('…while the owner now sees their stay', $r['code'] === 200 && empty($
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_export_data']);
 it_check('§19b the export carries the stay but never the owner\'s private note', ($r['json']['ok'] ?? false) === true
     && count($r['json']['data']['bookings'] ?? []) >= 1 && strpos($r['raw'], 'OWNER-PRIVATE-NOTE') === false, '');
+it_check('§19b …and the chat filed under the address it has now proven', strpos($r['raw'], 'SQUAT-ANON-CHAT') !== false, '');
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $sqTid");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $sqTid");
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'ownerpass2']);
 it_check('§19b with no password left, a new one is set without a current one', ($r['json']['ok'] ?? false) === true, $r['raw']);
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => 'wrongpass', 'next' => 'ownerpass3']);
@@ -4807,13 +4815,34 @@ $r = http($admin, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $
 $rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Zara Seventy', ?)")->execute(['it70-' . bin2hex(random_bytes(6)), $z70]);
 $aTid70 = (int) $rootDb->lastInsertId();
 $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body) VALUES (NULL, ?, 'guest', 'before I signed in')")->execute([$aTid70]);
-$rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key) VALUES (?, ?)")->execute([$z70, $propKey]);
-$rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, review_text) VALUES (?, 'Zara Seventy', ?, 'lovely')")->execute([$propKey, $z70]);
-$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES (?, 'Your stay', 'hello')")->execute([$z70]);
+$rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key, name) VALUES (?, ?, 'DRAFT-NAME-70')")->execute([$z70, $propKey]);
+$rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, review_text, admin_note) VALUES (?, 'Zara Seventy', ?, 'LEAD-REVIEW-70', 'OWNER-NOTE-70')")->execute([$propKey, $z70]);
+$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES (?, 'Your stay', 'INBOX-EMAIL-70')")->execute([$z70]);
 $rootDb->prepare("INSERT INTO email_outbox (next_try_at, context, to_email, subject, body_text) VALUES (DATE_ADD(NOW(), INTERVAL 1 HOUR), 'confirmation', ?, 'S', 'b')")->execute([$z70]);
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, entity, entity_id, meta) VALUES ('comms', 'booking.email', 'Emailed guest', 'booking', ?, ?)")->execute([(string) $zBid70, json_encode(['subject' => 'About your stay', 'body' => 'BOOKING-PAGE-EMAIL-70'])]);
 $msgs70 = (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn();
 it_check('§70 (fixture) a signed-in chat with the owner\'s reply, and one from before signing in', $zTid70 > 0 && $msgs70 >= 3, (string) $msgs70 . ' ' . $r['raw']);
+// "Download my data" carries what deletion takes: the conversation's other half, the
+// chat from before signing in, the draft, the review from a link and the owner's
+// emails to them. Never a chat's key, nor the owner's private note on the lead.
+$r = http($zj70, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+$x70 = $r['json']['data'] ?? [];
+$xBodies70 = array_map(fn($m) => (string) ($m['body'] ?? ''), $x70['messages'] ?? []);
+$tok70 = (string) $rootDb->query("SELECT token FROM chat_threads WHERE id = $aTid70")->fetchColumn();
+it_check('§70 the export carries the owner\'s replies and the chat from before signing in', in_array('Yes — it is on the fridge', $xBodies70, true) && in_array('before I signed in', $xBodies70, true), json_encode($xBodies70));
+it_check('§70 …and the draft, the review from a link and the owner\'s emails (Inbox and booking page)', strpos($r['raw'], 'DRAFT-NAME-70') !== false && strpos($r['raw'], 'LEAD-REVIEW-70') !== false
+    && strpos($r['raw'], 'INBOX-EMAIL-70') !== false && strpos($r['raw'], 'BOOKING-PAGE-EMAIL-70') !== false, substr($r['raw'], 0, 300));
+it_check('§70 …but never a chat\'s key, nor the owner\'s private note', $tok70 !== '' && strpos($r['raw'], $tok70) === false && strpos($r['raw'], 'OWNER-NOTE-70') === false, '');
+// The activity log's copies of those words: the first line of each chat message (the
+// Activity log page shows and searches it) and the booking page's email in full.
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, entity, entity_id, meta) VALUES ('comms', 'message.guest', 'New chat message from Zara Seventy', 'thread', ?, ?)")->execute([(string) $aTid70, json_encode(['detail' => 'ANON-LINE-70'])]);
+$keepLog70 = (int) $rootDb->query("SELECT MAX(id) FROM activity_log WHERE entity = 'thread' AND entity_id = '$zTid70'")->fetchColumn();
 $r = http($zj70, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+$log70 = $rootDb->query("SELECT GROUP_CONCAT(CONCAT_WS('|', summary, IFNULL(meta, '')) SEPARATOR ' ## ') FROM activity_log WHERE (entity = 'thread' AND entity_id IN ('$zTid70', '$aTid70')) OR (entity = 'booking' AND entity_id = '$zBid70')")->fetchColumn();
+it_check('§70 the activity log keeps no line of the conversation nor the booking page\'s email', $keepLog70 > 0 && (string) $log70 !== ''
+    && strpos((string) $log70, 'wifi password') === false && strpos((string) $log70, 'on the fridge') === false
+    && strpos((string) $log70, 'ANON-LINE-70') === false && strpos((string) $log70, 'BOOKING-PAGE-EMAIL-70') === false, (string) $log70);
+it_check('§70 …and a guest\'s chat message no longer names them, while the rows stay as the record', strpos((string) $log70, 'from Zara Seventy') === false && strpos((string) $log70, 'New chat message') !== false, (string) $log70);
 $left70 = [
     'messages' => (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn(),
     'threads' => (int) $rootDb->query("SELECT COUNT(*) FROM chat_threads WHERE id IN ($zTid70, $aTid70)")->fetchColumn(),

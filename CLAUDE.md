@@ -1191,6 +1191,21 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
   carry no guest_id, so they outlived the account and stayed searchable), plus the anonymous threads under its
   email. It also takes the enquiry draft, the direct lead, the owner's emails to them, unsent queued copies and
   sign-in codes. Self-repair prunes sign-in codes older than a day.
+- **"DOWNLOAD MY DATA" CARRIES WHAT DELETION TAKES** (`guest_export_data`). The export had the guest's own chat
+  lines only, and nothing filed under their address before the account existed. Under the proven-address rule (as
+  for the stays) it now carries:
+  - the whole conversation, the owner's replies included;
+  - a chat started on the website before signing in;
+  - the enquiry draft and a review left from a review link;
+  - the owner's emails to them, from the Inbox's sent log and from a booking's page;
+  - the names of their passkeys.
+
+  Left out on purpose: a chat's token (it opens that chat), the owner's archive flag, and the owner's private
+  rating and note on a review-link lead. Deleting the account now also clears the activity log's copies of the
+  words: the first line of every chat message, which the Activity log page shows and searches, and a booking
+  page's emails in full. A guest's "New chat message from <name>" loses the name. The rows stay as the record.
+  **Not done, said plainly**: other audit lines still name the guest ("Emailed guest — <name>"), and every row
+  keeps the IP it came from. Gated in test-integration §19b and §70.
 - **A DELETED EXPENSE PUTS ITS BANK PAYMENT BACK TO SORT.** This is statements.php's own unmark, the split columns
   included. The payment used to read "Counted, as a cost" for a cost the books no longer held.
 - **A removed or private cottage tells its waitlist nothing** (`prop_is_marketable`, as the three nudges already did).
