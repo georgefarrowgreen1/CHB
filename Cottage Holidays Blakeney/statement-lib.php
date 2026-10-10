@@ -179,6 +179,7 @@ function statement_parse(string $csv, string $filename = ''): array
     }
     $get = fn(array $r, string $k) => isset($col[$k]) ? trim((string) ($r[$col[$k]] ?? '')) : '';
     $seen = [];
+    $curSeen = [];
     $lastAt = '';
     for ($i = 1, $n = count($rows); $i < $n; $i++) {
         $r = $rows[$i];
@@ -190,6 +191,7 @@ function statement_parse(string $csv, string $filename = ''): array
         $cur = strtoupper($get($r, 'currency'));
         if ($cur !== '' && $cur !== 'GBP') {
             $out['other_currency']++;
+            $curSeen[mb_substr($cur, 0, 12)] = true;
             continue;
         }
         if (isset($col['amount'])) {
@@ -263,7 +265,8 @@ function statement_parse(string $csv, string $filename = ''): array
         if ($rowsIn > 0 && $out['unreadable'] > 0) {
             $out['error'] = $rowsIn === 1 ? 'The one row in that file couldn’t be read as a payment.' : 'None of the ' . $rowsIn . ' rows in that file could be read as a payment.';
         } elseif ($rowsIn > 0 && $out['other_currency'] > 0) {
-            $out['error'] = 'Every payment in that file is in another currency.';
+            // Named, so a file in euros is told from a column we misread.
+            $out['error'] = 'Every payment in that file is in another currency (' . implode(', ', array_slice(array_keys($curSeen), 0, 3)) . ').';
         } else {
             $out['error'] = 'There are no payments in that file.';
         }
