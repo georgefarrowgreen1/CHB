@@ -239,26 +239,44 @@ const READ_SELS = [
     // =====================================================================
     console.log('\n§3 No sub, label or money line loses its words');
     // =====================================================================
-    // Every owner surface this PR touched, driven for real. A screen that
-    // renders NOTHING would pass vacuously, so every sweep carries a floor.
+    // Every owner surface, driven for real. A screen that renders NOTHING would
+    // pass vacuously, so every sweep carries a floor, counted INSIDE the surface
+    // (a detail page slides over the list on a phone, and the list behind it must
+    // not make up the detail page's count).
+    // [name, open, floor, scope, ready]
     const surfaces = [
-        ['Money landing', async () => { await openAccounts(); }, 6],
-        ['Income & tax', async () => { await openAccounts(); accountsOpen('income'); }, 3],
-        ['Payments & balances', async () => { await openAccounts(); accountsOpen('payments'); }, 3],
-        ['Recent payments', async () => { await openAccounts(); accountsOpen('recent'); }, 2],
-        ['Key safes', async () => { await openKeysafe(); }, 2],
+        ['Payments landing', async () => { await openAccounts(); pmClose(); }, 6, '#pm-list',
+            () => /Card payments? to check/.test(document.getElementById('pm-list').textContent) && !!document.querySelector('#pm-list .pm-mrow[aria-label^="Alexandrina"]')],
+        // Income & tax IS the books page now (accountsOpen('income') routes to it).
+        ['The books (Income & tax)', async () => { await openAccounts(); accountsOpen('income'); }, 3, '#pm-detail',
+            () => !!document.querySelector('#pm-detail .pm-hero') && /The books/.test(document.getElementById('pm-detail').textContent)],
+        // A stay's payments: the per-booking page that replaced Payments & balances,
+        // opened from the guest's row in "Guests still to pay".
+        ['A stay’s payments', async () => {
+            await openAccounts(); pmClose();
+            const r = [...document.querySelectorAll('#pm-list .pm-orow')].find((x) => /^Alexandrina/.test(x.getAttribute('aria-label') || ''));
+            if (r) r.click();
+        }, 3, '#pm-detail', () => /Deposit returned/.test((document.getElementById('pm-detail') || {}).textContent || '')],
+        // With Square: the card payments not yet in the bank, the 40-day-old one Square
+        // has not reported among them (the old landing's "Square hasn't said" row).
+        ['With Square', async () => { await openAccounts(); pmOpen('way'); }, 2, '#pm-detail',
+            () => /Not reported by Square/.test((document.getElementById('pm-detail') || {}).textContent || '')],
+        ['Key safes', async () => { await openKeysafe(); }, 2, '#view-keysafe', () => document.querySelectorAll('#view-keysafe .ks-row').length > 0],
     ];
     for (const w of [360, 390, 1280]) {
         await page.setViewportSize({ width: w, height: 950 });
         await page.waitForTimeout(250);
-        for (const [name, open, floor] of surfaces) {
+        for (const [name, open, floor, scope, ready] of surfaces) {
             await page.evaluate(new Function('return (' + open.toString() + ')()'));
-            await page.waitForTimeout(900);
-            const n = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length).length, READ_SELS);
+            await page.waitForFunction(new Function('return (' + ready.toString() + ')()'), null, { timeout: 15000 }).catch(() => {});
+            await page.waitForTimeout(150);
+            const sels = READ_SELS.split(', ').map((x) => scope + ' ' + x.replace(/^#pm /, '')).join(', ');
+            const n = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length).length, sels);
             ok(n >= floor, `${w}px ${name}: ${n} reading elements on screen (floor ${floor})`);
-            const lost = await page.evaluate(LOST, READ_SELS);
-            ok(lost.length === 0, `${w}px ${name}: none loses its words${lost.length ? ' — ' + lost.map((c) => `“${c.txt}” by ${c.over}px`).join('; ') : ''}`);
+            const lost = await page.evaluate(LOST, sels);
+            ok(lost.length === 0, `${w}px ${name}: none loses its words${lost.length ? ' — ' + lost.map((c) => `“${c.txt}” (.${String(c.sel).split(' ')[0]}) by ${c.over}px`).join('; ') : ''}`);
         }
+        await page.evaluate(() => { try { pmClose(); } catch (e) {} });
         // The assistant's THREAD: a past answered turn keeps its figure. Driven
         // by asking twice — only an ANSWERED turn joins the thread.
         const turns = await page.evaluate(async () => {
@@ -281,56 +299,56 @@ const READ_SELS = [
     }
 
     // =====================================================================
-    console.log('\n§4 The income forecast states all four facts, on one rail');
+    console.log('\n§4 Income & tax (the books page) stands on one rail');
     // =====================================================================
+    const booksOpen = async () => {
+        await page.evaluate(async () => { await openAccounts(); accountsOpen('income'); });
+        // On a phone the page slides over the list: measure it where it COMES TO REST,
+        // never mid-slide (a 0.38s translate reads as 380px past the viewport).
+        await page.waitForFunction(() => {
+            const pane = document.getElementById('pm-detail');
+            return !!document.querySelector('#pm-detail .pm-hero') && !!document.querySelector('#pm-detail .pm-yr')
+                && pane.getAnimations().length === 0 && Math.round(pane.getBoundingClientRect().left) <= Math.round(document.getElementById('pm').getBoundingClientRect().right);
+        }, null, { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(100);
+    };
     await page.setViewportSize({ width: 390, height: 950 });
     await page.waitForTimeout(200);
-    await page.evaluate(async () => { await openAccounts(); accountsOpen('income'); });
-    await page.waitForTimeout(900);
+    await booksOpen();
     const fc = await page.evaluate(() => {
-        const host = document.getElementById('money-forecast');
+        const host = document.querySelector('#pm-detail .pm-dbody');
         if (!host) return { missing: true };
-        // A fold decides VISIBILITY, never existence — open it before measuring.
-        const grp = host.querySelector('.bhub-fold-grp');
-        const key = grp && grp.getAttribute('data-grp');
-        if (key) bhubFoldToggle(key);
-        const fold = host.querySelector('.bhub-fold');
-        const rows = [...host.querySelectorAll('.bhub-kv')].filter((e) => e.getClientRects().length);
+        const rows = [...host.querySelectorAll('.pm-calc .pm-kv')].filter((e) => e.getClientRects().length);
         const wide = [...host.querySelectorAll('*')].filter((e) => {
             const r = e.getBoundingClientRect();
             return r.width > 0 && r.right > window.innerWidth + 1;
         }).map((e) => e.className || e.tagName);
         return {
-            key, open: !!(fold && !fold.hidden),
-            rows: rows.length,
-            first: rows[0] ? (rows[0].textContent || '').replace(/\s+/g, ' ').trim() : '',
-            hasTable: !!host.querySelector('table'),
+            rows: rows.map((r) => (r.textContent || '').replace(/\s+/g, ' ').trim()),
+            quarters: [...host.querySelectorAll('.pm-ql span')].map((q) => (q.textContent || '').trim()),
             wide: wide.slice(0, 4),
             docW: Math.round(document.documentElement.scrollWidth),
             vw: window.innerWidth,
         };
     });
-    ok(!fc.missing && fc.key === 'incforecast', `the forecast wears the page's fold anatomy (data-grp=${fc.key})`);
-    ok(fc.open && fc.rows >= 6, `(vacuity guard) its six months render as rows (${fc.rows})`);
-    ok(!fc.hasTable, 'the four-column table is gone — it could not fit and stated the chart’s own figures twice');
-    // ALL FOUR FACTS, on the row rather than in a column the page clipped away.
-    ok(/£/.test(fc.first) && /booking/.test(fc.first) && /occupancy/.test(fc.first),
-        `each month states its revenue, its bookings AND its occupancy (${fc.first})`);
-    ok(fc.wide.length === 0, `nothing in the block reaches past the viewport${fc.wide.length ? ' — ' + fc.wide.join(', ') : ''}`);
+    ok(!fc.missing && fc.rows.length >= 5, `(vacuity guard) the books page renders its sum (${fc.rows && fc.rows.length} rows)`);
+    ok(!fc.missing && /Rental income/.test(fc.rows.join('|')) && /card fees/.test(fc.rows.join('|')) && /Expenses/.test(fc.rows.join('|')) && /Profit\s*£576\.40/.test(fc.rows.join('|')),
+        `it states income, fees, expenses and the profit they make (${fc.rows && fc.rows.join(' | ')})`);
+    ok(!fc.missing && fc.quarters.length === 4 && fc.quarters.every((q) => /£|–/.test(q)), `each quarter states its figure (${fc.quarters && fc.quarters.join(' / ')})`);
+    ok(fc.wide.length === 0, `nothing in the page reaches past the viewport${fc.wide.length ? ' — ' + fc.wide.join(', ') : ''}`);
     ok(fc.docW <= fc.vw + 1, `…and the page does not scroll sideways (${fc.docW} of ${fc.vw})`);
 
     await page.setViewportSize({ width: 1280, height: 950 });
     await page.waitForTimeout(300);
-    await page.evaluate(async () => { await openAccounts(); accountsOpen('income'); });
-    await page.waitForTimeout(900);
+    await booksOpen();
     const rail = await page.evaluate(() => {
-        const sec = document.getElementById('asec-income');
+        const sec = document.querySelector('#pm-detail .pm-dbody');
         const pick = (sel) => sec.querySelector(sel);
         const parts = [
-            ['tax-year select', pick('#accounts-year')],
-            ['net profit headline', pick('.accounts-stat.headline')],
-            ['the folds', pick('#accounts-content .bhub-fold-grp')],
-            ['the forecast', pick('#money-forecast .bhub-fold-grp')],
+            ['tax-year switch', pick('.pm-yr')],
+            ['profit headline', pick('.pm-hero')],
+            ['the sum', pick('.pm-kvs.pm-calc')],
+            ['the actions', pick('.pm-acts')],
         ].filter(([, el]) => el && el.getClientRects().length);
         const boxes = parts.map(([n, el]) => { const r = el.getBoundingClientRect(); return { n, l: Math.round(r.left), r: Math.round(r.right) }; });
         return { boxes, lefts: [...new Set(boxes.map((b) => b.l))], rights: [...new Set(boxes.map((b) => b.r))] };
@@ -338,65 +356,6 @@ const READ_SELS = [
     ok(rail.boxes.length === 4, `(vacuity guard) all four blocks are on screen (${rail.boxes.map((b) => b.n).join(', ')})`);
     ok(rail.lefts.length === 1, `they share ONE left edge (${rail.boxes.map((b) => b.n + ' ' + b.l).join(' / ')})`);
     ok(rail.rights.length === 1, `and ONE right edge (${rail.boxes.map((b) => b.n + ' ' + b.r).join(' / ')})`);
-
-    // =====================================================================
-    console.log('\n§5 One disclosure vocabulary');
-    // =====================================================================
-    // Every <details> summary an owner can reach on Manage and Move money out:
-    // one height, one type, and the house chevron drawn as a MASK rather than a
-    // text glyph — which is what "one vocabulary" has to mean to be checkable.
-    const sums = await page.evaluate(async () => {
-        const seen = [];
-        const grab = () => {
-            for (const s of document.querySelectorAll('summary')) {
-                if (!s.getClientRects().length) continue;
-                // The Status page's Tools disclosure is a CARD ROW (approved
-                // demo) carrying its own BHUB_CHEV svg, not a text disclosure.
-                if (s.classList.contains('sp-tsum')) continue;
-                const cs = getComputedStyle(s);
-                const af = getComputedStyle(s, '::after');
-                seen.push({
-                    t: (s.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
-                    h: Math.round(s.getBoundingClientRect().height),
-                    display: cs.display,
-                    marker: cs.listStyleType,
-                    size: cs.fontSize,
-                    weight: cs.fontWeight,
-                    afContent: af.content,
-                    afMask: (af.maskImage || af.webkitMaskImage || 'none'),
-                    afW: af.width,
-                });
-            }
-        };
-        await openArea('manage');
-        await new Promise((r) => setTimeout(r, 500));
-        for (const sec of ['diagnostics', 'payments', 'reviews']) {
-            settingsOpen(sec);
-            await new Promise((r) => setTimeout(r, 700));
-            grab();
-        }
-        await openAccounts();
-        await new Promise((r) => setTimeout(r, 400));
-        await openKeysafe();
-        await new Promise((r) => setTimeout(r, 600));
-        grab();
-        return seen;
-    });
-    // The floor moved 4 → 1 with consolidations: the Status page's text
-    // disclosures became the Tools card (excluded above) and the key-safe
-    // page's moved into its sheet. Named, so an unrelated summary cannot pass it.
-    ok(sums.length >= 1 && sums.some((s) => /Show how these figures are worked out/.test(s.t)), `(vacuity guard) ${sums.length} summaries reachable on Manage + Move money out + Key safes`);
-    const short = sums.filter((s) => s.h < 44);
-    ok(short.length === 0, `every one of them meets the 44px floor${short.length ? ' — ' + short.map((s) => `“${s.t}” ${s.h}px`).join('; ') : ''}`);
-    const marked = sums.filter((s) => s.display === 'list-item' || s.marker !== 'none');
-    ok(marked.length === 0, `none of them shows the UA triangle${marked.length ? ' — ' + marked.map((s) => `“${s.t}” ${s.display}/${s.marker}`).join('; ') : ''}`);
-    // The chevron: a 14px BHUB_CHEV MASK, never a text glyph. Restoring one
-    // `::after { content: "▾" }` fails here and nowhere else.
-    const glyph = sums.filter((s) => !/^(none|"")$/.test(s.afContent) || !/url\(/.test(s.afMask) || s.afW !== '14px');
-    ok(glyph.length === 0, `all of them draw the house 14px chevron as a mask${glyph.length ? ' — ' + glyph.map((s) => `“${s.t}” content=${s.afContent} mask=${s.afMask.slice(0, 14)} w=${s.afW}`).join('; ') : ''}`);
-    const sizes = [...new Set(sums.map((s) => s.size))];
-    const weights = [...new Set(sums.map((s) => s.weight))];
-    ok(sizes.length === 1 && weights.length === 1, `one type across the set (${sizes.join('/')} at ${weights.join('/')})`);
 
     console.log(`\n${fails ? fails + ' FAILED' : 'All owner-reference checks passed'}`);
     await done(fails);

@@ -374,6 +374,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // count still said 1. An enquiry stays PENDING until it is approved or
   // declined, so "pending" was never the right thing to count.
   console.log('8. an opened enquiry stops notifying');
+  // OFF the Inbox first, and with loadData held still. On a computer an Inbox on
+  // screen with nobody open opens the top waiting person in its reading pane, which
+  // (rightly) stamps their enquiry seen — so the "unread" case would read itself.
+  // And this fixture's routes now answer every refresh empty (quietMode), so a
+  // background loadData landing mid-check emptied `enquiries` under the counts
+  // (measured: one run read "All answered" over the enquiry being counted). §8
+  // tests the counts, not loadData.
+  await page.evaluate(async () => {
+    window.__ldSave = window.loadData;
+    window.loadData = async () => ({ ok: true, failed: [] });
+    await openBookings();
+  });
   // TWO numbers, and since the one-list Inbox they answer different questions on
   // purpose: the TODAY pip counts duties (and an enquiry you have read is not a duty
   // until it goes stale), while the INBOX pip counts people WAITING on you — the
@@ -383,13 +395,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
     window.__newMailPre = null; window.__payoutTroublePre = null;
     const at = new Date(Date.now() - hoursAgo * 3600e3).toISOString().slice(0, 19).replace('T', ' ');
-    enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', email: 'jem@x.co', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: at, seenAt: seenAt }];
-    // The enquiries loader's own render: it refreshes the badges and queues the one
-    // list's rebuild (ibSoon → ibRender, which refreshes them again from the rebuilt
-    // list). Two frames lets that rebuild land before anything is read.
-    renderInbox();
-    renderNeedsYou();
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    // RE-LAID UNTIL IT HOLDS: a refresh already in flight when loadData was held
+    // still can still land and empty the store, so the fixture is seeded again
+    // until it survives the frames the counts are read after.
+    for (let i = 0; i < 5; i++) {
+      enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', email: 'jem@x.co', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: at, seenAt: seenAt }];
+      // The enquiries loader's own render: it refreshes the badges and queues the
+      // one list's rebuild (ibSoon → ibRender, which refreshes them again from the
+      // rebuilt list). Two frames lets that rebuild land before anything is read.
+      renderInbox();
+      renderNeedsYou();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (enquiries.length === 1 && enquiries[0].id === 'e7') break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
     return {
       dock: (document.getElementById('dock-badge-enquiries') || {}).textContent,
       inboxPip: (document.getElementById('dock-badge-inbox') || {}).textContent,
@@ -427,6 +446,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(onOpen.before === '1' && onOpen.after === '0' && onOpen.stamped,
     `opening it clears the count without waiting on the server (${onOpen.before} → ${onOpen.after})`);
+  await page.evaluate(() => { window.loadData = window.__ldSave; });
 
   // ---- 9. a stalled calendar sync is a DUTY, not a footnote ----------------
   // It was only ever a line in the assistant's foot — you had to open search AND

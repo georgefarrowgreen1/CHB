@@ -13,18 +13,20 @@
 //   §6 a window opened from Manage is a bottom sheet on a phone — and the same
 //      window on the guest side is untouched (the scope is the point);
 //   §7 one caption tier on Manage, the old tracked capitals left alone outside it;
-//   §8 Payments and Key safes joined: tools as rows, one caption tier, a back link
+//   §8 Payments and Key safes joined: tools as rows (the + menu on the one Payments
+//      page), one caption tier, a back link
 //      that names Payments, an expense as one line in one card (its rows were
 //      wearing the guest Things-to-do class, whose display:flex broke the grid);
-//   §9 the Inbox joined: no sentence under the title, one chevron, the conversations
-//      one list card under one search with chips, and two verdicts that no longer
-//      claim more than they know (a read-but-unanswered chat, a mailbox that failed);
+//   §9 the Inbox joined (the ONE list of people now): no sentence under the title, one
+//      Inbox | Done switcher, the people rows of one card under one search, and two
+//      verdicts that no longer claim more than they know (a read-but-unanswered chat
+//      still waits, a mailbox that failed says so);
 //  §10 the booking and enquiry pages joined: a back link naming its screen, cards on the
 //      one radius, the one caption tier, sentence-case tags, Approve a filled pill;
 //  §11 Today joined: the one switcher, the Bookings caption on its count's line, and the
 //      booking window's one action the accent pill;
-//  §12 small parts: a guest's other stays as one inset list with the drawn chevron, an
-//      action link's chevron drawn too, and the message search at the one field height;
+//  §12 small parts: a guest's other stays as one inset list with the drawn chevron, and an
+//      action link's chevron drawn too (the message search's height moved to §9);
 //  §13 the last stragglers: every remaining "›" / "❮ ❯" glyph is the drawn chevron, both
 //      hubs' call / email / ⋯ are one outlined circle, the card's second choice is
 //      outlined, the enquiry quote sits in the inset panel, the conversation sheet takes the
@@ -65,6 +67,10 @@ async function open(browser, base, width) {
     if (url.includes('ical-import.php')) return json({ ok: true, feeds: [], blocks: [] });
     if (url.includes('activity-log.php') && b.action === 'summary') return json({ ok: true, total: 3, needs: [], days: Array.from({ length: 7 }, (_, i) => ({ date: '2026-10-0' + (i + 1), n: i % 2, warn: 0 })) });
     if (url.includes('keysafe.php')) return json({ ok: true, safes: { '21a': { code: '4821', setAt: '2026-09-01T10:00:00Z', forBooking: 0, history: [], enabled: true }, 'jollyboat': { code: '', history: [], enabled: true } }, revealDays: 2 });
+    // The one Payments page: a tax year's books and a bank status, so the landing has the
+    // captions §8 compares (Money, The books, Where it comes from).
+    if (url.includes('money.php')) return json({ ok: true, at: Math.floor(Date.now() / 1000), position: { with_square: 0, in_bank: 0, ready: 0, held: 0, unreported_count: 0, failed: [] }, bank_items: [], way_items: [], moved_map: {}, landed_map: {}, books: { year: 2026, income: 1200, kept: 0, fees: 21, expenses: 120, profit: 1059, quarters: [400, 800, 0, 0], by_category: [], undated: null }, years: [2026], activity: [] });
+    if (url.includes('statements.php') && b.action === 'status') return json({ ok: true, ready: true, on: false, remind: true, live: { state: 'off' }, last: null, balance: null, lines: [], unsorted: 0, learned: [], due: { due: false } });
     if (route.request().method() === 'POST' && b.action === 'admin_status') return json({ ok: true, admin: true });
     return json({ ok: true, bookings: liveBookings, enquiries: [], threads: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], waitlist: [], photos: [] });
   });
@@ -263,9 +269,19 @@ async function open(browser, base, width) {
   const pay = await page.evaluate(async () => {
     await openAccounts();
     await new Promise((r) => setTimeout(r, 600));
-    const idx = document.getElementById('accounts-index');
-    const tools = [...idx.querySelectorAll(':scope > .settings-group > .settings-row .settings-row-label')].map((r) => r.textContent.trim());
-    const cap = [...document.querySelectorAll('#accounts-index .bhub-grpcap')].filter((c) => c.getClientRects().length).map((c) => getComputedStyle(c).textTransform);
+    // The one Payments page keeps its tools in ONE place, the + menu beside the title,
+    // as a list of rows (the old landing's Tools tiles, then rows in a card, went with it).
+    const menu = document.getElementById('pm-menu');
+    PM_ACT.menu();
+    const items = menu ? [...menu.querySelectorAll(':scope > button')] : [];
+    const mw = menu ? menu.getBoundingClientRect().width : 0;
+    const tools = items.map((b) => b.textContent.trim());
+    const rowsOk = items.length > 0 && items.every((b) => { const r = b.getBoundingClientRect(); return r.height >= 44 && Math.abs(r.width - (mw - 10)) <= 2 && getComputedStyle(b).textAlign === 'left'; });
+    pmMenuShow(false);
+    // Captions: every one on the landing is the one tier — sentence case, one size, one weight.
+    const caps = [...document.querySelectorAll('#pm-list .pm-capline')].filter((c) => c.getClientRects().length).map((c) => { const s = getComputedStyle(c); return { tt: s.textTransform, f: s.fontSize + ' ' + s.fontWeight, t: c.textContent.trim() }; });
+    const cap = caps.map((c) => c.tt);
+    const capLooks = [...new Set(caps.map((c) => c.f))];
     // Expenses: one card per tax year, a line per expense, and adding is the row at the foot.
     allExpenses.splice(0, allExpenses.length,
       { id: 1, date: '2026-10-02', category: 'Laundry', description: 'Linen hire for the changeover', amount: 42.5, prop_key: '21a', recurring: 0 },
@@ -284,13 +300,14 @@ async function open(browser, base, width) {
     await new Promise((r) => setTimeout(r, 400));
     const ks = document.querySelector('#view-keysafe .ks-list');
     return {
-      tools, cap, back, rows: rows.length, oneLine: !!(main && amt && Math.abs((main.top + main.bottom) / 2 - (amt.top + amt.bottom) / 2) < 12),
+      tools, rowsOk, cap, capLooks, capNames: caps.map((c) => c.t), back, rows: rows.length, oneLine: !!(main && amt && Math.abs((main.top + main.bottom) / 2 - (amt.top + amt.bottom) / 2) < 12),
       rowDisplay: r0 ? getComputedStyle(r0).display : '', add: !!add, kinds,
       ksRadius: ks ? getComputedStyle(ks).borderTopLeftRadius : '', ksShadow: ks ? getComputedStyle(ks).boxShadow : '',
     };
   });
-  ok(pay.tools.join('|') === 'Payments & balances|Expenses', `the Payments tools are rows in a card, like the Manage index (${pay.tools.join(' · ')})`);
-  ok(pay.cap.length >= 1 && pay.cap.every((t) => t === 'none'), `Payments' captions are the one tier, sentence case (${pay.cap.join(',')})`);
+  ok(pay.tools.join('|') === 'Record a payment|Add an expense|Ask a guest to pay|Connect Open Banking|Add a bank statement|Square payouts' && pay.rowsOk,
+    `the Payments tools are rows in ONE menu, full width and 44px each (${pay.tools.join(' · ')})`);
+  ok(pay.cap.length >= 2 && pay.cap.every((t) => t === 'none') && pay.capLooks.length === 1, `Payments' captions are the one tier, sentence case, one look (${pay.capNames.join(' · ')} — ${pay.capLooks.join(' / ')})`);
   ok(pay.back === 'Payments', `the drill-down back link names where it goes ("${pay.back}")`);
   ok(pay.rows === 2 && pay.rowDisplay === 'flex' && pay.oneLine, `an expense is one line: what it was, then its amount beside it (${pay.rows} rows, ${pay.rowDisplay})`);
   ok(pay.add, 'adding an expense is the row at the foot of the list');
@@ -298,71 +315,80 @@ async function open(browser, base, width) {
   ok(pay.ksRadius === '20px' && pay.ksShadow === 'none', `the key safes list is a card on the one radius, no shadow (${pay.ksRadius}, ${pay.ksShadow})`);
 
   console.log('§9 the Inbox wears the same parts');
-  // The mailbox answers with an error, so the Email verdict's failed state is driven for real.
+  // RE-AIMED for the one Inbox (CLAUDE.md "The Inbox is ONE LIST OF PEOPLE"): the
+  // three folders, their chevron rows, the message chips and the archive are gone.
+  // What the section protects is unchanged: no sentence under the title (the pill
+  // says it), ONE switcher, the people as rows of one card under one search at the
+  // one field height, and two verdicts that never claim more than they know — a
+  // conversation read but not answered still waits, and a mailbox that did not
+  // answer says so rather than reading as nothing new.
+  // The mailbox answers with an error, so the failed state is driven for real.
   await page.route(/mailbox\.php/, (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Connect failed' }) }));
   const ib = await page.evaluate(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    // UK local time a little ahead, so the fixture is newer than the first open's line.
+    const at = (s) => { const x = new Date(Date.now() + s * 1000); const p = (n) => String(n).padStart(2, '0'); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())} ${p(x.getHours())}:${p(x.getMinutes())}:${p(x.getSeconds())}`; };
     await openInbox();
     await wait(400);
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    // A conversation already READ but still waiting on a reply, beside one that was answered.
-    __msgThreads = [
-      { thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Can we check in early?', last_at: now, last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
-      { thread_id: 'b2', name: 'Mark Ellis', email: 'm@example.com', last_body: 'No dogs, sorry.', last_at: now, last_role: 'admin', unread: 0, archived: 0, is_guest: 0 },
+    // Two conversations already READ but still waiting on a reply, beside one that was answered.
+    const fixture = [
+      { thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Can we check in early?', last_at: at(20), last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
+      { thread_id: 'a2', name: 'Tom Rees', email: 't@example.com', last_body: 'Is there parking?', last_at: at(10), last_role: 'guest', unread: 0, archived: 0, is_guest: 1 },
+      { thread_id: 'b2', name: 'Mark Ellis', email: 'm@example.com', last_body: 'No dogs, sorry.', last_at: at(5), last_role: 'admin', unread: 0, archived: 0, is_guest: 0 },
     ];
-    const fixture = __msgThreads;
-    __msgShowArchived = false;
-    inboxFolder('messages');
-    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
-    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
     // The Inbox's own message fetch can land after the fixture under load and repaint the
     // list; re-lay it until the rendered list is really the fixture's.
-    for (let k = 0; k < 5; k++) {
+    const rowsIn = (cap) => { const c = [...document.querySelectorAll('#ib-rows .ib-capline')].find((x) => x.textContent.trim() === cap); const g = c && c.nextElementSibling; return g ? [...g.querySelectorAll(':scope > .ib-rowwrap')] : []; };
+    for (let k = 0; k < 8; k++) {
       __msgThreads = fixture;
-      document.getElementById('messages-list').dataset.loaded = '1';
-      renderMessagesList();
-      inboxVerdicts();
-      await wait(150);
-      if (document.getElementById('msg-search') && document.querySelectorAll('#messages-list .msg-thread-row').length === 2) break;
+      ibRender();
+      await wait(200);
+      if (rowsIn('Waiting on you').length === 2 && document.getElementById('ib-q')) break;
     }
-    const list = document.getElementById('messages-list');
-    const cards = list.querySelectorAll('.msg-threads');
-    const rowsIn = cards[0] ? cards[0].querySelectorAll('.msg-thread-row').length : 0;
-    const search = document.getElementById('msg-search').getBoundingClientRect();
-    const ctl = list.querySelector('.msg-inbox-controls').getBoundingClientRect();
-    const chips = [...list.querySelectorAll('.msg-chips button')].map((b) => b.textContent.trim());
-    const head = document.getElementById('messages-head-actions').children.length;
-    const verdict = document.getElementById('iv-sum-messages').textContent.trim();
-    const chev = [...document.querySelectorAll('#inbox-landing .bhub-fold-row .bhub-chev')];
-    const chevSvg = chev.filter((c) => c.querySelector('svg')).length;
-    // The archive is a chip; an empty archive keeps a way back beside the heading.
-    const arch = [...list.querySelectorAll('.msg-chips button')].find((b) => /^Archived$/.test(b.textContent.trim()));
-    __msgShowArchived = true;
-    __msgThreads = [];
-    renderMessagesList();
-    await wait(60);
-    const back = document.getElementById('messages-head-actions').textContent.trim();
-    __msgShowArchived = false;
-    // Email: a mailbox that did not answer has not been checked.
-    inboxFolder('email');
-    await wait(900);
-    const email = document.getElementById('iv-sum-email').textContent.trim();
-    return {
-      subline: !!document.getElementById('inbox-subline'), cards: cards.length, rowsIn,
-      searchFull: Math.round(search.width) >= Math.round(ctl.width) - 1, chips, head, verdict,
-      chev: chev.length, chevSvg, archPressed: arch ? arch.getAttribute('aria-pressed') : '', back, email,
+    const wait2 = rowsIn('Waiting on you');
+    const earlier = rowsIn('Earlier');
+    const card = wait2[0] && wait2[0].parentElement;
+    const b = wait2.map((r) => r.getBoundingClientRect());
+    const q = document.getElementById('ib-q'), list = document.getElementById('ib-list');
+    const qr = q.getBoundingClientRect(), lr = list.getBoundingClientRect(), lcs = getComputedStyle(list);
+    const sw = document.getElementById('ib-folders');
+    const btns = [...sw.querySelectorAll(':scope > button')];
+    const pill = sw.querySelector('.ib-folders-pill');
+    const pressed = btns.find((x) => x.getAttribute('aria-pressed') === 'true');
+    const pr = pill.getBoundingClientRect(), br = pressed ? pressed.getBoundingClientRect() : null;
+    const head = document.querySelector('#ib-pill .head-pill');
+    const out = {
+      subline: !!document.getElementById('inbox-subline'),
+      pill: head ? (head.dataset.tone || '') + ':' + head.textContent.trim() : '',
+      sw: btns.map((x) => x.textContent.trim() + '=' + x.getAttribute('aria-pressed')).join(' '),
+      pillUnder: !!br && Math.abs((pr.left + pr.right) / 2 - (br.left + br.right) / 2) <= 2,
+      waiting: wait2.map((r) => (r.querySelector('.ib-name') || {}).textContent).join(' + '),
+      earlier: earlier.map((r) => (r.querySelector('.ib-name') || {}).textContent).join(' + '),
+      oneCard: !!card && card.classList.contains('ib-rows') && wait2.every((r) => r.parentElement === card),
+      flush: b.length === 2 && Math.abs(b[1].top - b[0].bottom) <= 1,
+      searchFull: Math.abs(qr.width - (lr.width - parseFloat(lcs.paddingLeft) - parseFloat(lcs.paddingRight))) <= 2,
+      searchH: Math.round(qr.height),
     };
+    // An empty Done keeps the way back: the switch stays, and it says what fills Done.
+    ibSetFolder('done', { instant: true });
+    await wait(80);
+    out.doneEmpty = /Nothing in Done yet/.test(document.getElementById('ib-rows').textContent) && !!document.getElementById('ib-f-inbox') && document.getElementById('ib-f-inbox').getClientRects().length > 0;
+    ibSetFolder('inbox', { instant: true });
+    // The mailbox: a mailbox that did not answer has not been checked.
+    for (let k = 0; k < 20 && !(typeof __mbxFailed !== 'undefined' && __mbxFailed); k++) await wait(150);
+    ibRenderList();
+    out.mail = ((document.querySelector('#ib-rows .ib-foot .ib-note') || {}).textContent || '').trim();
+    out.mailFailed = typeof __mbxFailed !== 'undefined' && __mbxFailed;
+    return out;
   });
   ok(!ib.subline, 'no sentence under the Inbox title');
-  ok(ib.chev >= 3 && ib.chevSvg === ib.chev, `every folder row ends in the one chevron (${ib.chevSvg} of ${ib.chev} are the drawn chevron)`);
-  ok(ib.cards === 1 && ib.rowsIn === 2, `the conversations are one list card (${ib.cards} card, ${ib.rowsIn} rows inside)`);
-  ok(ib.searchFull, 'the search is the one field, on its own line');
-  ok(ib.chips.join('|') === 'Needs reply · 1|Archived|Mark all read', `the filters are chips under it, the action last (${ib.chips.join(' · ')})`);
-  ok(ib.head === 0, 'with conversations on screen the heading carries no second archive control');
-  ok(ib.archPressed === 'false', `the archive chip says whether it is on (aria-pressed ${ib.archPressed})`);
-  ok(/Active conversations/.test(ib.back), `an empty archive keeps the way back beside the heading ("${ib.back}")`);
-  ok(/1 to answer/.test(ib.verdict), `a conversation read but not answered keeps the folder amber ("${ib.verdict}")`);
-  ok(/couldn.t check/i.test(ib.email) && !/Nothing new/.test(ib.email), `a mailbox that did not answer is not "Nothing new" ("${ib.email}")`);
+  ok(/^(warn|bad):2 waiting$/.test(ib.pill), `two conversations read but not answered still wait, and the title's pill says so ("${ib.pill}")`);
+  ok(ib.waiting === 'Tom Rees + Priya Shah' && ib.earlier === 'Mark Ellis', `…under "Waiting on you", the longest wait first, the answered one under "Earlier" (${ib.waiting} / ${ib.earlier})`);
+  ok(ib.oneCard && ib.flush, 'the people waiting are rows of ONE card, each starting where the one above ends');
+  ok(ib.sw === 'Inbox=true Done=false' && ib.pillUnder, `Inbox | Done is the one switcher, saying which is on, its pill under the chosen side (${ib.sw})`);
+  ok(ib.searchFull && ib.searchH === 48, `the search is the one field, on its own line across the list (${ib.searchH}px)`);
+  ok(ib.doneEmpty, 'an empty Done says what fills it, and the switch stays as the way back');
+  ok(ib.mailFailed && /mailbox didn.t answer/i.test(ib.mail) && /Try again/.test(ib.mail), `a mailbox that did not answer says so, never a quiet "nothing new" ("${ib.mail}")`);
   const focus = await page.evaluate(async () => {
     openMessageThread('a1');
     await new Promise((r) => setTimeout(r, 500));
@@ -442,14 +468,18 @@ async function open(browser, base, width) {
     nav('view-backoffice');
     await wait(400);
     const accRgb = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
+    // "Today moves": the chosen side's accent is a pill that travels under it (chbSeatPill).
     const on = document.querySelector('#bookings-filters .inbox-sort-btn.is-on');
+    const tpill = document.querySelector('#bookings-filters > .chb-pill');
+    const tr = tpill ? tpill.getBoundingClientRect() : null, onr = on ? on.getBoundingClientRect() : null;
     const cap = document.querySelector('#bookings-main .bk-caprow .bo-sec-title').getBoundingClientRect();
     const sum = document.querySelector('#bookings-main .bk-caprow').getBoundingClientRect();
     openAddBooking();
     await wait(500);
     const save = document.getElementById('modal-save-btn');
     const out = {
-      accRgb, tab: on ? getComputedStyle(on).backgroundColor : '',
+      accRgb, tab: tpill ? getComputedStyle(tpill).backgroundColor : '',
+      under: !!tr && !!onr && Math.abs(tr.left - onr.left) <= 2 && Math.abs(tr.width - onr.width) <= 2 && Math.abs(tr.top - onr.top) <= 2,
       // The caption sits on its row's own centre line, beside the count and the switcher.
       capRow: Math.abs((cap.top + cap.bottom) / 2 - (sum.top + sum.bottom) / 2),
       sumW: sum.width,
@@ -458,7 +488,7 @@ async function open(browser, base, width) {
     try { closeModal(); } catch (e) {}
     return out;
   });
-  ok(today.tab === today.accRgb, `Today's Upcoming|Past is the one switcher, the chosen side in the accent (${today.tab})`);
+  ok(today.tab === today.accRgb && today.under, `Today's Upcoming|Past is the one switcher, the chosen side in the accent pill (${today.tab})`);
   ok(today.sumW > 0 && today.capRow <= 4, `the Bookings caption sits on its row's centre line, beside its count (${today.capRow.toFixed(1)}px off)`);
   ok(today.save === today.accRgb, `the booking window's one action is the accent pill (${today.save})`);
 
@@ -494,17 +524,7 @@ async function open(browser, base, width) {
       seam: rows[1] ? getComputedStyle(rows[1]).borderTopWidth : '',
       actGlyph: actAfter ? actAfter.content : '', actMask: actAfter ? (actAfter.maskImage || actAfter.webkitMaskImage || '') : '',
     };
-    await openInbox();
-    await wait(300);
-    inboxFolder('messages');
-    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
-    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
-    __msgThreads = [{ thread_id: 'a1', name: 'Priya Shah', email: 'p@example.com', last_body: 'Hi', last_at: new Date().toISOString().slice(0, 19).replace('T', ' '), last_role: 'guest', unread: 0, archived: 0, is_guest: 1 }];
-    document.getElementById('messages-list').dataset.loaded = '1';
-    renderMessagesList();
-    await wait(100);
-    const ms = document.getElementById('msg-search');
-    out.searchH = ms ? Math.round(ms.getBoundingClientRect().height) : 0;
+    // (The message search this measured is the one Inbox's search now, gated in §9.)
     return out;
   });
   ok(small.cap === 'Also stayed · 2', `a guest's other stays carry one caption ("${small.cap}")`);
@@ -512,7 +532,6 @@ async function open(browser, base, width) {
     `…over one inset panel, rows on hairlines (${small.rows} rows, ${small.inset}, ${small.rowBorder}/${small.seam})`);
   ok(small.chev, 'each ends in the drawn chevron, not "open →"');
   ok(small.actGlyph === '""' && /url\(/.test(small.actMask), `an action link ends in the drawn chevron too, not a '›' glyph (${small.actGlyph})`);
-  ok(small.searchH === 48, `the message search is the one field's height (${small.searchH}px)`);
 
   console.log('§13 the last stragglers: one chevron, one icon button, one second choice');
   const last = await page.evaluate(async () => {
@@ -614,6 +633,7 @@ async function open(browser, base, width) {
           edge: Math.round(r.bottom) >= innerHeight - 1 && Math.round(r.left) <= 1 && Math.round(r.right) >= innerWidth - 1,
           corners: c.borderTopLeftRadius + '/' + c.borderBottomLeftRadius, bg: c.backgroundColor,
           title: t.fontSize + ' ' + t.fontWeight, field: Math.round(f.getBoundingClientRect().height) + ' ' + fc.borderTopLeftRadius,
+          box: fc.borderTopWidth + ' ' + fc.backgroundColor,
         };
       };
       // The window ground every other window stands on, for comparison.
@@ -628,8 +648,13 @@ async function open(browser, base, width) {
       const book = read('#edit-modal .modal-box', '#modal-title', '#modal-name');
       const xs = (sel) => { const x = document.querySelector(sel); if (!x) return ''; const c = getComputedStyle(x), r = x.getBoundingClientRect(); return Math.round(r.width) + ' ' + c.backgroundColor + ' ' + c.borderTopWidth; };
       book.x = xs('#edit-modal .modal-x');
-      const on = document.querySelector('#edit-modal .hs-mode-btn.is-on');
-      book.seg = on ? getComputedStyle(on).borderTopLeftRadius + ' ' + Math.round(on.getBoundingClientRect().height) : '';
+      // The sheet's switchers: a track with the chosen side in the accent pill that travels
+      // to it (seated on the next frame after the sheet opens).
+      await wait(150);
+      const seg = [...document.querySelectorAll('#edit-modal .bks-seg')].find((g) => g.getClientRects().length);
+      const sp = seg && seg.querySelector('.bks-pill'), son = seg && seg.querySelector('button[aria-pressed="true"]');
+      const accRgb = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
+      book.seg = sp && son ? [getComputedStyle(sp).borderTopLeftRadius, Math.round(son.getBoundingClientRect().height), getComputedStyle(sp).backgroundColor === accRgb, Math.abs(sp.getBoundingClientRect().left - son.getBoundingClientRect().left) <= 1 && Math.abs(sp.getBoundingClientRect().width - son.getBoundingClientRect().width) <= 1].join(' ') : '';
       closeModal();
       await wait(400);
       dbBookings['21a'] = [bk]; // a refresh may have landed since
@@ -649,9 +674,11 @@ async function open(browser, base, width) {
   ok(phone.mail.edge && phone.mail.corners === '20px/0px', `…and so does the email composer (${phone.mail.corners})`);
   ok(phone.book.bg === phone.ground && phone.mail.bg === phone.ground, `both stand on the window's own ground (${phone.book.bg} / ${phone.mail.bg} vs ${phone.ground})`);
   ok(phone.book.title === '17px 600' && phone.mail.title === '17px 600', `both titles are the window's (${phone.book.title} / ${phone.mail.title})`);
-  ok(phone.book.field === '48 12px', `the booking form's fields are the one field (${phone.book.field})`);
-  ok(/ 0px$/.test(phone.mail.field), `the composer's subject is a row, not a box (${phone.mail.field})`);
-  ok(/^9+px 36$/.test(phone.book.seg), `the booking form's choices are the one pill switcher (${phone.book.seg})`);
+  // The booking form is ONE sheet now ("Add or edit a booking: one sheet"): its fields are the
+  // composer's label-value rows, so both long windows say a field the same way — a row, no box.
+  ok(/ 0px$/.test(phone.book.field) && phone.book.box === '0px rgba(0, 0, 0, 0)', `the booking form's fields are rows of their card, not boxes (${phone.book.field}, ${phone.book.box})`);
+  ok(/ 0px$/.test(phone.mail.field) && phone.mail.box === phone.book.box, `the composer's subject is a row, not a box, as the form's are (${phone.mail.field}, ${phone.mail.box})`);
+  ok(/^9+px 36 true true$/.test(phone.book.seg), `the booking form's choices are the one pill switcher, the chosen side in the accent pill (${phone.book.seg})`);
   ok(phone.book.x === '44 rgba(0, 0, 0, 0) 1px' && phone.mail.x === phone.book.x, `a window's close is the one outlined 44px circle (${phone.book.x} / ${phone.mail.x})`);
   const desk = await longWin(1280);
   ok(!desk.book.edge && desk.book.corners === '20px/20px', `on a computer the booking form stays a card in the middle (${desk.book.corners})`);
@@ -730,13 +757,19 @@ async function open(browser, base, width) {
         const row = p.closest('.dashboard-header, .settings-panel-head');
         const h = row && [...row.querySelectorAll('h1, h2')].find((e) => e.getClientRects().length);
         const pr = p.getBoundingClientRect(), hr = h ? h.getBoundingClientRect() : null, rr = row.getBoundingClientRect();
+        // Payments' + and the Inbox's refresh sit beside the pill (their pages' one action): the
+        // CLUSTER ends at the row's edge, the pill directly before its action.
+        const cl = p.closest('.pm-head-r, .ib-head-r');
+        const end = cl ? cl.getBoundingClientRect().right : pr.right;
+        const act = cl ? [...cl.children].filter((e) => e.getClientRects().length).pop() : null;
+        const gapToAct = act && !act.contains(p) ? act.getBoundingClientRect().left - pr.right : 0;
         const cs = getComputedStyle(p), dot = p.querySelector('.cron-pill-dot');
         return {
           found: true, text: p.textContent.trim(), tone: p.dataset.tone || (p.id === 'health-pill' ? 'manage' : ''),
           cls: ['cron-pill', 'head-pill'].every((c) => p.classList.contains(c)) && ['ok', 'warn', 'danger', 'unk'].some((c) => p.classList.contains(c)),
           look: [Math.round(pr.height), cs.borderTopLeftRadius, cs.fontSize, cs.fontWeight, cs.paddingLeft, dot ? Math.round(dot.getBoundingClientRect().width) : 0].join(' '),
           after: !!hr && pr.left > hr.right, dy: hr ? Math.abs((pr.top + pr.height / 2) - (hr.top + hr.height / 2)) : 99,
-          edge: Math.abs(rr.right - parseFloat(getComputedStyle(row).paddingRight || '0') - pr.right),
+          edge: Math.abs(rr.right - parseFloat(getComputedStyle(row).paddingRight || '0') - end) + (gapToAct > 16 ? gapToAct : 0),
         };
       });
     }
@@ -818,13 +851,12 @@ async function open(browser, base, width) {
     const lists = [...document.querySelectorAll('#expenses-body .xp-list')], add = document.querySelector('#expenses-body .xp-add');
     out.xpLists = lists.length;
     out.xp = !!add && lists[0] && lists[0].nextElementSibling === add && run([lists[0], add]);
-    // A loading mailbox is shaped like the list it stands in for.
-    await openInbox(); inboxFolder('email'); await wait(200);
-    const mb = document.getElementById('mailbox-body'); const was = mb.innerHTML;
+    // A loading list is shaped like the list it stands in for: the one Inbox paints skelRows
+    // while it has nobody yet (the old mailbox folder this measured went with the folders).
+    await openInbox(); await wait(200);
+    const mb = document.getElementById('ib-rows'); const was = mb.innerHTML;
     mb.innerHTML = skelRows(3);
-    // Below 1200px the folder lives INSIDE a fold, where a run is the inset panel on the CELL radius.
-    out.skel = run([...mb.querySelectorAll('.skel-row')], mb.closest('.bhub-fold') ? 12 : 16);
-    out.skelInFold = !!mb.closest('.bhub-fold');
+    out.skel = run([...mb.querySelectorAll('.skel-row')]);
     mb.innerHTML = was;
     return out;
   });

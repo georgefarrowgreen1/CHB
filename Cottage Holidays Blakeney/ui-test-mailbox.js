@@ -1,22 +1,36 @@
-// Inbox → Email folder (comms dashboard), end to end against a mocked mailbox.php:
-//  1. list renders rows (unread chip on unseen)
-//  2. open → text-only reader; a hostile HTML body renders inert (escaped)
-//  3. reply prefills to/subject + quoted body; send posts the right payload
-//  4. compose fresh; validation (bad address, empty fields)
-//  5. delete confirms then posts + removes the row
+// The Inbox's EMAIL, end to end against a mocked mailbox.php. The Inbox is ONE LIST OF
+// PEOPLE now: the Email folder, its Inbox|Sent tab, the accordion reader, the free
+// compose form and the three-answers landing are gone (their old markup sits hidden in
+// #inbox-legacy so the loaders still fill the stores), and each sender is one row whose
+// conversation carries every channel in time order. Every property below is measured
+// on that list and that conversation:
+//  1. the emails are rows (unread on the unseen sender), on the one list material
+//  2. opening one: a hostile HTML body renders inert (escaped); the guest's booking
+//     and the email's attachment are there with it
+//  3. a reply goes back on the thread's subject, through the booking's own email route
+//  4. refresh keeps your search; a search says what it covered; mark unread
+//  5. delete
+//  6. the stay's facts hold at 390 with a hostile cottage name
+//  7. one row per PERSON, and a chain of replies as one conversation
+//  8–9. a decline says what it is; a stale enquiry and the pill say what waits
+//  §11 the mail watch, re-renders that must not move the owner, the search box, and
+//     the ask after a decline (and a decline answered later)
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
-const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const { page, browser, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
+  const { page, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
 
   // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  // An AGE is seeded by hours-ago: the app floors elapsed hours into days, so a date
+  // plus a fixed clock time reads a day short for part of every night.
+  const hrsAgo = (h) => { const t = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, '0'); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:00`; };
   const bookingRows = [{
     id: 9, prop_key: '21a', name: 'A Guest', email: 'guest@example.com', phone: '', address: '1 Lane',
     postcode: 'NR25 7AB', check_in: d(12), check_out: d(15), check_in_time: '15:00', check_out_time: '10:00',
@@ -25,11 +39,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(0), hold_status: 'none', notes: '',
   }];
   const sentRows = [{ id: 5, to_email: 'old@example.com', cc_email: null, subject: 'Earlier note', body: 'Hello there', sent_at: d(-2) + ' 10:00:00' }];
-  const messages = [
+  let messages = [
     { uid: 'u1', from: 'guest@example.com', fromRaw: 'A Guest <guest@example.com>', subject: 'Question about parking', date: '2026-07-10 09:15:00', seen: false },
     { uid: 'u2', from: 'other@example.com', fromRaw: 'Other Person', subject: 'Re: Your stay', date: '2026-07-08 14:00:00', seen: true },
   ];
+  const HOSTILE = 'Hello,\nIs there parking?\n<script>window.__pwned=1</script><img src=x onerror="window.__pwned=2">';
   const posts = [];
+  let state = null;
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -38,12 +54,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       b.__url = url.split('/').pop().split('?')[0];
       posts.push(b);
       if (b.__url === 'mailbox.php') {
-        if (b.action === 'list') return json({ ok: true, messages, total: 2, hasMore: !b.offset });
+        if (b.action === 'list') return json({ ok: true, messages, total: messages.length, hasMore: !b.offset });
         if (b.action === 'sent') return json({ ok: true, messages: sentRows });
-        if (b.action === 'read') return json({ ok: true, uid: b.uid, from: 'guest@example.com', fromRaw: 'A Guest <guest@example.com>', to: 'stay@chb.co.uk', date: '2026-07-10 09:15:00', subject: 'Question about parking', body: 'Hello,\nIs there parking?\n<script>window.__pwned=1</script><img src=x onerror="window.__pwned=2">', attachments: [{ i: 0, name: 'directions.pdf', mime: 'application/pdf', size: 34567 }] });
-        if (b.action === 'mark_unread') return json({ ok: true });
-        if (b.action === 'send') return json({ ok: true });
-        if (b.action === 'delete') return json({ ok: true });
+        if (b.action === 'read') {
+          if (b.uid === 'u1') return json({ ok: true, uid: b.uid, from: 'guest@example.com', fromRaw: 'A Guest <guest@example.com>', to: 'stay@chb.co.uk', date: '2026-07-10 09:15:00', subject: 'Question about parking', body: HOSTILE, attachments: [{ i: 0, name: 'directions.pdf', mime: 'application/pdf', size: 34567 }] });
+          return json({ ok: true, uid: b.uid, body: 'Body of ' + b.uid, attachments: [] });
+        }
+        if (b.action === 'delete') {
+          const gone = Array.isArray(b.uids) ? b.uids : [b.uid];
+          messages = messages.filter((m) => !gone.includes(m.uid));
+          return json({ ok: true, deleted: gone.length });
+        }
+        return json({ ok: true });
       }
       if (b.__url === 'enquiries.php' && b.action === 'declined') {
         return json({ ok: true, enquiries: [{
@@ -53,6 +75,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           created_at: d(-20) + ' 09:00:00', declined_at: d(-3) + ' 11:20:00',
         }] });
       }
+      if (b.__url === 'messages.php' && b.action === 'threads') return json({ ok: true, threads: [] });
+      if (b.__url === 'content.php' && b.action === 'set' && b.key === 'inbox-state') { state = b.value; return json({ ok: true }); }
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
     if (url.includes('bookings.php')) return json({ bookings: bookingRows });
@@ -65,253 +89,267 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => window.loadAdminBundle());
   await page.waitForTimeout(600);
   await page.evaluate(async () => { await window.openInbox(); });
-  await page.waitForTimeout(400);
-  await page.evaluate(() => window.inboxFolder('email'));
-  await page.waitForTimeout(900);
 
-  console.log('1. list (Inbox → Email folder)');
-  const l = await page.evaluate(() => ({
-    rows: document.querySelectorAll('#mailbox-body .bk-row').length,
-    unreadChips: document.querySelectorAll('#mailbox-body .mbx-unread').length,
-    activeView: (document.querySelector('.page-view.active') || {}).id,
-    emailShown: (document.getElementById('inbox-folder-email') || { style: {} }).style.display !== 'none',
-    enqHidden: (document.getElementById('inbox-folder-enquiries') || { style: {} }).style.display === 'none',
-    noPane: !!document.querySelector('.enq-split.no-pane'),
-    firstSubject: (document.querySelector('#mailbox-body .bk-row .bk-row-dates') || {}).textContent || '',
-  }));
-  ok(l.rows === 2 && l.unreadChips === 1, `2 messages listed, 1 unread (${l.rows}/${l.unreadChips})`);
-  // The pane is never 'released' any more — on desktop it serves every folder
-  // (Apple-Mail layout); below 1200px it's simply hidden by CSS.
-  ok(l.activeView === 'view-inbox' && l.emailShown && l.enqHidden && !l.noPane, `email folder active in the Inbox, pane kept (${l.activeView})`);
-  ok(l.firstSubject === 'Question about parking', `subject shown (${l.firstSubject})`);
-  // ONE LIST MATERIAL — and here the rows are WRAPPED, one per .mbx-item, so
-  // they are not adjacent siblings and the run has to join through the wrapper.
-  // (ui-test-hig §1b owns the four unwrapped .bk-row surfaces.)
+  const row = (k) => `#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`;
+  // Every store the one list reads has landed and no rebuild is queued — a rebuild
+  // re-renders the open conversation, which would shut what a check just opened.
+  const settled = () => page.waitForFunction(() => typeof __ibPeople !== 'undefined' && __mbxOpenedOnce && Array.isArray(__mbxSent)
+    && Array.isArray(__declinedEnq) && Array.isArray(__ibArchived) && !__ibRenderQ, null, { timeout: 10000 }).catch(() => {});
+  const openPerson = async (k, test) => {
+    await page.waitForSelector(row(k), { timeout: 10000 }).catch(() => {});
+    await page.click(row(k));
+    if (test) await page.waitForFunction(test, null, { timeout: 10000 }).catch(() => {});
+    await settled();
+  };
+  const sentOf = async (pred, ms) => {
+    for (let i = 0; i < (ms || 9000) / 100; i++) {
+      const p = posts.find(pred);
+      if (p) return p;
+      await page.waitForTimeout(100);
+    }
+    return null;
+  };
+  await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:guest@example.com"]')
+    && !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:other@example.com"]'), null, { timeout: 10000 }).catch(() => {});
+  await settled();
+
+  console.log('1. the emails are rows of the one list');
+  const l = await page.evaluate(() => {
+    const r = (k) => document.querySelector(`#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`);
+    const g = r('e:guest@example.com'), o = r('e:other@example.com');
+    const legacy = document.getElementById('inbox-legacy');
+    return {
+      view: (document.querySelector('.page-view.active') || {}).id,
+      both: !!(g && o && g.getClientRects().length && o.getClientRects().length),
+      gUnread: !!g && g.classList.contains('is-unread'),
+      oUnread: !!o && o.classList.contains('is-unread'),
+      gPrev: g ? ((g.querySelector('.ib-prev') || {}).textContent || '').trim() : '',
+      oPrev: o ? ((o.querySelector('.ib-prev') || {}).textContent || '').trim() : '',
+      legacyHidden: !!legacy && legacy.hidden && !legacy.getClientRects().length,
+    };
+  });
+  ok(l.view === 'view-inbox' && l.both, `each sender is a row of the Inbox (${l.view})`);
+  ok(l.gUnread && !l.oUnread, `the unseen email's sender reads unread, the seen one does not (${l.gUnread}/${l.oUnread})`);
+  ok(l.gPrev === 'Question about parking' && l.oPrev === 'Re: Your stay', `with nothing else to show, the row shows the subject (“${l.gPrev}” · “${l.oPrev}”)`);
+  ok(l.legacyHidden, 'no old Email folder list is on screen');
+  // ONE LIST MATERIAL: a group of rows is ONE card — the card radius on the group,
+  // square rows inside it, abutting on ONE hairline, and no row casting a shadow.
+  // Measured on whichever group holds a run of two or more.
   const mat = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('#mailbox-body .bk-row')].filter((r) => r.getClientRects().length);
-    if (rows.length < 2) return null;
-    const cs = rows.map((r) => getComputedStyle(r));
-    const last = rows.length - 1;
+    const grp = [...document.querySelectorAll('#ib-rows .ib-rows')].find((x) => x.querySelectorAll(':scope > .ib-rowwrap').length >= 2 && x.getClientRects().length);
+    if (!grp) return null;
+    const wraps = [...grp.querySelectorAll(':scope > .ib-rowwrap')];
+    const rows = wraps.map((w) => w.querySelector('.ib-row'));
+    const gs = getComputedStyle(grp);
     return {
       n: rows.length,
-      shadows: cs.map((c) => c.boxShadow).filter((x) => x !== 'none' && !/inset/.test(x)),
-      firstTL: parseFloat(cs[0].borderTopLeftRadius), firstBL: parseFloat(cs[0].borderBottomLeftRadius),
-      lastTL: parseFloat(cs[last].borderTopLeftRadius), lastBL: parseFloat(cs[last].borderBottomLeftRadius),
-      gap: +(rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom).toFixed(1),
-      seam: parseFloat(cs[1].borderTopWidth),
+      shadows: rows.map((r) => getComputedStyle(r).boxShadow).filter((x) => x !== 'none' && !/inset/.test(x)),
+      grpRadius: parseFloat(gs.borderTopLeftRadius), grpClips: gs.overflow === 'hidden' || gs.overflow === 'clip',
+      rowRadius: Math.max(...rows.map((r) => parseFloat(getComputedStyle(r).borderTopLeftRadius) || 0)),
+      gap: +(wraps[1].getBoundingClientRect().top - wraps[0].getBoundingClientRect().bottom).toFixed(1),
+      seam: parseFloat(getComputedStyle(wraps[1]).borderTopWidth),
     };
   });
-  ok(mat, `the run is long enough to have a join (${mat && mat.n} rows)`);
-  ok(mat && mat.shadows.length === 0, `no email row casts a drop shadow (${(mat && mat.shadows[0]) || 'none'})`);
-  ok(mat && mat.firstTL === 12 && mat.firstBL === 0 && mat.lastTL === 0 && mat.lastBL === 12,
-    `the outer corners are the CELL radius on the run's ends only (${mat && mat.firstTL}/${mat && mat.firstBL} … ${mat && mat.lastTL}/${mat && mat.lastBL})`);
-  ok(mat && mat.gap === 0 && mat.seam === 0, `and the rows abut on ONE hairline through their wrappers (gap ${mat && mat.gap}, top border ${mat && mat.seam})`);
+  ok(!!mat, `a group long enough to have a join (${mat && mat.n} rows)`);
+  ok(!!mat && mat.shadows.length === 0, `no row casts a drop shadow (${(mat && mat.shadows[0]) || 'none'})`);
+  ok(!!mat && mat.grpRadius === 20 && mat.grpClips && mat.rowRadius === 0,
+    `the corners are the CARD radius on the group's ends only (group ${mat && mat.grpRadius}px, rows ${mat && mat.rowRadius}px)`);
+  ok(!!mat && mat.gap === 0 && mat.seam === 1, `and the rows abut on ONE hairline (gap ${mat && mat.gap}, seam ${mat && mat.seam}px)`);
 
-  console.log('1b. folder switch + unread chip');
+  console.log('1b. the folders are gone, and the old way in lands on the list');
+  // The folder switch is gone: inboxFolder() is a shim every old caller (search, help,
+  // notifications, a remembered place) still uses, and it must land on the one list.
   const f = await page.evaluate(() => {
-    inboxFolder('messages');
-    const msgShown = document.getElementById('inbox-folder-messages').style.display !== 'none';
-    const emailHidden = document.getElementById('inbox-folder-email').style.display === 'none';
     inboxFolder('email');
-    return { msgShown, emailHidden, chip: (document.getElementById('ifold-count-mbx') || {}).textContent || '' };
-  });
-  ok(f.msgShown && f.emailHidden, 'folder switch toggles the containers');
-  ok(f.chip === '1', `Email folder chip shows the unread count (${f.chip})`);
-
-  console.log('2. reader (hostile body inert)');
-  await page.click('#mailbox-body .bk-row');
-  await page.waitForTimeout(700);
-  const r = await page.evaluate(() => ({
-    bodyShown: /Is there parking\?/.test((document.querySelector('.mbx-text') || {}).textContent || ''),
-    scriptVisible: /<script>/.test((document.querySelector('.mbx-text') || {}).textContent || ''),
-    pwned: window.__pwned || 0,
-    imgs: document.querySelectorAll('.mbx-text img').length,
-  }));
-  ok(r.bodyShown, 'message text renders');
-  ok(r.scriptVisible && r.pwned === 0 && r.imgs === 0, `hostile HTML shown as text, never executed (pwned=${r.pwned})`);
-
-  console.log('2a. accordion — the email opens INSIDE its row, and collapses');
-  const acc = await page.evaluate(() => {
-    const open = document.querySelector('#mailbox-body .mbx-item.open');
     return {
-      insideRow: !!(open && open.querySelector('.mbx-inline .mbx-text')),
-      expanded: !!open && open.querySelector('.bk-row').getAttribute('aria-expanded') === 'true',
-      // Assert the WAY OUT, not the word on it: the label has been both
-      // "Collapse" and "Close" and neither is the thing being checked.
-      collapseBtn: !!(open && open.querySelector('[data-act="mailboxCollapse"]')),
+      list: !!document.getElementById('ib-list').getClientRects().length,
+      folder: document.getElementById('ib-folders').getAttribute('data-on'),
+      pill: ((document.querySelector('#ib-pill .head-pill') || {}).textContent || '').trim(),
+      waiting: ibWaitingCount(),
     };
   });
-  ok(acc.insideRow, 'reader renders inside the tapped row (not at the page bottom)');
-  ok(acc.expanded, 'row marked aria-expanded');
-  ok(acc.collapseBtn, 'a control that closes the reader is present');
-  await page.evaluate(() => document.querySelector('#mailbox-body .mbx-item.open .bk-row').click());
-  await page.waitForTimeout(300);
-  const collapsed = await page.evaluate(() => ({
-    stillOpen: !!document.querySelector('#mailbox-body .mbx-item.open'),
-    readerGone: !document.querySelector('#mailbox-body .mbx-inline .mbx-text'),
-  }));
-  ok(!collapsed.stillOpen && collapsed.readerGone, 'second tap on the row collapses the email');
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#mailbox-body .bk-row')].find((x) => /parking/i.test(x.textContent)); b && b.click(); });
-  await page.waitForTimeout(600);
+  ok(f.list && f.folder === 'inbox', `inboxFolder('email') leaves the one list on screen (folder ${f.folder})`);
+  // The unread chip on the Email folder is gone too; what the list owes is its pill.
+  ok(f.waiting === 1 && f.pill === '1 waiting', `the pill says who is waiting — the unread sender (“${f.pill}”)`);
 
-  console.log('2b. guest context + attachments');
-  // The guest-match is a VERDICT FOLD now — the summary names the match, the
-  // hub chips sit in the fold beneath it (in the DOM whether open or closed).
+  console.log('2. opening one (hostile body inert)');
+  await openPerson('e:guest@example.com', () => /Is there parking\?/.test((document.querySelector('#ib-thread .ib-msg.is-them .ib-text') || {}).textContent || ''));
+  const r = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('#ib-thread .ib-msg.is-them .ib-text')].map((x) => x.textContent).join('\n');
+    return {
+      bodyShown: /Is there parking\?/.test(t),
+      scriptVisible: /<script>/.test(t),
+      pwned: window.__pwned || 0,
+      imgs: document.querySelectorAll('#ib-thread img').length,
+      current: (document.querySelector('#ib-rows .ib-rowwrap[data-key="e:guest@example.com"] .ib-row') || { getAttribute: () => '' }).getAttribute('aria-current'),
+      name: ((document.querySelector('#ib-conv .ib-hname') || {}).textContent || '').trim(),
+    };
+  });
+  ok(r.bodyShown, 'the email\u2019s words render in their conversation');
+  ok(r.scriptVisible && r.pwned === 0 && r.imgs === 0, `hostile HTML shown as text, never executed (pwned=${r.pwned})`);
+  // 2a. The accordion is gone: the email opens in the conversation beside the list,
+  // and the row says it is the one on screen.
+  ok(r.name === 'A Guest' && r.current === 'true', `the conversation opens beside the list, its row marked current (${r.name}, aria-current ${r.current})`);
+
+  console.log('2b. the guest\u2019s booking + the attachment');
   const ctx = await page.evaluate(() => ({
-    match: /Their booking|Known guest/.test((document.querySelector('.mbx-ctx-d') || {}).textContent || ''),
-    chip: !!document.querySelector('.mbx-ctx-d .bhub-stay-row'),
-    closed: !(document.querySelector('.mbx-ctx-d') || {}).open,
-    att: ((document.querySelector('.mbx-att') || {}).textContent || '').trim(),
-    attHref: (document.querySelector('.mbx-att') || {}).getAttribute?.('href') || '',
+    stay: ((document.querySelector('#ib-conv .ib-stayline') || {}).textContent || '').trim(),
+    file: [...document.querySelectorAll('#ib-thread .ib-file')].map((x) => x.textContent.trim()).join(' | '),
+    link: [...document.querySelectorAll('#ib-thread a[href]')].map((a) => a.getAttribute('href')).find((h) => /action=attachment/.test(h)) || '',
   }));
-  ok(ctx.match && ctx.chip, 'sender recognised — guest-match fold with a hub chip');
-  ok(ctx.closed, 'the guest-match starts folded — the message leads');
-  ok(/directions\.pdf/.test(ctx.att) && /34 KB/.test(ctx.att), `attachment listed with size (${ctx.att})`);
-  ok(/action=attachment&uid=u1&i=0/.test(ctx.attHref), 'attachment download link correct');
-  await page.evaluate(() => document.querySelector('.mbx-ctx .bhub-stay-row').click());
-  await page.waitForTimeout(700);
+  ok(/21A Westgate/.test(ctx.stay), `the sender is recognised: their booking names the head of the conversation (“${ctx.stay}”)`);
+  ok(/directions\.pdf/.test(ctx.file), `the attachment is listed with the email (“${ctx.file}”)`);
+  // …AND IT CAN BE OPENED. The old reader linked every attachment to mailbox.php's
+  // attachment action; a name with no way to open it is a file the owner cannot read.
+  ok(/action=attachment&uid=u1&i=0/.test(ctx.link), `the attachment opens — a download link to it (${ctx.link || 'none: the name is plain text'})`);
+  // The booking is one tap away from the conversation (the ctx drop's Booking).
+  await page.evaluate(() => { const s = document.querySelector('#ib-conv .ib-stayline'); if (s && s.getAttribute('aria-expanded') !== 'true') s.click(); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const b = document.querySelector('#ib-conv [data-ib="record"]:not([disabled])'); if (b) b.click(); });
+  await page.waitForFunction(() => ((document.querySelector('.bhub-name') || {}).textContent || '') === 'A Guest', null, { timeout: 8000 }).catch(() => {});
   const hubbed = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
     name: (document.querySelector('.bhub-name') || {}).textContent || '',
   }));
-  ok(/view-(booking-hub|backoffice)/.test(hubbed.active) && hubbed.name === 'A Guest', `context chip opens the booking hub (${hubbed.name})`);
+  ok(/view-(booking-hub|backoffice)/.test(hubbed.active) && hubbed.name === 'A Guest', `its Booking opens the booking hub (${hubbed.name})`);
   // The old Manage home must still work: settingsOpen('mailbox') redirects here.
   await page.evaluate(async () => { await window.openArea('manage'); window.settingsOpen('mailbox'); });
-  await page.waitForTimeout(900);
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-inbox', null, { timeout: 8000 }).catch(() => {});
   const redir = await page.evaluate(() => ({
     view: (document.querySelector('.page-view.active') || {}).id,
-    emailShown: (document.getElementById('inbox-folder-email') || { style: {} }).style.display !== 'none',
+    list: !!document.getElementById('ib-list').getClientRects().length,
   }));
-  ok(redir.view === 'view-inbox' && redir.emailShown, `settingsOpen('mailbox') redirects to Inbox → Email (${redir.view})`);
-  await page.evaluate(() => renderMailboxList());
-  await page.waitForTimeout(300);
-  await page.click('#mailbox-body .bk-row');
-  await page.waitForTimeout(700);
+  ok(redir.view === 'view-inbox' && redir.list, `settingsOpen('mailbox') lands on the Inbox's one list (${redir.view})`);
+  await settled();
 
   console.log('3. reply');
-  await page.evaluate(() => mailboxReply('u1'));
+  await openPerson('e:guest@example.com', () => !!document.getElementById('ib-reply'));
+  // §2b left the stay's facts unfolded (the drop is remembered per person); it hangs
+  // over the conversation, so fold it back the way an owner does.
+  await page.evaluate(() => { const s = document.querySelector('#ib-conv .ib-stayline'); if (s && s.getAttribute('aria-expanded') === 'true') s.click(); });
   await page.waitForTimeout(300);
   const rep = await page.evaluate(() => ({
-    to: (document.getElementById('mbx-to') || {}).value,
-    subject: (document.getElementById('mbx-subject') || {}).value,
-    quoted: ((document.getElementById('mbx-text') || {}).value || '').includes('> Is there parking?'),
+    chan: ((document.querySelector('#ib-conv .ib-chan [aria-pressed="true"]') || {}).textContent || '').trim(),
+    note: ((document.querySelector('#ib-conv .ib-compnote') || {}).textContent || '').trim(),
+    v: (document.getElementById('ib-reply') || {}).value,
   }));
-  ok(rep.to === 'guest@example.com' && rep.subject === 'Re: Question about parking' && rep.quoted, `reply prefilled + quoted (${rep.subject})`);
-  await page.evaluate(() => { document.getElementById('mbx-text').value = 'Yes — free parking on the drive.'; mailboxSend(); });
-  let sent = null;
-  for (let i = 0; i < 30 && !sent; i++) { await page.waitForTimeout(100); sent = posts.find((p) => p.action === 'send'); }
-  ok(!!sent && sent.to === 'guest@example.com' && /^Re: Question/.test(sent.subject) && /free parking/.test(sent.body), `send posted the reply (${sent && sent.to})`);
+  ok(/Email/.test(rep.chan) && rep.note === 'Re: Question about parking' && rep.v === '', `the reply is an email on the thread's subject, starting empty (${rep.chan} · “${rep.note}”)`);
+  await page.fill('#ib-reply', 'Yes — free parking on the drive.');
+  await page.click('#ib-send');
+  // A booked guest is written to through the BOOKING's own email route, so the
+  // email is logged on their booking; the reply waits five seconds with Undo first.
+  const sent = await sentOf((p) => p.__url === 'bookings.php' && p.action === 'email_guest');
+  ok(!!sent && sent.id === 9 && sent.subject === 'Re: Question about parking' && /free parking/.test(sent.message),
+    `the reply went to their booking's email route (${sent && sent.__url} id ${sent && sent.id} · “${sent && sent.subject}”)`);
+  // 4. The free compose form ("New email" to any address) went with the Email folder:
+  // every reply is to a person in the list. Its address validation went with it.
 
-  console.log('4. compose validation');
-  await page.waitForTimeout(500);
-  await page.evaluate(() => mailboxCompose());
-  await page.waitForTimeout(300);
-  await page.evaluate(() => { document.getElementById('mbx-to').value = 'not-an-email'; mailboxSend(); });
-  await page.waitForTimeout(200);
-  const v = await page.evaluate(() => (document.getElementById('mbx-msg') || {}).textContent || '');
-  ok(/valid "To"/.test(v), `bad address blocked (${v})`);
-
-  console.log('4b. tabs, search, mark unread');
-  // Reached by CLICKING, not by calling mailboxTab() — this step used to invoke the
-  // function directly, which is precisely how the missing affordance hid: the Sent
-  // branch was fully built and asserted here while mailboxTab had NO caller in the
-  // UI, so the list was unreachable for a real owner. Drive it the way they do.
-  const tabs = await page.evaluate(() => {
-    const btns = [...document.querySelectorAll('#mailbox-body .inbox-sort.seg .inbox-sort-btn')];
-    return { n: btns.length, labels: btns.map((b) => b.textContent.trim().replace(/\s+/g, ' ')), on: btns.filter((b) => b.classList.contains('is-on')).map((b) => b.textContent.trim()) };
-  });
-  ok(tabs.n === 2 && /Inbox/.test(tabs.labels[0]) && /Sent/.test(tabs.labels[1]), `the mailbox has an Inbox|Sent switch (${tabs.labels.join(' | ')})`);
-  ok(tabs.on.length === 1 && /Inbox/.test(tabs.on[0]), `Inbox starts selected (${tabs.on.join(',')})`);
-  const sentBtn = await page.$('#mailbox-body .inbox-sort.seg .inbox-sort-btn:nth-child(2)');
-  ok(!!sentBtn, 'the Sent tab is a real, clickable control');
-  // Guarded so a missing switch reports as failed checks rather than throwing on
-  // null — the checks below then fail on the wrong state, which reads far better
-  // in CI than a stack trace.
-  if (sentBtn) await sentBtn.click();
+  console.log('4. refresh, search, mark unread');
+  // The Inbox|Sent tab is gone — what you sent is in each person's conversation, and a
+  // person you only wrote to is a row of their own.
+  const oldRow = await page.evaluate(() => ((document.querySelector('#ib-rows .ib-rowwrap[data-key="e:old@example.com"] .ib-prev') || {}).textContent || '').trim());
+  ok(/^You: Hello there$/.test(oldRow), `a person you only emailed is a row, your words on it (“${oldRow}”)`);
+  // REFRESH IS A DATA REFRESH, NOT A RESET. Checking for new mail while searching used
+  // to throw the owner back and wipe the search (measured on the old mailbox: "old" →
+  // ""). Driven by CLICKING the Inbox's own refresh button.
+  await page.fill('#ib-q', 'old');
   await page.waitForTimeout(250);
-  const st = await page.evaluate(() => ({
-    rows: document.querySelectorAll('#mailbox-body .bk-row').length,
-    text: (document.getElementById('mailbox-body') || {}).textContent || '',
-    on: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn.is-on')].map((b) => b.textContent.trim()).join(','),
-    sel: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn')].map((b) => b.getAttribute('aria-selected')).join(','),
-  }));
-  // the reply sent in step 3 tops the list; the ledger row sits beneath
-  ok(st.rows === 2 && /old@example\.com/.test(st.text) && /guest@example\.com/.test(st.text), `Sent tab lists the just-sent reply + the ledger (${st.rows} rows)`);
-  ok(/Sent/.test(st.on) && st.sel === 'false,true', `the switch moves its selected state with the tap (on=${st.on}, aria=${st.sel})`);
-  // REFRESH IS A DATA REFRESH, NOT A RESET. loadMailbox() forced __mbxTab='inbox' and
-  // __mbxQuery='' at the end — and its own Refresh button reaches it, so checking for new
-  // mail while reading Sent threw the owner back to Inbox and wiped their search
-  // (measured before the fix: sent → inbox, "old" → ""). Driven by CLICKING the button,
-  // because that is the path that was broken.
-  await page.evaluate(() => mailboxSearch('old'));
-  await page.waitForTimeout(200);
-  await page.click('#mailbox-body .cal-refresh-btn');
-  await page.waitForTimeout(700);
+  const before = await page.$$eval('#ib-rows .ib-rowwrap', (w) => w.map((x) => x.getAttribute('data-key')));
+  await page.click('#ib-refresh');
+  await page.waitForFunction(() => !document.getElementById('ib-refresh').classList.contains('is-busy'), null, { timeout: 10000 }).catch(() => {});
+  await settled();
   const refreshed = await page.evaluate(() => ({
-    tab: __mbxTab, q: __mbxQuery,
-    on: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn.is-on')].map((b) => b.textContent.trim()).join(','),
+    q: __ibQ, box: document.getElementById('ib-q').value,
+    keys: [...document.querySelectorAll('#ib-rows .ib-rowwrap')].map((x) => x.getAttribute('data-key')),
   }));
-  ok(refreshed.tab === 'sent' && /Sent/.test(refreshed.on),
-    `Refresh keeps you on the tab you were reading (${refreshed.tab}, selected: ${refreshed.on})`);
-  ok(refreshed.q === 'old', `…and keeps your search rather than wiping it ("${refreshed.q}")`);
-
-  await page.evaluate(() => mailboxTab('inbox'));
-  await page.waitForTimeout(200);
-  await page.evaluate(() => mailboxSearch('parking'));
-  await page.waitForTimeout(200);
-  const sr = await page.evaluate(() => document.querySelectorAll('#mailbox-body .bk-row').length);
-  ok(sr === 1, `search filters the list (${sr} match)`);
-  // A SEARCH THAT ONLY SEARCHED WHAT WAS LOADED. The list holds one fetched page, so
-  // filtering it makes "nothing matched" a confident negative about mail still on the
-  // server — worse than a short list. The fixture reports hasMore, so the note and the
-  // way to widen it must both be on screen while a search is active.
-  const capNote = await page.evaluate(() => ({
-    hasMore: __mbxHasMore,
-    text: (document.getElementById('mailbox-body') || {}).innerText || '',
-    older: [...document.querySelectorAll('#mailbox-body [data-act="mailboxOlder"]')].map((b) => b.textContent.trim()),
-  }));
-  ok(capNote.hasMore, 'the fixture really has older mail on the server (else this proves nothing)');
-  ok(/Searched the \d+ email/i.test(capNote.text) && /older mail on the server/i.test(capNote.text),
-    `SEARCH-CAP: a search says what it actually searched (${(capNote.text.match(/Searched[^\n]*/) || [''])[0]})`);
-  ok(capNote.older.some((t) => /search again/i.test(t)),
-    `SEARCH-CAP: …and offers to widen it (${capNote.older.join(' | ')})`);
-  await page.evaluate(() => mailboxSearch(''));
-  await page.waitForTimeout(200);
-  const noCap = await page.evaluate(() => ({
-    text: (document.getElementById('mailbox-body') || {}).innerText || '',
-    older: [...document.querySelectorAll('#mailbox-body [data-act="mailboxOlder"]')].map((b) => b.textContent.trim()),
-  }));
-  ok(!/Searched the/i.test(noCap.text) && noCap.older.some((t) => /Load older messages/.test(t)),
-    'SEARCH-CAP: with no search it is the plain "Load older messages" again, not the note');
-  await page.waitForTimeout(200);
-  await page.evaluate(() => mailboxMarkUnread('u1'));
-  await page.waitForTimeout(400);
-  const mu = await page.evaluate(() => document.querySelectorAll('#mailbox-body .mbx-unread').length);
-  ok(mu === 1 && posts.some((p) => p.action === 'mark_unread'), `mark unread posted + chip restored (${mu} unread)`);
+  ok(refreshed.q === 'old' && refreshed.box === 'old', `Refresh keeps your search rather than wiping it ("${refreshed.q}")`);
+  ok(before.length >= 1 && refreshed.keys.join(',') === before.join(','), `…and the list it filtered (${refreshed.keys.join(', ')})`);
+  await page.fill('#ib-q', 'parking');
+  await page.waitForTimeout(250);
+  const sr = await page.$$eval('#ib-rows .ib-rowwrap', (w) => w.map((x) => x.getAttribute('data-key')));
+  ok(sr.length === 1 && sr[0] === 'e:guest@example.com', `search finds the email (${sr.join(', ')})`);
+  // A SEARCH THAT ONLY SEARCHED WHAT WAS LOADED. The mailbox page the list holds is one
+  // fetched page, so "nothing matched" is a confident negative about mail still on the
+  // server — worse than a short list. The fixture reports older mail on the server, so
+  // a search that finds nothing must not claim to have covered every message.
+  await page.fill('#ib-q', 'zzqx');
+  await page.waitForTimeout(250);
+  const capNote = await page.evaluate(() => ({ hasMore: __mbxHasMore, text: ((document.querySelector('#ib-rows .ib-empty') || {}).textContent || '').trim() }));
+  ok(capNote.hasMore === true, 'the fixture really has older mail on the server (else this proves nothing)');
+  ok(!!capNote.text && !/every message/i.test(capNote.text) && /older|on the server/i.test(capNote.text),
+    `SEARCH-CAP: an empty search says what it actually covered, not "every message" (“${capNote.text}”)`);
+  await page.fill('#ib-q', '');
+  await page.dispatchEvent('#ib-q', 'input');
+  await page.waitForTimeout(250);
+  // Mark as unread: the ⋯ menu's own item, and the owner's record keeps it.
+  await openPerson('e:other@example.com', () => /Other Person|other@/.test((document.querySelector('#ib-conv .ib-hname') || {}).textContent || ''));
+  await page.click('#ib-conv [data-ib="menu"]');
+  await page.click('#ib-conv .ib-menu [data-ib="unread"]');
+  await page.waitForTimeout(300);
+  const mu = await page.evaluate(() => (document.querySelector('#ib-rows .ib-rowwrap[data-key="e:other@example.com"] .ib-row') || { classList: { contains: () => false } }).classList.contains('is-unread'));
+  ok(mu && !!(state && state.unread && state.unread['e:other@example.com']), `mark unread: the row reads unread again, and it is saved (${mu})`);
 
   console.log('5. delete');
-  await page.evaluate(() => renderMailboxList());
-  await page.waitForTimeout(200);
-  await page.click('#mailbox-body .bk-row');
-  await page.waitForTimeout(700);
-  const del = page.evaluate(() => mailboxDelete('u1'));
-  await page.waitForTimeout(500);
-  await page.evaluate(() => glassDialogResolve(true));
-  await del.catch(() => {});
-  await page.waitForTimeout(400);
-  const delState = await page.evaluate(() => ({
-    rows: document.querySelectorAll('#mailbox-body .bk-row').length,
-  }));
-  ok(posts.some((p) => p.action === 'delete' && p.uid === 'u1') && delState.rows === 1, `delete confirmed, posted, row removed (${delState.rows} left)`);
+  await openPerson('e:other@example.com');
+  await page.click('#ib-conv [data-ib="menu"]');
+  await page.click('#ib-conv .ib-menu [data-ib="delete"]');
+  await page.waitForFunction(() => document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
+  await page.click('#glass-dialog-ok');
+  const del = await sentOf((p) => p.__url === 'mailbox.php' && p.action === 'delete', 5000);
+  await page.waitForFunction(() => !document.querySelector('#ib-rows .ib-rowwrap[data-key="e:other@example.com"]'), null, { timeout: 5000 }).catch(() => {});
+  const gone = await page.evaluate(() => !document.querySelector('#ib-rows .ib-rowwrap[data-key="e:other@example.com"]'));
+  ok(!!del && JSON.stringify(del.uids) === '["u2"]' && gone, `delete confirmed, posted, row removed (${del && JSON.stringify(del.uids)})`);
 
-  // ONE ROW PER CONVERSATION. Four rows reading "anneolin@btinternet.com · Re:
-  // Pay your deposit — Pimpernel" are one chain wearing four costumes (owner's
-  // screenshot). Driven through the REAL renderer with a hostile fixture: the
-  // same subject from a DIFFERENT sender must stay its own row, because that
-  // subject is the same words for every guest we chase — merging on subject
-  // alone would file one guest's mail under another's name.
-  console.log('6. one row per conversation');
+  // THE STAY FACTS HOLD AT 390. The reader's inline "known guest" box went with the
+  // reader; the one conversation states a stay as label/value rows. Its dates are ONE
+  // fact and must never fragment, and a long cottage name must wrap its own row rather
+  // than push anything out of the panel. HOSTILE, because the real names fit.
+  console.log('6. the stay facts at 390');
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && document.getElementById('ib').classList.contains('is-conv')) b.click(); });
+  await page.waitForTimeout(450);
+  await openPerson('e:guest@example.com', () => !!document.querySelector('#ib-conv .ib-stayline'));
+  await page.waitForTimeout(450);
+  const squeezed = await page.evaluate(() => {
+    const meta = propertyMeta['21a'];
+    const was = meta.name;
+    meta.name = 'The Old Harbourmasters Cottage House';
+    __ibCtxOpen = true;
+    ibRenderConv();
+    const drop = document.getElementById('ib-ctxdrop');
+    const kvs = [...drop.querySelectorAll('.ib-kv')].filter((k) => k.getClientRects().length);
+    const dates = kvs.find((k) => /^Dates/.test(k.textContent.trim()));
+    const val = dates && dates.lastElementChild;
+    const lh = val ? parseFloat(getComputedStyle(val).lineHeight) || parseFloat(getComputedStyle(val).fontSize) * 1.5 : 0;
+    const pane = document.getElementById('ib-conv').getBoundingClientRect();
+    const out = {
+      rows: kvs.length,
+      datesH: val ? Math.round(val.getBoundingClientRect().height) : 0, lh: Math.round(lh),
+      overflow: Math.max(0, ...kvs.map((k) => Math.round(k.getBoundingClientRect().right - pane.right)), ...kvs.map((k) => k.scrollWidth - k.clientWidth)),
+      named: kvs.some((k) => /Old Harbourmasters/.test(k.textContent)),
+    };
+    meta.name = was;
+    __ibCtxOpen = false;
+    ibRenderConv();
+    return out;
+  });
+  ok(squeezed.rows >= 3 && squeezed.named, `the stay's facts render with the hostile 36-character name (${squeezed.rows} rows)`);
+  ok(squeezed.datesH > 0 && squeezed.datesH <= squeezed.lh + 4, `SQUEEZED: the dates stay one line (${squeezed.datesH}px vs ${squeezed.lh})`);
+  ok(squeezed.overflow <= 0, `SQUEEZED: nothing runs past the panel (${squeezed.overflow}px)`);
+  await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && document.getElementById('ib').classList.contains('is-conv')) b.click(); });
+  await page.waitForTimeout(450);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(300);
+
+  // ONE ROW PER PERSON. Four rows reading "anneolin@btinternet.com · Re: Pay your deposit
+  // — Pimpernel" were one chain wearing four costumes (owner's screenshot). The one list
+  // joins by ADDRESS, so a chain is one row by construction — and the same subject from
+  // a DIFFERENT sender must stay its own row, because that subject is the same words for
+  // every guest we chase: merging on subject would file one guest's mail under another.
+  console.log('7. one row per person');
   const th = await page.evaluate(() => {
+    window.__mbxSave = __mbxMessages;
     __mbxMessages = [
       { uid: 'c1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Pay your deposit — Pimpernel (#12xab12cd34ef5678)', date: '2026-07-22 08:05:00', seen: true },
       { uid: 'c2', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-22 11:30:00', seen: true },
@@ -319,461 +357,189 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       { uid: 'd1', from: 'bob@example.com', fromRaw: 'Bob Carter <bob@example.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-19 10:00:00', seen: true },
       { uid: 'e1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Parking at the cottage', date: '2026-07-18 10:00:00', seen: true },
     ];
-    __mbxTab = 'inbox';
-    __mbxQuery = '';
-    renderMailboxList();
-    const rows = [...document.querySelectorAll('#mailbox-body .mbx-item')];
+    ibRender();
+    const w = (k) => document.querySelector(`#ib-rows .ib-rowwrap[data-key="${k}"]`);
+    const a = w('e:anneolin@btinternet.com'), b = w('e:bob@example.com');
     return {
-      n: rows.length,
-      uids: rows.map((r) => r.dataset.uid),
-      names: rows.map((r) => (r.querySelector('.bk-row-name') || {}).textContent || ''),
-      subjects: rows.map((r) => (r.querySelector('.bk-row-dates') || {}).textContent || ''),
-      counts: rows.map((r) => {
-        const m = /(\d+) emails/.exec((r.querySelector('.bk-row-top') || {}).textContent || '');
-        return m ? Number(m[1]) : 0;
-      }),
-      unread: rows.map((r) => r.querySelector('.bk-row').classList.contains('mbx-unread')),
+      annes: [...document.querySelectorAll('#ib-rows .ib-rowwrap')].filter((x) => /anneolin/.test(x.getAttribute('data-key'))).length,
+      bob: !!b,
+      names: [a, b].map((x) => (x ? (x.querySelector('.ib-name') || {}).textContent || '' : '')),
+      unread: [a, b].map((x) => !!x && x.querySelector('.ib-row').classList.contains('is-unread')),
     };
   });
-  ok(th.n === 3, `5 emails collapse to 3 conversations (${th.n})`);
-  ok(th.counts[0] === 3 && th.counts[1] === 0 && th.counts[2] === 0,
-    `only a real chain wears a count chip (${th.counts.join('/')})`);
-  ok(th.uids.join(',') === 'c3,d1,e1',
-    `each row stands for its NEWEST message, newest chain first (${th.uids.join(',')})`);
-  ok(/Bob Carter/.test(th.names[1]) && /Anne Olin/.test(th.names[0]),
-    `the same subject from another sender stays its own row (${th.names[1].trim()})`);
-  ok(th.unread[0] === true && th.unread[1] === false,
-    'a chain reads unread when ANY message in it is unread');
-  ok(/Parking at the cottage/.test(th.subjects[2]),
-    `the same sender's other conversation is not swept in (${th.subjects[2]})`);
-
-  // The chain OPENS on its newest message with the rest listed beneath, and an
-  // earlier one swaps the reader in place — it must not fold the row up, which
-  // is what a uid-equality "second tap = collapse" rule would have done.
-  await page.evaluate(() => document.querySelector('#mailbox-body .mbx-item .bk-row').click());
-  await page.waitForTimeout(700);
+  ok(th.annes === 1, `all four of Anne's emails are ONE row (${th.annes})`);
+  ok(th.bob && /Bob Carter/.test(th.names[1]) && /Anne Olin/.test(th.names[0]), `the same subject from another sender stays its own row (${th.names[1]})`);
+  ok(th.unread[0] === true && th.unread[1] === false, 'a person reads unread when ANY of their emails is unread');
+  // The person OPENS on the whole chain, oldest first, the newest at the foot — and
+  // the same sender's other subject is in it too, because it is the same person.
+  await openPerson('e:anneolin@btinternet.com', () => [...document.querySelectorAll('#ib-thread .ib-msg.is-them .ib-text')].filter((t) => /^Body of /.test(t.textContent)).length === 4);
+  await page.waitForTimeout(800); // the thread follows a new message down for 700ms
   const chain = await page.evaluate(() => {
-    const it = document.querySelector('#mailbox-body .mbx-item.open');
+    const ms = [...document.querySelectorAll('#ib-thread .ib-msg.is-them')];
+    const th = document.getElementById('ib-thread');
     return {
-      showing: it && it.dataset.showing,
-      earlier: it ? it.querySelectorAll('.mbx-earlier .mbx-chain-row').length : -1,
-      label: it ? /Earlier in this conversation/.test(it.textContent) : false,
+      order: ms.map((m) => ((m.querySelector('.ib-text') || {}).textContent || '').replace('Body of ', '')),
       // Three replies on one afternoon used to render three identical dates.
-      times: it ? [...it.querySelectorAll('.mbx-chain-time')].map((x) => x.textContent.trim()) : [],
+      times: ms.slice(-3).map((m) => ((m.querySelector('.ib-meta') || {}).textContent || '').replace(/^Email · /, '').trim()),
+      atFoot: th.scrollHeight - th.scrollTop - th.clientHeight < 80,
     };
   });
-  ok(chain.showing === 'c3' && chain.earlier === 2 && chain.label,
-    `the chain opens on its newest, the other 2 listed beneath (showing ${chain.showing}, ${chain.earlier} earlier)`);
-  // THE WHOLE CHAIN IS ONE AFTERNOON — the fixture is deliberately same-day,
-  // because that is the case the owner reported: three rows reading an
-  // identical "29/07/2026" with nothing to tell them apart. The time is the
-  // distinguishing fact, so it has to be on the row.
-  ok(chain.times.length === 2 && chain.times[0] && chain.times[1] && chain.times[0] !== chain.times[1],
+  ok(chain.order.join(',') === 'e1,c1,c2,c3', `the chain reads in time order, every email in it (${chain.order.join(',')})`);
+  ok(chain.atFoot, 'and it opens at its newest');
+  // THE WHOLE CHAIN IS ONE AFTERNOON — the fixture is deliberately same-day, because
+  // that is the case the owner reported: three rows reading an identical date. The
+  // time is the distinguishing fact, so each email carries it.
+  ok(chain.times.length === 3 && chain.times.every((t) => /^\d\d:\d\d$/.test(t)) && new Set(chain.times).size === 3,
     `same-day replies are told apart by their time (${chain.times.join(' / ') || 'none shown'})`);
-  // Guarded like the Sent-tab click above: a build with no chain should report
-  // failed checks, not throw on null.
-  await page.evaluate(() => { const b = document.querySelector('#mailbox-body .mbx-item.open .mbx-earlier .mbx-chain-row'); b && b.click(); });
-  await page.waitForTimeout(700);
-  const swapped = await page.evaluate(() => {
-    const it = document.querySelector('#mailbox-body .mbx-item.open');
-    return {
-      stillOpen: !!it,
-      showing: it && it.dataset.showing,
-      earlier: it ? it.querySelectorAll('.mbx-earlier .mbx-chain-row').length : -1,
-    };
-  });
-  ok(swapped.stillOpen && swapped.showing === 'c2' && swapped.earlier === 2,
-    `tapping an earlier email swaps the reader without closing the row (showing ${swapped.showing})`);
-  // A lone email is untouched by any of this — no chip, no "Earlier" block.
-  await page.evaluate(() => {
-    mailboxCollapse();
-    const it = [...document.querySelectorAll('#mailbox-body .mbx-item')].find((x) => x.dataset.uid === 'e1');
-    it && it.querySelector('.bk-row').click();
-  });
-  await page.waitForTimeout(700);
-  const lone = await page.evaluate(() => {
-    const it = document.querySelector('#mailbox-body .mbx-item.open');
-    return { uid: it && it.dataset.uid, earlier: it ? it.querySelectorAll('.mbx-earlier').length : -1 };
-  });
-  ok(lone.uid === 'e1' && lone.earlier === 0, 'a one-email conversation reads exactly as it always did');
+  await openPerson('e:bob@example.com', () => /Body of d1/.test((document.querySelector('#ib-thread .ib-msg.is-them .ib-text') || {}).textContent || ''));
+  const lone = await page.evaluate(() => ({ n: document.querySelectorAll('#ib-thread .ib-msg.is-them').length, folds: document.querySelectorAll('#ib-thread .ib-quotebtn').length }));
+  ok(lone.n === 1 && lone.folds === 0, 'a one-email person reads as exactly that one email');
+  await page.evaluate(() => { __mbxMessages = window.__mbxSave; ibRender(); });
+  await settled();
 
-  // EVERYTHING IN THE KNOWN-GUEST BOX IS INLINE WITH EVERYTHING ELSE. Its
-  // parts — cottage, when, open — are one sentence about one stay, and
-  // `space-between` flung them to the corners of a full-width row. The dates
-  // are one fact and must never fragment: squeezed, "28-31 Aug 2026" broke
-  // over FOUR lines and took the row to 105px.
-  console.log('7. the known-guest box is one inline line');
-  const inlineAt = async (w) => {
-    await page.setViewportSize({ width: w, height: 900 });
-    await page.waitForTimeout(250);
-    await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
-    await page.waitForTimeout(700);
-    return page.evaluate(() => {
-      // Geometry needs the PAINT — open the fold the way an owner does.
-      const d = document.querySelector('.mbx-ctx-d');
-      if (d) d.open = true;
-      const ctx = document.querySelector('.mbx-ctx');
-      const row = ctx && ctx.querySelector('.bhub-stay-row');
-      const cap = document.querySelector('.mbx-ctx-drow');
-      if (!row || !cap) return null;
-      const rr = row.getBoundingClientRect();
-      const cr = cap.getBoundingClientRect();
-      const kids = [...row.children].map((el) => el.getBoundingClientRect());
-      const mids = kids.map((k) => k.top + k.height / 2);
-      const dates = [...row.querySelectorAll('span')].find((x) => /\d/.test(x.textContent) && !x.classList.contains('prop-tag'));
-      const dr = dates ? dates.getBoundingClientRect() : { height: 0 };
-      // Widest gap between one part and the next — "flung to the corners" is
-      // what this catches; packed inline it is the flex gap.
-      const sorted = kids.slice().sort((a, b) => a.left - b.left);
-      let widestGap = 0;
-      for (let i = 1; i < sorted.length; i++) widestGap = Math.max(widestGap, sorted[i].left - sorted[i - 1].right);
-      return {
-        parts: kids.length,
-        spread: Math.round(Math.max(...mids) - Math.min(...mids)),
-        rowH: Math.round(rr.height),
-        dateH: Math.round(dr.height),
-        lineH: Math.round(parseFloat(getComputedStyle(row).fontSize) * 1.6),
-        widestGap: Math.round(widestGap),
-        capAbove: cr.bottom <= rr.top + 1,
-      };
-    });
-  };
-  // HOSTILE WIDTH: the real cottage names fit, so without an injected long one
-  // the no-wrap rule is never exercised and the check is vacuous (it was —
-  // deleting the rule left it green). A squeezed row must clip the NAME and
-  // keep the dates whole.
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.waitForTimeout(250);
-  await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
-  await page.waitForTimeout(700);
-  const squeezed = await page.evaluate(() => {
-    const d = document.querySelector('.mbx-ctx-d');
-    if (d) d.open = true;
-    const row = document.querySelector('.mbx-ctx .bhub-stay-row');
-    if (!row) return null;
-    const tag = row.querySelector('.prop-tag');
-    if (tag) tag.textContent = 'The Old Harbourmasters Cottage House';
-    const card = document.querySelector('.mbx-inline-card');
-    const dates = [...row.querySelectorAll('span')].find((x) => /\d/.test(x.textContent) && !x.classList.contains('prop-tag'));
-    const dr = dates.getBoundingClientRect();
-    const rr = row.getBoundingClientRect();
-    const cr = card.getBoundingClientRect();
-    return {
-      dateH: Math.round(dr.height),
-      lineH: Math.round(parseFloat(getComputedStyle(row).fontSize) * 1.6),
-      overflow: Math.round(rr.right - cr.right),
-      clipped: tag ? tag.scrollWidth > tag.clientWidth + 1 : false,
-    };
-  });
-  ok(!!squeezed && squeezed.dateH <= squeezed.lineH + 4,
-    `SQUEEZED: a 36-char cottage name never breaks the dates (${squeezed ? squeezed.dateH + 'px vs ' + squeezed.lineH : '?'})`);
-  ok(!!squeezed && squeezed.clipped && squeezed.overflow <= 0,
-    `SQUEEZED: the NAME clips instead, and the row stays inside its card (${squeezed ? squeezed.overflow : '?'}px past)`);
-
-  for (const w of [390, 900]) {
-    const m = await inlineAt(w);
-    const tag = w === 390 ? 'PHONE' : 'WIDE';
-    ok(!!m && m.parts >= 3 && m.spread <= 3,
-      `${tag}: all ${m ? m.parts : 0} parts sit on one line together (centres within ${m ? m.spread : '?'}px)`);
-    ok(!!m && m.widestGap <= 24,
-      `${tag}: they are packed inline, not flung to the corners (widest gap ${m ? m.widestGap : '?'}px)`);
-    ok(!!m && m.dateH <= m.lineH + 4, `${tag}: the dates never fragment (${m ? m.dateH + 'px vs ' + m.lineH : '?'})`);
-    ok(!!m && m.capAbove, `${tag}: the fold's verdict row stays above the opened box`);
-  }
-
-  // ---- THE DECLINED DRAWER SAYS WHAT IT IS ---------------------------------
-  // Reported from a phone: a green 0 and "All caught up — nothing needs a reply"
-  // sat above a list with a declined enquiry in it, and the row never said WHEN it
-  // was turned down — mapEnquiryFromApi dropped declined_at, which enquiries.php
-  // both SELECTs and ORDERs BY. Driven by CLICKING the tab (chbAttrs emits
-  // data-args, a JSON list, so a [data-arg=…] selector finds nothing — which is
-  // how the first version of this silently tested an unclicked tab).
-  await page.evaluate(() => window.inboxFolder('enquiries'));
-  await page.waitForTimeout(200);
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find(
-      (x) => x.textContent.trim() === 'Declined',
-    );
-    if (b) b.click();
-  });
-  await page.waitForTimeout(700);
+  // ---- A DECLINE SAYS WHAT IT IS ----------------------------------------------
+  // The declined DRAWER is gone with the folders: the declined enquirer is a row of the
+  // one list, and the drawer's claims are that row's. Reported from a phone: a green 0
+  // and "All caught up" sat over a declined enquiry, and the row never said WHEN it was
+  // turned down (the mapper dropped declined_at).
+  console.log('8. a declined enquiry');
+  await openPerson('e:j@x.co', () => [...document.querySelectorAll('#ib-thread .ib-event')].some((e) => /Enquiry declined/.test(e.textContent)));
   const dec = await page.evaluate(() => {
-    const row = document.querySelector('.enq-declined-row');
-    const q = (sel) => (row ? row.querySelector(sel) : null);
-    const head = document.querySelector('#inbox-folder-enquiries .bo-sec-title');
-    const badge = document.getElementById('inbox-badge');
-    const btn = q('.enq-declined-restore');
+    const w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:j@x.co"]');
+    const r = w && w.querySelector('.ib-row');
+    const cap = w && w.querySelector('.ib-cap');
+    const ev = [...document.querySelectorAll('#ib-thread .ib-event')].find((e) => /Enquiry declined/.test(e.textContent));
     return {
-      chip: q('.bk-chip.declined') ? q('.bk-chip.declined').textContent.trim() : '',
-      btn: btn ? btn.textContent.trim() : '',
-      btnHit: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
-      msg: q('.enq-declined-msg') ? q('.enq-declined-msg').textContent.trim() : '',
-      msgOneLine: q('.enq-declined-msg')
-        ? q('.enq-declined-msg').getBoundingClientRect().height <=
-          parseFloat(getComputedStyle(q('.enq-declined-msg')).lineHeight) + 2
-        : false,
-      lead: !!document.querySelector('.enq-declined-lead'),
-      heading: head ? head.textContent.replace(/\s+/g, ' ').trim() : '',
-      badgeShown: badge ? getComputedStyle(badge).display !== 'none' : true,
-      subline: document.getElementById('inbox-subline') ? document.getElementById('inbox-subline').textContent : null,
-      // The archived read must NOT come from container opacity: that composites
-      // every ink toward the ground and took the quoted message to 3.05:1.
-      bodyOpacity: q('.bk-row-body') ? getComputedStyle(q('.bk-row-body')).opacity : '',
+      cap: cap ? cap.textContent.trim() : '', capCls: cap ? cap.className : '',
+      event: ev ? ev.textContent.trim() : '',
+      words: [...document.querySelectorAll('#ib-thread .ib-msg.is-them .ib-text')].some((t) => /park a small van/.test(t.textContent)),
+      prev: w ? ((w.querySelector('.ib-prev') || {}).textContent || '').trim() : '',
+      opacity: r ? getComputedStyle(r).opacity + '/' + getComputedStyle(r.querySelector('.ib-rctx')).opacity : '',
     };
   });
-  ok(/^Declined\s+\S/.test(dec.chip), `the row says WHEN it was declined ("${dec.chip}")`);
-  ok(dec.btn === 'Put back in Waiting', `the action says where it goes ("${dec.btn}")`);
-  ok(dec.btnHit >= 24, `...at a real tap size (${dec.btnHit}px)`);
-  ok(dec.msg.length > 4 && dec.msgOneLine, 'the guest\u2019s own words show, on one line');
-  ok(dec.lead, 'the drawer explains itself once, above the rows');
-  ok(/^Enquiries/.test(dec.heading) && !/Declined enquiries/.test(dec.heading), `the heading keeps ONE title on both tabs — the switch, its counts and the capsule say which list ("${dec.heading}")`);
-  ok(!dec.badgeShown, 'the WAITING count is not shown over the declined list');
-  ok(dec.subline === null, `no sentence under the title restates the tab — the switch, its counts and the capsule say which list (${JSON.stringify(dec.subline)})`);
-  ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);
+  ok(dec.cap === 'Declined' && /\bunk\b/.test(dec.capCls) && !/\b(warn|bad)\b/.test(dec.capCls), `the row says Declined, muted — a decision, not a fault (“${dec.cap}”, ${dec.capCls})`);
+  ok(/Enquiry declined · \d\d:\d\d/.test(dec.event), `the conversation says WHEN it was declined (“${dec.event}”)`);
+  ok(dec.words && /park a small van/.test(dec.prev), 'the guest\u2019s own words show, on the row and in the conversation');
+  ok(dec.opacity === '1/1', `the row is not dimmed by opacity (${dec.opacity})`);
+  // A decline is never something to decide again.
+  ok(await page.evaluate(() => !document.querySelector('#ib-conv [data-ib="approve"]')), '…and the conversation offers no Approve');
 
-  // THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES. Reported from
-  // a phone. Two causes, both measured at 390px: .prop-tag is an inline-block pill built
-  // for a STACKED context and carries margin-bottom: 12px, which inside this centred
-  // flex row lifted it 6px above the chip (centres 523 vs 529); and "Put back in
-  // Waiting" is 165px of nowrap button, so the body got 150px and — the chip being
-  // flex-shrink: 0 — the cottage pill absorbed the whole squeeze and rendered 22px of
-  // its 91, "Pimpernel" as "Pl…", the one word that says which cottage.
+  // THE CONTEXT AND ITS CAPSULE ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES.
+  // Reported from a phone on the drawer (the pill squeezed to "Pl…"); the one list's
+  // row puts the same two things — the stay and its state — side by side.
   await page.setViewportSize({ width: 390, height: 900 });
   await page.waitForTimeout(300);
+  await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && document.getElementById('ib').classList.contains('is-conv')) b.click(); });
+  await page.waitForTimeout(450);
   const pills = await page.evaluate(() => {
-    const row = document.querySelector('.enq-declined-row');
-    const tag = row.querySelector('.prop-tag'), chip = row.querySelector('.bk-chip'),
-      btn = row.querySelector('.enq-declined-restore'), body = row.querySelector('.bk-row-body');
+    const w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:j@x.co"]');
+    const c = w && w.querySelector('.ib-rctx'), t = w && w.querySelector('.ib-tag');
+    if (!c || !t || !c.getClientRects().length) return null;
     const mid = (el) => { const r = el.getBoundingClientRect(); return Math.round(r.y + r.height / 2); };
-    const t = tag.getBoundingClientRect(), c = chip.getBoundingClientRect();
-    return {
-      tagMid: mid(tag), chipMid: mid(chip),
-      clipped: tag.scrollWidth > tag.clientWidth + 1,
-      tagW: Math.round(t.width), tagNeeds: tag.scrollWidth,
-      gap: Math.round(c.x - t.right),
-      rowRight: Math.round(row.getBoundingClientRect().right),
-      chipRight: Math.round(c.right),
-      btnBelow: btn.getBoundingClientRect().top >= body.getBoundingClientRect().bottom - 1,
-    };
+    return { cMid: mid(c), tMid: mid(t), cut: c.scrollWidth - c.clientWidth, tagCut: t.scrollWidth - t.clientWidth, txt: c.textContent.trim() };
   });
-  ok(pills.tagMid === pills.chipMid,
-    `the cottage pill and the Declined chip sit on one line (centres ${pills.tagMid} / ${pills.chipMid})`);
-  ok(!pills.clipped,
-    `the cottage name is not clipped (${pills.tagW}px for ${pills.tagNeeds}px of text)`);
-  ok(pills.gap > 0 && pills.gap < 40 && pills.rowRight - pills.chipRight > 40,
-    `…and they read as a pair rather than opposite corners (${pills.gap}px apart)`);
-  ok(pills.btnBelow, 'on a phone the restore button takes its own line, so the pills get the width');
-  // The wrap is CONDITIONAL, not a permanent stack: where the column can hold both, the
-  // button still sits beside the row rather than below it.
-  await page.setViewportSize({ width: 1100, height: 900 });
-  await page.waitForTimeout(300);
-  const wide = await page.evaluate(() => {
-    const row = document.querySelector('.enq-declined-row');
-    const btn = row.querySelector('.enq-declined-restore'), body = row.querySelector('.bk-row-body');
-    const tag = row.querySelector('.prop-tag');
-    return {
-      beside: btn.getBoundingClientRect().top < body.getBoundingClientRect().bottom - 1,
-      clipped: tag.scrollWidth > tag.clientWidth + 1,
-    };
-  });
-  ok(wide.beside && !wide.clipped, 'on a wide column the button is beside the row, still unclipped');
-
-  // ---- THE THREE ANSWERS: stacked (<1200px) the folder switch becomes three
-  // verdict fold groups; the folder lists re-parent INTO the folds so every
-  // list and handler above kept working untouched. ----
-  console.log('10. the three-answers landing (stacked)');
+  ok(!!pills && Math.abs(pills.cMid - pills.tMid) <= 1, `the stay and the Declined capsule sit on one line (centres ${pills && pills.cMid} / ${pills && pills.tMid})`);
+  ok(!!pills && pills.cut <= 1 && pills.tagCut <= 1, `neither is clipped: the cottage name survives (“${pills && pills.txt}”)`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
-  // BACK TO WAITING FIRST. The section above left the drawer open, and
-  // __inboxTab persists by design — the LIST stays declined until the owner
-  // switches back, and the landing's verdict now describes whichever list is
-  // on screen (it used to leave "⚠ 3 waiting" and a waiting enquirer's name
-  // over a declined list). Everything below is about the WAITING landing.
-  await page.evaluate(async () => { await inboxTab('waiting'); });
+  // THE WAY BACK SAYS WHERE IT GOES. The drawer's "Put back in Waiting" lives in the
+  // declined enquirer's own facts now (the stay line unfolds them), at a real tap
+  // size, and it does what it says: asks once, then restores the enquiry.
+  await openPerson('e:j@x.co', () => !!document.querySelector('#ib-conv .ib-stayline'));
+  await page.evaluate(() => { const s = document.querySelector('#ib-conv .ib-stayline'); if (s && s.getAttribute('aria-expanded') !== 'true') s.click(); });
   await page.waitForTimeout(400);
-  await page.evaluate(() => { inboxFolder('enquiries'); });
-  await page.waitForTimeout(300);
-  const land = await page.evaluate(() => {
-    const landing = document.getElementById('inbox-landing');
-    const vis = (el) => !!(el && el.getClientRects().length);
-    return {
-      landingShown: vis(landing),
-      switchHidden: !vis(document.getElementById('inbox-folders')),
-      grps: landing ? landing.querySelectorAll('.bhub-fold-grp').length : 0,
-      enqInFold: (document.getElementById('inbox-folder-enquiries') || {}).parentElement === document.getElementById('iv-fold-enquiries'),
-      enqOpen: !(document.getElementById('iv-fold-enquiries') || { hidden: true }).hidden,
-      msgClosed: (document.getElementById('iv-fold-messages') || {}).hidden === true,
-      enqFig: (document.getElementById('iv-sum-enquiries') || {}).textContent || '',
-      listVisible: vis(document.getElementById('inbox-list')),
-    };
+  const back = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('#ib-conv [data-ib="undecline"], #ib-side [data-ib="undecline"]')].find((x) => x.getClientRects().length);
+    return b ? { txt: b.textContent.trim(), h: Math.round(b.getBoundingClientRect().height) } : null;
   });
-  ok(land.landingShown && land.switchHidden, 'the landing replaces the folder switch below 1200px');
-  ok(land.grps >= 3, `three verdict groups render (${land.grps})`);
-  ok(land.enqInFold && land.enqOpen && land.listVisible, 'inboxFolder() opens its fold with the real list inside');
-  ok(land.msgClosed, 'the other answers stay folded (accordion)');
-  ok(/0 waiting/.test(land.enqFig), `the enquiries verdict reads the real queue (${land.enqFig})`);
-  // The capsule ladder: clear wears the ✓, unknown is STATED (the mailbox is
-  // lazy — before the first fetch "nothing new" would be an unchecked claim),
-  // and each answer carries its identity glyph.
-  const caps = await page.evaluate(() => {
-    // The suite opened the mailbox earlier — rewind the lazy flag so the
-    // pre-first-fetch state is the one under test, then restore it.
-    const was = __mbxOpenedOnce;
-    /* eslint-disable-next-line no-global-assign */ __mbxOpenedOnce = false;
-    inboxVerdicts();
-    const emailUnk = /not checked yet/.test((document.getElementById('iv-sum-email') || {}).textContent || '')
-      && /is-unk/.test(((document.querySelector('#iv-sum-email .st-cap') || {}).className || ''));
-    /* eslint-disable-next-line no-global-assign */ __mbxOpenedOnce = was;
-    inboxVerdicts();
-    return {
-      enqTone: ((document.querySelector('#iv-sum-enquiries .st-cap') || {}).className || ''),
-      enqTick: !!document.querySelector('#iv-sum-enquiries .st-tick'),
-      emailUnk,
-      glyphs: document.querySelectorAll('#inbox-landing .iv-lic').length,
-    };
-  });
-  ok(/is-ok/.test(caps.enqTone) && caps.enqTick, `a clear verdict is a green capsule wearing the ✓ (${caps.enqTone.trim()})`);
-  ok(caps.emailUnk, 'the unchecked mailbox is a STATED muted capsule, not a blank');
-  ok(caps.glyphs === 3, `each answer carries its identity glyph (${caps.glyphs})`);
-  // A second tap on the open answer CLOSES it (ivToggle round trip).
-  const rt = await page.evaluate(() => {
-    document.querySelector('#inbox-landing .bhub-fold-row[data-arg="enquiries"]').click();
-    const closed = (document.getElementById('iv-fold-enquiries') || {}).hidden === true;
-    document.querySelector('#inbox-landing .bhub-fold-row[data-arg="enquiries"]').click();
-    return { closed, reopened: !(document.getElementById('iv-fold-enquiries') || { hidden: true }).hidden };
-  });
-  ok(rt.closed && rt.reopened, 'a fold row toggles its answer open and closed');
-  // The exception rule, both ways: a stale enquiry raises a red row above the
-  // answers; clearing it stands the section down.
-  const attn = await page.evaluate((old) => {
-    enquiries.push({ id: 'e99', dbId: 99, propKey: '21a', name: 'Laura Hicks', email: 'l@x.com', checkIn: old.ci, checkOut: old.co, adults: 2, children: 0, guests: '2 adults', message: 'Is Jollyboat free?', received: old.made });
-    renderInbox();
-    const up = {
-      row: /Waiting \d+ days — Laura Hicks/.test((document.getElementById('iv-attn') || {}).textContent || ''),
-      cap: /Needs attention/.test((document.getElementById('iv-attn') || {}).textContent || ''),
-      fig: (document.getElementById('iv-sum-enquiries') || {}).textContent || '',
-      warnCap: !!document.querySelector('#iv-sum-enquiries .st-cap.is-warn .st-wic') && !document.querySelector('#iv-sum-enquiries .st-tick'),
-    };
-    enquiries.pop();
-    renderInbox();
-    const down = ((document.getElementById('iv-attn') || {}).textContent || '').trim() === '';
-    return { up, down };
-  }, { ci: d(30), co: d(33), made: d(-4) });
-  ok(attn.up.row && attn.up.cap, 'a stale enquiry raises the Needs-attention row');
-  // …AND IT WEARS THE HOUSE FOLD ANATOMY. `#inbox-landing .bhub-fold-lbl` was
-  // written for the three hand-written answer rows, which wrap their text in
-  // .iv-lwrap beside a glyph — but #iv-attn's rows come from the generic
-  // bhubFoldGrp(), whose label and sub are SIBLINGS. As flex items the sub sat
-  // BESIDE the label and squeezed it to 4px, breaking the guest's name into a
-  // column of single words. Measured, not asserted on the selector: a label
-  // narrower than its own first word is the defect.
-  // At PHONE width, where the squeeze bit: at 1000px the label has room to spare and
-  // the width half of this check would pass on the broken CSS.
-  const attnW = page.viewportSize().width;
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(250);
-  const attnShape = await page.evaluate((old) => {
-    enquiries.push({ id: 'e98', dbId: 98, propKey: '21a', name: 'Jem Beighton', email: 'j@x.com', checkIn: old.ci, checkOut: old.co, adults: 2, children: 0, guests: '2 adults', message: 'Free in Sep?', received: old.made });
-    renderInbox();
-    const grp = document.querySelector('#iv-attn .bhub-fold-grp');
-    const lbl = grp && grp.querySelector('.bhub-fold-lbl');
-    const sub = grp && grp.querySelector('.bhub-fold-sub');
-    if (!lbl) { enquiries.pop(); renderInbox(); return null; }
-    const lr = lbl.getBoundingClientRect(), sr = sub ? sub.getBoundingClientRect() : null;
-    // MEASURE THE INKED TEXT, NOT THE ELEMENT BOX (the cottage-card lesson): under
-    // flex the LABEL's box stayed a comfortable 177px while its own text run was
-    // squeezed to a few pixels beside the sub, so a box measurement reports nothing
-    // wrong. A Range over the label's own text nodes gives what is actually painted.
-    const rng = document.createRange();
-    let textW = 0, textLines = 0;
-    for (const n of lbl.childNodes) {
-      if (n.nodeType !== 3 || !String(n.nodeValue).trim()) continue;
-      rng.selectNodeContents(n);
-      const rects = [...rng.getClientRects()];
-      textW = Math.max(textW, ...rects.map((x) => x.width));
-      textLines = Math.max(textLines, rects.length);
-    }
-    const probe = document.createElement('span');
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
-    probe.style.font = getComputedStyle(lbl).font;
-    probe.textContent = [...lbl.childNodes].filter((n) => n.nodeType === 3).map((n) => n.nodeValue).join(' ')
-      .trim().split(/\s+/).sort((a, b) => b.length - a.length)[0] || '';
-    document.body.appendChild(probe);
-    const wordW = probe.getBoundingClientRect().width;
-    probe.remove();
-    const out = {
-      lblW: Math.round(textW), wordW: Math.round(wordW), lines: textLines,
-      // The sub belongs UNDER the label, not beside it.
-      // The sub is a CHILD of the label, so "under it" is about the LEFT edge, not
-      // the bottom: stacked (display:block) it starts on the label's own rail;
-      // as a flex ITEM beside the text it was pushed right, which is what squeezed
-      // the name. Compare rails, and require the sub to start below the first line.
-      subStacked: sr ? Math.abs(sr.left - lr.left) <= 1 : null,
-      subLower: sr ? sr.top > lr.top + 1 : null,
-      dbg: JSON.stringify({ lblL: Math.round(lr.left), subL: sr ? Math.round(sr.left) : null, lblT: Math.round(lr.top), subT: sr ? Math.round(sr.top) : null }),
-    };
-    enquiries.pop(); renderInbox();
-    return out;
-  }, { ci: d(30), co: d(33), made: d(-6) });
-  // 1.5x the longest word, not merely >= it: broken, the run measured 76px against a
-  // 73px word — it "fitted" by 3px while breaking the name over FOUR lines, one word
-  // each. A label that can hold more than a single word per line is the property.
-  ok(attnShape && attnShape.lblW >= attnShape.wordW * 1.5,
-    `the exception row's label holds more than one word per line (${attnShape && attnShape.lblW}px painted vs ${attnShape && attnShape.wordW}px longest word, ${attnShape && attnShape.lines} lines)`);
-  ok(attnShape && attnShape.subStacked === true && attnShape.subLower === true,
-    `and its sub is STACKED under the label, not squeezed beside it (${attnShape && attnShape.dbg})`);
-  await page.setViewportSize({ width: attnW, height: 900 });
-  await page.waitForTimeout(250);
-  ok(/1 waiting/.test(attn.up.fig), `…and the verdict counts it (${attn.up.fig})`);
-  ok(attn.up.warnCap, 'a busy verdict wears the warning triangle, not the ✓');
-  ok(attn.down, 'answering it stands the red section down');
-  // WIDE: the landing hides and the rail | list | pane layout is untouched.
-  await page.setViewportSize({ width: 1300, height: 900 });
-  await page.waitForTimeout(400);
-  await page.evaluate(() => inboxFolder('enquiries'));
-  await page.waitForTimeout(200);
-  const wide2 = await page.evaluate(() => ({
-    landingHidden: !(document.getElementById('inbox-landing') || {}).getClientRects().length,
-    switchShown: !!(document.getElementById('inbox-folders') || {}).getClientRects().length,
-    enqInMain: (document.getElementById('inbox-folder-enquiries') || {}).parentElement === document.getElementById('inbox-main'),
-  }));
-  ok(wide2.landingHidden && wide2.switchShown && wide2.enqInMain, 'at ≥1200px the landing hides and the folder divs sit back beside the rail');
+  ok(!!back && back.txt === 'Put back in Waiting', `the way back says where it goes (“${back && back.txt}”)`);
+  ok(!!back && back.h >= 44, `…at a real tap size (${back && back.h}px)`);
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#ib-conv [data-ib="undecline"], #ib-side [data-ib="undecline"]')].find((x) => x.getClientRects().length); if (b) b.click(); });
+  await page.waitForFunction(() => document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
+  await page.click('#glass-dialog-ok').catch(() => {});
+  const restored = await sentOf((p) => p.__url === 'enquiries.php' && p.action === 'restore', 5000);
+  ok(!!restored && Number(restored.id) === 91, `…and putting it back restores THAT enquiry (id ${restored && restored.id})`);
+  // The restore reloads the data and THEN says so; wait for its own word, or the
+  // reload it set off lands in the middle of the next section's fixture.
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => /restored to the inbox/i.test(t.textContent)), null, { timeout: 8000 }).catch(() => {});
+  await settled();
 
-  console.log('§11 THE MAIL WATCH: new customer email surfaces without opening the mailbox');
+  // ---- WHAT WAITS, AND HOW THE INBOX SAYS IT ------------------------------------
+  // The three-answers landing is gone (deliberately): the one list's own groups and the
+  // status pill beside the title carry what its verdicts said.
+  console.log('9. what waits, said once');
+  const pillNow = () => page.evaluate(() => {
+    const p = document.querySelector('#ib-pill .head-pill');
+    return { text: p ? p.textContent.trim() : '', tone: p ? p.getAttribute('data-tone') : '', n: ibWaitingCount() };
+  });
+  const p0 = await pillNow();
+  ok(p0.n ? p0.text === `${p0.n} waiting` && p0.tone !== 'ok' : p0.text === 'All answered' && p0.tone === 'ok',
+    `the pill states the list's own count (${p0.n} → “${p0.text}”, ${p0.tone})`);
+  // A STALE enquiry raises itself: its row joins Waiting on you and says how long.
+  const stale = await page.evaluate(async (old) => {
+    // RE-LAID UNTIL IT HOLDS: a background refresh can land and replace the store.
+    let w = null;
+    for (let i = 0; i < 5 && !w; i++) {
+      if (!enquiries.some((x) => x.id === 'e99'))
+        enquiries.push({ id: 'e99', dbId: 99, propKey: '21a', name: 'Laura Hicks', email: 'l@x.com', checkIn: old.ci, checkOut: old.co, adults: 2, children: 0, guests: '2 adults', message: 'Is Jollyboat free?', received: old.made.slice(0, 10), receivedAt: old.made });
+      renderInbox();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:l@x.com"]');
+      if (!w) await new Promise((r) => setTimeout(r, 300));
+    }
+    const grp = w && w.closest('.ib-rows');
+    const time = w && w.querySelector('.ib-time');
+    const p = document.querySelector('#ib-pill .head-pill');
+    const up = {
+      grp: grp ? grp.getAttribute('aria-label') : '',
+      attn: !!(grp && grp.previousElementSibling && grp.previousElementSibling.classList.contains('is-attn')),
+      time: time ? time.textContent.trim() : '', aged: !!time && time.classList.contains('is-age'),
+      pill: p ? p.textContent.trim() : '', tone: p ? p.getAttribute('data-tone') : '', n: ibWaitingCount(),
+    };
+    enquiries = enquiries.filter((x) => x.id !== 'e99');
+    renderInbox();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const q = document.querySelector('#ib-pill .head-pill');
+    return { up, down: { pill: q ? q.textContent.trim() : '', gone: !document.querySelector('#ib-rows .ib-rowwrap[data-key="e:l@x.com"]') } };
+  }, { ci: d(30), co: d(33), made: hrsAgo(4 * 24 + 5) });
+  ok(stale.up.grp === 'Waiting on you' && stale.up.attn, `a stale enquiry sits under Waiting on you, the caption marked (${stale.up.grp})`);
+  ok(/^4 days$/.test(stale.up.time) && stale.up.aged, `…saying how long it has waited, in the warning ink (“${stale.up.time}”)`);
+  ok(stale.up.pill === `${stale.up.n} waiting` && stale.up.n === p0.n + 1 && stale.up.tone === 'warn', `…and the pill counts it, amber (“${stale.up.pill}”)`);
+  ok(stale.down.gone && stale.down.pill === p0.text, `answering it stands the row and the count down (“${stale.down.pill}”)`);
+  // UNKNOWN IS STATED, never claimed as nothing: a mailbox that did not answer says so
+  // at the foot of the list, with the way to ask again.
+  const unk = await page.evaluate(() => {
+    __mbxFailed = true;
+    ibRenderList();
+    const n = document.querySelector('#ib-rows .ib-foot .ib-note');
+    const out = { note: n ? n.textContent.trim() : '', retry: !!document.querySelector('#ib-rows [data-ib="retry-mail"]') };
+    __mbxFailed = false;
+    ibRenderList();
+    return out;
+  });
+  ok(/mailbox didn.t answer/i.test(unk.note) && unk.retry, `a mailbox that did not answer is said, with Try again (“${unk.note.slice(0, 50)}”)`);
+  // The layout follows the room: a computer's panes side by side, a phone's list alone.
+  const lay = await page.evaluate(() => document.getElementById('ib').classList.contains('is-wide'));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
+  const layPhone = await page.evaluate(() => document.getElementById('ib').classList.contains('is-wide'));
+  ok(lay && !layPhone, `side by side with room for both, one at a time on a phone (${lay}/${layPhone})`);
   await page.setViewportSize({ width: 900, height: 900 });
   await page.waitForTimeout(300);
-  // (a) The landing verdict is HONEST about the server's own count: with the
-  // reply-poll's store carrying 3 waiting and the mailbox never fetched, "not
-  // checked yet" was the landing lying in the cautious direction.
-  const mw1 = await page.evaluate(() => {
+
+  console.log('§11 THE MAIL WATCH: new customer email surfaces without opening the mailbox');
+  // The landing's "3 new" verdict went with the landing; the count the cron's poll
+  // leaves behind (__newMailPre) surfaces as Today's duty (ui-test-needs-you §7). What
+  // is the mail watch's own: the RESUME probe checks immediately when stale — nudges
+  // the reply-poll, re-reads the cheap count, and the duty repaints from it.
+  await page.evaluate(() => {
     window.__mbxOpenedOnceSave = __mbxOpenedOnce;
-    __mbxOpenedOnce = false;
-    // FREEZE loadData for this section: nav('view-inbox') fires openInbox, whose
-    // unawaited loadData re-derives __newMailPre from the fixture's generic
-    // bootstrap (null) MID-CHECK — measured, it clobbered the fresh count set by
-    // the very chbMailCheck under test. §11 tests the mail watch, not loadData.
+    // FREEZE loadData for this section: a refresh landing mid-check re-derives
+    // __newMailPre from the fixture's generic bootstrap (null) and clobbers the fresh
+    // count set by the very chbMailCheck under test.
     window.__ldSave = window.loadData;
     window.loadData = async () => ({ ok: true, failed: [] });
-    window.__newMailPre = { count: 3, items: [{ name: 'Anne Betts', from: 'anne@x.com', subject: 'Parking at Pimpernel' }] };
-    nav('view-inbox');
-    inboxVerdicts();
-    return {
-      fig: (document.getElementById('iv-sum-email') || {}).textContent || '',
-      sub: (document.getElementById('iv-sub-email') || {}).textContent || '',
-      warn: !!document.querySelector('#iv-sum-email .st-cap.is-warn, #iv-sum-email.is-warn') || /3 new/.test((document.getElementById('iv-sum-email') || {}).textContent || ''),
-    };
   });
-  ok(/3 new/.test(mw1.fig), `the unfetched mailbox verdict states the server's own count (${mw1.fig.trim()})`);
-  ok(/Anne Betts/.test(mw1.sub) && /Parking/.test(mw1.sub), `…naming the latest sender (${mw1.sub.trim()})`);
-  // …and with NO known count, unknown stays a stated third state.
-  const mw0 = await page.evaluate(() => {
-    window.__newMailPre = null;
-    inboxVerdicts();
-    return (document.getElementById('iv-sum-email') || {}).textContent || '';
-  });
-  ok(/not checked yet/.test(mw0), `no known count → the honest "not checked yet" survives (${mw0.trim()})`);
-  // (b) The RESUME probe checks immediately when stale: nudges the reply-poll,
-  // re-reads the cheap count, and repaints the surfaces in place.
   const mw2 = await page.evaluate(async () => {
     const realPost = window.apiPost;
     const hits = [];
@@ -799,35 +565,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       polled: hits.some((h) => h.url.includes('mailbox-read.php')),
       counted: hits.some((h) => h.url.includes('mailbox.php') && h.action === 'new'),
       pre: window.__newMailPre,
-      fig: (document.getElementById('iv-sum-email') || {}).textContent || '',
+      duty: (chbDuties() || []).map((x) => x.label).find((x) => /new emails? (are|is) waiting|emailed you/.test(x)) || '',
     };
   });
   ok(mw2.polled && mw2.counted, 'resume nudges the reply-poll AND re-reads the cheap count');
   ok(mw2.pre && mw2.pre.count === 2, 'the fresh count lands in __newMailPre');
-  ok(/2 new/.test(mw2.fig), `…and the landing verdict repaints in place (${mw2.fig.trim()})`);
+  ok(/2 new emails are waiting/.test(mw2.duty), `…and the duty it raises says so at once (“${mw2.duty}”)`);
   ok(mw2.armedOnce, 'the watch arms once per page — a re-init cannot double the timer');
   await page.evaluate(() => { __mbxOpenedOnce = window.__mbxOpenedOnceSave; window.__newMailPre = null; window.loadData = window.__ldSave; });
 
-  // ── THE READING PANE BELONGS TO THE ACTIVE FOLDER ─────────────────────────
-  // renderInbox's wide-split auto-select checked the active VIEW but not the
-  // active FOLDER, while markInboxSelection right below it carries exactly that
-  // guard. So any re-render while the owner was reading Email or Messages —
-  // a dock tap, a reconnect, an approval nulling __enqHubId — docked an enquiry
-  // hub over what they were reading AND stamped that enquiry seen, dropping it
-  // from an unread count they had never looked at.
+  // ── A RE-RENDER NEVER TAKES THE OWNER OFF WHAT THEY ARE READING ───────────────
+  // renderInbox's old wide-split auto-select docked an enquiry hub over the email the
+  // owner was reading AND stamped that enquiry seen. The one list has no enquiry pane
+  // to dock into: a re-render of the enquiries must leave the Inbox and the open
+  // conversation exactly where they were.
   await page.setViewportSize({ width: 1280, height: 900 });
   const hijack = await page.evaluate(async (dd) => {
     nav('view-inbox');
     await new Promise((r) => setTimeout(r, 300));
-    inboxFolder('email');
+    ibSoon();
     await new Promise((r) => setTimeout(r, 300));
-    // The suite's own routes answer with no enquiries, so seed one AFTER the
-    // folder switch has finished loading (its fetch replaces the array) —
-    // without one there is nothing to dock and both checks prove nothing.
+    const before = __ibOpen;
     window.__seedEnq = () => {
-      __inboxTab = 'waiting'; // an earlier section leaves the declined drawer open
       if (!enquiries.some((x) => x.id === 'e77'))
-        enquiries.push({ id: 'e77', dbId: 77, propKey: '21a', name: 'Nadia Ferrer', email: 'n@x.com', checkIn: dd.ci, checkOut: dd.co, adults: 2, children: 0, guests: '2 adults', message: 'Any parking?', received: dd.made });
+        enquiries.push({ id: 'e77', dbId: 77, propKey: '21a', name: 'Nadia Ferrer', email: 'n@x.com', checkIn: dd.ci, checkOut: dd.co, adults: 2, children: 0, guests: '2 adults', message: 'Any parking?', received: dd.made, receivedAt: dd.made + ' 09:00:00' });
       return enquiries.length;
     };
     const seeded = window.__seedEnq();
@@ -837,28 +598,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.openEnquiryHub = async (...a) => { opened++; return real.apply(null, a); };
     renderInbox();
     await new Promise((r) => setTimeout(r, 400));
-    const folderAfter = __inboxFolder;
     window.openEnquiryHub = real;
-    return { opened, folderAfter, seeded };
+    return { opened, seeded, before, after: __ibOpen, view: (document.querySelector('.page-view.active') || {}).id, nadiaSeen: !!(enquiries.find((x) => x.id === 'e77') || {}).seenAt };
   }, { ci: d(30), co: d(33), made: d(-1) });
   ok(hijack.seeded > 0, `the fixture really carries an enquiry to dock (${hijack.seeded})`);
-  ok(hijack.opened === 0, `a re-render on the Email folder does not dock an enquiry over it (opened ${hijack.opened})`);
-  ok(hijack.folderAfter === 'email', 'and the owner is left on the folder they were reading');
-  // …while the Enquiries folder still auto-selects, which is the feature.
+  ok(hijack.opened === 0 && hijack.view === 'view-inbox', `a re-render does not open an enquiry hub over the Inbox (opened ${hijack.opened}, ${hijack.view})`);
+  ok(!!hijack.before && hijack.after === hijack.before, `the conversation on screen stays the one being read (${hijack.before} → ${hijack.after})`);
+  ok(!hijack.nadiaSeen, '…and the new enquiry is not stamped seen behind the owner\u2019s back');
+  // …while an EMPTY pane on a computer still fills itself, with the person waiting
+  // longest — which is the feature the old auto-select existed for.
   const autoSel = await page.evaluate(async () => {
-    inboxFolder('enquiries');
+    __ibOpen = null;
+    ibRender();
     await new Promise((r) => setTimeout(r, 300));
-    window.__seedEnq();
-    __enqHubId = null;
-    let opened = 0;
-    const real = window.openEnquiryHub;
-    window.openEnquiryHub = async (...a) => { opened++; return real.apply(null, a); };
-    renderInbox();
-    await new Promise((r) => setTimeout(r, 400));
-    window.openEnquiryHub = real;
-    return { opened, n: (typeof enquiries !== 'undefined' ? enquiries.length : -1), wide: inboxSplitWide() };
+    const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+    return { open: __ibOpen, waiting: !!p && ibWaiting(p), name: ((document.querySelector('#ib-conv .ib-hname') || {}).textContent || '').trim() };
   });
-  ok(autoSel.opened > 0, `the Enquiries folder still fills its empty pane (opened ${autoSel.opened}, list ${autoSel.n}, wide ${autoSel.wide})`);
+  ok(!!autoSel.open && autoSel.waiting && !!autoSel.name, `an empty pane fills with the person waiting on you (${autoSel.open}, ${autoSel.name})`);
 
   // EITHER ID FORM opens an enquiry. Client enquiries carry id 'e<n>'; the
   // new-enquiry push and every federated search row hand over the NUMERIC db id,
@@ -883,57 +639,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/String\(x\.id\) === String\(want\) \|\| String\(x\.dbId\) === String\(want\)/.test(hubSrcIds),
     'openEnquiryHub normalises the id rather than matching one form');
 
-  // ── THE MESSAGES SEARCH BOX IS A SEARCH BOX ────────────────────────────────
-  // .msg-inbox-controls is a flex row with no wrap whose two siblings are both
-  // `flex: 0 0 auto` + nowrap, so on a phone the input absorbed the entire
-  // shortfall: measured 64px — about two characters of "Search name, email or
-  // text…" — and ONLY when there is unanswered work, i.e. exactly when the folder
-  // is worth searching. Driven through the real renderer with a thread that needs
-  // a reply, since with none the two siblings do not render and the row is fine.
+  // ── THE SEARCH BOX IS A SEARCH BOX ─────────────────────────────────────────
+  // The chat folder's own search row squeezed its input to 64px on a phone beside the
+  // unanswered chip. The one list has ONE search over everyone; on a phone it must keep
+  // a usable width of the list it searches.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
-  const msgRow = await page.evaluate(async () => {
-    // Back to the Inbox first: the id-form checks above open an enquiry hub, and at
-    // phone width that is a standalone VIEW, so the folder row is in the document
-    // and painting nothing. Seed AFTER it — openInbox refetches and the suite's
-    // route answers with no threads.
+  const search = await page.evaluate(async () => {
     await window.openInbox();
     await new Promise((r) => setTimeout(r, 300));
-    __msgThreads = [{ id: 1, booking_id: 9, name: 'A Guest', email: 'guest@example.com', prop_key: '21a',
-      last_body: 'Is there parking?', last_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      last_from: 'guest', unread: 1, archived: 0 }];
-    __msgShowArchived = false;
-    // Stacked, each folder lives inside a CLOSED fold — measuring there reports 0
-    // for everything and the check passes proving nothing (it did, first run).
-    inboxFolder('messages');
-    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
-    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
-    renderMessagesList();
-    // Wait for the controls row by STATE, not a clock: under the 3-suite runner
-    // load a fixed 300ms read "row false inp false" once — openInbox's refetch
-    // was still landing and re-rendering the folder underneath.
-    let row = null, inp = null;
-    for (let i = 0; i < 40 && !(row && inp); i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      row = document.querySelector('.msg-inbox-controls');
-      inp = document.getElementById('msg-search');
-      if (!row) renderMessagesList();
-    }
-    if (!row || !inp) return { why: 'row ' + !!row + ' inp ' + !!inp + ' folds ' + document.querySelectorAll('#inbox-landing .bhub-fold-row').length };
-    if (!row.getClientRects().length) return { why: 'the controls row never painted' };
-    const chip = document.getElementById('msg-unanswered');
-    return {
-      w: Math.round(inp.getBoundingClientRect().width),
-      rowW: Math.round(row.getBoundingClientRect().width),
-      chip: !!chip,
-      // How wide is its own placeholder? A field narrower than a few characters of
-      // it reads as broken rather than as a search.
-      ph: (inp.placeholder || '').length,
-    };
+    if (document.getElementById('ib').classList.contains('is-conv')) { ibClose(); await new Promise((r) => setTimeout(r, 450)); }
+    const inp = document.getElementById('ib-q'), list = document.getElementById('ib-list');
+    if (!inp || !inp.getClientRects().length) return { why: 'the search never painted' };
+    return { w: Math.round(inp.getBoundingClientRect().width), listW: Math.round(list.getBoundingClientRect().width), ph: inp.placeholder };
   });
-  ok(msgRow && msgRow.chip, `(fixture) an unanswered thread renders the chip that squeezes the row (${msgRow && (msgRow.why || msgRow.rowW + 'px')})`);
-  ok(msgRow && msgRow.w >= msgRow.rowW * 0.6,
-    `the conversation search keeps a usable width beside them (${msgRow && msgRow.w}px of ${msgRow && msgRow.rowW}px)`);
+  ok(!!search && search.w >= search.listW * 0.6,
+    `the Inbox's search keeps a usable width (${search && (search.why || search.w + 'px of ' + search.listW + 'px')})`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(200);
 
@@ -944,10 +665,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   //  ("decline — each emails the guest"), so the owner had no reason to think
   //  anything was owed. The ask does NOT send: it puts the reply one tap away at
   //  the moment the owner has the context, and "Not now" is a complete answer.
+  //  (Driven through the enquiry page's own Decline, declineEnquiry — the one-list
+  //  Inbox's in-place decline and its ask are ui-test-inbox §4.)
   console.log('\n-- §11 the decline offers the reply --');
   await page.setViewportSize({ width: 1000, height: 900 });
-  await page.evaluate(() => { __inboxFolder = 'enquiries'; __inboxTab = 'waiting'; renderInbox(); });
-  await page.waitForTimeout(200);
   // Drive the REAL decline. It awaits glassConfirm, so the promise is parked on
   // window and answered by clicking the dialog's own buttons.
   const startDecline = async (id) => {
@@ -977,6 +698,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     enquiries.push({ id: 'e77', dbId: 77, propKey: '21a', name: 'Nadia Ferrer', email: 'n@x.com', checkIn: seed.ci, checkOut: seed.co, adults: 2, children: 0, guests: '2 adults', message: 'Any parking?', received: seed.made });
   }, { ci: d(30), co: d(33), made: d(-1) });
   await startDecline('e77');
+  await page.waitForFunction(() => document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
   const asked = await dialogText();
   ok(!!asked && /expecting a reply/i.test(asked.msg),
     `declining raises the ask ("${asked ? asked.msg.split('\n')[0].slice(0, 58) : 'no dialog'}")`);
@@ -988,12 +710,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const wrote = await page.evaluate(() => ({
     opened: window.__composeOpened,
     gone: !enquiries.some((e) => e.id === 'e77'),
-    body: (document.getElementById('enq-email-body') || {}).value || '',
+    body: (document.getElementById('enq-email-body') || {}).value,
   }));
   ok(wrote.gone, 'the declined enquiry really has left the live list (so an id lookup would fail)');
   ok(wrote.opened === 1, `…and the composer still opened (${wrote.opened})`);
-  ok(/Thanks so much for your enquiry/.test(wrote.body) && !/^\s*(Hi|Hello) Nadia/i.test(wrote.body),
-    `…carrying the draft, greeting-free (“${wrote.body.split('\n')[0].slice(0, 46)}…”)`);
+  // The ✨ drafter was REMOVED: the composer opens EMPTY, the owner's own words to
+  // write — and so nothing in it can greet the guest a second time.
+  ok(wrote.body === '', `…its message box empty — no canned draft (“${String(wrote.body).slice(0, 40)}”)`);
   await page.evaluate(() => { closeEnquiryEmailModal && closeEnquiryEmailModal(); });
   // 3) "Not now" is a complete answer: the old toast, Undo intact, nothing sent.
   await page.evaluate((seed) => {
@@ -1001,6 +724,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     enquiries.push({ id: 'e78', dbId: 78, propKey: '21a', name: 'Owen Hale', email: 'o@x.com', checkIn: seed.ci, checkOut: seed.co, adults: 2, children: 0, guests: '2 adults', message: 'Hi', received: seed.made });
   }, { ci: d(30), co: d(33), made: d(-1) });
   await startDecline('e78');
+  await page.waitForFunction(() => document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
   await page.click('#glass-dialog-cancel');
   await page.waitForTimeout(400);
   const notNow = await page.evaluate(() => {
@@ -1031,69 +755,41 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!noMail.dialog, 'an enquiry with no email address raises no ask');
   ok(/removed from the inbox/i.test(noMail.msg), `…and goes straight to the toast ("${noMail.msg}")`);
 
-  // ---- §11b THE DRAWER KEEPS THE OFFER ------------------------------------
-  //  A decline made in haste can still be answered an hour later — the drawer row
-  //  is the only place the guest is reachable once the enquiry has left the inbox.
-  // Reached by CLICKING the tab, the way the drawer's own section does — driving
-  // __inboxTab directly leaves the fetch unarmed and renders nothing.
-  await page.evaluate(() => window.inboxFolder('enquiries'));
-  await page.waitForTimeout(200);
-  await page.evaluate(() => {
-    __declinedEnq = null;
-    const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => x.textContent.trim() === 'Declined');
-    if (b) b.click();
-  });
-  await page.waitForTimeout(900);
-  const drawer = await page.evaluate(() => {
-    const row = document.querySelector('.enq-declined-row');
-    if (!row) return null;
-    const b = row.querySelector('.enq-declined-email');
-    return { has: !!b, label: b ? b.textContent.trim() : '' };
-  });
-  ok(!!drawer && drawer.has, `the declined row offers a reply ("${drawer && drawer.label}")`);
-  // Real click → the composer opens with the draft, from __declinedEnq's own row.
-  await page.evaluate(() => { window.__composeOpened = 0; });
-  await page.click('.enq-declined-email');
-  await page.waitForTimeout(500);
-  const fromDrawer = await page.evaluate(() => ({
-    opened: window.__composeOpened,
-    body: (document.getElementById('enq-email-body') || {}).value || '',
+  // ---- §11b A DECLINE CAN STILL BE ANSWERED LATER -----------------------------
+  //  A decline made in haste can still be answered an hour later. The drawer row that
+  //  offered it is gone; the declined enquirer's conversation in the one list keeps
+  //  the reply box, and a reply goes out through the ENQUIRY's own email route.
+  console.log('\n-- §11b the declined conversation keeps the reply --');
+  await page.evaluate(async () => { await window.openInbox(); await ibLoadAll(true); });
+  await settled();
+  await openPerson('e:j@x.co', () => !!document.getElementById('ib-reply'));
+  const jem = await page.evaluate(() => ({
+    reply: !!document.getElementById('ib-reply'),
+    email: !!document.querySelector('#ib-conv .ib-chan [data-arg="email"]:not([disabled])'),
   }));
-  ok(fromDrawer.opened === 1 && /Thanks so much for your enquiry/.test(fromDrawer.body),
-    `…and it opens the composer with the draft (${fromDrawer.opened})`);
-  await page.evaluate(() => { closeEnquiryEmailModal && closeEnquiryEmailModal(); });
-  // With NO address there is nothing to offer, so the button is simply absent —
-  // never a control that alerts when tapped.
-  const noAddr = await page.evaluate(() => {
+  ok(jem.reply && jem.email, 'the declined enquirer\u2019s conversation offers a reply by email');
+  await page.fill('#ib-reply', 'So sorry we are full then — would the week after suit?');
+  await page.click('#ib-send');
+  const enqMail = await sentOf((p) => p.__url === 'enquiries.php' && p.action === 'email_guest');
+  ok(!!enqMail && enqMail.id === 91 && /week after/.test(enqMail.message), `…and it goes through the declined enquiry's own email route (id ${enqMail && enqMail.id})`);
+  // With NO address there is nothing to offer, so the box is simply absent — the
+  // conversation says why, rather than offering a reply that could go nowhere.
+  const noAddr = await page.evaluate(async () => {
     __declinedEnq = (__declinedEnq || []).map((e) => Object.assign({}, e, { email: '' }));
-    renderInbox();
-    const row = document.querySelector('.enq-declined-row');
-    return { email: !!(row && row.querySelector('.enq-declined-email')), restore: !!(row && row.querySelector('.enq-declined-restore')) };
-  });
-  ok(!noAddr.email && noAddr.restore, 'with no address the reply button is absent, and Restore still there');
-  // AND IT MUST NOT COST THE COTTAGE NAME AT 390px. The row's own gate above
-  // exists because "Put back in Waiting" already takes 165px of a 390px row; a
-  // second button is exactly the pressure that squeezed the pill to "Pl…".
-  await page.evaluate(() => { __declinedEnq = null; const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => x.textContent.trim() === 'Declined'); if (b) b.click(); });
-  await page.waitForTimeout(900);
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.waitForTimeout(300);
-  const tight = await page.evaluate(() => {
-    const row = document.querySelector('.enq-declined-row');
-    const tag = row.querySelector('.prop-tag');
-    const btns = [...row.querySelectorAll('.enq-declined-email, .enq-declined-restore')];
+    __ibOpen = null;
+    ibRender();
+    const w = [...document.querySelectorAll('#ib-rows .ib-rowwrap')].find((x) => /Jem Beighton/.test(x.textContent));
+    if (w) w.querySelector('.ib-row').click();
+    await new Promise((r) => setTimeout(r, 400));
     return {
-      clipped: tag.scrollWidth > tag.clientWidth + 1,
-      tagW: Math.round(tag.getBoundingClientRect().width), tagNeeds: tag.scrollWidth,
-      n: btns.length,
-      overflow: btns.some((b) => b.getBoundingClientRect().right > row.getBoundingClientRect().right + 1),
-      floor: Math.min(...btns.map((b) => Math.round(b.getBoundingClientRect().height))),
+      found: !!w,
+      reply: !!document.getElementById('ib-reply'),
+      note: ((document.querySelector('#ib-conv .ib-autonote') || {}).textContent || '').trim(),
+      back: !!document.querySelector('#ib-conv [data-ib="undecline"], #ib-side [data-ib="undecline"]'),
     };
   });
-  ok(tight.n === 2, `both actions render on the row (${tight.n})`);
-  ok(!tight.clipped, `…and the cottage name is still not clipped at 390px (${tight.tagW}px for ${tight.tagNeeds}px)`);
-  ok(!tight.overflow, 'neither button runs past the row edge');
-  await page.setViewportSize({ width: 1000, height: 900 });
+  ok(noAddr.found && !noAddr.reply && /no email address/i.test(noAddr.note), `with no address the reply box is absent and the conversation says why (“${noAddr.note}”)`);
+  ok(noAddr.found && noAddr.back, '…and Put back in Waiting is still offered');
 
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
