@@ -407,8 +407,13 @@ chk('…and an explicit balance request is still honoured', booking_payment_kind
 // The boundary, asserted from BOTH sides so it can't drift by a day.
 chk("one day inside the boundary (+" . ($win - 1) . ") → BALANCE", booking_payment_kind($at($win - 1), 'deposit') === 'balance');
 chk("exactly on the boundary (+{$win}) → DEPOSIT", booking_payment_kind($at($win), 'deposit') === 'deposit');
-// The legacy card-authorisation flow is not a deposit and must pass through.
-chk("the legacy 'hold' flow is untouched", booking_payment_kind($at(1), 'hold') === 'hold');
+// The legacy card-authorisation flow is not a deposit and passes through, but only
+// where a hold was asked for: the same token opens ?hold=, so honouring it for any
+// booking let a guest swap links and never have the refundable deposit taken.
+chk("the legacy 'hold' flow is untouched where a hold was requested", booking_payment_kind(array_merge($at(1), ['hold_requested_at' => '2026-01-01 10:00:00']), 'hold') === 'hold');
+chk("…and refused where none was: the stage is the booking's own", booking_payment_kind($at(1), 'hold') === 'balance');
+$payS = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('a charge is refused in hold mode (a hold is authorised, never charged)', (bool) preg_match("/if \(\\\$action === 'charge'\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(\\\$kind === 'hold'\) \{\s*json_out\(/", $payS));
 // A booking with no check-in date must not be forced into pay-in-full.
 chk('a booking with no check-in date keeps the requested kind', booking_payment_kind(['check_in' => null], 'deposit') === 'deposit');
 
@@ -691,8 +696,12 @@ chk('…and it is logged as the owner\'s own assertion, not as something Square 
 $recS = (string) file_get_contents(__DIR__ . '/payments-reconcile.php');
 chk('the poller does not re-ask about a hand-confirmed refund',
     strpos($recS, "NOT IN ('COMPLETED','FAILED','REJECTED','MANUAL')") !== false);
+// IN the write, not on the row it read: that row was selected for being undecided,
+// so testing it guarded nothing while the webhook or the owner settled it mid-poll.
 chk('…and refuses to write over a decided row even if one settles mid-poll',
-    strpos($recS, '!payment_status_terminal(') !== false);
+    preg_match("/UPDATE payments SET status = \? WHERE id = \?\"[\s\S]{0,120}NOT IN \('COMPLETED','MANUAL','FAILED','REJECTED'\) OR \? = 1/", $recS) === 1
+    && strpos($recS, "payment_status_terminal(\$status) ? 1 : 0") !== false
+    && strpos($recS, "!payment_status_terminal((string) (\$r['status']") === false);
 $hookS = (string) file_get_contents(__DIR__ . '/square-webhook.php');
 chk('the refund webhook cannot downgrade a decided row either (events arrive out of order)',
     strpos($hookS, 'payment_status_terminal($refund[\'status\'])') !== false
@@ -1027,7 +1036,8 @@ chk('the old behaviour is what it replaces (a bare deposit hint still reads £0)
 chk('a fresh booking is unchanged — deposit, £200', booking_payment_kind($payB(60, 0)) === 'deposit'
     && abs(booking_amount_due($payB(60, 0), 'deposit')['due'] - 200.0) < 0.005);
 chk('an explicit balance ask (Pay in full) is honoured outside the window', booking_payment_kind($payB(60, 0), 'balance') === 'balance');
-chk('the legacy hold flow passes through untouched', booking_payment_kind($payB(60, 0), 'hold') === 'hold');
+chk('the legacy hold flow passes through where a hold was asked for', booking_payment_kind(array_merge($payB(60, 0), ['hold_requested_at' => '2026-01-01 10:00:00']), 'hold') === 'hold');
+chk('…and a ?hold= link on any other booking asks for its own stage (here the deposit)', booking_payment_kind($payB(60, 0), 'hold') === 'deposit');
 // The QUOTE and the CHARGE must agree: the pay screen posts back the stage it
 // showed, and an explicit 'deposit' suppresses the settled-deposit upgrade so a
 // payment landing mid-flow cannot take the balance off a deposit screen.

@@ -32,6 +32,9 @@ const AUTOPAY_RETRY_DAYS = 1;
 // invite a rate limit, and a stampede makes a partial failure impossible to
 // attribute.
 const AUTOPAY_RUN_MAX = 20;
+// How many candidate rows one pass reads before judging them (the cap above counts
+// only the ones it will actually try).
+const AUTOPAY_RUN_SCAN = 500;
 // How many days before the charge the guest is told it is coming. Three, so an
 // unwanted one can be stopped on a working day without the notice arriving so
 // early it is forgotten by the time the money moves.
@@ -356,7 +359,93 @@ function autopay_revoke($bookingId)
 }
 
 // ---- COLLECTING ------------------------------------------------------------
-// One booking, all the way. Returns ['ok'|'skip'|'fail', sentence] — 'skip' is
+// The reference this site writes on a booking's charges (CHB-000042), which the orphan
+// sweep and autopay_find_taken read back.
+function autopay_reference($bookingId)
+{
+    return 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
+}
+
+// Did Square answer? No response (status 0: a timeout or a dropped connection) or its
+// own server error means the payment may or may not have gone through.
+function autopay_outcome_unknown($res)
+{
+    $st = (int) ($res['status'] ?? 0);
+    if (!empty($res['body']['payment']) && $st >= 200 && $st < 300) {
+        return false;
+    }
+    $code = strtoupper(trim((string) ($res['body']['errors'][0]['code'] ?? '')));
+    return $st === 0 || $st >= 500 || in_array($code, ['GATEWAY_TIMEOUT', 'INTERNAL_SERVER_ERROR', 'SERVICE_UNAVAILABLE', 'TEMPORARY_ERROR'], true);
+}
+
+// Is this Square payment already on our ledger (or the booking's hold)?
+function autopay_payment_recorded($sqId)
+{
+    $sqId = trim((string) $sqId);
+    if ($sqId === '') {
+        return false;
+    }
+    try {
+        $q = db()->prepare('SELECT COUNT(*) FROM payments WHERE square_payment_id = ?');
+        $q->execute([$sqId]);
+        return (int) $q->fetchColumn() > 0;
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
+// What Square took for this booking since a try it never answered: the payment, null
+// for nothing, or false when Square could not be asked. A payment already on our
+// ledger (the guest's own link) is not that try's.
+function autopay_find_taken($b, $sinceDay)
+{
+    $since = gmdate('Y-m-d\TH:i:s\Z', (int) strtotime(substr((string) $sinceDay, 0, 10) . ' 00:00:00 UTC') - 86400);
+    $loc = function_exists('square_location_id') ? square_location_id() : '';
+    $res = square_api('GET', '/v2/payments?limit=100&sort_order=DESC&begin_time=' . rawurlencode($since) . ($loc !== '' ? '&location_id=' . rawurlencode($loc) : ''));
+    $st = (int) ($res['status'] ?? 0);
+    if ($st < 200 || $st >= 300) {
+        return false;
+    }
+    $ref = autopay_reference((int) ($b['id'] ?? 0));
+    foreach ((array) ($res['body']['payments'] ?? []) as $p) {
+        if (!is_array($p) || strtoupper((string) ($p['reference_id'] ?? '')) !== $ref || strtoupper((string) ($p['status'] ?? '')) !== 'COMPLETED') {
+            continue;
+        }
+        if (!autopay_payment_recorded((string) ($p['id'] ?? ''))) {
+            return $p;
+        }
+    }
+    return null;
+}
+
+// A try Square never answered: dated so the next pass is tomorrow, marked so it asks
+// Square first, and the owner told. No attempt is counted and the guest hears nothing.
+function autopay_record_unknown($bookingId, $today, $charge, $b)
+{
+    $why = 'Square didn’t answer, so it isn’t known whether it was taken';
+    try {
+        db()->prepare('UPDATE bookings SET autopay_last_try = ?, autopay_last_error = ?, autopay_last_code = ? WHERE id = ?')->execute([$today, $why, 'UNKNOWN', (int) $bookingId]);
+    } catch (\Throwable $e) {
+        try {
+            db()->prepare('UPDATE bookings SET autopay_last_try = ?, autopay_last_error = ? WHERE id = ?')->execute([$today, $why, (int) $bookingId]);
+        } catch (\Throwable $e2) {
+        }
+    }
+    try {
+        log_activity('payment', 'autopay.unknown', autopay_unknown_line($charge, $b) . '. Tomorrow\'s pass asks Square first and never takes it twice.', [
+            'severity' => 'action',
+            'entity' => 'booking',
+            'entity_id' => (string) (int) $bookingId,
+        ]);
+    } catch (\Throwable $e) {
+    }
+}
+function autopay_unknown_line($charge, $b)
+{
+    return 'Square didn’t answer about £' . number_format((float) $charge, 2) . ' from ' . (string) ($b['name'] ?? 'the guest') . ': check Square before chasing it';
+}
+
+// One booking, all the way. Returns ['ok'|'skip'|'fail'|'unknown', sentence] — 'skip' is
 // not a failure and must not count an attempt, because the commonest reason to
 // skip is that the arrangement no longer applies (they paid by other means).
 function autopay_collect_one($b, $today = null)
@@ -388,6 +477,14 @@ function autopay_collect_one($b, $today = null)
             book_unlock($b['prop_key']);
             return ['skip', $state[1]];
         }
+        // …and the DAY re-asked too. A second pass that read the row before the first
+        // pass wrote waited here for the lock, then found the plan still armed (a monthly
+        // plan stays armed for its next instalment) and charged again: Square answered
+        // the same key with the same payment, and the instalment was counted twice.
+        if (!autopay_try_due($now, $today)) {
+            book_unlock($b['prop_key']);
+            return ['skip', 'Already tried today'];
+        }
         // WHAT THIS COLLECTION MAY TAKE is one derivation (pricing.php): the
         // whole rest for a single collection; for a monthly plan the agreed
         // per-instalment ceiling — or the remainder once the final date has
@@ -401,24 +498,56 @@ function autopay_collect_one($b, $today = null)
             book_unlock($b['prop_key']);
             return ['skip', 'Nothing left to collect'];
         }
-        $res = square_api('POST', '/v2/payments', [
-            // DETERMINISTIC, and keyed on the booking + the sum + the day. A retry
-            // of the same attempt collapses at Square rather than charging twice;
-            // a genuinely different collection does not.
-            'idempotency_key' => 'chb-auto-' . $bookingId . '-' . $today . '-' . (int) round($charge * 100),
+        // A TRY SQUARE NEVER ANSWERED may have taken the money, so Square is asked
+        // first and a payment it did take is recorded rather than taken again. Square
+        // unreachable, or a different sum: left for the owner, untouched.
+        if (strtoupper((string) ($now['autopay_last_code'] ?? '')) === 'UNKNOWN') {
+            $found = autopay_find_taken($now, substr((string) ($now['autopay_last_try'] ?? ''), 0, 10) ?: $today);
+            if (is_array($found) && abs(round((int) ($found['amount_money']['amount'] ?? 0) / 100, 2) - $charge) < 0.005) {
+                autopay_record_success($now, $found, $take['rental'], $damages, $today);
+                book_unlock($b['prop_key']);
+                return ['ok', 'Collected £' . number_format($charge, 2) . ' from ' . (string) ($now['name'] ?? 'the guest') . ' (on the earlier try)'];
+            }
+            if ($found !== null) {
+                autopay_record_unknown($bookingId, $today, $charge, $now);
+                book_unlock($b['prop_key']);
+                return ['unknown', autopay_unknown_line($charge, $now)];
+            }
+        }
+        $gate = substr((string) ($now['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) ($now['autopay_due'] ?? ''), 0, 10);
+        $req = [
+            // DETERMINISTIC: the booking, the date the instalment is FOR, the sum and the
+            // attempt. Not today's date: a try Square never answered is repeated the
+            // next day with the SAME key, which Square will not charge twice; a recorded
+            // decline moves the attempt on, so a genuine retry is a new request.
+            'idempotency_key' => 'chb-auto-' . $bookingId . '-' . ($gate !== '' ? $gate : $today) . '-' . (int) round($charge * 100) . '-' . (int) ($now['autopay_attempts'] ?? 0),
             'source_id' => (string) $now['autopay_card_id'],
             'customer_id' => (string) $now['autopay_customer_id'],
             'amount_money' => ['amount' => (int) round($charge * 100), 'currency' => 'GBP'],
-            'reference_id' => 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT),
+            'reference_id' => autopay_reference($bookingId),
             'note' => 'Balance — ' . (string) ($now['name'] ?? ''),
             // MERCHANT-INITIATED, and it has to say so. This charge happens with
             // nobody at the keyboard, and telling the issuer otherwise is both
             // untrue and the thing that gets a card-on-file charge declined.
             'customer_details' => ['customer_initiated' => false],
             'location_id' => function_exists('square_location_id') ? square_location_id() : null,
-        ]);
+        ];
+        $res = square_api('POST', '/v2/payments', $req);
+        // NO ANSWER IS NOT A DECLINE. A timeout, a dropped connection or Square's own
+        // server error may have taken the money: it was read as a hard decline, the
+        // guest was told nothing had been taken and the same pass chased the balance.
+        // The same request is sent once more at once; still unknown, nobody is told
+        // anything but the owner, and the plan stays armed so nothing chases it.
+        if (autopay_outcome_unknown($res)) {
+            $res = square_api('POST', '/v2/payments', $req);
+        }
         $payment = $res['body']['payment'] ?? null;
         $st = (int) ($res['status'] ?? 0);
+        if ((!$payment || $st < 200 || $st >= 300) && autopay_outcome_unknown($res)) {
+            autopay_record_unknown($bookingId, $today, $charge, $now);
+            book_unlock($b['prop_key']);
+            return ['unknown', autopay_unknown_line($charge, $now)];
+        }
         if (!$payment || $st < 200 || $st >= 300) {
             $code = (string) ($res['body']['errors'][0]['code'] ?? '');
             $why = autopay_square_why($res, 'The payment did not go through');
@@ -519,6 +648,11 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
 {
     $bookingId = (int) $b['id'];
     $sqId = (string) ($payment['id'] ?? '');
+    // ALREADY ON THE LEDGER: Square answers a repeated request with the original payment,
+    // and recording it again would count the money twice and skip an instalment.
+    if (autopay_payment_recorded($sqId)) {
+        return;
+    }
     // READ WHAT WAS PAID *BEFORE* THE LEDGER ROW LANDS. booking_paid_so_far reads
     // booking_ledger_net, so once the INSERT below has run it ALREADY contains this
     // collection — adding $rental to a reading taken afterwards counts it twice, which
@@ -578,6 +712,11 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
         db()
             ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_collected_for = ?, autopay_attempts = 0 WHERE id = ?')
             ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $nextAt, $gate !== '' ? $gate : $today, $bookingId]);
+        // A try Square didn't answer is settled now: the next pass need not ask first.
+        try {
+            db()->prepare('UPDATE bookings SET autopay_last_code = NULL WHERE id = ?')->execute([$bookingId]);
+        } catch (\Throwable $e2) {
+        }
     } catch (\Throwable $e) {
         // migration-108 not applied — keep the pre-instalment write so a single
         // collection still records exactly as it always did. NB the column is
@@ -684,36 +823,60 @@ function autopay_send_receipt($b, $sqId, $rental, $damages, $paidSoFar = null)
 
 // ---- THE DAILY PASS --------------------------------------------------------
 // Serial, capped, and it reports what it did rather than running silently.
+// The collector's candidate query (one ? for today). $spent leaves out plans already
+// collected for their date; test-integration runs this exact text on the real schema.
+function autopay_due_sql($spent = true)
+{
+    return "SELECT * FROM bookings
+             WHERE autopay_consent_at IS NOT NULL AND autopay_revoked_at IS NULL
+               AND autopay_card_id IS NOT NULL AND autopay_card_id <> ''
+               AND autopay_attempts < " . AUTOPAY_MAX_TRIES . "
+               AND autopay_due IS NOT NULL AND COALESCE(autopay_next_at, autopay_due) <= ?"
+        . ($spent ? ' AND (autopay_collected_for IS NULL OR autopay_collected_for < COALESCE(autopay_next_at, autopay_due))' : '')
+        . ' ORDER BY COALESCE(autopay_next_at, autopay_due) ASC LIMIT ' . (int) AUTOPAY_RUN_SCAN;
+}
 function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
 {
     $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
-    $out = ['ok' => true, 'collected' => 0, 'failed' => 0, 'skipped' => 0, 'lines' => [], 'okLines' => [], 'failLines' => [], 'truncated' => false];
+    $out = ['ok' => true, 'collected' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'lines' => [], 'okLines' => [], 'failLines' => [], 'unknownLines' => [], 'truncated' => false];
     if (!function_exists('square_enabled') || !square_enabled()) {
         $out['ok'] = false;
         return $out;
     }
+    // Narrowed in SQL to what could POSSIBLY be due — consent given, not revoked, a
+    // card saved, still under the cap, due date reached — and then judged in PHP. The
+    // SQL is an index, not the decision. A FINISHED plan keeps matching it for ever
+    // (its due date stays past, and a success resets the try count), so the oldest
+    // twenty finished plans filled the cap and the live one due today was never
+    // reached: spent plans are left out, and only a plan the judge would try takes a
+    // place under the cap.
     try {
-        // Narrowed in SQL to what could POSSIBLY be due — consent given, not
-        // revoked, a card saved, still under the cap, due date reached — and
-        // then judged properly in PHP. The SQL is an index, not the decision.
-        $q = db()->prepare(
-            "SELECT * FROM bookings
-             WHERE autopay_consent_at IS NOT NULL AND autopay_revoked_at IS NULL
-               AND autopay_card_id IS NOT NULL AND autopay_card_id <> ''
-               AND autopay_attempts < " . AUTOPAY_MAX_TRIES . "
-               AND autopay_due IS NOT NULL AND COALESCE(autopay_next_at, autopay_due) <= ?
-             ORDER BY COALESCE(autopay_next_at, autopay_due) ASC LIMIT " . ((int) $limit + 1),
-        );
-        $q->execute([$today]);
+        try {
+            $q = db()->prepare(autopay_due_sql(true));
+            $q->execute([$today]);
+        } catch (\Throwable $e) {
+            // migration-122 not applied: the judge below still leaves spent plans out
+            $q = db()->prepare(autopay_due_sql(false));
+            $q->execute([$today]);
+        }
         $rows = $q->fetchAll();
     } catch (\Throwable $e) {
         $out['ok'] = false;
         return $out;
     }
-    if (count($rows) > $limit) {
-        $out['truncated'] = true;
-        $rows = array_slice($rows, 0, $limit);
+    $due = [];
+    foreach ($rows as $b) {
+        if (autopay_try_due($b, $today)) {
+            $due[] = $b;
+        } else {
+            $out['skipped']++;
+        }
     }
+    if (count($due) > $limit) {
+        $out['truncated'] = true;
+        $due = array_slice($due, 0, $limit);
+    }
+    $rows = $due;
     foreach ($rows as $b) {
         [$verdict, $line] = autopay_collect_one($b, $today);
         if ($verdict === 'ok') {
@@ -728,6 +891,10 @@ function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
             $out['failed']++;
             $out['lines'][] = $line;
             $out['failLines'][] = $line;
+        } elseif ($verdict === 'unknown') {
+            $out['unknown']++;
+            $out['lines'][] = $line;
+            $out['unknownLines'][] = $line;
         } else {
             $out['skipped']++;
         }
@@ -806,7 +973,11 @@ function autopay_notice_run($today = null)
         }
         $sent = false;
         try {
-            $sent = function_exists('send_autopay_notice') && !empty(send_autopay_notice($b)['ok']);
+            $r = function_exists('send_autopay_notice') ? send_autopay_notice($b) : [];
+            // An UNCERTAIN send (the relay went quiet after the message) has most
+            // likely gone, and the house rule is that no layer retries one: unstamped,
+            // it went again on each of the three days before the charge.
+            $sent = !empty($r['ok']) || !empty($r['sent_uncertain']);
         } catch (\Throwable $e) {
         }
         // STAMPED ONLY ON A SEND. A failed email that stamped anyway would take

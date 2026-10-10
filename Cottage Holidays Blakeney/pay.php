@@ -314,6 +314,11 @@ $nothingDueMsg = $kind === 'deposit'
     ? 'Your deposit is already paid — thank you. The balance has its own payment request, nearer the time.'
     : 'This booking is already paid in full.';
 if ($action === 'charge') {
+    // A hold is authorised, never charged: a charge in that mode took the deposit as a
+    // ledger kind nothing reads, so the books and the refund cap never saw it.
+    if ($kind === 'hold') {
+        json_out(['error' => 'Wrong action for this payment.'], 400);
+    }
     $sourceId = clean($in['source_id'] ?? '');
     if ($sourceId === '') {
         json_out(['error' => 'Missing card details — please try again.'], 400);

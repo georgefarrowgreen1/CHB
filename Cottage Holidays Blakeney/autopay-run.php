@@ -69,11 +69,24 @@ if ($res['failed'] > 0) {
     } catch (\Throwable $e) {
     }
 }
+if (($res['unknown'] ?? 0) > 0) {
+    try {
+        alert_owner(
+            "Square didn't answer about an automatic payment",
+            // Not a failure: it may have been taken. Nobody chases it and the guest is
+            // told nothing until the next pass has asked Square what happened.
+            $res['unknown'] === 1 ? ($res['unknownLines'][0] ?? '') : $res['unknown'] . ' automatic payments: Square didn\'t answer, so check Square before chasing them',
+            ['category' => 'urgent', 'email' => true, 'tag' => 'autopay-unknown-' . $today],
+        );
+    } catch (\Throwable $e) {
+    }
+}
 if ($res['truncated']) {
     // The cap is declared rather than swallowed — the rest are collected on the
-    // next pass, and `>=` on the due date is what makes that safe.
+    // next pass, and `>=` on the due date is what makes that safe. A warning, so it
+    // reaches Needs attention: a day of collections waiting is worth seeing.
     try {
-        log_activity('payment', 'autopay.capped', 'Automatic collections hit the per-run cap — the rest go on the next pass', ['severity' => 'info']);
+        log_activity('payment', 'autopay.capped', 'Automatic collections hit the per-run cap — the rest go on the next pass', ['severity' => 'warn']);
     } catch (\Throwable $e) {
     }
 }
@@ -83,6 +96,7 @@ json_out([
     'notices' => $notice['sent'],
     'collected' => $res['collected'],
     'failed' => $res['failed'],
+    'unknown' => $res['unknown'] ?? 0,
     'skipped' => $res['skipped'],
     'truncated' => $res['truncated'],
 ]);

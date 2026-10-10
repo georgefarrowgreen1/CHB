@@ -357,8 +357,14 @@ function booking_deposit_settled($b)
 // start asking for LESS than it did, at any stage, however old it is.
 function booking_payment_kind($b, $requested = null)
 {
+    // The legacy card hold only where one was asked for (hold_requested_at). The same
+    // token opens ?pay= and ?hold=, so any guest could swap the link, place a hold that
+    // lapses in a week, and pay the rental with the refundable deposit never taken.
     if ($requested === 'hold') {
-        return 'hold';
+        if (!empty($b['hold_requested_at'])) {
+            return 'hold';
+        }
+        $requested = null;
     }
     if (booking_within_balance_window($b)) {
         return 'balance';

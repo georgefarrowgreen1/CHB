@@ -4258,6 +4258,32 @@ $rootDb->exec("DELETE FROM bookings WHERE id IN ($kb59, $xb59, $id59e, $id59f)")
 $rootDb->exec("DELETE FROM content WHERE item_key = 'money-split'");
 $rootDb->exec("DELETE FROM admins WHERE id = $h59");
 
+// ── §60 the automatic collector's due query, on the real schema ──
+// test-autopay stubs the database, so it accepts any SQL; a broken clause here would
+// fall back to the old query in silence. This runs the collector's own text.
+echo "\n== §60 the automatic collector's due query reads the real schema ==\n";
+require_once __DIR__ . '/autopay-lib.php';
+$rootDb->exec("USE `$DB_NAME`");
+$yd60 = date('Y-m-d', strtotime('-1 day'));
+$ap60 = $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, autopay_consent_at, autopay_card_id, autopay_amount, autopay_due, autopay_attempts, autopay_collected_for) VALUES (?,?,'',?,?,2,0,'deposit',100,400,400,0,3,NOW(),'ccof:it60',300,?,0,?)");
+$ap60->execute([$propKey, 'Spent Plan60', $dd(830), $dd(833), $yd60, $yd60]);
+$spent60 = (int) $rootDb->lastInsertId();
+$ap60->execute([$propKey, 'Live Plan60', $dd(840), $dd(843), $yd60, null]);
+$live60 = (int) $rootDb->lastInsertId();
+$ids60 = function ($sql) use ($rootDb) {
+    try {
+        $q = $rootDb->prepare($sql);
+        $q->execute([date('Y-m-d')]);
+        return array_map('intval', array_column($q->fetchAll(PDO::FETCH_ASSOC), 'id'));
+    } catch (\Throwable $e) {
+        return ['error' => $e->getMessage()];
+    }
+};
+$got60 = $ids60(autopay_due_sql(true));
+it_check('§60 the due query runs on the real schema and leaves a plan already collected out', in_array($live60, $got60, true) && !in_array($spent60, $got60, true), json_encode($got60));
+it_check('§60 …and its fallback (no spent clause) runs too', in_array($spent60, $ids60(autopay_due_sql(false)), true), '');
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($spent60, $live60)");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
