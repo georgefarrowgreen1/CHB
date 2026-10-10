@@ -88,7 +88,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
   await page.waitForTimeout(600);
-  await page.evaluate(async () => { await window.openInbox(); });
+  // The boot's own landing can still be in flight on a loaded machine and put the
+  // page back on the home view after the Inbox opened: open it until it stays open.
+  for (let i = 0; i < 5; i++) {
+    await page.evaluate(async () => { document.body.classList.add('owner-mode'); await window.openInbox(); });
+    const on = await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-inbox' && !!document.querySelector('#ib-rows .ib-rowwrap'), null, { timeout: 4000 }).then(() => true).catch(() => false);
+    await page.waitForTimeout(300);
+    if (on && (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id === 'view-inbox'))) break;
+  }
 
   const row = (k) => `#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`;
   // Every store the one list reads has landed and no rebuild is queued — a rebuild

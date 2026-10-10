@@ -286,9 +286,10 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   // A movement that ARRIVED since the last load (a save's own refetch) slides in.
   acctDelay = 0;
   moneyActivity.unshift({ id: 'p902', at: Math.floor(Date.now() / 1000) - 60, kind: 'in', what: 'Deposit', booking_id: 1, name: 'Sarah Pemberton', prop: '21a', amount: 75, deposit: 0, fee: null, method: 'Bank transfer', status: 'done' });
-  await page.evaluate(() => pmLoad(true));
-  await page.waitForFunction(() => !!document.querySelector('#pm-list .pm-mrow.is-new'), null, { timeout: 8000 }).catch(() => {});
-  const rowIn = await page.evaluate(() => {
+  // The load, the paint and the read in ONE evaluate: pmLoad renders before it resolves,
+  // and a separate round trip could land after the 0.6s arrival has finished.
+  const rowIn = await page.evaluate(async () => {
+    await pmLoad(true);
     const rows = [...document.querySelectorAll('#pm-list .pm-mrow.is-new')];
     const r = rows[0];
     if (!r) return null;

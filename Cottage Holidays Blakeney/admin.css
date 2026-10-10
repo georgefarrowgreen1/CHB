@@ -9026,8 +9026,10 @@ body.owner-mode.light-mode #ib {
 #ib .ib-folders-wrap > div { min-height: 0; overflow: hidden; }
 #ib .ib-folders-wrap.is-away { grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.28s var(--out), visibility 0s linear 0.28s; }
 #ib .ib-folders { position: relative; isolation: isolate; display: flex; gap: 4px; padding: 4px; min-height: var(--u-h-control, 44px); margin-top: 12px; background: var(--ib-well); border-radius: var(--r-pill); }
-#ib .ib-folders > button { flex: 1 1 0; min-height: var(--u-h-small, 36px); padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--text-light); font-size: var(--fs-sub); font-weight: 600; white-space: nowrap; transition: color 0.3s var(--out) 0.06s; }
+#ib .ib-folders > button { position: relative; flex: 1 1 0; min-height: var(--u-h-small, 36px); padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--text-light); font-size: var(--fs-sub); font-weight: 600; white-space: nowrap; transition: color 0.3s var(--out) 0.06s; }
 #ib .ib-folders > button[aria-pressed="true"] { color: var(--accent-ink); }
+/* the track's 4px padding is part of the tap: a 36px pill reaches the 44px floor */
+#ib .ib-folders > button::before { content: ""; position: absolute; inset: -4px -2px; }
 #ib .ib-folders-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 6px); border-radius: var(--r-pill); background: var(--accent); z-index: -1; pointer-events: none; transition: translate 0.46s var(--sheet); }
 #ib .ib-folders[data-on="done"] .ib-folders-pill { translate: calc(100% + 4px) 0; }
 #ib .ib-folders > button.is-landed { animation: ibLanded 0.5s var(--out); }
@@ -9052,7 +9054,8 @@ body.owner-mode.light-mode #ib {
 #ib .ib-time.is-age { color: var(--warn-text); font-weight: 600; }
 /* the context and the tag share line two, so a wide tag never narrows the name above it */
 #ib .ib-line2 { grid-column: 2 / span 2; grid-row: 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
-#ib .ib-rctx { flex: 1; font-size: var(--fs-caption); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; line-height: 1.6; }
+/* a context line may take two lines: the dates are the last words and the first to be cut */
+#ib .ib-rctx { flex: 1; font-size: var(--fs-caption); color: var(--text-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-wrap: pretty; min-width: 0; line-height: 1.6; }
 #ib .ib-cd { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; flex: none; }
 #ib .ib-tag { flex: none; display: flex; }
 #ib .ib-prev { grid-column: 2 / span 2; grid-row: 3; font-size: var(--fs-sub); color: var(--text-muted); display: flex; gap: 4px; align-items: baseline; min-width: 0; }
@@ -9136,6 +9139,8 @@ body.ib-conv-open:has(#view-inbox.active) { overflow: hidden; }
 #ib .ib-quoted { margin-top: 4px; padding: 4px 8px; border-left: 2px solid var(--ib-pill-edge); font-size: var(--fs-sub); color: var(--text-muted); white-space: pre-line; }
 #ib .ib-file { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 8px; border-radius: 8px; background: var(--ib-well); font-size: var(--fs-caption); font-weight: 600; }
 #ib .ib-file svg { width: 14px; height: 14px; }
+#ib a.ib-file { position: relative; margin-right: 8px; color: var(--accent-text); text-decoration: none; }
+#ib a.ib-file::after { content: ""; position: absolute; inset: -10px -4px; }
 #ib .ib-meta { font-size: var(--fs-micro); color: var(--text-muted); display: flex; align-items: center; gap: 4px; padding: 0 4px; }
 #ib .ib-meta svg { width: 12px; height: 12px; }
 #ib .ib-seen { color: var(--ok-text); font-weight: 600; }
@@ -9180,7 +9185,7 @@ body.ib-conv-open:has(#view-inbox.active) { overflow: hidden; }
 #ib .ib-chip { flex: none; border: 1px solid var(--ib-pill-edge); background: none; border-radius: var(--r-pill); min-height: 36px; padding: 0 12px; font-size: var(--fs-sub); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; position: relative; }
 #ib .ib-comp { border: 1px solid var(--ib-edge); background: var(--ib-card); border-radius: var(--r-lg); padding: 4px 4px 4px 8px; display: flex; flex-direction: column; transition: border-color 0.2s var(--out); }
 #ib .ib-comp:focus-within { border-color: color-mix(in srgb, var(--accent-text) 55%, transparent); }
-#ib .ib-comp textarea { width: 100%; resize: none; border: 0; background: none; outline: none; color: var(--text-light); padding: 8px 8px 4px; min-height: 40px; max-height: 132px; font-size: var(--fs-body); line-height: 1.45; font-family: inherit; }
+#ib .ib-comp textarea { width: 100%; resize: none; border: 0; background: none; outline: none; color: var(--text-light); padding: 8px 8px 4px; min-height: 44px; max-height: 132px; font-size: var(--fs-body); line-height: 1.45; font-family: inherit; }
 #ib .ib-comp textarea::placeholder { color: var(--text-muted); }
 #ib .ib-compfoot { display: flex; align-items: center; gap: 8px; }
 #ib .ib-chan { display: inline-flex; background: var(--ib-well); border-radius: var(--r-pill); padding: 2px; flex: none; }
@@ -9190,7 +9195,7 @@ body.ib-conv-open:has(#view-inbox.active) { overflow: hidden; }
 #ib .ib-chan button[aria-pressed="true"] { background: var(--text-light); color: var(--dark-grey); }
 #ib .ib-chan button:disabled { opacity: 0.38; cursor: not-allowed; }
 #ib .ib-compnote { flex: 1; min-width: 0; font-size: var(--fs-micro); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#ib .ib-send { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; flex: none; transition: opacity 0.2s var(--out), scale 0.2s var(--out); }
+#ib .ib-send { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; flex: none; transition: opacity 0.2s var(--out), scale 0.2s var(--out); }
 #ib .ib-send svg { width: 18px; height: 18px; }
 #ib .ib-send:disabled { opacity: 0.3; scale: 0.9; }
 #ib .ib-autonote { font-size: var(--fs-sub); color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px; }
@@ -9341,8 +9346,9 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 #pm .pm-capline.is-attn { color: var(--warn-text); }
 #pm .pm-capn { font-weight: 500; }
 #pm .pm-rows { border: 1px solid var(--pm-edge); background: var(--pm-card); border-radius: var(--r-lg); overflow: hidden; }
-#pm .pm-rows > * + * { border-top: 1px solid var(--pm-edge); }
 #pm .pm-mrow, #pm .pm-needrow { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 12px 16px; min-height: 60px; }
+/* after the row rule, which resets its border at the same weight: the hairline between rows */
+#pm .pm-rows > * + * { border-top: 1px solid var(--pm-edge); }
 #pm .pm-mrow.is-new { animation: pmRowIn 0.6s var(--out); }
 @keyframes pmRowIn { from { opacity: 0; translate: 0 -8px; } }
 :is(#pm, .pm-sheet) .pm-mic, :is(#pm, .pm-sheet) .pm-ava { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
@@ -9355,8 +9361,10 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 :is(#pm, .pm-sheet) .pm-ava { color: white; font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0.02em; background: hsl(var(--h, 210) 34% 42%); }
 :is(#pm, .pm-sheet) .pm-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #pm .pm-plain { border: 0; background: none; padding: 0; text-align: left; }
-:is(#pm, .pm-sheet) .pm-t { font-size: var(--fs-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:is(#pm, .pm-sheet) .pm-s { font-size: var(--fs-caption); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
+/* a name wraps whole and a sub may take two lines: who it was and what the payment
+   was are the row's point, and an ellipsis cut "recorded by you" from every one recorded by hand */
+:is(#pm, .pm-sheet) .pm-t { font-size: var(--fs-body); font-weight: 500; overflow-wrap: anywhere; text-wrap: pretty; }
+:is(#pm, .pm-sheet) .pm-s { font-size: var(--fs-caption); color: var(--text-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-wrap: pretty; line-height: 1.5; }
 :is(#pm, .pm-sheet) .pm-cd { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
 #pm .pm-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
 #pm .pm-v { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -9381,7 +9389,7 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 #pm .pm-dcap.is-attn { color: var(--warn-text); }
 #pm .pm-dcap-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 -12px 4px; }
 #pm .pm-dcap-row .pm-linkbtn { padding-right: 4px; font-size: var(--fs-caption); white-space: nowrap; }
-#pm .pm-wrow :is(.pm-t, .pm-s) { white-space: normal; }
+#pm .pm-wrow :is(.pm-t, .pm-s) { display: block; -webkit-line-clamp: none; }
 #pm .pm-mini { position: relative; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pm-pill-edge); background: none; font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; }
 #pm .pm-mini::after { content: ""; position: absolute; inset: -6px 0; }
 #pm .pm-mini svg { width: 14px; height: 14px; }
@@ -9440,7 +9448,7 @@ body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
 #pm .pm-back { justify-self: start; border: 0; background: none; color: var(--accent-text); font-weight: 500; font-size: var(--fs-body); display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 12px 0 0; margin-left: -4px; }
 #pm .pm-back svg { width: 18px; height: 18px; }
 #pm .pm-dtitle { min-width: 0; }
-#pm .pm-dname { font-family: var(--font-sans); font-size: var(--fs-title); font-weight: 500; margin: 0; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pm .pm-dname { font-family: var(--font-sans); font-size: var(--fs-title); font-weight: 500; margin: 0; line-height: 1.25; overflow-wrap: anywhere; text-wrap: balance; }
 #pm .pm-dsub { font-size: var(--fs-sub); color: var(--text-muted); margin: 2px 0 0; }
 #pm .pm-dbody { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
 /* in a scrolling column a clipped card may otherwise shrink to nothing */

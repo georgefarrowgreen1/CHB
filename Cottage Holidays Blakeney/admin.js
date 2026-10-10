@@ -7354,7 +7354,7 @@ function cmdkServerItem(x) {
         guest: () => { closeCmdK(); cmdkRevealGuest(x.email || ''); },
         message: () => { closeCmdK(); if (x.thread_id) inboxOpenThread(x.thread_id); else openInbox(); },
         review: () => { closeCmdK(); cmdkRevealReview(x.id); },
-        email: () => { closeCmdK(); cmdkOpenEmail(x.id); },
+        email: () => { closeCmdK(); cmdkOpenEmail(x.id, x.sub || (x.to ? 'to ' + x.to : '')); },
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
         activity: () => { closeCmdK(); cmdkRevealActivity(x.title || ''); },
         expense: () => cmdkOpenAccounts('expenses'),
@@ -7432,14 +7432,17 @@ function cmdkRevealActivity(text) {
         if (typeof activityLogSearch === 'function') activityLogSearch(q);
     }, 25);
 }
-async function cmdkOpenEmail(id) {
+async function cmdkOpenEmail(id, sub) {
+    // The Inbox is one list of people, so a sent email opens the conversation of
+    // the person it went to. The search row names them in its sub ("Email · to …");
+    // failing that, the sent list the Inbox loads does.
+    const named = /\bto\s+(\S+@\S+)/.exec(String(sub || ''));
+    if (named) { inboxOpenEmailAddress(named[1]); return; }
+    const sentTo = () => { const m = (Array.isArray(__mbxSent) ? __mbxSent : []).find((x) => String(x.id) === String(id)); return m && m.to_email ? m.to_email : null; };
+    const known = sentTo();
+    if (known) { inboxOpenEmailAddress(known); return; }
     await Promise.resolve(openInbox());
-    if (typeof inboxFolder === 'function') inboxFolder('email'); // lazy-loads the mailbox
-    cmdkPoll(
-        () => (typeof __mbxSent !== 'undefined' && Array.isArray(__mbxSent) && __mbxSent.some((m) => m.id === id)) ? true : null,
-        () => { if (typeof mailboxOpenSent === 'function') mailboxOpenSent(id); },
-        40,
-    );
+    cmdkPoll(sentTo, (to) => inboxOpenEmailAddress(to), 40);
 }
 // Open the Payments workspace on a given sub-tab (used by the "add expense" /
 // "export CSV" search actions), then run a follow-up once it's rendered.
@@ -32302,7 +32305,7 @@ function ibItems(p) {
     });
     p.mails.forEach((m) => {
         const full = __ibMailBody[m.uid];
-        it.push({ who: 'them', ch: 'email', t: ibT(m.date), subj: m.subject || '', text: full ? full.text : (m.preview || ''), quoted: full ? full.quoted : '', attach: full ? full.attach : '', uid: m.uid, partial: !full });
+        it.push({ who: 'them', ch: 'email', t: ibT(m.date), subj: m.subject || '', text: full ? full.text : (m.preview || ''), quoted: full ? full.quoted : '', attach: full ? full.attach : '', files: full ? full.files : null, uid: m.uid, partial: !full });
     });
     p.sent.forEach((s) => it.push({ who: 'me', ch: 'email', t: ibT(s.sent_at), subj: s.subject || '', text: s.body || '' }));
     (__ibLocal[p.key] || []).forEach((l) => {
@@ -32653,7 +32656,7 @@ function ibRenderList() {
         const hits = all.filter((p) => ibMatches(p, __ibQ)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 80);
         html = hits.length
             ? group(`${hits.length} found`, hits, null)
-            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and every message, in the Inbox and in Done.</div>`;
+            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and the messages loaded here, in the Inbox and in Done.${__mbxHasMore ? ' Older emails still on the server aren’t searched.' : ''}</div>`;
     } else if (!all.length && !__ibLoaded) {
         html = skelRows(4);
     } else if (__ibFolder === 'done') {
@@ -32731,7 +32734,10 @@ function ibThreadHtml(p) {
             body += `<div class="ib-enqh">${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)} · ${ibEsc(q.guests || '')}</div>`;
         } else if (it.ch === 'email' && it.subj && !cont) body += `<div class="ib-subj">${IB_IC.email}<span>${ibEsc(it.subj)}</span></div>`;
         body += `<div class="ib-text">${ibEsc(it.text || (it.partial ? 'Opening…' : ''))}</div>`;
-        if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
+        // An email's files open from where they are read: the same plain
+        // download the old reader linked (mailbox.php forces octet-stream).
+        if (it.files && it.files.length && it.uid != null) body += it.files.map((f) => `<a class="ib-file" href="mailbox.php?action=attachment&uid=${encodeURIComponent(String(it.uid))}&i=${f.i}" download>${IB_IC.clip}${ibEsc(f.name)}</a>`).join('');
+        else if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
         if (it.quoted) {
             const qid = `ib-q-${idx}`;
             body += `<button type="button" class="ib-quotebtn" data-ib="quote" data-arg="${qid}" aria-expanded="false" aria-controls="${qid}">Show the rest of the email</button><div class="ib-quoted" id="${qid}" hidden>${ibEsc(it.quoted)}</div>`;
@@ -33179,6 +33185,7 @@ async function ibOpen(key, opts) {
                 text: String(sp.body || '').trim(),
                 quoted: [sp.quoted, sp.sig].filter(Boolean).join('\n\n').trim(),
                 attach: ((r && r.attachments) || []).map((a) => a.name).join(', '),
+                files: ((r && r.attachments) || []).map((a) => ({ i: Number(a.i) || 0, name: String(a.name || 'attachment') })),
             };
             m.seen = true;
         }).catch(() => {}));

@@ -72,7 +72,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => window.loadAdminBundle());
   await page.waitForTimeout(600);
   await page.evaluate(async () => { await openBookings(); });
-  await page.waitForTimeout(1600);
+  // Wait on the strip, not a clock: the automation row lands when the cron check
+  // answers, which on a loaded machine is later than any fixed pause.
+  await page.waitForFunction(() => /automation looks stopped/.test(((document.querySelector('#needs-you-list .ny-label') || {}).textContent) || '')
+    && (document.getElementById('needs-you-count') || {}).textContent === '6', null, { timeout: 12000 }).catch(() => {});
+  await page.waitForTimeout(300);
 
   console.log('1. mixed workload renders, prioritised');
   const s = await page.evaluate(() => ({
