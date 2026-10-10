@@ -86,6 +86,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         return { p, fresh, sum: { from: p.from, to: p.to, rows: p.lines.length, adding: fresh.length, already, older, money_in: p.money_in, money_out: p.money_out, balance: p.balance, balance_at: p.balance_at, unreadable: p.unreadable, other_currency: p.other_currency } };
     };
     const posts = [];
+    const STALE = { add: 0 };
     await page.route(/\.php/, (route) => {
         const url = route.request().url();
         const json = (o, st) => route.fulfill({ status: st || 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -144,9 +145,14 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
             }
             if (b.__url === 'bookings.php' && b.action === 'set_payment') {
                 const r = rows.find((x) => x.id === b.id);
+                // A payment recorded elsewhere first (another tap, another device): the
+                // server refuses the stale figure, as set_payment's expect_paid does.
+                if (STALE.add) { r.deposit_paid += STALE.add; STALE.add = 0; return json({ error: 'Another payment was recorded on this booking since the page loaded, so nothing was changed. Refresh and record it again.', code: 'stale' }, 409); }
                 r.payment = b.payment; r.deposit_paid = b.payment === 'deposit' ? b.deposit : 440; r.payment_method = b.payment_method; r.payment_date = b.payment_date;
                 return json({ ok: true });
             }
+            if (b.__url === 'split.php' && b.action === 'link') return json({ ok: true, count: 1, total: 80, ids: [77] });
+            if (b.__url === 'split.php' && b.action === 'unlink') return json({ ok: true, count: 1 });
             return json({ ok: true, events: [], logs: {}, reviews: [], photos: [], returns: [] });
         }
         if (url.includes('bookings.php')) return json({ bookings: rows });
@@ -420,6 +426,87 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(() => { window.__me = { full: false, caps: { money: true } }; pmRenderDetail(); });
     ok(!(await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]'))) && /Open Banking/.test(await detail()), 'someone without full access sees the link but is offered no setup');
     await page.evaluate(() => { window.__me = null; });
+
+    // ── EACH POUND ONCE (the money split and bank audit) ──
+    // The join, the suggestions and a stale payment, driven on fixtures laid over the
+    // page's own state and put back afterwards.
+    const J = await page.evaluate(() => {
+        const keep = { act: __pmAct, bank: __pmBank, end: __pmActEnd, filter: __pmFilter, shown: __pmShown };
+        const iso = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return pmIsoOf(t.getTime()); };
+        const at = (n) => Math.round(pmIso(iso(n)) / 1000) + 43200;
+        __pmAct = [
+            { id: 'p903', kind: 'in', method: 'Bank transfer', booking_id: 1, amount: 440, at: at(-1), what: 'Payment', name: 'Daniel Okafor' },
+            { id: 'p902', kind: 'in', method: 'Bank transfer', booking_id: 6, amount: 300, at: at(-1), what: 'Payment', name: 'Marcus Hill' },
+            { id: 'p901', kind: 'in', method: 'Bank transfer', booking_id: 7, amount: 450, at: at(-2), what: 'Payment', name: 'Priya Shah' },
+        ];
+        __pmActEnd = true;
+        __pmFilter = 'all';
+        __pmShown = 50;
+        __pmBank = Object.assign({}, keep.bank, { lines: [
+            { id: 9001, date: iso(-12), amount: 300, as: 'payment', booking_id: 7, name: 'P SHAH', description: '' },
+            { id: 9002, date: iso(-10), amount: 200, as: 'payment', booking_id: 7, name: 'P SHAH', description: '' },
+            { id: 9003, date: iso(-9), amount: 300, as: 'payment', booking_id: 6, name: 'M HILL', description: '' },
+            { id: 9004, date: iso(-60), amount: 150, as: 'payment', booking_id: 6, name: 'M HILL', description: '' },
+            { id: 9005, date: iso(-1), amount: 490, as: 'payment', booking_id: 1, name: 'D OKAFOR', description: '' },
+        ] });
+        const items = pmMoneyItems();
+        const ev = (id) => (items.find((it) => it.e && it.e.id === id) || {}).v;
+        const shown = (id) => items.some((it) => !it.e && it.l && it.l.id === id);
+        const box = document.createElement('div');
+        box.innerHTML = pmActivityHtml();
+        const row = [...box.querySelectorAll('.pm-mrow')].find((x) => /^Priya Shah/.test(x.getAttribute('aria-label') || ''));
+        const out = {
+            parts: ev('p901'), partsHidden: !shown(9001) && !shown(9002), priyaRow: row ? row.querySelector('.pm-v').textContent : '',
+            late: ev('p902'), lateHidden: !shown(9003), farShown: shown(9004), deposit: ev('p903'), depositHidden: !shown(9005),
+        };
+        // The suggestions.
+        __pmAct = [{ id: 'p950', kind: 'refund', amount: 120, at: at(-3), name: 'Priya Shah' }, { id: 'p951', kind: 'in', method: 'Bank transfer', booking_id: 7, amount: 60, at: at(-20), name: 'Priya Shah', what: 'Payment' }];
+        __pmBank = Object.assign({}, keep.bank, { lines: [] });
+        const sug = (l) => pmSplitSuggest(Object.assign({ name: '', description: '', notes: '', type: '', date: iso(-2) }, l));
+        const ks = (s) => (s ? s.acts.map((a) => a.k).join(',') : '');
+        const priya = (findBookingById(7) || findBookingById('b7') || {});
+        out.refund = ks(sug({ amount: -120, name: 'P SHAH' }));
+        out.smaller = ks(sug({ amount: 35, name: 'P SHAH', date: priya.paymentDate || iso(-30) }));
+        out.typed = ks(sug({ amount: 60, name: 'P SHAH' }));
+        out.whole = ks(sug({ amount: Number(priya.depositPaid) || 0, name: 'P SHAH' }));
+        out.paidInFull = ks(sug({ amount: 200, name: 'J SMITH', description: 'Balance paid in full CHB-000007' }));
+        out.unpaid = ks(sug({ amount: 30, name: 'ACME LTD', description: 'UNPAID INVOICE REFUND' }));
+        out.cash = ks(sug({ amount: 200, name: 'CASH DEPOSIT', type: 'Cash' }));
+        __pmAct = keep.act; __pmBank = keep.bank; __pmActEnd = keep.end; __pmFilter = keep.filter; __pmShown = keep.shown;
+        return out;
+    });
+    ok(J.parts === 500 && J.partsHidden && /£500\.00/.test(J.priyaRow), `a payment the bank shows in two parts is one row with the bank's £500 (it was three rows, £950): ${JSON.stringify([J.parts, J.partsHidden, J.priyaRow])}`);
+    ok(J.late === 300 && J.lateHidden, `one recorded a week after it reached the bank still joins its bank payment: ${JSON.stringify([J.late, J.lateHidden])}`);
+    ok(J.farShown, 'a payment to the same booking two months away is its own row, not swallowed');
+    ok(J.deposit === 490 && J.depositHidden, 'the bank\'s figure still leads when a refundable deposit rode with the rental (490 over 440)');
+    ok(/^refundback:/.test(J.refund), 'money out to a guest who was refunded is offered as that refund, not a cost: ' + J.refund);
+    ok(!/^same:/.test(J.smaller) && /^same:/.test(J.typed) && /^same:/.test(J.whole), `"the same money" is offered only at a recorded figure (a smaller second payment near the first was offered as already there): ${JSON.stringify([J.smaller, J.typed, J.whole])}`);
+    ok(!/cashin/.test(J.paidInFull) && !/cashin/.test(J.unpaid) && /^cashin/.test(J.cash), `cash paid in is not read into a guest's "paid in full" or an "unpaid invoice": ${JSON.stringify([J.paidInFull, J.unpaid, J.cash])}`);
+    // A payment recorded from the Money page while another lands first: refused as stale,
+    // re-read, and added to the fresh figure once.
+    const before = await page.evaluate(() => Number((findBookingById(7) || findBookingById('b7') || {}).depositPaid) || 0);
+    STALE.add = 30;
+    const nPost = posts.length;
+    const added = await page.evaluate(async () => {
+        const b = findBookingById(7) || findBookingById('b7');
+        const loc = findBookingLocation(b.id);
+        try { await pmAddPayment(pmOwedRow(loc.propKey, b), 50, 'Bank transfer', todayDashed()); return 'ok'; } catch (e) { return 'threw ' + (e && e.message); }
+    });
+    const sps = posts.slice(nPost).filter((p) => p.__url === 'bookings.php' && p.action === 'set_payment');
+    ok(added === 'ok' && sps.length === 2 && sps[0].expect_paid === before && sps[1].expect_paid === before + 30 && sps[1].deposit === before + 30 + 50,
+        `a stale payment is re-read and added to the fresh figure once: ${added} ${JSON.stringify(sps.map((p) => [p.expect_paid, p.deposit]))}`);
+    // Undo of a recording says which figure it expects, so it can't erase a later payment.
+    await page.evaluate(async () => { const b = findBookingById(7) || findBookingById('b7'); await pmRecordUndo(b, { payment: 'deposit', depositPaid: 100, date: todayDashed(), method: 'Bank transfer' }, 210); });
+    const undo = posts.filter((p) => p.__url === 'bookings.php' && p.action === 'set_payment').pop();
+    ok(undo && undo.expect_paid === 210 && undo.deposit === 100, 'Undo puts the old figure back only from the one it recorded: ' + JSON.stringify(undo && [undo.expect_paid, undo.deposit]));
+    // Undo of a name link puts back only the payments that link sorted.
+    await page.evaluate(() => pmSplitLink('Link Name', 5));
+    await page.waitForFunction(() => !!document.querySelector('.toast .toast-action'), null, { timeout: 4000 }).catch(() => {});
+    await page.evaluate(() => { const t = [...document.querySelectorAll('.toast .toast-action')].pop(); if (t) t.click(); });
+    await page.waitForTimeout(400);
+    const un = posts.filter((p) => p.__url === 'split.php' && p.action === 'unlink').pop();
+    ok(un && JSON.stringify(un.ids) === '[77]', 'the link\'s Undo names the payments it sorted: ' + JSON.stringify(un && un.ids));
+
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(ov <= 0, 'no sideways scroll (' + ov + ')');
     ok(!errors.length, 'no page errors ' + JSON.stringify(errors));

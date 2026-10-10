@@ -225,6 +225,33 @@ function insert_payment_row($bookingId, $sqId, $kind, $amount, $status, $gName, 
         }
     }
 }
+// The rental money on the ledger for a booking: card charges and hand-recorded rows
+// in, rental refunds out — the same rows the books date income by.
+function ledger_rental_net(int $bookingId): float
+{
+    try {
+        $q = db()->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')) OR (kind = 'manual' AND UPPER(status) = 'MANUAL') THEN amount ELSE 0 END),0)
+                  - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
+               FROM payments WHERE booking_id = ?",
+        );
+        $q->execute([$bookingId]);
+        return round((float) $q->fetchColumn(), 2);
+    } catch (\Throwable $e) {
+        return 0.0;
+    }
+}
+// One hand-recorded receipt on the ledger, dated the day the money arrived (the books
+// read income by these dates). Best-effort: an un-migrated enum leaves the figure.
+function insert_manual_row(int $bookingId, float $amount, string $date, array $b, string $method): void
+{
+    try {
+        $mid = 'manual-' . bin2hex(random_bytes(8));
+        insert_payment_row($bookingId, $mid, 'manual', round($amount, 2), 'MANUAL', $b['name'] ?? '', $b['prop_key'] ?? '', $method);
+        db()->prepare('UPDATE payments SET created_at = ? WHERE square_payment_id = ?')->execute([$date . ' 12:00:00', $mid]);
+    } catch (\Throwable $e) {
+    }
+}
 // A completed Square charge (deposit/balance) for a booking large enough to refund $need.
 function find_charge_for_refund($bookingId, $need)
 {
@@ -719,6 +746,20 @@ if ($action === 'add') {
         ->prepare('INSERT INTO bookings (' . $cols . ') VALUES (' . implode(',', array_fill(0, count($vals), '?')) . ')')
         ->execute($vals);
     $newId = (int) db()->lastInsertId();
+    // Money recorded with the booking gets its own dated ledger row, as set_payment's
+    // receipts do: with only the booking's payment_date, the next payment re-dated it
+    // (a March deposit moved into October's tax year). A card typed in by hand is left
+    // to the card rows, the set_payment rule.
+    if ($dep > 0.001 && $date) {
+        $nb = booking_by_id($newId);
+        if ($nb && payment_rail(array_merge($nb, ['payment_method' => $method])) !== 'card') {
+            $cap = booking_rental_price($nb);
+            $rentalIn = round(min($dep, $cap > 0 ? $cap : $dep), 2);
+            if ($rentalIn > 0.005) {
+                insert_manual_row($newId, $rentalIn, $date, $nb, $method);
+            }
+        }
+    }
     book_unlock($propKey); // free the lock before the (slower) email send
     // Auto-send the confirmation email for the newly created booking (if it has
     // a guest email). Email failure never blocks the booking.
@@ -1152,6 +1193,16 @@ if ($action === 'set_payment') {
     if ($bNow) {
         $b = $bNow;
     }
+    // COMPARE BEFORE WRITING. This action stores an ABSOLUTE figure the page worked out
+    // from what it last loaded, so a payment recorded since (a second tap on the bank
+    // page, a card payment, another device) made it stale, and writing it erased the
+    // newer money and shrank its ledger row (£300 then £200 tapped quickly stored £200).
+    // A caller that says which figure it started from is refused when that has moved.
+    if (array_key_exists('expect_paid', $in) && $in['expect_paid'] !== null && $in['expect_paid'] !== ''
+        && abs(round((float) $in['expect_paid'], 2) - round((float) ($b['deposit_paid'] ?? 0), 2)) > 0.005) {
+        book_unlock($b['prop_key'] ?? '');
+        json_out(['error' => 'Another payment was recorded on this booking since the page loaded, so nothing was changed. Refresh and record it again.', 'code' => 'stale'], 409);
+    }
     // Honour a manual price override as the total (matches reconcile_booking_payment,
     // pay.php and the JS) so a part-payment against an overridden price reconciles to
     // the same figure everywhere instead of the un-overridden agreed_total.
@@ -1220,6 +1271,19 @@ if ($action === 'set_payment') {
     // record_square_payment books the real card row, and a manual twin would
     // count it twice. Its money still reaches the books through deposit_paid.
     $isCardEntry = payment_rail(array_merge($b, ['payment_method' => $method])) === 'card';
+    // MONEY ALREADY RECORDED KEEPS ITS DATE. Income with no ledger row (recorded with
+    // the booking, or before migration-129) is dated only by payment_date, which the
+    // UPDATE above has just moved to this payment's day: £300 taken in March moved into
+    // October, and a closed tax year changed. It gets a row on its own date first.
+    // Not for money recorded as a card: its own card row is coming (the rule above).
+    $oldDate = substr((string) ($b['payment_date'] ?? ''), 0, 10);
+    if ($date && preg_match('/^\d{4}-\d{2}-\d{2}$/', $oldDate) && $oldDate !== $date && $prevDep > 0.005
+        && payment_rail($b) !== 'card') {
+        $undated = round(min($prevDep, $rentalCap) - ledger_rental_net($id), 2);
+        if ($undated > 0.005) {
+            insert_manual_row($id, $undated, $oldDate, $b, (string) ($b['payment_method'] ?? ''));
+        }
+    }
     if ($newRental < -0.005) {
         // A CORRECTION DOWN (or back to Unpaid) shrinks the newest manual rows by
         // the same amount, so the ledger, the invoice and a later cancellation's
@@ -1958,12 +2022,15 @@ if ($action === 'record_square_payment') {
             && $depDue > 0.005
             && $amount > $depDue + 0.005;
         $ledgerAmount = $bundled ? round($amount - $depDue, 2) : $amount;
+        // Dated when Square TOOK it (the books read income by this date), not the day
+        // the owner happened to record it — this is a recovery, often days later.
+        $takenAt = square_taken_at((array) $payment);
         db()
             ->prepare(
                 'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, fee, guest_name, prop_key, created_at)
-                 VALUES (?,?,?,?,?,?,?,?,NOW())',
+                 VALUES (?,?,?,?,?,?,?,?,?)',
             )
-            ->execute([$id, $sqId, booking_payment_kind($b), $ledgerAmount, 'COMPLETED', $fee, $b['name'], $b['prop_key']]);
+            ->execute([$id, $sqId, booking_payment_kind($b), $ledgerAmount, 'COMPLETED', $fee, $b['name'], $b['prop_key'], $takenAt]);
         if ($bundled) {
             db()
                 ->prepare('UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ? WHERE id = ?')

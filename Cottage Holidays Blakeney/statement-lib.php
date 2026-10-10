@@ -158,6 +158,7 @@ function statement_parse(string $csv, string $filename = ''): array
     $seen = [];
     $curSeen = [];
     $lastAt = '';
+    $atLast = [];
     for ($i = 1, $n = count($rows); $i < $n; $i++) {
         $r = $rows[$i];
         $date = statement_date($get($r, 'date'));
@@ -224,13 +225,47 @@ function statement_parse(string $csv, string $filename = ''): array
             $out['to'] = $date;
         }
         // The balance after the LATEST payment is the statement's closing balance,
-        // whichever order the file lists them in.
+        // whichever order the file lists them in (settled after the loop).
         $at = $date . ' ' . ($time ?: '00:00:00');
-        if ($bal !== null && $at >= $lastAt) {
-            $lastAt = $at;
-            $out['balance'] = $bal;
-            $out['balance_at'] = $at;
+        if ($bal !== null) {
+            if ($at > $lastAt) {
+                $lastAt = $at;
+                $atLast = [];
+            }
+            if ($at === $lastAt) {
+                $atLast[] = ['i' => count($out['lines']) - 1, 'amt' => $amt, 'bal' => $bal];
+            }
         }
+    }
+    // Two payments at the same moment (the same second, or a file with no time column)
+    // need telling apart: the closing one is the payment no other one follows, by its
+    // balance (A then B means A's balance + B's amount = B's balance). Only when the
+    // balances cannot say does the file's own order decide, newest-first or oldest-first;
+    // taking the last row in the file read a newest-first export's OPENING balance.
+    if ($atLast) {
+        $pick = null;
+        if (count($atLast) > 1) {
+            $ends = array_values(array_filter($atLast, function ($r) use ($atLast) {
+                foreach ($atLast as $s2) {
+                    if ($s2['i'] !== $r['i'] && abs(round($r['bal'] + $s2['amt'], 2) - $s2['bal']) < 0.005) {
+                        return false; // another payment follows this one
+                    }
+                }
+                return true;
+            }));
+            if (count($ends) === 1) {
+                $pick = $ends[0];
+            } else {
+                $first = $out['lines'][0];
+                $last = $out['lines'][count($out['lines']) - 1];
+                $newestFirst = ($first['date'] . ' ' . $first['time']) > ($last['date'] . ' ' . $last['time']);
+                $pick = $newestFirst ? $atLast[0] : $atLast[count($atLast) - 1];
+            }
+        } else {
+            $pick = $atLast[0];
+        }
+        $out['balance'] = $pick['bal'];
+        $out['balance_at'] = $lastAt;
     }
     $out['money_in'] = round($out['money_in'], 2);
     $out['money_out'] = round($out['money_out'], 2);
@@ -267,14 +302,16 @@ function statement_auto(array $line, array $payees = []): ?array
     $name = strtolower((string) ($line['name'] ?? ''));
     $desc = strtolower((string) ($line['description'] ?? ''));
     $amt = (float) ($line['amount'] ?? 0);
+    // A pot first: a pot NAMED after a host is still the owner's own money changing
+    // places, and counting it as paid to them overstated what they had been sent.
+    if (preg_match('/\bpot\b/', $type) || preg_match('/^(from|to) .*pot$|\bpot transfer\b/', $name . ' ' . $desc)) {
+        return ['pot', $amt > 0 ? 'From a pot' : 'To a pot'];
+    }
     if ($payees && $amt < 0) {
         $who = $payees[(string) preg_replace('/[^a-z]/', '', $name)] ?? 0;
         if ($who > 0) {
             return ['person', 'Paid to ' . trim((string) ($line['name'] ?? '')), (int) $who];
         }
-    }
-    if (preg_match('/\bpot\b/', $type) || preg_match('/^(from|to) .*pot$|\bpot transfer\b/', $name . ' ' . $desc)) {
-        return ['pot', $amt > 0 ? 'From a pot' : 'To a pot'];
     }
     if ($amt > 0 && preg_match('/\bsquare\b|squareup|sq \*payout/', $name . ' ' . $desc)) {
         return ['square', 'Square payout'];

@@ -4126,6 +4126,138 @@ it_check('§58 an owner can move an enquiry to a stay under the minimum (an exce
 $r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Clash Owner Edit', 'email' => 'clash58@example.com', 'check_in' => $dd(720), 'check_out' => $dd(722), 'adults' => 2, 'children' => 0, 'message' => '']);
 it_check('§58 …and a clash is refused in the owner\'s words, not "Sorry, those dates are no longer available"', $r['code'] === 409 && strpos((string) ($r['json']['error'] ?? ''), 'enquiry can’t move onto them') !== false, $r['raw']);
 
+// ── §59 each pound once, on the day it moved (the money split and bank audit) ──
+// Every case here was reproduced on a full stack: a payment recorded twice from one
+// stale figure, income moved into a later tax year, a refund restating a closed
+// year, a cancelled stay's money landing on nobody's cottage, a kept deposit and an
+// archived cottage left out of the split, and a link's Undo taking more than it gave.
+echo "\n== §59 each pound once, on the day it moved ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec('DELETE FROM login_attempts');
+$manual59 = function ($id) use ($rootDb) {
+    $q = $rootDb->prepare("SELECT ROUND(amount,2) a, DATE(created_at) d FROM payments WHERE booking_id = ? AND kind = 'manual' ORDER BY created_at, id");
+    $q->execute([(int) $id]);
+    return array_map(fn($r) => [(float) $r['a'], (string) $r['d']], $q->fetchAll(PDO::FETCH_ASSOC));
+};
+$sp59 = function ($id, $extra) use (&$admin, $dd) {
+    return http($admin, 'POST', '/bookings.php', array_merge(['action' => 'set_payment', 'id' => (int) $id, 'payment' => 'deposit', 'payment_date' => $dd(0), 'payment_method' => 'Bank transfer'], $extra));
+};
+$inYear59 = function ($year, $id) use ($acctGet) {
+    $j = $acctGet($year)['json'] ?? [];
+    $rows = array_values(array_filter($j['payments'] ?? [], fn($p) => (int) $p['id'] === (int) $id));
+    return ['sum' => round(array_sum(array_map(fn($p) => (float) $p['income_part'], $rows)), 2), 'rows' => $rows];
+};
+$ty59 = (date('m-d') < '04-06' ? (int) date('Y') - 1 : (int) date('Y'));
+// (a) A payment worked out from a figure that has since moved is refused, not written.
+$r = $add58($dd(760), $dd(767), 'Stale Write');
+$id59a = (int) ($r['json']['id'] ?? 0);
+$r = $sp59($id59a, ['deposit' => 100, 'expect_paid' => 0]);
+it_check('§59 a payment recorded from the figure the page loaded is saved', $r['code'] === 200 && abs((float) $row58($id59a)['deposit_paid'] - 100) < 0.005, $r['raw']);
+$r = $sp59($id59a, ['deposit' => 150, 'expect_paid' => 0]);
+$m59a = $manual59($id59a);
+it_check('§59 …a second one worked out from the same stale figure is refused and changes nothing', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'stale'
+    && abs((float) $row58($id59a)['deposit_paid'] - 100) < 0.005 && count($m59a) === 1 && abs($m59a[0][0] - 100) < 0.005, $r['raw'] . ' ' . json_encode($m59a));
+$r = $sp59($id59a, ['deposit' => 250, 'expect_paid' => 100]);
+it_check('§59 …and from the figure now there, both payments add up', $r['code'] === 200 && abs((float) $row58($id59a)['deposit_paid'] - 250) < 0.005 && abs(array_sum(array_column($manual59($id59a), 0)) - 250) < 0.005, $r['raw']);
+$r = $sp59($id59a, ['deposit' => 260]);
+it_check('§59 a caller that does not say what it started from is still served', $r['code'] === 200 && abs((float) $row58($id59a)['deposit_paid'] - 260) < 0.005, $r['raw']);
+// (b) Money recorded with a booking, or before the ledger kept cash rows, keeps its own date.
+$r = $add58($dd(770), $dd(777), 'Dated Add', ['payment' => 'deposit', 'deposit' => 120, 'payment_date' => ($ty59 - 1) . '-09-01', 'payment_method' => 'Bank transfer']);
+$id59b = (int) ($r['json']['id'] ?? 0);
+it_check('§59 money recorded with a booking gets a ledger row on its own day', $manual59($id59b) === [[120.0, ($ty59 - 1) . '-09-01']], json_encode($manual59($id59b)));
+$r = $sp59($id59b, ['deposit' => 300, 'expect_paid' => 120]);
+it_check('§59 …so the next payment does not carry it into this tax year', $r['code'] === 200 && $manual59($id59b) === [[120.0, ($ty59 - 1) . '-09-01'], [180.0, $dd(0)]]
+    && abs($inYear59($ty59 - 1, $id59b)['sum'] - 120) < 0.005 && abs($inYear59($ty59, $id59b)['sum'] - 180) < 0.005, json_encode($manual59($id59b)));
+$legacy59 = function ($name, $method) use ($rootDb, $propKey, $dd, $ty59) {
+    $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, payment_method) VALUES (?,?,'',?,?,2,0,'deposit',200,700,700,0,7,?,?)")
+        ->execute([$propKey, $name, $dd(780), $dd(787), ($ty59 - 1) . '-08-15', $method]);
+    return (int) $rootDb->lastInsertId();
+};
+$id59c = $legacy59('Legacy Cash59', 'Cash');
+$r = $sp59($id59c, ['deposit' => 350, 'payment_method' => 'Cash', 'expect_paid' => 200]);
+it_check('§59 money from before the ledger kept cash rows is dated on its own day before the date moves', $r['code'] === 200 && $manual59($id59c) === [[200.0, ($ty59 - 1) . '-08-15'], [150.0, $dd(0)]], json_encode($manual59($id59c)));
+$id59d = $legacy59('Legacy Card59', 'Card');
+$r = $sp59($id59d, ['deposit' => 350, 'expect_paid' => 200]);
+it_check('§59 …but not money recorded as a card, whose own card row is coming', $r['code'] === 200 && $manual59($id59d) === [[150.0, $dd(0)]], json_encode($manual59($id59d)));
+// (c) A refund comes off in the year it went back; a closed year keeps what it received.
+$card59 = function ($name, $paid, $charge, $chargeAt, $refund, $refundAt) use ($rootDb, $propKey, $dd) {
+    $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, payment_method) VALUES (?,?,'',?,?,2,0,?,?,400,400,0,4,?,'Square card')")
+        ->execute([$propKey, $name, $dd(790), $dd(794), $paid > 0 ? 'deposit' : 'unpaid', $paid, substr($chargeAt, 0, 10)]);
+    $id = (int) $rootDb->lastInsertId();
+    $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, created_at) VALUES (?,'deposit',?,'COMPLETED',?,?,?)")->execute([$id, $charge, 'sq_it59_' . $id, $propKey, $chargeAt]);
+    $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, created_at) VALUES (?,'refund',?,'COMPLETED',?,?,?)")->execute([$id, $refund, 'sq_it59r_' . $id, $propKey, $refundAt]);
+    return $id;
+};
+$prev59 = $ty59 - 1;
+$id59e = $card59('Refund Next Year', 250, 400, $prev59 . '-09-01 10:00:00', 150, $ty59 . '-05-10 10:00:00');
+it_check('§59 a part refund in a later tax year leaves the year the money came in as it was', abs($inYear59($prev59, $id59e)['sum'] - 400) < 0.005, json_encode($inYear59($prev59, $id59e)));
+it_check('§59 …and comes off the year it went back', abs($inYear59($ty59, $id59e)['sum'] + 150) < 0.005, json_encode($inYear59($ty59, $id59e)));
+$id59f = $card59('Refund Same Year', 0, 300, $prev59 . '-09-02 10:00:00', 300, $prev59 . '-10-01 10:00:00');
+it_check('§59 a stay refunded in full within one year is not listed at all, as before', !$inYear59($prev59, $id59f)['rows'] && !$inYear59($ty59, $id59f)['rows'], json_encode($inYear59($prev59, $id59f)));
+// (d) A cancelled stay's money keeps its cottage, and its refund its own day.
+$ghost59 = 999059;
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, fee, prop_key, guest_name, created_at) VALUES (?,'deposit',500,'COMPLETED','sq_it59_g',9.00,?,'Gone Fiftynine',?)")->execute([$ghost59, $propKey, $prev59 . '-11-01 10:00:00']);
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, guest_name, created_at) VALUES (?,'refund',200,'COMPLETED','sq_it59_gr',?,'Gone Fiftynine',?)")->execute([$ghost59, $propKey, $ty59 . '-05-12 10:00:00']);
+$g59 = $inYear59($prev59, $ghost59);
+it_check('§59 a cancelled stay\'s money is still its cottage\'s', abs($g59['sum'] - 500) < 0.005 && ($g59['rows'][0]['prop_key'] ?? '') === $propKey && ($g59['rows'][0]['property_name'] ?? '') !== '', json_encode($g59));
+it_check('§59 …and its refund comes off the year it went back', abs($inYear59($ty59, $ghost59)['sum'] + 200) < 0.005, json_encode($inYear59($ty59, $ghost59)));
+// (e) The split: a cancelled stay and a kept deposit are the host's cottage's money,
+// and an archived cottage still counts in the account's figures.
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Split Fiftynine', 'couple_rate' => 100]);
+$pk59 = (string) ($r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? ''));
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Old Fiftynine', 'couple_rate' => 100]);
+$pk59x = (string) ($r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? ''));
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at) VALUES ('holder59', 'x', 'Hana Holder', 'holder59@example.com', 0, '{\"money\":true}', NOW())");
+$h59 = (int) $rootDb->lastInsertId();
+$now59 = date('Y-m-d H:i:s');
+$addPaid59 = function ($pk, $name, $rental, $method) use ($rootDb, $dd, $now59) {
+    $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, payment_method) VALUES (?,?,'',?,?,2,0,'paid',?,?,?,0,3,?,?)")
+        ->execute([$pk, $name, $dd(800), $dd(803), $rental, $rental, $rental, substr($now59, 0, 10), $method]);
+    $id = (int) $rootDb->lastInsertId();
+    $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, guest_name, created_at) VALUES (?,'manual',?,'MANUAL',?,?,?,?)")->execute([$id, $rental, 'man_it59_' . $id, $pk, $name, $now59]);
+    return $id;
+};
+$kb59 = $addPaid59($pk59, 'Kept Fiftynine', 300, 'Cash');
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, guest_name, created_at) VALUES (?,'damages',75,'COMPLETED','kept_it59',?,'Kept Fiftynine',?)")->execute([$kb59, $pk59, $now59]);
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, fee, prop_key, guest_name, created_at) VALUES (999159,'deposit',400,'COMPLETED','sq_it59_c',7.00,?,'Cancel Fiftynine',?)")->execute([$pk59, $now59]);
+$xb59 = $addPaid59($pk59x, 'Old Cottage Guest', 200, 'Cash');
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, guest_name, created_at) VALUES (?,'damages',40,'COMPLETED','kept_it59x',?,'Old Cottage Guest',?)")->execute([$xb59, $pk59x, $now59]);
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, fee, prop_key, guest_name, created_at) VALUES (999160,'deposit',100,'COMPLETED','sq_it59_cx',3.00,?,'Cancel Old',?)")->execute([$pk59x, $now59]);
+$r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $pk59x]);
+it_check('§59 the old cottage is archived', $r['code'] === 200, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $h59, 'hosts' => [$pk59 => $ownerId]]);
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+$me59 = $r['json']['me'] ?? [];
+$due59 = array_column((array) ($me59['due'] ?? []), null, 'booking_id');
+it_check('§59 the host\'s share counts the cancelled stay (less its fee) and the kept deposit (393 + 300 + 75)', ($r['json']['role'] ?? '') === 'paid' && abs((float) ($me59['share'] ?? 0) - 768) < 0.005, json_encode($me59));
+it_check('§59 …owed as the cancelled stay\'s own line and with the kept deposit on its booking', abs((float) ($due59[999159]['amount'] ?? 0) - 393) < 0.005 && strpos((string) ($due59[999159]['name'] ?? ''), '(cancelled)') !== false
+    && abs((float) ($due59[$kb59]['amount'] ?? 0) - 375) < 0.005, json_encode($me59['due'] ?? null));
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $ownerId, 'hosts' => [$pk59 => $h59]]);
+$r = http($admin, 'POST', '/split.php', ['action' => 'status']);
+$mine59 = array_column((array) ($r['json']['mine'] ?? []), null, 'k');
+it_check('§59 the holder sees the same share for the host', ($r['json']['role'] ?? '') === 'holder' && abs((float) ($r['json']['paid_out'][0]['share'] ?? 0) - 768) < 0.005, json_encode($r['json']['paid_out'] ?? null));
+it_check('§59 an archived cottage still counts in the account\'s figures: its stay, kept deposit and cancelled stay less its fee (200 + 40 + 100 − 3)', isset($mine59[$pk59x]) && abs((float) $mine59[$pk59x]['net'] - 337) < 0.005, json_encode($mine59[$pk59x] ?? array_keys($mine59)));
+it_check('§59 …while nobody is asked to host it', !in_array($pk59x, array_column((array) ($r['json']['cottages'] ?? []), 'k'), true), json_encode($r['json']['cottages'] ?? null));
+// (f) A link's Undo puts back only what that link sorted.
+$ins59 = $rootDb->prepare("INSERT INTO bank_lines (ext_key, import_id, txn_date, txn_time, kind, name, category, description, notes, amount, balance) VALUES (?,0,?,'10:00:00','Faster payment','Link Fiftynine','','Cottage money','',?,0)");
+$ins59->execute(['m:tx_it59_hand', date('Y-m-d'), -120]);
+$hand59 = (int) $rootDb->lastInsertId();
+$ins59->execute(['m:tx_it59_new', date('Y-m-d'), -80]);
+$r = http($admin, 'POST', '/statements.php', ['action' => 'mark', 'id' => $hand59, 'as' => 'person', 'admin_id' => $h59]);
+it_check('§59 a payment to that name sorted to them by hand first', $r['code'] === 200, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'link', 'admin_id' => $h59, 'name' => 'Link Fiftynine']);
+$ids59 = (array) ($r['json']['ids'] ?? []);
+it_check('§59 linking the name sorts the other and says which', $r['code'] === 200 && ($r['json']['count'] ?? 0) === 1 && count($ids59) === 1, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'unlink', 'admin_id' => $h59, 'name' => 'Link Fiftynine', 'ids' => $ids59]);
+it_check('§59 its Undo puts that one back and keeps the one sorted by hand', $r['code'] === 200 && ($r['json']['count'] ?? 0) === 1
+    && (string) $rootDb->query("SELECT COALESCE(sorted_as,'') FROM bank_lines WHERE ext_key = 'm:tx_it59_hand'")->fetchColumn() === 'person'
+    && (string) $rootDb->query("SELECT COALESCE(sorted_as,'') FROM bank_lines WHERE ext_key = 'm:tx_it59_new'")->fetchColumn() === '', $r['raw']);
+$rootDb->exec("DELETE FROM bank_lines WHERE ext_key LIKE 'm:tx_it59_%'");
+$rootDb->exec("DELETE FROM payments WHERE booking_id IN (999059, 999159, 999160, $kb59, $xb59, $id59e, $id59f)");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($kb59, $xb59, $id59e, $id59f)");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'money-split'");
+$rootDb->exec("DELETE FROM admins WHERE id = $h59");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
