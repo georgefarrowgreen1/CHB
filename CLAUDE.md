@@ -1508,6 +1508,19 @@ What it set, so later pages follow it:
 - **layout-test covers the one-list Inbox and the Payments page** (`admin-inbox`, `admin-inbox-person`,
   `admin-inbox-done`, `admin-money`, `admin-money-books`), its money summary generated from money-lib's own
   composers so the fixture cannot drift from the shape the page reads.
+- **The last sweep (light theme at 390, dark at 1280, every route)**:
+  - The key-safe sheet said "Guest sees it: Now, on their booking page" for a guest staying on a code never set
+    for them. The server reveals only a code set for THEIR booking, so the line asks `keysafeSetFor`, not the
+    duty state (ui-test-keysafe, the in-residence case).
+  - The key-safe duty reads "For <guest>, arriving <date>": the label already says rotate, and the old sentence
+    was cut off in the search panel.
+  - The calendar's + menu keeps the sync note's hairline as its divider but drops the blank line when the note
+    is empty.
+  - Backups is three captioned cards (bookings and settings / photos and files / the emailed copy), not one card
+    under a caption repeating the title, and its dates are DD/MM/YYYY.
+  - The guest list's first tile says what its figure is ("Spent by N guests").
+  - ui-test-command's 30-guest confirm is measured after the dialog's settle finishes. A fixed 400ms caught it
+    still scaled under CI load (783 of 780px).
 
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
