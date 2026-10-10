@@ -227,6 +227,15 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ({ page, posts } = await open([]));
     await page.evaluate(() => guestAccountTab());
     await page.waitForTimeout(300);
+    // The You page shows the photo and offers nothing to change it: that is on
+    // Your details (owner's ask).
+    const you8 = await page.evaluate(() => ({
+        ava: !!document.querySelector('#guest-account-body .ga-hello .ga-ava'),
+        btn: !!document.querySelector('#guest-account-body .ga-hello button, #guest-account-body .ga-hello .ga-cam, #guest-account-body .ga-hello [data-act="gaPhotoSheet"]'),
+    }));
+    ok(you8.ava && !you8.btn, 'the You page shows the photo, with nothing there to change it');
+    await page.evaluate(() => gaGo('details'));
+    await page.waitForTimeout(300);
     const pre = await page.evaluate(() => ({
         ini: (document.querySelector('#guest-account-body .ga-ava') || {}).textContent || '',
         label: (document.querySelector('.ga-avabtn') || { getAttribute: () => '' }).getAttribute('aria-label'),
@@ -265,9 +274,18 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         cropShut: !document.getElementById('ga-crop').classList.contains('open'),
         label: document.querySelector('.ga-avabtn').getAttribute('aria-label'),
     }));
-    ok(after.cropShut && after.img === 'avatar.php?v=abcdef0123', `the photo shows on the Account page, versioned (${after.img})`);
+    ok(after.cropShut && after.img === 'avatar.php?v=abcdef0123', `the photo shows on Your details, versioned (${after.img})`);
     ok(after.dock === 'avatar.php?v=abcdef0123', 'and the dock\'s Account button wears it');
     ok(/Change your profile photo/.test(after.label), 'the circle now says it changes the photo');
+    await page.evaluate(() => gaGo(''));
+    await page.waitForTimeout(300);
+    const youAfter = await page.evaluate(() => ({
+        img: (document.querySelector('#guest-account-body .ga-hello .ga-ava img') || { getAttribute: () => '' }).getAttribute('src'),
+        btn: !!document.querySelector('#guest-account-body .ga-hello button'),
+    }));
+    ok(youAfter.img === 'avatar.php?v=abcdef0123' && !youAfter.btn, `the You page shows the new photo too, still not as a button (${youAfter.img})`);
+    await page.evaluate(() => gaGo('details'));
+    await page.waitForTimeout(300);
     await page.click('.ga-avabtn');
     await page.waitForSelector('#ga-photo-sheet.open');
     await page.click('#ga-photo-sheet [data-act="gaPhotoRemove"]');

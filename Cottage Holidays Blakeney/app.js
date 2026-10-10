@@ -3926,8 +3926,9 @@ function renderGuestAccount(dir) {
     } else {
         const ph = gaPhone();
         const first = String(g.name || '').trim().split(/\s+/)[0];
+        // The photo is shown here and changed only on Your details (owner's ask).
         html =
-            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead" id="ga-hello-s">${escapeHtml(gaHelloLine())}</p></div>${gaAvaBtn(false)}</div>` +
+            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead" id="ga-hello-s">${escapeHtml(gaHelloLine())}</p></div>${gaAvaHtml(false)}</div>` +
             `<div id="ga-stays">${gaStaysHtml()}</div>` +
             `<div id="ga-todo">${gaTodoHtml()}</div>` +
             gaGroup(
@@ -21996,7 +21997,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'rvrows1';
+    const BUILD = 'youphoto1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
