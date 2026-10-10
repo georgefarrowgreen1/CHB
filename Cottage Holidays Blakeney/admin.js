@@ -27968,7 +27968,7 @@ function renderBackups() {
     const body = document.getElementById('backups-body');
     if (!body) return;
     body.innerHTML = `
-                <h3 class="u-cap is-first">Backups</h3>
+                <h3 class="u-cap is-first">Your bookings and settings</h3>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div id="backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -27976,17 +27976,22 @@ function renderBackups() {
                         <button class="btn-sm btn-edit" ${chbAttrs('verifyBackupNow', CHB_SELF)}>Verify latest</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download">Download latest</button>
                     </div>
-                    <div id="files-backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
+                </div>
+                <h3 class="u-cap">Photos and files</h3>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div id="files-backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" ${chbAttrs('runFilesBackupNow', CHB_SELF)}>Archive files now</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download_files">Download files</button>
                     </div>
-                    <!-- The emailed copy is ENCRYPTED or it is not sent. Without a
-                         passphrase the Monday email carries the report only — the
-                         backup itself stays on the server, downloadable above. -->
-                    <div class="acr-cap" style="margin-top:18px;">The emailed copy</div>
+                </div>
+                <!-- The emailed copy is ENCRYPTED or it is not sent. Without a
+                     passphrase the Monday email carries the report only — the
+                     backup itself stays on the server, downloadable above. -->
+                <h3 class="u-cap">The emailed copy</h3>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <!-- The one sentence kept: losing the passphrase loses the backup. -->
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 12px;">Keep it somewhere other than your inbox — without it the file can’t be opened.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Keep it somewhere other than your inbox — without it the file can’t be opened.</p>
                     <label class="modal-label" for="backup-pass">Backup passphrase</label>
                     <input type="password" class="input-glass" id="backup-pass" autocomplete="new-password" placeholder="a few unrelated words" style="max-width:340px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
@@ -28106,15 +28111,17 @@ async function refreshBackupStatus() {
     try {
         const r = await apiPost('backup.php', { action: 'status' });
         const b = (r.backups || [])[0];
+        // The server says 'Y-m-d H:i'; a screen date is DD/MM/YYYY.
+        const when = (at) => { const m = /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(String(at || '')); return m ? fmtDate(m[1]) + ' at ' + m[2] : String(at || ''); };
         el.textContent = b
-            ? `Latest: ${b.file} · ${Math.round(b.bytes / 1024)} KB · ${b.at}`
+            ? `Latest: ${when(b.at)} · ${Math.round(b.bytes / 1024)} KB`
             : 'No backup stored yet';
         const fe = document.getElementById('files-backup-status');
         if (fe) {
             const f = r.files_backup;
             fe.textContent = f
-                ? `Photos & uploads: ${f.file} · ${(f.bytes / 1048576).toFixed(1)} MB · ${f.at} — too big to email, download a copy now and then.`
-                : 'No photo archive yet';
+                ? `Latest: ${when(f.at)} · ${(f.bytes / 1048576).toFixed(1)} MB — too big to email, so download a copy now and then.`
+                : 'No archive yet';
         }
     } catch (e) {
         el.textContent = "Couldn't check backups: " + (e.message || '');
