@@ -561,15 +561,14 @@ it_check('...and runs BEFORE every other job',
     strpos($cronSrc, "'migrate.php?cron=' =>") < strpos($cronSrc, "'ical-import.php?cron=' =>"));
 // A 2xx is not always success: migrate.php answers 200 and reports each file
 // individually, so a failed schema change would read as a job that went fine.
-// Pinned on the GUARD'S CONDITION, not on the strings inside it: replacing the
-// `if` with `if (false)` left both of those still present in the source and both
-// checks green — the ingredient-not-enforcement trap this file keeps meeting.
-it_check('a per-file ERROR is read out of the 200 response',
-    strpos($cronSrc, 'if ($ok && is_array($body[\'migrations\'] ?? null)) {') !== false);
-it_check('...inside a branch that can actually run',
-    strpos($cronSrc, "(\$m['status'] ?? '') === 'ERROR'") !== false && strpos($cronSrc, 'if (false)') === false);
-it_check('...and demotes the job to failed, which is what logs a warning',
-    preg_match('/\$ok = false;\s*\n\s*\$note = /', $cronSrc) === 1);
+// The verdict is jobs-lib.php's cron_result_ok (test-jobs drives it in full); here
+// the REAL function is asked, and cron.php is held to taking its answer.
+require_once __DIR__ . '/jobs-lib.php';
+$mv10d = cron_result_ok(200, ['migrations' => [['file' => 'a.sql', 'status' => 'OK'], ['file' => 'b.sql', 'status' => 'ERROR']]]);
+it_check('a per-file ERROR is read out of the 200 response', $mv10d['ok'] === false && strpos($mv10d['note'], 'b.sql') !== false, json_encode($mv10d));
+it_check('...while a clean run of migrations is a success', cron_result_ok(200, ['migrations' => [['file' => 'a.sql', 'status' => 'OK']]])['ok'] === true);
+it_check('...and cron.php takes that verdict as the job\'s, which is what logs a warning',
+    strpos($cronSrc, '$verdict = cron_result_ok($status, $body);') !== false && preg_match('/\$ok = \$verdict\[\'ok\'\];\s*\n\s*\$note = \$verdict\[\'note\'\];/', $cronSrc) === 1);
 // The safety property that makes nightly application sound at all: running the
 // whole set twice must be a no-op. §2 already proves the second pass records
 // every file as already-recorded; assert the ledger is what makes it so.
@@ -4377,6 +4376,150 @@ it_check('§61 a removed cottage\'s calendar is not published to a visitor', ($p
 it_check('§61 …while the owner still sees it', count($admA['json']['ranges'] ?? []) >= 1, $admA['raw']);
 $rootDb->prepare('DELETE FROM ical_blocks WHERE prop_key = ?')->execute([$p61]);
 $rootDb->prepare('DELETE FROM bookings WHERE id = ?')->execute([$mv61]);
+
+echo "\n== §62 who is who: a typed email is not proof ==\n";
+// Anyone can type a guest's email into the website chat, and registering an address
+// is not owning it. The owner's Inbox, the push lookup, the reset link and the
+// photo wall all used to take the address at its word.
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chat', 'guestcode', 'register')");
+$w62 = 'wren62-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Wren Real'," . $rootDb->quote($w62) . ",'2031-06-02','2031-06-05',2,0,'paid',300,300,300,0,3)");
+$w62Bid = (int) $rootDb->lastInsertId();
+$thr62 = function ($tid) use ($admin) {
+    $j = $admin;
+    $r = http($j, 'POST', '/messages.php', ['action' => 'list']);
+    foreach ($r['json']['threads'] ?? [] as $t) {
+        if ((int) ($t['thread_id'] ?? 0) === (int) $tid) {
+            return $t;
+        }
+    }
+    return null;
+};
+// (a) A website visitor types the booked guest's name and email.
+$imp62 = [];
+$tok62 = bin2hex(random_bytes(16));
+$r = http($imp62, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok62, 'name' => 'Wren Real', 'email' => $w62, 'body' => 'The key safe code is not working']);
+$imp62Tid = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok62))->fetchColumn();
+it_check('§62 (fixture) a website chat is started with a booked guest\'s email', $r['code'] === 200 && $imp62Tid > 0, $r['raw']);
+$t = $thr62($imp62Tid);
+it_check('§62 the owner\'s chat list marks it NOT verified', is_array($t) && ($t['verified'] ?? null) === false, json_encode($t));
+$r = http($admin, 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $imp62Tid]);
+it_check('§62 …and the thread carries none of that guest\'s bookings', $r['code'] === 200 && ($r['json']['thread']['verified'] ?? null) === false && ($r['json']['bookings'] ?? null) === [], substr($r['raw'], 0, 300));
+// (b) A guest account: unproven, then proven in the browser that registered it.
+$g62 = 'gina62-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$gj62 = [];
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Gina Sixtytwo', 'email' => $g62, 'password' => 'ginapass12', 'address' => '6 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$gid62 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($g62))->fetchColumn();
+it_check('§62 (fixture) a new account signs in, unproven', !empty($r['json']['guest']) && $gid62 > 0, $r['raw']);
+http($gj62, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Hello from my account']);
+$gt62 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $gid62")->fetchColumn();
+$t = $thr62($gt62);
+it_check('§62 an unproven account\'s chat is not verified either', $gt62 > 0 && ($t['verified'] ?? null) === false && ($t['is_guest'] ?? null) === true, json_encode($t));
+$sub62 = ['endpoint' => 'https://fcm.googleapis.com/fcm/send/it62-' . bin2hex(random_bytes(4)), 'keys' => ['p256dh' => 'BPit62', 'auth' => 'ait62']];
+$r = http($gj62, 'POST', '/push.php', ['action' => 'subscribe', 'subscription' => $sub62]);
+it_check('§62 an unproven account cannot add a phone for alerts', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
+$gidFor62 = fn($em) => $mailProbe('require_once __DIR__ . "/webpush.php";' . "\n" . 'echo "\n" . json_encode(["id" => guest_id_for_email(' . var_export($em, true) . ')]);');
+$rootDb->prepare('INSERT INTO push_subscriptions (guest_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,NOW())')->execute([$gid62, 'https://fcm.googleapis.com/fcm/send/it62-old', 'k', 'a']);
+$p62 = $gidFor62($g62);
+it_check('§62 a booking\'s push alerts never go to an unproven account (even one with a phone stored)', is_array($p62) && (int) ($p62['id'] ?? -1) === 0, json_encode($p62));
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_send_reset']);
+it_check('§62 an unproven account cannot send itself reset links', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
+$ts62 = time();
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gid62, 'ts' => $ts62, 'token' => substr(hash_hmac('sha256', 'login:' . $gid62 . ':' . $ts62, $SECRET), 0, 32)]);
+it_check('§62 (fixture) the guest confirms the email in the browser that registered it', ($r['json']['ok'] ?? false) === true && ($r['json']['reset'] ?? true) === false, $r['raw']);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Gina Sixtytwo'," . $rootDb->quote($g62) . ",'" . $ukPlus(-1) . "','" . $ukPlus(2) . "',2,0,'paid',300,300,300,0,3)");
+$g62Bid = (int) $rootDb->lastInsertId();
+$t = $thr62($gt62);
+it_check('§62 once proven, their own chat is verified', ($t['verified'] ?? null) === true, json_encode($t));
+$r = http($admin, 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $gt62]);
+it_check('§62 …and carries their booking', count($r['json']['bookings'] ?? []) === 1 && ($r['json']['thread']['verified'] ?? null) === true, substr($r['raw'], 0, 300));
+$r = http($gj62, 'POST', '/push.php', ['action' => 'subscribe', 'subscription' => $sub62]);
+it_check('§62 a proven account can add a phone', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$p62 = $gidFor62($g62);
+it_check('§62 …and its booking alerts find it', (int) ($p62['id'] ?? 0) === $gid62, json_encode($p62));
+// A self-reset counts against the address's daily sign-in emails.
+$mk62 = fn($em) => 'mailto:' . substr(sha1(strtolower($em)), 0, 40);
+$mailN62 = fn($em) => (int) $rootDb->query('SELECT COUNT(*) FROM login_attempts WHERE identifier = ' . $rootDb->quote($mk62($em)))->fetchColumn();
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_send_reset']);
+it_check('§62 a proven account may send itself a reset link, counted against the day\'s emails (the mailer is off: 500)', $r['code'] === 500 && $mailN62($g62) === 1, $r['raw']);
+$ins62 = $rootDb->prepare("INSERT INTO login_attempts (ip, identifier, success) VALUES ('10.62.0.1', ?, 0)");
+for ($i = 0; $i < 10; $i++) {
+    $ins62->execute([$mk62($g62)]);
+}
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_send_reset']);
+it_check('§62 …and past the day\'s allowance it is refused in words, not sent', $r['code'] === 429 && ($r['json']['code'] ?? '') === 'paused' && $mailN62($g62) === 11, $r['raw']);
+$rootDb->prepare('DELETE FROM login_attempts WHERE identifier = ?')->execute([$mk62($g62)]);
+// Codes paused for the address: the same answer for anyone, and a guest account
+// gets a sign-in LINK instead (it cannot be guessed), so a stranger's wrong
+// guesses no longer lock the guest out of their stay for the day.
+$cv62 = $rootDb->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?, ?, 0)');
+foreach ([$g62, 'nobody62@gmail.com'] as $em) {
+    for ($i = 0; $i < 10; $i++) {
+        $cv62->execute(['10.62.1.' . $i, 'codev:' . $em]);
+    }
+}
+$pj62 = [];
+$rk = http($pj62, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => $g62]);
+$ru = http($pj62, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'nobody62@gmail.com']);
+it_check('§62 a paused code request answers the same for a guest and for nobody', $rk['code'] === 429 && $rk['raw'] === $ru['raw'] && ($rk['json']['code'] ?? '') === 'paused' && strpos($rk['raw'], 'link') !== false, $rk['raw'] . ' / ' . $ru['raw']);
+it_check('§62 …and only the guest\'s account is sent a sign-in link (one email counted)', $mailN62($g62) === 1 && $mailN62('nobody62@gmail.com') === 0, $mailN62($g62) . '/' . $mailN62('nobody62@gmail.com'));
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'codev:%62%' OR identifier LIKE 'code:%62%'");
+// (c) A squatter's account: when the real guest proves the address from their own
+// browser, everything the squatter set up goes with the password.
+$s62 = 'squat62-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$sj62 = [];
+http($sj62, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squatter Sixtytwo', 'email' => $s62, 'password' => 'squatpass62', 'address' => '9 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$sGid62 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($s62))->fetchColumn();
+$rootDb->prepare('INSERT INTO push_subscriptions (guest_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,NOW())')->execute([$sGid62, 'https://fcm.googleapis.com/fcm/send/it62-squat', 'k', 'a']);
+http($sj62, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Squatter says hello']);
+$sTid62 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $sGid62")->fetchColumn();
+$r = http($sj62, 'POST', '/auth.php', ['action' => 'guest_avatar_set', 'data' => $avData]);
+$sAv62 = (string) $rootDb->query("SELECT avatar FROM guests WHERE id = $sGid62")->fetchColumn();
+it_check('§62 (fixture) the squatter has a phone, a chat and a photo', $sGid62 > 0 && $sTid62 > 0 && $sAv62 !== '' && is_file($work . '/uploads/avatars/' . $sAv62), $r['raw']);
+$rj62 = [];
+$ts62 = time();
+$r = http($rj62, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $sGid62, 'ts' => $ts62, 'token' => substr(hash_hmac('sha256', 'login:' . $sGid62 . ':' . $ts62, $SECRET), 0, 32)]);
+it_check('§62 the real guest proves the address from their own browser', ($r['json']['ok'] ?? false) === true && ($r['json']['reset'] ?? false) === true, $r['raw']);
+it_check('§62 …the squatter\'s phones stop getting the guest\'s alerts', (int) $rootDb->query("SELECT COUNT(*) FROM push_subscriptions WHERE guest_id = $sGid62")->fetchColumn() === 0, '');
+clearstatcache();
+it_check('§62 …its photo is gone, file and all', $rootDb->query("SELECT avatar FROM guests WHERE id = $sGid62")->fetchColumn() === null && !is_file($work . '/uploads/avatars/' . $sAv62), '');
+$t = $thr62($sTid62);
+it_check('§62 …and its chat is no longer the guest\'s: unlinked and not verified', $rootDb->query("SELECT guest_id FROM chat_threads WHERE id = $sTid62")->fetchColumn() === null && ($t['verified'] ?? null) === false, json_encode($t));
+// (d) A guest's PNG reaches the photo wall without its metadata.
+$im62 = imagecreatetruecolor(40, 30);
+imagefilledrectangle($im62, 0, 0, 39, 29, imagecolorallocate($im62, 40, 90, 120));
+ob_start();
+imagepng($im62);
+$png62 = (string) ob_get_clean();
+$txt62 = 'tEXt' . "Comment\0GPS 52.955N 1.020E it62-secret";
+$png62 = substr($png62, 0, -12) . pack('N', strlen($txt62) - 4) . $txt62 . pack('N', crc32($txt62)) . substr($png62, -12);
+$mp62 = '----chbit62' . bin2hex(random_bytes(6));
+$mpBody = '';
+foreach (['action' => 'submit', 'prop_key' => $propKey, 'caption' => 'From the quay'] as $k => $v) {
+    $mpBody .= "--$mp62\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n";
+}
+$mpBody .= "--$mp62\r\nContent-Disposition: form-data; name=\"image\"; filename=\"quay.png\"\r\nContent-Type: image/png\r\n\r\n$png62\r\n--$mp62--\r\n";
+$mpRaw = @file_get_contents($BASE . '/photos.php', false, stream_context_create(['http' => ['method' => 'POST', 'ignore_errors' => true, 'timeout' => 30,
+    'header' => "Accept: application/json\r\nContent-Type: multipart/form-data; boundary=$mp62\r\nCookie: " . implode('; ', array_map(fn($k) => "$k={$gj62[$k]}", array_keys($gj62))),
+    'content' => $mpBody]]));
+$url62 = (string) $rootDb->query("SELECT url FROM guest_photos WHERE guest_id = $gid62 ORDER BY id DESC LIMIT 1")->fetchColumn();
+$stored62 = $url62 !== '' && is_file($work . '/' . $url62) ? (string) file_get_contents($work . '/' . $url62) : '';
+it_check('§62 (fixture) the PNG sent carries a location in its metadata', strpos($png62, 'it62-secret') !== false, '');
+it_check('§62 a guest\'s PNG is stored without it, still a PNG', strpos((string) $mpRaw, '"ok":true') !== false && $stored62 !== '' && strpos($stored62, 'it62-secret') === false && (getimagesizefromstring($stored62)[2] ?? 0) === IMAGETYPE_PNG, (string) $mpRaw . ' ' . $url62);
+// (e) The test centre's guest record is not public content.
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('testcentre-guest', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode(['id' => 1, 'email' => 'owner62@example.com'])]);
+$r = http($noJar, 'GET', '/content.php');
+it_check('§62 the test centre\'s guest record never reaches the public content', $r['code'] === 200 && is_array($r['json']['content'] ?? null) && !array_key_exists('testcentre-guest', $r['json']['content']) && strpos($r['raw'], 'owner62@example.com') === false, substr($r['raw'], 0, 160));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'testcentre-guest'");
+foreach ([$imp62Tid, $gt62, $sTid62] as $tid) {
+    $rootDb->exec('DELETE FROM messages WHERE thread_id = ' . (int) $tid);
+    $rootDb->exec('DELETE FROM chat_threads WHERE id = ' . (int) $tid);
+}
+$rootDb->exec("DELETE FROM guest_photos WHERE guest_id = $gid62");
+$rootDb->exec("DELETE FROM push_subscriptions WHERE guest_id IN ($gid62, $sGid62)");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($w62Bid, $g62Bid)");
+$rootDb->exec("DELETE FROM guests WHERE id IN ($gid62, $sGid62)");
 
 echo "\n== Summary ==\n";
 if ($fail) {

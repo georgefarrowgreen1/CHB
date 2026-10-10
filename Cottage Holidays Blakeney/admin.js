@@ -32202,7 +32202,7 @@ function ibStateClean(raw) {
     if (L && typeof L === 'object' && !Array.isArray(L)) {
         Object.keys(L).slice(0, 300).forEach((em) => {
             const t = String(L[em] || '');
-            if (/^[^@\s]+@[^@\s]+$/.test(em) && /^[ep]:/.test(t) && t.length <= 200) out.links[em.toLowerCase()] = t;
+            if ((/^[^@\s]+@[^@\s]+$/.test(em) || /^t:\d{1,12}$/.test(em)) && /^[ep]:/.test(t) && t.length <= 200) out.links[em.toLowerCase()] = t;
         });
     }
     return out;
@@ -32381,8 +32381,12 @@ function ibBuild() {
     (Array.isArray(__msgThreads) ? __msgThreads : []).concat((__ibArchived || []).map((t) => Object.assign({}, t, { archived: 1 }))).forEach((t) => {
         if (!t || seenT.has(t.thread_id)) return;
         seenT.add(t.thread_id);
-        const p = get(ibKeyOf(t.email, '', 't:' + t.thread_id));
+        // A TYPED EMAIL IS NOT PROOF (verified false): its own person until the owner
+        // links THIS thread (links['t:<id>']), never the address an impostor would share.
+        const unproven = t.verified === false;
+        const p = get(unproven ? ibState().links['t:' + t.thread_id] || 't:' + t.thread_id : ibKeyOf(t.email, '', 't:' + t.thread_id));
         p.threads.push(t);
+        if (unproven && !ibState().links['t:' + t.thread_id]) p.unconfirmed = true;
         addEmail(p, t.email);
         named(p, t.name, 1);
     });
@@ -32414,7 +32418,10 @@ function ibBuild() {
         if (!p.name) p.name = p.emails[0] || (p.phone ? p.phone : 'Website visitor');
         const guest = p.bookings.length || p.enq || p.approving || p.declined.length;
         const inbound = p.mails.map((m) => m.subject + ' ' + (m.preview || '')).concat(p.threads.map((t) => t.last_role === 'guest' ? t.last_body || '' : '')).join(' ');
+        const claim = p.unconfirmed && p.emails.length ? ibKeyOf(p.emails[0], '', '') : '';
+        const claimed = claim && claim !== p.key ? map.get(claim) : null;
         if (guest) p.kind = 'guest';
+        else if (claimed && (claimed.bookings.length || claimed.enq || claimed.declined.length)) { p.kind = 'unlinked'; p.linkTo = claim; p.claimed = true; }
         else if (p.mails.length && !p.threads.length && p.emails.length && p.emails.every((e) => IB_AUTO_RE.test(e))) p.kind = 'auto';
         else {
             const n = String(p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -32556,6 +32563,7 @@ function ibEnqFigures(q) {
 }
 function ibCtxLine(p) {
     if (p.kind === 'auto') return 'Automatic email';
+    if (p.claimed) return ibEsc(p.emails[0]) + ' · email not confirmed';
     if (p.kind === 'unlinked') return ibEsc(p.emails[0]) + ' · not linked';
     if (p.kind === 'other') return 'Not a guest';
     if (p.enq) { const q = p.enq; return `${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)}`; }
@@ -32586,6 +32594,7 @@ function ibDepositBack(s) {
 }
 function ibStayLine(p) {
     if (p.kind === 'auto') return `Automatic email from ${ibEsc(p.name)}`;
+    if (p.claimed) return `${ibEsc(p.emails[0])} · <span class="ib-warnword">email not confirmed</span>`;
     if (p.kind === 'unlinked') return `${ibEsc(p.emails[0])} · <span class="ib-warnword">not linked to a guest</span>`;
     if (p.kind === 'other') return `${ibEsc(p.emails[0] || p.phone || '')} · not a guest`;
     if (p.enq) { const q = p.enq; return `${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)}`; }
@@ -32969,6 +32978,7 @@ function ibCtxHtml(p) {
     const n = p.bookings.length;
     const who = p.kind === 'auto' ? 'Automatic email'
         : p.kind === 'other' ? 'Not a guest'
+          : p.claimed ? 'Website visitor · email not confirmed'
           : p.kind === 'unlinked' ? 'Not linked to a guest'
             : p.kind === 'lead' ? 'Not a guest yet'
               : past >= 1 && n > 1 ? `${['', '', 'Second', 'Third', 'Fourth', 'Fifth'][n] || n + 'th'} stay with you`
@@ -32984,6 +32994,11 @@ function ibCtxHtml(p) {
     if (p.kind === 'unlinked') {
         const g = __ibPeopleMap.get(p.linkTo);
         const s = g && ibCurrentStay(g);
+        if (p.claimed) {
+            return h + `<div class="ib-linkcard"><p>They wrote in the website chat as ${ibEsc(p.emails[0] || '')}, the email on ${ibEsc(g ? ibFirst(g) + '’s' : 'a guest’s')} booking — but anyone can type an email there. Check it is them before you reply with anything private, like a door code.</p>
+            <button type="button" class="ib-btn is-primary" data-ib="link">${IB_IC.link}Yes, this is ${ibEsc(g ? ibFirst(g) : 'them')}</button>
+            <p class="ib-ctxnote">Confirming joins this chat to ${ibEsc(g ? ibFirst(g) + '’s' : 'their')} conversation. A later chat from the same email asks again.</p></div>`;
+        }
         return h + `<div class="ib-linkcard"><p>This address isn’t on any booking. A guest has the same name:</p>
             ${g ? `<div class="ib-kvs"><div class="ib-kv is-head"><span>${ibEsc(g.name)}</span></div>${s ? `<div class="ib-kv is-stack"><span>Booking</span><span>${ibDot(s.pk)}${ibEsc(ibPropName(s.pk))} · ${ibRange(s.b.checkIn, s.b.checkOut)}</span></div>` : ''}${g.emails[0] ? `<div class="ib-kv is-stack"><span>Email on the booking</span><span>${ibEsc(g.emails[0])}</span></div>` : ''}</div>` : ''}
             <button type="button" class="ib-btn is-primary" data-ib="link">${IB_IC.link}Yes, this is ${ibEsc(g ? ibFirst(g) : 'them')}</button>
@@ -33819,9 +33834,12 @@ const IB_ACT = {
         const g = __ibPeopleMap.get(p.linkTo);
         if (!g) return;
         const st = ibState();
-        p.emails.forEach((e) => { st.links[e] = g.key; });
+        // An unconfirmed chat joins by its thread, never its typed email.
+        if (p.unconfirmed) p.threads.forEach((t) => { st.links['t:' + t.thread_id] = g.key; });
+        else p.emails.forEach((e) => { st.links[e] = g.key; });
         ibStateSave();
-        const sys = { who: 'sys', icon: 'link', t: ibNow(), text: `${p.emails[0]} linked to ${ibFirst(g)}` };
+        const what = p.unconfirmed ? 'This chat' : p.emails[0];
+        const sys = { who: 'sys', icon: 'link', t: ibNow(), text: `${what} linked to ${ibFirst(g)}` };
         (__ibLocal[g.key] = __ibLocal[g.key] || []).push(sys);
         __ibFreshMsgs.add(sys);
         const d = ibDraft(p.key);
@@ -33832,7 +33850,7 @@ const IB_ACT = {
         __ibFresh.add(g.key);
         ibBuild();
         ibRenderAll();
-        ibToast(`Linked. ${p.emails[0]} now belongs to ${ibFirst(g)}.`);
+        ibToast(`Linked. ${what} now belongs to ${ibFirst(g)}.`);
     },
     copy(arg) {
         __ibMenuOpen = false;

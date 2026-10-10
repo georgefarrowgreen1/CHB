@@ -87,7 +87,8 @@ foreach ($rows as $e) {
         // smtp_send returns ok:false on a soft failure (server down / mail off)
         // WITHOUT throwing.
         $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text, $html) : ['ok' => false];
-        if (empty($r['ok'])) {
+        // A send that may have gone keeps the claim, as the rescue below does.
+        if (empty($r['ok']) && empty($r['sent_uncertain'])) {
             db()->prepare('UPDATE enquiries SET nudge_sent_at = NULL WHERE id = ?')->execute([(int) $e['id']]);
         }
         if (!empty($r['ok'])) {

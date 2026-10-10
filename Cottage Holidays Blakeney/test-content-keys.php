@@ -68,12 +68,22 @@ foreach (glob(__DIR__ . '/*.php') as $f) {
     if (preg_match_all("/content_set_(?:scalar|secret)\(\s*'([a-z0-9-]+)'/", $src, $m)) {
         $keys = array_merge($keys, $m[1]);
     }
+    // INSERT INTO content (…) VALUES (?, …) …->execute(['literal-key', …: the key bound
+    // as a parameter. Missed by the two forms above, which is how testcentre-guest (the
+    // staging test guest's id and the owner's email) reached the public content GET.
+    // A whole literal only: 'geo-' . $k is a family the other scans name already.
+    if (preg_match_all("/INSERT INTO content\s*\([^)]*\)\s*VALUES\s*\(\s*\?[\s\S]{0,400}?->execute\(\s*\[\s*'([a-z0-9-]+)'\s*,/i", $src, $m)) {
+        $keys = array_merge($keys, $m[1]);
+    }
     foreach (array_unique($keys) as $k) {
         $found[$k][] = $base;
     }
 }
 
 ck_check('the scan finds server-written keys (sanity: ≥ 15 literals)', count($found) >= 15);
+// The ->execute(['key', …]) form is read too: testcentre.php writes its guest record
+// that way, and it is the case that form exists for.
+ck_check('the scan reads a key bound in ->execute([...]) (testcentre-guest, in testcentre.php)', in_array('testcentre.php', $found['testcentre-guest'] ?? [], true));
 
 ksort($found);
 foreach ($found as $key => $files) {

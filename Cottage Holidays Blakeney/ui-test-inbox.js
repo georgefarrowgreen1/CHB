@@ -9,6 +9,7 @@
 //  7. Delete from the ⋯ menu: asks first, names what goes and what stays
 //  8. the Done folder: the switch and its motion, month captions, moving back, search
 //  9. the computer's panes and its keyboard
+// 10. an email typed into the website chat is not proof: its own row until confirmed
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -467,6 +468,70 @@ const SHOTS = process.env.IB_SHOTS || '';
     ok(!(await keys()).includes(d0), 'the moved row has folded out of Done');
     await page.click('#ib-f-inbox');
     await page.waitForTimeout(800);
+
+    console.log('10. an email typed into the website chat is not proof');
+    // Anyone can type a booked guest's email into the website chat (verified: false —
+    // no proven account behind it). Joined by that address, the chat became the guest's
+    // conversation, their stay beside it, so the owner's reply (a door code) went to
+    // whoever typed it.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(500);
+    if (await page.$eval('#ib-conv .ib-back', (e) => !!e.getClientRects().length).catch(() => false)) {
+        await page.click('#ib-conv .ib-back');
+        await page.waitForTimeout(600);
+    }
+    const reload = async (key) => {
+        await page.evaluate(async () => { await loadAdminMessages(); ibSoon(); });
+        if (key) await page.waitForFunction((k) => !!document.querySelector(`#ib-rows .ib-rowwrap[data-key="${k}"]`), key, { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(300);
+    };
+    threads.push({ thread_id: 7, name: 'Marcus Hill', email: 'marcus@example.com', source: '', location: '', is_guest: false, verified: false, archived: 0, last_at: at(0, '09:05'), unread: 1, last_body: 'What is the key safe code again?', last_role: 'guest' });
+    await reload('t:7');
+    const imp = await page.evaluate(() => {
+        const g = __ibPeopleMap.get('e:marcus@example.com');
+        const t = __ibPeopleMap.get('t:7');
+        const row = document.querySelector('#ib-rows .ib-rowwrap[data-key="t:7"]');
+        return { gThreads: g ? g.threads.length : -1, gBookings: g ? g.bookings.length : -1, kind: t && t.kind, claimed: !!(t && t.claimed), row: row ? row.textContent.replace(/\s+/g, ' ') : '' };
+    });
+    ok(imp.row !== '', 'the chat is a row of its own');
+    ok(imp.gThreads === 0 && imp.gBookings === 1, `…not inside the booked guest's conversation (${imp.gThreads} chats on Marcus's row)`);
+    ok(imp.kind === 'unlinked' && imp.claimed, `…an unlinked row claiming Marcus (${imp.kind})`);
+    ok(/email not confirmed/.test(imp.row), `…whose line says the email is not confirmed (${imp.row.slice(0, 90)})`);
+    await page.click('#ib-rows .ib-rowwrap[data-key="t:7"] .ib-row', { timeout: 5000 }).catch(() => {}); // a missing row fails the checks below by name
+    await page.waitForTimeout(700);
+    await page.click('#ib-conv .ib-stayline', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    await shot('ph-unconfirmed');
+    const card = await page.evaluate(() => {
+        const c = document.querySelector('#ib-ctxdrop .ib-linkcard');
+        const x = document.querySelector('#ib-ctxdrop .ib-ctx');
+        return { card: c ? c.textContent.replace(/\s+/g, ' ') : '', ctx: x ? x.textContent.replace(/\s+/g, ' ') : '' };
+    });
+    ok(/anyone can type an email there/.test(card.card) && /Yes, this is Marcus/.test(card.card), `the owner is asked to check it is them first (${card.card.slice(0, 90)})`);
+    ok(/Website visitor · email not confirmed/.test(card.ctx) && !/Pimpernel/.test(card.ctx), 'and the booked guest\'s stay is not shown beside the chat');
+    await page.click('#ib-ctxdrop [data-ib="link"]', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    const links = (state && state.links) || {};
+    ok(links['t:7'] === 'e:marcus@example.com', `confirming links THIS chat (${JSON.stringify(links)})`);
+    ok(!links['marcus@example.com'], '…never the address, which the next stranger would share');
+    const kept = await page.evaluate((st) => (ibStateClean(st).links || {})['t:7'] || '', state || {});
+    ok(kept === 'e:marcus@example.com', `…and the link survives the next load, when the stored record is cleaned on the way in (${kept})`);
+    const joined = await page.evaluate(() => { const g = __ibPeopleMap.get('e:marcus@example.com'); return { n: g ? g.threads.length : -1, row: !!document.querySelector('#ib-rows .ib-rowwrap[data-key="t:7"]') }; });
+    ok(joined.n === 1 && !joined.row, `and the chat joins Marcus's conversation (${joined.n})`);
+    if (await page.$eval('#ib-conv .ib-back', (e) => !!e.getClientRects().length).catch(() => false)) {
+        await page.click('#ib-conv .ib-back');
+        await page.waitForTimeout(600);
+    }
+    threads.push({ thread_id: 8, name: 'Marcus Hill', email: 'marcus@example.com', source: '', location: '', is_guest: false, verified: false, archived: 0, last_at: at(0, '09:30'), unread: 1, last_body: 'Me again — the code?', last_role: 'guest' });
+    threads.push({ thread_id: 9, name: 'Eleanor Brady', email: 'eleanor@example.com', source: '', location: '', is_guest: true, verified: true, archived: 0, last_at: at(0, '09:40'), unread: 1, last_body: 'Thank you for a lovely week.', last_role: 'guest' });
+    await reload('t:8');
+    const later = await page.evaluate(() => ({
+        again: !!(__ibPeopleMap.get('t:8') || {}).claimed,
+        eleanor: ((__ibPeopleMap.get('e:eleanor@example.com') || {}).threads || []).map((t) => t.thread_id),
+        own: !!__ibPeopleMap.get('t:9'),
+    }));
+    ok(later.again, 'a later chat typing the same email asks again');
+    ok(later.eleanor.includes(9) && !later.own, `a PROVEN account's chat still joins its guest (${JSON.stringify(later.eleanor)})`);
 
     if (SHOTS) {
         await page.evaluate(() => { document.body.classList.toggle('light-mode'); });

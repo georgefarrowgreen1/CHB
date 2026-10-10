@@ -224,6 +224,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php
 
+      - name: Scheduled jobs — due on their day or the first run after it, and a job's own "not ok" counts
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-jobs.php
+
+      - name: Every request loads what it calls (a function from a file it never requires is a fatal)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-requires.php
+
       - name: Session lock — a slow request no longer queues the rest (and every writer declares itself)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-session-lock.php

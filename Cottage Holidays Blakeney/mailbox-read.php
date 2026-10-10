@@ -476,6 +476,15 @@ function poll_mailbox_replies($force = false, $preview = false)
             } // remember the newest of OUR threads
         }
         fwrite($fp, "QUIT\r\n");
+        // THE HANDLED LIST FOLLOWS THE INBOX, not a count. It was cut to the last 2,000
+        // ids, and nothing deletes mail here — so once the inbox passed 2,000 messages
+        // some were never on the list, and every poll re-handled the newest of them: an
+        // old emailed reply posted to a guest's chat again, an alert about mail long
+        // read. Ids no longer in the inbox are forgotten; every id still in it is kept.
+        // Only from a listing read in full (a partial one would forget too much).
+        if ($uclean) {
+            $processed = mailbox_handled_keep($processed, $uidls);
+        }
     } catch (\Throwable $e) {
         @fclose($fp);
         pop3_release();
@@ -658,12 +667,19 @@ function mailbox_new_pending()
     }
 }
 
+// The handled ids still in the inbox listing ([msgNo => uidl]), in their order.
+function mailbox_handled_keep(array $processed, array $listing): array
+{
+    $live = array_fill_keys(array_map('strval', array_values($listing)), true);
+    return array_values(array_filter($processed, fn($u) => isset($live[(string) $u])));
+}
 function mailbox_poll_save($processed, $error, $last)
 {
-    // Keep a large watermark so a busy mailbox can't evict an already-handled
-    // reply's UIDL and re-deliver it (POP3 UIDL re-lists the whole INBOX each poll).
-    if (count($processed) > 2000) {
-        $processed = array_slice($processed, -2000);
+    // The list is pruned to the inbox's own listing by the poll (see above), so it is
+    // as long as the inbox. A far ceiling only guards against a listing that never
+    // arrives in full; it is not the rule that decides what is remembered.
+    if (count($processed) > 50000) {
+        $processed = array_slice($processed, -50000);
     }
     $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
     if ($last !== null) {

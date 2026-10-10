@@ -122,7 +122,9 @@ foreach ($due as $b) {
     } catch (\Throwable $e) {
     }
     $res = send_arrival_for_booking($b);
-    if (empty($res['ok'])) {
+    // A send that MAY have gone keeps its claim (sent_uncertain: the server went quiet
+    // after taking the message). Released, the next run sent the guest it again.
+    if (empty($res['ok']) && empty($res['sent_uncertain'])) {
         try {
             db()->prepare('UPDATE bookings SET pre_arrival_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
         } catch (\Throwable $e) {
@@ -194,7 +196,9 @@ if (content_value('thankyou-email') === '1') {
                 'deposit' => ($b['hold_status'] ?? '') === 'charged' ? (float) ($b['hold_amount'] ?? 0) : 0,
             ]);
             if (empty($res['ok'])) {
-                db()->prepare('UPDATE bookings SET thankyou_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
+                if (empty($res['sent_uncertain'])) {
+                    db()->prepare('UPDATE bookings SET thankyou_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
+                }
                 continue;
             }
             log_activity('comms', 'email.thankyou', 'Thank-you emailed — ' . ($b['name'] ?? ''), [
@@ -255,7 +259,7 @@ if ($toAsk) {
             'reviewUrl' => $base . 'index.html?review=' . rawurlencode($b['prop_key']),
             'googleUrl' => $googleUrl,
         ]);
-        if (empty($res['ok'])) {
+        if (empty($res['ok']) && empty($res['sent_uncertain'])) {
             try {
                 db()->prepare('UPDATE bookings SET review_request_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
             } catch (\Throwable $e) {

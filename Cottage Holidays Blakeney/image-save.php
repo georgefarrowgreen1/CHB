@@ -10,7 +10,11 @@
 //     ['error'=>'message', 'code'=>400|500]     on failure
 // ============================================================
 
-function save_uploaded_image($file, $slot = '', $maxBytes = null)
+// $mustStrip: a GUEST's upload (a photo for the wall, a chat photo, a suggestion's
+// picture) is refused rather than stored with its metadata when this server cannot
+// re-encode it — a phone photo carries where it was taken. The owner's own uploads
+// stay best-effort.
+function save_uploaded_image($file, $slot = '', $maxBytes = null, $mustStrip = false)
 {
     if ($maxBytes === null) {
         $maxBytes = 8 * 1024 * 1024;
@@ -70,12 +74,16 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null)
         return ['error' => 'Could not save the uploaded image (check folder permissions).', 'code' => 500];
     }
 
-    // Privacy: strip metadata (EXIF — incl. GPS location, device, timestamps) from
-    // JPEG originals before they're served. Applies any EXIF orientation first so
-    // the photo still shows the right way up. Done BEFORE the WebP copy so that
-    // companion is built from the clean, correctly-oriented image.
-    if ($type === IMAGETYPE_JPEG) {
-        strip_jpeg_metadata($dest);
+    // Privacy: strip metadata (EXIF and friends — GPS location, device, timestamps)
+    // by re-encoding. A GUEST's upload is re-encoded in EVERY format: only JPEG used
+    // to be, so a PNG, WebP or GIF reached the public photo wall byte for byte. The
+    // owner's own PNG/WebP/GIF stay as uploaded (a logo keeps its palette, a GIF its
+    // frames). JPEG applies its EXIF orientation first so it still shows the right
+    // way up. Done BEFORE the WebP copy so that companion is built from the clean image.
+    $clean = $type === IMAGETYPE_JPEG ? strip_jpeg_metadata($dest, $mustStrip) : ($mustStrip ? strip_image_metadata($dest, $type) : false);
+    if (!$clean && $mustStrip) {
+        @unlink($dest);
+        return ['error' => 'This photo could not be prepared for sharing here. Please try a JPEG or PNG photo.', 'code' => 400];
     }
 
     // Optimised WebP companion (served automatically via .htaccess where supported).
@@ -91,14 +99,17 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null)
  * and bake in the orientation); otherwise it leaves the file untouched rather than
  * risk dropping the orientation tag and rotating the photo.
  */
-function strip_jpeg_metadata($path)
+// $force: re-encode even without the exif extension (the orientation then cannot be
+// read, so a sideways phone photo may stay sideways) — for a guest's upload, where
+// the location must go.
+function strip_jpeg_metadata($path, $force = false)
 {
-    if (!function_exists('imagecreatefromjpeg') || !function_exists('exif_read_data')) {
-        return;
+    if (!function_exists('imagecreatefromjpeg') || (!function_exists('exif_read_data') && !$force)) {
+        return false;
     }
     $orientation = 1;
     try {
-        $exif = @exif_read_data($path);
+        $exif = function_exists('exif_read_data') ? @exif_read_data($path) : false;
         if (is_array($exif) && !empty($exif['Orientation'])) {
             $orientation = (int) $exif['Orientation'];
         }
@@ -107,7 +118,7 @@ function strip_jpeg_metadata($path)
     }
     $img = @imagecreatefromjpeg($path);
     if (!$img) {
-        return;
+        return false;
     } // unreadable — leave the original as-is
     // Bake in orientation (covers the four values phones actually produce).
     if ($orientation === 3) {
@@ -120,9 +131,37 @@ function strip_jpeg_metadata($path)
         $img = imagerotate($img, 90, 0);
     }
     if ($img) {
-        @imagejpeg($img, $path, 90); // re-encode drops ALL metadata (incl. orientation)
+        $ok = @imagejpeg($img, $path, 90); // re-encode drops ALL metadata (incl. orientation)
         imagedestroy($img);
+        return (bool) $ok;
     }
+    return false;
+}
+
+/**
+ * Strip metadata from a PNG, WebP or GIF in place by re-encoding it through GD
+ * (transparency kept). Returns whether the file on disk is now the re-encoded one.
+ * An animated GIF or WebP keeps only its first frame — these are photos.
+ */
+function strip_image_metadata($path, $type)
+{
+    $read = [IMAGETYPE_PNG => 'imagecreatefrompng', IMAGETYPE_WEBP => 'imagecreatefromwebp', IMAGETYPE_GIF => 'imagecreatefromgif'];
+    $write = [IMAGETYPE_PNG => 'imagepng', IMAGETYPE_WEBP => 'imagewebp', IMAGETYPE_GIF => 'imagegif'];
+    if (!isset($read[$type]) || !function_exists($read[$type]) || !function_exists($write[$type])) {
+        return false;
+    }
+    $img = @$read[$type]($path);
+    if (!$img) {
+        return false;
+    }
+    if ($type !== IMAGETYPE_GIF) {
+        @imagepalettetotruecolor($img);
+        imagealphablending($img, false);
+        imagesavealpha($img, true);
+    }
+    $ok = $type === IMAGETYPE_WEBP ? @imagewebp($img, $path, 90) : @$write[$type]($img, $path);
+    imagedestroy($img);
+    return (bool) $ok;
 }
 
 /**

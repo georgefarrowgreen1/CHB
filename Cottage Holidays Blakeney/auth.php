@@ -37,6 +37,21 @@ function guest_prove_address(int $gid): bool
                 db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([$gid]);
             } catch (\Throwable $e) {
             }
+            // Everything else the earlier claim set up goes with it: its phones would
+            // go on receiving this guest's booking and payment alerts, its photo would
+            // sit beside their bookings, and its chat would read as theirs.
+            foreach (['DELETE FROM push_subscriptions WHERE guest_id = ?', 'UPDATE chat_threads SET guest_id = NULL WHERE guest_id = ?'] as $sql) {
+                try {
+                    db()->prepare($sql)->execute([$gid]);
+                } catch (\Throwable $e) {
+                }
+            }
+            try {
+                $was = guest_avatar_name($gid);
+                db()->prepare('UPDATE guests SET avatar = NULL WHERE id = ?')->execute([$gid]);
+                avatar_delete($was);
+            } catch (\Throwable $e) {
+            }
             $reset = true;
             log_activity('account', 'guest.claim_reset', 'Email confirmed from a new browser — the unconfirmed password was cleared and other sessions signed out', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
         }
@@ -60,6 +75,10 @@ function guest_code_hash(string $email, string $code): string
 // address is treated the same, so the pause says nothing about who has a sign-in.
 const CODE_DAILY_FAILS = 10;
 const CODE_PAUSED = 'Too many wrong codes have been tried for this email today, so codes for it are paused until tomorrow. A passkey or a password still works, if you have one.';
+// Asking for a code while paused: a guest's account still gets a one-tap LINK, which
+// cannot be guessed, so somebody else's ten wrong guesses no longer lock a guest out
+// of their stay (and its door code) for the day. The same words for every address.
+const CODE_PAUSED_LINK = 'Too many wrong codes have been tried for this email today, so codes are paused until tomorrow. If it has a guest account, we have emailed it a link that signs you in instead. A passkey or a password still works too.';
 function code_paused(string $email): bool
 {
     try {
@@ -1095,7 +1114,17 @@ switch ($action) {
         throttle_check('code:' . $email);
         rate_limit('guestcode', 12, 15);
         if ($email !== '' && code_paused($email)) {
-            json_out(['error' => CODE_PAUSED, 'code' => 'paused'], 429);
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) && !admin_find($email)) {
+                $pq = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
+                $pq->execute([$email]);
+                $pg = $pq->fetch();
+                if ($pg && signin_mail_allowed($email)) {
+                    $ts = time();
+                    require_once __DIR__ . '/mailer.php';
+                    send_magic_link_email($pg, site_base_url() . 'index.html?mlogin=' . (int) $pg['id'] . '&t=' . $ts . '&k=' . login_token($pg['id'], $ts), 'signin');
+                }
+            }
+            json_out(['error' => CODE_PAUSED_LINK, 'code' => 'paused'], 429);
         }
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             // A BACK-OFFICE SIGN-IN'S EMAIL gets its own code email, and the code is
@@ -1626,7 +1655,10 @@ switch ($action) {
         // ignored for a guest — it goes to the inbox that already proves the account.
         $selfReset = empty($_SESSION['admin_id']);
         if ($selfReset) {
-            require_guest();
+            // Only an account whose address is proven: an unproven one was registered
+            // by whoever typed the address, and a reset link a minute to it was a way
+            // to fill a stranger's inbox.
+            require_guest_proven();
             $sq = db()->prepare('SELECT email FROM guests WHERE id = ?');
             $sq->execute([(int) $_SESSION['guest_id']]);
             $email = strtolower((string) $sq->fetchColumn());
@@ -1650,6 +1682,12 @@ switch ($action) {
                 json_out(['error' => 'A reset link has just gone to ' . $g['email'] . ' — give it a minute before sending another.', 'code' => 'already_sent'], 409);
             }
         } catch (\Throwable $e) {
+        }
+        // A reset link counts against the address's daily allowance of sign-in emails,
+        // like every other kind (signin_mail_allowed). Said plainly: whoever asked is
+        // the owner or the account's own guest, so there is nothing to hide.
+        if (!signin_mail_allowed($email)) {
+            json_out(['error' => 'That address has had today\'s sign-in emails, so no more go to it until tomorrow.', 'code' => 'paused'], 429);
         }
         $ts = time();
         $url = site_base_url() . 'index.html?mlogin=' . (int) $g['id'] . '&t=' . $ts . '&k=' . login_token($g['id'], $ts) . '&pr=1';

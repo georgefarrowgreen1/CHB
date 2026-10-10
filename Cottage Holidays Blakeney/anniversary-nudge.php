@@ -145,6 +145,14 @@ foreach ($rows as $b) {
     $d = prop_display($b['prop_key']);
     $b['prop_name'] = $d['name'] ?: $b['prop_key'];
     $r = send_anniversary_email($b);
+    if (empty($r['ok']) && !empty($r['sent_uncertain'])) {
+        // It may have gone (the server went quiet after taking it): recorded, so the
+        // guest is never sent it twice; not counted as sent.
+        $sent[$b['id']] = date('Y-m-d') . ' (may have been sent)';
+        $persist();
+        $emailedThisRun[$emailKey] = 1;
+        continue;
+    }
     if (!empty($r['ok'])) {
         // Only mark as invited on a REAL send. A soft mail failure must not burn
         // the re-invite — leave it unrecorded so tomorrow's run retries it

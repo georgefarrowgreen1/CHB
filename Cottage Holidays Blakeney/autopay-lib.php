@@ -862,6 +862,7 @@ function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
         $rows = $q->fetchAll();
     } catch (\Throwable $e) {
         $out['ok'] = false;
+        $out['error'] = 'Could not read the plans due for collection';
         return $out;
     }
     $due = [];

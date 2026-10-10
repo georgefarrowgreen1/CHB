@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['image'])) {
 }
 
 // Chat photos: 6 MB cap (a touch smaller than the 8 MB admin gallery cap).
-$res = save_uploaded_image($_FILES['image'], 'chat', 6 * 1024 * 1024);
+$res = save_uploaded_image($_FILES['image'], 'chat', 6 * 1024 * 1024, true);
 if (!empty($res['error'])) {
     json_out(['error' => $res['error']], $res['code'] ?? 400);
 }

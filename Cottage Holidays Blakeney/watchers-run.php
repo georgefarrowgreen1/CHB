@@ -27,8 +27,20 @@ if (!$isCron) {
     }
 }
 
+// ONE RUN AT A TIME: two overlapping runs (the nightly cron and a manual one) each
+// read the list before either stamped what it said, and the owner heard it twice.
+try {
+    if ((string) db()->query("SELECT GET_LOCK('chb_watchers_run', 0)")->fetchColumn() !== '1') {
+        json_out(['ok' => true, 'busy' => true]);
+    }
+} catch (\Throwable $e) {
+}
+
 $today = date('Y-m-d');
 $list = watchers_all();
+// What this run changes, applied at the end to the list AS IT IS THEN (see below).
+$removeIds = [];
+$doneIds = [];
 
 // ---- 1. Clear the ones whose window has passed. Silently: "that gap you asked
 // about is now in the past" is not news.
@@ -37,6 +49,7 @@ if ($expired) {
     $goneIds = array_map(function ($w) { return (string) ($w['id'] ?? ''); }, $expired);
     foreach ($goneIds as $id) {
         $list = watchers_remove($list, $id);
+        $removeIds[] = $id;
     }
 }
 
@@ -147,6 +160,7 @@ foreach (watchers_due($list, $today) as $w) {
         // — it asked a question that no longer has an interesting answer.
         $skipped++;
         $list = watchers_remove($list, $id);
+        $removeIds[] = $id;
         continue;
     }
     $name = (prop_display($w['pk'] ?? '')['name'] ?? '') ?: ($w['pk'] ?? 'a cottage');
@@ -159,12 +173,23 @@ foreach (watchers_due($list, $today) as $w) {
     $sent++;
     // Mark spoken rather than deleting, so the record of what was asked survives
     // until its window passes and step 1 clears it.
-    foreach ($list as $i => $x) {
-        if ((string) ($x['id'] ?? '') === $id) {
-            $list[$i]['done'] = $today;
-        }
-    }
+    $doneIds[] = $id;
 }
 
-watchers_save($list);
+// Saved as ONE locked step on the list as it is NOW, the way watchers.php sets and
+// stops them: writing back the copy read at the start lost a watcher set while this
+// ran, and brought back one stopped meanwhile.
+$list = content_locked(WATCHERS_KEY, function () use ($removeIds, $doneIds, $today) {
+    $cur = watchers_all();
+    foreach ($removeIds as $id) {
+        $cur = watchers_remove($cur, $id);
+    }
+    foreach ($cur as $i => $x) {
+        if (in_array((string) ($x['id'] ?? ''), $doneIds, true)) {
+            $cur[$i]['done'] = $today;
+        }
+    }
+    watchers_save($cur);
+    return $cur;
+});
 json_out(['ok' => true, 'alerts' => $sent, 'resolved' => $skipped, 'expired' => count($expired), 'watching' => count($list)]);

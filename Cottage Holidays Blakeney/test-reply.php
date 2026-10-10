@@ -470,5 +470,23 @@ chk('a UTF-8 body is left exactly as sent', $p['body'] === 'Thanks — see you F
 $p = parse_email_message("From: x@y.test\r\nContent-Type: text/plain; charset=x-made-up\r\n\r\nabc \xC3");
 chk('an unknown charset still yields valid UTF-8', mb_check_encoding($p['body'], 'UTF-8'));
 
+// THE HANDLED LIST FOLLOWS THE INBOX. Cut to the last 2,000 ids while nothing deletes
+// mail, an inbox past 2,000 kept some messages off the list for ever and every poll
+// re-handled the newest of them (an old emailed reply posted to a guest's chat again).
+echo "\n== The handled-mail list is as long as the inbox, not a count ==\n";
+$listing = [];
+for ($i = 1; $i <= 2600; $i++) {
+    $listing[$i] = 'uid-' . $i;
+}
+$handled = array_values($listing);
+$kept = mailbox_handled_keep(array_merge(['gone-1', 'gone-2'], $handled), $listing);
+chk('an inbox of 2,600 handled messages keeps all 2,600 (nothing falls off a count)', count($kept) === 2600 && $kept[0] === 'uid-1' && end($kept) === 'uid-2600');
+chk('ids no longer in the inbox are forgotten', !in_array('gone-1', $kept, true));
+chk('the list keeps its order', $kept === $handled);
+chk('a message not yet handled is not invented as handled', !in_array('uid-new', mailbox_handled_keep(['uid-1'], ['uid-1', 'uid-new']), true));
+$mrd = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/mailbox-read.php'));
+chk('THE WIRING: the poll prunes to its listing only when the listing was read in full', (bool) preg_match('~if \(\$uclean\) \{\s*\$processed = mailbox_handled_keep\(\$processed, \$uidls\);~', $mrd));
+chk('…and the 2,000 cap is gone', strpos($mrd, '> 2000') === false);
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);

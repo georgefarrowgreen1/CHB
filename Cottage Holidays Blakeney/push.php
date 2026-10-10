@@ -162,6 +162,8 @@ require_guest();
 $guestId = (int) $_SESSION['guest_id'];
 
 if ($action === 'subscribe') {
+    // A phone joins only an account whose address is proven (see guest_id_for_email).
+    require_guest_proven();
     $sub = $in['subscription'] ?? null;
     if (!is_array($sub) || empty($sub['endpoint'])) {
         json_out(['error' => 'Invalid subscription'], 400);
