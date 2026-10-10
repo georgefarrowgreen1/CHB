@@ -9103,6 +9103,15 @@ on a Needs-you row dismisses it, with an Undo toast.
   one read of `.key` needed a cast. The first gate for the click guard was VACUOUS: a real
   touch drag never ends in a click, so removing the guard failed nothing — only a MOUSE
   drag ends in one on the row it started on, which is the path the gate now covers.
+- **A REFRESH MID-DRAG WAITS FOR THE FINGER** (`__nyRenderLater`, `nyRenderDeferred`). Found when the suite
+  flaked in CI: the calendar's own auto-sync (`autoSyncIcalBlocks`) reloads the bookings on its own timer, and
+  `renderNeedsYou` rebuilt the strip mid-swipe, so the row vanished from under the finger and every later move
+  threw on the detached node (`nyReveal` read `parentNode` of null). `renderNeedsYou` now defers while a swipe is
+  on, the gesture's end runs the deferred render, and a row that is detached anyway stands the gesture down. Gated
+  by ui-test-dismiss §8 (break-tested: removing the deferral fails all three). The suite itself now holds the
+  bookings refetch from the moment its page is quiet: `autoSyncIcalBlocks` calls app.js's `loadData` directly, so
+  the window stub never saw it. Measured under six concurrent copies: the old suite failed 3 of 6, the new one
+  0 of 18.
 - **Gates.** `search-test` §40 A6 (identity per kind, hidden/escalation both ways, no entry
   can hide the cron row, malformed and lapsed entries, the write + Undo, refusals, the cap,
   adoption mid-save), `test-integration` §37 (private, on the boot payload as `{}`,

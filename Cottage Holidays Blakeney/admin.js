@@ -23354,13 +23354,21 @@ function chbDutyRestore(key) {
 // goes. The click a swipe ends in — on THAT row — is swallowed, or dismissing would also open it.
 let __nySwipe = null;
 let __nySwallow = null;
+// A refresh that lands mid-drag waits for the finger: rebuilding the strip would pull the
+// row out from under it. The gesture's end runs the render it deferred.
+let __nyRenderLater = false;
+function nyRenderDeferred() {
+    if (!__nyRenderLater) return;
+    __nyRenderLater = false;
+    try { renderNeedsYou(); } catch (e) {}
+}
 function nySwipeInit(list) {
     if (/** @type {any} */ (list).__nySwipe) return;
     /** @type {any} */ (list).__nySwipe = true;
     list.addEventListener('pointerdown', nySwipeDown);
     list.addEventListener('pointermove', nySwipeMove);
     list.addEventListener('pointerup', nySwipeUp);
-    list.addEventListener('pointercancel', () => { if (__nySwipe && __nySwipe.on) nySwipeBack(__nySwipe.row, __nySwipe.dx); __nySwipe = null; });
+    list.addEventListener('pointercancel', () => { if (__nySwipe && __nySwipe.on) nySwipeBack(__nySwipe.row, __nySwipe.dx); __nySwipe = null; nyRenderDeferred(); });
     list.addEventListener('click', (e) => {
         const r = e.target instanceof Element ? e.target.closest('.ny-row') : null;
         if (__nySwallow && r && r.getAttribute('data-nykey') === __nySwallow.key && Date.now() - __nySwallow.at < 600) { e.stopImmediatePropagation(); e.preventDefault(); }
@@ -23383,6 +23391,9 @@ function nySwipeDown(e) {
 function nySwipeMove(e) {
     const g = __nySwipe;
     if (!g || e.pointerId !== g.id) return;
+    // The strip re-rendered under the finger (a data refresh): that row is gone, so the
+    // gesture stands down rather than throwing on every move.
+    if (!g.row.isConnected) { __nySwipe = null; return; }
     const dx = e.clientX - g.x0;
     const dy = e.clientY - g.y0;
     if (!g.on) {
@@ -23404,11 +23415,11 @@ function nySwipeUp(e) {
     const g = __nySwipe;
     if (!g || e.pointerId !== g.id) return;
     __nySwipe = null;
-    if (!g.on) return;
+    if (!g.on || !g.row.isConnected) { nyRenderDeferred(); return; }
     __nySwallow = { key: g.row.getAttribute('data-nykey'), at: Date.now() };
     const v = g.dx / Math.max(1, e.timeStamp - g.t0);
-    if (-g.dx >= Math.max(80, g.w * 0.35) || (v < -0.5 && -g.dx > 40)) nyDismissRow(g.row, g.dx);
-    else nySwipeBack(g.row, g.dx);
+    if (-g.dx >= Math.max(80, g.w * 0.35) || (v < -0.5 && -g.dx > 40)) { __nyRenderLater = false; nyDismissRow(g.row, g.dx); }
+    else { nySwipeBack(g.row, g.dx); nyRenderDeferred(); }
 }
 function nyCalm() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -23427,6 +23438,7 @@ function nySwipeBack(row, from) {
 }
 function nyReveal(row, make, w) {
     const list = row.parentNode;
+    if (!list) return;
     let el = list.querySelector('.ny-reveal');
     if (make && !el) {
         el = document.createElement('div');
@@ -23443,7 +23455,7 @@ function nyDismissRow(row, dx) {
     // No longer a live duty (it was resolved while the row sat there): show the truth, don't bounce.
     if (!chbDutyDismiss(row.getAttribute('data-nykey'))) { renderNeedsYou(); return; }
     const done = () => { try { renderNeedsYou(); } catch (e) {} };
-    if (nyCalm() || !row.animate) { done(); return; }
+    if (nyCalm() || !row.animate || !row.parentNode) { done(); return; }
     // Slide out, then close the gap.
     row.classList.remove('ny-drag');
     row.style.pointerEvents = 'none';
@@ -23527,6 +23539,7 @@ function needsYouExpand() {
 /** @type {Set<string>|null} */
 let __nySeen = null; // the to-dos on screen at the last render; null before the first
 function renderNeedsYou() {
+    if (__nySwipe && __nySwipe.on && __nySwipe.row.isConnected) { __nyRenderLater = true; return; }
     try { chbFrameSync(); } catch (e) {}
     try { refreshInboxBadge(); } catch (e) {}
     const wrap = document.getElementById('needs-you');

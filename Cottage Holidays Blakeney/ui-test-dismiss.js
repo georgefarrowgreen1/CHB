@@ -28,13 +28,38 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // pointerType 'touch' and the browser applies touch-action.
   const ownerPage = async (opts) => {
     const p = await t.browser.newPage(opts);
-    p.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    // Requests still in flight: a bookings load started before the seed and landing
+    // after it empties the fixture mid-gesture (CI: both registers gone, no save,
+    // no toast). "Quiet" below needs none in flight, not just a still generation.
+    let inflight = 0;
+    const isPhp = (q) => /\.php/.test(q.url());
+    p.on('request', (q) => { if (isPhp(q)) inflight++; });
+    p.on('requestfinished', (q) => { if (isPhp(q)) inflight = Math.max(0, inflight - 1); });
+    p.on('requestfailed', (q) => { if (isPhp(q)) inflight = Math.max(0, inflight - 1); });
+    p.__quiet = async () => {
+      let since = Date.now(), g0 = -1;
+      const t0 = Date.now();
+      while (Date.now() - t0 < 20000) {
+        const g = await p.evaluate(() => window.__chbDataGen || 0);
+        if (inflight > 0 || g !== g0) { since = Date.now(); g0 = g; }
+        if (Date.now() - since > 700) return;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    };
+    p.on('pageerror', (e) => { console.log('  PAGEERR:', e.message, String(e.stack || '').split('\n').slice(1, 3).join(' |').trim()); fails++; });
     p.on('request', (q) => { if (q.method() === 'POST' && /bookings\.php/.test(q.url()) && /hub_bundle/.test(q.postData() || '')) hubOpens.push(Date.now()); });
     await p.route(/\.php/, (route) => {
       const url = route.request().url();
       const post = route.request().postData() || '';
       let body = {}; try { body = JSON.parse(post || '{}'); } catch (e) {}
       const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+      // Once the page has booted, a background refresh must not replace the fixture:
+      // the calendar's own auto-sync (autoSyncIcalBlocks) calls app.js's loadData
+      // directly — the window stub in seed() never sees it — and under load it landed
+      // mid-swipe, emptying both registers (caught with a stack on the setter). Held
+      // from the moment the boot goes quiet, BEFORE the seed: a refetch issued in the
+      // gap between the two was the second way in. loadData keeps the last-good copy.
+      if (p.__held && /bookings\.php/.test(url) && route.request().method() === 'GET') return;
       if (url.includes('admin-bootstrap.php')) return json({ ok: true, dismissed: serverDismissed });
       // The Inbox's own record ('inbox-state': the line its first open draws) is
       // written in the background on boot — not a dismissal, and not counted here.
@@ -57,7 +82,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // wiping the seeded bookings out from under the row (measured: bookings 2 → 0 with
     // the row still painted; the same suite failed 3 runs in 3 under CPU load). The data
     // generation is bumped on every completed load, so "unchanged for 700ms" is the state.
-    await p.waitForFunction(() => { const g = window.__chbDataGen || 0; const now = performance.now(); if (window.__q === undefined || window.__q.g !== g) window.__q = { g, at: now }; return now - window.__q.at > 700; }, null, { timeout: 20000, polling: 100 });
+    await p.__quiet();
+    p.__held = true;
     await p.evaluate(() => {
       window.__anim = 0;
       const o = Element.prototype.animate;
@@ -247,6 +273,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await calm.waitForFunction(() => !document.querySelector('.ny-row[data-nykey="register:91"]'), null, { timeout: 15000 }).then(() => true, () => false) && await calm.evaluate(() => window.__anim) === 0,
     'with reduced motion the row is simply gone — not one animation was started (counted, not timed)');
   await calm.close();
+
+  // A data refresh that lands mid-drag must not rebuild the strip under the finger: the
+  // row would be pulled away and every later move threw on its detached node.
+  console.log('8. a refresh mid-drag waits for the finger');
+  const mid = await ownerPage({ viewport: { width: 1280, height: 900 } });
+  await seed(mid);
+  saves.length = 0;
+  b = await box(mid, 'register:91');
+  await mid.evaluate(() => { document.querySelector('.ny-row[data-nykey="register:91"]').__mark = 1; });
+  await mid.mouse.move(b.x + b.w - 40, b.y + b.h / 2);
+  await mid.mouse.down();
+  for (let i = 1; i <= 4; i++) { await mid.mouse.move(b.x + b.w - 40 - i * 30, b.y + b.h / 2); await mid.waitForTimeout(12); }
+  const held = await mid.evaluate(() => { renderNeedsYou(); const r = document.querySelector('.ny-row[data-nykey="register:91"]'); return !!(r && r.__mark); });
+  ok(held, 'a render that lands mid-drag leaves the dragged row in place');
+  for (let i = 5; i <= 12; i++) { await mid.mouse.move(b.x + b.w - 40 - i * 30, b.y + b.h / 2); await mid.waitForTimeout(12); }
+  await mid.mouse.up();
+  ok(await gone(mid, 'register:91') && saves.length === 1, '…and the swipe still ends in its dismissal');
+  ok(await mid.evaluate(() => !document.querySelector('.ny-row[data-nykey="register:91"]') && !!document.querySelector('.ny-row[data-nykey="register:92"]')), 'the deferred render ran once the finger lifted');
+  await mid.close();
 
   console.log(fails ? `DISMISS SUITE FAILED ❌ (${fails})` : 'DISMISS SUITE PASSED ✅');
   await t.done(fails);
