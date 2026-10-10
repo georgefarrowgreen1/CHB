@@ -42,6 +42,13 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `CHB_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (ui-test-lib's
   own override) when the launch complains about a missing browser revision.
   When you genuinely cannot run it, SAY so in the PR rather than implying CI-parity.
+- **CI's PHP runs with the TRACING JIT ON; a local `php` does not.** setup-php enables it by default, and PHP
+  8.3.35's JIT miscompiled a hand-written CSV character loop (the first file read in a process grew eight extra
+  header fields; the same file a moment later read fine) — a failure that passed every local run for days. To
+  reproduce a CI-only PHP failure, run with `-d opcache.enable_cli=1 -d opcache.jit=1235 -d
+  opcache.jit_buffer_size=128M`; for test-integration, put those in an ini file and point `PHP_INI_SCAN_DIR` at
+  `/etc/php/8.3/cli/conf.d:<that dir>` so the `php -S` it spawns gets them too. Prefer PHP's own C parsers
+  (`fgetcsv`, `str_getcsv`) over character loops.
 - **A guarded migration is a plain `ALTER TABLE ... ADD COLUMN`.** migrate.php
   treats a duplicate-column error as already-applied. Do NOT reach for the
   information_schema + `PREPARE`/`EXECUTE` guard: the no-op branch (`SELECT 1`)
