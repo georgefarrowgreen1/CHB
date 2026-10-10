@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 754;
+const ADMIN_BUNDLE_V = 755;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 391;
+const ADMIN_CSS_V = 392;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -14749,7 +14749,11 @@ async function loadGuestPhotosAdmin() {
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet.</p>`;
+        // The back office's one empty state (admin.js), with the plain line as the fallback.
+        const es = /** @type {any} */ (window).emptyState;
+        wrap.innerHTML = typeof es === 'function'
+            ? es({ icon: '<rect x="3.5" y="5" width="17" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m20.5 16-4.5-4.5-7 7"/>', title: 'No guest photos yet', sub: 'Photos guests send from their stay wait here for you to approve.' })
+            : `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet.</p>`;
         return;
     }
     wrap.innerHTML = `<div class="guest-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">${rows
@@ -21394,7 +21398,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'inbxpay1010';
+    const BUILD = 'dpass21010';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -2535,12 +2535,12 @@ body.owner-mode .logo.ml-learning .logo-mark {
    this at 2.63:1 on the light search surface — under even the 3:1 non-text floor. The
    board captions are the same micro-label at full strength (6.06:1). */
 .cmdk-group-label {
-  /* was 0.64rem = 10.2px; tracking matches the dashboard's .acr-cap (0.09em) so
-     the assistant's captions and the cottage editors' are ONE spec. */
-  font-size: var(--cmdk-fs-micro);
+  /* the back office's one caption tier (sentence case, 600, no tracking), so the
+     assistant's captions and every page's are ONE spec. */
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-muted);
   padding: 11px 12px 3px;
 }
@@ -4111,10 +4111,10 @@ body.cmdk-open {
      padding edge because the answer glyph is hidden inside a group. 20 put the
      heading 2px inside its own list. */
   padding: 0 22px;
-  font-size: var(--cmdk-fs-micro);
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
-  letter-spacing: 0.09em; /* the one caption track (.acr-cap) */
-  text-transform: uppercase;
+  letter-spacing: 0; /* the one caption tier, sentence case, as every page's */
+  text-transform: none;
   color: var(--text-muted);
 }
 /* Inside a board every row is an answer, so the per-row answer glyph says nothing
@@ -7563,7 +7563,10 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 
 /* The landing's compact rows: the duty's action word is the row's button, and the
    example questions are one-tap chips. */
-.cmdk-row .cmdk-act { margin-left: auto; flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-size: var(--cmdk-fs-body); font-weight: 600; white-space: nowrap; }
+/* A duty's action reads as Today's does (accent words + the drawn chevron), not a
+   filled pill per row: four filled accents in one list was four primaries at once. */
+.cmdk-row .cmdk-act { margin-left: auto; flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 0 0 12px; background: none; color: var(--accent-text); font-size: var(--cmdk-fs-body); font-weight: 600; white-space: nowrap; }
+.cmdk-row .cmdk-act::after { content: ""; flex: none; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat; }
 .cmdk-asks { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 8px; }
 .cmdk-asks .cmdk-chip { min-height: 44px; padding: 0 16px; font-size: var(--cmdk-fs-sub); }
 
@@ -7962,12 +7965,13 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .pr-lv { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pr-sum { padding: 20px; display: flex; flex-direction: column; gap: 4px; }
 .pr-sumk { font-size: var(--fs-sub); color: var(--text-muted); }
-.pr-sumv { font-size: var(--fs-hero); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ok-text); }
+/* a money figure is ink, as Payments' is; colour is kept for state */
+.pr-sumv { font-size: var(--fs-hero); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-light); }
 .pr-sumg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .pr-sumg span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-caption); color: var(--text-muted); }
 .pr-sumg b { font-size: var(--fs-headline); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }
 .pr-total { min-height: 56px; }
-.pr-tripv { margin-left: auto; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--warn-text); }
+.pr-tripv { margin-left: auto; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-light); }
 .pr-rnums { display: flex; gap: 24px; margin-bottom: 4px; }
 .pr-rnums span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sub); color: var(--text-muted); }
 .pr-rnums b { font-size: var(--fs-title); font-weight: 600; color: var(--text-light); font-variant-numeric: tabular-nums; }
@@ -8249,7 +8253,7 @@ body.owner-mode .cal-tools .mo-tool {
 .al-g-messages { background: color-mix(in srgb, var(--info) 14%, transparent); color: var(--info-text); }
 .al-wdot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--dark-grey); }
 .al-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.al-title { font-size: var(--fs-body); font-weight: 600; line-height: 1.3; text-wrap: pretty; overflow-wrap: anywhere; }
+.al-title { font-size: var(--fs-body); font-weight: 500; line-height: 1.3; text-wrap: pretty; overflow-wrap: anywhere; }
 .al-title mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .al-meta { font-size: var(--fs-caption); color: var(--text-muted); }
 .al-chev { flex: none; color: var(--text-muted); transition: transform 260ms var(--out); }
@@ -9801,7 +9805,9 @@ button.cmp-row { cursor: pointer; }
 .cmp-card > * + *, #enq-email-attach-list > .cmp-row + .cmp-row { border-top: 1px solid var(--u-edge); }
 #enq-email-attach-list:empty, .cmp-add[hidden] { display: none; }
 .cmp-rt { flex: 1; min-width: 0; display: grid; }
-.cmp-rt b { font-weight: 600; overflow-wrap: anywhere; }
+.cmp-rt b { font-weight: 500; overflow-wrap: anywhere; }
+/* adding is the accent row, as "Add someone" and "Add a question" are */
+.cmp-add .cmp-rt b { color: var(--accent-text); }
 .cmp-sub { font-size: var(--fs-sub); font-weight: 400; color: var(--text-muted); text-wrap: pretty; }
 .cmp-sub.cmp-swap { animation: cmpSwapIn 320ms var(--out) both; }
 .cmp-tile { flex: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--u-track); color: var(--text-muted); transition: background 300ms var(--out), color 300ms var(--out); }
@@ -9949,7 +9955,8 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
 #gc-page :is(.gc-cot, .gc-rowbtn) { width: 100%; min-height: 52px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 #gc-page .gc-cot { gap: 12px; justify-content: flex-start; }
 #gc-page .gc-cot .acr-lbl { flex: 1 1 auto; }
-#gc-page :is(.gc-n, .gc-v) { flex: none; font-weight: 600; color: var(--text-muted); }
+#gc-page .gc-n { flex: none; font-weight: 600; color: var(--text-muted); }
+#gc-page .gc-v { flex: none; color: var(--text-muted); }
 #gc-page .gc-rowbtn { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 
 /* The preview: the guest chat's own parts in a window. */

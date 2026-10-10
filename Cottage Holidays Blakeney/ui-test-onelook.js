@@ -697,7 +697,15 @@ async function open(browser, base, width) {
     dbBookings['21a'] = [mk(301, 'Ann Staying', -1, 2, false), mk(302, 'Bea Later', 10, 13, false), mk(303, 'Cal Later', 20, 23, true), mk(304, 'Dee Later', 30, 33, false)];
     renderOfflineDaySheet();
     await wait(300);
+    // A data refresh still in flight on a loaded machine can repaint Today over the
+    // sheet: lay it again until it is there (the fixture-re-laid rule).
+    for (let i = 0; i < 10 && !document.getElementById('offline-daysheet'); i++) {
+      dbBookings['21a'] = [mk(301, 'Ann Staying', -1, 2, false), mk(302, 'Bea Later', 10, 13, false), mk(303, 'Cal Later', 20, 23, true), mk(304, 'Dee Later', 30, 33, false)];
+      renderOfflineDaySheet();
+      await wait(300);
+    }
     const sheet = document.getElementById('offline-daysheet');
+    if (!sheet) return { rows: 0, rail: 0, joined: false, tagHugs: false, cap: false, chev: null, tl: '', mark: '' };
     const rows = [...sheet.querySelectorAll('.ods-row')];
     const runs = rows.filter((r, i) => i > 0 && r.previousElementSibling === rows[i - 1]);
     const tag = sheet.querySelector('.ods-row .prop-tag');

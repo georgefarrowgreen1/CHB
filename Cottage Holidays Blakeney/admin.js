@@ -15403,7 +15403,7 @@ function calendarPropBoxHtml(key, label, data) {
               ${url ? `<button type="button" class="cal-txt" aria-label="Unlink ${escapeHtml(P.name)}" ${chbAttrs('calRemoveFeed', String(key), String(p.source))}>Unlink</button>` : ''}</div>
             <label class="sr-only" for="${id}">${escapeHtml(P.name)} calendar link</label>
             <input class="input-glass cal-in" id="${id}" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-              placeholder="Paste the ${escapeHtml(P.name)} calendar link" value="${escapeHtml(url)}"
+              placeholder="Paste the calendar link" value="${escapeHtml(url)}"
               ${chbInput('calFieldInput', String(key), String(p.source))} data-pass="value" ${chbBlur('calFieldBlur', String(key), String(p.source))}>
             <div class="cal-hint" id="cal-hint-${p.source}-${key}">${url ? '' : escapeHtml(P.where)}</div>
           </div>`;
@@ -16431,7 +16431,7 @@ function renderExpenses() {
                         .map(
                             (x) => `<div class="xp-item" data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
                       <div class="xp-row">
-                        <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
+                        <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].name || propertyMeta[x.prop_key].short) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
                         <span class="feed-amt">${gbp(x.amount)}</span>
                         <span class="exp-acts">${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" aria-label="View the scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : ''}<button class="feed-del" title="Edit" aria-label="Edit this expense" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" aria-label="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" aria-label="Remove this expense" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
@@ -26084,7 +26084,7 @@ function renderGuestChat() {
         `<div class="acr-cap">The welcome</div>` +
         `<div class="acr-well">` +
         `<button type="button" class="acr-row gc-rowbtn" data-act="gcReplyPick"><span class="acr-lbl">Reply time<small>Shown under your name in the chat</small></span><span class="gc-v" id="gc-reply-v">${e(replyLbl)}</span>${BHUB_CHEV}</button>` +
-        `<button type="button" class="acr-row gc-rowbtn" ${chbAttrs('settingsOpen', 'host')}><span class="acr-lbl">Signed by<small>From your host profile</small></span><span class="gc-v">${e(hostName)}</span>${BHUB_CHEV}</button>` +
+        `<button type="button" class="acr-row gc-rowbtn" ${chbAttrs('settingsOpen', 'host')}><span class="acr-lbl">Signed by<small>From your host profile</small></span><span class="gc-v">${e(String(hostName).replace(/^[a-z]/, (c) => c.toUpperCase()))}</span>${BHUB_CHEV}</button>` +
         `</div>`;
     host.querySelectorAll('textarea.gc-grow').forEach((t) => gcGrow(/** @type {HTMLElement} */ (t)));
     gcPill();
@@ -27364,12 +27364,12 @@ async function loadWaitlist() {
     // One well of person-rows (the approved realistic demo): the guest leads,
     // the facts as the sub, their state as a capsule — same actions, same ids.
     wrap.innerHTML =
-        '<div class="acr-well" style="max-width:640px;">' +
+        '<div class="acr-cap">Waiting for dates</div><div class="acr-well" style="max-width:640px;">' +
         rows
             .map((w) => {
                 const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
                 const dates =
-                    w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
+                    w.check_in && w.check_out ? fmtStayRange(String(w.check_in).slice(0, 10), String(w.check_out).slice(0, 10)) : 'Any dates';
                 const cap = w.notified_at
                     ? stCap('ok', 'Notified ' + fmtDate(String(w.notified_at).slice(0, 10)))
                     : stCap('unk', 'Waiting');
@@ -27379,7 +27379,7 @@ async function loadWaitlist() {
                         ${cap}
                     </div>
                     <div class="acw-acts" style="border-top:0;padding-top:0;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Email "dates available"</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Tell them it’s free</button>
                         <button class="btn-sm btn-delete" ${chbAttrs('deleteWaitlist', w.id)}>Remove</button>
                     </div>
                 </div>`;
@@ -27412,7 +27412,7 @@ async function loadNewsletter() {
     // The two figures are stat tiles; who is on the list folds under its own count.
     const list = recent.length
         ? bhubFoldGrp('nlsubs', 'Who’s subscribed', '', stCap('unk', String(active)), `<div style="font-size:var(--fs-sub);color:var(--text-muted);">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`)
-        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:12px 4px 0;">No subscribers yet.</p>`;
+        : ''; // the tile above already says 0
     stats.innerHTML = `<div class="u-stats">
                     <div class="u-stat"><div class="u-stat-n">${active}</div><div class="u-stat-l">Active subscribers</div></div>
                     <div class="u-stat"><div class="u-stat-n">${total - active}</div><div class="u-stat-l">Unsubscribed</div></div>
@@ -30187,7 +30187,7 @@ function sgSyncExtras(cards, changes) {
     if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-seasongrid');
-    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', `${cards.length} coming up`));
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', cards.length ? `${cards.length} coming up` : 'None coming up'));
     const bar = document.getElementById('sg-savebar');
     if (bar) bar.hidden = !changes;
 }
@@ -30723,7 +30723,7 @@ function alPaintList() {
             const grp = alGroupOf(e.type);
             const title = e.nice || e.label;
             const actor = e.actor && e.actor !== 'guest' ? actorLabel(e.actor) : e.actor === 'guest' ? 'Guest' : '';
-            const cottage = e.prop_key && propertyMeta[e.prop_key] ? propertyMeta[e.prop_key].short : '';
+            const cottage = e.prop_key && propertyMeta[e.prop_key] ? propertyMeta[e.prop_key].name || propertyMeta[e.prop_key].short : ''; // a row has room for the whole name ("Pimp" is the timeline lane's, not a list's)
             const meta = [actor, cottage].filter(Boolean).join(' · ');
             const plain = e.verdict || e.detail || '';
             const tech = e.nice ? e.label : '';
@@ -32514,7 +32514,7 @@ function ibListShell() {
     const lp = /** @type {any} */ (document.getElementById('ib-list'));
     if (!lp || lp.__ibShell) return;
     lp.__ibShell = true;
-    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search people, cottages, messages" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div class="ib-folders-wrap" id="ib-folders-wrap"><div><div class="ib-folders" id="ib-folders" data-on="${__ibFolder}" role="group" aria-label="Folder"><span class="ib-folders-pill" aria-hidden="true"></span><button type="button" id="ib-f-inbox" data-ib="folder" data-arg="inbox" aria-pressed="${__ibFolder === 'inbox'}">Inbox</button><button type="button" id="ib-f-done" data-ib="folder" data-arg="done" aria-pressed="${__ibFolder === 'done'}">Done</button></div></div></div><div id="ib-rows"></div>`;
+    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search the inbox" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div class="ib-folders-wrap" id="ib-folders-wrap"><div><div class="ib-folders" id="ib-folders" data-on="${__ibFolder}" role="group" aria-label="Folder"><span class="ib-folders-pill" aria-hidden="true"></span><button type="button" id="ib-f-inbox" data-ib="folder" data-arg="inbox" aria-pressed="${__ibFolder === 'inbox'}">Inbox</button><button type="button" id="ib-f-done" data-ib="folder" data-arg="done" aria-pressed="${__ibFolder === 'done'}">Done</button></div></div></div><div id="ib-rows"></div>`;
     const q = /** @type {HTMLInputElement} */ (document.getElementById('ib-q'));
     const clr = /** @type {HTMLButtonElement} */ (document.getElementById('ib-q-clear'));
     q.addEventListener('input', () => { __ibQ = q.value.trim(); clr.hidden = !__ibQ; ibRenderList(); });
