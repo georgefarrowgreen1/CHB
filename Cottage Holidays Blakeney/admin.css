@@ -9037,7 +9037,7 @@ body.owner-mode.light-mode #ib {
 #ib .ib-rows { border: 1px solid var(--ib-edge); background: var(--ib-card); border-radius: var(--r-lg); overflow: hidden; }
 #ib .ib-rowwrap { position: relative; overflow: hidden; }
 #ib .ib-rowwrap + .ib-rowwrap { border-top: 1px solid var(--ib-edge); }
-#ib .ib-reveal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: 24px; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); font-weight: 600; font-size: var(--fs-sub); }
+#ib .ib-reveal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: 24px; background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok-text); font-weight: 600; font-size: var(--fs-sub); }
 #ib .ib-reveal.is-back { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-text); }
 #ib .ib-row { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; width: 100%; text-align: left; padding: 12px 16px 12px 20px; border: 0; border-radius: 0; background: var(--ib-ground); background-image: linear-gradient(var(--ib-card), var(--ib-card)); touch-action: pan-y; transition: translate 0.28s var(--out); }
 #ib .ib-row.is-dragging { transition: none; }
@@ -9393,7 +9393,7 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 #pm .pm-filters > button { flex: none; border: 1px solid var(--pm-pill-edge); background: none; border-radius: var(--r-pill); min-height: 36px; padding: 0 12px; font-size: var(--fs-sub); font-weight: 600; position: relative; }
 #pm .pm-filters > button::after { content: ""; position: absolute; inset: -4px 0; }
 #pm .pm-filters > button[aria-pressed="true"] { background: var(--text-light); color: var(--dark-grey); border-color: transparent; }
-#pm .pm-filters .pm-fn { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 8px; padding: 0 4px; border-radius: var(--r-pill); font-size: var(--fs-micro); background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+#pm .pm-filters .pm-fn { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 8px; padding: 0 4px; border-radius: var(--r-pill); font-size: var(--fs-micro); background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn-text); }
 #pm .pm-filters > button[aria-pressed="true"] .pm-fn { background: var(--warn); color: var(--accent-ink); }
 
 /* ONE MONEY LIST: the bank's balance with where it came from on one line beside a
