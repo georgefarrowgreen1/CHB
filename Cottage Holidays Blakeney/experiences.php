@@ -287,18 +287,27 @@ if ($action === 'approve') {
 
 if ($action === 'reject') {
     $id = (int) ($in['id'] ?? 0);
+    // A suggestion turned down takes the picture the guest sent with it.
+    $iq = db()->prepare('SELECT image_url FROM experiences WHERE id = ?');
+    $iq->execute([$id]);
+    $img = (string) ($iq->fetchColumn() ?: '');
     db()
-        ->prepare("UPDATE experiences SET status='rejected' WHERE id=?")
+        ->prepare("UPDATE experiences SET status='rejected', image_url='' WHERE id=?")
         ->execute([$id]);
+    experience_image_drop($img, $id);
     log_activity('moderation', 'experience.reject', 'Experience rejected', ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
 if ($action === 'delete') {
     $id = (int) ($in['id'] ?? 0);
+    $iq = db()->prepare('SELECT image_url FROM experiences WHERE id = ?');
+    $iq->execute([$id]);
+    $img = (string) ($iq->fetchColumn() ?: '');
     db()
         ->prepare('DELETE FROM experiences WHERE id=?')
         ->execute([$id]);
+    experience_image_drop($img, $id);
     log_activity('moderation', 'experience.delete', 'Experience deleted', ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }

@@ -437,6 +437,15 @@ function booking_price_reason_store(int $id, array $in): void
 
 // The admin GET payload, as a function so admin-bootstrap.php can serve the
 // SAME data in its combined back-office boot response. Caller must require_admin.
+// Columns the owner's booking list leaves on the server: no client file reads them
+// (test-integration §76 checks that), and three are the card-on-file handles Square
+// issued, which the browser has no use for. The rest are stamps the crons keep for
+// themselves, and a retired column.
+const BOOKINGS_ADMIN_OMIT = [
+    'hold_payment_id', 'autopay_card_id', 'autopay_customer_id',
+    'hold_authorized_at', 'hold_requested_at', 'deposit_reminded_at', 'review_request_sent', 'thankyou_sent',
+    'autopay_last_try', 'autopay_notified_at', 'autopay_last_code', 'autopay_collected_for', 'arrival_window',
+];
 function bookings_admin_payload()
 {
     $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll();
@@ -461,20 +470,31 @@ function bookings_admin_payload()
     // contradicting the "Balance · already arranged" the app showed them.
     try {
         require_once __DIR__ . '/pricing.php';
+        // ONE READ OF THE LEDGER for the whole list: each card plan's state asks what
+        // its booking still owes (booking_ledger_warm, db.php).
+        try {
+            booking_ledger_warm();
+        } catch (\Throwable $e) {
+        }
         foreach ($rows as &$bk) {
             [$st] = booking_autopay_state($bk);
             $bk['autopay_state'] = $st;
         }
         unset($bk);
     } catch (\Throwable $e) {
+    } finally {
+        booking_ledger_forget();
     }
     // Guest-registration status per booking (UK hotel-records duty). The bulk
     // payload carries only status + count + the owner-usable form link — never
     // the PII; the owner opens the token page to view/edit the actual names.
     // Robust to the guest_registrations table not existing yet (pre-migration).
+    // The link closes a week after the stay (guest-details.php answers 410), so a stay
+    // that ended before then carries none: one per stay ever made was dead weight.
+    $regOpen = date('Y-m-d', strtotime('-7 days'));
     foreach ($rows as &$bk) {
         $id = (int) $bk['id'];
-        $bk['reg_url'] = site_base_url() . 'guest-details.php?b=' . $id . '&token=' . guest_reg_token($id);
+        $bk['reg_url'] = (string) ($bk['check_out'] ?? '') >= $regOpen ? site_base_url() . 'guest-details.php?b=' . $id . '&token=' . guest_reg_token($id) : '';
         $bk['reg_submitted'] = false;
         $bk['reg_count'] = 0;
     }
@@ -538,6 +558,13 @@ function bookings_admin_payload()
         }
     } catch (\Throwable $e) {
     }
+    // WHAT THE BACK OFFICE NEVER READS stays on the server (BOOKINGS_ADMIN_OMIT).
+    foreach ($rows as &$bk) {
+        foreach (BOOKINGS_ADMIN_OMIT as $col) {
+            unset($bk[$col]);
+        }
+    }
+    unset($bk);
     return ['bookings' => $rows];
 }
 

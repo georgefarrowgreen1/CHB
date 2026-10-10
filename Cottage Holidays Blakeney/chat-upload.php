@@ -8,7 +8,7 @@
 //
 //  Auth mirrors messages.php: the owner (admin session + CSRF), a logged-in
 //  guest (session), or an anonymous visitor holding a chat token (rate-limited).
-//  Returns { ok:true, url:"uploads/chat-xxxx.jpg" }.
+//  Returns { ok:true, url:"uploads/pending/chat-xxxx.jpg" } — staged until sent.
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/image-save.php';
@@ -45,7 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['image'])) {
 }
 
 // Chat photos: 6 MB cap (a touch smaller than the 8 MB admin gallery cap).
-$res = save_uploaded_image($_FILES['image'], 'chat', 6 * 1024 * 1024, true);
+// STAGED, NOT PUBLISHED: the photo stays in the private staging folder until a
+// message carries it (messages.php publishes it then). A visitor with nothing more
+// than a made-up token could otherwise keep images on the site's own address that
+// no conversation shows and nobody can delete; one never sent is swept away.
+$res = save_uploaded_image($_FILES['image'], 'chat', 6 * 1024 * 1024, true, false);
 if (!empty($res['error'])) {
     json_out(['error' => $res['error']], $res['code'] ?? 400);
 }

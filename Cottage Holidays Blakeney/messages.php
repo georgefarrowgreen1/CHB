@@ -54,6 +54,13 @@ function chat_valid_attachment($v)
     if ($v === '') {
         return '';
     }
+    // A photo uploaded for this message has waited, private, in the staging folder:
+    // sending it is what makes it public. A retry of a send that published it but
+    // lost its answer finds it already published.
+    if (preg_match('#^uploads/pending/([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', $v, $pm)) {
+        $pub = upload_publish($v);
+        return $pub !== '' ? $pub : (is_file(__DIR__ . '/uploads/' . $pm[1]) ? 'uploads/' . $pm[1] : '');
+    }
     if (!preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
         return '';
     }
@@ -472,9 +479,21 @@ if ($isAdmin && empty($in['token'])) {
             if ($tid <= 0) {
                 json_out(['error' => 'thread_id required'], 400);
             }
+            // The photos go with the conversation: a deleted chat's pictures stayed
+            // on the site at their old address, which its emails still carry.
+            $atts = [];
+            try {
+                $aq = db()->prepare("SELECT attachment FROM messages WHERE thread_id = ? AND attachment IS NOT NULL AND attachment <> ''");
+                $aq->execute([$tid]);
+                $atts = $aq->fetchAll(PDO::FETCH_COLUMN);
+            } catch (\Throwable $e) {
+            }
             db()
                 ->prepare('DELETE FROM messages WHERE thread_id = ?')
                 ->execute([$tid]);
+            foreach ($atts as $att) {
+                upload_delete($att);
+            }
             db()
                 ->prepare('DELETE FROM chat_threads WHERE id = ?')
                 ->execute([$tid]);

@@ -4885,9 +4885,17 @@ it_check('§72 a visitor still gets the public content, and no internal or priva
 it_check('§72 …and the listed caches never leave the database', ($c72['fetched'] ?? true) === false, json_encode($c72));
 it_check('§72 …while a later read of one in the same request still finds it', ($c72['later'] ?? '') === 'it72-internal' && ($c72['absent'] ?? 'x') === '', json_encode($c72));
 it_check('§72 every key and prefix left out is one a visitor never gets (so the output cannot change)', ($c72['listed'] ?? null) === [] && ($c72['prefixed'] ?? null) === [], json_encode([$c72['listed'] ?? null, $c72['prefixed'] ?? null]));
-$a72 = $mailProbe('require_once __DIR__ . "/content.php"; $_SESSION["admin_id"] = ' . (int) $ownerId . '; $p = content_public_payload(); echo "\n" . json_encode(["fetched" => array_key_exists("mac-chat-sum", $GLOBALS["__content_all"] ?? []), "shown" => array_key_exists("mac-chat-sum", $p["content"])]);');
-it_check('§72 the owner\'s read is unchanged: the whole table, internal keys included', is_array($a72) && ($a72['fetched'] ?? false) === true && ($a72['shown'] ?? false) === true, json_encode($a72));
+// The owner gets the internal keys the back office reads; the server's own caches
+// (the retired chat's summary among them, §76) stay behind for them too.
+$hadPrefs72 = (bool) $rootDb->query("SELECT 1 FROM content WHERE item_key = 'notify-prefs'")->fetchColumn();
+$rootDb->exec("INSERT INTO content (item_key, item_value) VALUES ('notify-prefs', '{}') ON DUPLICATE KEY UPDATE item_value = item_value");
+$a72 = $mailProbe('require_once __DIR__ . "/content.php"; $_SESSION["admin_id"] = ' . (int) $ownerId . '; $p = content_public_payload(); echo "\n" . json_encode(["internal" => array_key_exists("notify-prefs", $p["content"]), "cache" => array_key_exists("mac-chat-sum", $p["content"]) || array_key_exists("mac-chat-sum", $GLOBALS["__content_all"] ?? []), "later" => content_value("mac-chat-sum")]);');
+it_check('§72 the owner\'s read carries the internal keys the back office reads', is_array($a72) && ($a72['internal'] ?? false) === true, json_encode($a72));
+it_check('§72 …and leaves the server\'s own caches behind, still readable later in the request', ($a72['cache'] ?? true) === false && ($a72['later'] ?? '') === 'it72-internal', json_encode($a72));
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('mac-chat-sum', 'welcome-it72', 'it72-pub')");
+if (!$hadPrefs72) {
+    $rootDb->exec("DELETE FROM content WHERE item_key = 'notify-prefs'");
+}
 
 // §73 THE PLATFORMS' CALENDAR FEED CARRIES WHAT IS AHEAD, AND SAYS WHEN NOTHING
 // CHANGED. Each platform polls it many times a day. It carried every stay since the
@@ -4954,6 +4962,227 @@ $rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
 $R74 = $pollProbe();
 it_check('§74 no row at all is not recent', ($R74['recent'] ?? null) === false, json_encode($R74));
 $rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
+
+// §75 UPLOADED FILES ARE PRIVATE UNTIL THEY ARE SHOWN, AND GO WITH WHAT SHOWS THEM.
+// A made-up chat token could keep any image on the site's own address, unseen and
+// undeletable; deleting a conversation, an account, a rejected photo or suggestion
+// left the files public; and an upload sat in public, location and all, while it
+// was being cleaned.
+echo "\n== §75 uploaded files are private until shown, and go with what shows them ==\n";
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chatupload', 'chatupload-new', 'chat', 'register', 'guestcode', 'photo')");
+$mp75 = function ($path, array $fields, $fileName, $bytes, array $jar = []) use ($BASE) {
+    $bd = '----chbit75' . bin2hex(random_bytes(6));
+    $body = '';
+    foreach ($fields as $k => $v) {
+        $body .= "--$bd\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n";
+    }
+    $body .= "--$bd\r\nContent-Disposition: form-data; name=\"image\"; filename=\"$fileName\"\r\nContent-Type: image/jpeg\r\n\r\n$bytes\r\n--$bd--\r\n";
+    $hdr = "Accept: application/json\r\nContent-Type: multipart/form-data; boundary=$bd\r\n";
+    if ($jar) {
+        $hdr .= 'Cookie: ' . implode('; ', array_map(fn($k) => "$k={$jar[$k]}", array_keys($jar))) . "\r\n";
+        if (!empty($jar['__csrf'])) {
+            $hdr .= 'X-CSRF-Token: ' . $jar['__csrf'] . "\r\n";
+        }
+    }
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create(['http' => ['method' => 'POST', 'ignore_errors' => true, 'timeout' => 30, 'header' => $hdr, 'content' => $body]]));
+    return json_decode((string) $raw, true) ?: ['raw' => (string) $raw];
+};
+// A wide phone photo carrying a location in its EXIF block.
+$im75 = imagecreatetruecolor(3000, 1500);
+imagefilledrectangle($im75, 0, 0, 2999, 1499, imagecolorallocate($im75, 30, 80, 110));
+ob_start();
+imagejpeg($im75, null, 80);
+$jpg75 = (string) ob_get_clean();
+$app1 = "Exif\0\0" . 'GPS 52.955N 1.020E it75-secret';
+$jpg75 = substr($jpg75, 0, 2) . "\xFF\xE1" . pack('n', strlen($app1) + 2) . $app1 . substr($jpg75, 2);
+$tok75 = bin2hex(random_bytes(12));
+$up = $mp75('/chat-upload.php', ['token' => $tok75], 'photo.jpg', $jpg75);
+$staged75 = (string) ($up['url'] ?? '');
+$name75 = basename($staged75);
+clearstatcache();
+it_check('§75 a chat photo is staged privately, not published', strpos($staged75, 'uploads/pending/chat-') === 0 && is_file($work . '/' . $staged75) && !is_file($work . '/uploads/' . $name75), json_encode($up));
+$st75 = is_file($work . '/' . $staged75) ? (string) file_get_contents($work . '/' . $staged75) : '';
+$sz75 = $st75 !== '' ? getimagesizefromstring($st75) : false;
+it_check('§75 …cleaned of its location and brought down to 2000px on its long side', $st75 !== '' && strpos($st75, 'it75-secret') === false && $sz75 && $sz75[0] === 2000 && $sz75[1] === 1000, $sz75 ? $sz75[0] . 'x' . $sz75[1] : 'unreadable');
+it_check('§75 …and the staging folder carries its own deny-all rule', is_file($work . '/uploads/pending/.htaccess') && strpos((string) file_get_contents($work . '/uploads/pending/.htaccess'), 'Require all denied') !== false, '');
+$anon75 = [];
+$r = http($anon75, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok75, 'body' => 'Here is the view', 'name' => 'Ana Seventyfive', 'email' => 'ana75@gmail.com', 'attachment' => $staged75]);
+$aTid75 = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok75))->fetchColumn();
+$att75 = (string) $rootDb->query("SELECT attachment FROM messages WHERE thread_id = $aTid75 ORDER BY id DESC LIMIT 1")->fetchColumn();
+clearstatcache();
+it_check('§75 sending it publishes it: the message carries the public path', $r['code'] === 200 && $att75 === 'uploads/' . $name75 && is_file($work . '/uploads/' . $name75) && !is_file($work . '/' . $staged75), $r['raw'] . ' ' . $att75);
+$r = http($anon75, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok75, 'body' => 'And again', 'attachment' => $staged75]);
+it_check('§75 …a send retried with the staged path still finds the photo', $r['code'] === 200 && (string) $rootDb->query("SELECT attachment FROM messages WHERE thread_id = $aTid75 ORDER BY id DESC LIMIT 1")->fetchColumn() === 'uploads/' . $name75, $r['raw']);
+$r = http($admin, 'POST', '/messages.php', ['action' => 'delete', 'thread_id' => $aTid75]);
+clearstatcache();
+it_check('§75 deleting the conversation deletes its photo, file and WebP copy', $r['code'] === 200 && !is_file($work . '/uploads/' . $name75) && !is_file($work . '/uploads/' . $name75 . '.webp'), $r['raw']);
+// Deleting an account takes its chat photos, its photos never shown and its unpublished
+// suggestions; an approved photo and a published card stay, without its name.
+$g75 = 'gwen75-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$gj75 = [];
+http($gj75, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Gwen Seventyfive', 'email' => $g75, 'password' => 'gwenpass75x', 'address' => '7 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$gid75 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($g75))->fetchColumn();
+$ts75 = time();
+http($gj75, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gid75, 'ts' => $ts75, 'token' => substr(hash_hmac('sha256', 'login:' . $gid75 . ':' . $ts75, $SECRET), 0, 32)]);
+$up = $mp75('/chat-upload.php', [], 'mine.jpg', $jpg75, $gj75);
+$gStaged75 = (string) ($up['url'] ?? '');
+http($gj75, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Our photo', 'attachment' => $gStaged75]);
+$gFile75 = (string) $rootDb->query("SELECT m.attachment FROM messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.guest_id = $gid75 AND m.attachment <> '' LIMIT 1")->fetchColumn();
+$mk75 = function ($prefix) use ($work) {
+    $n = $prefix . '-' . bin2hex(random_bytes(6)) . '.jpg';
+    file_put_contents($work . '/uploads/' . $n, 'x');
+    return 'uploads/' . $n;
+};
+$pend75 = $mk75('guest');
+$appr75 = $mk75('guest');
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?,?,?,?,?,?)")->execute([$propKey, $gid75, 'Gwen Seventyfive', $pend75, 'waiting', 'pending']);
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?,?,?,?,?,?)")->execute([$propKey, $gid75, 'Gwen Seventyfive', $appr75, 'shown', 'approved']);
+$exPend75 = $mk75('experience');
+$rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, status, source, suggested_by_name, suggested_by_email) VALUES ('IT75 pending', 'b', ?, 'Walks', 'pending', 'guest', 'Gwen Seventyfive', ?)")->execute([$exPend75, $g75]);
+$exPendId75 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, status, source, suggested_by_name, suggested_by_email) VALUES ('IT75 shown', 'b', '', 'Walks', 'published', 'guest', 'Gwen Seventyfive', ?)")->execute([$g75]);
+$exPubId75 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute(['guest-ping-' . $gid75, json_encode(['title' => 'IT75-PING', 'body' => 'Your balance is due', 'at' => time()])]);
+clearstatcache();
+it_check('§75 (fixture) a sent chat photo, a photo waiting, one approved, two suggestions', $gFile75 !== '' && is_file($work . '/' . $gFile75) && is_file($work . '/' . $pend75), $gFile75 . ' ' . $gStaged75);
+$r = http($gj75, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+clearstatcache();
+it_check('§75 deleting the account deletes its chat photos', $r['code'] === 200 && !is_file($work . '/' . $gFile75), $r['raw']);
+it_check('§75 …and a photo never shown, row and file, while an approved one stays on the wall without a name',
+    !is_file($work . '/' . $pend75) && (int) $rootDb->query('SELECT COUNT(*) FROM guest_photos WHERE url = ' . $rootDb->quote($pend75))->fetchColumn() === 0
+    && is_file($work . '/' . $appr75) && $rootDb->query('SELECT guest_name FROM guest_photos WHERE url = ' . $rootDb->quote($appr75))->fetchColumn() === 'Former guest', '');
+it_check('§75 …and the text of their last notification', (int) $rootDb->query("SELECT COUNT(*) FROM content WHERE item_key = 'guest-ping-$gid75'")->fetchColumn() === 0, '');
+it_check('§75 …and a suggestion never published, picture and all, while a published card keeps nothing of them',
+    (int) $rootDb->query("SELECT COUNT(*) FROM experiences WHERE id = $exPendId75")->fetchColumn() === 0 && !is_file($work . '/' . $exPend75)
+    && $rootDb->query("SELECT CONCAT(suggested_by_name, suggested_by_email) FROM experiences WHERE id = $exPubId75")->fetchColumn() === '', '');
+// Moderation: a rejected photo's file goes, and it cannot then be approved onto the wall.
+$rej75 = $mk75('guest');
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?,NULL,'A Guest',?,'c','pending')")->execute([$propKey, $rej75]);
+$rejId75 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/photos.php', ['action' => 'reject', 'id' => $rejId75]);
+clearstatcache();
+it_check('§75 rejecting a guest photo deletes its file', $r['code'] === 200 && !is_file($work . '/' . $rej75), $r['raw']);
+$r = http($admin, 'POST', '/photos.php', ['action' => 'approve', 'id' => $rejId75]);
+it_check('§75 …and approving it afterwards is refused, never a broken image on the wall', $r['code'] === 409 && $rootDb->query("SELECT status FROM guest_photos WHERE id = $rejId75")->fetchColumn() === 'rejected', $r['raw']);
+$exRej75 = $mk75('experience');
+$rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, status, source) VALUES ('IT75 reject', 'b', ?, 'Walks', 'pending', 'guest')")->execute([$exRej75]);
+$exRejId75 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/experiences.php', ['action' => 'reject', 'id' => $exRejId75]);
+clearstatcache();
+it_check('§75 rejecting a suggestion deletes the picture the guest sent', $r['code'] === 200 && !is_file($work . '/' . $exRej75) && $rootDb->query("SELECT image_url FROM experiences WHERE id = $exRejId75")->fetchColumn() === '', $r['raw']);
+// The daily sweeps: a staged file nobody sent, and a chat photo no message carries.
+$oldStaged75 = $work . '/uploads/pending/chat-' . bin2hex(random_bytes(6)) . '.jpg';
+$newStaged75 = $work . '/uploads/pending/chat-' . bin2hex(random_bytes(6)) . '.jpg';
+$orph75 = $work . '/uploads/chat-' . bin2hex(random_bytes(6)) . '.jpg';
+$kept75 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+foreach ([$oldStaged75, $newStaged75, $orph75, $work . '/uploads/' . $kept75] as $f) {
+    file_put_contents($f, 'x');
+}
+touch($oldStaged75, time() - 3 * 86400);
+touch($orph75, time() - 2 * 86400);
+touch($work . '/uploads/' . $kept75, time() - 2 * 86400);
+$rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Kept', 'kept75@gmail.com')")->execute(['kt75-' . bin2hex(random_bytes(6))]);
+$kTid75 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, attachment) VALUES (NULL, ?, 'guest', 'kept', ?)")->execute([$kTid75, 'uploads/' . $kept75]);
+http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+clearstatcache();
+it_check('§75 self-repair empties a staged file nobody sent, and leaves a fresh one', !is_file($oldStaged75) && is_file($newStaged75), '');
+it_check('§75 …and deletes a chat photo no message carries, never one that a message does', !is_file($orph75) && is_file($work . '/uploads/' . $kept75), '');
+@unlink($newStaged75);
+@unlink($work . '/uploads/' . $kept75);
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $kTid75");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $kTid75");
+$rootDb->exec("DELETE FROM guest_photos WHERE url IN (" . $rootDb->quote($appr75) . ',' . $rootDb->quote($rej75) . ')');
+$rootDb->exec("DELETE FROM experiences WHERE id IN ($exPubId75, $exRejId75)");
+@unlink($work . '/' . $appr75);
+// A /64 is one address to a limit: a phone moving through its privacy addresses no
+// longer buys a fresh allowance with each one.
+$ipProbe75 = $work . '/it75-ip-' . bin2hex(random_bytes(4)) . '.php';
+file_put_contents($ipProbe75, "<?php\nrequire __DIR__ . '/db.php';\n\$out = [];\nforeach (['2001:db8:75:1::a', '2001:db8:75:1:ffff::b', '2001:db8:75:1:1234:5678:9abc:def0', '2001:db8:75:2::a'] as \$ip) {\n    \$_SERVER['REMOTE_ADDR'] = \$ip;\n    \$out[] = rate_allow('it75-v6', 2, 10);\n}\n\$_SERVER['REMOTE_ADDR'] = '::ffff:192.0.2.75';\n\$out[] = client_ip_key();\necho \"\\n\" . json_encode(\$out);\n");
+$ipOut75 = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($ipProbe75) . ' 2>/dev/null');
+@unlink($ipProbe75);
+$ipR75 = json_decode(trim(substr($ipOut75, (int) strrpos($ipOut75, "\n["))), true);
+it_check('§75 three addresses in one /64 share one allowance; the next /64 has its own', $ipR75 === [true, true, false, true, '192.0.2.75'], $ipOut75);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'it75-v6'");
+
+// §76 THE OWNER'S BOOT DOES NOT GROW WITH EVERY BOOKING EVER TAKEN. Measured on five
+// years' data: each card plan's state asked the payments table on its own (216 of the
+// boot's 262 statements), every booking carried thirteen columns nothing reads (three
+// of them Square's card-on-file handles) and a register link closed long ago, and the
+// owner's content held the server's own caches (the mailbox's handled list alone ran
+// to 149KB). Counted on the probe's own connection, so other work on the server cannot
+// move the figure.
+echo "\n== §76 the owner's boot does not grow with every booking ever taken ==\n";
+$boot76 = fn() => $mailProbe('require_once __DIR__ . "/bookings.php"; $q = fn() => (int) db()->query("SHOW SESSION STATUS LIKE \'Questions\'")->fetch()["Value"]; $a = $q(); $p = bookings_admin_payload(); $b = $q(); $st = []; $cols = []; $reg = []; foreach ($p["bookings"] as $r) { $st[(int) $r["id"]] = $r["autopay_state"] ?? ""; $cols += array_flip(array_keys($r)); $reg[(int) $r["id"]] = $r["reg_url"] ?? ""; } $exp = []; foreach (db()->query("SELECT * FROM bookings")->fetchAll() as $r) { [$s] = booking_autopay_state($r); $exp[(int) $r["id"]] = $s; } echo "\n" . json_encode(["n" => $b - $a, "st" => $st, "exp" => $exp, "cols" => array_keys($cols), "reg" => $reg]);');
+$R76a = $boot76();
+$ids76 = [];
+$d76 = fn($n) => (new DateTime($ukToday, new DateTimeZone('Europe/London')))->modify('+' . $n . ' days')->format('Y-m-d');
+for ($i = 0; $i < 10; $i++) {
+    $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, autopay_consent_at, autopay_card_id, autopay_customer_id, autopay_amount, autopay_due, autopay_attempts) VALUES (?, ?, ?, ?, ?, 2, 0, 'deposit', ?, 600, 600, 0, 3, NOW(), ?, ?, 450, ?, 0)")
+        ->execute([$propKey, 'Plan Seventysix ' . $i, 'plan76-' . $i . '@example.com', $d76(400 + 5 * $i), $d76(403 + 5 * $i), 0, 'ccof:it76-' . $i, 'cust-it76-' . $i, $d76(370 + 5 * $i)]);
+    $bid = (int) $rootDb->lastInsertId();
+    $ids76[] = $bid;
+    if ($i % 2) {
+        $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES (?, 'deposit', 150, 'COMPLETED', ?)")->execute([$bid, 'sq_it76_' . $i]);
+    }
+    if ($i === 3) {
+        $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES (?, 'refund', 50, 'FAILED', ?)")->execute([$bid, 'sq_it76_r' . $i]);
+    }
+}
+$R76b = $boot76();
+$grow76 = (int) ($R76b['n'] ?? 999) - (int) ($R76a['n'] ?? 0);
+it_check('§76 ten more card plans cost the owner\'s booking list no more statements', is_array($R76a) && is_array($R76b) && $grow76 < 3, "grew by $grow76 (" . ($R76a['n'] ?? '?') . ' → ' . ($R76b['n'] ?? '?') . ')');
+$same76 = is_array($R76b) && count($R76b['st'] ?? []) === count($R76b['exp'] ?? []);
+foreach (($R76b['exp'] ?? []) as $id => $s) {
+    if (($R76b['st'][$id] ?? null) !== $s) {
+        $same76 = false;
+    }
+}
+$planStates76 = array_map(fn($id) => $R76b['st'][$id] ?? '', $ids76);
+// Half the deposits are on the ledger alone (the booking row says nothing paid), so a
+// list that read the ledger wrongly would give those plans a different state.
+it_check('§76 …and every plan\'s state is what it is booking by booking', $same76 && count(array_filter($planStates76, fn($s) => $s !== '' && $s !== 'off')) === 10 && count(array_unique($planStates76)) >= 2, json_encode($planStates76));
+$omit76 = ['hold_payment_id', 'autopay_card_id', 'autopay_customer_id', 'hold_authorized_at', 'hold_requested_at', 'deposit_reminded_at', 'review_request_sent', 'thankyou_sent', 'autopay_last_try', 'autopay_notified_at', 'autopay_last_code', 'autopay_collected_for', 'arrival_window'];
+it_check('§76 the list leaves on the server what the back office never reads, the card handles among it', array_values(array_intersect($omit76, $R76b['cols'] ?? [])) === [] && in_array('autopay_state', $R76b['cols'] ?? [], true), json_encode(array_values(array_intersect($omit76, $R76b['cols'] ?? []))));
+$client76 = (string) file_get_contents(__DIR__ . '/app.js') . (string) file_get_contents(__DIR__ . '/admin.js') . (string) file_get_contents(__DIR__ . '/guest-app.js');
+it_check('§76 …and no client file names any of them', array_values(array_filter($omit76, fn($c) => preg_match('/\b' . preg_quote($c, '/') . '\b/', $client76) === 1)) === [], '');
+$reg76 = $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES (?, ?, 'reg76@example.com', ?, ?, 2, 0, 'paid', 300, 300, 300, 0, 3)");
+$reg76->execute([$propKey, 'Reg Closed', $d76(-13), $d76(-10)]);
+$regClosed76 = (int) $rootDb->lastInsertId();
+$reg76->execute([$propKey, 'Reg Open', $d76(-6), $d76(-3)]);
+$regOpen76 = (int) $rootDb->lastInsertId();
+$R76c = $boot76();
+it_check('§76 a register link rides only a stay whose link still opens (a week after it)', ($R76c['reg'][$regClosed76] ?? 'x') === '' && strpos((string) ($R76c['reg'][$regOpen76] ?? ''), 'guest-details.php?b=' . $regOpen76) !== false, json_encode([$R76c['reg'][$regClosed76] ?? null, $R76c['reg'][$regOpen76] ?? null]));
+// The server's own caches stay out of the owner's content, from both outputs.
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('mailbox-poll', ?), ('guest-ping-7676', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()")->execute([json_encode(['uids' => ['it76-uid'], 'at' => 1]), json_encode(['title' => 'IT76-PING', 'at' => time()])]);
+$c76 = $mailProbe('require_once __DIR__ . "/content.php"; $_SESSION["admin_id"] = ' . (int) $ownerId . '; $p = content_public_payload(); echo "\n" . json_encode(["leak" => array_key_exists("mailbox-poll", $p["content"]) || array_key_exists("guest-ping-7676", $p["content"]), "later" => (content_json("mailbox-poll", [])["uids"] ?? [])]);');
+it_check('§76 the owner\'s content leaves the server\'s caches behind, which the server still reads', is_array($c76) && ($c76['leak'] ?? true) === false && ($c76['later'] ?? []) === ['it76-uid'], json_encode($c76));
+$r = http($admin, 'POST', '/content.php', ['action' => 'get_all']);
+it_check('§76 …and so does the back office\'s full read', $r['code'] === 200 && is_array($r['json']['content'] ?? null) && !array_key_exists('mailbox-poll', $r['json']['content']) && !array_key_exists('guest-ping-7676', $r['json']['content']), substr($r['raw'], 0, 160));
+$so76 = $mailProbe('require_once __DIR__ . "/content.php"; echo "\n" . json_encode(["keys" => CONTENT_SERVER_ONLY, "prefixes" => CONTENT_SERVER_ONLY_PREFIX]);');
+$named76 = array_values(array_filter(array_merge($so76['keys'] ?? [], $so76['prefixes'] ?? []), fn($k) => strpos($client76, "'" . $k) !== false || strpos($client76, '"' . $k) !== false || strpos($client76, '`' . $k) !== false));
+it_check('§76 no client file reads a key kept on the server', is_array($so76) && count($so76['keys'] ?? []) > 10 && $named76 === [], json_encode($named76));
+// A guest's notification text waits five minutes for their phone; the rows stayed for good.
+$rootDb->prepare("INSERT INTO content (item_key, item_value, updated_at) VALUES ('guest-ping-7677', ?, DATE_SUB(NOW(), INTERVAL 2 DAY)) ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)")->execute([json_encode(['title' => 'old', 'at' => 1])]);
+http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+$pings76 = $rootDb->query("SELECT item_key FROM content WHERE item_key IN ('guest-ping-7676', 'guest-ping-7677') ORDER BY item_key")->fetchAll(PDO::FETCH_COLUMN);
+it_check('§76 self-repair clears a notification no phone fetched within a day, and keeps a fresh one', $pings76 === ['guest-ping-7676'], json_encode($pings76));
+// The calendar's two hot reads can use an index that starts with the cottage; the
+// owner's enquiry list one on declined_at.
+$ex76 = function ($sql, $args) use ($rootDb) {
+    $s = $rootDb->prepare('EXPLAIN ' . $sql);
+    $s->execute($args);
+    return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? ''), $s->fetchAll()));
+};
+it_check('§76 a visitor\'s availability read and the clash check can use (prop_key, check_out, check_in)',
+    strpos($ex76('SELECT check_in, check_out FROM bookings WHERE prop_key = ? AND check_out >= CURDATE()', [$propKey]), 'idx_book_prop_dates') !== false
+    && strpos($ex76('SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?', [$propKey, $d76(403), $d76(400)]), 'idx_book_prop_dates') !== false, '');
+it_check('§76 the owner\'s enquiry list can use (declined_at, created_at)', strpos($ex76('SELECT * FROM enquiries WHERE declined_at IS NULL ORDER BY created_at ASC', []), 'idx_enq_declined') !== false, '');
+$r = http($admin, 'GET', '/track.php?action=summary&days=30');
+it_check('§76 Analytics no longer works out a figure nothing reads', $r['code'] === 200 && is_array($r['json'] ?? null) && !array_key_exists('visitorMix', $r['json']) && array_key_exists('uniqueVisitors', $r['json']), substr($r['raw'], 0, 200));
+$rootDb->exec('DELETE FROM payments WHERE booking_id IN (' . implode(',', $ids76) . ')');
+$rootDb->exec('DELETE FROM bookings WHERE id IN (' . implode(',', array_merge($ids76, [$regClosed76, $regOpen76])) . ')');
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('mailbox-poll', 'guest-ping-7676', 'guest-ping-7677')");
 
 echo "\n== Summary ==\n";
 if ($fail) {

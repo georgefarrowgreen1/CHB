@@ -126,9 +126,21 @@ if ($action === 'list_admin') {
 if ($action === 'approve' || $action === 'reject') {
     $id = (int) ($in['id'] ?? 0);
     $status = $action === 'approve' ? 'approved' : 'rejected';
+    $uq = db()->prepare('SELECT url FROM guest_photos WHERE id = ?');
+    $uq->execute([$id]);
+    $url = (string) ($uq->fetchColumn() ?: '');
+    // A photo turned down is never shown, so its file goes now: rejected rows are
+    // hidden from the list, and the owner had no other way to remove it. Approving
+    // one whose file has gone would put a broken image on the wall.
+    if ($action === 'approve' && ($url === '' || !is_file(__DIR__ . '/' . $url))) {
+        json_out(['error' => 'That photo is no longer on the server.'], 409);
+    }
     db()
         ->prepare('UPDATE guest_photos SET status = ? WHERE id = ?')
         ->execute([$status, $id]);
+    if ($action === 'reject') {
+        upload_delete($url);
+    }
     log_activity('moderation', 'photo.' . $action, 'Guest photo ' . ($action === 'approve' ? 'approved' : 'rejected'), ['entity' => 'photo', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
@@ -142,17 +154,9 @@ if ($action === 'delete') {
         db()
             ->prepare('DELETE FROM guest_photos WHERE id = ?')
             ->execute([$id]);
-        // Best-effort: remove the file + its webp companion (only inside uploads/).
-        // Rebuild the path from a basename so traversal is impossible by construction.
-        if (is_string($url) && strpos($url, 'uploads/') === 0 && strpos($url, '..') === false) {
-            $p = __DIR__ . '/uploads/' . basename($url);
-            if (is_file($p)) {
-                @unlink($p);
-            }
-            if (is_file($p . '.webp')) {
-                @unlink($p . '.webp');
-            }
-        }
+        // The file, its WebP companion and its resized copies (upload_delete rebuilds
+        // the path from a basename, so traversal is impossible by construction).
+        upload_delete((string) $url);
     } catch (\Throwable $e) {
     }
     json_out(['ok' => true]);

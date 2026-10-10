@@ -93,7 +93,7 @@ function code_paused(string $email): bool
 function throttle_check($identifier)
 {
     try {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = client_ip_key();
         $s = db()->prepare('SELECT COUNT(*) c FROM login_attempts
                             WHERE ip = ? AND identifier = ? AND success = 0
                               AND attempted_at > (NOW() - INTERVAL 10 MINUTE)');
@@ -139,7 +139,7 @@ function signin_mail_allowed($email)
         if ((int) $s->fetchColumn() >= SIGNIN_MAILS_PER_DAY) {
             return false;
         }
-        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([$_SERVER['REMOTE_ADDR'] ?? '', $key]);
+        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([client_ip_key(), $key]);
     } catch (\Throwable $e) {
     }
     return true;
@@ -147,7 +147,7 @@ function signin_mail_allowed($email)
 function throttle_record($identifier, $ok)
 {
     try {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = client_ip_key();
         if ($ok) {
             // Success clears the slate for this ip+account
             db()
@@ -1621,6 +1621,16 @@ switch ($action) {
         if ($tids) {
             $try("UPDATE activity_log SET meta = NULL, summary = IF(action = 'message.guest' AND summary LIKE 'New chat message from %', 'New chat message', summary) WHERE entity = 'thread' AND entity_id IN (" . implode(',', array_fill(0, count($tids), '?')) . ')', $tids);
         }
+        // …and the photos in those conversations, which stayed on the site at their old
+        // address (the owner's emails to them still carry it). Found now, deleted once
+        // the messages have gone.
+        $chatFiles = [];
+        try {
+            $fq = db()->prepare("SELECT attachment FROM messages WHERE (guest_id = ?" . ($tids ? ' OR thread_id IN (' . implode(',', array_fill(0, count($tids), '?')) . ')' : '') . ") AND attachment IS NOT NULL AND attachment <> ''");
+            $fq->execute(array_merge([$gid], $tids));
+            $chatFiles = $fq->fetchAll(\PDO::FETCH_COLUMN);
+        } catch (\Throwable $e) {
+        }
         if ($email !== '') {
             // A chat started on the website before signing in carries the address,
             // not the account: theirs too, the owner's replies in it included.
@@ -1633,9 +1643,42 @@ switch ($action) {
         $try('DELETE m FROM messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.guest_id = ?', [$gid]);
         $try('DELETE FROM messages WHERE guest_id = ?', [$gid]);
         $try('DELETE FROM chat_threads WHERE guest_id = ?', [$gid]);
+        foreach ($chatFiles as $cf) {
+            upload_delete($cf);
+        }
         $try('DELETE FROM guest_reviews WHERE guest_id = ?', [$gid]);
+        // A photo still waiting for approval, or turned down, was never shown: it goes,
+        // file and all. Approved ones stay on the photo wall, without a name.
+        try {
+            $pq = db()->prepare("SELECT id, url FROM guest_photos WHERE guest_id = ? AND status <> 'approved'");
+            $pq->execute([$gid]);
+            foreach ($pq->fetchAll() as $ph) {
+                upload_delete($ph['url']);
+                db()->prepare('DELETE FROM guest_photos WHERE id = ?')->execute([(int) $ph['id']]);
+            }
+        } catch (\Throwable $e) {
+        }
         $try('UPDATE guest_photos SET guest_id = NULL, guest_name = ? WHERE guest_id = ?', ['Former guest', $gid]);
+        // A thing to do they suggested: a published card stays, without their name or
+        // address; one never published goes, picture and all.
+        if ($email !== '') {
+            try {
+                $eq = db()->prepare('SELECT id, image_url, status FROM experiences WHERE suggested_by_email = ?');
+                $eq->execute([$email]);
+                foreach ($eq->fetchAll() as $ex) {
+                    if (($ex['status'] ?? '') === 'published') {
+                        db()->prepare("UPDATE experiences SET suggested_by_name = '', suggested_by_email = '' WHERE id = ?")->execute([(int) $ex['id']]);
+                    } else {
+                        db()->prepare('DELETE FROM experiences WHERE id = ?')->execute([(int) $ex['id']]);
+                        experience_image_drop($ex['image_url'] ?? '', (int) $ex['id']);
+                    }
+                }
+            } catch (\Throwable $e) {
+            }
+        }
         $try('DELETE FROM push_subscriptions WHERE guest_id = ?', [$gid]);
+        // …and the text of their last notification, kept for the phone to fetch.
+        $try('DELETE FROM content WHERE item_key = ?', ['guest-ping-' . $gid]);
         $try('DELETE FROM guest_passkeys WHERE guest_id = ?', [$gid]);
         avatar_delete(guest_avatar_name($gid)); // the photo goes with the account
         db()
