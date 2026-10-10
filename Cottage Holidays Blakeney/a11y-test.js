@@ -631,6 +631,12 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['admin-host', "(async()=>{settingsOpen('host');await new Promise(r=>setTimeout(r,600));})()"],
         ['admin-notify', "(async()=>{settingsOpen('notify');await new Promise(r=>setTimeout(r,600));})()"],
         ['admin-security', "(async()=>{settingsOpen('security');await new Promise(r=>setTimeout(r,600));})()"],
+        // THE CHANGE-PASSWORD SHEET, with a mistake showing, so its error line renders
+        // beside the hint, the eyes and the link (the error is display:none until used).
+        // A person with an email is signed in for it: with nobody, the sign-in line and
+        // the reset link are not drawn, and the scene would measure half a sheet.
+        ['admin-password', "(async()=>{window.__a11yMe=window.__me;chbSetMe(Object.assign({},window.__me||{},{contact:'george@example.com',email:'george@example.com',username:'george'}));changeAdminPassword();await new Promise(r=>setTimeout(r,500));oaPwErr('cur','That isn\\u2019t your current password.');await new Promise(r=>setTimeout(r,200));})()"],
+        ['admin-password-off', "(async()=>{oaPwClose();chbSetMe(window.__a11yMe||null);await new Promise(r=>setTimeout(r,500));})()"],
         // THE TWO HUBS AND THE LOG — the screens the owner spends most of the day on,
         // and the three richest in headings, controls and dates. They were absent, so
         // the booking hub's ~40 controls, the enquiry hub's action row and the log's

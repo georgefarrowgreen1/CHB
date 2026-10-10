@@ -5229,6 +5229,54 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
   page's reset-and-remove card touched it. A section's gap, not 12px, because that card is about something else.
   ui-test-devices §7 measures it in both states, by layout offsets (the page may still be sliding in).
 
+## Change password: one sheet (approved demo, built and merged without CI)
+
+**Asked for as a demo of Sign-in & security's "Change password", then "Build it, merge without CI".** The three-box
+glassForm is gone: `changeAdminPassword()` opens `#oa-pw-sheet`, built the way the device sheet is (a body-level
+`.modal-overlay.chb-sheet`, its own history entry, Escape via app.js `MODAL_CLOSERS`, Back via `closeTopOverlay`, in
+the one-look phone-sheet lists). Code: the "Change password" block after `oaDevOpenTarget` in admin.js (`oaPw*`), the
+CHANGE PASSWORD block at the foot of admin.css. No server change; the guest's own form is untouched.
+- **A REAL FORM A PASSWORD MANAGER CAN READ.** The sign-in address (`me.contact`, else email, else username) is a
+  read-only `autocomplete="username"` input (app.js `authIdField`) worn as the line "For george@…": 13px restated
+  `!important` over the phone's 17px input rule, in a 24px box because it is still an input (a11y-test §5). Then
+  `current-password` and `new-password`. The overlay names its entry point (`data-focus="#oa-pw-cur"`) or the focus
+  manager's first-input heuristic lands on the sign-in line. On success the form is HIDDEN, not emptied: a form that
+  leaves with its answer is how a manager knows the change went through.
+- **NO CONFIRM BOX** (a typo cannot lock you out: an emailed code or a passkey still signs you in). Show/Hide on each
+  box instead; the eye cancels its own pointerdown (`data-act-pointerdown="oaPwHold"`, returning false), so the box
+  never loses the focus and a phone's keyboard stays up. Measured: without it Chromium blurs the box on every tap.
+  Both boxes go back to dots before the request.
+- **THE 12-CHARACTER RULE IS COUNTED AS YOU TYPE** (`oaPwPaint`): a ring and "7 of 12 characters", a green tick at
+  12, amber "That’s your current password" when the new one equals it; characters, not UTF-16 units. The button is
+  `aria-disabled` (never `disabled`, so Return still submits) until both boxes are ready; tapped early it focuses
+  what is missing with `chbNudge`'s shake and sends nothing. A screen reader hears the state change once
+  (`#oa-pw-say`), never the count.
+- **A MISTAKE IS SAID UNDER ITS BOX** (`oaPwErr`): a 403 as "That isn’t your current password." under the current box,
+  which takes the focus with what was typed selected; a 429 in the server's words in the same place; a 400 under the
+  new box; anything else above the buttons. Revealed before the words are written (the role="alert" rule).
+- **"Forgotten it? Email me a reset link"** posts `admin_reset_request` with `me.contact` (the sign-in page's own
+  30-minute link) and says where it went; with no email on the sign-in, no link is offered.
+- **THE DEVICES IT SIGNS OUT ARE NAMED BEFORE YOU PRESS** (`oaPwOuts`, from `__oaDevs[0]`, asked afresh on open): up to
+  three distinct labels; counted past that or when two share a label; "and any other device you’re signed in on"
+  while the list may be incomplete (`partial`); no names when it couldn't be read. The done panel says the same from
+  the list as it stood when pressed (the refreshed list no longer has them), and the Devices list is asked again.
+- **Busy**: the spinner is a real element in the button's flex row, 10px from "Changing…" (an 8px gap and its own
+  2px, the 4pt-grid ratchet), 1px down to sit on the capitals; hidden under reduced motion; busy is not dimmed. A late
+  answer belongs to the sheet that asked (`__oaPw.run`): closed while it worked, it arrives as a toast. The passwords
+  leave the page 400ms after the sheet closes (after its exit).
+- **THE TAB TRAP SKIPS tabindex="-1"** (app.js): its boundaries were the first and last focusable elements, including
+  ones Tab can never reach, so with the read-only sign-in line first, Shift+Tab from the first box walked out of the
+  dialog. Only reachable controls are boundaries now (the `HTMLElement[]` cast also removed three type errors: tsc
+  budget 614 → 611).
+- Gates: **`ui-test-password.js`** (64 checks: the form and its autocompletes, the 8/20px rhythm and the glow, the
+  eye keeping the focus, the count/tick/amber, early taps, each mistake's place, the busy row's 10px, the posted
+  fields, the done panel, the reset link both ways, five device sentences, Back/Escape/Tab, the late answer). Fourteen
+  declarations break-tested one at a time, each failing its own named check; the Escape route fired only once §10
+  checked what the sheet's own close does, because the generic Escape fallback also hides the sheet. ui-test-owneraccount
+  §5 re-aimed; a11y-test and layout-test walk the sheet (a11y's scene signs a person in, or the sign-in line and the
+  link are not drawn and the scene measures half a sheet). Budgets: admin.js +4.5KB, admin.css +1.4KB gz (owner-only,
+  immutable-cached), after trimming the comments.
+
 ## Signing in to the back office with an email (reported: "you can only get in with a password reset")
 
 **Partly superseded by "Three ways into the back office" above**: the code now signs in on its own, so the
