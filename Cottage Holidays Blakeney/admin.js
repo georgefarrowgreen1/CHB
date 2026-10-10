@@ -15687,7 +15687,7 @@ function gstRender() {
     const nBack = all.filter((g) => g.f.kind === 'back').length;
     const nInv = all.filter((g) => g.f.kind === 'invite' && !g.f.invitedAt).length;
     const stat = (key, fig, cap, tone) => `<button type="button" class="gst-stat is-${tone}${__gst.filter === key ? ' is-on' : ''}"${key ? ` aria-pressed="${__gst.filter === key}" ${chbAttrs('gstFilter', key)}` : ' disabled'}><b>${fig}</b><span>${cap}</span></button>`;
-    statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
+    statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), 'Spent by ' + all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
         + stat('back', String(nBack), 'Coming back', 'back') + stat('invite', String(nInv), 'To invite back', 'invite');
     const q = __gst.q.trim().toLowerCase();
     const shown = all.filter((g) => (!q || String(g.name || '').toLowerCase().includes(q) || g.f.email.includes(q)) && (!__gst.filter || g.f.kind === __gst.filter))
@@ -22976,7 +22976,7 @@ function chbDutiesAll() {
                 label: `Rotate ${pname(pk)}’s key safe`,
                 sub: d0.dep
                     ? `${d0.dep.name} leaves at ${d0.dep.out} — rotate once they’ve gone; ${next.name || 'the next guest'} arrives ${when}`
-                    : `${next.name || 'The next guest'} arrives ${when} — their code isn’t on the safe yet`,
+                    : `For ${next.name || 'the next guest'}, arriving ${when}`,
                 act: 'Rotate', go: chbAttrs('openKeysafe'),
                 board: 'today', scope: 'bookings',
                 run: () => { closeCmdK(); openKeysafe(); },
@@ -24819,7 +24819,7 @@ function odsDutiesHtml(rows) {
         out.push({
             sev: r.ci === today ? 'ny-danger' : '',
             l: 'Rotate ' + (r.cot || r.pk) + '’s key safe',
-            s: (r.nm || 'The next guest') + ' arrives ' + (r.ci === today ? 'today' : 'tomorrow') + ' — their code isn’t on the safe yet',
+            s: 'For ' + (r.nm || 'the next guest') + ', arriving ' + (r.ci === today ? 'today' : 'tomorrow'),
             act: chbAttrs('odsKeysafe', String(r.pk)),
         });
     });

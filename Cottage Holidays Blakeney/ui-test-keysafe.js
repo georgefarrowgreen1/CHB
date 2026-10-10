@@ -277,7 +277,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const d0 = chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || null;
     return d0 && { sev: d0.sev, sub: d0.sub };
   });
-  ok(!!t3 && t3.sev === 'danger' && /arrives today/.test(t3.sub), `an arrival-day rotation is red and says so (${t3 && t3.sub.slice(0, 46)})`);
+  ok(!!t3 && t3.sev === 'danger' && /arriving today/.test(t3.sub), `an arrival-day rotation is red and says so (${t3 && t3.sub.slice(0, 46)})`);
   // A FAR arrival is amber — real, not an alarm (the reveal window decides).
   const t4 = await page.evaluate(() => {
     const t = (window.todayDashed)();
@@ -330,7 +330,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `07:37 on changeover day: amber, and the sub says when it becomes possible (${(t5.at737.sub || '').slice(0, 62)})`);
   ok(t5.capWarn && /needs a new code after 10:00/i.test(t5.cap737), `the to-do is amber and names the hour (${t5.cap737})`);
   ok(/rotate after Morning Leaver leaves at 10:00/i.test(t5.sub737), `…and its sub names who's still in (${t5.sub737.slice(0, 68)})`);
-  ok(t5.at1001.sev === 'danger' && /arrives today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
+  ok(t5.at1001.sev === 'danger' && /arriving today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
   ok(t5.ota.sev === 'warn' && /leaves at 10:00/.test(t5.ota.sub), `an OTA departure defaults to the house 10:00 (${t5.ota.sev})`);
 
   console.log('§4d …and the ARRIVAL time — the other side of the same clock');
