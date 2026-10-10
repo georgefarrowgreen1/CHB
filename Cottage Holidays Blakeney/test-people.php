@@ -126,6 +126,15 @@ ppl('payment plans are Ask for money; the money marks are See the money', $k('pl
 // is written only by people who could make that change themselves — otherwise a
 // Host could plant one for a Super User to run.
 ppl('the search undo list is Prices, not everyday', $k('search-undo') === 'co.prices');
+// The cottage pattern takes "<word>-location" as a cottage's location line, and
+// it swallowed the one key that is not: which Square location the money reads.
+ppl('the Square location is a Super User\'s, not a cottage page', $k('square-location') === 'owner' && $k('21a-location') === 'co.pages' && $k('jollyboat-desc') === 'co.pages');
+// Approving a direct review publishes it, the same act reviews.php gates.
+ppl('approving or deleting a direct review takes Approve reviews', $c('leads.php', 'set_status') === 'gu.reviews' && $c('leads.php', 'delete') === 'gu.reviews' && $c('reviews.php', 'set_status') === 'gu.reviews');
+ppl('…while the list and the private guest rating stay everyday', $c('leads.php', 'list') === 'all' && $c('leads.php', 'rate_guest') === 'all');
+// Seeing the bank is the books; sorting a payment says whose money it was.
+ppl('the bank is the books to see, a sort is Record payments', $c('statements.php', 'status') === 'mo.view' && $c('statements.php', 'import') === 'mo.view' && $c('statements.php', 'mark') === 'mo.record' && $c('statements.php', 'unmark') === 'mo.record');
+ppl('…and switching statements off is a Super User\'s', $c('statements.php', 'remove') === 'owner' && $c('statements.php', 'anything-new') === 'owner');
 ppl('secrets and set-up are full access only', $k('bacs-details') === 'owner' && $k('apikey-tides') === 'owner' && $k('backup-passphrase') === 'owner' && $k('square-deposit-pct') === 'owner' && $k('notify-emails') === 'owner');
 ppl('a key nobody listed is full access only', $k('something-new') === 'owner');
 ppl('a write to content.php is decided by its key', people_cap_for('content.php', 'set', ['key' => 'bacs-details']) === 'owner' && people_cap_for('content.php', 'set', ['key' => 'host-bio']) === 'all');

@@ -9475,6 +9475,27 @@ each fix is gated and break-tested. The rules it set:
   endpoints (arrays, long fields, the CSP cap, the summary under 1,200 noise rows,
   ten emails from twelve code requests with identical answers — `srv` stripped
   before comparing — the dummy hash, a new session id at logout).
+- **THREE PERMISSION GAPS, found by a read-only audit of the policy map** (gated
+  in test-people, each failing on the old map):
+  - `people_content_cap`'s cottage pattern takes any `<word>-location` as a
+    cottage's location line, and it swallowed **`square-location`** — which
+    Square location every money read uses — so anyone who could edit cottage
+    pages could repoint the Payments data. It is named first now, as `owner`.
+    A pattern that classifies by SHAPE needs every non-matching key named
+    before it.
+  - `leads.php` approved and deleted direct reviews for any signed-in person,
+    while `reviews.php` asks for Approve reviews (`gu.reviews`) — and approving
+    one PUBLISHES it on the cottage page. Same permission now, on the server
+    and on the two buttons (`setLeadStatus`, `deleteLead` in `CHB_ACT_CAP`).
+  - `statements.php` was `'*' => 'mo.view'`, the READ permission, for every
+    write too. Seeing and importing stay `mo.view`; sorting a payment (`mark`,
+    `unmark`, the reminder) takes `mo.record`, because a sort says whose money
+    it was and feeds what each host is owed; switching statements off is a
+    Super User's. The Payments page wires its own buttons (`data-pm`), so the
+    server's refusal is what a Host meets there.
+  - Left as designed, flagged: Edit cottage pages (`co.pages`) reads and writes
+    the private `ops-`/`arrival-`/`welcome-` notes, where an owner may have typed
+    a key-safe code — the key safes' own permissions do not cover them.
 
 ## The round-4 performance pass (one load per trip, a 304 that fires, indexes)
 

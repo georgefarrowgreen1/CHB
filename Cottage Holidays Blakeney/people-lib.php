@@ -347,7 +347,10 @@ const PEOPLE_POLICY = [
     'my-bookings.php' => ['*' => 'all'], // the read-only preview of a guest's account
     'search.php' => ['*' => 'all'],
     'watchers.php' => ['list' => 'all', 'set' => 'all', 'stop' => 'all'],
-    'leads.php' => ['list' => 'all', 'set_status' => 'all', 'rate_guest' => 'all', 'delete' => 'all'],
+    // Approving a direct review PUBLISHES it on the cottage page (reviews.php
+    // serves approved direct_leads), so it takes the same permission as
+    // approving any other review; the private guest rating stays everyday.
+    'leads.php' => ['list' => 'all', 'set_status' => 'gu.reviews', 'rate_guest' => 'all', 'delete' => 'gu.reviews'],
     // Key safes.
     'keysafe.php' => ['state' => 'ks.see', 'confirm' => 'ks.change', 'set_enabled' => 'ks.change'],
     // Guests & messages: reading is anyone's; writing to a guest is a permission.
@@ -403,7 +406,10 @@ const PEOPLE_POLICY = [
     // The Payments page and the books.
     'accounts.php' => ['*' => 'mo.view'],
     'money.php' => ['*' => 'mo.view'],
-    'statements.php' => ['*' => 'mo.view'],
+    // Seeing the bank and adding statements is the books (mo.view); SORTING a
+    // payment says whose money it was and feeds what each host is owed, so it
+    // takes Record payments; switching statements off is a Super User's.
+    'statements.php' => ['status' => 'mo.view', 'preview' => 'mo.view', 'import' => 'mo.view', 'mark' => 'mo.record', 'unmark' => 'mo.record', 'settings' => 'mo.record'],
     'expenses.php' => ['' => 'mo.view', 'add' => 'mo.exp', 'update' => 'mo.exp', 'delete' => 'mo.exp', '*' => 'mo.view'],
     // The Monzo live link: checking and syncing are the Payments page's; adding
     // the developer client, connecting and disconnecting are a Super User's.
@@ -506,6 +512,13 @@ function people_content_cap($key)
         || preg_match('/^pricing-(limits|smart-off|changeover|hidden)$/', $k)
         || preg_match('/-cancellation-policy$/', $k)) {
         return 'co.prices';
+    }
+    // Which Square location every money read uses: a Payments setting, so a Super
+    // User's. Named BEFORE the cottage pattern below, which takes any
+    // "<word>-location" as a cottage's own location line and so handed this to
+    // anyone who edits cottage pages.
+    if ($k === 'square-location') {
+        return 'owner';
     }
     // The cottage pages and their private notes.
     if (preg_match('/^(images|amenities|houserules|safety|geo|access|faqs|welcome|arrival|ops)-/', $k)
