@@ -200,15 +200,7 @@ function mailbox_from_addr($s)
 // Find our signed thread token anywhere in the reply's routing fields.
 function mailbox_token_in($parsed)
 {
-    foreach ([$parsed['in_reply_to'] ?? '', $parsed['references'] ?? '', $parsed['subject'] ?? ''] as $hay) {
-        if ($hay === '') {
-            continue;
-        }
-        if (preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m)) {
-            return $m[1];
-        }
-    }
-    return '';
+    return msg_reply_token_in([$parsed['in_reply_to'] ?? '', $parsed['references'] ?? '', $parsed['subject'] ?? '']);
 }
 
 // ---- POP3-SSL socket read (best-effort) ------------------------------------
@@ -250,7 +242,10 @@ function pop3_open()
     ]);
     $errno = 0;
     $errstr = '';
-    $fp = @stream_socket_client("ssl://{$host}:995", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $ctx);
+    // POP3 over TLS on 995 unless the config names another port (MAIL_POP_PORT, as
+    // SMTP_PORT does for sending): the integration suite's fake mailbox listens on one.
+    $port = defined('MAIL_POP_PORT') ? (int) constant('MAIL_POP_PORT') : 995;
+    $fp = @stream_socket_client("ssl://{$host}:{$port}", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
         pop3_release();
         return ['error' => "Connect failed: {$errstr}"];

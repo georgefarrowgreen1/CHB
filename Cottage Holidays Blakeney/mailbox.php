@@ -262,13 +262,15 @@ if ($action === 'list') {
             $ownHidden++;
             continue;
         }
-        // An email the owner wrote from this address answering a guest-chat
-        // alert becomes a chat message: mailbox-read.php routes it on the same
-        // two facts (an OWNER token, a sender on the allow-list). It is in that
-        // guest's conversation already, so listing it too would read as a new
-        // person waiting. One the poll would NOT route stays listed — including a
+        // An email the owner wrote answering a guest-chat alert becomes a chat
+        // message: mailbox-read.php routes it on the same two facts (an OWNER
+        // token, a sender on the allow-list), whichever of their addresses it came
+        // from. It is in that guest's conversation already, so listing it too would
+        // read as a new person waiting — the owner's own reply. Only this address
+        // was covered, and the usual reply comes from the owner's own inbox, where
+        // the alert went. One the poll would NOT route stays listed, including a
         // reply to a chat since deleted, which the poll leaves as ordinary mail.
-        if ($fromAddr === mailbox_own_address() && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)) {
+        if ($fromAddr !== '' && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)) {
             [$rTid, $rAud] = msg_reply_parse(mailbox_token_in([
                 'in_reply_to' => mbx_header($head, 'In-Reply-To'),
                 'references' => mbx_header($head, 'References'),

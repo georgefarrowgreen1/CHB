@@ -48,6 +48,10 @@ if (!$HTTP_PORT) {
 $sock = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
 $MONZO_PORT = (int) explode(':', stream_socket_get_name($sock, false))[1];
 fclose($sock);
+// §77's fake POP3 mailbox listens here (MAIL_POP_HOST / MAIL_POP_PORT in the app copy's config).
+$sock = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+$POP_PORT = (int) explode(':', stream_socket_get_name($sock, false))[1];
+fclose($sock);
 $DB_NAME = preg_match('/^[a-z0-9_]{1,40}$/', (string) getenv('CHB_IT_DB_NAME')) ? (string) getenv('CHB_IT_DB_NAME') : 'chb_it_test';
 $SECRET = 'chb-integration-secret-0123456789abcdef';
 $BASE = "http://127.0.0.1:$HTTP_PORT";
@@ -144,6 +148,7 @@ $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MO
 $cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
 // …and the Monzo link's: §54 holds the sync's lock to show a disconnect waits for it.
 $cfg .= "\ndefine('CHB_MONZO_LOCK_WAIT', 2);\n";
+$cfg .= "\ndefine('MAIL_POP_HOST', '127.0.0.1');\ndefine('MAIL_POP_PORT', $POP_PORT);\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
@@ -5183,6 +5188,191 @@ it_check('§76 Analytics no longer works out a figure nothing reads', $r['code']
 $rootDb->exec('DELETE FROM payments WHERE booking_id IN (' . implode(',', $ids76) . ')');
 $rootDb->exec('DELETE FROM bookings WHERE id IN (' . implode(',', array_merge($ids76, [$regClosed76, $regOpen76])) . ')');
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('mailbox-poll', 'guest-ping-7676', 'guest-ping-7677')");
+
+// §77 REPLY BY EMAIL, AGAINST A MAILBOX THAT ANSWERS. The poll had only ever met a
+// mailbox it could not reach (§74), so the work it exists for (an owner's emailed
+// answer reaching the guest's chat, a guest's reply landing as theirs, our own alerts
+// and a forged sender left alone) was gated piece by piece in test-reply and never
+// end to end. test-pop3-server.php serves a folder of real emails over TLS; the poll
+// and the Inbox's mailbox.php read it exactly as they read the real one. The webhook
+// route (inbound-mail.php, used when REPLY_INBOX is set) is driven alongside.
+echo "\n== §77 replies by email reach the right conversation, as the right person ==\n";
+$md77 = $work . '/it-maildir';
+@mkdir($md77, 0777, true);
+$log77 = $work . '/it-pop3.log';
+@unlink($log77);
+$srv77 = proc_open('exec php ' . escapeshellarg(__DIR__ . '/test-pop3-server.php') . ' ' . (int) $POP_PORT . ' ' . escapeshellarg($md77) . ' ' . escapeshellarg($log77), [], $pipes77);
+register_shutdown_function(function () use ($srv77) {
+    if (is_resource($srv77)) {
+        proc_terminate($srv77);
+    }
+});
+$up77 = false;
+for ($i = 0; $i < 100 && !$up77; $i++) {
+    usleep(100000);
+    $up77 = strpos((string) @file_get_contents($log77), 'LISTEN') !== false;
+}
+it_check('§77 (fixture) the fake mailbox is listening', $up77, (string) @file_get_contents($log77));
+$who77 = $mailProbe('$o = db()->query("SELECT * FROM admins ORDER BY id LIMIT 1")->fetch(); echo "\n" . json_encode(["owner" => strtolower(admin_contact_email($o)), "id" => (int) $o["id"], "own" => mailbox_own_address()]);');
+$owner77 = (string) ($who77['owner'] ?? '');
+$own77 = (string) ($who77['own'] ?? '');
+// The owner reads the same mailbox the site sends from, and their phone writes as it,
+// so that address is one of theirs too.
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('notify-emails', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode([$own77])]);
+$th77 = $rootDb->prepare('INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, ?, ?)');
+$th77->execute(['it77-' . bin2hex(random_bytes(6)), 'Wren Ashby', 'wren77@example.com']);
+$t77 = (int) $rootDb->lastInsertId();
+$th77->execute(['it77-' . bin2hex(random_bytes(6)), 'Gone Guest', 'gone77@example.com']);
+$gone77 = (int) $rootDb->lastInsertId();
+$tk77 = $mailProbe('echo "\n" . json_encode(["o" => msg_reply_token(' . $t77 . '), "g" => msg_reply_token(' . $t77 . ', "guest"), "gone" => msg_reply_token(' . $gone77 . ')]);');
+$o77 = (string) ($tk77['o'] ?? '');
+$g77 = (string) ($tk77['g'] ?? '');
+$og77 = (string) ($tk77['gone'] ?? '');
+$legacy77 = substr($o77, 0, -16); // the 16-hex form that emails sent before the widening carry
+$half77 = $legacy77 . str_repeat('0', 16); // a current token whose second half is forged
+$rootDb->exec('DELETE FROM chat_threads WHERE id = ' . $gone77); // the owner deleted that chat
+it_check('§77 (fixture) the owner, the site\'s address and three tokens', $owner77 !== '' && $own77 !== '' && $owner77 !== $own77 && strlen($o77) === strlen((string) $t77) + 33 && $g77 !== '' && $og77 !== '', json_encode([$who77, $tk77]));
+$eml77 = function ($name, array $head, $body) use ($md77) {
+    $h = 'Date: ' . date('r') . "\r\n";
+    foreach ($head as $k => $v) {
+        $h .= "$k: $v\r\n";
+    }
+    file_put_contents($md77 . '/' . $name . '.eml', $h . "\r\n" . $body);
+};
+$quote77 = "\r\n\r\nOn Fri, 9 Oct 2026 at 10:00, Cottage Holidays Blakeney <$own77> wrote:\r\n> Wren Ashby asked: is there parking?\r\n";
+$plain77 = ['Content-Type' => 'text/plain; charset=UTF-8'];
+$eml77('it77-01-owner', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: New message from Wren Ashby', 'In-Reply-To' => "<msg.$o77@yourdomain.co.uk>", 'Content-Type' => 'text/plain; charset=UTF-8', 'Content-Transfer-Encoding' => 'quoted-printable'], 'Yes =E2=80=94 the parking is behind the cottage, IT77-OWNER.' . $quote77);
+$eml77('it77-02-guest', ['From' => 'Wren Ashby <wren77@example.com>', 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$g77@yourdomain.co.uk>", 'Content-Type' => 'text/plain; charset=ISO-8859-1', 'Content-Transfer-Encoding' => '8bit'], "Thanks! We\x92ll bring \xA320 for the honesty box, IT77-GUEST." . $quote77);
+$eml77('it77-03-forged', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$g77@yourdomain.co.uk>"] + $plain77, 'IT77-FORGED Please refund the deposit to this new card.');
+$eml77('it77-04-site', ['From' => "Cottage Holidays Blakeney <$own77>", 'To' => $owner77, 'X-CHB-Origin' => 'site', 'Message-ID' => "<msg.$o77@yourdomain.co.uk>", 'Subject' => "New message from Wren Ashby [#$o77]"] + $plain77, 'IT77-SELF Wren Ashby asked: is there parking?');
+$eml77('it77-05-phone', ['From' => "George <$own77>", 'To' => $own77, 'Message-ID' => '<5F3A2B1C-77AA-4E7D-9C1B@icloud.com>', 'Subject' => "Re: New message from Wren Ashby [#$o77]"] + $plain77, 'IT77-PHONE The key safe code comes the day before.' . $quote77);
+$eml77('it77-06-customer', ['From' => 'Anne Betts <anne77@example.org>', 'To' => $own77, 'Subject' => 'Availability in May?'] + $plain77, 'Hello, IT77-ANNE is the cottage free in May?');
+$eml77('it77-07-dmarc', ['From' => 'noreply-dmarc-support@google.com', 'To' => $own77, 'Subject' => 'Report domain: yourdomain.co.uk'] + $plain77, 'IT77-DMARC aggregate report attached.');
+$eml77('it77-08-legacy', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => "Re: New message from Wren Ashby [#$legacy77]"] + $plain77, 'IT77-LEGACY An old email, an old token.');
+$eml77('it77-09-gone', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: New message from Gone Guest', 'In-Reply-To' => "<msg.$og77@yourdomain.co.uk>"] + $plain77, 'IT77-GONE Replying to a chat since deleted.');
+$eml77('it77-10-half', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: New message from Wren Ashby', 'In-Reply-To' => "<msg.$half77@yourdomain.co.uk>"] + $plain77, 'IT77-HALF A token with its second half forged.');
+$eml77('it77-11-refs', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: New message from Wren Ashby', 'References' => '<msg.9x' . str_repeat('ab', 16) . "@elsewhere.example> <msg.$o77@yourdomain.co.uk>"] + $plain77, 'IT77-REFS Found behind another id.');
+// The poll, as the cron and the Inbox's nudge run it, with the mailbox switched on.
+$poll77 = function () use ($work) {
+    $f = $work . '/it-poll77.php';
+    file_put_contents($f, "<?php\nfunction mailbox_auto_enabled() { return true; }\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailbox-read.php';\necho \"\\n\" . json_encode(poll_mailbox_replies(true));\n");
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>&1');
+    @unlink($f);
+    $j = json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+    return is_array($j) ? $j : ['raw' => substr($out, -600)];
+};
+$retr77 = fn() => preg_match_all('/^RETR /m', (string) @file_get_contents($log77));
+$rows77 = fn() => $rootDb->query('SELECT thread_id, sender_role, body FROM messages WHERE body LIKE ' . $rootDb->quote('%IT77-%') . ' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+$one77 = function ($marker) use ($rows77) {
+    $hit = array_values(array_filter($rows77(), fn($r) => strpos($r['body'], $marker) !== false));
+    return count($hit) === 1 ? $hit[0] : (count($hit) ? ['many' => count($hit)] : null);
+};
+$R77 = $poll77();
+it_check('§77 the poll reads the mailbox and delivers five replies', ($R77['ok'] ?? false) === true && ($R77['handled'] ?? -1) === 5, json_encode($R77));
+$r = $one77('IT77-OWNER');
+it_check('§77 the owner\'s emailed answer reaches the guest\'s chat as the owner\'s, decoded and without the quoted alert', ($r['sender_role'] ?? '') === 'admin' && (int) ($r['thread_id'] ?? 0) === $t77 && ($r['body'] ?? '') === 'Yes — the parking is behind the cottage, IT77-OWNER.', json_encode($r));
+$actor77 = $rootDb->prepare("SELECT actor FROM activity_log WHERE action = 'message.reply' AND entity = 'thread' AND entity_id = ? AND meta LIKE ? ORDER BY id DESC LIMIT 1");
+$actor77->execute([(string) $t77, '%IT77-OWNER%']);
+it_check('§77 …credited to the person whose address it came from', (string) $actor77->fetchColumn() === 'admin:' . (int) ($who77['id'] ?? 0));
+$r = $one77('IT77-GUEST');
+it_check('§77 the guest\'s reply lands as theirs, its Windows-1252 quote and £ intact', ($r['sender_role'] ?? '') === 'guest' && (int) ($r['thread_id'] ?? 0) === $t77 && ($r['body'] ?? '') === "Thanks! We\u{2019}ll bring \u{00A3}20 for the honesty box, IT77-GUEST.", json_encode($r));
+it_check('§77 the owner\'s address on a GUEST\'s token posts nothing in the owner\'s name', $one77('IT77-FORGED') === null);
+it_check('§77 the site\'s own alert, carrying an owner token, is never taken for a reply', $one77('IT77-SELF') === null);
+$r = $one77('IT77-PHONE');
+it_check('§77 the owner typing from the business address on their phone still reaches the chat', ($r['sender_role'] ?? '') === 'admin' && (int) ($r['thread_id'] ?? 0) === $t77, json_encode($r));
+$r = $one77('IT77-LEGACY');
+it_check('§77 a 16-hex token from an email sent before the widening still routes', ($r['sender_role'] ?? '') === 'admin', json_encode($r));
+it_check('§77 a reply to a chat since deleted makes no orphan message', $one77('IT77-GONE') === null && (int) $rootDb->query('SELECT COUNT(*) FROM messages WHERE thread_id = ' . $gone77)->fetchColumn() === 0);
+it_check('§77 a current token with its second half forged routes nothing (it was read as its first 16 hex)', $one77('IT77-HALF') === null);
+$r = $one77('IT77-REFS');
+it_check('§77 a token-shaped id earlier in References no longer hides the real token', ($r['sender_role'] ?? '') === 'admin', json_encode($r));
+$new77 = array_column((array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-new'")->fetchColumn(), true), null, 'uid');
+$newKeys77 = array_keys($new77);
+sort($newKeys77);
+it_check('§77 mail the poll did not route is recorded for the owner: the customer, the forged sender, the deleted chat\'s reply, the bad token', $newKeys77 === ['it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode($newKeys77));
+it_check('§77 …with the sender\'s name', ($new77['it77-06-customer']['name'] ?? '') === 'Anne Betts', json_encode($new77['it77-06-customer'] ?? null));
+$handled77 = (array) (json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true)['uids'] ?? []);
+it_check('§77 every message is marked handled, each read once', count($handled77) === 11 && $retr77() === 11, json_encode([$handled77, $retr77()]));
+$before77 = [$retr77(), count($rows77())];
+$R77 = $poll77();
+it_check('§77 the next poll reads nothing again and posts nothing again', ($R77['ok'] ?? false) === true && ($R77['handled'] ?? -1) === 0 && [$retr77(), count($rows77())] === $before77, json_encode([$R77, $retr77(), count($rows77())]));
+it_check('§77 the poll never deletes mail', preg_match('/^DELE /m', (string) @file_get_contents($log77)) === 0);
+// The Inbox's own mailbox, over HTTP as the owner.
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'list']);
+$listed77 = array_map(fn($m) => (string) $m['uid'], (array) ($r['json']['messages'] ?? []));
+sort($listed77);
+it_check('§77 the Inbox lists the customer\'s mail and what the poll left as mail', $r['code'] === 200 && $listed77 === ['it77-02-guest', 'it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode([$r['code'], $listed77, substr($r['raw'], 0, 160)]));
+it_check('§77 …and sets aside our own alert and every owner reply already in a chat, from any of their addresses', ($r['json']['ownHidden'] ?? -1) === 5 && ($r['json']['robotHidden'] ?? -1) === 1 && ($r['json']['total'] ?? -1) === 11, json_encode([$r['json']['ownHidden'] ?? null, $r['json']['robotHidden'] ?? null, $r['json']['total'] ?? null]));
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'read', 'uid' => 'it77-06-customer']);
+it_check('§77 reading an email shows its words', $r['code'] === 200 && strpos((string) ($r['json']['body'] ?? ''), 'IT77-ANNE is the cottage free in May?') !== false && ($r['json']['from'] ?? '') === 'anne77@example.org', substr($r['raw'], 0, 200));
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'new']);
+it_check('§77 …and the new-mail count drops by the one read', $r['code'] === 200 && ($r['json']['new']['count'] ?? -1) === 3, substr($r['raw'], 0, 200));
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'delete', 'uids' => ['it77-06-customer']]);
+it_check('§77 deleting an email removes it from the mailbox', $r['code'] === 200 && ($r['json']['deleted'] ?? 0) === 1 && !is_file($md77 . '/it77-06-customer.eml'), substr($r['raw'], 0, 200));
+$poll77();
+$handled77 = (array) (json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true)['uids'] ?? []);
+it_check('§77 …and the handled list forgets it with the mailbox, keeping the rest', count($handled77) === 10 && !in_array('it77-06-customer', $handled77, true), json_encode($handled77));
+// THE WEBHOOK ROUTE (REPLY_INBOX set): the provider posts the parsed email as a form.
+$hook77 = function (array $fields) use ($BASE, $SECRET) {
+    $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => 'Content-Type: application/x-www-form-urlencoded', 'content' => http_build_query($fields), 'timeout' => 30, 'ignore_errors' => true]]);
+    return trim((string) @file_get_contents($BASE . '/inbound-mail.php?key=' . rawurlencode($SECRET), false, $ctx));
+};
+$h = $hook77(['recipient' => "reply+$g77@yourdomain.co.uk", 'sender' => 'wren77@example.com', 'subject' => 'Re: Your message', 'stripped-text' => 'IT77-HOOK-GUEST See you on Friday.']);
+$r = $one77('IT77-HOOK-GUEST');
+it_check('§77 webhook: the guest\'s own reply lands as theirs (it was refused as "no thread")', $h === 'ok' && ($r['sender_role'] ?? '') === 'guest' && (int) ($r['thread_id'] ?? 0) === $t77, json_encode([$h, $r]));
+$h = $hook77(['recipient' => "reply+$o77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: New message', 'stripped-text' => 'IT77-HOOK-OWNER Yes, Friday is fine.']);
+$r = $one77('IT77-HOOK-OWNER');
+it_check('§77 webhook: the owner\'s reply lands as the owner\'s', $h === 'ok' && ($r['sender_role'] ?? '') === 'admin', json_encode([$h, $r]));
+$h = $hook77(['recipient' => "reply+$g77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: Your message', 'stripped-text' => 'IT77-HOOK-FORGED Refund to this card.']);
+it_check('§77 webhook: the owner\'s address on a guest\'s token is refused', $h === 'sender not allowed' && $one77('IT77-HOOK-FORGED') === null, $h);
+$h = $hook77(['recipient' => "reply+$og77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: New message', 'stripped-text' => 'IT77-HOOK-GONE Hello?']);
+it_check('§77 webhook: a reply to a chat since deleted makes no orphan message', $h === 'thread gone' && $one77('IT77-HOOK-GONE') === null, $h);
+$h = $hook77(['recipient' => "reply+$half77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: New message', 'stripped-text' => 'IT77-HOOK-HALF Hello?']);
+it_check('§77 webhook: a token with its second half forged finds no thread', $h === 'no thread' && $one77('IT77-HOOK-HALF') === null, $h);
+if (is_resource($srv77)) {
+    proc_terminate($srv77);
+}
+$rootDb->exec('DELETE FROM messages WHERE thread_id IN (' . $t77 . ', ' . $gone77 . ')');
+$rootDb->exec('DELETE FROM chat_threads WHERE id = ' . $t77);
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('mailbox-poll', 'mailbox-new', 'mailbox-seen', 'notify-emails')");
+exec('rm -rf ' . escapeshellarg($md77));
+
+// §78 A BADGE'S COUNT IS A COUNT. Today and Manage asked for every review, photo and
+// suggestion there has ever been, to count the ones waiting. list_admin with
+// count:'pending' answers the number alone, and it is the number the list shows.
+echo "\n== §78 a badge's count is a count, not every row ==\n";
+// One review per guest per cottage (uniq_guest_prop), so three guests.
+$gIns78 = $rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, '', '', '', '', NOW())");
+$g78s = [];
+foreach (['Rhea', 'Sol', 'Tam'] as $n78) {
+    $gIns78->execute([$n78 . ' Seventyeight', strtolower($n78) . '78@example.com']);
+    $g78s[] = (int) $rootDb->lastInsertId();
+}
+$g78 = $g78s[0];
+$want78 = fn() => [
+    'reviews.php' => (int) $rootDb->query("SELECT COUNT(*) FROM guest_reviews r JOIN guests g ON g.id = r.guest_id WHERE r.status = 'pending'")->fetchColumn(),
+    'photos.php' => (int) $rootDb->query("SELECT COUNT(*) FROM guest_photos WHERE status = 'pending'")->fetchColumn(),
+    'experiences.php' => (int) $rootDb->query("SELECT COUNT(*) FROM experiences WHERE status = 'pending'")->fetchColumn(),
+];
+$before78 = $want78();
+$rev78 = $rootDb->prepare('INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status) VALUES (?, ?, 5, ?, ?)');
+$rev78->execute([$g78s[0], $propKey, 'IT78 waiting one', 'pending']);
+$rev78->execute([$g78s[1], $propKey, 'IT78 waiting two', 'pending']);
+$rev78->execute([$g78s[2], $propKey, 'IT78 shown', 'approved']);
+$rev78->execute([999999, $propKey, 'IT78 orphan, its guest gone', 'pending']); // not in the list, so not in the count
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?, ?, 'Rhea', 'uploads/it78.jpg', 'c', 'pending')")->execute([$propKey, $g78]);
+$rootDb->exec("INSERT INTO experiences (title, body, status) VALUES ('IT78 idea', 'b', 'pending')");
+$after78 = $want78();
+foreach (['reviews.php' => 'reviews', 'photos.php' => 'photos', 'experiences.php' => 'experiences'] as $f78 => $key78) {
+    $c = http($admin, 'POST', '/' . $f78, ['action' => 'list_admin', 'count' => 'pending']);
+    $l = http($admin, 'POST', '/' . $f78, ['action' => 'list_admin']);
+    $listed78 = count(array_filter((array) ($l['json'][$key78] ?? []), fn($x) => ($x['status'] ?? '') === 'pending'));
+    it_check("§78 $f78 answers the count of those waiting without the rows, and it is what the list shows", $c['code'] === 200 && ($c['json']['pending'] ?? -1) === $listed78 && !isset($c['json'][$key78]) && $listed78 === $after78[$f78] && $after78[$f78] > $before78[$f78], json_encode([$c['json'] ?? null, $listed78, $before78[$f78], $after78[$f78]]));
+}
+$rootDb->exec("DELETE FROM guest_reviews WHERE review_text LIKE 'IT78%'");
+$rootDb->exec("DELETE FROM guest_photos WHERE url = 'uploads/it78.jpg'");
+$rootDb->exec("DELETE FROM experiences WHERE title = 'IT78 idea'");
+$rootDb->exec('DELETE FROM guests WHERE id IN (' . implode(', ', $g78s) . ')');
 
 echo "\n== Summary ==\n";
 if ($fail) {

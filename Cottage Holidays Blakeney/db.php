@@ -2200,6 +2200,27 @@ function msg_reply_parse($token)
     $want = strlen($m[3]) >= 32 ? substr($mac, 0, 32) : substr($mac, 0, 16);
     return hash_equals($want, $m[3]) ? [$tid, $g ? 'guest' : 'owner'] : [0, ''];
 }
+// THE WHOLE TOKEN, FROM WHEREVER IT RIDES (the plus-address, In-Reply-To, References,
+// the subject tag). Every candidate is read at its full length and the first that
+// verifies wins. Both readers took only the first 16 hex of a current 32-hex token,
+// so it verified as the old short form; and the first token-shaped string in a field
+// won even when it did not verify, hiding a real token later in the same email.
+function msg_reply_token_in(array $hays): string
+{
+    $first = '';
+    foreach ($hays as $hay) {
+        if (!preg_match_all('/\d+[xy][0-9a-f]{16,32}/', (string) $hay, $m)) {
+            continue;
+        }
+        foreach ($m[0] as $t) {
+            if (msg_reply_parse($t)[0] > 0) {
+                return $t;
+            }
+            $first = $first !== '' ? $first : $t;
+        }
+    }
+    return $first;
+}
 // The OWNER token's thread, else 0 — what may authorise an owner reply.
 function msg_reply_verify($token)
 {

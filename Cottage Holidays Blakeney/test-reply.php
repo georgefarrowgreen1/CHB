@@ -38,18 +38,20 @@ chk('legacy 16-hex token still verifies', msg_reply_verify($legacy) === 42);
 chk('current token is 32-hex', preg_match('/x[0-9a-f]{32}$/', $tok) === 1);
 chk('legacy token with wrong mac rejected', msg_reply_verify('42x' . str_repeat('0', 16)) === 0);
 
-// The inbound gateway pulls the token from a plus-recipient or an In-Reply-To.
-$find = function ($hay) {
-    if (preg_match('/\+(\d+x[0-9a-f]{16})@/', $hay, $m)) {
-        return $m[1];
-    }
-    if (preg_match('/(\d+x[0-9a-f]{16})/', $hay, $m)) {
-        return $m[1];
-    }
-    return '';
-};
-chk('token found in plus-recipient', msg_reply_verify($find('reply+' . $tok . '@x.co.uk')) === 42);
-chk('token found in In-Reply-To', msg_reply_verify($find('<msg.' . $tok . '@x.co.uk>')) === 42);
+// Both readers (the webhook and the POP3 poll) take the token through ONE helper,
+// msg_reply_token_in, from a plus-recipient, an In-Reply-To or a subject tag.
+chk('token found in plus-recipient', msg_reply_verify(msg_reply_token_in(['reply+' . $tok . '@x.co.uk'])) === 42);
+chk('token found in In-Reply-To', msg_reply_verify(msg_reply_token_in(['', '<msg.' . $tok . '@x.co.uk>'])) === 42);
+chk('…read whole: all 32 hex, not the first 16', msg_reply_token_in(['<msg.' . $tok . '@x.co.uk>']) === $tok);
+chk('a legacy 16-hex token is still found and verifies', msg_reply_verify(msg_reply_token_in(['Re: hi [#' . $legacy . ']'])) === 42);
+// Read as its first 16 hex, a current token with a forged second half passed as a
+// legacy one. Read whole, it is refused.
+chk('a current token with a forged second half is refused', msg_reply_verify(msg_reply_token_in(['<msg.' . substr($tok, 0, 19) . str_repeat('0', 16) . '@x.co.uk>'])) === 0);
+// A token-shaped string that does not verify (another client's id, a forgery) no
+// longer hides the real token behind it, in the same field or a later one.
+chk('a decoy earlier in the field does not hide the real token', msg_reply_verify(msg_reply_token_in(['<msg.7x' . str_repeat('ab', 16) . '@x> <msg.' . $tok . '@x.co.uk>'])) === 42);
+chk('…nor a decoy in an earlier field', msg_reply_verify(msg_reply_token_in(['<msg.7x' . str_repeat('cd', 16) . '@x>', 'Re: [#' . $tok . ']'])) === 42);
+chk('nothing token-shaped → empty', msg_reply_token_in(['', 'Re: hello', '<abc@x>']) === '');
 
 // TWO AUDIENCES. The guest's own copy carries a GUEST token: it parses to its
 // thread (so a guest reply-by-email still lands as a guest message) but it can
@@ -61,13 +63,11 @@ chk('…and can never authorise an owner reply', msg_reply_verify($gtok) === 0);
 chk('an owner token parses as the owner', msg_reply_parse($tok) === [42, 'owner']);
 chk('a guest mac on the owner shape is refused', msg_reply_verify('42x' . substr($gtok, 3)) === 0);
 chk('the guest plus-address carries the guest token', msg_reply_address(42, 'guest') === 'reply+' . $gtok . '@cottageholidaysblakeney.co.uk');
-$findY = function ($hay) {
-    return preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m) ? $m[1] : '';
-};
-chk('a guest token is found in In-Reply-To (the shipped regex shape)', msg_reply_parse($findY('<msg.' . $gtok . '@x.co.uk>')) === [42, 'guest']);
-// The SHIPPED extractors accept both shapes.
+chk('a guest token is found in In-Reply-To', msg_reply_parse(msg_reply_token_in(['<msg.' . $gtok . '@x.co.uk>'])) === [42, 'guest']);
+// The SHIPPED readers use the one helper, and neither keeps a pattern of its own.
 foreach (['inbound-mail.php', 'mailbox-read.php'] as $f) {
-    chk("$f extracts both token shapes", strpos((string) file_get_contents(__DIR__ . '/' . $f), '[xy][0-9a-f]{16}') !== false);
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    chk("$f reads the token through msg_reply_token_in", strpos($src, 'msg_reply_token_in(') !== false && strpos($src, '[xy][0-9a-f]') === false);
 }
 chk('the guest-facing chat email carries a GUEST token', preg_match("/msg_reply_token\\(\\\$threadId, 'guest'\\)/", (string) file_get_contents(__DIR__ . '/chat-lib.php')) === 1);
 chk('mailbox-read makes an admin reply only from an OWNER token', strpos((string) file_get_contents(__DIR__ . '/mailbox-read.php'), "\$senderOk && \$tokAud === 'owner'") !== false);

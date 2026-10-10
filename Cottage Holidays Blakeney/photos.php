@@ -110,6 +110,14 @@ if ($action === 'submit') {
 require_admin();
 
 if ($action === 'list_admin') {
+    // The badge's count, without the rows (reviews.php's rule).
+    if (($in['count'] ?? '') === 'pending') {
+        try {
+            json_out(['pending' => (int) db()->query("SELECT COUNT(*) FROM guest_photos WHERE status = 'pending'")->fetchColumn()]);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'Could not count the photos waiting.'], 500);
+        }
+    }
     try {
         $rows = db()
             ->query(

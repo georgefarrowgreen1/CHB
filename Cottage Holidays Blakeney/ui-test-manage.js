@@ -308,7 +308,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       export_url: 'https://example.test/ical-export.php?prop=jollyboat&token=def' },
   });
   calOvFix = ovBroken();
-  await page.evaluate(() => { __calOv = null; settingsOpen('calendar'); });
+  // calOvForget is how the app drops its copy (a save does it): a bare null now waits out
+  // CAL_OV_RETRY_MS, the wait that stops an empty answer being asked for again at once.
+  await page.evaluate(() => { calOvForget(); settingsOpen('calendar'); });
   await page.waitForFunction(() => !!document.querySelector('#calendar-list .cal-prob'), null, { timeout: 4000 }).catch(() => {});
   const c1 = await page.evaluate(() => {
     const L = document.getElementById('calendar-list');

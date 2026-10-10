@@ -1210,8 +1210,8 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
   included. The payment used to read "Counted, as a cost" for a cost the books no longer held.
 - **A removed or private cottage tells its waitlist nothing** (`prop_is_marketable`, as the three nudges already did).
 - **An emailed reply to a chat since deleted lands in the Inbox as mail.** It used to become an orphan message,
-  emailed to no one and marked handled (mailbox-read `thread-gone`; the mailbox list stops hiding it). NOT gated:
-  it needs a POP3 server, which no suite has.
+  emailed to no one and marked handled (mailbox-read `thread-gone`; the mailbox list stops hiding it). Gated by
+  test-integration §77 against the fake POP3 server (see "Reply by email, against a mailbox that answers").
 - Gates:
   - test-integration §65–§71 and §61's refusal;
   - test-payrail (the four senders' refs) and test-waitlist;
@@ -1384,13 +1384,80 @@ rows); each change is gated by a count or a plan, not a timing.
   a grouping of every page view kept.
 - **The daily orphan-upload scan** looks each file up in a set of the names the content holds, keeping the substring
   search only as the fallback.
+- **A BADGE'S COUNT IS A COUNT** (`list_admin` with `count: 'pending'` in reviews.php, photos.php and
+  experiences.php; `refreshModerationCounts`). Today and Manage downloaded every review, photo and suggestion there has
+  ever been to count the ones waiting. The count is the list's own rule (a review whose guest has gone is in neither),
+  so the badge and the list cannot disagree, and an older server that ignores the flag still answers with rows, which
+  the client counts as before. Gated by test-integration **§78**, break-tested both ways (the count branch removed, the
+  guest join removed).
 - Gates: test-integration **§76** (ten more card plans cost no more statements on the probe's own connection, the
   same states booking by booking, the omitted columns and that no client file names them, the register links, both
   content outputs, the ping prune, the two plans, the analytics field) and §72 re-aimed.
 - **Not done, said plainly** (the rest of that review): every approved review still rides the visitor's boot, the chat
-  thread list is unbounded and fetched on Today only to count, Today downloads every review to count the pending ones,
-  the email log has hit its 3,000-row cap, the money reports read the whole ledger, and search scans each table with
+  thread list is unbounded and fetched on Today only to count, the email log has hit its 3,000-row cap, the money reports read the whole ledger, and search scans each table with
   `LIKE '%q%'`. Each needs a client change with the server one.
+
+## Reply by email, against a mailbox that answers (round 7)
+
+The poll had only ever met a mailbox it could not reach (§74), so reply-by-email was gated piece by piece in
+test-reply and never end to end. **`test-pop3-server.php`** (deploy-excluded like every test-*.php) serves a folder of
+.eml files over TLS with a certificate it makes for the run: USER/PASS, STAT, LIST, UIDL, TOP, RETR, DELE, RSET, QUIT
+(a QUIT removes what DELE marked), every command logged. `pop3_open` takes its port from `MAIL_POP_PORT` (995 by
+default, as `SMTP_PORT` does for sending), which only the harness's config sets. What driving it found:
+- **ONE TOKEN READER, AND IT READS THE WHOLE TOKEN** (`msg_reply_token_in`, db.php). The poll and the webhook each took
+  the first 16 hex of a token now 32 long, so a current token verified as the old short form: every reply would have
+  stopped routing the day the short form is retired, and a token with a forged second half was accepted. And the first
+  token-shaped string in a field won even when it did not verify, hiding a real token later in References. Every
+  candidate is read at full length now and the first that verifies wins; a 16-hex token from an email sent before the
+  widening still routes.
+- **THE WEBHOOK TAKES A GUEST'S OWN REPLY** (inbound-mail.php, the route when `REPLY_INBOX` is set). It verified owner
+  tokens only, so a guest replying to the email that told them to "just reply" was answered "no thread" and their
+  words went nowhere. A guest token from the thread's own guest lands as theirs, as it does by the POP3 route; only an
+  OWNER token posts as the owner. A reply to a chat since deleted is refused ("thread gone"), never an orphan message.
+- **THE INBOX SETS ASIDE AN OWNER'S ROUTED REPLY FROM ANY OF THEIR ADDRESSES** (mailbox.php `list`). Only the site's
+  own address was covered, and the usual reply comes from the owner's own inbox, where the alert went: their reply sat
+  in the Inbox as a person waiting. The rule is now the poll's (an owner token, a sender on the allow-list, a chat that
+  still exists).
+- Gates: test-integration **§77** (eleven emails through the real poll: the owner's reply decoded and credited to
+  them, a guest's Windows-1252 reply, the owner's address on a guest's token, our own alert, the owner typing from the
+  business address, the old token, the deleted chat, the forged half, the decoy; what is recorded as new mail; each
+  read once and never again; nothing deleted; the Inbox's list, read and delete over HTTP; the handled list following
+  a deletion; five webhook cases) and test-reply's token-reader checks. Twelve changes break-tested, each failing its
+  own named check.
+- **Not done, said plainly**: a guest's emailed reply still shows in their conversation twice, once as chat and once
+  as mail. Setting it aside in the list would also hide one the poll leaves as mail (a reply that is only quoted
+  text), so it was left.
+
+## A page left open all day (round 7)
+
+Measured by the round-7 long-session review: over twenty rounds of every owner screen and every guest step, timers,
+listeners, observers and the DOM stayed flat, and twenty offline/online flips left nothing behind. What goes wrong is
+what happens on a page that has been open a while, when a release lands or an answer is slow:
+- **A NEW BUILD WAITS FOR THE OWNER TO FINISH** (`reloadWhenIdle`, `chbMidTask`). The version watch reloaded 1.2s after
+  noticing a release, on the owner's return to the tab: the screen comes back (`captureAdminState`) but not an open
+  form, so a half-typed Add booking was lost. While a window, sheet or dialog is open or a field has focus, it asks
+  again every five seconds. The service worker's `chb-reload` takes the same path.
+- **A LATE ANSWER PAINTS ONLY WHAT IT WAS ASKED FOR.** The Calendar sync page (`loadCalendarSyncProp`) painted one
+  cottage's links and controls under another's name, so a link pasted there saved onto the wrong cottage and freed its
+  stays; a cottage page showed another cottage's guest photos (`renderGuestPhotos`, `activeFrontProperty`, the
+  availability rule); the welcome book showed another cottage's Wi-Fi (`__wbAsk`: each opening numbered, closing
+  counts).
+- **AN OVERVIEW ANSWER THAT SAYS NOTHING IS NOT ASKED AGAIN AT ONCE.** A reply without its props left the overview
+  unknown, the repaint asked again, and the page fetched it about fifty times a second, on any screen, until a reload.
+  It waits `CAL_OV_RETRY_MS` (15s) now, and a save's own refetch goes through `calOvForget()`. `calRepaint` also asks
+  whether the list is painted (`getClientRects`): belt and braces, since with the wait in place nothing loops, and the
+  gate measures the wait. NB a suite that wants the overview asked for again calls `calOvForget()` as the app does:
+  ui-test-manage §3b set `__calOv = null` by hand and then waited the 15s out, failing eight checks.
+- **THE REVIEW ROTATION READS THE REVIEWS AS THEY ARE NOW** (`__gwList`, `gwShow`). The interval kept the first render's
+  list, so a withdrawn review went on showing on a page left open.
+- **ONE FOCUS TIMER PER PAYMENTS SHEET, AND IT NEVER TAKES A FIELD THE OWNER IS IN** (`pmSheet`). Each redraw set its own
+  and none was cleared, so a save (a busy redraw, then the answer's) left one to fire mid-typing: the cursor jumped to
+  the first field and the secret went into the client ID. Found from a CI failure of ui-test-statements that passed
+  three times out of three locally.
+- Gates: **`ui-test-longsession.js`** (§1–§7, each holding an answer back or shipping a build mid-task), seven changes
+  break-tested, each failing its own named check.
+- **Not verified**: Google Pay instances are created afresh on each wallet re-price without `destroy()`; Square's SDK
+  cannot load here, so any growth is unproven.
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
