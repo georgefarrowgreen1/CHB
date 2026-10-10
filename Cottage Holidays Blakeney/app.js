@@ -2535,20 +2535,21 @@ function nav(viewId, anchorId = null) {
     if (__cmdkNode && __cmdkNode.classList.contains('open')) {
         try { if (window.closeCmdK) window.closeCmdK(); } catch (e) {}
     }
+    // On mobile the sign-in and messages screens are shown as full pages, so
+    // navigating via the menu leaves them like any other page. Messages closes
+    // BEFORE the switch: it moves the page underneath aside (body.chat-screen), so
+    // the page being arrived at must never be shown while that is still set.
+    try {
+        closeChat();
+    } catch (e) {}
     document.querySelectorAll('.page-view').forEach((v) => v.classList.remove('active'));
     target.classList.add('active');
     // Back-office screens end like an app, not a website — the public
     // marketing footer only shows under customer-facing views.
     document.body.classList.toggle('admin-screen', ADMIN_VIEWS.includes(viewId));
 
-    // On mobile the sign-in and messages screens are shown as full pages
-    // (below the dock), so navigating via the dock should leave them like
-    // any other page.
     try {
         closeGuestAuthModal();
-    } catch (e) {}
-    try {
-        closeChat();
     } catch (e) {}
 
     // Keep the guest app shell's bottom tab bar in sync with the active view
@@ -3955,7 +3956,7 @@ function renderGuestAccount(dir) {
             ) +
             gaGroup(
                 [
-                    gaRow({ ic: 'chat', t: 'Message us', s: 'We usually reply the same day', act: 'data-act="toggleChat"' }),
+                    gaRow({ ic: 'chat', t: 'Message us', s: 'We usually reply the same day', act: 'data-act="toggleChat"', chev: true }),
                     ph ? gaRow({ ic: 'phone', t: 'Call us', s: ph.display, href: 'tel:' + ph.dial }) : '',
                     gaRow({ ic: 'doc', t: 'Booking terms', act: 'data-act="gaTerms"', chev: true }),
                 ].filter(Boolean),
@@ -12962,6 +12963,11 @@ function toggleChat() {
         return;
     }
     overlayHistPush(); // Back closes this overlay
+    // On a phone Messages is a screen over the page it was opened from: the
+    // back link names that page, and the page steps aside underneath (CSS).
+    chatBackName();
+    w.classList.toggle('has-edge', chatEdgeOn());
+    document.body.classList.add('chat-screen');
     w.classList.add('open');
     document.getElementById('chat-fab').classList.add('hidden');
     // Who answers, from this device's copy until the server's lands; and the
@@ -12995,6 +13001,7 @@ function closeChat() {
     if (w && w.classList.contains('open'))
         overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     chbCloseOverlay(w);
+    document.body.classList.remove('chat-screen');
     const f = document.getElementById('chat-fab');
     if (f) f.classList.remove('hidden');
     try {
@@ -13002,6 +13009,120 @@ function closeChat() {
     } catch (e) {}
     chatStopPolling();
 }
+// WHERE BACK GOES: the page Messages was opened over, by the name it goes by
+// (You and its pages, a cottage's own heading, the menu's names); "Back" when
+// the page has none.
+function chatBackFrom() {
+    const av = document.querySelector('.page-view.active');
+    const id = av ? av.id : '';
+    if (id === 'view-guest-account') return { details: 'Your details', security: 'Sign-in & security', privacy: 'Privacy & your data' }[__gaSub] || 'You';
+    if (id === 'view-21a') {
+        const h = document.getElementById('prop-title');
+        return (h && h.textContent.trim()) || 'Back';
+    }
+    return { 'view-main': 'Home', 'view-cottages': 'Cottages', 'view-experiences': 'Things to do', 'view-guest-bookings': 'My stays' }[id] || 'Back';
+}
+function chatBackName() {
+    const b = document.getElementById('chat-back');
+    const l = document.getElementById('chat-back-l');
+    if (!b || !l) return;
+    const name = chatBackFrom();
+    l.textContent = name;
+    b.setAttribute('aria-label', name === 'Back' ? 'Back' : 'Back to ' + name);
+}
+// THE EDGE SWIPE: a drag from the left edge takes Messages back, as in any iPhone
+// app. Only in the installed app on the phone shell: Safari has its own swipe
+// back, which already closes Messages through its history step.
+function chatEdgeOn() {
+    const b = document.body.classList;
+    if (!b.contains('guest-app') || b.contains('owner-mode')) return false;
+    try {
+        return /** @type {any} */ (navigator).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    } catch (e) {
+        return false;
+    }
+}
+(function chatEdgeWire() {
+    const edge = document.getElementById('chat-edge');
+    const w = document.getElementById('chat-widget');
+    if (!edge || !w) return;
+    /** @type {{id: number, x0: number, y0: number, dx: number, decided: boolean, pts: {x: number, t: number}[]} | null} */
+    let drag = null;
+    const width = () => w.getBoundingClientRect().width || window.innerWidth || 1;
+    const setDrag = (dx) => {
+        w.style.transform = dx > 0 ? 'translateX(' + dx + 'px)' : '';
+        document.body.style.setProperty('--chat-drag', String(Math.min(1, dx / width())));
+    };
+    const end = () => {
+        document.body.classList.remove('chat-dragging');
+        document.body.style.removeProperty('--chat-drag');
+    };
+    edge.addEventListener('pointerdown', (e) => {
+        if (!w.classList.contains('open') || drag) return;
+        drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, decided: false, pts: [{ x: e.clientX, t: e.timeStamp }] };
+        try {
+            edge.setPointerCapture(e.pointerId);
+        } catch (err) {}
+    });
+    edge.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const dx = Math.max(0, e.clientX - drag.x0);
+        if (!drag.decided) {
+            if (Math.abs(e.clientX - drag.x0) < 6 && Math.abs(e.clientY - drag.y0) < 6) return;
+            // A mostly vertical drag on the strip is not a swipe back.
+            if (Math.abs(e.clientY - drag.y0) > Math.abs(e.clientX - drag.x0)) {
+                drag = null;
+                return;
+            }
+            drag.decided = true;
+            w.classList.add('is-moving');
+            document.body.classList.add('chat-dragging');
+        }
+        drag.dx = dx;
+        // Timed by the finger, not the handler: a busy phone hands a slow drag's
+        // moves over in one batch (the composer sheet's lesson).
+        drag.pts.push({ x: e.clientX, t: e.timeStamp });
+        if (drag.pts.length > 6) drag.pts.shift();
+        setDrag(dx);
+    });
+    const release = (e, cancelled) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const d = drag;
+        drag = null;
+        if (!d.decided) return;
+        const W = width();
+        const a = d.pts[0], z = d.pts[d.pts.length - 1];
+        const v = z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0; // px per ms
+        if (!cancelled && (d.dx / W > 0.35 || v > 0.45)) {
+            // Gone: the screen leaves from where the finger let go.
+            w.style.setProperty('--chat-from', d.dx + 'px');
+            w.style.transform = '';
+            end();
+            w.classList.remove('is-moving');
+            closeChat();
+            setTimeout(() => w.style.removeProperty('--chat-from'), 400);
+            return;
+        }
+        // Not far enough: it springs back, and the page steps aside again.
+        end();
+        const back = () => {
+            w.style.transform = '';
+            w.classList.remove('is-moving');
+        };
+        if (d.dx <= 0 || typeof w.animate !== 'function') return back();
+        w.style.transform = '';
+        try {
+            w.animate([{ transform: 'translateX(' + d.dx + 'px)' }, { transform: 'none' }], {
+                duration: 320,
+                easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)',
+            }).finished.then(back, back);
+        } catch (err) {
+            back();
+        }
+    };
+    edge.addEventListener('pointerup', (e) => release(e, false));
+    edge.addEventListener('pointercancel', (e) => release(e, true));
+})();
 // Signature of the server-side thread, so background polling can tell when
 // something actually changed (a new host reply) before touching the DOM.
 let __chatSig = '';
@@ -22030,7 +22151,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pwsheet1010';
+    const BUILD = 'msgscreen1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

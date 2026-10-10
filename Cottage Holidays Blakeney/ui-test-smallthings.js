@@ -138,6 +138,17 @@ function stub(page, mode, mine) {
   await page.evaluate(() => nav('view-main'));
   await page.waitForTimeout(400);
   ok(await painted(page, '#guest-msg-fab'), '…and it returns on the homepage');
+  // And on You and the pages under it, where "Message us" is a row on the page
+  // and the pill sat over the rows as they scrolled past.
+  await page.evaluate(() => openGuestAccount());
+  await page.waitForTimeout(500);
+  ok(!(await painted(page, '#guest-msg-fab')), 'on You the pill is gone — Message us is a row there');
+  await page.evaluate(() => gaGo('details'));
+  await page.waitForTimeout(300);
+  ok(!(await painted(page, '#guest-msg-fab')), '…and on Your details, a page under You');
+  await page.evaluate(() => nav('view-main'));
+  await page.waitForTimeout(400);
+  ok(await painted(page, '#guest-msg-fab'), '…and it returns on the homepage');
   await page.close();
 
   // ============================================================

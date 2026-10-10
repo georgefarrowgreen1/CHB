@@ -754,6 +754,43 @@ Code: the "WHO ANSWERS" blocks in app.js (`chatTeam*`, `chatAva`, `chatHeadHtml`
 - **Not done, said plainly**: the chat button keeps its icon (the demo's faces there were not built), and message
   times are shown as the database stores them, as before.
 
+## Messages is a screen on a phone, not a pop-up (approved demo, built and merged without CI)
+
+**Asked for from a screenshot of the You page**: "remove the pop up … can the messages become a screen instead of a
+pop up with a back button?" The guest phone shell only (`body.guest-app:not(.owner-mode)`); a computer keeps the
+corner panel with its ×. Code: the MESSAGES IS A SCREEN block in guest-app.css, `chatBackFrom` / `chatBackName` /
+`chatEdgeOn` / `chatEdgeWire` beside `closeChat` in app.js, `setGuestDockOverlay` in guest-app.js, and
+`#chat-back` / `#chat-edge` / `#chat-dim` in index.html.
+- **No floating pill on You** or the pages under it (`:has(#view-guest-account.page-view.active)`, the stand-down
+  family's sixth rule): "Message us" is a row there, and the pill sat over the rows as they scrolled past. That row
+  now carries the › (`chev: true`), because it opens a screen like its neighbours.
+- **Pushed in from the right** (`chbPushIn` 400ms `--sheet`, `chbPushOut` 300ms `--in`), with the page it was opened
+  from stepping a third to the left and dimming (`body.chat-screen` → `.page-view.active` / `.site-footer`
+  `translate: -30%`, `#chat-dim`). **THE KEYBOARD FIX STAYS AT REST**: the 200vmax spread shadow in the chat's ground
+  would cover the page the moment the screen started moving, so a second animation (`chbPushEdge`, a constant edge
+  shadow) holds it off for exactly the push, and `.is-moving` does the same for a drag. Durations are on the motion
+  system's sanctioned set (440 is not).
+- **A back link names where it goes** (`#chat-back`, the account pages' `.ga-back`): You, Your details,
+  Sign-in & security, Privacy & your data, the cottage's own heading, Home, Cottages, Things to do, My stays, else
+  "Back"; `aria-label` "Back to …". The × is not drawn on the phone. Escape and the phone's Back still close it
+  (the history step is unchanged).
+- **The page's own tab stays lit** and the bar's title reads "Messages" (`setGuestDockOverlay('messages')` lights
+  `keyForView(active)`; the floating button that is its own tab is hidden while it is open). Closing restores the
+  page's title.
+- **nav() closes Messages BEFORE it switches the page**, so the page arriving is never shown while
+  `body.chat-screen` is set. Belt and braces, said plainly: with the old order nothing reads style between the
+  switch and the close, so the arriving page never took the −30% (break-tested — ui-test-msgscreen §7 stays green
+  either way); it is ordered so a style read added between them later cannot slide it in.
+- **The edge swipe is the installed app's only** (`chatEdgeOn`: `navigator.standalone` or `display-mode:
+  standalone`): Safari has its own swipe back, which already closes Messages through its history step. A 12px strip
+  (`touch-action: none`; the content starts 14px in) follows the finger, timed by event `timeStamp`s; past 35% or
+  0.45px/ms it goes back from where the finger let go (`--chat-from` in `chbPushOut`), else it springs back; a
+  mostly vertical drag is ignored.
+- Gates: **`ui-test-msgscreen.js`** (47 checks, real touch through CDP for the swipe, with `navigator.standalone`
+  stubbed), ui-test-smallthings §2 (the pill on You), ui-test-reach (the back link's reach in place of the ×).
+  Eight mutations break-tested one at a time, each failing its own named check (the pill rule, the chevron, the
+  push keyframes, the edge shadow, the back name, the lit tab, the strip gate, the spring-back).
+
 ## Analytics says what each figure counts (rebuilt in the one look, no demo, at the owner's ask)
 
 Manage → Analytics (`loadAnalytics` / `buildInsights` / `anaOpenFold` in admin.js, the ANALYTICS block at the foot
