@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 767;
+const ADMIN_BUNDLE_V = 768;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -9684,6 +9684,9 @@ function heroWordsRise() {
         h.appendChild(o);
     });
 }
+// Only when it changes what shows: rewriting the hero's h1 every live tick threw away
+// its word spans and the headline rose again. A no-break space still counts.
+function chbTextSquash(t) { return String(t).replace(/[ \t\n\r\f]+/g, ' ').trim(); }
 function applyContentOverrides(root) {
     root.querySelectorAll('[data-edit-text]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-text')];
@@ -9691,7 +9694,8 @@ function applyContentOverrides(root) {
         const txt = decodeEntities(v);
         // The owner-typed override goes through the same binding as the default,
         // or the fix reaches only the string nobody has edited.
-        el.textContent = el.matches(CHB_SEP_BIND) ? chbBindSeps(txt) : txt;
+        const next = el.matches(CHB_SEP_BIND) ? chbBindSeps(txt) : txt;
+        if (chbTextSquash(el.textContent) !== chbTextSquash(next)) el.textContent = next;
     });
     root.querySelectorAll('[data-edit-img]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-img')];
@@ -15233,7 +15237,13 @@ function renderCottageGrid(gridId, idPrefix, withFav) {
     if (!grid) return;
     const keys = liveCottageKeys();
     if (!keys.length) return; // never blank the grid if the list hasn't loaded
-    grid.innerHTML = keys.map((k) => cottageCardHtml(k, idPrefix, withFav)).join('');
+    // Rebuilt only when the cards change (each live tick dropped focus and the map
+    // hover); price, rating and availability are written by id either way.
+    const html = keys.map((k) => cottageCardHtml(k, idPrefix, withFav)).join('');
+    if (/** @type {any} */ (grid).__chbCards !== html) {
+        grid.innerHTML = html;
+        /** @type {any} */ (grid).__chbCards = html;
+    }
     try {
         renderCardPrices();
     } catch (e) {}
@@ -15249,6 +15259,10 @@ function renderCottageGrid(gridId, idPrefix, withFav) {
     } catch (e) {}
     try {
         fadeInCardImages(grid);
+    } catch (e) {}
+    // New cards need their map hover; wired once per card, so this is free otherwise.
+    try {
+        wireCottageCardHover();
     } catch (e) {}
 }
 function renderCottageCards() {
@@ -15389,7 +15403,15 @@ function chbNow() {
 // the cottage list makes zero calls and must not pay for a formatter it never uses.
 // Gated by smoke-test §12d.
 let __ukFmt = null;
+// ONE READING A MINUTE (the per-booking checks ask thousands of times a refresh).
+// London's offset is whole hours, so the epoch minute is the wall-clock minute; each
+// caller gets its own copy.
+let __ukParts = null;
+let __ukPartsMin = NaN;
 function ukNowParts() {
+    const now = chbNow();
+    const min = Math.floor(now.getTime() / 60000);
+    if (__ukParts && min === __ukPartsMin) return Object.assign({}, __ukParts);
     const parts = {};
     if (!__ukFmt) {
         __ukFmt = new Intl.DateTimeFormat('en-GB', {
@@ -15402,10 +15424,12 @@ function ukNowParts() {
             hourCycle: 'h23',
         });
     }
-    __ukFmt.formatToParts(chbNow()).forEach((p) => {
+    __ukFmt.formatToParts(now).forEach((p) => {
         if (p.type !== 'literal') parts[p.type] = p.value;
     });
-    return { y: +parts.year, m: +parts.month, d: +parts.day, hh: +parts.hour, mm: +parts.minute };
+    __ukParts = { y: +parts.year, m: +parts.month, d: +parts.day, hh: +parts.hour, mm: +parts.minute };
+    __ukPartsMin = min;
+    return Object.assign({}, __ukParts);
 }
 // Minutes past midnight on the UK wall clock — the cottage's clock, not the
 // visitor's device (stay-stage logic must not shift with the guest's timezone).
@@ -21481,7 +21505,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'whois62';
+    const BUILD = 'r5perfd';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

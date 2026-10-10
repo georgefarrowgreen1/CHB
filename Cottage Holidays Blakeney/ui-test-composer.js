@@ -237,22 +237,50 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.mouse.up();
   await page.waitForTimeout(800);
   ok(await page.evaluate(() => !document.getElementById('enq-email-modal').classList.contains('open')), 'dragging the top down closes it');
+  // Wait for the sheet to come to rest (the rise is an animation; under load it
+  // outlasts any fixed sleep), then find the grabber where it now is.
+  const atRest = () => page.waitForFunction(() => {
+    const m = document.getElementById('enq-email-modal');
+    const sh = document.getElementById('cmp-sheet');
+    return !!m && m.classList.contains('open') && !!sh && sh.getAnimations().length === 0;
+  }, null, { timeout: 8000 }).catch(() => {});
+  const grabAt = () => page.evaluate(() => { const r = document.querySelector('.cmp-grab').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 2 }; });
   await page.evaluate(() => openBookingEmail('b50'));
-  await page.waitForTimeout(600);
-  await page.mouse.move(top.x, top.y);
+  await atRest();
+  const top2 = await grabAt();
+  await page.mouse.move(top2.x, top2.y);
   await page.mouse.down();
-  for (let i = 1; i <= 4; i++) { await page.mouse.move(top.x, top.y + i * 10); await page.waitForTimeout(30); }
+  for (let i = 1; i <= 4; i++) { await page.mouse.move(top2.x, top2.y + i * 10); await page.waitForTimeout(30); }
   await page.waitForTimeout(200); // stops, then lets go: not a flick
   await page.mouse.up();
   await page.waitForTimeout(700);
   ok(await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open')), 'a short drag springs back');
+  // A BUSY PHONE hands a slow drag's moves over all at once. Judged by the handler's
+  // clock they were a flick (10px in no time) and the sheet closed; judged by when
+  // the finger moved, it is the same slow drag as above.
+  await atRest();
+  const batched = await page.evaluate(async () => {
+    const t = document.getElementById('cmp-top');
+    const g = document.querySelector('.cmp-grab').getBoundingClientRect();
+    const x = g.left + g.width / 2, y = g.top + 2;
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    const mk = (type, cy) => new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: cy, pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1 });
+    const evs = [mk('pointerdown', y)];
+    for (let i = 1; i <= 4; i++) { await pause(30); evs.push(mk('pointermove', y + i * 10)); }
+    await pause(200);
+    evs.push(mk('pointerup', y + 40));
+    evs.forEach((e) => t.dispatchEvent(e)); // all handed over in one go
+    await pause(700);
+    return document.getElementById('enq-email-modal').classList.contains('open');
+  });
+  ok(batched, 'a slow drag handed over in one batch (a busy phone) still springs back');
   await page.evaluate(() => closeEnquiryEmailModal());
   await page.waitForTimeout(400);
 
   console.log('11. a computer: a card in the middle');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => openBookingEmail('b51'));
-  await page.waitForTimeout(700);
+  await atRest();
   const card = await page.evaluate(() => { const r = document.getElementById('cmp-sheet').getBoundingClientRect(); return { w: Math.round(r.width), l: Math.round(r.left), r: Math.round(innerWidth - r.right), b: Math.round(innerHeight - r.bottom), grab: getComputedStyle(document.querySelector('.cmp-grab')).display }; });
   ok(card.w <= 600 && Math.abs(card.l - card.r) <= 2 && card.b > 8 && card.grab === 'none', `centred, ≤600 wide, no grabber (${JSON.stringify(card)})`);
   await page.keyboard.press('Escape');

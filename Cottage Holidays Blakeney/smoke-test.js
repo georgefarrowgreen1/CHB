@@ -2311,6 +2311,35 @@ console.log('\n== 12d. The clock and the money format are built once ==');
     vm.runInContext('Intl.DateTimeFormat = __RD; Intl.NumberFormat = __RN;', ctx);
 }
 
+// ---- 12d-ii. …and READ once a minute -------------------------------------------
+// formatToParts itself costs ~10µs, and the per-booking checks ask the clock
+// thousands of times a refresh (measured: 40,000 reads on one desktop refresh). The
+// reading is kept for the minute it belongs to: a caller's copy is its own, and the
+// next minute (the server skew moving, or the wall clock) reads afresh.
+console.log('\n== 12d-ii. The clock is read once a minute ==');
+{
+    const r = vm.runInContext(`(() => {
+        todayDashed();
+        let n = 0;
+        const real = __ukFmt.formatToParts.bind(__ukFmt);
+        __ukFmt.formatToParts = (d) => { n++; return real(d); };
+        try {
+            for (let i = 0; i < 500; i++) { todayDashed(); ukNowMinutes(); }
+            const loop = n;
+            const a = ukNowParts();
+            a.y = 1900; a.hh = 99;
+            const b = ukNowParts();
+            CHB_CLOCK.skew += 60000;
+            const c = ukNowParts();
+            CHB_CLOCK.skew -= 60000;
+            return { loop, read: n - loop, by: b.y, bh: b.hh, bmin: b.hh * 60 + b.mm, cmin: c.hh * 60 + c.mm };
+        } finally { delete __ukFmt.formatToParts; }
+    })()`, ctx);
+    check(`1,000 clock reads in one minute format the time at most once (${r.loop})`, r.loop <= 1);
+    check(`a caller that changes its copy changes nobody else's (${r.by}, ${r.bh})`, r.by > 2000 && r.bh < 24);
+    check(`the next minute reads afresh (${r.bmin} → ${r.cmin})`, r.read >= 1 && r.cmin !== r.bmin);
+}
+
 // ---- 12e. A cottage's colour is only ever #RRGGBB ----------------------------
 // It is painted into style attributes (Today's timeline, the booking sheet) and
 // into the stylesheet generated for every visitor, and the server's `save` took

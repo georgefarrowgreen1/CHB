@@ -249,6 +249,9 @@ const check = (cond, label) => {
     await g.evaluate((c) => Object.assign(siteContent, c), gPub);
     await g.evaluate(() => toggleChat());
     await g.waitForSelector('#chat-widget.open');
+    // The welcome is written a beat after the widget opens; under load the read
+    // landed first and saw nothing. Wait for the line itself.
+    await g.waitForFunction(() => !!((document.querySelector('#chat-thread .chat-hello-when') || {}).textContent || '').trim(), null, { timeout: 8000 }).catch(() => {});
     const p9 = await g.evaluate(() => ({
         chips: [...document.querySelectorAll('#chat-quick .chat-chip')].map((c) => c.textContent.trim()).join('|'),
         when: (document.querySelector('#chat-thread .chat-hello-when') || {}).textContent || '',

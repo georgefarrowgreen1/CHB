@@ -1232,7 +1232,18 @@ function cmdkCommand(q, today) {
 }
 // Bounded Levenshtein — returns min(distance, max+1); bails as soon as a whole
 // row exceeds the budget, so typo-matching stays cheap on every keystroke.
+/** @type {Map<string, number>} */
+const __cmdkLevMemo = new Map();
 function cmdkLev(a, b, max) {
+    const key = a + '\u0000' + b + '\u0000' + max;
+    const hit = __cmdkLevMemo.get(key);
+    if (hit !== undefined) return hit;
+    if (__cmdkLevMemo.size > 20000) __cmdkLevMemo.clear();
+    const r = cmdkLevNow(a, b, max);
+    __cmdkLevMemo.set(key, r);
+    return r;
+}
+function cmdkLevNow(a, b, max) {
     const m = a.length, n = b.length;
     if (Math.abs(m - n) > max) return max + 1;
     let prev = Array.from({ length: n + 1 }, (_, i) => i);
@@ -3122,9 +3133,12 @@ function chbRankQuery(q) {
     for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_RANK.idf[i]; n += v[i] * v[i]; }
     n = Math.sqrt(n) || 1;
     const scored = [];
+    // Only the query's own dimensions (20–35 of 4,096) add to the dot.
+    const nz = [];
+    for (let i = 0; i < D; i++) if (v[i] !== 0) nz.push(i);
     for (const e of CHB_RANK.index) {
         let dot = 0;
-        for (let i = 0; i < D; i++) dot += (v[i] / n) * e.vec[i];
+        for (let j = 0; j < nz.length; j++) { const i = nz[j]; dot += (v[i] / n) * e.vec[i]; }
         if (dot >= CHB_RANK.min) scored.push({ k: e.k, s: dot });
     }
     scored.sort((a, b) => b.s - a.s);
@@ -23000,13 +23014,14 @@ function chbChaseInfo(k, b) {
     // different and must still chase: the card failed, so the money is genuinely
     // outstanding (payments-due.php draws the same line).
     if (b && b.autopayState === 'armed') return null;
-    const gt = bookingDue(k, b);
-    if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
+    // An ancient never-reconciled booking must not nag forever (asked before the money).
     const today = todayDashed();
     const t0 = dpParse(today).getTime();
-    const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
     const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / 86400e3) : 0;
-    if (outAgo > 14) return null; // an ancient never-reconciled booking must not nag forever
+    if (outAgo > 14) return null;
+    const gt = bookingDue(k, b);
+    if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
+    const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
     const past = !!b.checkOut && b.checkOut <= today;
     const rps = paymentSummary(k, b);
     const kind = hubAskKind(gt, past, b, rps);
@@ -23214,6 +23229,7 @@ function chbDutiesAll() {
     // 3) Damages deposits to give back (guest has checked out) and
     // 4) balances to collect before arrival (soonest arrivals first).
     const chase = [];
+    const regCut = ukShiftDays(today, REG_DUTY_DAYS); // the register's window, as a date
     Object.keys(dbBookings || {}).forEach((k) =>
         (dbBookings[k] || []).forEach((b) => {
             // Time-aware, not date-only: from midnight on checkout day the guest
@@ -23230,7 +23246,7 @@ function chbDutiesAll() {
             // at 9:41 makes the deposit returnable at 9:41, not at the checkout
             // hour. Additive only — an untapped stay keeps the time-aware gate,
             // so nothing ever WAITS on a guest tapping.
-            if (damageHeld(k, b).held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) {
+            if ((b.guestCheckedOutAt || hasCheckedOut(b)) && damageHeld(k, b).held > 0.005) {
                 out.push({
                     kind: 'deposit', key: 'deposit:' + b.dbId, sev: 'warn', ic: 'deposit',
                     label: `Return ${b.name || 'the guest'}’s ${'£' + (Math.round(damageHeld(k, b).held * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} deposit`,
@@ -23248,8 +23264,9 @@ function chbDutiesAll() {
             // the strip computed to display:none, the ops line said "all quiet today ✓
             // Nothing needs you" and the brief said nothing. Same derivation the hub
             // uses, scoped to the pre-arrival window so it cannot nag.
-            const regDays = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
-            if (b.regUrl && !hasCheckedOut(b) && regDays >= 0 && regDays <= REG_DUTY_DAYS && (!b.regSubmitted || !bookingRegComplete(b))) {
+            const ciReg = b.checkIn || '';
+            const regDays = b.regUrl && ciReg >= today && ciReg <= regCut ? Math.round((dpParse(ciReg).getTime() - t0) / dayMs) : -1;
+            if (regDays >= 0 && regDays <= REG_DUTY_DAYS && !hasCheckedOut(b) && (!b.regSubmitted || !bookingRegComplete(b))) {
                 out.push({
                     kind: 'register', key: 'register:' + b.dbId, sev: regDays <= 1 ? 'danger' : 'warn', ic: 'guest',
                     label: `${b.name || 'A guest'}’s details are not on the register`,
@@ -23408,7 +23425,14 @@ function chbDutyHidden(d) {
 // switched off for this person is not theirs (returning a deposit needs Refunds
 // and deposits, chasing a balance needs Take payments, a stopped cron is set-up).
 const CHB_DUTY_CAP = { balance: 'mo.ask', autopay: 'mo.ask', deposit: 'mo.deposit', payout: 'mo.view', dispute: 'mo.view', feed: 'co.sync', keysafe: 'ks.change', 'arrival-review': 'gu.reply', cron: 'owner' };
+// Set for the length of one renderNeedsYou (see there): its duty list, computed once.
+/** @type {{list: any[]|null}|null} */
+let __nyScope = null;
 function chbDuties() {
+    if (__nyScope) return __nyScope.list || (__nyScope.list = chbDutiesNow());
+    return chbDutiesNow();
+}
+function chbDutiesNow() {
     return chbDutiesAll().filter((d) => !chbDutyHidden(d) && chbCan(CHB_DUTY_CAP[/** @type {any} */ (d).kind] || 'all'));
 }
 // Mirror first, save after, on a chain that saves the CURRENT map (the pins store's
@@ -23627,9 +23651,16 @@ function needsYouExpand() {
 // five-line comment inside the window pushed it past — the CI-only failure
 // this comment is standing where it can't repeat. Measured headroom is small;
 // put new prose HERE, above the declaration, never inside the body.
+// ONE DUTY LIST PER RENDER: the strip, the rail and the badge share the first answer;
+// the scope ends with the render, so a swipe or a save straight after asks afresh.
+function renderNeedsYou() {
+    if (__nyScope) return renderNeedsYouOnce();
+    __nyScope = { list: null };
+    try { return renderNeedsYouOnce(); } finally { __nyScope = null; }
+}
 /** @type {Set<string>|null} */
 let __nySeen = null; // the to-dos on screen at the last render; null before the first
-function renderNeedsYou() {
+function renderNeedsYouOnce() {
     if (__nySwipe && __nySwipe.on && __nySwipe.row.isConnected) { __nyRenderLater = true; return; }
     try { chbFrameSync(); } catch (e) {}
     try { refreshInboxBadge(); } catch (e) {}
@@ -23971,10 +24002,13 @@ function chbOpsParts(tuples) {
 // money is never volunteered, the same judgements the ops line always made.
 function chbDayTuples() {
     const tuples = [];
+    const today = todayDashed();
     Object.keys(dbBookings || {}).forEach((k) => {
         (dbBookings[k] || []).forEach((b) => {
+            // A stay that ended before today adds nothing chbOpsParts counts.
+            if ((b.checkOut || '') < today && b.checkIn !== today) return;
             let due = 0;
-            if ((b.checkOut || '') >= todayDashed() && !bookingOwnerArranged(b)) {
+            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
                 const ps = bookingDue(k, b);
                 if (!ps.fullyPaid) due = Math.max(0, ps.balance || 0);
             }
@@ -31490,17 +31524,21 @@ function renderCalendar() {
     // Per-lane night maps, ONE derivation shared by the header (pips + ↺)
     // and the lanes (cell ownership) — the two cannot disagree.
     const laneData = {};
+    // Nights are marked only inside the window drawn; a cell finds its booking by id.
+    const bkById = new Map();
+    const first = dates[0], last = dates[N - 1];
     keys.forEach((k) => {
         const takenBy = new Map();
         const starts = new Set(), ends = new Set();
         const markNights = (ci, co, id) => {
             if (!ci || !co) return;
             starts.add(ci); ends.add(co);
-            for (let s = ci; s < co; s = ukShiftDays(s, 1)) {
+            if (co <= first || ci > last) return;
+            for (let s = ci < first ? first : ci; s < co && s <= last; s = ukShiftDays(s, 1)) {
                 if (!takenBy.has(s)) takenBy.set(s, id);
             }
         };
-        (dbBookings[k] || []).forEach((b) => markNights(b.checkIn, b.checkOut, b.id));
+        (dbBookings[k] || []).forEach((b) => { bkById.set(b.id, b); markNights(b.checkIn, b.checkOut, b.id); });
         (dbBlocks[k] || []).forEach((bl) => markNights(bl.checkIn, bl.checkOut, ''));
         laneData[k] = { takenBy, starts, ends };
     });
@@ -31565,7 +31603,7 @@ function renderCalendar() {
                 // defect — a strip that looks live and answers nothing. An imported
                 // platform stay has no hub (display-only), so it only names itself.
                 const owner = takenBy.get(dates[i]);
-                const bk = owner ? findBookingById(owner) : null;
+                const bk = owner ? bkById.get(owner) || null : null;
                 let act = '';
                 if (past) act = '';
                 else if (bk)
@@ -33227,6 +33265,14 @@ function ibRender() {
     ibFireReminders();
     ibBuild();
     if (__ibOpen && !__ibPeopleMap.has(__ibOpen)) __ibOpen = null;
+    // Off screen, only the data, the count and the title's pill: showing the Inbox
+    // repaints the rest anyway.
+    const ibView = document.getElementById('view-inbox');
+    if (ibView && !ibView.classList.contains('active')) {
+        ibPill(__ibPeople.filter((p) => ibInList(p) && ibWaiting(p)));
+        try { refreshInboxBadge(); } catch (e) {}
+        return;
+    }
     if (!__ibOpen && ibWide()) ibAutoOpen();
     root.classList.toggle('is-conv', !!__ibOpen && !ibWide());
     ibFit();
@@ -35206,11 +35252,15 @@ document.addEventListener('keydown', (e) => {
     if (!top) return;
     let y0 = 0, dy = 0, h = 0, lastY = 0, lastT = 0, v = 0, active = false;
     const phone = () => window.matchMedia('(max-width: 640px)').matches;
+    // Speed is judged by when the finger moved, not when the handler ran: a busy
+    // phone hands over a slow drag's moves all at once, and by the handler's clock
+    // they were a flick that closed the sheet.
+    const when = (e) => (e && typeof e.timeStamp === 'number' && e.timeStamp > 0 ? e.timeStamp : performance.now());
     top.addEventListener('pointerdown', (e) => {
         if (!__composeTarget || !phone() || e.button > 0 || (e.target && /** @type {HTMLElement} */ (e.target).closest('button'))) return;
         active = true;
         y0 = lastY = e.clientY;
-        lastT = performance.now();
+        lastT = when(e);
         dy = 0;
         v = 0;
         h = sheet.offsetHeight;
@@ -35222,20 +35272,20 @@ document.addEventListener('keydown', (e) => {
         if (!active) return;
         const raw = e.clientY - y0;
         dy = raw < 0 ? raw * 0.15 : raw; // a little give upwards, none past it
-        const now = performance.now();
+        const now = when(e);
         v = (e.clientY - lastY) / Math.max(1, now - lastT);
         lastY = e.clientY;
         lastT = now;
         sheet.style.transform = `translateY(${dy}px)`;
         if (scrim) scrim.style.opacity = String(Math.max(0, Math.min(1, 1 - dy / h)));
     });
-    const end = () => {
+    const end = (/** @type {PointerEvent|undefined} */ e) => {
         if (!active) return;
         active = false;
         sheet.classList.remove('dragging');
         const from = sheet.style.transform || 'translateY(0px)';
         // A finger that stopped before letting go is not a flick.
-        if (performance.now() - lastT > 100) v = 0;
+        if (when(e) - lastT > 100) v = 0;
         if (dy > h * 0.22 || v > 0.55) {
             const m = document.getElementById('enq-email-modal');
             if (m) m.classList.add('cmp-dragged'); // its own exit, from where the finger left it

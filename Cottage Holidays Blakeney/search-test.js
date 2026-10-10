@@ -3288,6 +3288,52 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         vm.runInContext('delete propertyMeta.__ghost; dbBookings.jollyboat = [];', ctx);
     } else fail('cmdkIntent / cmdkParseDates missing for §44');
 
+    // §45 THE EDIT DISTANCE IS REMEMBERED, and remembering changes no answer. The
+    // spell-correction asks the same pairs thousands of times a keystroke; the memo
+    // is keyed on both words AND the cut-off, so a pair asked with a tighter limit
+    // never gets a looser answer.
+    console.log('\n§45 search: the remembered edit distance');
+    if (typeof ctx.cmdkLev === 'function' && typeof ctx.cmdkLevNow === 'function') {
+        const words = ['checkout', 'chekout', 'welcome', 'welcom', 'customer', 'custmer', 'jollyboat', 'jolyboat', 'deposit', 'dposit', 'a', '', 'pimpernel'];
+        let same = 0, total = 0, bad = '';
+        for (let round = 0; round < 2; round++) {
+            for (const a of words) for (const b of words) for (const max of [0, 1, 2, 3]) {
+                total++;
+                const got = ctx.cmdkLev(a, b, max), want = ctx.cmdkLevNow(a, b, max);
+                if (got === want) same++; else if (!bad) bad = `${a}/${b}/${max}: ${got} vs ${want}`;
+            }
+        }
+        check(`every pair, every cut-off, twice: the remembered answer is the computed one (${same}/${total})`, same === total, bad);
+    } else fail('cmdkLev / cmdkLevNow missing for §45');
+
+    // §46 ONE DUTY LIST PER RENDER. The strip, the rail and the dock badge each asked for
+    // the duty list, which walks every booking ever made; one render now computes it
+    // once, and the scope ends with the render, so the next one (after a swipe or a
+    // save) asks afresh.
+    console.log('\n§46 today: one duty list per render');
+    if (typeof ctx.renderNeedsYou === 'function' && typeof ctx.chbDutiesNow === 'function') {
+        const realGet = documentShim.getElementById;
+        documentShim.getElementById = (id) => (id === 'needs-you' || id === 'needs-you-list' ? stubEl() : realGet(id));
+        try {
+            const r = vm.runInContext(`(() => {
+                const real = chbDutiesNow;
+                let n = 0;
+                chbDutiesNow = function () { n++; return real.apply(this, arguments); };
+                try {
+                    renderNeedsYou();
+                    const one = n;
+                    const open = __nyScope !== null;
+                    renderNeedsYou();
+                    const two = n;
+                    chbDuties();
+                    return { one, open, two, after: n };
+                } finally { chbDutiesNow = real; }
+            })()`, ctx);
+            check(`a render computes the duty list once (${r.one})`, r.one === 1);
+            check(`…and the scope ends with it: the next render and a call after each compute afresh (${r.two}, ${r.after})`, !r.open && r.two === 2 && r.after === 3);
+        } finally { documentShim.getElementById = realGet; }
+    } else fail('renderNeedsYou / chbDutiesNow missing for §46');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); __searchTestDone = true; process.exit(1); }

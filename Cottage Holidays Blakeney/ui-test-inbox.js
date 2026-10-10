@@ -10,6 +10,7 @@
 //  8. the Done folder: the switch and its motion, month captions, moving back, search
 //  9. the computer's panes and its keyboard
 // 10. an email typed into the website chat is not proof: its own row until confirmed
+// 11. an Inbox not on screen builds its count, not its rows
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -532,6 +533,26 @@ const SHOTS = process.env.IB_SHOTS || '';
     }));
     ok(later.again, 'a later chat typing the same email asks again');
     ok(later.eleanor.includes(9) && !later.own, `a PROVEN account's chat still joins its guest (${JSON.stringify(later.eleanor)})`);
+
+    console.log('11. an Inbox not on screen builds its count, not its rows');
+    // Every refresh used to repaint the hidden list, conversation and pane. Off screen it
+    // now builds its people and the count only, and showing it draws it at once.
+    await page.evaluate(() => nav('view-backoffice'));
+    await page.waitForTimeout(500);
+    const n11 = await page.evaluate(() => inboxCount());
+    threads.push({ thread_id: 21, name: 'Nell Newcomb', email: 'nell11@example.com', source: '', location: '', is_guest: true, verified: true, archived: 0, last_at: at(0, '10:10'), unread: 1, last_body: 'Is the cottage near the quay?', last_role: 'guest' });
+    await page.evaluate(async () => { await loadAdminMessages(); });
+    await page.waitForTimeout(600);
+    const off = await page.evaluate(() => ({
+        person: !!__ibPeopleMap.get('e:nell11@example.com'),
+        row: !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:nell11@example.com"]'),
+        n: inboxCount(),
+    }));
+    ok(off.person && off.n === n11 + 1, `off screen the new person is counted (${n11} → ${off.n})`);
+    ok(!off.row, '…and no row is drawn while the Inbox is hidden');
+    await page.evaluate(async () => { await window.openInbox(); });
+    const drawn = await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:nell11@example.com"]'), null, { timeout: 8000 }).then(() => true, () => false);
+    ok(drawn, 'opening the Inbox draws them at once');
 
     if (SHOTS) {
         await page.evaluate(() => { document.body.classList.toggle('light-mode'); });
