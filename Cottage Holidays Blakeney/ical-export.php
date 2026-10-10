@@ -26,9 +26,12 @@ if ($prop === '' || !hash_equals(ical_token($prop), $token)) {
     exit();
 }
 
-// Fetch confirmed bookings for this property (future + recent past).
-$stmt = db()->prepare('SELECT id, check_in, check_out FROM bookings WHERE prop_key = ? ORDER BY check_in ASC');
-$stmt->execute([$prop]);
+// Fetch confirmed bookings for this property: what is to come and the last month.
+// The platforms only block what is ahead, and with no window the feed carried every
+// stay since the first — polled many times a day by each platform.
+$since = date('Y-m-d', strtotime('-30 days'));
+$stmt = db()->prepare('SELECT id, check_in, check_out FROM bookings WHERE prop_key = ? AND check_out >= ? ORDER BY check_in ASC');
+$stmt->execute([$prop, $since]);
 $rows = $stmt->fetchAll();
 
 // Build the .ics. DTSTART = check-in (date), DTEND = check-out (date). iCal
@@ -72,8 +75,8 @@ foreach ($rows as $r) {
 // Only source='owner' is exported: echoing IMPORTED platform blocks back into
 // the platforms' own imports would breed circular phantom blocks.
 try {
-    $bl = db()->prepare("SELECT id, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND source = 'owner' ORDER BY check_in ASC");
-    $bl->execute([$prop]);
+    $bl = db()->prepare("SELECT id, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND source = 'owner' AND check_out >= ? ORDER BY check_in ASC");
+    $bl->execute([$prop, $since]);
     foreach ($bl->fetchAll() as $r) {
         $addEvent('chb-block-' . $prop . '-' . $r['id'] . '@' . $host, $r['check_in'], $r['check_out'], 'Not available');
     }
@@ -83,7 +86,18 @@ try {
 
 $lines[] = 'END:VCALENDAR';
 
+// DTSTAMP changes every second, so the tag is taken over the events alone: a feed
+// whose stays have not changed answers 304 and sends nothing.
+$body = implode($nl, $lines) . $nl;
+require_once __DIR__ . '/shell-etag.php';
+$etag = '"ics-' . substr(sha1((string) preg_replace('/^DTSTAMP:.*$/m', '', $body)), 0, 20) . '"';
 header('Content-Type: text/calendar; charset=utf-8');
 header('Content-Disposition: inline; filename="chb-' . $prop . '.ics"');
 header('Cache-Control: no-cache, must-revalidate');
-echo implode($nl, $lines) . $nl;
+header('ETag: ' . $etag);
+header('Vary: Accept-Encoding');
+if (shell_etag_matches((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''), $etag)) {
+    http_response_code(304);
+    exit();
+}
+echo $body;
