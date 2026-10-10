@@ -245,6 +245,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const toast9 = await page.evaluate(() => [...document.querySelectorAll('#app-toasts .toast')].map((t) => t.textContent).join(' | '));
   ok(posts.some((p) => p.action === 'submit') && !terms9.some((t) => t.price_override === '250'), `the agreed £250 does not travel to the new dates (${JSON.stringify(terms9)})`);
   ok(/the agreed £250\.00 was for the old stay/.test(toast9), `…and the owner is told (${toast9})`);
+  const sub9 = posts.find((p) => p.action === 'submit');
+  ok(!!sub9 && Number(sub9.replaces_id) === 51, `the new row names the enquiry it replaces, so its age and the guest's text consent travel with it (${sub9 && sub9.replaces_id})`);
   posts.length = 0;
   await openSheet('openEditEnquiry', 'e52');
   await page.click('#modal-save-btn');

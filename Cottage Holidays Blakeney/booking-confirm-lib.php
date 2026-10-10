@@ -110,6 +110,9 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             // the owner copy can link straight to the hub. Without it both
             // features are dead code guarded on a key nobody passed.
             'id' => (int) $bookingId,
+            // What a queued copy is about, so a retry after the stay moved or was
+            // cancelled is not sent (email_outbox_wanted).
+            'outbox_ref' => email_booking_ref($b),
             // Payment state so the confirmation reflects money received (shown only
             // when something has been paid; a fresh unpaid booking omits it).
             'paid_so_far' => $paidSoFar,

@@ -126,6 +126,11 @@ function uk_date($iso)
     $t = strtotime((string) $iso);
     return $t ? date('d/m/Y', $t) : (string) $iso;
 }
+// A cottage the site still offers (db.php's own, one argument like it).
+function prop_is_marketable($propKey)
+{
+    return !in_array((string) $propKey, $GLOBALS['WL_GONE'] ?? [], true);
+}
 // wl_send SPEAKS its dates now (email_date), like every other guest email — this
 // stub mirrors the real "Sun 6 Sep 2026" shape closely enough for the assertions.
 function email_date($iso, $withYear = true)
@@ -331,6 +336,14 @@ $late = ['id' => 5, 'prop_key' => 'jollyboat', 'name' => 'Lou Late', 'email' => 
 wl_reset(['rows' => [$late]]);
 waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 chk('an entry that has started is told about what is LEFT, from tomorrow', count($WL_SENT) === 1 && strpos(wl_sent(0)['text'], email_date($tmr)) !== false && strpos(wl_sent(0)['text'], email_date($late['check_in'])) === false);
+
+// A cottage the site no longer offers has no space to offer anyone (the three
+// nudges already skip it): cancelling the last stay at a removed cottage used to
+// email its waitlist "a space has opened".
+wl_reset(['rows' => $WAITING]);
+$GLOBALS['WL_GONE'] = ['jollyboat'];
+chk('a removed or private cottage tells its waitlist nothing', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 0 && !$WL_SENT && wl_marked() === []);
+$GLOBALS['WL_GONE'] = [];
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -181,6 +181,27 @@ route_actions(
             if (people_is_full($row) && people_other_full((int) $row['id']) === 0) {
                 json_out(['error' => 'There must always be a Super User.'], 409);
             }
+            // WHOEVER HOSTS A COTTAGE IN THE SPLIT, OR HOLDS ITS ACCOUNT, IS NOT REMOVED
+            // FROM UNDER IT. Removed, a paid-out host stayed in it: their cottage's income
+            // left the holder's profit, a "Pay Someone" row appeared, and that cottage's
+            // guests dropped out of "Guests still to pay". The owner reassigns it first.
+            $pid = (int) $row['id'];
+            try {
+                require_once __DIR__ . '/split-store.php';
+                $cfg = split_cfg();
+                $hosted = split_cottages_of($cfg, $pid);
+                if (split_on($cfg) && ($cfg['holder'] === $pid || $hosted)) {
+                    $what = $cfg['holder'] === $pid ? 'holds the account the money lands in' : 'hosts ' . (count($hosted) === 1 ? prop_display($hosted[0])['name'] : count($hosted) . ' cottages');
+                    json_out(['error' => people_first_name($row) . ' ' . $what . ' in Cottages and the bank. Choose who does instead, then remove them.', 'code' => 'in_split'], 409);
+                }
+                // The names they were paid as stop sorting new payments to them.
+                if (isset($cfg['payees'][$pid])) {
+                    unset($cfg['payees'][$pid]);
+                    split_cfg_save($cfg);
+                }
+            } catch (\Throwable $e) {
+                // No split on this install: nothing to keep straight.
+            }
             db()
                 ->prepare(
                     'UPDATE admins SET removed_at = NOW(), auth_epoch = auth_epoch + 1, invite_hash = NULL, invite_expires = NULL,

@@ -369,8 +369,11 @@ $mbxSrc = file_get_contents(__DIR__ . '/mailbox.php');
 chk('the mailbox list passes the headers', strpos($mbxSrc, 'mailbox_is_self_notification($fromAddr, $head)') !== false);
 chk('the reply poll passes the headers', preg_match('/\$isSelf = mailbox_is_self_notification\(\$fromAddr, explode\(/', file_get_contents(__DIR__ . '/mailbox-read.php')) === 1);
 // An owner's emailed reply becomes a chat message, so the list must not show it
-// a second time as a person waiting — but only one the poll would route.
-chk('the list sets aside an owner reply the poll routes', strpos($mbxSrc, "))[1] === 'owner') {") !== false && strpos($mbxSrc, 'people_mail_senders()') !== false);
+// a second time as a person waiting — but only one the poll would route: an
+// OWNER token, a sender on the allow-list, and a chat that still exists (a reply
+// to a deleted chat is left as ordinary mail by the poll, so it must show here).
+chk('the list sets aside an owner reply the poll routes', strpos($mbxSrc, "\$rAud === 'owner'") !== false && strpos($mbxSrc, 'people_mail_senders()') !== false);
+chk('…only while its chat still exists', preg_match('/\$rAud === \'owner\'[\s\S]{0,400}FROM chat_threads WHERE id = \?[\s\S]{0,400}if \(\$rLive\) \{\s*\$ownHidden\+\+;/', $mbxSrc) === 1);
 // The addresses come through mailbox_from_addr, so the pairing must survive the
 // display form the mailbox actually reads ("Name <addr>").
 chk('a display-name From resolves to its address', mailbox_from_addr('Cottage Holidays Blakeney <info@example.test>') === 'info@example.test');

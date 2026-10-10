@@ -333,6 +333,7 @@ CREATE TABLE IF NOT EXISTS email_outbox (
     extra_headers TEXT NULL,
     attachments MEDIUMTEXT NULL,
     last_error VARCHAR(220) NOT NULL DEFAULT '',
+    ref VARCHAR(190) NULL,
     sent_at DATETIME NULL,
     gave_up_at DATETIME NULL,
     KEY idx_due (sent_at, gave_up_at, next_try_at)

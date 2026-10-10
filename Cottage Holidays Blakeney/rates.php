@@ -293,6 +293,27 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
         json_out(['error' => 'Unknown property'], 400);
     }
     $archiving = $in['action'] === 'archive';
+    // A COTTAGE WITH STAYS STILL TO COME IS NOT REMOVED IN ONE TAP. Archived, it drops
+    // out of the key safes and their rotation duty (its arriving guest is promised a
+    // door code nobody can set), the timeline, the platform calendar import and the
+    // nightly double-booking audit — each reads only live cottages. Refused until the
+    // owner has read that and confirmed (confirm_stays), the clash override's rule.
+    if ($archiving && empty($in['confirm_stays'])) {
+        try {
+            $today = date('Y-m-d');
+            $ahead = db()->prepare("SELECT check_in FROM bookings WHERE prop_key = ? AND check_out >= ?
+                                    UNION ALL SELECT check_in FROM ical_blocks WHERE prop_key = ? AND check_out >= ? AND source <> 'owner' AND kind <> 'blocked'
+                                    ORDER BY check_in");
+            $ahead->execute([$propKey, $today, $propKey, $today]);
+            $stays = $ahead->fetchAll(PDO::FETCH_COLUMN);
+            if ($stays) {
+                $n = count($stays);
+                json_out(['error' => prop_display($propKey)['name'] . ' has ' . $n . ' stay' . ($n === 1 ? '' : 's') . ' still to come, the first on ' . uk_date($stays[0]) . '. Removing it takes ' . ($n === 1 ? 'that stay' : 'them') . ' off the key safes, the calendar and the nightly double-booking check.', 'code' => 'stays_ahead'], 409);
+            }
+        } catch (\Throwable $e) {
+            // Unreadable stays never block a removal the owner asked for.
+        }
+    }
     // Don't let the owner archive their last live cottage — the public site needs one.
     if ($archiving) {
         try {

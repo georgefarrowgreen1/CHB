@@ -1151,6 +1151,60 @@ running the real renderers on a hostile value).
   test-integration §64. Fifteen declarations break-tested, each failing its named check; the stale-stays one has two
   independent layers (the ask number, the who-check) and only removing both reproduces the original bug.
 
+## What a change carries with it (round 6, data lifecycle)
+
+Found by the round-6 data-lifecycle review; each was reproduced before it was fixed.
+- **A QUEUED EMAIL IS SENT ONLY WHILE IT IS STILL TRUE** (migration-140 `email_outbox.ref`). The send that succeeds
+  after an outage is what drains the outbox, so a confirmation queued during the outage landed just after the
+  cancellation, or after the corrected one with the new dates. Each queued copy names what it is about:
+  `booking:<id>:<hash>` (`email_booking_ref`: dates, cottage, party, price, read from the same `SELECT *` row the
+  drain re-reads), `enquiry:<id>`, `newsletter:<address>`, `person:<id>`. `email_outbox_wanted($row)` asks before
+  sending. A stay moved or cancelled, an enquiry answered, an unsubscribe or a person removed closes the row as
+  "no longer current" (`gave_up_at`, an info `email.dropped`, never a give-up warning). Anything it cannot read (no
+  ref, an unknown kind, a database hiccup) still sends: delivery is the outbox's job, and only a positive "no
+  longer" stops one. The decision is gated in test-integration §65. The senders' half is gated by test-payrail's
+  wiring checks, because mail is off in the harness and a failed send never queues there.
+- **A CANCELLATION RE-READS THE BOOKING UNDER ITS LOCK.** pay.php holds the same lock to charge. A deposit charged
+  while the cancel waited took the cash branch, found no cash deposit, was neither returned nor recorded as owed,
+  and then the row that remembered it was deleted. If the re-read finds a deposit to refund that the first read did
+  not, it asks for the step-up too. §66 reproduces the interleaving (the §32 technique).
+- **A MOVED STAY IS CHASED ON ITS NEW SCHEDULE.** Moving a future stay's check-in clears `balance_requested_at` /
+  `balance_reminded_at`, and so does a new plan due date. The ask had stayed tied to the old dates, so a postponed
+  stay's first contact was a "reminder" days before arrival.
+- **THE GUEST REGISTER FOLLOWS ITS STAY** (`guest_register_follow`). It is re-dated from a new checkout. It is
+  deleted with a stay cancelled or deleted before it began, which used to keep a party's passport numbers for a
+  year after a stay that never happened. One that had begun keeps it for a year from today. A failure is logged as
+  a warning, never thrown: the booking change it follows has already happened.
+- **AN EDITED ENQUIRY IS THE SAME ENQUIRY.** The owner's Edit is a decline + resubmit, and the new row lost the
+  guest's text-message consent and its age, seen and nudged state: a two-day-old enquiry read as new today and was
+  nudged again. The resubmit sends `replaces_id`, and enquiries.php copies those four columns from the row it
+  replaces (admin edits only).
+- **NOBODY IS REMOVED FROM UNDER THE MONEY SPLIT.** Removing someone who hosts a cottage in the split, or holds
+  the account, is refused (people.php 409 `in_split`, saying where to change it). A removed paid-out host used to
+  stay in the split, taking their cottage's income out of the holder's profit. Removal also drops the names they
+  were paid as.
+- **A COTTAGE WITH STAYS STILL TO COME IS NOT REMOVED IN ONE TAP.** rates.php answers 409 `stays_ahead`, with the
+  count and the first date, until `confirm_stays` is sent. Archived, a cottage drops out of the key safes, the
+  timeline, the platform import and the nightly double-booking audit. `archiveAccommodation` asks with the server's
+  sentence and "Remove it anyway".
+- **A DELETED ACCOUNT TAKES ITS WHOLE CONVERSATION.** That is every message in its threads (the owner's replies
+  carry no guest_id, so they outlived the account and stayed searchable), plus the anonymous threads under its
+  email. It also takes the enquiry draft, the direct lead, the owner's emails to them, unsent queued copies and
+  sign-in codes. Self-repair prunes sign-in codes older than a day.
+- **A DELETED EXPENSE PUTS ITS BANK PAYMENT BACK TO SORT.** This is statements.php's own unmark, the split columns
+  included. The payment used to read "Counted, as a cost" for a cost the books no longer held.
+- **A removed or private cottage tells its waitlist nothing** (`prop_is_marketable`, as the three nudges already did).
+- **An emailed reply to a chat since deleted lands in the Inbox as mail.** It used to become an orphan message,
+  emailed to no one and marked handled (mailbox-read `thread-gone`; the mailbox list stops hiding it). NOT gated:
+  it needs a POP3 server, which no suite has.
+- Gates:
+  - test-integration §65–§71 and §61's refusal;
+  - test-payrail (the four senders' refs) and test-waitlist;
+  - ui-test-bookingsheet (the resubmit names what it replaces);
+  - new **`ui-test-lifecycle.js`** (the archive confirm, both answers).
+
+  Twenty changes break-tested, each failing its own named check.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

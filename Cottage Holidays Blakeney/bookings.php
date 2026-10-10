@@ -579,6 +579,7 @@ if ($action === 'delete') {
         ->prepare('DELETE FROM bookings WHERE id = ?')
         ->execute([$id]);
     if ($b) {
+        guest_register_follow($id, $b['check_in'] ?? '', $b['check_out'] ?? '', true);
         try {
             require_once __DIR__ . '/waitlist.php';
             waitlist_notify_freed($b['prop_key'] ?? '', $b['check_in'] ?? '', $b['check_out'] ?? '');
@@ -1027,6 +1028,13 @@ if ($action === 'update') {
     $reArrival = !empty($b['pre_arrival_sent'])
         && ($checkIn !== ($b['check_in'] ?? '') || $propKey !== ($b['prop_key'] ?? ''))
         && $checkIn >= date('Y-m-d');
+    // …AND A MOVED STAY IS CHASED ON ITS NEW SCHEDULE. payments-due asks for the
+    // balance once (balance_requested_at) and reminds from that stamp; left from the
+    // old dates, a postponed stay was never asked for its balance again, and its first
+    // contact was a "reminder" days before arrival. Same rule: a future stay only.
+    $reChase = (!empty($b['balance_requested_at']) || !empty($b['balance_reminded_at']))
+        && $checkIn !== ($b['check_in'] ?? '')
+        && $checkIn >= date('Y-m-d');
 
     $sql = 'UPDATE bookings SET prop_key=?,name=?,email=?,phone=?,address=?,postcode=?,check_in=?,check_out=?,check_in_time=?,check_out_time=?,
             adults=?,children=?,notes=?,payment=?,deposit_paid=?,payment_method=?,payment_date=?,price_override=?';
@@ -1081,9 +1089,15 @@ if ($action === 'update') {
     if ($reArrival) {
         $sql .= ',pre_arrival_sent=NULL';
     }
+    if ($reChase) {
+        $sql .= ',balance_requested_at=NULL,balance_reminded_at=NULL';
+    }
     $sql .= ' WHERE id = ?';
     $args[] = $id;
     db()->prepare($sql)->execute($args);
+    if ($checkOut !== ($b['check_out'] ?? '')) {
+        guest_register_follow($id, $checkIn, $checkOut, false);
+    }
     foreach ($lockKeys as $uk) {
         book_unlock($uk);
     }
@@ -1648,8 +1662,11 @@ if ($action === 'set_payment_plan') {
     if ($apOffer !== '' && !in_array($apOffer, ['0', '2', '3', '4'], true)) {
         json_out(['error' => 'Monthly payments can be 2, 3 or 4 — or 0 to never offer them.'], 400);
     }
+    // A new balance date is a new ask: the one already sent named the old date, and the
+    // reminders run from its stamp (the move rule above, for the plan's own date).
+    $reChase = (string) ($b['balance_due_date'] ?? '') !== (string) ($due ?? '') ? ', balance_requested_at = NULL, balance_reminded_at = NULL' : '';
     try {
-        db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ? WHERE id = ?')
+        db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ?' . $reChase . ' WHERE id = ?')
             ->execute([$pct, $amt, $due, $apOffer === '' ? null : (int) $apOffer, $id]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Could not save the plan — has migrate.php been run?'], 500);
@@ -2439,6 +2456,19 @@ if ($action === 'cancel') {
     if (!book_lock($b['prop_key'] ?? '')) {
         json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
     }
+    // RE-READ UNDER THE LOCK. pay.php holds the same lock to charge, so a payment
+    // that landed while this waited changed which deposit path is right: chosen from
+    // the read above, a deposit charged in the meantime took the cash branch, which
+    // found no cash deposit — neither returned nor recorded as owed, and the row that
+    // remembered it was then deleted.
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    if (!$depositBack && (float) damages_collected($b) > 0.005) {
+        require_cap('mo.deposit');
+        require_reauth('refunding as part of this cancellation');
+    }
     $refundedByCard = 0.0;
     $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)
     // …and what could NOT be returned. Cancelling DELETES the booking row, which
@@ -2583,6 +2613,7 @@ if ($action === 'cancel') {
     db()
         ->prepare('DELETE FROM bookings WHERE id = ?')
         ->execute([$id]);
+    guest_register_follow($id, $b['check_in'] ?? '', $b['check_out'] ?? '', true);
     $emailResult = null;
     if (!empty($b['email'])) {
         try {

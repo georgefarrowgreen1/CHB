@@ -14532,12 +14532,14 @@ async function setAccommodationPrivate(k, makePrivate) {
         glassAlert("Couldn't update it: " + (e && e.message ? e.message : e));
     }
 }
-async function archiveAccommodation(k) {
+async function archiveAccommodation(k, confirmStays) {
     const name = (propertyMeta[k] && propertyMeta[k].name) || k;
     // Archiving is fully reversible (restore), so skip the confirm dialog and
     // offer an immediate Undo instead — one tap, with a safety net right there.
+    // Unless stays are still to come: the server says what removing it would take
+    // away, and only a confirmed second ask goes through.
     try {
-        await apiPost('rates.php', { action: 'archive', prop_key: k });
+        await apiPost('rates.php', confirmStays ? { action: 'archive', prop_key: k, confirm_stays: true } : { action: 'archive', prop_key: k });
         await loadRates();
         accomAfterChange(k, true);
         toast(`"${name}" removed from the site — bookings & history kept.`, undefined, {
@@ -14545,6 +14547,10 @@ async function archiveAccommodation(k) {
             fn: () => restoreAccommodation(k),
         });
     } catch (e) {
+        if (e && e.code === 'stays_ahead' && !confirmStays) {
+            if (await glassConfirm(e.message, 'Remove it anyway', { danger: true })) return archiveAccommodation(k, true);
+            return;
+        }
         glassAlert("Couldn't remove it: " + (e && e.message ? e.message : e));
     }
 }

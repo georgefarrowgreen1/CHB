@@ -140,6 +140,20 @@ if ($action === 'delete') {
     db()
         ->prepare('DELETE FROM expenses WHERE id = ?')
         ->execute([$id]);
+    // A bank payment sorted AS this expense goes back to be sorted: it still read
+    // "Counted, as a cost" for a cost the books no longer hold, and never returned to
+    // To sort. statements.php's own unmark, for the one link this delete broke (the
+    // split's columns first, while the expense id still finds the row).
+    try {
+        db()->prepare('UPDATE bank_lines SET admin_id = NULL, prop_key = NULL WHERE expense_id = ?')->execute([$id]);
+    } catch (\Throwable $e) {
+        // Before migration-136 there are no split columns to clear.
+    }
+    try {
+        db()->prepare('UPDATE bank_lines SET sorted_as = NULL, booking_id = NULL, expense_id = NULL, sorted_label = NULL, sorted_at = NULL WHERE expense_id = ?')->execute([$id]);
+    } catch (\Throwable $e) {
+        // No bank statements on this install: nothing was sorted.
+    }
     log_activity('expenses', 'expense.delete', 'Expense deleted', ['entity' => 'expense', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }

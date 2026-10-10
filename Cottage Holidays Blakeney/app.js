@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 769;
+const ADMIN_BUNDLE_V = 770;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -20740,6 +20740,9 @@ async function saveModal() {
                 // decline + resubmit, and must not wipe what the GUEST declared.
                 no_dogs_at_passthrough: enq.noDogsAt || '',
                 terms_version: enq.termsVersion || '',
+                // …and the rest of what makes it the same enquiry: its age, whether it
+                // was seen and nudged, and the guest's text-message consent.
+                replaces_id: enq.dbId,
             };
             // The resubmit is an INSERT — the deterministic id dedupes a hand
             // retry (the re-decline ahead of it is idempotent either way).
@@ -21563,7 +21566,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r6privacy';
+    const BUILD = 'r6lifecycle';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

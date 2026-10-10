@@ -4222,7 +4222,7 @@ $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square
 $xb59 = $addPaid59($pk59x, 'Old Cottage Guest', 200, 'Cash');
 $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, prop_key, guest_name, created_at) VALUES (?,'damages',40,'COMPLETED','kept_it59x',?,'Old Cottage Guest',?)")->execute([$xb59, $pk59x, $now59]);
 $rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, fee, prop_key, guest_name, created_at) VALUES (999160,'deposit',100,'COMPLETED','sq_it59_cx',3.00,?,'Cancel Old',?)")->execute([$pk59x, $now59]);
-$r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $pk59x]);
+$r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $pk59x, 'confirm_stays' => true]);
 it_check('§59 the old cottage is archived', $r['code'] === 200, $r['raw']);
 $r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $h59, 'hosts' => [$pk59 => $ownerId]]);
 $r = http($admin, 'POST', '/split.php', ['action' => 'status']);
@@ -4369,7 +4369,9 @@ $rootDb->exec("DELETE FROM ical_blocks WHERE uid IN ('it61-real', 'it61-same')")
 
 // A removed cottage's calendar is not public.
 $r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $p61]);
-it_check('§61 the second cottage is removed', $r['code'] === 200, $r['raw']);
+it_check('§61 a cottage with stays still to come is not removed in one tap: it says what removing it takes away', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'stays_ahead' && strpos((string) ($r['json']['error'] ?? ''), 'key safes') !== false && (int) $rootDb->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL AND prop_key = ' . $rootDb->quote($p61))->fetchColumn() === 1, $r['raw']);
+$r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $p61, 'confirm_stays' => true]);
+it_check('§61 the second cottage is removed once the owner confirms', $r['code'] === 200, $r['raw']);
 $pubA = http($guest, 'GET', '/availability.php?prop=' . urlencode($p61));
 $admA = http($admin, 'GET', '/availability.php?prop=' . urlencode($p61));
 it_check('§61 a removed cottage\'s calendar is not published to a visitor', ($pubA['json']['ranges'] ?? null) === [], $pubA['raw']);
@@ -4571,6 +4573,240 @@ $b64 = $rootDb->query("SELECT name, email, phone FROM bookings WHERE id = $dBid6
 it_check('§64 once the stay has ended the account is deleted', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE id = $dGid64")->fetchColumn() === 0, $r['raw']);
 it_check('§64 …and the past stay is kept, anonymised', ($b64['name'] ?? '') === 'Former guest' && $b64['email'] === null && $b64['phone'] === null, json_encode($b64));
 $rootDb->exec("DELETE FROM bookings WHERE id = $dBid64");
+
+// §65 A QUEUED EMAIL IS SENT ONLY WHILE IT IS STILL TRUE. The outbox retries a
+// failed one-shot later — and the send that succeeds after an outage is what drains
+// it, so a confirmation queued in the outage landed just after the cancellation, or
+// after the corrected one with the new dates. Each queued row now names what it is
+// about, and the drain asks before it sends. (Mail is off here, so a row the drain
+// DOES try fails with "Mail disabled" and moves forward — which is the tell.)
+echo "\n== §65 a queued email is sent only while it is still true ==\n";
+$rootDb->exec("DELETE FROM email_outbox");
+$ci65 = $ukPlus(40);
+$co65 = $ukPlus(43);
+$mk65 = function ($name) use ($rootDb, $propKey, $ci65, $co65) {
+    $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey'," . $rootDb->quote($name) . ",'g65@example.com','$ci65','$co65',2,0,'unpaid',0,400,400,0,3)");
+    return (int) $rootDb->lastInsertId();
+};
+$keep65 = $mk65('Kept Sixtyfive');
+$moved65 = $mk65('Moved Sixtyfive');
+$gone65 = $mk65('Gone Sixtyfive');
+$refs65 = $mailProbe('$s = db()->prepare("SELECT * FROM bookings WHERE id = ?"); $o = []; foreach ([' . $keep65 . ', ' . $moved65 . ', ' . $gone65 . '] as $i) { $s->execute([$i]); $o[] = email_booking_ref($s->fetch()); } echo "\n" . json_encode($o);');
+it_check('§65 (fixture) a reference per stay, from the app itself', is_array($refs65) && count(array_filter($refs65)) === 3 && strpos((string) $refs65[0], 'booking:' . $keep65 . ':') === 0, json_encode($refs65));
+// What changes after they were queued: one stay moves, one is cancelled; an enquiry is
+// declined, a subscriber leaves, a person is removed.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, declined_at) VALUES ('$propKey','Enq Sixtyfive','e65@example.com','$ci65','$co65',2,0,NOW())");
+$enq65 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, token, unsubscribed_at) VALUES ('n65@example.com', 'tok65" . bin2hex(random_bytes(4)) . "', NOW())");
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at, removed_at) VALUES ('gone65', 'x', 'Gone Person', 'p65@example.com', 0, '{}', NOW(), NOW())");
+$pid65 = (int) $rootDb->lastInsertId();
+$q65 = $rootDb->prepare("INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, last_error, ref) VALUES (DATE_SUB(NOW(), INTERVAL 1 MINUTE), ?, ?, ?, 'S', 'b', 'seed', ?)");
+// Oldest first, and the drain stops at the first row the relay refuses — so the stale
+// rows go in first (each dropped without a send), then the one it really tries.
+foreach ([['confirmation', 'moved65@example.com', 'Moved', $refs65[1]], ['confirmation', 'gone65@example.com', 'Gone', $refs65[2]], ['enquiry-ack', 'e65@example.com', 'Enq', 'enquiry:' . $enq65], ['newsletter', 'n65@example.com', 'News', 'newsletter:n65@example.com'], ['owner-alert', 'p65@example.com', 'Person', 'person:' . $pid65], ['confirmation', 'keep65@example.com', 'Kept', $refs65[0]], ['owner-alert', 'x65@example.com', 'Extra', '']] as $row65) {
+    $q65->execute($row65);
+}
+$rootDb->exec("UPDATE bookings SET check_in = DATE_ADD(check_in, INTERVAL 7 DAY), check_out = DATE_ADD(check_out, INTERVAL 7 DAY) WHERE id = $moved65");
+$rootDb->exec("DELETE FROM bookings WHERE id = $gone65");
+$warn65 = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.gaveup'")->fetchColumn();
+$r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+$rows65 = [];
+foreach ($rootDb->query("SELECT to_name, tries, last_error, gave_up_at FROM email_outbox")->fetchAll(PDO::FETCH_ASSOC) as $x) {
+    $rows65[$x['to_name']] = $x;
+}
+// A second pass, with the tried row out of the way, reaches the last one.
+$rootDb->exec("UPDATE email_outbox SET next_try_at = DATE_ADD(NOW(), INTERVAL 1 DAY) WHERE to_name = 'Kept'");
+http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+$rows65['Extra'] = $rootDb->query("SELECT to_name, tries, last_error, gave_up_at FROM email_outbox WHERE to_name = 'Extra'")->fetch(PDO::FETCH_ASSOC);
+$tried65 = fn($n) => isset($rows65[$n]) && (int) $rows65[$n]['tries'] === 1 && $rows65[$n]['gave_up_at'] === null;
+$dropped65 = fn($n) => isset($rows65[$n]) && (int) $rows65[$n]['tries'] === 0 && $rows65[$n]['gave_up_at'] !== null && $rows65[$n]['last_error'] === 'no longer current';
+it_check('§65 a confirmation for a stay that is unchanged is still tried', $r['code'] === 200 && $tried65('Kept'), json_encode($rows65['Kept'] ?? null));
+it_check('§65 …one for a stay that MOVED is not sent', $dropped65('Moved'), json_encode($rows65['Moved'] ?? null));
+it_check('§65 …nor one for a stay that was CANCELLED', $dropped65('Gone'), json_encode($rows65['Gone'] ?? null));
+it_check('§65 …nor an enquiry acknowledgement after the enquiry was answered', $dropped65('Enq'), json_encode($rows65['Enq'] ?? null));
+it_check('§65 …nor a newsletter after an unsubscribe', $dropped65('News'), json_encode($rows65['News'] ?? null));
+it_check('§65 …nor an owner alert to a person since removed', $dropped65('Person'), json_encode($rows65['Person'] ?? null));
+it_check('§65 a row that names nothing is still tried (an extra address)', $tried65('Extra'), json_encode($rows65['Extra'] ?? null));
+it_check('§65 a dropped email is no alarm: no give-up warning, one quiet line each', (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.gaveup'")->fetchColumn() === $warn65 && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.dropped'")->fetchColumn() >= 5, '');
+$rootDb->exec("DELETE FROM email_outbox");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($keep65, $moved65)");
+$rootDb->exec("DELETE FROM enquiries WHERE id = $enq65");
+$rootDb->exec("DELETE FROM newsletter_subscribers WHERE email = 'n65@example.com'");
+$rootDb->exec("DELETE FROM admins WHERE id = $pid65");
+
+// §66 A CANCELLATION DECIDES ITS DEPOSIT UNDER THE LOCK. It chose the deposit path
+// from the row it read before waiting for book_lock — which pay.php holds to charge.
+// A deposit charged while it waited took the cash branch, found no cash deposit, and
+// was neither returned nor recorded as owed before the row was deleted. Reproduced
+// for real, as §32a does: hold the lock, park the cancel, land the charge, release.
+echo "\n== §66 a cancellation decides its deposit under the lock ==\n";
+it_reauth($admin); // the deposit that appears needs the step-up, and the window is fresh
+$cIn66 = $ukPlus(50);
+$cOut66 = $ukPlus(53);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee) VALUES ('$propKey','Race Cancel','','$cIn66','$cOut66',2,0,'unpaid',0,400,400,0,3,75)");
+$cId66 = (int) $rootDb->lastInsertId();
+$slot66 = new PDO("mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4", $DB_USER, $DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$st66 = $slot66->prepare('SELECT GET_LOCK(?, 0)');
+$st66->execute([$lockName]);
+it_check('§66 (fixture) the booking lock is held on a second connection', (int) $st66->fetchColumn() === 1);
+$cxCookie66 = implode('; ', array_map(fn($k) => "$k={$admin[$k]}", array_keys($admin)));
+$cxPayload66 = json_encode(['action' => 'cancel', 'id' => $cId66, 'refund_amount' => 0, 'reason' => 'it-race']);
+$cxScript66 = sys_get_temp_dir() . '/chb-it-cxrace-' . getmypid() . '.php';
+file_put_contents($cxScript66, '<?php $o = ["http" => ["method" => "POST", "header" => "Content-Type: application/json\r\nAccept: application/json\r\nCookie: ' . $cxCookie66 . '\r\nX-CSRF-Token: ' . ($admin['csrf'] ?? '') . '", "content" => ' . var_export($cxPayload66, true) . ', "timeout" => 40, "ignore_errors" => true]]; echo file_get_contents(' . var_export($BASE . '/bookings.php', true) . ', false, stream_context_create($o));');
+$cp66 = [];
+$cxProc66 = proc_open('exec php ' . escapeshellarg($cxScript66), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $cp66);
+$parked66 = false;
+for ($i = 0; $i < 100; $i++) {
+    if ((int) $rootDb->query("SELECT COUNT(*) FROM information_schema.processlist WHERE state = 'User lock'")->fetchColumn() > 0) {
+        $parked66 = true;
+        break;
+    }
+    usleep(100000);
+}
+it_check('§66 the cancellation parks at the lock (past its first read)', $parked66);
+// pay.php's charge: the rental part to the ledger figure, the deposit onto hold_*.
+$rootDb->exec("UPDATE bookings SET deposit_paid = 100, payment = 'deposit', payment_date = CURDATE(), payment_method = 'Square card', hold_status = 'charged', hold_amount = 75, hold_payment_id = 'SQ_IT_66' WHERE id = $cId66");
+$slot66->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
+$cxOut66 = stream_get_contents($cp66[1]);
+proc_close($cxProc66);
+@unlink($cxScript66);
+$cxJson66 = json_decode((string) $cxOut66, true);
+it_check('§66 the deposit charged while it waited is not lost: reported owed (Square is off here)', ($cxJson66['ok'] ?? false) === true && round((float) ($cxJson66['deposit_owed'] ?? 0), 2) === 75.00, substr((string) $cxOut66, 0, 300));
+it_check('§66 …and logged, so it outlives the deleted booking', (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'deposit.owed' AND summary LIKE '%Race Cancel%'")->fetchColumn() === 1, '');
+$slot66 = null;
+
+// §67 A MOVED STAY CARRIES ITS SCHEDULE AND ITS RECORDS WITH IT. The balance ask and
+// its reminders keyed off stamps left from the old dates (a postponed stay was never
+// asked for its balance again), and the guest register's retention date was fixed at
+// submission (a moved stay purged early; a cancelled one kept a party's passport
+// numbers for a year after a stay that never happened).
+echo "\n== §67 a moved stay carries its schedule and its records ==\n";
+$reg67 = $rootDb->prepare("INSERT INTO guest_registrations (booking_id, party_enc, guest_count, submitted_at, updated_at, expires_at) VALUES (?, 'x', 2, NOW(), NOW(), DATE_ADD(?, INTERVAL 12 MONTH))");
+$bk67 = function ($name, $in, $out) use ($rootDb, $propKey) {
+    $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, balance_requested_at, balance_reminded_at) VALUES ('$propKey'," . $rootDb->quote($name) . ",'s67@example.com','$in','$out',2,0,'unpaid',0,400,400,0,3, DATE_SUB(NOW(), INTERVAL 2 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY))");
+    return (int) $rootDb->lastInsertId();
+};
+$mv67 = $bk67('Moved Sixtyseven', $ukPlus(320), $ukPlus(323));
+$reg67->execute([$mv67, $ukPlus(323)]);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $mv67, 'check_in' => $ukPlus(330), 'check_out' => $ukPlus(334)]);
+$row67 = $rootDb->query("SELECT b.balance_requested_at, b.balance_reminded_at, g.expires_at FROM bookings b LEFT JOIN guest_registrations g ON g.booking_id = b.id WHERE b.id = $mv67")->fetch(PDO::FETCH_ASSOC);
+$exp67 = (new DateTime($ukPlus(334)))->modify('+12 months')->format('Y-m-d');
+it_check('§67 a moved stay is asked for its balance afresh (both chase stamps cleared)', $r['code'] === 200 && $row67['balance_requested_at'] === null && $row67['balance_reminded_at'] === null, $r['raw'] . ' ' . json_encode($row67));
+it_check('§67 …and its register is kept for a year from the NEW checkout', ($row67['expires_at'] ?? '') === $exp67, json_encode($row67) . ' want ' . $exp67);
+$rootDb->exec("UPDATE bookings SET balance_requested_at = NOW(), balance_reminded_at = NOW() WHERE id = $mv67");
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment_plan', 'id' => $mv67, 'balance_due_date' => $ukPlus(300)]);
+$st67 = $rootDb->query("SELECT balance_requested_at, balance_reminded_at FROM bookings WHERE id = $mv67")->fetch(PDO::FETCH_ASSOC);
+it_check('§67 a new balance date is a new ask too', $r['code'] === 200 && $st67['balance_requested_at'] === null && $st67['balance_reminded_at'] === null, $r['raw'] . ' ' . json_encode($st67));
+$rootDb->exec("UPDATE bookings SET balance_requested_at = NOW() WHERE id = $mv67");
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $mv67, 'notes' => 'a phone number corrected']);
+it_check('§67 …while an edit that moves nothing leaves the ask alone', $r['code'] === 200 && $rootDb->query("SELECT balance_requested_at FROM bookings WHERE id = $mv67")->fetchColumn() !== null, $r['raw']);
+// Cancelled before it began: the register goes. Begun, then deleted: kept for its year.
+$cx67 = $bk67('Cancelled Sixtyseven', $ukPlus(340), $ukPlus(343));
+$reg67->execute([$cx67, $ukPlus(343)]);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $cx67, 'refund_amount' => 0, 'reason' => 'it67']);
+it_check('§67 a stay cancelled before it began takes its register with it', ($r['json']['ok'] ?? false) === true && (int) $rootDb->query("SELECT COUNT(*) FROM guest_registrations WHERE booking_id = $cx67")->fetchColumn() === 0, $r['raw']);
+$on67 = $bk67('Begun Sixtyseven', $ukPlus(-1), $ukPlus(2));
+$reg67->execute([$on67, $ukPlus(2)]);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'delete', 'id' => $on67]);
+$kept67 = $rootDb->query("SELECT expires_at FROM guest_registrations WHERE booking_id = $on67")->fetchColumn();
+it_check('§67 …one that had begun keeps it, for a year from today', ($r['json']['ok'] ?? false) === true && $kept67 === (new DateTime($ukToday))->modify('+12 months')->format('Y-m-d'), $r['raw'] . ' ' . var_export($kept67, true));
+$rootDb->exec("DELETE FROM guest_registrations WHERE booking_id IN ($mv67, $cx67, $on67)");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($mv67, $on67)");
+
+// §68 AN EDITED ENQUIRY IS THE SAME ENQUIRY. The owner's Edit/Move is decline +
+// resubmit, and the new row started over: the guest's text-message consent was lost,
+// a guest waiting two days read as new today, and the follow-up nudge went again.
+echo "\n== §68 an edited enquiry is the same enquiry ==\n";
+$eIn68 = $ukPlus(360);
+$eOut68 = $ukPlus(363);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, phone, check_in, check_out, adults, children, sms_opt_in, seen_at, nudge_sent_at, created_at) VALUES ('$propKey','Ena Sixtyeight','e68@example.com','07700 900168','$eIn68','$eOut68',2,0,1, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_SUB(NOW(), INTERVAL 3 DAY))");
+$e68 = (int) $rootDb->lastInsertId();
+$orig68 = $rootDb->query("SELECT created_at, seen_at, nudge_sent_at FROM enquiries WHERE id = $e68")->fetch(PDO::FETCH_ASSOC);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'replaces_id' => $e68, 'prop_key' => $propKey, 'name' => 'Ena Sixtyeight', 'email' => 'e68@example.com', 'phone' => '07700 900168', 'check_in' => $eIn68, 'check_out' => $ukPlus(364), 'adults' => 2, 'children' => 0, 'message' => 'one more night']);
+$new68 = (int) ($r['json']['id'] ?? 0);
+$row68 = $rootDb->query("SELECT sms_opt_in, created_at, seen_at, nudge_sent_at FROM enquiries WHERE id = $new68")->fetch(PDO::FETCH_ASSOC);
+it_check('§68 (fixture) the owner\'s edit makes a new row', $r['code'] === 200 && $new68 > $e68, $r['raw']);
+it_check('§68 the guest\'s text-message consent travels with it', (int) ($row68['sms_opt_in'] ?? 0) === 1, json_encode($row68));
+it_check('§68 …and so does its age, seen and nudged state (no second nudge, no "new today")', ($row68['created_at'] ?? '') === $orig68['created_at'] && ($row68['seen_at'] ?? '') === $orig68['seen_at'] && ($row68['nudge_sent_at'] ?? '') === $orig68['nudge_sent_at'], json_encode([$row68, $orig68]));
+$rootDb->exec("DELETE FROM enquiries WHERE id IN ($e68, $new68)");
+
+// §69 A PERSON IS NOT REMOVED FROM UNDER THE MONEY SPLIT. Removing a paid-out host
+// left them in it: their cottage's income left the holder's profit, a "Pay Someone"
+// row appeared, and that cottage's guests dropped out of "Guests still to pay".
+echo "\n== §69 a host is not removed from under the money split ==\n";
+$splitWas69 = $rootDb->query("SELECT item_value FROM content WHERE item_key = 'money-split'")->fetchColumn();
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at) VALUES ('host69', 'x', 'Hana Host', 'host69@example.com', 0, '{}', NOW())");
+$h69 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $ownerId, 'hosts' => [$propKey => $h69]]);
+it_check('§69 (fixture) Hana hosts a cottage in the split', $r['code'] === 200, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $h69]);
+it_check('§69 removing her is refused, saying where to change it', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'in_split' && strpos((string) ($r['json']['error'] ?? ''), 'Cottages and the bank') !== false && $rootDb->query("SELECT removed_at FROM admins WHERE id = $h69")->fetchColumn() === null, $r['raw']);
+$r = http($admin, 'POST', '/split.php', ['action' => 'settings', 'holder' => $ownerId, 'hosts' => [$propKey => $ownerId]]);
+$r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $h69]);
+it_check('§69 …and allowed once the cottage is someone else\'s', $r['code'] === 200 && $rootDb->query("SELECT removed_at FROM admins WHERE id = $h69")->fetchColumn() !== null, $r['raw']);
+$rootDb->exec("DELETE FROM admins WHERE id = $h69");
+if ($splitWas69 === false) {
+    $rootDb->exec("DELETE FROM content WHERE item_key = 'money-split'");
+} else {
+    $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'money-split'")->execute([$splitWas69]);
+}
+
+// §70 A DELETED ACCOUNT TAKES ITS WHOLE CONVERSATION. Deletion removed only the
+// guest's own lines: the owner's replies and their emailed ones carry no guest_id, so
+// they outlived the account (and stayed searchable); a chat started before signing in
+// was never theirs at all; and the half-typed enquiry, the "book direct" lead, the
+// owner's emails to them, unsent queued copies and old sign-in codes all stayed.
+echo "\n== §70 a deleted account takes its whole conversation ==\n";
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('register', 'guestcode', 'chat')");
+$z70 = 'zara70-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$zj70 = [];
+http($zj70, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Zara Seventy', 'email' => $z70, 'password' => 'zarapass70x', 'address' => '7 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$zGid70 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($z70))->fetchColumn();
+$ts70 = time();
+http($zj70, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $zGid70, 'ts' => $ts70, 'token' => substr(hash_hmac('sha256', 'login:' . $zGid70 . ':' . $ts70, $SECRET), 0, 32)]);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Zara Seventy'," . $rootDb->quote($z70) . ", DATE_SUB(CURDATE(), INTERVAL 30 DAY), DATE_SUB(CURDATE(), INTERVAL 27 DAY),2,0,'paid',300,300,300,0,3)");
+$zBid70 = (int) $rootDb->lastInsertId();
+http($zj70, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Was the wifi password changed?']);
+$zTid70 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $zGid70")->fetchColumn();
+$r = http($admin, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $zTid70, 'body' => 'Yes — it is on the fridge']);
+$rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Zara Seventy', ?)")->execute(['it70-' . bin2hex(random_bytes(6)), $z70]);
+$aTid70 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body) VALUES (NULL, ?, 'guest', 'before I signed in')")->execute([$aTid70]);
+$rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key) VALUES (?, ?)")->execute([$z70, $propKey]);
+$rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, review_text) VALUES (?, 'Zara Seventy', ?, 'lovely')")->execute([$propKey, $z70]);
+$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES (?, 'Your stay', 'hello')")->execute([$z70]);
+$rootDb->prepare("INSERT INTO email_outbox (next_try_at, context, to_email, subject, body_text) VALUES (DATE_ADD(NOW(), INTERVAL 1 HOUR), 'confirmation', ?, 'S', 'b')")->execute([$z70]);
+$msgs70 = (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn();
+it_check('§70 (fixture) a signed-in chat with the owner\'s reply, and one from before signing in', $zTid70 > 0 && $msgs70 >= 3, (string) $msgs70 . ' ' . $r['raw']);
+$r = http($zj70, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+$left70 = [
+    'messages' => (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn(),
+    'threads' => (int) $rootDb->query("SELECT COUNT(*) FROM chat_threads WHERE id IN ($zTid70, $aTid70)")->fetchColumn(),
+];
+foreach (['enquiry_drafts' => 'email', 'direct_leads' => 'email', 'mail_sent' => 'to_email', 'email_outbox' => 'to_email'] as $t70 => $c70) {
+    $q70 = $rootDb->prepare("SELECT COUNT(*) FROM $t70 WHERE $c70 = ?");
+    $q70->execute([$z70]);
+    $left70[$t70] = (int) $q70->fetchColumn();
+}
+it_check('§70 the account is deleted (its stay is over)', $r['code'] === 200, $r['raw']);
+it_check('§70 …with every message of both conversations, the owner\'s replies included', $left70['messages'] === 0 && $left70['threads'] === 0, json_encode($left70));
+it_check('§70 …and the draft, the lead, the owner\'s emails to them and the queued copy', $left70['enquiry_drafts'] + $left70['direct_leads'] + $left70['mail_sent'] + $left70['email_outbox'] === 0, json_encode($left70));
+$rootDb->exec("DELETE FROM bookings WHERE id = $zBid70");
+
+// §71 A DELETED EXPENSE TAKES ITS SORTING WITH IT. A bank payment sorted as an
+// expense still read "Counted, as a cost" after the expense was deleted, and never
+// came back to To sort.
+echo "\n== §71 a deleted expense takes its sorting with it ==\n";
+$r = http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'it71 cleaner', 'amount' => 42.5, 'date' => $ukToday]);
+$x71 = (int) ($r['json']['id'] ?? $rootDb->query("SELECT id FROM expenses WHERE description = 'it71 cleaner' ORDER BY id DESC LIMIT 1")->fetchColumn());
+$rootDb->prepare("INSERT INTO bank_lines (ext_key, import_id, txn_date, txn_time, kind, name, category, description, notes, amount, balance, sorted_as, expense_id, sorted_label, sorted_at, prop_key) VALUES (?,0,?,'10:00:00','Card payment','Shiny Cleaners','','it71','',-42.5,0,'expense',?,'Cleaning',NOW(),'jollyboat')")->execute(['it71-' . bin2hex(random_bytes(4)), $ukToday, $x71]);
+$l71 = (int) $rootDb->lastInsertId();
+it_check('§71 (fixture) a bank payment sorted as that expense', $x71 > 0 && $l71 > 0, $r['raw']);
+$r = http($admin, 'POST', '/expenses.php', ['action' => 'delete', 'id' => $x71]);
+$row71 = $rootDb->query("SELECT sorted_as, expense_id, sorted_at, prop_key FROM bank_lines WHERE id = $l71")->fetch(PDO::FETCH_ASSOC);
+it_check('§71 deleting the expense puts the payment back to be sorted', $r['code'] === 200 && $row71['sorted_as'] === null && $row71['expense_id'] === null && $row71['sorted_at'] === null, json_encode($row71));
+it_check('§71 …with nothing of the old sorting left (its cottage too, as the bank page\'s own undo)', $row71['prop_key'] === null, json_encode($row71));
+$rootDb->exec("DELETE FROM bank_lines WHERE id = $l71");
 
 echo "\n== Summary ==\n";
 if ($fail) {

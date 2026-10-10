@@ -83,6 +83,11 @@ function waitlist_notify_freed($prop, $from, $to)
     if (!$prop || !$from || !$to) {
         return 0;
     }
+    // A cottage the site no longer offers (removed or private) has no space to
+    // offer anyone — the three nudges already skip it, and so does this.
+    if (!prop_is_marketable($prop)) {
+        return 0;
+    }
     // A PAST range is not a space that opened. bookings.php's delete/cancel pass a
     // booking's raw dates with no future check (unlike the ical caller, which skips
     // $co <= today), so deleting a past junk/no-show booking used to email every
