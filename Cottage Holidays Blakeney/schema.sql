@@ -171,6 +171,29 @@ CREATE TABLE IF NOT EXISTS admins (
     chat_line      VARCHAR(40)  NOT NULL DEFAULT ''
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------- Each device a person is signed in on (migration-143) ----------
+-- A session carries its row's id and every request checks the row is still open,
+-- so ending a row signs that one device out. device_hash = this browser's chb_dk
+-- cookie (the same browser is not a new device); trust_hash = its two-step trust
+-- cookie, forgotten when it is signed out.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    admin_id    INT          NOT NULL,
+    device_hash CHAR(64)     NOT NULL DEFAULT '',
+    trust_hash  CHAR(64)     NOT NULL DEFAULT '',
+    label       VARCHAR(60)  NOT NULL DEFAULT '',
+    kind        VARCHAR(10)  NOT NULL DEFAULT '',
+    how         VARCHAR(16)  NOT NULL DEFAULT '',
+    user_agent  VARCHAR(255) NULL,
+    created_at  DATETIME     NOT NULL,
+    last_seen   DATETIME     NULL,
+    ended_at    DATETIME     NULL,
+    ended_by    INT          NULL,
+    ended_why   VARCHAR(12)  NOT NULL DEFAULT '',
+    KEY idx_admin (admin_id, ended_at),
+    KEY idx_device (admin_id, device_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------- Editable site content (key -> JSON value) ----------
 -- Stores Live Editor text/image overrides and the dynamic per-property
 -- gallery photo lists, so they are shared across devices and permanent.

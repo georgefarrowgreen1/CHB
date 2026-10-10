@@ -406,6 +406,8 @@ const PEOPLE_POLICY = [
         'admin_list' => 'all', 'admin_delete' => 'all',
     ],
     'push.php' => ['subscribe_admin' => 'all', 'unsubscribe_admin' => 'all', 'test_admin' => 'all'],
+    // Your own devices are yours; someone else's are a Super User's (devices.php decides).
+    'devices.php' => ['list' => 'all', 'sign_out' => 'all', 'sign_out_all' => 'all'],
     // The Payments page and the books.
     'accounts.php' => ['*' => 'mo.view'],
     'money.php' => ['*' => 'mo.view'],

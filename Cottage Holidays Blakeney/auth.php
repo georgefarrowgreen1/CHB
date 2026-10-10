@@ -172,30 +172,7 @@ $action = $in['action'] ?? '';
 
 
 // ---- A NEW DEVICE ASKS FOR A CODE, sent to the person signing in ----
-// Two-step is each person's own switch (people from before the switch moved here
-// follow the old shared setting), and only when a code can actually reach them:
-// mail configured and an address on their row. It can never lock anyone out.
-function admin_mail_ready()
-{
-    return defined('MAIL_ENABLED') &&
-        MAIL_ENABLED &&
-        defined('SMTP_USER') &&
-        SMTP_USER &&
-        defined('SMTP_PASS') &&
-        SMTP_PASS &&
-        SMTP_PASS !== 'CHANGE_ME';
-}
-function admin_twofa_wanted($row)
-{
-    if (is_array($row) && array_key_exists('twofa', $row) && $row['twofa'] !== null) {
-        return (int) $row['twofa'] === 1;
-    }
-    return content_value('admin-2fa-enabled') === '1';
-}
-function admin_twofa_on($row)
-{
-    return admin_twofa_wanted($row) && admin_mail_ready() && admin_contact_email($row) !== '';
-}
+// (admin_twofa_on and its two helpers live in db.php: the Devices list reads them too.)
 // A trusted device belongs to the person who trusted it. Rows from before
 // people existed have no admin_id and were the first owner's.
 function admin_device_trusted($uid)
@@ -248,6 +225,9 @@ function admin_trust_this_device($uid)
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
+        // The sign-in this precedes is recorded with the trust it now has, so
+        // signing that device out later forgets it for two-step too.
+        $_COOKIE['chb_admin_device'] = $tok;
     } catch (\Throwable $e) {
     }
 }
@@ -329,10 +309,11 @@ function admin_backfill_owner($row)
 // $proven: the person has JUST proved themselves beyond signing in (an invite or
 // reset link from their own inbox, and a password chosen a moment ago), so the
 // step-up window starts now and the passkey offer that follows needs no prompt.
-function admin_complete_login($uid, array $extra = [], string $how = '', bool $proven = false)
+// $via: how, for the Devices list (devices_how_words).
+function admin_complete_login($uid, array $extra = [], string $how = '', bool $proven = false, string $via = '')
 {
     session_regenerate_id(true); // new session id on login — prevents session fixation
-    admin_session_begin((int) $uid);
+    $dev = admin_session_begin((int) $uid, $via);
     if ($proven) {
         reauth_stamp();
     }
@@ -345,7 +326,14 @@ function admin_complete_login($uid, array $extra = [], string $how = '', bool $p
     if ($prevFp === null || ($prevFp === '' && (int) $uid === admin_original_owner_id())) {
         $prevFp = content_value('admin-last-login-fp'); // where it lived before people
     }
-    $isNew = $prevFp !== '' && $prevFp !== $fp;
+    // A NEW DEVICE is one this browser's own key has never signed in from (the
+    // Devices list knows). The address-and-browser fingerprint is only the answer
+    // before that list exists: a phone's address changes all day, so it called
+    // the same phone "new" over and over.
+    $isNew = $dev['new'] ?? null;
+    if ($isNew === null) {
+        $isNew = $prevFp !== '' && $prevFp !== $fp;
+    }
     try {
         db()->prepare('UPDATE admins SET last_login_fp = ? WHERE id = ?')->execute([$fp, (int) $uid]);
     } catch (\Throwable $e) {
@@ -361,7 +349,12 @@ function admin_complete_login($uid, array $extra = [], string $how = '', bool $p
     }
     $how = $how !== '' ? ' ' . $how : '';
     if ($isNew) {
-        log_activity('account', 'admin.login_new', $who . ' signed in' . $how . ' from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+        $on = ($dev['label'] ?? '') !== '' ? ' on a new device: ' . $dev['label'] : ' from a new device or location';
+        log_activity('account', 'admin.login_new', $who . ' signed in' . $how . $on, ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+        // They are told, on their phones and by email, with a way to sign it out.
+        if ($row && !empty($dev['sid'])) {
+            devices_alert_new($row, (int) $dev['sid'], (string) $dev['label'], $via);
+        }
     } else {
         log_activity('account', 'admin.login', $who . ' signed in' . $how);
     }
@@ -508,7 +501,7 @@ switch ($action) {
         if (admin_twofa_on($row) && !admin_device_trusted((int) $row['id'])) {
             admin_send_device_code($row);
         }
-        admin_complete_login((int) $row['id'], [], 'with a password');
+        admin_complete_login((int) $row['id'], [], 'with a password', false, 'password');
 
     case 'admin_2fa':
         // Verify the emailed one-time code and finish the held login.
@@ -543,7 +536,7 @@ switch ($action) {
         if (!empty($in['remember'])) {
             admin_trust_this_device((int) $p['uid']);
         }
-        admin_complete_login((int) $p['uid'], [], 'with a password and a code to their email');
+        admin_complete_login((int) $p['uid'], [], 'with a password and a code to their email', false, 'password_code');
 
     // A new code for the device step, to the same person (the held sign-in).
     case 'admin_2fa_resend':
@@ -568,7 +561,11 @@ switch ($action) {
     case 'admin_status':
         $me = admin_me();
         if (!$me) {
-            json_out(['admin' => false]);
+            // This device was signed out from a Devices list: said once, so the page
+            // can say so rather than a bare "your sign-in has ended".
+            $ended = (string) ($_SESSION['admin_ended'] ?? '');
+            unset($_SESSION['admin_ended']);
+            json_out(['admin' => false] + ($ended !== '' ? ['ended' => $ended] : []));
         }
         $me = admin_backfill_owner($me);
         json_out(['admin' => true, 'me' => admin_me_payload($me), 'ownerFirst' => admin_owner_first()]);
@@ -623,6 +620,8 @@ switch ($action) {
             $_SESSION['admin_epoch'] = (int) ((admin_row((int) $_SESSION['admin_id'], true) ?: [])['auth_epoch'] ?? 0);
             // The devices this signs out stop getting alerts too; this one keeps its own.
             push_subs_drop('admin', (int) $_SESSION['admin_id'], '', is_string($in['push_endpoint'] ?? null) ? (string) $in['push_endpoint'] : '');
+            // …and leave the Devices list.
+            devices_end_others((int) $_SESSION['admin_id'], (int) ($_SESSION['admin_sess'] ?? 0), 'password');
         } catch (\Throwable $e) {
             db()->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
         }
@@ -680,7 +679,7 @@ switch ($action) {
             ->execute([password_hash(field_text($in['password'] ?? ''), PASSWORD_DEFAULT), (int) $row['id']]);
         log_activity('account', 'admin.invite_accepted', people_display_name($row) . ' chose a password and signed in for the first time', ['actor' => 'admin:' . (int) $row['id']]);
         admin_trust_this_device((int) $row['id']); // the link came to their inbox: that is the proof
-        admin_complete_login((int) $row['id'], [], '', true);
+        admin_complete_login((int) $row['id'], [], '', true, 'invite');
 
     // A reset link's last step: a new password, and every other session ends.
     case 'admin_reset_save':
@@ -697,9 +696,10 @@ switch ($action) {
             ->prepare('UPDATE admins SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
             ->execute([password_hash(field_text($in['password'] ?? ''), PASSWORD_DEFAULT), (int) $row['id']]);
         push_subs_drop('admin', (int) $row['id']); // every device it signed out; this one re-registers at sign-in
+        devices_end_others((int) $row['id'], 0, 'reset'); // …and leaves the Devices list
         log_activity('account', 'admin.reset_done', people_display_name($row) . ' chose a new password from a reset link — every other session was signed out', ['actor' => 'admin:' . (int) $row['id']]);
         admin_trust_this_device((int) $row['id']);
-        admin_complete_login((int) $row['id'], [], '', true);
+        admin_complete_login((int) $row['id'], [], '', true, 'reset');
 
     // ---- Your own details ----
     case 'admin_me_set':
@@ -1227,7 +1227,7 @@ switch ($action) {
                 json_out(['ok' => true, 'admin' => true, 'choose' => true, 'first' => people_first_name($adm), 'username' => (string) $adm['username'], 'by' => admin_owner_first()]);
             }
             admin_trust_this_device((int) $adm['id']);
-            admin_complete_login((int) $adm['id'], ['admin' => true], 'with an emailed code');
+            admin_complete_login((int) $adm['id'], ['admin' => true], 'with an emailed code', false, 'code');
         }
         $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE email = ?');
         $stmt->execute([$email]);
@@ -1777,7 +1777,7 @@ switch ($action) {
                 ->execute(['staging-owner', password_hash(bin2hex(random_bytes(18)), PASSWORD_DEFAULT)]);
             $row = ['id' => (int) db()->lastInsertId()];
         }
-        admin_complete_login((int) $row['id']); // json_out(['ok' => true]) and exits
+        admin_complete_login((int) $row['id'], [], '', false, 'staging'); // json_out(['ok' => true]) and exits
 
     // ----------- ADMIN: manage guest accounts -----------
     case 'guest_list':

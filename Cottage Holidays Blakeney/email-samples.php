@@ -280,6 +280,20 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],
+        'admin_new_device' => [
+            'Back-office: a new device signed in',
+            function () {
+                $m = admin_new_device_body('Sophia', 'Mac · Chrome', date('Y-m-d H:i'), 'Emailed code', site_base_url() . '?open=today');
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'admin_signed_out' => [
+            'Back-office: someone signed you out',
+            function () {
+                $m = admin_signed_out_body('Sophia', 'George', 'iPhone · Safari');
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
         'backup_report' => [
             'Weekly database backup',
             function () {

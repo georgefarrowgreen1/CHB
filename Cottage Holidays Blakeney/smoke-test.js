@@ -2432,7 +2432,7 @@ console.log('\n== 12i. Signing out leaves no unsent message to a guest on the de
     check('both kinds of draft go, however many there are', !ls.keys().some((k) => k.startsWith('chb-ib-draft:') || k.startsWith('chb-cmp-draft:')));
     check('…with the boot hint, the day sheet and the deposit decisions', !ls.keys().some((k) => ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions'].includes(k)));
     check('…and nothing that is not the owner\'s session (theme, search habits, the guest sheet\'s memory)', ls.keys().join(',') === 'chb-cmdk-use,chb-last-guest,chb-theme');
-    check('both ways out call it', /function forceAdminLogout\(\) \{[\s\S]{0,200}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
+    check('both ways out call it', /function forceAdminLogout\(\w*\) \{[\s\S]{0,300}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
 }
 
 // ---- 12j. A photo link stays inside its url('…') ------------------------------

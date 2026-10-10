@@ -152,6 +152,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-people.php
 
+      - name: Devices (what each is called, when a sign-in is news, the wiring)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-devices.php
+
       - name: Status page judgements (warning verdicts, the week, the daily traces)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-status.php

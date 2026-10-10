@@ -88,19 +88,30 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
             db()
                 ->prepare('DELETE FROM push_subscriptions WHERE endpoint = ?')
                 ->execute([$endpoint]);
-            // The device belongs to whoever turned alerts on here.
+            // The device belongs to whoever turned alerts on here — and to the
+            // signed-in device it came from, so signing that device out stops them.
+            $keys = [$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? ''), (int) $_SESSION['admin_id']];
+            $sess = (int) ($_SESSION['admin_sess'] ?? 0);
             try {
                 db()
                     ->prepare(
-                        "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id) VALUES (NULL, 'admin', ?, ?, ?, NOW(), ?)",
+                        "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id, admin_session_id) VALUES (NULL, 'admin', ?, ?, ?, NOW(), ?, ?)",
                     )
-                    ->execute([$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? ''), (int) $_SESSION['admin_id']]);
+                    ->execute(array_merge($keys, [$sess > 0 ? $sess : null]));
             } catch (\Throwable $e) {
-                db()
-                    ->prepare(
-                        "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at) VALUES (NULL, 'admin', ?, ?, ?, NOW())",
-                    )
-                    ->execute([$endpoint, (string) ($sub['keys']['p256dh'] ?? ''), (string) ($sub['keys']['auth'] ?? '')]);
+                try {
+                    db()
+                        ->prepare(
+                            "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id) VALUES (NULL, 'admin', ?, ?, ?, NOW(), ?)",
+                        )
+                        ->execute($keys);
+                } catch (\Throwable $e2) {
+                    db()
+                        ->prepare(
+                            "INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at) VALUES (NULL, 'admin', ?, ?, ?, NOW())",
+                        )
+                        ->execute(array_slice($keys, 0, 3));
+                }
             }
         } catch (\Throwable $e) {
             json_out(['error' => 'Could not save — run migrate.php (migration-push2-admin.sql).'], 500);

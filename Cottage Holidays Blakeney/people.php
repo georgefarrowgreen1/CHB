@@ -213,6 +213,7 @@ route_actions(
                 db()->prepare("DELETE FROM push_subscriptions WHERE admin_id = ? AND role = 'admin'")->execute([(int) $row['id']]);
             } catch (\Throwable $e) {
             }
+            devices_end_others((int) $row['id'], 0, 'removed', $myId); // they leave the Devices list too
             log_activity('account', 'people.remove', $myFirst . ' removed ' . people_display_name($row) . '’s access', ['severity' => 'warn', 'entity' => 'admin', 'entity_id' => (string) $row['id']]);
             people_done();
         },

@@ -194,9 +194,16 @@ function pk_admin_sign_in($cred, $data, array $extra = [])
         ->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
         ->execute([$newCount, $cred['id']]);
     session_regenerate_id(true); // new session id on login — prevents session fixation
-    admin_session_begin((int) $cred['admin_id']); // one role at a time: ends any guest session
+    $dev = admin_session_begin((int) $cred['admin_id'], 'passkey'); // one role at a time: ends any guest session
     csrf_issue_cookie();
-    log_activity('account', 'admin.login', people_display_name($row) . ' signed in with a passkey');
+    // A device they have never signed in on (a passkey synced to a new phone):
+    // logged as such, and they are told with a way to sign it out.
+    if (!empty($dev['new'])) {
+        log_activity('account', 'admin.login_new', people_display_name($row) . ' signed in with a passkey on a new device: ' . $dev['label'], ['severity' => 'warn']);
+        devices_alert_new($row, (int) $dev['sid'], (string) $dev['label'], 'passkey');
+    } else {
+        log_activity('account', 'admin.login', people_display_name($row) . ' signed in with a passkey');
+    }
     $me = people_public($row, (int) $row['id']);
     json_out(['ok' => true, 'me' => $me, 'ownerFirst' => admin_owner_first()] + $extra);
 }

@@ -550,6 +550,18 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4d-iii. Devices ---------------------------------------------------------
+// A device unused for longer than a session lives has gone (its cookie lapsed), so
+// it leaves the Devices list; a signed-out row is kept DEVICES_KEEP_ENDED_DAYS for
+// "have I signed in here before?", then deleted (devices-lib.php).
+try {
+    $dvx = devices_prune();
+    if ($dvx > 0) {
+        $fixed[] = 'devices:' . $dvx;
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 4e. Email outbox: retry queued one-shot emails --------------------------
 // The confirmation / enquiry-ack / owner-alert / newsletter copies whose
 // transport send failed (mailer.php email_outbox_*). The kick after any

@@ -17,6 +17,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/people-lib.php';
 // Which endpoints keep the session lock, and the session folder's sweep.
 require_once __DIR__ . '/session-lib.php';
+// Every device a person is signed in on (admin_session_check asks it).
+require_once __DIR__ . '/devices-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -681,13 +683,31 @@ function admin_me()
 function admin_session_check(): void
 {
     static $done = false;
-    if ($done || empty($_SESSION['admin_id'])) {
+    if ($done) {
+        return;
+    }
+    if (empty($_SESSION['admin_id'])) {
+        // A back-office sign-in this browser left another way (a guest signed in
+        // here: one role at a time) leaves the Devices list with it.
+        if (!empty($_SESSION['admin_sess'])) {
+            devices_end((int) $_SESSION['admin_sess'], 'guest');
+            unset($_SESSION['admin_sess']);
+        }
         return;
     }
     $done = true;
     $row = admin_row((int) $_SESSION['admin_id'], true);
     if (!$row || !people_session_ok($row, (int) ($_SESSION['admin_epoch'] ?? 0))) {
-        unset($_SESSION['admin_id'], $_SESSION['admin_epoch'], $_SESSION['reauth_at'], $_SESSION['reauth_admin']);
+        devices_end((int) ($_SESSION['admin_sess'] ?? 0), 'epoch');
+        unset($_SESSION['admin_id'], $_SESSION['admin_epoch'], $_SESSION['reauth_at'], $_SESSION['reauth_admin'], $_SESSION['admin_sess']);
+        return;
+    }
+    // THIS DEVICE WAS SIGNED OUT from a Devices list — the person's own, or a
+    // Super User's — while the rest of their devices carry on. admin_status tells
+    // the page why, once.
+    if (!devices_session_check($row)) {
+        unset($_SESSION['admin_id'], $_SESSION['admin_epoch'], $_SESSION['reauth_at'], $_SESSION['reauth_admin'], $_SESSION['admin_sess']);
+        $_SESSION['admin_ended'] = 'device';
         return;
     }
     // When they were last here, for the People page — at most every five minutes.
@@ -700,18 +720,21 @@ function admin_session_check(): void
     }
 }
 // Start a person's session (callers regenerate the session id first). One role
-// at a time: it ends any guest session in this browser.
-function admin_session_begin($id): void
+// at a time: it ends any guest session in this browser. $how is how they signed
+// in (devices_how_words). Returns the Devices row: its id, whether it is a new
+// device worth telling them about (null when nothing was recorded), its label.
+function admin_session_begin($id, string $how = ''): array
 {
     $id = (int) $id;
     $row = admin_row($id, true);
     $_SESSION['admin_id'] = $id;
     $_SESSION['admin_epoch'] = $row ? (int) ($row['auth_epoch'] ?? 0) : 0;
-    unset($_SESSION['guest_id'], $_SESSION['guest_epoch']);
+    unset($_SESSION['guest_id'], $_SESSION['guest_epoch'], $_SESSION['admin_ended']);
     try {
         db()->prepare('UPDATE admins SET last_seen_at = NOW() WHERE id = ?')->execute([$id]);
     } catch (\Throwable $e) {
     }
+    return devices_record($id, $how);
 }
 // A DEVICE'S ALERTS END WITH ITS SIGN-IN. Signing out kept the device's push
 // subscription, so the next guest message (a door code among them) still reached a
@@ -774,6 +797,31 @@ function admin_contact_email($row)
         return strtolower((string) OWNER_NOTIFY_EMAIL);
     }
     return '';
+}
+// TWO-STEP: a new device asks for a code, sent to the person signing in. It is
+// each person's own switch (people from before the switch moved here follow the
+// old shared setting), and only when a code can actually reach them: mail
+// configured and an address on their row. It can never lock anyone out.
+function admin_mail_ready()
+{
+    return defined('MAIL_ENABLED') &&
+        MAIL_ENABLED &&
+        defined('SMTP_USER') &&
+        SMTP_USER &&
+        defined('SMTP_PASS') &&
+        SMTP_PASS &&
+        SMTP_PASS !== 'CHANGE_ME';
+}
+function admin_twofa_wanted($row)
+{
+    if (is_array($row) && array_key_exists('twofa', $row) && $row['twofa'] !== null) {
+        return (int) $row['twofa'] === 1;
+    }
+    return content_value('admin-2fa-enabled') === '1';
+}
+function admin_twofa_on($row)
+{
+    return admin_twofa_wanted($row) && admin_mail_ready() && admin_contact_email($row) !== '';
 }
 function admin_is_full()
 {
@@ -1185,6 +1233,11 @@ function auth_hash_for($row): string
 // the CSRF token) into whoever signed in next on that device.
 function session_end_signed_in()
 {
+    // This device leaves the Devices list with the sign-in. Its two-step trust
+    // stays: logging out on your own phone is not losing it.
+    if (!empty($_SESSION['admin_sess'])) {
+        devices_end((int) $_SESSION['admin_sess'], 'logout');
+    }
     $_SESSION = [];
     if (session_status() === PHP_SESSION_ACTIVE) {
         @session_regenerate_id(true);

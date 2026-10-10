@@ -12689,6 +12689,11 @@ Object.assign(GA_IC, {
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     bank: '<path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
     home: '<path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/>',
+    // Devices: what each signed-in device is.
+    dphone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    dtablet: '<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>',
+    dlaptop: '<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>',
+    ddesktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>',
 });
 // "Sophia", "Sophia and Ellie", "Sophia, Ellie and Sam".
 function listAnd(a) {
@@ -13235,8 +13240,10 @@ function renderSecurity() {
                 ],
                 'Two-step sign-in',
             ) +
-            (contact ? '' : `<p class="ga-note">Add your email in Your details first. Until then two-step stays off, so you can’t be locked out.</p>`),
+            (contact ? '' : `<p class="ga-note">Add your email in Your details first. Until then two-step stays off, so you can’t be locked out.</p>`) +
+            `<h2 class="ga-cap">Devices</h2><div id="oa-dev-host">${oaDevHtml(0)}</div>`,
     );
+    oaDevLoad(0);
     loadAdminPasskeys();
     if (chbFull() && __oaPeople === null) loadPeople();
 }
@@ -13257,6 +13264,220 @@ async function oaTwoStep(on) {
     const s = document.querySelector('#acct-body .oa-r-security .ga-s');
     if (s) s.textContent = oaSecuritySub();
     toast(on ? 'Two-step sign-in is on' : 'Two-step sign-in is off');
+}
+
+// ---- Devices (approved demo): every device you're signed in on, and signing any
+// of them out. devices.php is the record and these are its formatters; a Super User
+// sees the same list on each person's page. Signing out asks for no password — it
+// only takes access away — but it always asks first, naming the device.
+// The list answer, by person (0 = yours): undefined = not asked, {err} = couldn't.
+let __oaDevs = {};
+const __oaDevAsk = {}; // the latest ask per person: [number, promise, done]
+const OA_DEV_IC = { phone: 'dphone', tablet: 'dtablet', laptop: 'dlaptop', desktop: 'ddesktop' };
+function oaDevLoad(pid) {
+    const k = Number(pid) || 0;
+    const n = ((__oaDevAsk[k] && __oaDevAsk[k][0]) || 0) + 1;
+    const ask = (async () => {
+        let res = null;
+        let err = '';
+        try {
+            res = await apiPost('devices.php', k ? { action: 'list', id: k } : { action: 'list' });
+        } catch (e) {
+            err = (e && e.message) || 'Couldn’t load the devices';
+        }
+        // Only the latest ask paints: an older answer landing late is not the list now.
+        if (!__oaDevAsk[k] || __oaDevAsk[k][0] !== n) return;
+        __oaDevAsk[k][2] = true;
+        if (res) __oaDevs[k] = res;
+        // A failed read keeps the last answer; with none, it says it couldn't.
+        else if (!__oaDevs[k] || __oaDevs[k].err) __oaDevs[k] = { err };
+        oaDevPatch(k);
+    })();
+    __oaDevAsk[k] = [n, ask, false];
+    return ask;
+}
+// Repainted where it stands: the page around it may still be sliding in.
+function oaDevPatch(k) {
+    const host = document.getElementById(k ? 'oa-pdev-host' : 'oa-dev-host');
+    if (host && (!k || __oaPerson === k)) host.innerHTML = oaDevHtml(k);
+}
+const oaDevPerson = (k) => (k ? (__oaPeople || []).find((x) => x.id === k) || null : null);
+// "iPhone" out of "iPhone · App"; a device we couldn't name is just "device".
+function oaDevName(d) {
+    const n = String((d && d.label) || '').split(' · ')[0];
+    return !n || n === 'Unknown device' ? 'device' : n;
+}
+// "Active now", "Active 12 minutes ago", "Last active yesterday".
+function oaDevSeen(d) {
+    if (d.here) return 'Active now';
+    const t = d.seen ? new Date(String(d.seen).replace(' ', 'T')) : null;
+    if (!t || isNaN(t.getTime())) return '';
+    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    if (mins < 5) return 'Active now';
+    if (mins < 60) return 'Active ' + mins + ' minutes ago';
+    const days = Math.floor((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    if (days <= 0) {
+        const h = Math.max(1, Math.round(mins / 60));
+        return 'Last active ' + h + (h === 1 ? ' hour' : ' hours') + ' ago';
+    }
+    if (days === 1) return 'Last active yesterday';
+    if (days < 7) return 'Last active ' + days + ' days ago';
+    if (days < 35) {
+        const w = Math.round(days / 7);
+        return 'Last active ' + w + (w === 1 ? ' week' : ' weeks') + ' ago';
+    }
+    return 'Last active ' + fmtDate(String(d.seen).slice(0, 10));
+}
+function oaDevRow(d, k) {
+    const here = d.here ? '<span class="oa-dev-here"><i aria-hidden="true"></i>This device</span> · ' : '';
+    return `<button type="button" class="ga-row oa-dev" ${chbAttrs('oaDevOpen', k, d.id)}><span class="ga-ic">${gaSvg(OA_DEV_IC[d.kind] || 'ddesktop')}</span><span class="ga-lb"><span class="ga-t">${escapeHtml(d.label)}</span><span class="ga-s">${here}${escapeHtml(oaDevSeen(d))}</span></span>${GA_CHEV}</button>`;
+}
+function oaDevHtml(k) {
+    const st = __oaDevs[k];
+    if (!st) return gaGroup([gaRow({ ic: 'dphone', t: 'Checking…', static: true })]);
+    if (st.err) return gaGroup([gaRow({ ic: 'dphone', t: st.err, s: 'Tap to try again', act: chbAttrs('oaDevLoad', k) })]);
+    const p = oaDevPerson(k);
+    const n = p ? p.first : '';
+    const devs = Array.isArray(st.devices) ? st.devices : [];
+    const others = devs.filter((d) => !d.here);
+    const rows = devs.map((d) => oaDevRow(d, k));
+    if (!k && !devs.length) rows.push(gaRow({ ic: 'dphone', t: 'No devices listed yet', static: true }));
+    // The list is complete only a session lifetime after it began: before then a
+    // device signed in earlier and not used since has no row yet, so signing out
+    // everywhere stays on offer and the note says why.
+    if (k) {
+        if (devs.length || st.partial) rows.push(gaRow({ ic: 'out', t: 'Sign ' + n + ' out everywhere', act: chbAttrs('oaDevSignOutAll', k), danger: true }));
+        else rows.push(gaRow({ ic: 'check', t: 'Not signed in anywhere', s: n + ' can sign in with a password, a passkey or an emailed code', static: true }));
+    } else if (others.length || st.partial) {
+        rows.push(gaRow({ ic: 'out', t: 'Sign out of all other devices', act: chbAttrs('oaDevSignOutAll', 0), danger: true }));
+    }
+    let note = '';
+    if (st.partial && st.began) note = 'Listed since ' + fmtDate(st.began) + ': a device not used since then appears here the next time it is. ' + (k ? 'Signing ' + n + ' out everywhere' : 'Signing out of all other devices') + ' covers it too.';
+    else if (!k && devs.length && !others.length) note = 'You’re signed in on this ' + oaDevName(devs[0]) + ' only.';
+    return `<div class="ga-group oa-devs">${rows.join('')}</div>` + (note ? `<p class="ga-note oa-dev-note">${escapeHtml(note)}</p>` : '');
+}
+const oaDevFind = (k, id) => {
+    const st = __oaDevs[Number(k) || 0];
+    return st && Array.isArray(st.devices) ? st.devices.find((x) => x.id === Number(id)) || null : null;
+};
+function oaDevSheetEl() {
+    let o = document.getElementById('oa-dev-sheet');
+    if (o) return o;
+    o = document.createElement('div');
+    o.id = 'oa-dev-sheet';
+    o.className = 'modal-overlay pop-modal chb-sheet';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.setAttribute('aria-labelledby', 'oa-dev-title');
+    o.dataset.act = 'backdropClose';
+    o.dataset.close = 'oaDevClose';
+    o.innerHTML = '<div class="modal-box glass-panel ga-sheetbox oa-dev-box"></div>';
+    document.body.appendChild(o);
+    return o;
+}
+// One device: when and how it signed in, whether two-step trusts it, whether it
+// gets alerts — then sign it out (or, for this one, log out).
+function oaDevOpen(k, id) {
+    k = Number(k) || 0;
+    const st = __oaDevs[k];
+    const d = oaDevFind(k, id);
+    if (!d) return;
+    const p = oaDevPerson(k);
+    const o = oaDevSheetEl();
+    const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
+    const fact = (t, v) => `<div class="ga-row oa-dev-fact"><span class="ga-lb"><span class="ga-t">${escapeHtml(t)}</span></span><span class="ga-v">${escapeHtml(v)}</span></div>`;
+    const day = fmtDate(String(d.since || '').slice(0, 10));
+    const since = d.earlier ? 'Before ' + day : day + ' at ' + String(d.since || '').slice(11, 16);
+    const two = d.trusted ? 'No code needed here' : st && st.twofa ? 'Asks for a code' : 'Off';
+    const act = d.here
+        ? `<button type="button" class="btn-glass ga-sheet-cancel oa-dev-out" data-act="oaDevLogoutHere">${gaSvg('out')}Log out of this ${escapeHtml(oaDevName(d))}</button><p class="ga-note oa-dev-note">This is the device you’re using.</p>`
+        : `<button type="button" class="btn-glass ga-sheet-cancel oa-dev-out" ${chbAttrs('oaDevSignOut', k, d.id)}>${gaSvg('out')}${p ? 'Sign ' + escapeHtml(p.first) + ' out of this device' : 'Sign out of this device'}</button>`;
+    box.innerHTML =
+        `<h2 class="ga-sheet-t" id="oa-dev-title">${escapeHtml(d.label)}</h2><p class="ga-sheet-s">${escapeHtml(d.here ? 'This device · active now' : oaDevSeen(d))}</p>` +
+        `<div class="ga-group">${fact('Signed in', since)}${fact('How', d.how || 'Not recorded')}${fact('Two-step', two)}${fact('Alerts', d.alerts ? 'On' : 'Off')}</div>` +
+        act +
+        `<button type="button" class="btn-glass ga-sheet-cancel" data-act="oaDevClose">Close</button>`;
+    o.classList.remove('closing');
+    o.classList.add('open');
+    overlayHistPush();
+    setTimeout(() => {
+        const c = /** @type {HTMLElement|null} */ (box.querySelector('[data-act="oaDevClose"]'));
+        if (c) c.focus();
+    }, 60);
+}
+function oaDevClose() {
+    const o = document.getElementById('oa-dev-sheet');
+    if (!o || !o.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(o);
+}
+function oaDevLogoutHere() {
+    oaDevClose();
+    return oaLogout();
+}
+async function oaDevSignOut(k, id) {
+    k = Number(k) || 0;
+    const d = oaDevFind(k, id);
+    if (!d) return;
+    const st = __oaDevs[k];
+    const p = oaDevPerson(k);
+    const n = p ? p.first : '';
+    const back = st && st.twofa ? (p ? n + '’s password and an emailed code' : 'your password and an emailed code') : p ? n + ' to sign in again' : 'you to sign in again';
+    const ok = await glassConfirm(
+        'It’s signed out the next time it’s used. Getting back in on it will need ' + back + '.' + (p ? ' ' + n + ' gets an email saying you did this.' : ''),
+        'Sign out',
+        { title: p ? 'Sign ' + n + ' out of ' + d.label + '?' : 'Sign out of ' + d.label + '?', danger: true },
+    );
+    if (!ok) return;
+    let res;
+    try {
+        res = await apiPost('devices.php', Object.assign({ action: 'sign_out', sid: d.id }, k ? { id: k } : {}));
+    } catch (e) {
+        return glassAlert((e && e.message) || "That didn't work. Try again.");
+    }
+    oaDevClose();
+    __oaDevs[k] = res;
+    oaDevPatch(k);
+    toast(p ? 'Signed ' + n + ' out of ' + d.label : 'Signed out of ' + d.label);
+}
+async function oaDevSignOutAll(k) {
+    k = Number(k) || 0;
+    const st = __oaDevs[k];
+    const devs = st && Array.isArray(st.devices) ? st.devices : [];
+    const others = devs.filter((x) => !x.here);
+    const here = devs.find((x) => x.here);
+    const p = oaDevPerson(k);
+    const n = p ? p.first : '';
+    const title = p ? 'Sign ' + n + ' out everywhere?' : others.length ? 'Sign out of ' + others.length + ' other device' + (others.length === 1 ? '' : 's') + '?' : 'Sign out of every other device?';
+    const msg = p
+        ? 'Every device ' + n + ' is signed in on is signed out the next time it’s used. ' + n + ' gets an email saying you did this.'
+        : 'Each one is signed out the next time it’s used. This ' + (here ? oaDevName(here) : 'device') + ' stays signed in.';
+    if (!(await glassConfirm(msg, p ? 'Sign out everywhere' : 'Sign out all', { title, danger: true }))) return;
+    let res;
+    try {
+        const body = { action: 'sign_out_all' };
+        if (k) body.id = k;
+        else {
+            // This device keeps its own alerts.
+            const ep = await chbPushEndpoint();
+            if (ep) body.push_endpoint = ep;
+        }
+        res = await apiPost('devices.php', body);
+    } catch (e) {
+        return glassAlert((e && e.message) || "That didn't work. Try again.");
+    }
+    __oaDevs[k] = res;
+    oaDevPatch(k);
+    const c = Number(res && res.count) || 0;
+    toast(p ? 'Signed ' + n + ' out everywhere' : c ? 'Signed out of ' + c + ' device' + (c === 1 ? '' : 's') : 'Signed out everywhere else');
+}
+// ?open=device-<id>: a new-sign-in alert or email lands on that device, ready to sign out.
+async function oaDevOpenTarget(id) {
+    await openArea();
+    settingsOpen('security'); // asks for the list as it opens
+    await (__oaDevAsk[0] ? __oaDevAsk[0][1] : oaDevLoad(0));
+    if (oaDevFind(0, id)) oaDevOpen(0, id);
+    else toast('That device isn’t signed in any more.');
 }
 
 
@@ -13461,6 +13682,7 @@ function renderPeople() {
 function oaPersonOpen(id) {
     __oaPerson = Number(id) || 0;
     __oaFold = '';
+    delete __oaDevs[__oaPerson]; // their devices, asked afresh
     oaGo('person');
 }
 // Add someone: name, email and role. They choose their own password from the email.
@@ -13697,6 +13919,12 @@ function renderPerson() {
                 : [],
         ),
     );
+    // Where they are signed in, and signing them out of one device or everywhere.
+    if (!p.you && p.state !== 'invited') {
+        html += `<h2 class="ga-cap">Devices</h2><div id="oa-pdev-host">${oaDevHtml(p.id)}</div>`;
+        // Asked once per visit: a repaint while it is on its way does not ask again.
+        if (__oaDevs[p.id] === undefined && !(__oaDevAsk[p.id] && !__oaDevAsk[p.id][2])) oaDevLoad(p.id);
+    }
     if (!p.you) {
         html += gaGroup([
             p.state === 'invited'
@@ -38127,7 +38355,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice].forEach((f) => {
+[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, oaDevOpenTarget, oaDevClose].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
@@ -38142,6 +38370,10 @@ try { cmdkEnsureOverlay(); } catch (e) {}
 // restored straight onto Inbox or Payments must not wait for a Today visit
 // (renderNeedsYou) to see the day and the rail's counts.
 try { chbFrameSync(); } catch (e) {}
+// This device's alerts are tied to the sign-in it now has (the Devices list says
+// so, and signing it out stops them). Never prompts: it only re-registers a
+// subscription the browser already holds.
+try { revalidateOwnerPush(); } catch (e) {}
 // The back office's buttons take their kind from here on (oneLookButtons) — Manage
 // first, then each area as it joined the one look.
 try { ['view-settings', 'view-activity-log', 'view-accounts', 'view-keysafe', 'view-inbox', 'view-backoffice', 'booking-hub-content', 'enquiry-hub-content'].forEach((id) => oneLookWatch(document.getElementById(id))); } catch (e) {}
