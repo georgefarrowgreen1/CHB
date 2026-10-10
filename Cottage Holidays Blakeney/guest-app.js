@@ -270,13 +270,31 @@
     function setGuestDockOverlay(key) {
         // key: 'messages' | 'account' | null
         __overlayKey = key || null;
+        var av = document.querySelector('.page-view.active');
+        // Messages is a SCREEN pushed over the page it was opened from, so that
+        // page's tab stays lit (its own button is the floating one, hidden while
+        // it is open) and the bar names the screen you are on.
+        if (__overlayKey === 'messages') {
+            applyCurrent(keyForView(av ? av.id : ''));
+            try {
+                var ttl = document.getElementById('guest-head-title');
+                if (ttl) {
+                    ttl.textContent = 'Messages';
+                    ttl.classList.add('has-title');
+                }
+            } catch (e) {}
+            refreshBookCta();
+            return;
+        }
         if (__overlayKey) {
             applyCurrent(__overlayKey);
             refreshBookCta();
             return;
         }
-        var av = document.querySelector('.page-view.active');
         applyCurrent(keyForView(av ? av.id : ''));
+        try {
+            setHeadTitle(av ? av.id : '');
+        } catch (e) {}
         refreshBookCta();
     }
     window.setActiveTab = setActiveTab;

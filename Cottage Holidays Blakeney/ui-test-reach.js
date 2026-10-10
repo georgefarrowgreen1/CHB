@@ -345,7 +345,9 @@ const reachOk = (name, list, floor, axis) => {
     await run(page, "(async () => { toggleChat(); const ci = document.getElementById('chat-intro'); if (ci) ci.style.display = ''; })()", 700);
     reachOk('chat 390 · the quick-reply chips', await page.evaluate(REACH, '#chat-quick .chat-chip'), 3, 'y');
     reachOk('chat 390 · the intro fields', await page.evaluate(REACH, '#chat-intro .input-glass'), 2, 'y');
-    reachOk('chat 390 · the close', await page.evaluate(REACH, '#chat-widget .reviews-modal-close'), 1, 'both');
+    // On a phone Messages is a screen: its way out is the back link (the × is
+    // the desktop panel's, and is not drawn here).
+    reachOk('chat 390 · the back link', await page.evaluate(REACH, '#chat-widget .chat-back'), 1, 'both');
     await run(page, "(async () => { closeChat(); })()", 500);
     // 3. EXPERIENCES: the category filter chips.
     await run(page, "nav('view-experiences')", 900);

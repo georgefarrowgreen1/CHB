@@ -680,24 +680,135 @@ body.guest-app:not(.owner-mode) #chat-widget {
      ground. */
   padding: calc(80px + var(--safe-t)) 0 calc(16px + var(--safe-b));
 }
-/* AND IT ARRIVES LIKE A SHEET, not like the desktop popover it inherits.
-   .chat-widget.open plays chbChatIn — 0.98 → 1 from the BOTTOM-RIGHT CORNER
-   with a 12px rise — which on a screen that covers the whole page reads as a
-   flicker. The house's own sheet keyframes, at the house's own sheet timings
-   (the .chb-sheet block in app.css). The open/closing CLASSES are untouched;
-   ui-test-overlays reads those, not the animation. */
+/* MESSAGES IS A SCREEN, pushed in from the right with a back link (it was a sheet
+   with a ×). The spread shadow above (the keyboard fix) would cover the page while
+   the screen moves, so chbPushEdge holds an edge shadow for the push. */
 body.guest-app:not(.owner-mode) #chat-widget.open {
-  transform-origin: 50% 100%;
-  animation: chbSheetUp 480ms var(--sheet);
+  animation:
+    chbPushIn 400ms var(--sheet),
+    chbPushEdge 400ms;
 }
 body.guest-app:not(.owner-mode) #chat-widget.closing:not(.open) {
-  transform-origin: 50% 100%;
-  animation: chbSheetDown 280ms var(--in) forwards;
+  animation:
+    chbPushOut 300ms var(--in) forwards,
+    chbPushEdge 300ms forwards;
+}
+/* A drag from the edge, and its spring back. */
+body.guest-app:not(.owner-mode) #chat-widget.is-moving {
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.28);
+}
+@keyframes chbPushIn {
+  from {
+    transform: translateX(100%);
+  }
+}
+/* --chat-from: where a drag let go. */
+@keyframes chbPushOut {
+  from {
+    transform: translateX(var(--chat-from, 0px));
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes chbPushEdge {
+  from,
+  to {
+    box-shadow: -18px 0 40px rgba(0, 0, 0, 0.28);
+  }
+}
+/* The page underneath steps aside and dims (body.chat-screen, set by toggleChat). */
+body.guest-app:not(.owner-mode) .page-view.active,
+body.guest-app:not(.owner-mode) .site-footer {
+  transition: translate 320ms var(--out);
+}
+body.guest-app:not(.owner-mode).chat-screen .page-view.active,
+body.guest-app:not(.owner-mode).chat-screen .site-footer {
+  translate: -30% 0;
+  transition: translate 400ms var(--sheet);
+}
+.chat-dim {
+  display: none;
+}
+body.guest-app:not(.owner-mode) .chat-dim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 1389;
+  background: rgb(10, 11, 13); /* the modal scrim's ink */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 320ms var(--out);
+}
+body.guest-app:not(.owner-mode).chat-screen .chat-dim {
+  opacity: 0.32;
+  transition: opacity 400ms var(--sheet);
+}
+body.guest-app.light-mode:not(.owner-mode).chat-screen .chat-dim {
+  opacity: 0.12;
+}
+/* During a drag the page and dim follow --chat-drag (0 → 1). */
+body.guest-app:not(.owner-mode).chat-dragging .page-view.active,
+body.guest-app:not(.owner-mode).chat-dragging .site-footer {
+  translate: calc(-30% * (1 - var(--chat-drag, 0))) 0;
+  transition: none;
+}
+body.guest-app:not(.owner-mode).chat-dragging .chat-dim {
+  opacity: calc(0.32 * (1 - var(--chat-drag, 0)));
+  transition: none;
+}
+body.guest-app.light-mode:not(.owner-mode).chat-dragging .chat-dim {
+  opacity: calc(0.12 * (1 - var(--chat-drag, 0)));
+}
+body.guest-app:not(.owner-mode).chat-dragging #chat-widget {
+  animation: none;
+}
+/* The back link replaces the × here; the desktop panel keeps its ×. */
+#chat-widget .chat-back,
+#chat-widget .chat-edge {
+  display: none;
+}
+body.guest-app:not(.owner-mode) #chat-widget .chat-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  max-width: calc(100% - 32px);
+  margin: -8px 0 0 12px;
+}
+body.guest-app:not(.owner-mode) #chat-widget .chat-back span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+body.guest-app:not(.owner-mode) #chat-widget .chat-widget-head .reviews-modal-close {
+  display: none;
+}
+/* The edge strip, installed app only (chatEdgeOn); content starts 14px in. */
+body.guest-app:not(.owner-mode) #chat-widget.has-edge .chat-edge {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  z-index: 3;
+  touch-action: none;
 }
 @media (prefers-reduced-motion: reduce) {
   body.guest-app:not(.owner-mode) #chat-widget.open,
   body.guest-app:not(.owner-mode) #chat-widget.closing:not(.open) {
     animation: none;
+  }
+  body.guest-app:not(.owner-mode).chat-screen .page-view.active,
+  body.guest-app:not(.owner-mode).chat-screen .site-footer,
+  body.guest-app:not(.owner-mode).chat-dragging .page-view.active,
+  body.guest-app:not(.owner-mode).chat-dragging .site-footer {
+    translate: none;
+  }
+  body.guest-app:not(.owner-mode) .page-view.active,
+  body.guest-app:not(.owner-mode) .site-footer,
+  body.guest-app:not(.owner-mode) .chat-dim {
+    transition: none;
   }
 }
 
@@ -743,6 +854,12 @@ body.guest-app:not(.owner-mode):has(#view-pay.page-view.active) #guest-msg-fab {
    positions put a control under the corner. Same trade as above; the cards' own
    Call button dials the experience, not the host. */
 body.guest-app:not(.owner-mode):has(#view-experiences.page-view.active) #guest-msg-fab {
+  display: none;
+}
+/* And on You and the pages under it (Your details, Sign-in & security, Privacy):
+   "Message us" is a row on the page, and the pill sat over the rows as they
+   scrolled past (reported with a screenshot: over the Privacy row's arrow). */
+body.guest-app:not(.owner-mode):has(#view-guest-account.page-view.active) #guest-msg-fab {
   display: none;
 }
 /* And over the account sheets: at 390 the pill (z 1400) floats above the sign-in
