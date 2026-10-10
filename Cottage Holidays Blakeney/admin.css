@@ -840,8 +840,6 @@ body.light-mode .ny-act {
   color: var(--text-muted);
   border-top: 1px solid var(--glass-border);
 }
-/* The calendar's sync note is empty while the sync is recent: keep its
-   hairline as the menu's divider, drop the blank line under it. */
 .bhub-menu .bhub-menu-note:has(> #cal-updated-text:empty) { padding: 0; }
 .bhub-disclose-btn {
   margin-top: 10px;
