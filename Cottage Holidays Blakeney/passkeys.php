@@ -11,6 +11,8 @@
 //   list             (guest)                    -> their registered passkeys
 //   delete           (guest)                    -> remove one passkey
 // ============================================================
+// A passkey sign-in writes the session, so this endpoint keeps its lock (session-lib.php).
+define('CHB_KEEPS_SESSION', true);
 require_once __DIR__ . '/db.php';
 
 // --- Load the WebAuthn library (uploaded separately) ---
@@ -95,7 +97,7 @@ $action = $in['action'] ?? '';
 // itself resists guessing, but unlimited login_finish attempts and unlimited
 // challenge minting are free load + probing surface. Authenticated actions
 // (register/list/delete) are already gated by their sessions.
-if (in_array($action, ['admin_login_begin', 'admin_login_finish'], true)) {
+if (in_array($action, ['admin_login_begin', 'admin_login_finish', 'any_login_begin', 'any_login_finish'], true)) {
     rate_limit('passkey-login', 20, 10);
 }
 $wa = new_webauthn($rpName, $rpId);
@@ -204,6 +206,9 @@ function pk_admin_sign_in($cred, $data, array $extra = [])
 
 if ($action === 'admin_register_begin') {
     require_admin();
+    // A passkey signs in on its own and passes the refund confirmation, so adding
+    // one from a borrowed session would hand over the account for good.
+    require_reauth('adding a passkey');
     $aid = (int) $_SESSION['admin_id'];
     $a = db()->prepare('SELECT * FROM admins WHERE id = ?');
     $a->execute([$aid]);
@@ -309,7 +314,7 @@ if ($action === 'admin_reauth_finish') {
             null, // synced passkeys have no reliable counter
         );
     } catch (\Throwable $e) {
-        log_activity('account', 'admin.reauth_fail', 'Passkey confirmation failed before a refund', ['level' => 'warn']);
+        log_activity('account', 'admin.reauth_fail', 'Passkey confirmation failed before a refund', ['severity' => 'warn']);
         json_out(['error' => 'That passkey could not be verified.'], 401);
     }
     db()->prepare('UPDATE admin_passkeys SET last_used_at = NOW() WHERE id = ?')->execute([$cred['id']]);

@@ -549,13 +549,16 @@ function mail_sent_tally($n)
         return;
     }
     try {
-        $m = content_json('mail-sent-days', []);
-        $m = is_array($m) ? $m : [];
-        $d = date('Y-m-d');
-        $m[$d] = (int) ($m[$d] ?? 0) + (int) $n;
-        ksort($m);
-        $m = array_slice($m, -14, null, true);
-        content_set_scalar('mail-sent-days', $m);
+        // Locked: two sends finishing together would each add to the same read.
+        content_locked('mail-sent-days', function () use ($n) {
+            $m = content_json('mail-sent-days', []);
+            $m = is_array($m) ? $m : [];
+            $d = date('Y-m-d');
+            $m[$d] = (int) ($m[$d] ?? 0) + (int) $n;
+            ksort($m);
+            $m = array_slice($m, -14, null, true);
+            content_set_scalar('mail-sent-days', $m);
+        });
     } catch (\Throwable $e) {
     }
 }
@@ -741,15 +744,16 @@ function owner_alert_text_html($subject, $text)
             $safe,
         );
     };
-    foreach (preg_split('/\n{2,}/', trim((string) $text)) as $para) {
-        $para = trim($para);
-        if ($para === '') {
-            continue;
-        }
+    $paras = array_values(array_filter(array_map('trim', preg_split('/\n{2,}/', trim((string) $text))), fn($p) => $p !== ''));
+    $lastPara = count($paras) - 1;
+    foreach ($paras as $pi => $para) {
         // THE ALERT ENDS WHERE THE OWNER ACTS. owner_open_line()'s paragraph is the
         // record's own deep link: plain text in the text half, the one button here.
-        if (preg_match('~^Open in the back office:\s+(https?://\S+)$~u', $para, $om)) {
-            $inner .= email_btn($om[1], 'Open in the back office');
+        // Only OUR link, and only as the last paragraph: a guest's message reading
+        // "Open in the back office: https://…" became the house button pointing
+        // wherever they liked (reproduced through the anonymous chat).
+        if ($pi === $lastPara && owner_open_url_ok($para)) {
+            $inner .= email_btn(substr($para, strlen('Open in the back office: ')), 'Open in the back office');
             continue;
         }
         // "Guest: Sarah / Amount: £452.12" IS A LIST OF FACTS — it renders as the
@@ -800,6 +804,12 @@ function email_queueable($res)
         return false;
     }
     if (!empty($res['sent_uncertain'])) {
+        return false;
+    }
+    // A PERMANENT refusal (a 5xx: "no such mailbox", a malformed address) will be
+    // refused again on every retry. Queued, each one retried for 48 hours and sat in
+    // the outbox's pending cap, ahead of the next booking confirmation.
+    if (array_key_exists('retryable', $res) && $res['retryable'] === false) {
         return false;
     }
     return ($res['error'] ?? '') !== 'Mail disabled';
@@ -1077,8 +1087,15 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
 /** Encode a display name safely for a header (handles non-ASCII). */
 function mb_encode_safe($name)
 {
+    $name = trim((string) preg_replace('/[\r\n\t]+/', ' ', (string) $name));
     if (preg_match('/[^\x20-\x7E]/', $name)) {
         return '=?UTF-8?B?' . base64_encode($name) . '?=';
+    }
+    // A name with RFC 5322's specials goes in quotes, or its comma starts a second
+    // recipient: an enquiry named "Bob,<someone@else>" put a stranger on reply-all,
+    // and a plain "Smith, John" made every confirmation's To: header malformed.
+    if (preg_match('/[()<>\[\]:;@\\\\,."]/', $name)) {
+        return '"' . addcslashes($name, '"\\') . '"';
     }
     return $name;
 }
@@ -4608,6 +4625,31 @@ function send_arrival_for_booking($bk, $note = '')
 // A paragraph of its own: a link in the plain-text half, and owner_alert_text_html
 // renders it as the email's one button. '' when the base URL is unknown, so a builder
 // stays usable anywhere and simply carries no link.
+// Is this paragraph exactly owner_open_line()'s, pointing at this site's back office?
+function owner_open_url_ok($para)
+{
+    if (!function_exists('site_base_url')) {
+        return false;
+    }
+    return (bool) preg_match('~^Open in the back office: ' . preg_quote(site_base_url(), '~') . '\?open=[a-z0-9:-]+$~', (string) $para);
+}
+// GUEST WORDS IN AN OWNER ALERT stay one quoted paragraph. The alert's renderer
+// turns a paragraph of "Label: value" lines into fact rows and our deep link into
+// a button, so a guest's own blank lines let their text pose as the alert's parts
+// ("Amount: £900.00 / Status: Refund approved" under a real site email).
+function owner_quote($text)
+{
+    $t = trim(preg_replace('/\R\s*\R+/u', "\n", trim((string) $text)));
+    return '"' . $t . '"';
+}
+// A guest's name in an owner alert: one plain line, and no spaced dash — the
+// subject is split on those to make the title, so a name could set the heading.
+function owner_name($name)
+{
+    $n = trim(preg_replace('/\s+/u', ' ', (string) $name));
+    $n = preg_replace('/\s+[—–]\s+/u', ' - ', $n);
+    return mb_substr($n, 0, 80);
+}
 function owner_open_line($target)
 {
     $t = preg_replace('/[^a-z0-9:-]/', '', strtolower((string) $target));
@@ -4623,8 +4665,8 @@ function owner_note_review($guestName, $propName, $stars, $text)
     return [
         'subject' => 'New ' . (int) $stars . "\u{2605} review for " . $propName . ' — approve?',
         'text' =>
-            'A review was submitted by ' . $guestName . ' for ' . $propName . ' (' . (int) $stars . "\u{2605}):\n\n" .
-            trim((string) $text) .
+            'A review was submitted by ' . owner_name($guestName) . ' for ' . $propName . ' (' . (int) $stars . "\u{2605}):\n\n" .
+            owner_quote($text) .
             "\n\nApprove or decline it in Manage \u{2192} Guest reviews." .
             owner_open_line('moderation'),
     ];
@@ -4636,8 +4678,8 @@ function owner_note_lead($name, $propName, $stars, $text, $email, $phone = '')
     return [
         'subject' => 'New ' . (int) $stars . "\u{2605} review for " . $propName . ' via your link — approve?',
         'text' =>
-            $name . ' left a ' . (int) $stars . "\u{2605} review for " . $propName . " via the review link:\n\n" .
-            trim((string) $text) .
+            owner_name($name) . ' left a ' . (int) $stars . "\u{2605} review for " . $propName . " via the review link:\n\n" .
+            owner_quote($text) .
             "\n\nContact: " . $email . ($phone ? ' / ' . $phone : '') .
             "\n\nApprove it (and privately rate the guest) in Manage \u{2192} Guest reviews." .
             owner_open_line('moderation'),
@@ -4650,8 +4692,8 @@ function owner_note_experience($guestName, $title, $body, $linkUrl = '', $phone 
     return [
         'subject' => 'New suggestion: “' . email_snip($title, 50) . '”',
         'text' =>
-            ($guestName ?: 'A guest') . " suggested an experience:\n\n" .
-            $title . "\n\n" . trim((string) $body) . "\n\n" .
+            (owner_name($guestName) ?: 'A guest') . " suggested an experience:\n\n" .
+            owner_quote($title) . "\n\n" . owner_quote($body) . "\n\n" .
             ($linkUrl ? 'Link: ' . $linkUrl . "\n" : '') .
             ($phone ? 'Phone: ' . $phone . "\n" : '') .
             "\nReview it in Manage \u{2192} Experiences." .
@@ -4882,11 +4924,11 @@ function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = fals
 function owner_note_chat_reply($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
 {
     return [
-        'subject' => ($guestName ?: 'A guest') . ' replied: “' . email_snip($message, 50) . '”' . $subjTag,
+        'subject' => (owner_name($guestName) ?: 'A guest') . ' replied: “' . email_snip($message, 50) . '”' . $subjTag,
         'text' =>
             "A guest has replied by email to a website chat.\n\nFrom: " .
-            ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
-            $message . "\"\n" .
+            (owner_name($guestName) ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n" .
+            owner_quote($message) . "\n" .
             ($replyable ? "\nJust reply to this email and they get it on the website and by email." : '') .
             "\nOr open the back office → Guest messages to reply." .
             owner_open_line('inbox:messages'),
@@ -4918,11 +4960,11 @@ function guest_message_body($guestName, $message)
 function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
 {
     return [
-        'subject' => ($guestName ?: 'Someone') . ': “' . email_snip($message, 50) . '”' . $subjTag,
+        'subject' => (owner_name($guestName) ?: 'Someone') . ': “' . email_snip($message, 50) . '”' . $subjTag,
         'text' =>
             "Someone has sent you a message via the website chat.\n\nFrom: " .
-            ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
-            $message . "\"\n" .
+            (owner_name($guestName) ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n" .
+            owner_quote($message) . "\n" .
             ($replyable ? "\nJust reply to this email and the guest gets it on the website and by email." : '') .
             "\nOr open the back office → Guest messages to reply." .
             owner_open_line('inbox:messages'),

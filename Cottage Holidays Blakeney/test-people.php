@@ -122,6 +122,10 @@ ppl('the home page and its menu are the website', $k('hero-title') === 'we.conte
 ppl('terms-title is the website, not a cottage text', $k('terms-title') === 'we.content');
 ppl('rules and rates are prices; cottage text, photos and notes are pages', $k('rules-21a') === 'co.prices' && $k('jollyboat-desc') === 'co.pages' && $k('images-pimpernel') === 'co.pages' && $k('21a-cancellation-policy') === 'co.prices' && $k('pricing-limits') === 'co.prices' && $k('ops-21a') === 'co.pages');
 ppl('payment plans are Ask for money; the money marks are See the money', $k('plan-presets') === 'mo.ask' && $k('sweep-moved') === 'mo.view');
+// Replaying a stored undo posts a PRICE change as whoever taps Undo, so the list
+// is written only by people who could make that change themselves — otherwise a
+// Host could plant one for a Super User to run.
+ppl('the search undo list is Prices, not everyday', $k('search-undo') === 'co.prices');
 ppl('secrets and set-up are full access only', $k('bacs-details') === 'owner' && $k('apikey-tides') === 'owner' && $k('backup-passphrase') === 'owner' && $k('square-deposit-pct') === 'owner' && $k('notify-emails') === 'owner');
 ppl('a key nobody listed is full access only', $k('something-new') === 'owner');
 ppl('a write to content.php is decided by its key', people_cap_for('content.php', 'set', ['key' => 'bacs-details']) === 'owner' && people_cap_for('content.php', 'set', ['key' => 'host-bio']) === 'all');

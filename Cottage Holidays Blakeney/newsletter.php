@@ -37,7 +37,9 @@ if ($action === 'subscribe') {
     rate_limit('newsletter', 12); // curb unauthenticated signup flooding
     $email = strtolower(clean($in['email'] ?? ''));
     $name = clean($in['name'] ?? '');
-    if (!preg_match('/^[^@\s]+@[^@\s]+\.[^@\s]+$/', $email)) {
+    // The same check every other form uses: the loose pattern let <, > and ; through,
+    // and the mail server refuses those at send time.
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
         json_out(['error' => 'Please enter a valid email address.'], 400);
     }
     $source = clean($in['source'] ?? 'site');

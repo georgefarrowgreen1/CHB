@@ -2071,6 +2071,10 @@ chk('a successful send is not queueable', !email_queueable(['ok' => true]));
 chk('an ordinary transport failure IS queueable', email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 451 grey', 'sent_uncertain' => false]));
 chk('sent_uncertain is NEVER queueable (the payload went out)', !email_queueable(['ok' => false, 'error' => 'Message not accepted: 554', 'sent_uncertain' => true]));
 chk('Mail disabled is not queueable (it can never succeed)', !email_queueable(['ok' => false, 'error' => 'Mail disabled']));
+// A 5xx refusal is permanent: queued, it retried for two days and held a place in
+// the outbox's pending cap ahead of the next confirmation.
+chk('a permanent refusal (5xx) is not queueable', !email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 550 no such user', 'retryable' => false, 'sent_uncertain' => false]));
+chk('…while a temporary one (4xx) still is', email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 451 grey', 'retryable' => true, 'sent_uncertain' => false]));
 chk('backoff curve: 10, 20, 40, 80 minutes…', email_outbox_backoff(0) === 10 && email_outbox_backoff(1) === 20 && email_outbox_backoff(2) === 40 && email_outbox_backoff(3) === 80);
 chk('…capped at 6 hours', email_outbox_backoff(6) === 360 && email_outbox_backoff(20) === 360);
 $obNow = time();
@@ -2147,6 +2151,50 @@ foreach (glob(__DIR__ . '/*.php') as $f) {
     if (preg_match('/price_override\'\]\s*\?\?\s*\$\w+\[\'agreed_total\'\]|\$\w+\[\'agreed_total\'\]\s*\?\?\s*\$\w+\[\'price_override\'\]/', $src)) { $inline[] = $bn; }
 }
 chk('no inline price_override/agreed_total read outside db.php' . ($inline ? ' (' . implode(', ', $inline) . ')' : ''), !$inline);
+
+// A TIMED-OUT BOOKING LOCK REFUSES. book_lock() returns false when another money
+// action on the cottage has held the lock past its wait; refund, return and keep
+// ignored that and carried on unprotected beside it. Every call in bookings.php
+// must test the result — except the cancellation's inner re-locks, which run under
+// the lock that action takes (and tests) before any money moves.
+echo "\n-- every booking lock that guards money tests its result --\n";
+$bkToks = token_get_all((string) file_get_contents(__DIR__ . '/bookings.php'));
+$bkUnchecked = [];
+$bkChecked = 0;
+$bkAct = '';
+$bkActLocked = [];
+$bkN = count($bkToks);
+for ($i = 0; $i < $bkN; $i++) {
+    $t = $bkToks[$i];
+    if (is_array($t) && $t[0] === T_VARIABLE && $t[1] === '$action') {
+        for ($j = $i + 1; $j < min($bkN, $i + 6); $j++) {
+            if (is_array($bkToks[$j]) && $bkToks[$j][0] === T_CONSTANT_ENCAPSED_STRING) {
+                $bkAct = trim($bkToks[$j][1], "'\"");
+                break;
+            }
+        }
+    }
+    if (!(is_array($t) && $t[0] === T_STRING && $t[1] === 'book_lock')) {
+        continue;
+    }
+    $k = $i - 1;
+    while ($k >= 0 && is_array($bkToks[$k]) && in_array($bkToks[$k][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+        $k--;
+    }
+    $prev = $k >= 0 ? (is_array($bkToks[$k]) ? $bkToks[$k][1] : $bkToks[$k]) : '';
+    if ($prev === '!') {
+        $bkChecked++;
+        $bkActLocked[$bkAct] = true;
+        continue;
+    }
+    if ($bkAct === 'cancel' && !empty($bkActLocked['cancel'])) {
+        continue;
+    }
+    $bkUnchecked[] = ($bkAct !== '' ? $bkAct : '?') . ' (line ' . $t[2] . ')';
+}
+chk('the scan found the booking locks (vacuity: ' . $bkChecked . ' checked)', $bkChecked >= 8);
+chk('no booking lock ignores a timeout' . ($bkUnchecked ? ' — ' . implode(', ', $bkUnchecked) : ''), !$bkUnchecked);
+chk('the cancellation takes its lock before any money moves', (bool) preg_match('/if \(!book_lock\(\$b\[\'prop_key\'\] \?\? \'\'\)\) \{[^}]*\}\s*\$refundedByCard = 0\.0;/', (string) file_get_contents(__DIR__ . '/bookings.php')));
 
 echo "\n== Summary ==\n";
 if ($fail) {

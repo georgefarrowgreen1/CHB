@@ -5794,8 +5794,11 @@ Gated by search-test §40.
 **ROUND 3 OF THE AUDIT (the search stack), for the record.** The undo's
 whole-list season restore silently deleted every season/override added SINCE
 — it is SURGICAL now (`chbSeasonUndoStale`/`chbSeasonUndoList`: remove
-exactly the rows the apply added, restore the rows its splice removed;
-legacy stored entries restore only when NOTHING changed since, else refuse).
+exactly the rows the apply added, restore the rows its splice removed. Round 4
+went further: an entry that ADDED nothing — the old whole-list shape included —
+is refused outright, and `search-undo` is written only with `co.prices`, because
+replaying a stored undo posts a price change as whoever taps Undo, so a planted
+entry could otherwise put rows of someone else's choosing into the prices).
 The pin-memo "fix" was tried and REVERTED — ui-test-searchpage §21's
 liveness gate refused it, and the gate is right: "never a stale figure" is
 the pin feature's founding rule; the recompute cost is bounded and stays.
@@ -9369,6 +9372,109 @@ shipped and the rules it set:
 - NOT done, deliberately: double opt-in for newsletter/drafts/leads (product
   change), DNS pinning for the admin-only iCal fetch, and deleting orphan chat
   uploads (self-repair still only flags them).
+
+## The round-4 audit (concurrency, input, abuse, output)
+
+Five read-only lenses (server security, client security, server and client
+performance, robustness); each finding was reproduced before it was fixed, and
+each fix is gated and break-tested. The rules it set:
+- **THE SESSION LOCK IS RELEASED EARLY, AND A WRITER SAYS SO.** PHP's file session
+  locks from `session_start()` to the end of the request, so one slow call (the
+  POP3 mailbox, a Square refresh, a photo resize) queued every other request from
+  that browser behind it. db.php now calls `session_write_close()` after its own
+  checks UNLESS the endpoint did `define('CHB_KEEPS_SESSION', true)` before the
+  require — the files that write `$_SESSION` (auth, passkeys, enquiries, …).
+  **`test-session-lock.php`** (CI, deploy-excluded) fails if any other file writes
+  the session or calls a helper that does. `session-lib.php` holds the TTL and
+  `session_files_prune` (self-repair §4d-ii: empty files over a day old and any
+  past the lifetime — PHP's own GC is often off, measured 6,675 empty files).
+  `session.use_strict_mode` is on (a planted id is replaced, not adopted).
+- **RELEASING IT EXPOSED RACES THE LOCK HAD BEEN HIDING BY ACCIDENT**, each now
+  closed where it lives:
+  - **`op_claim` refuses a repeat that is still running** — GET_LOCK answering 0
+    is 409 `code: 'in_flight'` ("still being saved"), never a second run: the
+    first may be in a slow email after a refund has gone, and Square's
+    idempotency key changes once money has gone back. NULL (no lock support)
+    still proceeds. BOTH queue replayers (app.js `oqFlushRun`, sw.js) KEEP an
+    in-flight item rather than recording it refused. `CHB_OP_LOCK_WAIT` (default
+    15) is shortened only in test-integration's config (§17k).
+  - **`book_lock` failing is a refusal** on refund / return_deposit /
+    keep_deposit / cancel (409 "being processed"), never an unlocked money move.
+    test-payrail scans for it.
+  - **`content_locked($key, fn)`** (db.php) makes a read-change-save of one content
+    key one step (named lock per key; `__content_all` memo dropped inside). Used
+    by the mailbox seen-list, the opt-out list, the sent tally, the activity seen
+    list, guest-FAQ misses, watchers, notify recipients and key safes (a closure
+    there must RETURN the record — `safe: null` was the bug). §32d gates it.
+  - **One POP3 session at a time** (`pop3_lock`/`pop3_release` in mailbox-read):
+    parallel logins to one mailbox are refused by the provider; a busy box says
+    "The mailbox is busy — try again in a moment."
+- **AN ARRAY WHERE TEXT WAS EXPECTED IS `''`** (`clean()`), so `name: [...]` on a
+  public form no longer threw a TypeError, logged a server error and pushed the
+  owner "Site error detected". Passwords go through `field_text()` (never
+  trimmed). **Text longer than its column answers 400 BY NAME**
+  (`require_fits($in, [key => [width, 'Label']])` — bookings' `BOOKING_FIELD_FITS`,
+  experiences, rates, guest name/phone): the database rejects it outright, which
+  read as "Something went wrong on our side". A catch that means "not migrated
+  yet" tests `db_schema_missing($e)` and rethrows anything else.
+- **ONE BAD BYTE MUST NOT BLANK A LIST OR ERASE A STORE.** `json_out` and both
+  content writers use `JSON_INVALID_UTF8_SUBSTITUTE`; a still-unencodable answer
+  is a 500 (it was a 2xx), and a content write that cannot encode THROWS rather
+  than storing `''` (which read back as an empty list). Email parts are converted
+  to UTF-8 by their declared charset (`mailbox_utf8`; ISO-8859-1 is read as
+  Windows-1252, which is what senders mean) and subjects/display names are
+  decoded. test-reply's charset section.
+- **A CLI SCRIPT THAT DIES SAYS SO.** db.php's exception handler made PHP exit 0
+  from the command line, so six gates that load it could crash halfway and report
+  a pass. It writes the error to STDERR and exits 255 under `PHP_SAPI === 'cli'`.
+  **test-error-status.php** gates it — from a FILE, because `php -r` bypasses user
+  exception handlers and the first break-test was vacuous for exactly that reason.
+- **MONEY STEPS UP; so do the doors to the account.** `require_reauth` now also
+  guards changing the sign-in email, turning two-step OFF and adding a passkey;
+  `chbWithReauth` wraps the three client calls. An invite accept or a password
+  reset proves freshness (`admin_complete_login(…, $proven)` stamps it). A failed
+  admin password change is throttled and logged as a warning — NB `log_activity`
+  takes **`'severity'`**, and `'level'` was silently ignored at three sites.
+- **ABUSE LIMITS, by what they protect.** `rate_limit` (per IP, refuses),
+  `rate_limit_key` (per key ACROSS IPs — a signed-in guest's chat and uploads, so a
+  new address buys no fresh allowance), `rate_allow` (per IP, returns a bool — the
+  analytics recorder stops counting instead of failing), and
+  `signin_mail_allowed` (10 sign-in emails a day per address, on every path that
+  mails a code or link: a day's flood of codes into someone's inbox was free).
+  The CSP and blocked-request reporters cap per IP AND overall per hour and read
+  `REMOTE_ADDR` (a header is the sender's to choose). The owner's chat alert stops
+  at 20 a thread per hour.
+- **AN UNKNOWN ACCOUNT TAKES AS LONG AS A KNOWN ONE.** `auth_hash_for($row)` checks
+  a dummy hash at THIS PHP's default cost (`AUTH_DUMMY_HASHES`, picked by
+  `password_needs_rehash`): a fixed cost-12 dummy beside cost-10 accounts made an
+  unknown name answer four times SLOWER (83 vs 360ms). Passwords are rehashed on a
+  successful login. **Signing out ends the session** (`session_end_signed_in`:
+  empty `$_SESSION` + a new id), not just the name on it.
+- **THE ACTIVITY LOG KEEPS WHAT MATTERS.** Machine reports
+  (`ACTIVITY_NOISE_ACTIONS`: csp.violation, request.blocked, client.error,
+  client.swallow) are kept 30 days and capped at 2,000; everything else 3 years
+  under a 200k-row ceiling. The summary reads real events and noise separately
+  (`activity_logged_events($limit, 'real'|'noise')`), so a flood of reports can no
+  longer push a week of bookings out of "this week".
+- **OUTPUT**: a CSV cell that starts like a formula gets a leading apostrophe
+  (`chbCsvSafe`, both exports; numbers untouched); a To: display name with
+  specials is quoted (`mb_encode_safe`); owner alerts render guest text as a quote
+  and only the LAST paragraph's back-office URL as the button
+  (`owner_open_url_ok`, `owner_quote`, `owner_name`); a cottage colour is only ever
+  `#RRGGBB` at every read (`prop_accent_ok`, self-repair replaces a bad one); the
+  backup dump restores with `NO_AUTO_VALUE_ON_ZERO`; `backup_decrypt` refuses a
+  plaintext that is neither gzip nor SQL (CBC without a MAC decrypts a wrong
+  passphrase to valid-looking padding ~1 time in 256 — measured 14 in 3,000);
+  instalments split in whole pence; images over 40 megapixels are refused before
+  GD decodes them; `.bak/.old/.orig/.swp/~` files are denied by htaccess.
+- **SIGNING OUT LEAVES NO UNSENT MESSAGE ON THE DEVICE.** `chbOwnerDeviceForget()`
+  (app.js) is the one list for both ways out: the boot hint, the day sheet, the
+  deposit decisions and every `chb-ib-draft:` / `chb-cmp-draft:` draft. smoke-test
+  §12i (break-tested on the prefix sweep).
+- **test-integration §56** drives the abuse and input cases against the real
+  endpoints (arrays, long fields, the CSP cap, the summary under 1,200 noise rows,
+  ten emails from twelve code requests with identical answers — `srv` stripped
+  before comparing — the dummy hash, a new session id at logout).
 
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**

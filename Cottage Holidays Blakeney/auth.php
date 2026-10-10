@@ -10,6 +10,8 @@
 //          admin_avatar_set / _remove (your own details)
 //  Guest:  guest_register, guest_login, guest_logout, guest_status
 // ============================================================
+// Sign-in writes the session, so this endpoint keeps its lock (session-lib.php).
+define('CHB_KEEPS_SESSION', true);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/webpush.php'; // each person's alert settings (notify_prefs_for)
 guest_session_check(); // a revoked guest session (migration-127) is signed out before any action reads it
@@ -98,6 +100,31 @@ function throttle_check($identifier)
         /* table missing — don't block logins */
     }
 }
+// ONE DAILY ALLOWANCE OF SIGN-IN EMAILS PER ADDRESS, across every kind (a code,
+// a magic link, a re-sent confirmation, a reset link) and every sender. Each kind
+// had its own short-window throttle, which still let a stranger send thousands a
+// day to one inbox, and one path (the right password on an unconfirmed account)
+// re-sent a link on every try with no limit at all. Over the allowance the
+// request is answered exactly as before and nothing is sent.
+const SIGNIN_MAILS_PER_DAY = 10;
+function signin_mail_allowed($email)
+{
+    $email = strtolower(trim((string) $email));
+    if ($email === '') {
+        return false;
+    }
+    $key = 'mailto:' . substr(sha1($email), 0, 40);
+    try {
+        $s = db()->prepare('SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)');
+        $s->execute([$key]);
+        if ((int) $s->fetchColumn() >= SIGNIN_MAILS_PER_DAY) {
+            return false;
+        }
+        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([$_SERVER['REMOTE_ADDR'] ?? '', $key]);
+    } catch (\Throwable $e) {
+    }
+    return true;
+}
 function throttle_record($identifier, $ok)
 {
     try {
@@ -124,10 +151,6 @@ function throttle_record($identifier, $ok)
 $in = body();
 $action = $in['action'] ?? '';
 
-// When a login is attempted for an account that doesn't exist, verify against this
-// dummy hash anyway — so the response takes the same time either way and timing
-// can't be used to probe which usernames/emails are registered.
-const AUTH_DUMMY_HASH = '$2y$12$gemBw4PxmOQPgTk4uUpBPuJz/NsKCsE1dO8f8csjOOGJAwJSbCn3W';
 
 // ---- A NEW DEVICE ASKS FOR A CODE, sent to the person signing in ----
 // Two-step is each person's own switch (people from before the switch moved here
@@ -284,10 +307,16 @@ function admin_backfill_owner($row)
 // Finish a sign-in (a password, an emailed code, a new-device code, an invite or
 // reset, and the staging seat): a new session id, the person's own session, and a
 // note in the log saying how, a warning when the device or place is new to THIS person.
-function admin_complete_login($uid, array $extra = [], string $how = '')
+// $proven: the person has JUST proved themselves beyond signing in (an invite or
+// reset link from their own inbox, and a password chosen a moment ago), so the
+// step-up window starts now and the passkey offer that follows needs no prompt.
+function admin_complete_login($uid, array $extra = [], string $how = '', bool $proven = false)
 {
     session_regenerate_id(true); // new session id on login — prevents session fixation
     admin_session_begin((int) $uid);
+    if ($proven) {
+        reauth_stamp();
+    }
     unset($_SESSION['pending_admin_2fa'], $_SESSION['admin_email_proof']);
     csrf_issue_cookie();
     $row = admin_backfill_owner(admin_row((int) $uid, true));
@@ -403,11 +432,11 @@ switch ($action) {
         // What was typed: a username, or the person's own email. Either way the
         // password decides; a new device then gets a code at the person's inbox.
         $username = strtolower(clean($in['username'] ?? ''));
-        $password = $in['password'] ?? '';
+        $password = field_text($in['password'] ?? '');
         throttle_check('admin:' . $username);
         $row = admin_find($username);
-        $hash = $row && (string) ($row['password_hash'] ?? '') !== '' ? (string) $row['password_hash'] : AUTH_DUMMY_HASH;
-        if (!password_verify($password, $hash) || !$row || $hash === AUTH_DUMMY_HASH) {
+        $hash = auth_hash_for($row);
+        if (!password_verify($password, $hash) || !$row || $hash === auth_dummy_hash()) {
             throttle_record('admin:' . $username, false);
             // Diagnose WHY for the owner's log — the HTTP reply below stays generic
             // so an attacker learns nothing. The one sign-in form tries owner first
@@ -444,6 +473,14 @@ switch ($action) {
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . $username, true);
+        // A hash made at an older cost is brought up to this PHP's default on a
+        // sign-in that proved the password, so real hashes and the dummy agree.
+        if (password_needs_rehash($hash, PASSWORD_DEFAULT)) {
+            try {
+                db()->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')->execute([password_hash($password, PASSWORD_DEFAULT), (int) $row['id']]);
+            } catch (\Throwable $e) {
+            }
+        }
         // The right password for someone whose access was removed: say so, since
         // only they could have typed it.
         if (!empty($row['removed_at'])) {
@@ -502,7 +539,7 @@ switch ($action) {
     case 'admin_logout':
         $me = admin_me();
         log_activity('account', 'admin.logout', ($me ? people_display_name($me) : 'Owner') . ' signed out');
-        unset($_SESSION['admin_id'], $_SESSION['admin_epoch']);
+        session_end_signed_in();
         json_out(['ok' => true]);
 
     case 'admin_status':
@@ -519,15 +556,15 @@ switch ($action) {
     // mints or extends a session — it only stamps the window.
     case 'admin_reauth_password':
         require_admin();
-        $pw = $in['password'] ?? '';
+        $pw = field_text($in['password'] ?? '');
         $stmt = db()->prepare('SELECT username, password_hash FROM admins WHERE id = ?');
         $stmt->execute([$_SESSION['admin_id']]);
         $row = $stmt->fetch();
         $ident = 'admin:' . strtolower((string) ($row['username'] ?? ''));
         throttle_check($ident);
-        if (!$row || !password_verify($pw, ($row['password_hash'] ?? '') !== '' ? $row['password_hash'] : AUTH_DUMMY_HASH)) {
+        if (!$row || !password_verify($pw, auth_hash_for($row))) {
             throttle_record($ident, false);
-            log_activity('account', 'admin.reauth_fail', 'Confirmation failed before a refund', ['level' => 'warn']);
+            log_activity('account', 'admin.reauth_fail', 'Confirmation failed before a refund', ['severity' => 'warn']);
             json_out(['error' => 'That password did not match.'], 403);
         }
         throttle_record($ident, true);
@@ -538,17 +575,25 @@ switch ($action) {
     // moves); this one is re-stamped so you stay in where you are.
     case 'admin_change_password':
         require_admin();
-        $current = $in['current'] ?? '';
-        $next = $in['next'] ?? '';
+        $current = field_text($in['current'] ?? '');
+        $next = field_text($in['next'] ?? '');
         if (strlen($next) < 12) {
             json_out(['error' => 'New password must be at least 12 characters'], 400);
         }
-        $stmt = db()->prepare('SELECT password_hash FROM admins WHERE id = ?');
+        $stmt = db()->prepare('SELECT username, password_hash FROM admins WHERE id = ?');
         $stmt->execute([$_SESSION['admin_id']]);
         $row = $stmt->fetch();
-        if (!$row || !password_verify($current, $row['password_hash'])) {
+        // Throttled and logged on the SAME identifier as sign-in, like the refund
+        // confirmation: otherwise a borrowed session could guess the password here
+        // without limit and nothing would say so.
+        $ident = 'admin:' . strtolower((string) ($row['username'] ?? ''));
+        throttle_check($ident);
+        if (!$row || !password_verify($current, auth_hash_for($row))) {
+            throttle_record($ident, false);
+            log_activity('account', 'admin.password_change_fail', 'A password change was refused: the current password did not match', ['severity' => 'warn']);
             json_out(['error' => 'Current password is incorrect'], 403);
         }
+        throttle_record($ident, true);
         $hash = password_hash($next, PASSWORD_DEFAULT);
         try {
             db()->prepare('UPDATE admins SET password_hash = ?, auth_epoch = auth_epoch + 1, reset_hash = NULL, reset_expires = NULL WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
@@ -567,7 +612,7 @@ switch ($action) {
         $ident = strtolower(clean($in['id'] ?? ''));
         throttle_check('areset:' . $ident);
         $row = admin_find($ident);
-        if ($row && empty($row['removed_at']) && empty($row['invited_at']) && (string) ($row['password_hash'] ?? '') !== '') {
+        if ($row && empty($row['removed_at']) && empty($row['invited_at']) && (string) ($row['password_hash'] ?? '') !== '' && signin_mail_allowed(admin_contact_email($row))) {
             if (admin_send_link($row, 'reset')) {
                 log_activity('account', 'admin.reset_sent', 'Password reset link emailed to ' . people_display_name($row), ['actor' => 'system']);
             }
@@ -601,16 +646,16 @@ switch ($action) {
         if (!$row) {
             json_out(['error' => admin_link_dead('invite'), 'code' => 'dead'], 410);
         }
-        $bad = people_password_problem($in['password'] ?? '', $in['again'] ?? null);
+        $bad = people_password_problem(field_text($in['password'] ?? ''), isset($in['again']) ? field_text($in['again']) : null);
         if ($bad !== '') {
             json_out(['error' => $bad], 400);
         }
         db()
             ->prepare('UPDATE admins SET password_hash = ?, invited_at = NULL, invite_hash = NULL, invite_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
-            ->execute([password_hash((string) $in['password'], PASSWORD_DEFAULT), (int) $row['id']]);
+            ->execute([password_hash(field_text($in['password'] ?? ''), PASSWORD_DEFAULT), (int) $row['id']]);
         log_activity('account', 'admin.invite_accepted', people_display_name($row) . ' chose a password and signed in for the first time', ['actor' => 'admin:' . (int) $row['id']]);
         admin_trust_this_device((int) $row['id']); // the link came to their inbox: that is the proof
-        admin_complete_login((int) $row['id']);
+        admin_complete_login((int) $row['id'], [], '', true);
 
     // A reset link's last step: a new password, and every other session ends.
     case 'admin_reset_save':
@@ -619,16 +664,16 @@ switch ($action) {
         if (!$row) {
             json_out(['error' => admin_link_dead('reset'), 'code' => 'dead'], 410);
         }
-        $bad = people_password_problem($in['password'] ?? '', $in['again'] ?? null);
+        $bad = people_password_problem(field_text($in['password'] ?? ''), isset($in['again']) ? field_text($in['again']) : null);
         if ($bad !== '') {
             json_out(['error' => $bad], 400);
         }
         db()
             ->prepare('UPDATE admins SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
-            ->execute([password_hash((string) $in['password'], PASSWORD_DEFAULT), (int) $row['id']]);
+            ->execute([password_hash(field_text($in['password'] ?? ''), PASSWORD_DEFAULT), (int) $row['id']]);
         log_activity('account', 'admin.reset_done', people_display_name($row) . ' chose a new password from a reset link — every other session was signed out', ['actor' => 'admin:' . (int) $row['id']]);
         admin_trust_this_device((int) $row['id']);
-        admin_complete_login((int) $row['id']);
+        admin_complete_login((int) $row['id'], [], '', true);
 
     // ---- Your own details ----
     case 'admin_me_set':
@@ -662,6 +707,9 @@ switch ($action) {
     // A new email only changes once a code sent TO it comes back.
     case 'admin_email_begin':
         require_admin();
+        // The email is where codes and reset links go: changing it hands over the
+        // account, so a borrowed session must prove it is still you first.
+        require_reauth('changing the email you sign in with');
         rate_limit('admin_email', 5, 15);
         $email = strtolower(trim((string) ($in['email'] ?? '')));
         $bad = people_email_problem($email);
@@ -703,7 +751,9 @@ switch ($action) {
         $me = admin_me();
         db()->prepare('UPDATE admins SET email = ? WHERE id = ?')->execute([(string) $p['email'], (int) $me['id']]);
         unset($_SESSION['admin_email_change']);
-        log_activity('account', 'admin.email_change', people_display_name($me) . ' changed their sign-in email');
+        // A warning, so it reaches Needs attention: where sign-in codes go is the
+        // one change someone taking over an account would make first.
+        log_activity('account', 'admin.email_change', people_display_name($me) . ' changed their sign-in email', ['severity' => 'warn']);
         json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
 
     // Two-step on your own sign-in.
@@ -711,6 +761,9 @@ switch ($action) {
         require_admin();
         $me = admin_me();
         $on = !empty($in['on']) ? 1 : 0;
+        if (!$on) {
+            require_reauth('turning off two-step sign-in');
+        }
         try {
             db()->prepare('UPDATE admins SET twofa = ? WHERE id = ?')->execute([$on, (int) $me['id']]);
         } catch (\Throwable $e) {
@@ -780,7 +833,7 @@ switch ($action) {
         $phone = clean($in['phone'] ?? '');
         $address = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
-        $pw = $in['password'] ?? '';
+        $pw = field_text($in['password'] ?? '');
         if ($name === '' || $email === '') {
             json_out(['error' => 'Your name and email are required'], 400);
         }
@@ -894,14 +947,15 @@ switch ($action) {
 
     case 'guest_login':
         $email = strtolower(clean($in['email'] ?? ''));
-        $pw = $in['password'] ?? '';
+        $pw = field_text($in['password'] ?? '');
         throttle_check('guest:' . $email);
         $stmt = db()->prepare(
             'SELECT id, name, email, phone, address, postcode, password_hash FROM guests WHERE email = ?',
         );
         $stmt->execute([$email]);
         $row = $stmt->fetch();
-        if (!password_verify($pw, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
+        $gHash = auth_hash_for($row);
+        if (!password_verify($pw, $gHash) || !$row || $gHash === auth_dummy_hash()) {
             throttle_record('guest:' . $email, false);
             // Diagnose WHY for the owner's log (the reply stays generic): the usual
             // culprits are an email we've never seen, an account that only ever
@@ -934,6 +988,12 @@ switch ($action) {
             json_out(['error' => 'Email or password not recognised'], 401);
         }
         throttle_record('guest:' . $email, true);
+        if (password_needs_rehash($gHash, PASSWORD_DEFAULT)) {
+            try {
+                db()->prepare('UPDATE guests SET password_hash = ? WHERE id = ?')->execute([password_hash($pw, PASSWORD_DEFAULT), (int) $row['id']]);
+            } catch (\Throwable $e) {
+            }
+        }
         // THE PASSWORD IS NOT THE PROOF. An account created against an address that
         // already had bookings is left unverified (guest_register), and the password
         // was chosen by whoever registered — so accepting it here would walk straight
@@ -954,6 +1014,9 @@ switch ($action) {
             // nothing about who owns them, so only the emailed link will do. With
             // nothing to claim, an unproven account signs in (it sees no stays).
             if ($verifiedAt === null && $hasStays) {
+                if (!signin_mail_allowed((string) $row['email'])) {
+                    json_out(['error' => 'Please confirm your email first — use the sign-in link we sent to ' . $email . '.'], 403);
+                }
                 $ts = time();
                 $url = site_base_url() . 'index.html?mlogin=' . (int) $row['id'] . '&t=' . $ts . '&k=' . login_token($row['id'], $ts);
                 require_once __DIR__ . '/mailer.php';
@@ -984,11 +1047,18 @@ switch ($action) {
     case 'guest_magic_request':
         $email = strtolower(clean($in['email'] ?? ''));
         throttle_check('magic:' . $email);
+        // Per address above; per sender here, so one connection cannot mail every
+        // guest in turn (the code request has carried the same cap all along).
+        rate_limit('guestmagic', 12, 15);
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $stmt = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
             $stmt->execute([$email]);
             $g = $stmt->fetch();
             if ($g) {
+                if (!signin_mail_allowed($email)) {
+                    throttle_record('magic:' . $email, false);
+                    json_out(['ok' => true]);
+                }
                 $ts = time();
                 $url =
                     site_base_url() .
@@ -1043,6 +1113,10 @@ switch ($action) {
             $stmt = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
             $stmt->execute([$email]);
             $g = $stmt->fetch();
+            if (!signin_mail_allowed($email)) {
+                throttle_record('code:' . $email, false);
+                json_out(['ok' => true]); // the same answer: the page never says why
+            }
             require_once __DIR__ . '/mailer.php';
             if ($adm) {
                 // With a one-tap link, like a guest's: the code screen says "or tap the
@@ -1148,6 +1222,7 @@ switch ($action) {
         if (mb_strlen($name) < 2) {
             json_out(['error' => "Add your name, so we know who we're talking to."], 400);
         }
+        require_fits($in, ['name' => [160, 'Your name']]);
         $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
         $stmt->execute([$email]);
         $gid = (int) ($stmt->fetchColumn() ?: 0);
@@ -1226,7 +1301,7 @@ switch ($action) {
         ]);
 
     case 'guest_logout':
-        unset($_SESSION['guest_id']);
+        session_end_signed_in();
         json_out(['ok' => true]);
 
     case 'guest_status':
@@ -1249,6 +1324,7 @@ switch ($action) {
         $phone = clean($in['phone'] ?? '');
         $address = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
+        require_fits($in, ['phone' => [60, 'Your phone number']]);
         if ($address === '') {
             json_out(['error' => 'Please enter your UK address'], 400);
         }
@@ -1304,8 +1380,8 @@ switch ($action) {
         if (empty($_SESSION['guest_id'])) {
             json_out(['error' => 'Please log in first'], 401);
         }
-        $current = $in['current'] ?? '';
-        $next = $in['next'] ?? '';
+        $current = field_text($in['current'] ?? '');
+        $next = field_text($in['next'] ?? '');
         if (strlen($next) < 8) {
             json_out(['error' => 'New password must be at least 8 characters'], 400);
         }
@@ -1492,6 +1568,7 @@ switch ($action) {
             db()->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')->execute([(int) $g['id']]);
         } catch (\Throwable $e) {
         }
+        session_regenerate_id(true); // a new id at every sign-in, as everywhere else
         guest_session_begin((int) $g['id']);
         unset($_SESSION['admin_id']); // one role at a time
         json_out([

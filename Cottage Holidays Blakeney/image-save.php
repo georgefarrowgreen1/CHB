@@ -45,6 +45,13 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null)
     if (!isset($allowed[$type])) {
         return ['error' => 'Please use a JPG, PNG, GIF or WEBP image.', 'code' => 400];
     }
+    // A PIXEL BUDGET, read from the header before anything decodes it. A file of a
+    // few KB can declare a 16,383 x 16,383 canvas: WebP and GIF are never decoded
+    // here, so it was stored, and every resize of it (img.php) tried to allocate a
+    // gigabyte. 40 megapixels is past any phone camera.
+    if ((int) $info[0] < 1 || (int) $info[1] < 1 || (int) $info[0] * (int) $info[1] > 40000000) {
+        return ['error' => 'That image is too large in pixels — 40 megapixels at most.', 'code' => 400];
+    }
     $ext = $allowed[$type];
 
     $dir = __DIR__ . '/uploads';

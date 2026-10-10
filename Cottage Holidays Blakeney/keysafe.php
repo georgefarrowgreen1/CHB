@@ -56,9 +56,12 @@ route_actions([
             json_out(['error' => 'Unknown property'], 400);
         }
         $key = 'keysafe-' . $propKey;
-        $rec = keysafe_read(content_secret_json($key, null));
-        $rec['enabled'] = $on;
-        content_set_secret($key, $rec);
+        $rec = content_locked($key, function () use ($key, $on) {
+            $rec = keysafe_read(content_secret_json($key, null));
+            $rec['enabled'] = $on;
+            content_set_secret($key, $rec);
+            return $rec;
+        });
         log_activity('keysafe', 'keysafe.toggle', 'Key safe keeper turned ' . ($on ? 'ON' : 'OFF') . ' — ' . $propName);
         json_out(['ok' => true, 'safe' => $rec]);
     },
@@ -102,22 +105,26 @@ route_actions([
             $bookingId = 0; // a vanished booking is not an error — the SAFE was still set
         }
         $key = 'keysafe-' . $propKey;
-        $rec = keysafe_read(content_secret_json($key, null));
-        if ($rec['code'] !== '') {
-            array_unshift($rec['history'], [
-                'code' => $rec['code'],
-                'setAt' => $rec['setAt'],
-                'forBooking' => $rec['forBooking'],
-                'forStay' => $rec['forStay'],
-                'guest' => $guestFor($rec['forBooking']),
-            ]);
-            $rec['history'] = array_slice($rec['history'], 0, KEYSAFE_HISTORY_MAX);
-        }
-        $rec['code'] = $code;
-        $rec['setAt'] = gmdate('c');
-        $rec['forBooking'] = $bookingId;
-        $rec['forStay'] = $stayRef;
-        content_set_secret($key, $rec);
+        // Locked with the on/off switch above, so neither change undoes the other.
+        $rec = content_locked($key, function () use ($key, $guestFor, $code, $bookingId, $stayRef) {
+            $rec = keysafe_read(content_secret_json($key, null));
+            if ($rec['code'] !== '') {
+                array_unshift($rec['history'], [
+                    'code' => $rec['code'],
+                    'setAt' => $rec['setAt'],
+                    'forBooking' => $rec['forBooking'],
+                    'forStay' => $rec['forStay'],
+                    'guest' => $guestFor($rec['forBooking']),
+                ]);
+                $rec['history'] = array_slice($rec['history'], 0, KEYSAFE_HISTORY_MAX);
+            }
+            $rec['code'] = $code;
+            $rec['setAt'] = gmdate('c');
+            $rec['forBooking'] = $bookingId;
+            $rec['forStay'] = $stayRef;
+            content_set_secret($key, $rec);
+            return $rec;
+        });
         // THAT it rotated, for whom — never the code (activity_log is plaintext).
         log_activity('keysafe', 'keysafe.rotate', 'Key safe rotated — ' . $propName
             . ($bookingId > 0 ? ' (set for booking #' . $bookingId . ')'

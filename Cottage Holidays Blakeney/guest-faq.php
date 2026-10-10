@@ -30,10 +30,9 @@ function guest_faq_merge($list, $q, $prop, $today)
     if (mb_strlen($q) < 6 || !preg_match('/[a-z]/i', $q)) {
         return null; // not a question worth remembering
     }
-    $prop = (string) $prop;
-    if (strlen($prop) > 40) {
-        $prop = substr($prop, 0, 40);
-    }
+    // A cottage key, so only its own alphabet: a byte cut through a character
+    // here once made the whole stored list unencodable, and it was saved as ''.
+    $prop = substr((string) preg_replace('/[^a-z0-9_-]/i', '', (string) $prop), 0, 40);
     $norm = mb_strtolower($q);
     $found = false;
     foreach ($list as &$row) {
@@ -77,10 +76,13 @@ if ($action === 'record') {
     // rides alongside is rate-limited too, but this endpoint stands alone).
     rate_limit('guestfaq', 30, 10);
     try {
-        $merged = guest_faq_merge(content_json('guest-faq-misses', []), $in['q'] ?? '', clean($in['prop'] ?? ''), date('Y-m-d'));
-        if ($merged !== null) {
-            content_set_scalar('guest-faq-misses', $merged);
-        }
+        // Locked: two guests asking at once must not lose one of the questions.
+        content_locked('guest-faq-misses', function () use ($in) {
+            $merged = guest_faq_merge(content_json('guest-faq-misses', []), $in['q'] ?? '', clean($in['prop'] ?? ''), date('Y-m-d'));
+            if ($merged !== null) {
+                content_set_scalar('guest-faq-misses', $merged);
+            }
+        });
     } catch (\Throwable $e) {
         // Best-effort — a capture failure must never surface to the guest.
     }

@@ -110,12 +110,17 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'notify-recipients.php') {
     }
 
     if ($action === 'add' || $action === 'remove') {
-        $r = nr_apply($action, $in['email'] ?? '', nr_load(), $primary);
+        $r = content_locked('notify-emails', function () use ($action, $in, $primary) {
+            $r = nr_apply($action, $in['email'] ?? '', nr_load(), $primary);
+            if (!$r['error'] && $r['changed']) {
+                nr_save($r['list']);
+            }
+            return $r;
+        });
         if ($r['error']) {
             json_out(['ok' => false, 'error' => $r['error']], $r['code']);
         }
         if ($r['changed']) {
-            nr_save($r['list']);
             log_activity(
                 'settings',
                 'notify.' . $action,

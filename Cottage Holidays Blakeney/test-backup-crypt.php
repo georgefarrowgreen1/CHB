@@ -108,6 +108,14 @@ bck('§5 the passphrase is NEVER printed into the email',
 // A config const must still win, like every other secret in this app.
 bck('§5 a config const overrides the stored passphrase', strpos($bnc, 'BACKUP_PASSPHRASE') !== false);
 
+// §6 THE DUMP STATES ITS OWN SQL MODE. Values are quoted with backslash escapes,
+// which read back wrongly (a guest's \' ends the string, the rest runs as SQL)
+// wherever NO_BACKSLASH_ESCAPES is on — so the dump sets the mode it needs.
+echo "\n§6 the dump states its own SQL mode\n";
+$bsrc = (string) file_get_contents(__DIR__ . '/backup.php');
+bck('§6 the header sets a mode without NO_BACKSLASH_ESCAPES', strpos($bsrc, "SQL_MODE='NO_AUTO_VALUE_ON_ZERO'") !== false);
+bck('§6 …and the footer puts the restoring server\'s own mode back', strpos($bsrc, 'SET SQL_MODE=@OLD_SQL_MODE') !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail BACKUP-CRYPT CHECK(S) FAILED \u{274C}\n";

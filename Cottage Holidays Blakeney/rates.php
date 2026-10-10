@@ -40,6 +40,10 @@ function rates_public_payload()
         // Surface the archived flag plainly so the front end can hide archived
         // cottages from the public site but still let the admin restore them.
         $r['archived'] = !empty($r['archived_at']);
+        // A stored colour that is not #RRGGBB is never served (prop_accent_ok).
+        if (array_key_exists('accent', $r) && !prop_accent_ok($r['accent'])) {
+            $r['accent'] = '';
+        }
         // "Unlisted" (private) cottages are managed in the back office but hidden
         // from the public site. Surface the flag for the admin front end.
         $r['unlisted'] = !empty($r['unlisted']);
@@ -209,6 +213,7 @@ if (($in['action'] ?? '') === 'create') {
     if ($name === '') {
         json_out(['error' => 'Please give the accommodation a name'], 400);
     }
+    require_fits($in, ['name' => [120, 'The name']]);
     if ($rate <= 0) {
         json_out(['error' => 'Please set a nightly couple rate above £0'], 400);
     }
@@ -389,10 +394,19 @@ if (($in['action'] ?? '') === 'save') {
             }
             $set[] = "$f = ?";
             $vals[] = $v;
+        } elseif ($f === 'accent') {
+            if (!prop_accent_ok($in[$f])) {
+                json_out(['error' => 'A cottage colour must be a #RRGGBB code'], 400);
+            }
+            $set[] = "$f = ?";
+            $vals[] = strtoupper((string) $in[$f]);
         } elseif ($f === 'slug') {
             $set[] = "$f = ?";
-            $vals[] = slugify(clean($in[$f])) ?: $propKey;
+            $vals[] = rtrim(substr(slugify(clean($in[$f])), 0, 80), '-') ?: $propKey;
         } else {
+            if ($f === 'name') {
+                require_fits($in, ['name' => [120, 'The name']]);
+            }
             $set[] = "$f = ?";
             $vals[] = clean($in[$f]);
         }
@@ -466,7 +480,8 @@ function unique_prop_key($name)
 // A unique URL slug (falls back to the key when the name has no usable letters).
 function unique_prop_slug($name, $key)
 {
-    $base = slugify($name) ?: $key;
+    // Room for a "-N" suffix inside the 80-character column.
+    $base = rtrim(substr(slugify($name), 0, 72), '-') ?: $key;
     $slug = $base;
     $n = 2;
     $exists = function ($s) {

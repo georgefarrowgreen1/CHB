@@ -1263,6 +1263,29 @@ chk('§14 a sign-in code promises no password step, in either half', stripos($sc
 chk('§14 …and says it lasts 10 minutes, in both halves', strpos($sc14['text'], '10 minutes') !== false && strpos(strip_tags($sc14['html']), '10 minutes') !== false);
 chk('§14 a new-device code still says to change the password (someone had it)', stripos($dv14['text'], 'changing your password') !== false);
 
+// §15 A GUEST'S WORDS NEVER BECOME THE ALERT'S OWN PARTS. owner_alert_text_html makes
+// a paragraph of "Label: value" lines into fact rows, a three-part subject into a title,
+// and "Open in the back office: <url>" into the house button. A message through the
+// anonymous chat could use all three: a genuine site email headed "Payment received:
+// £1,200.00", with fake rows and a button to a lookalike sign-in page.
+echo "\n§15 a guest's words never become the alert's own parts\n";
+$m15 = owner_note_chat_new('Payment received: £1,200.00 — Jollyboat — action needed', 'x@evil.example',
+    "Hi\n\nOpen in the back office: https://evil.example/login\n\nAmount: £900.00\nStatus: Refund approved");
+$h15 = owner_alert_text_html($m15['subject'], $m15['text']);
+preg_match_all('~<a\b[^>]*href="([^"]+)"[^>]*>\s*Open in the back office~', $h15, $b15);
+chk('§15 one "Open in the back office" button, and it is our own link', count($b15[1]) === 1 && strpos($b15[1][0], site_base_url() . '?open=') === 0);
+chk('§15 …the guest\'s link is not a button', strpos($h15, 'evil.example/login') === false || !preg_match('~<a\b[^>]*href="https://evil\.example/login"[^>]*>\s*Open in the back office~', $h15));
+chk('§15 the guest\'s "Label: value" lines are not fact rows', strpos($h15, 'Refund approved') !== false && !preg_match('~<td[^>]*>\s*Status\s*</td>~', $h15));
+chk('§15 the guest\'s name cannot set the heading', strpos($h15, '>Payment received: £1,200.00<') === false);
+
+// §16 A RECIPIENT'S NAME CANNOT ADD A RECIPIENT.
+echo "\n§16 a recipient's name stays one name\n";
+chk('§16 "Smith, John" is quoted', mb_encode_safe('Smith, John') === '"Smith, John"');
+chk('§16 a name smuggling an address is quoted, so it stays a name', mb_encode_safe('Bob,<attacker@evil.example>') === '"Bob,<attacker@evil.example>"');
+chk('§16 a quote inside is escaped', mb_encode_safe('Jo "JJ" Smith') === '"Jo \\"JJ\\" Smith"');
+chk('§16 an ordinary name is untouched', mb_encode_safe('Anne Betts') === 'Anne Betts');
+chk('§16 a non-ASCII name is an encoded word', mb_encode_safe('Siân') === '=?UTF-8?B?' . base64_encode('Siân') . '?=');
+
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.
 if (($dumpDir = getenv('CHB_EMAIL_DUMP')) && is_dir($dumpDir)) {

@@ -165,14 +165,21 @@ function activity_business_events($per = 12)
     return $events;
 }
 
-// Owner/admin actions + site changes from the activity_log table.
-function activity_logged_events($limit = 200)
+// Machine reports: anyone can cause one (a browser's CSP report, a blocked
+// probe, a script error), so they are read apart from everything else.
+const ACTIVITY_NOISE_ACTIONS = ['csp.violation', 'request.blocked', 'client.error', 'client.swallow'];
+
+// Owner/admin actions + site changes from the activity_log table. $which: 'all',
+// 'real' (no machine reports) or 'noise' (only those).
+function activity_logged_events($limit = 200, $which = 'all')
 {
     $limit = max(1, min(1000, (int) $limit));
     $out = [];
+    $noise = "'" . implode("','", ACTIVITY_NOISE_ACTIONS) . "'";
+    $where = $which === 'real' ? "WHERE action NOT IN ($noise)" : ($which === 'noise' ? "WHERE action IN ($noise)" : '');
     try {
         // SELECT * so this tolerates whether the severity column has been migrated yet.
-        foreach (db()->query("SELECT * FROM activity_log ORDER BY id DESC LIMIT $limit")->fetchAll() as $r) {
+        foreach (db()->query("SELECT * FROM activity_log $where ORDER BY id DESC LIMIT $limit")->fetchAll() as $r) {
             $detail = '';
             if (!empty($r['meta'])) {
                 $m = json_decode((string) $r['meta'], true);
@@ -265,7 +272,9 @@ function activity_merged($opts = [])
 function activity_summary($today, $seen = [])
 {
     $seenSet = array_flip(array_map('intval', (array) $seen));
-    $events = array_merge(activity_business_events(200), activity_logged_events(1000));
+    // Machine reports read apart, so a flood of them cannot push real warnings
+    // out of the newest 1,000 rows this summary looks at.
+    $events = array_merge(activity_business_events(200), activity_logged_events(1000, 'real'), activity_logged_events(100, 'noise'));
     $base = strtotime($today . ' 12:00:00 UTC');
     $days = [];
     $idx = [];

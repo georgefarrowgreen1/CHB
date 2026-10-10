@@ -29,8 +29,11 @@ if ($action === 'seen') {
     if (!$ids) {
         json_out(['error' => 'Nothing to mark as seen.'], 400);
     }
-    $all = array_values(array_unique(array_merge(activity_seen_ids(), $ids)));
-    content_set_scalar('activity-seen', array_slice($all, -400));
+    // Locked: "Seen it" on two rows in quick succession arrives as two requests.
+    content_locked('activity-seen', function () use ($ids) {
+        $all = array_values(array_unique(array_merge(activity_seen_ids(), $ids)));
+        content_set_scalar('activity-seen', array_slice($all, -400));
+    });
     json_out(['ok' => true, 'seen' => count($ids)]);
 }
 if ($action !== 'list') {

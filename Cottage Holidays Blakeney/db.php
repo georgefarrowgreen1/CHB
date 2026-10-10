@@ -15,6 +15,8 @@ require_once __DIR__ . '/config.php';
 // The rules about people (who may do what) — pure, so test-people.php can drive
 // them with no database. Needed before the session check below runs.
 require_once __DIR__ . '/people-lib.php';
+// Which endpoints keep the session lock, and the session folder's sweep.
+require_once __DIR__ . '/session-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -48,7 +50,7 @@ if (session_status() === PHP_SESSION_NONE) {
     // browser-session cookie (gone on close) and PHP's default ~24-min idle GC could
     // expire the session server-side, so a post-deploy reload looked like a logout.
     // (Logging out still clears the session; login still regenerates the id.)
-    $sess_ttl = 60 * 60 * 24 * 60; // 60 days
+    $sess_ttl = CHB_SESSION_TTL; // 60 days
 
     // Store our session files in an app-local, web-denied folder (see sessions/
     // .htaccess) so the shared host's own GC of the server-default path can't quietly
@@ -70,6 +72,9 @@ if (session_status() === PHP_SESSION_NONE) {
         @ini_set('session.save_path', $sess_dir);
     }
     @ini_set('session.gc_maxlifetime', (string) $sess_ttl);
+    // Only ids this server issued: a session id planted in someone's browser
+    // (fixation) is refused and replaced rather than adopted.
+    @ini_set('session.use_strict_mode', '1');
 
     session_set_cookie_params([
         'lifetime' => $sess_ttl,
@@ -119,6 +124,13 @@ admin_session_check();
 // in the session). The admin UI echoes it back in an X-CSRF-Token header on writes;
 // require_admin() checks they match — defence-in-depth on top of SameSite cookies.
 csrf_issue_cookie();
+// Let go of the session lock unless this endpoint writes the session — it says so
+// with define('CHB_KEEPS_SESSION', true) before requiring this file (the why is at
+// the top of session-lib.php). $_SESSION stays readable; a write after this point
+// would be lost, which test-session-lock.php prevents.
+if (session_status() === PHP_SESSION_ACTIVE && !defined('CHB_KEEPS_SESSION')) {
+    session_write_close();
+}
 
 // ---- PDO connection ----
 function db()
@@ -203,7 +215,10 @@ function book_unlock($propKey)
 //  * CONCURRENT REPEATS SERIALISE on a GET_LOCK per op (the book_lock pattern —
 //    auto-freed if a request dies, best-effort where GET_LOCK is unavailable):
 //    the second runner takes the lock after the first stored, finds the row,
-//    and answers from it.
+//    and answers from it. A repeat that is STILL WAITING when the wait runs out
+//    is refused (409, code 'in_flight'), never run: the first may be stuck in a
+//    slow email after a refund has already gone, and a second run would refund
+//    again — Square's idempotency key changes once money has gone back.
 //  * AN UN-MIGRATED TABLE DEGRADES to exactly the old behaviour (no dedupe)
 //    rather than blocking the write — the brief window after a deploy before
 //    migrate.php runs must not refuse payments.
@@ -223,12 +238,17 @@ function op_claim(array $in)
         : (!empty($_SESSION['guest_id']) ? 'g:' . (int) $_SESSION['guest_id']
         : 's:' . (session_id() !== '' ? session_id() : 'none'));
     $id = 'k' . substr(hash('sha256', $who . '|' . basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) . '|' . $id), 0, 46);
+    $got = null;
     try {
-        $s = db()->prepare('SELECT GET_LOCK(?, 15)');
-        $s->execute(['chb_op_' . $id]);
-        $s->fetchColumn();
+        $s = db()->prepare('SELECT GET_LOCK(?, ?)');
+        $s->execute(['chb_op_' . $id, defined('CHB_OP_LOCK_WAIT') ? (int) CHB_OP_LOCK_WAIT : 15]);
+        $got = $s->fetchColumn();
     } catch (\Throwable $e) {
         // no lock support — proceed unprotected, same posture as book_lock
+    }
+    // 0 = the same op is still running elsewhere. NULL (no lock support) proceeds.
+    if ($got !== null && $got !== false && (int) $got === 0) {
+        json_out(['error' => "That's still being saved from a moment ago. Give it a minute, then check before trying again.", 'code' => 'in_flight'], 409);
     }
     try {
         $q = db()->prepare('SELECT response FROM op_ledger WHERE op_id = ?');
@@ -423,9 +443,15 @@ function json_out($data, $code = 200)
     if (is_array($data) && $data !== [] && array_keys($data) !== range(0, count($data) - 1) && !isset($data['srv'])) {
         $data['srv'] = time();
     }
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // ONE BAD BYTE MUST NOT BLANK A LIST. Text reaches here from places that do not
+    // promise UTF-8 (an email header in Windows-1252, a byte-cut preview), and
+    // without the SUBSTITUTE flag json_encode refuses the WHOLE response, so one
+    // bad email in a list would turn the whole list into an error. A bad byte is
+    // now U+FFFD and the rest of the answer arrives.
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     if ($json === false) {
-        // Encoding failed (e.g. invalid UTF-8) — return a safe error instead of an empty body
+        // Still unencodable (a NAN or INF, say). A failure must not answer 2xx.
+        http_response_code(500);
         $json = json_encode(['error' => 'Response encoding error']);
     }
     echo $json;
@@ -920,10 +946,127 @@ function rate_limit($key, $max = 8, $windowMin = 10)
     }
 }
 
+// The same per-address ceiling, answered as a yes or no instead of a refusal: for
+// work that should quietly stop counting (an analytics record) rather than fail.
+function rate_allow($key, $max = 8, $windowMin = 10): bool
+{
+    try {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $win = (int) $windowMin;
+        $s = db()->prepare("SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND identifier = ? AND attempted_at > (NOW() - INTERVAL $win MINUTE)");
+        $s->execute([$ip, $key]);
+        if ((int) $s->fetchColumn() >= $max) {
+            return false;
+        }
+        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([$ip, $key]);
+    } catch (\Throwable $e) {
+    }
+    return true;
+}
+// The same ceiling counted by KEY alone, whatever address the requests come from:
+// for a limit that belongs to an account (a signed-in guest's chat), where a new
+// address must not buy a fresh allowance.
+function rate_limit_key($key, $max = 8, $windowMin = 10)
+{
+    try {
+        $win = (int) $windowMin;
+        $s = db()->prepare("SELECT COUNT(*) c FROM login_attempts
+                            WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL $win MINUTE)");
+        $s->execute([$key]);
+        if ((int) ($s->fetch() ?: ['c' => 0])['c'] >= $max) {
+            json_out(['error' => 'Too many requests. Please wait a few minutes and try again.'], 429);
+        }
+        db()
+            ->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')
+            ->execute([$_SERVER['REMOTE_ADDR'] ?? '', $key]);
+    } catch (\Throwable $e) {
+        /* table missing — don't block */
+    }
+}
+
 // ---- Simple input sanitising ----
+// A request field as the text it should be. An array or object where text was
+// expected becomes '' rather than reaching a string function: `name: [...]` in a
+// public waitlist, enquiry or login POST threw a TypeError, logged a server error
+// and pushed the owner a "Site error detected". Numbers and booleans pass through
+// as before (callers cast them).
+// TEXT LONGER THAN ITS COLUMN IS REFUSED BY NAME. The database rejects an
+// over-long value outright, so a postcode with its country added ("D02 X285
+// Ireland", 16 characters for a 12-character column) reached the owner as
+// "Something went wrong on our side", logged a server error and pushed a
+// site-error alert. A writer lists its fields as key => [column width, the
+// field's name in words]; the first one that does not fit answers 400.
+function require_fits(array $in, array $limits)
+{
+    foreach ($limits as $key => [$max, $label]) {
+        $v = $in[$key] ?? '';
+        if (is_string($v) && mb_strlen(trim($v)) > $max) {
+            json_out(['error' => $label . ' can be at most ' . $max . ' characters.', 'field' => $key], 400);
+        }
+    }
+}
+// Is this database error a missing table or column (migrations not yet run)?
+// Every other failure is a real error and must not be reported as an install step.
+function db_schema_missing(\Throwable $e): bool
+{
+    return $e instanceof PDOException && in_array((string) $e->getCode(), ['42S02', '42S22'], true);
+}
+// When a sign-in names an account that doesn't exist (or one with no password),
+// verify against a dummy hash anyway, so the answer takes the same time either way
+// and timing can't tell which usernames and emails are registered. The dummy must
+// cost what a real hash costs: a fixed cost-12 one beside cost-10 accounts (PHP
+// 8.3's default) made an unknown name answer four times slower (83ms against
+// 360ms, measured), the opposite of its purpose. One per bcrypt cost; the one
+// PASSWORD_DEFAULT would make on this PHP is used.
+const AUTH_DUMMY_HASHES = [
+    10 => '$2y$10$39yIocBGW.lwpKRgoid/v.gO/sQpZXWJtZ0L.AjofbgCVZIa0vC4q',
+    11 => '$2y$11$CgL510UWRF1V9L6v0oNaZus4kdHh2TMgvlrHoO0svaregSDyjwJri',
+    12 => '$2y$12$WDD4ZB6ziRhdid7jE9qbXeuL/LLbyjCuC4SHKnKuY5yOTYhT3z2pC',
+    13 => '$2y$13$WQWbzkvorN1FCjPCQ6H1iemYeETHUUqQ5JMkIhrdfdYKyR1KFR5yS',
+];
+function auth_dummy_hash(): string
+{
+    static $pick = null;
+    if ($pick === null) {
+        $pick = AUTH_DUMMY_HASHES[12];
+        foreach (AUTH_DUMMY_HASHES as $h) {
+            if (!password_needs_rehash($h, PASSWORD_DEFAULT)) {
+                $pick = $h;
+                break;
+            }
+        }
+    }
+    return $pick;
+}
+// The hash a sign-in should check: the account's own, or the dummy when there is
+// no account or it has no password (code-only accounts answered instantly).
+function auth_hash_for($row): string
+{
+    $h = is_array($row) ? (string) ($row['password_hash'] ?? '') : '';
+    return $h !== '' ? $h : auth_dummy_hash();
+}
+// SIGNING OUT ENDS THE SESSION, not just the name on it. Clearing the user id left
+// the same session carrying every other key (a reset window, a half-finished code,
+// the CSRF token) into whoever signed in next on that device.
+function session_end_signed_in()
+{
+    $_SESSION = [];
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        @session_regenerate_id(true);
+    }
+}
+// A field that must stay exactly as typed (a password): never trimmed, and
+// anything other than text is ''. password_verify() on an array threw.
+function field_text($v)
+{
+    return is_string($v) ? $v : (is_int($v) || is_float($v) ? (string) $v : '');
+}
 function clean($v)
 {
-    return is_string($v) ? trim($v) : $v;
+    if (is_string($v)) {
+        return trim($v);
+    }
+    return is_array($v) || is_object($v) ? '' : $v;
 }
 
 // ---- Shared business rules (single source of truth) ----
@@ -1007,6 +1150,16 @@ function occupancy_limits($rows = null)
     return $limits;
 }
 
+// A cottage's colour is only ever a #RRGGBB code. It is painted into style
+// attributes (the timeline, the booking sheet, the stay dot in every email) and
+// into the stylesheet app.js generates for the public site, so a quote or a brace
+// in it breaks out of all of them. rates.php refuses one at the write; the two
+// reads below replace an old bad value rather than serve it.
+function prop_accent_ok($v): bool
+{
+    return is_string($v) && preg_match('/^#[0-9A-Fa-f]{6}$/', $v) === 1;
+}
+
 // Per-cottage display info (name, accent colour, URL slug) for emails/crons, so
 // they label/colour/link correctly for ANY cottage the owner has added — not just
 // the original three. Reads the property row; falls back to a fixed map (and finally
@@ -1020,7 +1173,7 @@ function prop_display($key)
             foreach (db()->query('SELECT prop_key, name, accent, slug FROM properties')->fetchAll() as $r) {
                 $cache[$r['prop_key']] = [
                     'name' => $r['name'] ?: $r['prop_key'],
-                    'accent' => $r['accent'] ?: '#8FB3C7',
+                    'accent' => prop_accent_ok($r['accent']) ? $r['accent'] : '#8FB3C7',
                     'slug' => $r['slug'] ?: $r['prop_key'],
                 ];
             }
@@ -1650,21 +1803,63 @@ function content_secret_json($key, $default = [])
 }
 
 // Store a scalar content value (json-encoded, matching content_value()'s read).
+// A value json_encode refuses must never be stored: PDO would write '' and the
+// next read would see an empty list, so one guest question with a byte cut
+// mid-character erased every question stored before it. Bad bytes become U+FFFD;
+// anything still unencodable throws for the caller's own error handling.
 function content_set_scalar($key, $val)
 {
+    $json = json_encode($val, JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        throw new RuntimeException('content_set_scalar: ' . (string) $key . ' could not be encoded');
+    }
     db()
         ->prepare(
             'INSERT INTO content (item_key, item_value) VALUES (?, ?)
                    ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
         )
-        ->execute([$key, json_encode($val)]);
+        ->execute([$key, $json]);
+}
+// READ, CHANGE AND SAVE ONE CONTENT KEY AS ONE STEP. Requests from one browser no
+// longer wait for each other (db.php releases the session early), so two that
+// each read a list, add to it and save it back can each lose the other's change
+// (the Inbox opens several emails at once, and each adds to the seen list). A
+// named lock per key closes that gap. A request that dies frees its lock, and a
+// host without GET_LOCK runs the change unlocked, as before.
+function content_locked($key, callable $fn, $wait = 5)
+{
+    $name = 'chb_ck_' . substr(sha1((string) $key), 0, 40);
+    $got = false;
+    try {
+        $s = db()->prepare('SELECT GET_LOCK(?, ?)');
+        $s->execute([$name, (int) $wait]);
+        $got = (int) $s->fetchColumn() === 1;
+    } catch (\Throwable $e) {
+    }
+    // The request memo (bootstrap's whole-table read) would answer the read
+    // from before the lock was taken.
+    unset($GLOBALS['__content_all']);
+    try {
+        return $fn();
+    } finally {
+        if ($got) {
+            try {
+                db()->prepare('SELECT RELEASE_LOCK(?)')->execute([$name]);
+            } catch (\Throwable $e) {
+            }
+        }
+    }
 }
 // Store a SECRET content value ENCRYPTED at rest (for a private 'apikey-'/'arrival-'
 // key), matching content_value()'s decrypt-then-decode read. Mirrors content.php's
 // 'set' path so a self-captured key (e.g. the Square webhook signing key) round-trips.
 function content_set_secret($key, $val)
 {
-    $enc = encrypt_value(json_encode($val, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $json = json_encode($val, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        throw new RuntimeException('content_set_secret: ' . (string) $key . ' could not be encoded');
+    }
+    $enc = encrypt_value($json);
     db()
         ->prepare(
             'INSERT INTO content (item_key, item_value) VALUES (?, ?)
@@ -2564,16 +2759,20 @@ function email_optout_add($email)
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         return false;
     }
-    $list = content_json('email-optout', []);
-    if (in_array($email, $list, true)) {
-        return true; // idempotent
-    }
-    $list[] = $email;
-    if (count($list) > 2000) {
-        $list = array_slice($list, -2000); // bounded — never balloons
-    }
-    content_set_scalar('email-optout', $list);
-    return true;
+    // Locked: two people opting out at once must not lose one of them, or that
+    // person keeps getting the emails they asked to stop.
+    return content_locked('email-optout', function () use ($email) {
+        $list = content_json('email-optout', []);
+        if (in_array($email, $list, true)) {
+            return true; // idempotent
+        }
+        $list[] = $email;
+        if (count($list) > 2000) {
+            $list = array_slice($list, -2000); // bounded — never balloons
+        }
+        content_set_scalar('email-optout', $list);
+        return true;
+    });
 }
 // Unguessable token for a passwordless email sign-in link. Binds a guest id to
 // an issue-time so it expires (checked in auth.php), and leaks nothing if seen —
@@ -2858,6 +3057,13 @@ function chb_maybe_alert_owner_error($summary)
 
 set_exception_handler(function ($e) {
     chb_log_server_error(get_class($e), $e->getMessage(), $e->getFile(), $e->getLine());
+    // From the command line, a handled exception would otherwise end the script
+    // with status 0. Six test gates load this file, and in each one a crash
+    // partway through stopped the checks and still reported a pass.
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, 'Uncaught ' . get_class($e) . ': ' . $e->getMessage() . ' at ' . basename((string) $e->getFile()) . ':' . (int) $e->getLine() . "\n");
+        exit(255);
+    }
     // Only shape the response when nothing has been sent — non-JSON endpoints
     // (sitemap XML, iCal, backup download) mid-stream just get the log entry.
     if (!headers_sent()) {

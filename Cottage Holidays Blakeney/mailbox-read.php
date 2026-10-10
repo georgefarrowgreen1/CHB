@@ -55,15 +55,12 @@ function parse_email_message($raw)
     $cte = strtolower($h('Content-Transfer-Encoding'));
     // Multipart → dig out the text body (recursing through nested containers, e.g.
     // multipart/mixed → multipart/alternative → text/plain). Returns already-decoded
-    // text (or '' if none) — either beats leaking the raw MIME blob as the "reply".
+    // UTF-8 text (or '' if none) — either beats leaking the raw MIME blob as the "reply".
+    $extracted = null;
     if (stripos($ctype, 'multipart/') !== false) {
         $extracted = mailbox_extract_text($body, $ctype);
-        if (is_string($extracted)) {
-            $body = $extracted;
-            $cte = '';
-        }
     }
-    $body = mailbox_decode_body($body, $cte);
+    $body = is_string($extracted) ? $extracted : mailbox_utf8(mailbox_decode_body($body, $cte), mailbox_charset_of($ctype));
     return [
         'from' => $h('From'),
         'subject' => mailbox_decode_subject($h('Subject')),
@@ -71,6 +68,47 @@ function parse_email_message($raw)
         'references' => $h('References'),
         'body' => $body,
     ];
+}
+
+// TEXT FROM AN EMAIL, AS UTF-8. Each part declares its own charset, and Outlook
+// still sends Windows-1252: passed on unconverted, those bytes made json_out
+// refuse the whole answer, so the email opened empty (and was marked read), and a
+// reply by email reached the guest chat with its curly quotes and £ signs as '?'.
+// ISO-8859-1 is read as Windows-1252, as browsers do, because mail labelled
+// Latin-1 routinely carries Windows-1252's quotes and £. No label, or a UTF-8 one
+// over bytes that are not UTF-8, falls back to Windows-1252 too.
+function mailbox_utf8($text, $charset = '')
+{
+    $text = (string) $text;
+    $cs = strtolower(trim((string) $charset, " \t\"'"));
+    if ($cs === '' || $cs === 'utf-8' || $cs === 'utf8' || $cs === 'us-ascii' || $cs === 'ascii') {
+        if (mb_check_encoding($text, 'UTF-8')) {
+            return $text;
+        }
+        $cs = 'windows-1252';
+    }
+    if (in_array($cs, ['iso-8859-1', 'iso8859-1', 'latin1', 'latin-1', 'cp1252'], true)) {
+        $cs = 'windows-1252';
+    }
+    try {
+        $out = mb_convert_encoding($text, 'UTF-8', $cs);
+        if (is_string($out) && mb_check_encoding($out, 'UTF-8')) {
+            return $out;
+        }
+    } catch (\Throwable $e) {
+        // a label mbstring doesn't know (PHP 8 throws) — iconv may
+    }
+    if (function_exists('iconv')) {
+        $out = @iconv($cs, 'UTF-8//IGNORE', $text);
+        if (is_string($out) && $out !== '' && mb_check_encoding($out, 'UTF-8')) {
+            return $out;
+        }
+    }
+    return mb_scrub($text, 'UTF-8');
+}
+function mailbox_charset_of($ctype)
+{
+    return preg_match('/charset\s*=\s*"?([^";\s]+)"?/i', (string) $ctype, $m) ? $m[1] : '';
 }
 
 function mailbox_decode_body($body, $cte)
@@ -109,9 +147,9 @@ function mailbox_extract_text($body, $ctype)
                 return $r;
             }
         } elseif (stripos($pct, 'text/plain') !== false) {
-            return mailbox_decode_body($pbody, $pcte); // best: plain text
+            return mailbox_utf8(mailbox_decode_body($pbody, $pcte), mailbox_charset_of($pct)); // best: plain text
         } elseif ($html === '' && stripos($pct, 'text/html') !== false) {
-            $html = mailbox_decode_body($pbody, $pcte); // remember as fallback
+            $html = mailbox_utf8(mailbox_decode_body($pbody, $pcte), mailbox_charset_of($pct)); // remember as fallback
         }
     }
     if ($html !== '') {
@@ -121,16 +159,28 @@ function mailbox_extract_text($body, $ctype)
     return '';
 }
 
-// Decode an RFC2047 =?UTF-8?B?…?= subject just enough to read a token inside it.
+// Decode an RFC2047 =?UTF-8?B?…?= header (a subject, a sender's name) to UTF-8.
+// A header with no encoded words is returned as sent: iconv's CONTINUE_ON_ERROR
+// mode dropped every non-ASCII byte from one ("Siân" became "Sin").
 function mailbox_decode_subject($s)
 {
+    $s = (string) $s;
+    if (strpos($s, '=?') === false) {
+        return mailbox_utf8($s);
+    }
     if (function_exists('iconv_mime_decode')) {
-        $d = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+        $d = @iconv_mime_decode($s, 0, 'UTF-8');
         if ($d !== false) {
-            return $d;
+            return mailbox_utf8($d);
         }
     }
-    return $s;
+    if (function_exists('mb_decode_mimeheader')) {
+        $d = @mb_decode_mimeheader($s);
+        if (is_string($d) && $d !== '') {
+            return mailbox_utf8($d);
+        }
+    }
+    return mailbox_utf8($s);
 }
 
 // A "Name <addr@x>" or bare address → lowercase address. Take the LAST <…>
@@ -162,12 +212,38 @@ function mailbox_token_in($parsed)
 }
 
 // ---- POP3-SSL socket read (best-effort) ------------------------------------
+// ONE POP3 SESSION AT A TIME. Many mail servers lock the mailbox while a session
+// is open and refuse a second login (RFC 1939's exclusive-access lock), and the
+// Inbox opens several emails at once, each a session of its own. Those reads used
+// to queue behind each other by accident, on the PHP session lock; db.php now
+// releases that early, so this named lock queues them on purpose, and nothing
+// else waits on them. Whoever opens a session releases it with pop3_release()
+// (a request that ends first frees the lock with its database connection).
+function pop3_lock()
+{
+    try {
+        $r = db()->query("SELECT GET_LOCK('chb_pop3', 25)")->fetchColumn();
+        return $r === null || $r === false ? true : (int) $r === 1;
+    } catch (\Throwable $e) {
+        return true; // no lock support: proceed, as before
+    }
+}
+function pop3_release()
+{
+    try {
+        db()->query("SELECT RELEASE_LOCK('chb_pop3')");
+    } catch (\Throwable $e) {
+    }
+}
 // Returns [msgNo => uidl] and a fetcher, or ['error'=>…]. Non-destructive.
 function pop3_open()
 {
     $host = mailbox_pop_host();
     if ($host === '' || !defined('SMTP_USER') || !defined('SMTP_PASS')) {
         return ['error' => 'No mailbox configured'];
+    }
+    if (!pop3_lock()) {
+        return ['error' => 'The mailbox is busy — try again in a moment.'];
     }
     $ctx = stream_context_create([
         'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
@@ -176,6 +252,7 @@ function pop3_open()
     $errstr = '';
     $fp = @stream_socket_client("ssl://{$host}:995", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
+        pop3_release();
         return ['error' => "Connect failed: {$errstr}"];
     }
     stream_set_timeout($fp, 12);
@@ -183,16 +260,19 @@ function pop3_open()
     $ok = fn($r) => is_string($r) && strlen($r) && $r[0] === '+';
     if (!$ok($line())) {
         fclose($fp);
+        pop3_release();
         return ['error' => 'No greeting'];
     }
     fwrite($fp, 'USER ' . SMTP_USER . "\r\n");
     if (!$ok($line())) {
         fclose($fp);
+        pop3_release();
         return ['error' => 'USER rejected'];
     }
     fwrite($fp, 'PASS ' . SMTP_PASS . "\r\n");
     if (!$ok($line())) {
         fclose($fp);
+        pop3_release();
         return ['error' => 'Login failed (check the mailbox allows POP3)'];
     }
     return ['fp' => $fp];
@@ -398,6 +478,7 @@ function poll_mailbox_replies($force = false, $preview = false)
         fwrite($fp, "QUIT\r\n");
     } catch (\Throwable $e) {
         @fclose($fp);
+        pop3_release();
         if ($preview) {
             return ['ok' => false, 'error' => $e->getMessage()];
         }
@@ -406,6 +487,7 @@ function poll_mailbox_replies($force = false, $preview = false)
         return ['ok' => false, 'error' => $e->getMessage(), 'handled' => $handled];
     }
     @fclose($fp);
+    pop3_release();
     if ($preview) {
         return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
     }
@@ -471,7 +553,8 @@ function mailbox_sender_name($from)
 {
     $s = trim((string) $from);
     if (preg_match('/^"?([^"<]*?)"?\s*<[^>]+>$/', $s, $m)) {
-        return trim($m[1]);
+        // The display name may be an encoded word ("=?UTF-8?Q?Si=C3=A2n?=").
+        return trim(mailbox_decode_subject(trim($m[1])));
     }
     return '';
 }
@@ -623,6 +706,7 @@ function mailbox_selftest()
     $stat = fgets($fp, 8192);
     fwrite($fp, "QUIT\r\n");
     @fclose($fp);
+    pop3_release();
     return ['ok' => true, 'host' => mailbox_pop_host(), 'stat' => trim((string) $stat)];
 }
 

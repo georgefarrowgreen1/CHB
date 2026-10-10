@@ -118,7 +118,14 @@ function backup_decrypt($blob, $pass)
         OPENSSL_RAW_DATA,
         substr($dk, 32, 16),
     );
-    return $out === false ? null : $out;
+    // CBC carries no checksum: a wrong passphrase still "decrypts" whenever the last
+    // block happens to read as valid padding (about 1 time in 256), and that handed
+    // back rubbish instead of null. What is encrypted is always a gzip file or a SQL
+    // dump, so output that starts as neither is a wrong passphrase.
+    if ($out === false || !(strncmp($out, "\x1f\x8b", 2) === 0 || strncmp($out, '-- ', 3) === 0)) {
+        return null;
+    }
+    return $out;
 }
 
 // THE RECOVERY COMMAND, STATED ONCE. It travels in the backup email itself,

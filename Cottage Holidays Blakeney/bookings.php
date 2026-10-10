@@ -9,6 +9,14 @@
 //                                -> admin: reconcile deposit/status (date required if money)
 // ============================================================
 require_once __DIR__ . '/db.php';
+// The booking's text columns and their widths (schema.sql), for require_fits.
+const BOOKING_FIELD_FITS = [
+    'name' => [160, 'The name'],
+    'email' => [190, 'The email address'],
+    'phone' => [60, 'The phone number'],
+    'postcode' => [12, 'The postcode'],
+    'payment_method' => [40, 'The payment method'],
+];
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/payments-reconcile.php'; // reconcile_pending_refunds / reconcile_missing_fees
 require_once __DIR__ . '/booking-confirm-lib.php'; // booking_by_id / send_booking_confirmation
@@ -566,6 +574,7 @@ if ($action === 'add') {
     // below store nothing — a refusal must re-run (the op-ledger rule).
     $opTok = op_claim($in);
     people_strip_money($in); // without the money permissions: the booking, never its money
+    require_fits($in, BOOKING_FIELD_FITS);
     $propKey = clean($in['prop_key'] ?? '');
     $rate = get_rate($propKey);
     if (!$rate) {
@@ -751,6 +760,7 @@ if ($action === 'update') {
     // whole warn ladder against the row it already changed.
     $opTok = op_claim($in);
     people_strip_money($in); // without the money permissions: the booking, never its money
+    require_fits($in, BOOKING_FIELD_FITS);
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -1730,7 +1740,11 @@ if ($action === 'refund') {
     $b = booking_by_id($bookingId); // may be null if the booking was already deleted
     $gName = $b['name'] ?? ($row['guest_name'] ?? null);
     $gProp = $b['prop_key'] ?? ($row['prop_key'] ?? null);
-    book_lock($gProp ?? '');
+    // A timed-out lock means another money action on this cottage is still
+    // running: refuse rather than refund unprotected beside it.
+    if (!book_lock($gProp ?? '')) {
+        json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
+    }
     // Refunding a captured DAMAGE deposit must be booked as 'damages_return', not
     // 'refund' — otherwise reconcile subtracts it from the RENTAL paid figure (which
     // damages never contributed to) and falsely flips the booking to part-paid. This
@@ -2070,7 +2084,9 @@ if ($action === 'return_deposit') {
     // Serialise, then re-read the deposit state UNDER the lock: a concurrent refund
     // or keep records its ledger/hold change first, so the second caller sees the
     // reduced remaining amount and can't double-return.
-    book_lock($b['prop_key'] ?? '');
+    if (!book_lock($b['prop_key'] ?? '')) {
+        json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
+    }
     $b = booking_by_id($id) ?: $b;
     $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
     if ($held <= 0) {
@@ -2212,7 +2228,9 @@ if ($action === 'keep_deposit') {
     $note = clean($in['note'] ?? '');
     // Serialise + re-read under the lock so a concurrent refund/keep can't
     // double-settle (refund the guest AND book it as kept income).
-    book_lock($b['prop_key'] ?? '');
+    if (!book_lock($b['prop_key'] ?? '')) {
+        json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
+    }
     $b = booking_by_id($id) ?: $b;
     // RAIL-BLIND, like the duty and the ring fence. This required hold_status
     // 'charged' — a CARD-rail fact that a cash or bank deposit never sets — so a
@@ -2294,6 +2312,13 @@ if ($action === 'cancel') {
             require_cap('mo.deposit');
         }
         require_reauth('refunding as part of this cancellation');
+    }
+    // ONE LOCK FOR THE WHOLE CANCELLATION, taken before any money moves. The
+    // refund and the deposit return below each lock again (the same connection
+    // gets it straight back); a refusal between them would leave the booking
+    // half-cancelled with a refund already gone.
+    if (!book_lock($b['prop_key'] ?? '')) {
+        json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
     }
     $refundedByCard = 0.0;
     $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)

@@ -6,6 +6,8 @@
 //  POST {action:'approve', id}   -> admin: convert to booking (snapshots price)
 //  POST {action:'decline', id}   -> admin: delete enquiry
 // ============================================================
+// A guest's enquiry is remembered in the session, so this endpoint keeps its lock (session-lib.php).
+define('CHB_KEEPS_SESSION', true);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/booking-rules-lib.php'; // dated minimum stay + gap fit

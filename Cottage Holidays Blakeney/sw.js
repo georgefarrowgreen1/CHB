@@ -14,7 +14,7 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v1222';
+const CACHE = 'chb-cache-v1223';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
@@ -23,7 +23,7 @@ const CACHE = 'chb-cache-v1222';
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=384', 'app.js?v=1171', 'guest-app.css?v=66', 'guest-app.js?v=37'];
+const CORE = ['index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=384', 'app.js?v=1172', 'guest-app.css?v=66', 'guest-app.js?v=37'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -197,7 +197,10 @@ async function swFlushQueue() {
             // and a change the owner believes saved has silently not applied.
             // Record it so the page surfaces a duty on the next open.
             let reason = '';
-            try { const j = JSON.parse(await r.text()); reason = String((j && j.error) || '').slice(0, 200); } catch (e) {}
+            let code = '';
+            try { const j = JSON.parse(await r.text()); reason = String((j && j.error) || '').slice(0, 200); code = String((j && j.code) || ''); } catch (e) {}
+            // The same write is still running from an earlier try: keep it.
+            if (code === 'in_flight') continue;
             await swRefusedAdd(db, { label: String(it.label || ''), endpoint: String(it.endpoint || ''), reason, at: Date.now() });
         }
         await swQueueDelete(db, it.id);

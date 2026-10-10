@@ -5,6 +5,8 @@
 //  Tells you if PHP, the database, the tables and an admin user
 //  are all in place. DELETE this file once everything works.
 // ============================================================
+// The session check writes a marker, so this endpoint keeps its lock (session-lib.php).
+define('CHB_KEEPS_SESSION', true);
 require_once __DIR__ . '/db.php';
 
 // Keep this diagnostic out of search engines even if it's left on the server.

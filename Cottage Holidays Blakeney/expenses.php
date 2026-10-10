@@ -22,8 +22,8 @@ if ($action === 'add') {
     // replayed after an ambiguous timeout is a duplicate expense corrupting net
     // profit — the exact latent bug the op ledger exists to close.
     $opTok = op_claim($in);
-    $category = substr(clean($in['category'] ?? 'General') ?: 'General', 0, 64);
-    $description = substr(clean($in['description'] ?? ''), 0, 255);
+    $category = mb_substr((string) clean($in['category'] ?? 'General') ?: 'General', 0, 64);
+    $description = mb_substr((string) clean($in['description'] ?? ''), 0, 255); // characters, not bytes: a cut through one was refused by the database
     $amount = round((float) ($in['amount'] ?? 0), 2);
     $prop = preg_replace('/[^a-z0-9_]/i', '', (string) ($in['prop'] ?? ''));
     $prop = $prop === '' ? null : substr($prop, 0, 32);
@@ -75,8 +75,8 @@ if ($action === 'update') {
     if ($id <= 0) {
         json_out(['error' => 'An expense id is required'], 400);
     }
-    $category = substr(clean($in['category'] ?? 'General') ?: 'General', 0, 64);
-    $description = substr(clean($in['description'] ?? ''), 0, 255);
+    $category = mb_substr((string) clean($in['category'] ?? 'General') ?: 'General', 0, 64);
+    $description = mb_substr((string) clean($in['description'] ?? ''), 0, 255); // characters, not bytes: a cut through one was refused by the database
     $amount = round((float) ($in['amount'] ?? 0), 2);
     $prop = preg_replace('/[^a-z0-9_]/i', '', (string) ($in['prop'] ?? ''));
     $prop = $prop === '' ? null : substr($prop, 0, 32);

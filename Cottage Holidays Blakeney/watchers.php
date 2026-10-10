@@ -54,14 +54,20 @@ route_actions([
         if ($clean['tell'] < date('Y-m-d')) {
             json_out(['error' => 'That day has already passed.'], 400);
         }
-        $list = watchers_merge(watchers_all(), $clean);
-        watchers_save($list);
+        $list = content_locked(WATCHERS_KEY, function () use ($clean) {
+            $list = watchers_merge(watchers_all(), $clean);
+            watchers_save($list);
+            return $list;
+        });
         json_out(['ok' => true, 'watchers' => $list]);
     },
 
     'stop' => function ($in) {
-        $list = watchers_remove(watchers_all(), (string) ($in['id'] ?? ''));
-        watchers_save($list);
+        $list = content_locked(WATCHERS_KEY, function () use ($in) {
+            $list = watchers_remove(watchers_all(), (string) ($in['id'] ?? ''));
+            watchers_save($list);
+            return $list;
+        });
         json_out(['ok' => true, 'watchers' => $list]);
     },
 ]);

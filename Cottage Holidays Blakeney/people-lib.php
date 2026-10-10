@@ -483,10 +483,16 @@ function people_content_cap($key)
     $everyday = [
         'host-name', 'host-badge', 'host-years', 'host-school', 'host-work', 'host-bio', 'host-photo', 'contact-phone',
         'email-templates', 'reviews', 'google-review-url',
-        'duty-dismissed', 'inbox-state', 'search-pins', 'search-undo', 'nlu-learned', 'nlu-suppressed', 'search-misses', 'search-canon', 'guest-faq-misses',
+        'duty-dismissed', 'inbox-state', 'search-pins', 'nlu-learned', 'nlu-suppressed', 'search-misses', 'search-canon', 'guest-faq-misses',
     ];
     if (in_array($k, $everyday, true) || preg_match('/^chat-(away|ans)-/', $k) || $k === 'chat-chips' || $k === 'chat-reply-time') {
         return 'all';
+    }
+    // The search undo list holds price changes, and replaying one posts a price
+    // change as whoever taps Undo. Only someone who could make that change
+    // themselves may write it, so nobody can plant one for a Super User to run.
+    if ($k === 'search-undo') {
+        return 'co.prices';
     }
     if ($k === 'plan-presets') {
         return 'mo.ask';
