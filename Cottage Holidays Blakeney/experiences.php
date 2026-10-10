@@ -144,7 +144,7 @@ if ($action === 'suggest') {
     $image = '';
     if (!empty($_FILES['image']) && is_array($_FILES['image']) && ($_FILES['image']['error'] ?? 4) === UPLOAD_ERR_OK) {
         require_once __DIR__ . '/image-save.php';
-        $res = save_uploaded_image($_FILES['image'], 'experience');
+        $res = save_uploaded_image($_FILES['image'], 'experience', null, true);
         if (!empty($res['error'])) {
             json_out(['error' => $res['error']], $res['code'] ?? 400);
         }

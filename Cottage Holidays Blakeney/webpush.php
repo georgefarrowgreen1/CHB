@@ -681,8 +681,11 @@ function guest_id_for_email($email)
     if (!$email) {
         return 0;
     }
+    // Only an account whose address is PROVEN: registering an email is not owning
+    // it, and an unproven account's phones would otherwise get the real guest's
+    // confirmation (cottage and dates) and payment alerts.
     try {
-        $s = db()->prepare('SELECT id FROM guests WHERE email = ? LIMIT 1');
+        $s = db()->prepare('SELECT id FROM guests WHERE email = ? AND email_verified_at IS NOT NULL LIMIT 1');
         $s->execute([(string) $email]);
         return (int) ($s->fetchColumn() ?: 0);
     } catch (\Throwable $e) {

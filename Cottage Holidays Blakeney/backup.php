@@ -341,11 +341,19 @@ if (!$isCron) {
 }
 $force = $action === 'run' || !empty($_GET['force']);
 
-// Cron path: Mondays only, once per ISO week (cron.php pings daily).
+// Cron path: once per ISO week, from Monday — on the first run of the week, so a
+// Monday with no cron run no longer means no off-site copy that week. One run at a
+// time (two would email two backups).
 $week = date('o-\WW');
 if (!$force) {
-    if ((int) date('N') !== 1) {
-        json_out(['ok' => true, 'ran' => false, 'reason' => 'runs on Mondays']);
+    if (content_value('backup-last-week') === $week) {
+        json_out(['ok' => true, 'ran' => false, 'reason' => 'already ran this week']);
+    }
+    try {
+        if ((string) db()->query("SELECT GET_LOCK('chb_backup_run', 0)")->fetchColumn() !== '1') {
+            json_out(['ok' => true, 'ran' => false, 'reason' => 'another run is taking it']);
+        }
+    } catch (\Throwable $e) {
     }
     if (content_value('backup-last-week') === $week) {
         json_out(['ok' => true, 'ran' => false, 'reason' => 'already ran this week']);

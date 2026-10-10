@@ -11,6 +11,7 @@
 //  A logged-in admin can preview/force a send any day with ?force=1.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/jobs-lib.php'; // weekly_due
 require_once __DIR__ . '/mailer.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
@@ -31,14 +32,23 @@ if (!$isCron && $force && function_exists('admin_contact_email') && admin_me()) 
     people_mail_only(admin_contact_email(admin_me()));
 }
 
-// Only send on Mondays (date('N')===1), unless forced.
-if (!$force && (int) date('N') !== 1) {
-    json_out(['ok' => true, 'sent' => false, 'reason' => 'not Monday']);
-}
-// At most once per calendar day (idempotent across multiple cron pings / deploys).
+// Mondays, or the first run after a missed one; once a week (weekly_due). And one
+// run at a time: two overlapping runs (the nightly cron and a deploy's ping) each
+// read "not sent yet" before either recorded it, and two digests went out.
 $today = date('Y-m-d');
-if (!$force && content_value('owner-digest-last') === $today) {
-    json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent today']);
+if (!$force) {
+    if (!weekly_due((string) content_value('owner-digest-last'), $today, 1)) {
+        json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent this week']);
+    }
+    try {
+        if ((string) db()->query("SELECT GET_LOCK('chb_owner_digest', 0)")->fetchColumn() !== '1') {
+            json_out(['ok' => true, 'sent' => false, 'reason' => 'another run is sending it']);
+        }
+    } catch (\Throwable $e) {
+    }
+    if (!weekly_due((string) content_value('owner-digest-last'), $today, 1)) {
+        json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent this week']);
+    }
 }
 
 // Gate on who would actually get it: the people who chose the digest and the

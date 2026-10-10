@@ -14,6 +14,7 @@
 // ============================================================
 require_once __DIR__ . '/analytics-data.php'; // analytics_summary() (+ db.php)
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/jobs-lib.php'; // weekly_due
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
 if (!$isCron) {
@@ -32,14 +33,22 @@ if (!$isCron && $force && function_exists('admin_contact_email') && admin_me()) 
     people_mail_only(admin_contact_email(admin_me()));
 }
 
-// Only send on Sundays (date('N')===7), unless forced.
-if (!$force && (int) date('N') !== 7) {
-    json_out(['ok' => true, 'sent' => false, 'reason' => 'not Sunday']);
-}
-// At most once per calendar day (idempotent across multiple cron pings / deploys).
+// Sundays, or the first run after a missed one; once a week, one run at a time (the
+// owner digest's rules — see weekly_due).
 $today = date('Y-m-d');
-if (!$force && content_value('analytics-digest-last') === $today) {
-    json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent today']);
+if (!$force) {
+    if (!weekly_due((string) content_value('analytics-digest-last'), $today, 7)) {
+        json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent this week']);
+    }
+    try {
+        if ((string) db()->query("SELECT GET_LOCK('chb_weekly_analytics', 0)")->fetchColumn() !== '1') {
+            json_out(['ok' => true, 'sent' => false, 'reason' => 'another run is sending it']);
+        }
+    } catch (\Throwable $e) {
+    }
+    if (!weekly_due((string) content_value('analytics-digest-last'), $today, 7)) {
+        json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent this week']);
+    }
 }
 // Owner opt-out.
 if (!$force && content_value('analytics-digest-off') === '1') {

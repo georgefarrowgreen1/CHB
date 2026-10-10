@@ -42,6 +42,9 @@ if ($action === '') {
 if ($action === 'submit') {
     require_guest_proven(); // ownership is matched by email — confirmed accounts only
     require_once __DIR__ . '/image-save.php';
+    // get_rate() lives in pricing.php: without it EVERY guest upload died on the
+    // call below, and the guest read "Something went wrong on our side".
+    require_once __DIR__ . '/pricing.php';
     $guestId = (int) $_SESSION['guest_id'];
 
     $prop = clean($_POST['prop_key'] ?? '');
@@ -80,7 +83,7 @@ if ($action === 'submit') {
     if (empty($_FILES['image'])) {
         json_out(['error' => 'No image received'], 400);
     }
-    $res = save_uploaded_image($_FILES['image'], 'guest');
+    $res = save_uploaded_image($_FILES['image'], 'guest', null, true);
     if (!empty($res['error'])) {
         json_out(['error' => $res['error']], $res['code'] ?? 400);
     }

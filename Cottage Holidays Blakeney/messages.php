@@ -145,6 +145,25 @@ function chat_maybe_autoreply($tid)
     } catch (\Throwable $e) {
     }
 }
+// IS THIS THREAD'S ADDRESS THE GUEST'S OWN? Only when it belongs to a signed-in
+// account whose email has been PROVEN. A website visitor types any name and email
+// they like, and an unproven account was registered by whoever typed the address —
+// so either could be someone posing as a guest, and the owner must see that before
+// replying with a door code. Unreadable reads as not proven.
+function chat_thread_verified(array $thread): bool
+{
+    $gid = (int) ($thread['guest_id'] ?? 0);
+    if ($gid <= 0) {
+        return false;
+    }
+    try {
+        $q = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
+        $q->execute([$gid]);
+        return !empty($q->fetchColumn());
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
 // Is the OTHER party typing right now? $col is a fixed literal — 'admin_typing_at'
 // (the guest is reading) or 'guest_typing_at' (the owner is reading). Isolated so a
 // pre-migration DB (no typing columns yet) just reports false rather than erroring.
@@ -392,9 +411,12 @@ if ($isAdmin && empty($in['token'])) {
             $t = db()->prepare('SELECT * FROM chat_threads WHERE id = ?');
             $t->execute([$tid]);
             $thread = $t->fetch() ?: [];
-            // Their bookings (matched by email), if any.
+            $verified = chat_thread_verified($thread);
+            // Their bookings (matched by email), if any — and only when the address is
+            // PROVEN: anyone can type a guest's email into the website chat, and the
+            // bookings beside it would make an impostor read as that guest.
             $bookings = [];
-            if (!empty($thread['email'])) {
+            if ($verified && !empty($thread['email'])) {
                 try {
                     $b = db()->prepare(
                         'SELECT id, prop_key, check_in, check_out, payment FROM bookings WHERE email = ? ORDER BY check_in DESC LIMIT 10',
@@ -423,6 +445,7 @@ if ($isAdmin && empty($in['token'])) {
                     'location' => $thread['location'] ?? '',
                     'user_agent' => $thread['user_agent'] ?? '',
                     'is_guest' => !empty($thread['guest_id']),
+                    'verified' => $verified,
                     'archived' => !empty($thread['archived']),
                 ],
                 'bookings' => $bookings,
@@ -493,6 +516,7 @@ if ($isAdmin && empty($in['token'])) {
         $hasArch = true;
         try {
             $q = db()->prepare("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location, t.archived,
+                    (SELECT g.email_verified_at FROM guests g WHERE g.id = t.guest_id) proven_at,
                     COALESCE(MAX(m.created_at), t.created_at) last_at,
                     SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
                     (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
@@ -512,6 +536,7 @@ if ($isAdmin && empty($in['token'])) {
             $rows = db()
                 ->query(
                     "SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
+                    (SELECT g.email_verified_at FROM guests g WHERE g.id = t.guest_id) proven_at,
                     COALESCE(MAX(m.created_at), t.created_at) last_at,
                     SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
                     (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
@@ -532,6 +557,8 @@ if ($isAdmin && empty($in['token'])) {
                     'source' => $r['source'],
                     'location' => $r['location'],
                     'is_guest' => !empty($r['guest_id']),
+                    // Whether the address is the guest's own (see chat_thread_verified).
+                    'verified' => !empty($r['guest_id']) && !empty($r['proven_at']),
                     'archived' => $hasArch ? (int) ($r['archived'] ?? 0) : 0,
                     'last_at' => $r['last_at'],
                     'unread' => (int) $r['unread'],

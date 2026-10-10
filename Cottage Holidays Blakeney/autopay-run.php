@@ -93,6 +93,9 @@ if ($res['truncated']) {
 
 json_out([
     'ok' => $res['ok'],
+    // A pass that could not run says why (the cron counts that as a failed job);
+    // Square not being set up is not a failure, so it carries no error.
+    'error' => $res['error'] ?? null,
     'notices' => $notice['sent'],
     'collected' => $res['collected'],
     'failed' => $res['failed'],

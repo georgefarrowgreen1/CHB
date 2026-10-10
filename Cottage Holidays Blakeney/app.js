@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 766;
+const ADMIN_BUNDLE_V = 767;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -13774,7 +13774,9 @@ async function openMessageThread(threadId) {
         if (ctx) {
             const bk = bookingCtxHtml(r.bookings || []);
             const nBk = (r.bookings || []).length;
-            const summary = `${t.is_guest ? 'Registered guest' : 'Website visitor'}${t.email ? ' · ' + escapeHtml(t.email) : ''}`;
+            // A typed address is not proof (messages.php chat_thread_verified).
+            const unconf = t.verified === false;
+            const summary = `${t.is_guest && !unconf ? 'Registered guest' : t.is_guest ? 'Guest account' : 'Website visitor'}${t.email ? ' · ' + escapeHtml(t.email) : ''}${unconf ? ' · email not confirmed' : ''}`;
             // The reference folds CLOSED — the conversation is the work (the
             // enquiry page's message rule). The summary carries the verdict:
             // one upcoming stay states its paid state, so checking the balance
@@ -21479,7 +21481,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'calsync61';
+    const BUILD = 'whois62';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

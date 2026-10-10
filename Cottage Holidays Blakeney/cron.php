@@ -14,6 +14,7 @@
 //  Returns a per-job summary.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/jobs-lib.php'; // cron_result_ok
 
 // Accept the secret from ?cron=… OR from the path (/cron.php/APP_SECRET),
 // so it works even where a cron panel forbids query strings.
@@ -99,19 +100,11 @@ foreach ($jobs as $path => $label) {
     curl_close($ch);
 
     $body = $raw ? json_decode($raw, true) : null;
-    // A 2xx IS NOT ALWAYS SUCCESS. migrate.php answers 200 and reports each file
-    // individually, so a schema change that failed to apply would otherwise be
-    // recorded as a job that went fine — and the feature it was for goes on
-    // quietly doing nothing. Read the per-file verdicts it already returns.
-    $ok = $status >= 200 && $status < 300;
-    $note = '';
-    if ($ok && is_array($body['migrations'] ?? null)) {
-        $bad = array_values(array_filter($body['migrations'], fn($m) => ($m['status'] ?? '') === 'ERROR'));
-        if ($bad) {
-            $ok = false;
-            $note = count($bad) . ' migration(s) failed to apply — ' . (string) ($bad[0]['file'] ?? '?');
-        }
-    }
+    // A 2xx IS NOT ALWAYS SUCCESS (cron_result_ok): a failed migration, or a job that
+    // answers {ok:false, error} because it could not do its work.
+    $verdict = cron_result_ok($status, $body);
+    $ok = $verdict['ok'];
+    $note = $verdict['note'];
     $results[] = [
         'job' => $label,
         'script' => strtok($path, '?'),

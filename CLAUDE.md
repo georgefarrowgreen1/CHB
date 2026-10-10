@@ -995,6 +995,65 @@ Found by the calendar-sync review; four of the nine could lead to a double booki
   move, the echo both ways, the audit, the removed cottage), smoke-test 12c (the timeline), ui-test-manage (§3b/§3c
   re-aimed to one link per save and `unlink_feed`) and ui-test-workspace 5d. Thirty fixes break-tested one at a time.
 
+## Who is who: a typed email is not proof (round 5)
+
+Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced first.
+- **AN EMAIL TYPED INTO THE WEBSITE CHAT IS NOT THE GUEST.** The Inbox joined chat threads to bookings by email,
+  so anyone could open the site chat with a booked guest's address and land inside that guest's conversation,
+  their stay and "Reply now" beside it, and the owner's reply (a door code) went to the impostor's widget.
+  messages.php now sends **`verified`** per thread (`chat_thread_verified`: a signed-in account whose email is
+  PROVEN), and the `thread` action returns bookings only for a verified thread. In `ibBuild` an unverified thread
+  is its own person (`t:<id>`) until the owner links THAT thread (`links['t:<id>']`, accepted by `ibStateClean`);
+  if its email belongs to a guest it is an `unlinked` row with `claimed: true`, "email not confirmed" on its line
+  and a card saying anyone can type an email there. Linking an unconfirmed chat stores the thread, never the
+  address, so a later chat typing the same email asks again. The floating thread sheet says "email not
+  confirmed" too. A `verified` that is absent (an older server) keeps the old joining.
+- **A SQUATTER'S PHONE STOPS GETTING THE GUEST'S ALERTS.** `guest_id_for_email` (every guest push: the booking
+  confirmation with cottage and dates, payment figures) matches only a proven account, and push `subscribe` needs
+  one. When the real guest proves the address from another browser, `guest_prove_address` also deletes the
+  claim's push subscriptions and its photo, and unlinks its chat thread (which then reads as unconfirmed).
+- **RESET LINKS COUNT AGAINST THE DAY'S SIGN-IN EMAILS** (`signin_mail_allowed`, owner and self alike: 429
+  `paused`), and a guest may send one to themselves only from a proven account. An unproven account could mail a
+  stranger a link a minute.
+- **A PAUSED ADDRESS STILL GETS IN.** Ten wrong codes in a day pause codes for an address, which let anyone lock
+  a guest out of their stay (and its door code) for the day. Asking for a code while paused now emails a guest
+  account a sign-in LINK (it cannot be guessed), counted like any sign-in email; the answer is the same for every
+  address (`CODE_PAUSED_LINK`).
+- **GUEST PHOTOS HAD BEEN FAILING ENTIRELY.** photos.php called `get_rate()` without requiring pricing.php, so
+  every guest upload ended in "Something went wrong on our side". Nothing could see it: PHPStan reads every file
+  as one set, `php -l` never resolves a call, and no suite uploaded a photo. **`test-requires.php`** (CI-wired,
+  deploy-excluded) follows the code each request can run (every loaded file's top level, then every app function
+  it reaches) and fails on a call to an app function defined only in a file that request never loads. It reads
+  requires statically and counts conditional ones as loaded, so it can miss a require that never runs but does
+  not cry wolf about one that does. Break-tested on photos.php and invoice.php.
+- **GUEST UPLOADS LOSE THEIR METADATA IN EVERY FORMAT.** Only JPEG was stripped (and only with the exif
+  extension); a PNG, WebP or GIF reached the public photo wall byte for byte. A guest's upload (photo wall, chat
+  photo, suggestion picture) is re-encoded through GD in every format and refused when it can't be; a JPEG
+  without exif is re-encoded anyway (orientation then can't be read). The owner's own PNG/WebP/GIF stay as
+  uploaded.
+- **`testcentre-guest` is internal** (the staging test guest, holding the owner's email), and test-content-keys
+  now also scans literal keys written through `->execute(['key', …])`, which is how it slipped past.
+- **THE HANDLED-MAIL LIST FOLLOWS THE INBOX** (`mailbox_handled_keep`): it was cut to the last 2,000 ids while
+  nothing deletes mail, so past 2,000 messages every poll re-handled the newest unknown ones (an old emailed reply
+  posted to a guest's chat again). Ids are kept while the listing shows them, pruned only from a listing read in
+  full.
+- **An uncertain send keeps its claim** in pre-arrival (arrival, thank-you, review ask), the enquiry nudge and the
+  anniversary nudge, as payments-due always did: released, the next run sent the guest the same email again.
+- **Scheduled jobs** (`jobs-lib.php`, gated by **`test-jobs.php`**): the weekly digest, the weekly analytics and
+  the off-site backup run on their day or the first run after it (`weekly_due`; a Monday with no cron run meant
+  no backup that week), one at a time (`GET_LOCK`, re-checked inside it), and cron.php judges a job by
+  `cron_result_ok` — a failed migration or an `{ok:false, error}` is a failure that reaches Needs attention, while
+  `ok:false` with nothing to do (the mailbox off) is not. The collector says why it could not run.
+  `watchers-run.php` runs once at a time and saves under `content_locked` against the list as it is then.
+- Gates: test-integration **§62** (the flag and the withheld bookings, the push lookup and subscribe, the reset
+  rule and allowance, the paused link, the squatter's phone, photo and chat, the PNG, the content key),
+  **ui-test-inbox §10** (its own row, the warning, linking the thread, asking again, a proven chat still
+  joining), test-jobs, test-requires, test-reply (the handled list), test-content-keys. Break-tested one fix at a
+  time. admin.js budget +600 bytes gz: the unconfirmed-chat handling and its warning card (owner-only, cached).
+- **Not done, said plainly**: register and enquiry answers still reveal whether an account or a booking exists
+  (`guest_register` 409 / `verify`, `account_exists`); fixing it changes the sign-up flow. And `script-src` still
+  allows the whole of jsDelivr and cdnjs.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
