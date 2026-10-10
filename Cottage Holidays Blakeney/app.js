@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 763;
+const ADMIN_BUNDLE_V = 764;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -500,8 +500,10 @@ const CHB_VIEW_CAP = { 'mo.view': ['view-accounts'], 'ks.see': ['view-keysafe'],
 const CHB_PART_CAP = {
     'gu.reply': ['#ib .ib-comp', '#ib .ib-sugg', '[data-ib="delete"]', '[data-ib="decline-write"]'],
     'gu.approve': ['[data-ib="approve"]', '[data-ib="decline"]', '[data-ib="offer"]', '[data-ib="decline-quiet"]'],
-    'mo.record': ['#modal-payment-group', '#modal-deposit-group'],
-    'mo.ask': ['#modal-override-group', '#modal-plan-group', '[data-ib="remind"]'],
+    // The refundable deposit is part of what the guest is ASKED for: the server drops
+    // it (with the price and its reason) from a save without 'mo.ask'.
+    'mo.record': ['#modal-payment-group'],
+    'mo.ask': ['#modal-override-group', '#modal-deposit-group', '#modal-plan-group', '[data-ib="remind"]'],
 };
 const chbCapCls = (k) => 'cap-x-' + String(k).replace(/\./g, '-');
 function chbActCap(name) {
@@ -20234,6 +20236,15 @@ function modalPlanFacts() {
         due,
     };
 }
+// What "Some" prefills: the plan's first payment, while it is a PART of the stay. A
+// part payment is recorded against the rental and must stay below it, so inside the
+// balance window (or under a large plan) the first payment is the whole stay, which
+// the server refuses as a part: then nothing is prefilled, and the line under the box
+// says to choose "All of it".
+function modalSomePrefill(f) {
+    const m = __modalMoney;
+    return f && m && f.first < m.total - 0.005 ? f.first.toFixed(2) : '';
+}
 // Live total inside the Add/Edit modal
 function updateModalPrice() {
     updateModalPriceCore();
@@ -20243,13 +20254,13 @@ function updateModalPrice() {
         // a figure the owner typed over is never touched.
         const amt = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-deposit-amount'));
         if (
-            amt && amt.dataset.auto && amt.value === amt.dataset.auto &&
+            amt && 'auto' in amt.dataset && amt.value === amt.dataset.auto &&
             dpVal('modal-mode') === 'add' && dpVal('modal-payment') === 'deposit'
         ) {
-            const f = modalPlanFacts();
-            if (f && f.first.toFixed(2) !== amt.value) {
-                amt.value = f.first.toFixed(2);
-                amt.dataset.auto = amt.value;
+            const want = modalSomePrefill(modalPlanFacts());
+            if (want !== amt.value) {
+                amt.value = want;
+                amt.dataset.auto = want;
             }
         }
     } catch (e) {}
@@ -20272,32 +20283,46 @@ function updateModalPriceCore() {
     const depOverride = dpVal('modal-damages-deposit') !== '' ? dpVal('modal-damages-deposit') : null;
     const p = priceBreakdown(propKey, adults, children, checkIn, checkOut, depOverride);
     const ovRaw = dpVal('modal-price-override');
-    const override = ovRaw !== '' ? Math.max(0, parseFloat(ovRaw) || 0) : null;
+    let override = ovRaw !== '' ? Math.max(0, parseFloat(ovRaw) || 0) : null;
     // EDITING A CONFIRMED BOOKING: the price was LOCKED when it was booked. While
     // the stay is unchanged the standard is the AGREED rental (what saving
-    // preserves); changing dates, party, cottage or deposit reprices at today's
-    // rates, and the sheet says that saving replaces the agreed figure.
+    // preserves); changing dates, party or cottage reprices at today's rates, and
+    // the sheet says that saving replaces the agreed figure. A new refundable
+    // deposit is not a new stay (bookings.php moves only the deposit).
     let holdSt = 'none';
     let agreed = null;
     let stayChanged = false;
     let agreedWas = null;
     let bk = null;
-    if (dpVal('modal-mode') === 'booking') {
+    const mode = dpVal('modal-mode');
+    if (mode === 'booking') {
         bk = typeof findBookingById === 'function' ? findBookingById(dpVal('modal-record-id')) : null;
         if (bk) holdSt = bk.holdStatus || 'none';
         if (bk && bk.agreedPrice) {
             const a = bk.agreedPrice;
             const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bk.id) : null;
-            const curDep = bk.damagesDeposit != null ? bk.damagesDeposit : a.damagesDeposit || 0;
             stayChanged =
                 (loc && loc.propKey && propKey !== loc.propKey) ||
                 checkIn !== bk.checkIn ||
                 checkOut !== bk.checkOut ||
                 adults !== bk.adults ||
-                children !== bk.children ||
-                (depOverride !== null && parseFloat(depOverride) !== curDep);
+                children !== bk.children;
             if (!stayChanged) agreed = a;
             else agreedWas = displayGrandTotal(a.total, a, holdSt);
+        }
+    } else if (mode === 'enquiry' && typeof enquiries !== 'undefined') {
+        // AN ENQUIRY'S AGREED PRICE belongs to the stay it was agreed for: shown as the
+        // price while the stay is the same, and said to be replaced once it moves
+        // (saveModal does not carry it to a different stay).
+        const enq = enquiries.find((e) => e.id === dpVal('modal-record-id'));
+        if (enq && enq.priceOverride != null) {
+            const same = enq.propKey === propKey && enq.checkIn === checkIn && enq.checkOut === checkOut
+                && Number(enq.adults) === adults && Number(enq.children) === children;
+            if (same) override = enq.priceOverride;
+            else {
+                stayChanged = true;
+                agreedWas = Math.round((enq.priceOverride + displayDepositAmt(p, 'none')) * 100) / 100;
+            }
         }
     }
     // The standard rental: the agreed snapshot (nightly + fee — a.total carries
@@ -20472,7 +20497,7 @@ function modalPayMode(status) {
     if (status === 'deposit' && amt && dpVal('modal-mode') === 'add' && (amt.value === '' || amt.value === amt.dataset.auto)) {
         const f = modalPlanFacts();
         if (f) {
-            amt.value = f.first.toFixed(2);
+            amt.value = modalSomePrefill(f);
             amt.dataset.auto = amt.value;
         }
     }
@@ -20550,9 +20575,12 @@ async function saveModal() {
     // Empty string = explicitly clear the override; a value = set it.
     const priceOverride = ovEl ? ovEl.value.trim() : '';
     const errBox = document.getElementById('modal-error');
+    // The box sits at the top of the sheet's scroll, and the owner taps Add from the
+    // bottom of it: unscrolled, a refusal arrived where nobody could see it.
     const showErr = (m) => {
         errBox.innerText = m;
         errBox.style.display = 'block';
+        try { errBox.scrollIntoView({ block: 'nearest' }); } catch (e) {}
     };
 
     // Not ready yet: point at what is missing rather than refusing in a box.
@@ -20626,11 +20654,20 @@ async function saveModal() {
             chbOpBump();
             await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
             // THE AGREED TERMS TRAVEL WITH THE EDIT (migration-128): the new row
-            // started blank, so approval fell back to the standard price.
+            // started blank, so approval fell back to the standard price. But a price
+            // agreed for one stay is not a price for another: moved dates kept £250 for
+            // seven nights where it was agreed for three, and approval booked it. It
+            // travels only with the stay it was agreed for, and a balance date only
+            // while it still falls before the new arrival.
             const newId = made && Number(made.id);
-            if (newId && (enq.priceOverride || enq.planPct || enq.planDue)) {
+            const sameStay = enq.propKey === propKey && enq.checkIn === checkIn && enq.checkOut === checkOut
+                && Number(enq.adults) === adults && Number(enq.children) === children;
+            const keepPrice = sameStay && !!enq.priceOverride;
+            const keepDue = !!enq.planDue && enq.planDue >= todayDashed() && enq.planDue <= checkIn;
+            const dropped = [enq.priceOverride && !keepPrice ? `the agreed ${gbp(enq.priceOverride)}` : '', enq.planDue && !keepDue ? 'the agreed balance date' : ''].filter(Boolean);
+            if (newId && (keepPrice || enq.planPct || keepDue)) {
                 try {
-                    await apiPost('enquiries.php', { action: 'set_terms', id: newId, price_override: enq.priceOverride ? String(enq.priceOverride) : '', plan_pct: enq.planPct ? String(enq.planPct) : '', plan_due: enq.planDue || '' });
+                    await apiPost('enquiries.php', { action: 'set_terms', id: newId, price_override: keepPrice ? String(enq.priceOverride) : '', plan_pct: enq.planPct ? String(enq.planPct) : '', plan_due: keepDue ? enq.planDue : '' });
                 } catch (e2) {
                     toast('Enquiry updated — but the agreed price/plan could not be carried over; set it again on the enquiry.', 'error');
                 }
@@ -20639,8 +20676,8 @@ async function saveModal() {
             closeModal();
             renderInbox();
             // Same convention as every other save: a success toast (this path
-            // previously finished silently).
-            toast('Enquiry updated.');
+            // previously finished silently), saying what did not travel.
+            toast(dropped.length ? `Enquiry updated — ${dropped.join(' and ')} was for the old stay, so set it again if it still stands.` : 'Enquiry updated.');
         } catch (e) {
             showErr(e.message);
         }
@@ -20657,14 +20694,23 @@ async function saveModal() {
     let depositAmount = null;
     let paymentDate = null;
     let paymentMethod = null;
-    if (payment === 'deposit' || payment === 'paid') {
+    // Add only: an edit never sends the payment fields, so it must never be refused
+    // over them either.
+    if (mode === 'add' && (payment === 'deposit' || payment === 'paid')) {
         if (payment === 'deposit') {
-            depositAmount = Math.max(
-                0,
-                parseFloat((document.getElementById('modal-deposit-amount') || {}).value) || 0,
-            );
+            // payPartNum, not parseFloat: the sheet writes money as "£1,250.00", and
+            // parseFloat read "1,250.00" as £1 while the box still showed the full sum.
+            depositAmount = Math.max(0, payPartNum((document.getElementById('modal-deposit-amount') || {}).value) || 0);
             if (!(depositAmount > 0)) {
                 showErr('Enter the deposit amount paid (more than £0).');
+                return;
+            }
+            // Part of the stay is less than the stay: the server records a part payment
+            // against the rental and refuses one that reaches it, so say which button
+            // means what before sending, in the owner's terms.
+            const mm = __modalMoney;
+            if (mm && mm.total > 0 && depositAmount >= mm.total - 0.005) {
+                showErr(`${gbp(depositAmount)} covers the whole stay (${gbp(mm.total)}), so choose “All of it”.`);
                 return;
             }
         }
@@ -20703,6 +20749,8 @@ async function saveModal() {
         if (depositAmount !== null) payload.deposit = depositAmount;
         if (paymentDate !== null) payload.payment_date = paymentDate;
         if (paymentMethod !== null) payload.payment_method = paymentMethod;
+        // "All of it" is the Total the sheet shows, refundable deposit included.
+        if (payment === 'paid' && __modalMoney && __modalMoney.dep > 0) payload.deposit_collected = true;
     }
     // Why the price is custom (owner-only, migration-138); '' clears it with the price.
     const whyEl = document.querySelector('#bks-why [aria-pressed="true"]');
@@ -21421,7 +21469,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'perf1010c';
+    const BUILD = 'bks1010e';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
