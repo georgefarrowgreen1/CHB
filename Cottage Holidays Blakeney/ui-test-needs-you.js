@@ -2,7 +2,8 @@
 //  1. mixed workload → rows render, prioritised (automation → enquiry →
 //     deposit/chase → chats → approvals), count badge right
 //  2. capped at 4 with "Show N more"; expanding reveals the rest
-//  3. rows ROUTE: enquiry → enquiry hub, chase → booking hub, approve → reviews
+//  3. rows ROUTE: enquiry → the Inbox, open on that person; chase → booking hub;
+//     approve → reviews
 //  4. all clear → the section hides entirely
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
@@ -49,6 +50,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         { ...mkB(4, 'jollyboat', 'Cash Colin', 5, 9, 'deposit', 100), payment_method: 'Bank transfer' },
       ] });
     }
+    // The DECLINED list is its own read (the one-list Inbox asks for it on open):
+    // answering it with the live queue filed Jane under "declined" as well.
+    if (url.includes('enquiries.php') && act === 'declined') return json({ ok: true, enquiries: [] });
     if (url.includes('enquiries.php')) return json({ enquiries: [
       { id: 7, prop_key: '21a', name: 'Jane Doe', email: 'j@e.com', phone: '', check_in: d(20), check_out: d(24), adults: 2, children: 0, message: 'Dogs?', status: 'new', created_at: hrsAgo(53) /* 2 days 5h → always "waiting 2 days" (danger) */ },
     ] });
@@ -185,14 +189,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   console.log('3. rows route to the right place');
   await page.evaluate(() => { [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /Jane Doe/.test(r.textContent)).click(); });
-  await page.waitForTimeout(800);
-  const enq = await page.evaluate(() => ({
-    view: (document.querySelector('.page-view.active') || {}).id,
-    hub: (document.getElementById('enquiry-hub-content') || {}).textContent || '',
-  }));
-  // ≥1200px the enquiry hub docks inside the Inbox pane (master–detail);
-  // narrower screens open it standalone — both are the right destination.
-  ok(/view-(enquiry-hub|inbox)/.test(enq.view) && /Jane Doe/.test(enq.hub), `enquiry row opens Jane's enquiry hub (${enq.view})`);
+  // The enquiry duty lands on the INBOX, open on Jane: the Inbox is one list of
+  // people now and an enquiry is decided inside its conversation (inboxOpenEnquiry),
+  // not on a separate enquiry hub. Waited on by STATE — ibOpenWhen polls until the
+  // list has been built from the stores.
+  await page.waitForFunction(() => /Jane Doe/.test((document.querySelector('#ib-conv .ib-hname') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  const enq = await page.evaluate(() => {
+    const name = document.querySelector('#ib-conv .ib-hname');
+    return {
+      view: (document.querySelector('.page-view.active') || {}).id,
+      open: typeof __ibOpen === 'string' ? __ibOpen : '',
+      name: name ? name.textContent : '',
+      painted: !!(name && name.getClientRects().length),
+      decide: !!document.querySelector('#ib-conv .ib-decide [data-ib="approve"], #ib-conv .ib-decide [data-ib="offer"]'),
+    };
+  });
+  ok(enq.view === 'view-inbox' && enq.open === 'e:j@e.com' && /Jane Doe/.test(enq.name) && enq.painted,
+    `enquiry row opens the Inbox on Jane's conversation (${enq.view}, ${enq.open})`);
+  ok(enq.decide, '…with the decision on it, so the tap lands where the enquiry is answered');
   await page.evaluate(async () => { await openBookings(); });
   await page.waitForTimeout(1200);
   await page.evaluate(() => { needsYouExpand(); [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /Sarah Pemberton/.test(r.textContent)).click(); });
@@ -325,17 +339,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' ');
   });
   ok(/3 new emails are waiting/.test(mail3), 'several are counted rather than naming one of them');
-  // It ROUTES: the row opens the Inbox on the Email folder, not just the Inbox.
+  // It ROUTES to the Inbox — the one list of people, where an email arrives as its
+  // sender's row. (There is no Email folder to open any more: the old check read the
+  // folder's style.display, which inside the hidden #inbox-legacy is '' and so
+  // "passed" while showing nothing.)
   const routed = await page.evaluate(async () => {
     const row = [...document.querySelectorAll('#needs-you-list [data-act]')].find((b) => /openInboxEmail/.test(b.getAttribute('data-act') || ''));
     if (!row) return { found: false };
     row.click();
-    await new Promise((r) => setTimeout(r, 900));
-    const fold = document.getElementById('inbox-folder-email');
-    return { found: true, view: (document.querySelector('.page-view.active') || {}).id, email: !!fold && fold.style.display !== 'none' };
+    for (let i = 0; i < 40 && !(document.getElementById('ib-list') || { getClientRects: () => [] }).getClientRects().length; i++)
+      await new Promise((r) => setTimeout(r, 100));
+    const legacy = document.getElementById('inbox-legacy');
+    return {
+      found: true,
+      view: (document.querySelector('.page-view.active') || {}).id,
+      list: !!(document.getElementById('ib-list') || { getClientRects: () => [] }).getClientRects().length,
+      folder: (document.getElementById('ib-folders') || { getAttribute: () => '' }).getAttribute('data-on'),
+      legacyHidden: !!legacy && legacy.hidden && !legacy.getClientRects().length,
+    };
   });
-  ok(routed.found && routed.view === 'view-inbox' && routed.email,
-    `the row opens Inbox → Email (${routed.view}, email folder ${routed.email})`);
+  ok(routed.found && routed.view === 'view-inbox' && routed.list && routed.folder === 'inbox',
+    `the row opens the Inbox's one list, on the Inbox folder (${routed.view}, list painted ${routed.list}, folder ${routed.folder})`);
+  ok(routed.found && routed.legacyHidden, '…and no old folder list is on screen');
   // An empty mailbox invents nothing.
   const noMail = await page.evaluate(() => {
     window.__newMailPre = { count: 0, items: [] };
@@ -349,30 +374,43 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // count still said 1. An enquiry stays PENDING until it is approved or
   // declined, so "pending" was never the right thing to count.
   console.log('8. an opened enquiry stops notifying');
-  const seenState = async (seenAt, hoursAgo) => page.evaluate(({ seenAt, hoursAgo }) => {
+  // TWO numbers, and since the one-list Inbox they answer different questions on
+  // purpose: the TODAY pip counts duties (and an enquiry you have read is not a duty
+  // until it goes stale), while the INBOX pip counts people WAITING on you — the
+  // list's own "N waiting" pill — and an enquiry waits until you approve or decline
+  // it, read or not. The folder chip the old check also read is gone with the folders.
+  const seenState = async (seenAt, hoursAgo) => page.evaluate(async ({ seenAt, hoursAgo }) => {
     __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
     window.__newMailPre = null; window.__payoutTroublePre = null;
     const at = new Date(Date.now() - hoursAgo * 3600e3).toISOString().slice(0, 19).replace('T', ' ');
-    enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: at, seenAt: seenAt }];
-    refreshInboxBadge();
+    enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', email: 'jem@x.co', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: at, seenAt: seenAt }];
+    // The enquiries loader's own render: it refreshes the badges and queues the one
+    // list's rebuild (ibSoon → ibRender, which refreshes them again from the rebuilt
+    // list). Two frames lets that rebuild land before anything is read.
+    renderInbox();
     renderNeedsYou();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     return {
       dock: (document.getElementById('dock-badge-enquiries') || {}).textContent,
       inboxPip: (document.getElementById('dock-badge-inbox') || {}).textContent,
-      folderChip: (document.getElementById('ifold-count-enq') || {}).textContent,
+      waiting: String(ibWaitingCount()),
+      pill: ((document.querySelector('#ib-pill .head-pill') || {}).textContent || '').trim(),
       duty: /enquiry/i.test(((document.getElementById('needs-you-list') || {}).textContent || '')),
     };
   }, { seenAt, hoursAgo });
 
   const unread = await seenState('', 3);
-  ok(unread.dock === '1' && unread.inboxPip === '1' && unread.folderChip === '1',
-    `unread: every red count says 1 (dock ${unread.dock}, inbox ${unread.inboxPip}, chip ${unread.folderChip})`);
+  ok(unread.dock === '1' && unread.inboxPip === '1' && unread.waiting === '1',
+    `unread: the Today pip and the Inbox pip both say 1 (Today ${unread.dock}, Inbox ${unread.inboxPip}, waiting ${unread.waiting})`);
+  ok(/^1 waiting$/.test(unread.pill), `…and the Inbox pip is the list's own number (pill "${unread.pill}")`);
   ok(unread.duty, 'unread: and it is a duty');
 
   const read = await seenState('2026-08-01 10:00:00', 3);
-  ok(read.dock === '0' && read.inboxPip === '0' && read.folderChip === '',
-    `READ: the counts drop — that is the whole ask (dock ${read.dock}, inbox ${read.inboxPip}, chip "${read.folderChip}")`);
-  ok(!read.duty, 'READ: and the duty goes with them, or the Today badge would still say 1');
+  ok(read.dock === '0',
+    `READ: the Today count drops — that is the whole ask (Today ${read.dock})`);
+  ok(!read.duty, 'READ: and the duty goes with it, or the Today badge would still say 1');
+  ok(read.inboxPip === '1' && read.inboxPip === read.waiting && /^1 waiting$/.test(read.pill),
+    `READ: the Inbox pip still says 1 — the decision is still owed, and it says the same as the list (Inbox ${read.inboxPip}, pill "${read.pill}")`);
 
   // NOT DROPPED FOR GOOD. An enquiry read and then left is exactly how a booking
   // is lost, so at the same two days that already turns it red it comes back.

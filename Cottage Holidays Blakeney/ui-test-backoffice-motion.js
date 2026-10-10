@@ -6,12 +6,15 @@
 //     fold is 0px and out of the tab order, an opening one is mid-flight one
 //     frame later and settled at full height after, a closing one is still
 //     visible while it closes and gone the moment it has. Reduced motion snaps.
-//  §2 THE ANSWER ARRIVING — the Money landing's slow answers animate when they
-//     land, staggered, and the synchronous first paint does not.
+//  §2 THE ANSWER ARRIVING — on the one Payments page only what is NEW moves: a
+//     movement that arrived since the last load slides in and a figure that
+//     changed settles, while the synchronous first paint and the first load stay
+//     still. (The old landing's staggered moLand went with that landing.)
 //  §3 A FIGURE THAT CHANGED SAYS SO — the owed capsule SETTLES on a change and
 //     stays still on a repaint that changed nothing; the dock badge POPS.
 //  §4 THE TIMELINE draws in ONCE per visit, staggered, and never again.
-//  §5 THE FILTER SWITCH cross-fades on a subject change, never on a refresh.
+//  §5 THE FILTER SWITCH slides the rows in from the side switched to (a search
+//     rises) on a subject change, never on a refresh ("Today moves").
 //
 // SAMPLING RULE, learned the hard way in ui-test-searchpage §17a and again in
 // ui-test-flowmotion: SEEK, never race. Where a keyframe's shape is the claim,
@@ -33,9 +36,11 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
     { id: 2, prop_key: 'jollyboat', name: 'Tom Ashby', email: 'tom@example.com', check_in: d(9), check_out: d(12), adults: 2, children: 0, deposit_paid: 900, payment: 'paid', payment_method: 'Card', hold_status: 'none', notes: '' },
     { id: 3, prop_key: '21a', name: 'Ines Duarte', email: 'ines@example.com', check_in: d(-20), check_out: d(-16), adults: 2, children: 0, deposit_paid: 700, payment: 'paid', payment_method: 'Card', hold_status: 'none', notes: '' },
   ];
-  // §2 needs the accounts fetch to land AFTER the sync paint — that is the whole
-  // point of the motion — so it is deliberately delayed.
+  // §2 needs money.php to land AFTER the sync paint — that is the whole point of
+  // the motion — so it is deliberately delayed.
   let acctDelay = 250;
+  // money.php's movements, newest first; §2 adds one to see only the NEW row arrive.
+  const moneyActivity = [{ id: 'p901', at: Math.floor(Date.now() / 1000) - 86400, kind: 'in', what: 'Balance', booking_id: 2, name: 'Tom Ashby', prop: 'jollyboat', amount: 900, deposit: 0, fee: 12.6, method: 'card', status: 'done', payout: null }];
   await page.route(/\.php/, async (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -50,6 +55,10 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
           payouts: { known: 4, inBank: 1852.62, lookback: 90, items: { inBank: [{ name: 'Tom Ashby', kind: 'balance', movable: 900 }], unknown: [] } },
         },
       });
+    }
+    if (url.includes('money.php')) {
+      await new Promise((r) => setTimeout(r, acctDelay));
+      return json({ ok: true, at: Math.floor(Date.now() / 1000), position: { with_square: 0, in_bank: 0, ready: 0, held: 0, unreported_count: 0, failed: [] }, bank_items: [], way_items: [], moved_map: {}, landed_map: {}, books: null, years: [], activity: moneyActivity.slice() });
     }
     if (url.includes('bookings.php') && b.action === 'recent_payments') {
       await new Promise((r) => setTimeout(r, acctDelay));
@@ -247,43 +256,70 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
   // --------------------------------------------------------- §2 the answer
+  // RE-AIMED for the one Payments page: the old landing's four slow answers (and
+  // moLand, the settle they wore when they landed) are gone. The page paints at once
+  // from the bookings it holds and money.php fills the rest; what moves now is
+  // ONLY what is new or changed. A movement row that arrived since the last load
+  // slides in (pmRowIn), a figure that changed settles (pmSettle), and the first
+  // paint and the first load stay still — the screen arriving is not an answer moving.
   console.log('\n§2 The answer arriving');
-  acctDelay = 1500; // the sync paint has to be READABLE before the answers land
+  acctDelay = 1500; // the sync paint has to be READABLE before money.php answers
   await page.evaluate(() => openAccounts());
-  await page.waitForFunction(() => !!document.getElementById('mo-move-fig'), { timeout: 15000 });
-  // The sync paint: the placeholder is there and NOTHING is animating.
+  await page.waitForFunction(() => !!document.querySelector('#pm-list [data-fig="owe"]'), null, { timeout: 15000 });
+  // The sync paint: the figure the bookings already answer is there, the movements
+  // say they are loading, and NOTHING on the page is animating.
   const preFill = await page.evaluate(() => {
-    const f = document.getElementById('mo-move-fig');
-    return f ? { txt: f.textContent.trim(), anims: f.getAnimations().filter((a) => a.animationName !== 'chbPulse').length, pulse: f.getAnimations().some((a) => a.animationName === 'chbPulse') } : null;
+    const lp = document.getElementById('pm-list');
+    const anims = [...lp.querySelectorAll('*')].reduce((n, el) => n + el.getAnimations().filter((a) => a.animationName).length, 0);
+    return { owe: (lp.querySelector('[data-fig="owe"]') || {}).textContent || '', loading: /Loading…/.test(lp.textContent), anims };
   });
-  ok(preFill && /working it out/i.test(preFill.txt), 'the sync paint says "working it out…"');
-  // RE-AIMED: a placeholder now PULSES (work is visible); what it must never do is play the ARRIVAL, which means 'the answer landed'.
-  ok(preFill && preFill.anims === 0 && preFill.pulse, 'and it only pulses (work in progress) — it never plays the arrival, the placeholder is not an arrival');
+  ok(/£\d/.test(preFill.owe) && preFill.loading, `the sync paint states what is owed (${preFill.owe}) and says the movements are loading`);
+  ok(preFill.anims === 0, `and nothing moves on it (${preFill.anims} animation(s)) — the placeholder is not an arrival`);
 
-  await page.waitForFunction(() => {
-    const f = document.getElementById('mo-move-fig');
-    return f && !/working it out/i.test(f.textContent);
-  }, { timeout: 5000 });
-  const landed = await page.evaluate(() => {
-    const g = (id) => { const e = document.getElementById(id); return e ? { cls: e.className, del: getComputedStyle(e).animationDelay, name: getComputedStyle(e).animationName } : null; };
-    return { move: g('mo-move-fig'), back: g('mo-back-fig'), books: g('mo-books-fig') };
+  await page.waitForFunction(() => document.querySelectorAll('#pm-list .pm-mrow[aria-label^="Tom Ashby"]').length > 0, null, { timeout: 8000 });
+  const firstLoad = await page.evaluate(() => {
+    const lp = document.getElementById('pm-list');
+    return { fresh: lp.querySelectorAll('.pm-mrow.is-new').length, changed: lp.querySelectorAll('.is-changed').length };
   });
-  ok(landed.move && /mo-landed/.test(landed.move.cls) && landed.move.name === 'moLand',
-    'the figure that landed carries the settle');
-  ok(landed.move && landed.move.del === '0s' && landed.back && landed.back.del === '0.09s',
-    `staggered by ROW, not by which fetch came back first (${landed.move && landed.move.del} / ${landed.back && landed.back.del})`);
-  ok(landed.books && landed.books.del === '0.18s', `and the third answer follows at 0.18s (${landed.books && landed.books.del})`);
-  // The keyframe's shape — seek to the start (this is the LAST read of this node).
-  const moFrom = await page.evaluate(() => {
-    const e = document.getElementById('mo-back-fig');
-    const a = e.getAnimations()[0]; if (!a) return null;
-    a.pause(); a.currentTime = 0;
-    const cs = getComputedStyle(e);
-    return { op: cs.opacity, t: cs.transform };
+  ok(firstLoad.fresh === 0 && firstLoad.changed === 0, `the first load lands still: no row slides in, no figure settles (${firstLoad.fresh} / ${firstLoad.changed})`);
+
+  // A movement that ARRIVED since the last load (a save's own refetch) slides in.
+  acctDelay = 0;
+  moneyActivity.unshift({ id: 'p902', at: Math.floor(Date.now() / 1000) - 60, kind: 'in', what: 'Deposit', booking_id: 1, name: 'Sarah Pemberton', prop: '21a', amount: 75, deposit: 0, fee: null, method: 'Bank transfer', status: 'done' });
+  await page.evaluate(() => pmLoad(true));
+  await page.waitForFunction(() => !!document.querySelector('#pm-list .pm-mrow.is-new'), null, { timeout: 8000 }).catch(() => {});
+  const rowIn = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#pm-list .pm-mrow.is-new')];
+    const r = rows[0];
+    if (!r) return null;
+    const label = r.getAttribute('aria-label') || '';
+    const a = r.getAnimations().find((x) => x.animationName === 'pmRowIn');
+    if (!a) return { n: rows.length, label, name: '' };
+    a.pause(); a.currentTime = 0;                 // the LAST read of this node
+    const cs = getComputedStyle(r);
+    return { n: rows.length, label, name: a.animationName, op: cs.opacity, tr: cs.translate };
   });
-  ok(moFrom && Number(moFrom.op) < 0.05, `it starts invisible (opacity ${moFrom && moFrom.op}) — `
-    + '`backwards` holds it there through its own delay rather than flashing the answer first');
-  ok(moFrom && /matrix\(1, 0, 0, 1, 0, 4\)/.test(moFrom.t), `and 4px low (${moFrom && moFrom.t})`);
+  ok(rowIn && rowIn.n === 1 && /^Sarah Pemberton/.test(rowIn.label), `only the movement that is new carries the arrival (${rowIn && rowIn.n} row: ${rowIn && rowIn.label.slice(0, 40)})`);
+  ok(rowIn && rowIn.name === 'pmRowIn' && Number(rowIn.op) < 0.05 && /-8px/.test(rowIn.tr || ''), `it slides in from 8px above, from nothing (opacity ${rowIn && rowIn.op}, translate ${rowIn && rowIn.tr})`);
+
+  // A FIGURE THAT CHANGED settles; one that did not stays still.
+  const settle = await page.evaluate(() => {
+    const first = dbBookings['21a'][0];
+    dbBookings['21a'].push(Object.assign({}, first, { id: 'b-pm-2', dbId: 9903, name: 'Second Owes', depositPaid: 0, payment: 'unpaid', paymentMethod: 'Card' }));
+    pmRenderList();
+    const f = document.querySelector('#pm-list [data-fig="owe"]');
+    const a = f && f.getAnimations().find((x) => x.animationName === 'pmSettle');
+    let mid = null;
+    if (a) { a.pause(); a.currentTime = 180; mid = getComputedStyle(f).translate; } // 30% of 0.6s, the keyframe's one stop
+    const after = f ? f.textContent : '';
+    pmRenderList();                              // a repaint that changed nothing
+    const g = document.querySelector('#pm-list [data-fig="owe"]');
+    return { cls: f ? f.className : '', name: a ? a.animationName : '', mid, after, again: g ? g.getAnimations().length + (g.classList.contains('is-changed') ? 1 : 0) : -1 };
+  });
+  ok(settle.name === 'pmSettle' && /is-changed/.test(settle.cls), `the owed figure that changed settles (now ${settle.after})`);
+  ok(/-3px/.test(settle.mid || ''), `a SETTLE: 3px and back, no scale (${settle.mid}) — the figure was already on screen`);
+  ok(settle.again === 0, 'and a repaint with the same figures stays still');
+  await page.evaluate(() => { dbBookings['21a'] = dbBookings['21a'].filter((b) => b.dbId !== 9903); pmRenderList(); });
 
   // ------------------------------------------------------ §3 figures change
   console.log('\n§3 A figure that changed says so');
@@ -396,33 +432,44 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
     'and NEVER again this visit — renderCalendar runs on every data refresh, so a per-render entrance would wear out by lunchtime');
 
   // ----------------------------------------------------------- §5 the filter
+  // RE-AIMED for "Today moves" (owner-asked, supersedes "a FADE, never a cascade"):
+  // Upcoming|Past is a travelling pill, and on a change of SUBJECT the rows slide in
+  // from the side the switch moved to (Past lies to the right), or rise for a
+  // search. What has not changed is the reason the old rule existed: renderBookings
+  // runs on every data refresh, so a refresh must replay NOTHING.
   console.log('\n§5 The filter switch');
   await page.evaluate(() => bookingsSetFilter('upcoming'));
   await page.waitForTimeout(50);
-  const swapNone = await page.evaluate(() => {
+  const rowMotion = () => [...document.querySelectorAll('#bookings-list .bk-row')].reduce((n, r) => n + r.getAnimations().length + (/\bbk-in-/.test(r.className) ? 1 : 0), 0);
+  const swapNone = await page.evaluate((fn) => {
     renderBookings();                          // a plain data refresh
-    return document.getElementById('bookings-list').getAnimations().length;
-  });
-  ok(swapNone === 0, 'a data refresh that leaves you on the same list does not flicker it');
+    return document.getElementById('bookings-list').getAnimations().length + eval('(' + fn + ')')();
+  }, rowMotion.toString());
+  ok(swapNone === 0, 'a data refresh that leaves you on the same list moves nothing');
 
   const swap = await page.evaluate(() => {
     bookingsSetFilter('past');
-    const l = document.getElementById('bookings-list');
-    return { anims: l.getAnimations().map((a) => a.animationName), rows: l.querySelectorAll('.bk-row').length };
+    const rows = [...document.querySelectorAll('#bookings-list .bk-row')];
+    const r = rows[0];
+    const a = r && r.getAnimations().find((x) => x.animationName === 'bkInR');
+    let from = null;
+    if (a) { a.pause(); a.currentTime = 0; from = getComputedStyle(r).transform; }
+    return { rows: rows.length, cls: rows.map((x) => (x.className.match(/\bbk-in-\w/) || [''])[0]), from };
   });
-  ok(swap.anims.includes('bkListSwap'), 'switching the filter cross-fades the body');
-  ok(swap.rows >= 1, `and the list really changed subject (${swap.rows} past booking(s))`);
-  // A FADE, not a cascade — no row carries an entrance of its own.
-  const rowAnims = await page.evaluate(() =>
-    [...document.querySelectorAll('#bookings-list .bk-row')].reduce((n, r) => n + r.getAnimations().length, 0));
-  ok(rowAnims === 0,
-    'the ROWS do not animate — deliberately a fade, because renderBookings runs on every data refresh and a cascade would replay dozens of times a session');
+  ok(swap.rows >= 1, `the list really changed subject (${swap.rows} past booking(s))`);
+  ok(swap.cls.length && swap.cls.every((c) => c === 'bk-in-r'), `switching to Past slides the rows in from the right, the side the switch moved to (${swap.cls.join(' ')})`);
+  ok(swap.from && /matrix\(1, 0, 0, 1, 18, 0\)/.test(swap.from), `…from 18px over (${swap.from})`);
+  const refreshAfter = await page.evaluate((fn) => { renderBookings(); return eval('(' + fn + ')')(); }, rowMotion.toString());
+  ok(refreshAfter === 0, 'and a data refresh straight after replays nothing — the rows that arrive are plain rows');
+  const back = await page.evaluate(() => { bookingsSetFilter('upcoming'); return [...document.querySelectorAll('#bookings-list .bk-row')].map((x) => (x.className.match(/\bbk-in-\w/) || [''])[0]); });
+  ok(back.length && back.every((c) => c === 'bk-in-l'), `back to Upcoming, they come in from the left (${back.join(' ')})`);
 
   const swapSearch = await page.evaluate(() => {
+    bookingsSetFilter('past');
     bookingsSetSearch('ines');
-    return document.getElementById('bookings-list').getAnimations().length;
+    return [...document.querySelectorAll('#bookings-list .bk-row')].map((x) => (x.className.match(/\bbk-in-\w/) || [''])[0]);
   });
-  ok(swapSearch >= 1, 'a search is a subject change too');
+  ok(swapSearch.length >= 1 && swapSearch.every((c) => c === 'bk-in-u'), `a search is a subject change too, and its results rise (${swapSearch.join(' ')})`);
 
   console.log(`\n${fails ? fails + ' FAILED' : 'All back-office motion checks passed'}`);
   await done(fails);

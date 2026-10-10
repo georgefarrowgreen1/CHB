@@ -382,29 +382,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     }), 'below 1720 it is left-anchored again — a rail plus a column');
 
     // ---- 6. Payments shares one rail.
+    // The Payments page is ONE panel now (#pm: the list, with the details beside it
+    // at this width) rather than a column of answers. The property is the same: the
+    // title and the page stand on ONE left edge, and EVERY card in the list stands on
+    // one edge of its own. Measured over the whole set, not whichever matches first:
+    // a break that moved one card passed when the query happened to land on a sibling.
     await page.evaluate(async () => { await openAccounts(); });
-    await page.waitForTimeout(900);
-    // EVERY answer element, not whichever matches first: the rule is a
-    // four-selector list, and a break-test that disabled one of them passed
-    // because the query happened to match a still-styled sibling. Measuring
-    // the whole set is what makes this non-vacuous.
+    await page.waitForFunction(() => document.querySelectorAll('#pm-list > .pm-owe, #pm-list > .pm-rows').length >= 2, null, { timeout: 15000 }).catch(() => {});
     const rails = await page.evaluate(() => {
         const title = document.querySelector('#view-accounts h1, #view-accounts .section-title');
-        const kids = [...document.querySelectorAll('#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap, #money-overview > .glass-panel, #money-overview .mo-pulse')]
+        const pm = document.getElementById('pm');
+        const kids = [...document.querySelectorAll('#pm-list > .pm-owe, #pm-list > .pm-rows, #pm-list > .pm-books, #pm-list > .pm-filters')]
             .filter((el) => el.getClientRects().length > 0);
-        if (!title || !kids.length) return null;
+        if (!title || !pm || !kids.length) return null;
         const t = Math.round(title.getBoundingClientRect().left);
-        return { t, n: kids.length, worst: Math.max(...kids.map((el) => Math.abs(Math.round(el.getBoundingClientRect().left) - t))) };
+        const k0 = Math.round(kids[0].getBoundingClientRect().left);
+        return { t, panel: Math.abs(Math.round(pm.getBoundingClientRect().left) - t), n: kids.length, worst: Math.max(...kids.map((el) => Math.abs(Math.round(el.getBoundingClientRect().left) - k0))) };
     });
-    ok(!!rails && rails.n >= 2 && rails.worst <= 2, `Payments’ title and ALL ${rails ? rails.n : 0} of its answers share ONE rail (worst ${rails ? rails.worst : '?'}px out)`);
+    ok(!!rails && rails.panel <= 2, `Payments’ title and its page share ONE rail (${rails ? rails.panel : '?'}px out)`);
+    ok(!!rails && rails.n >= 2 && rails.worst <= 2, `ALL ${rails ? rails.n : 0} cards in its list share one edge (worst ${rails ? rails.worst : '?'}px out)`);
     await page.setViewportSize({ width: 1000, height: 900 });
     await page.waitForTimeout(500);
     ok(await page.evaluate(() => {
-        const grp = document.querySelector('#money-overview .bhub-fold-grp, #money-overview > .glass-panel');
-        if (!grp) return true;
-        const b = grp.getBoundingClientRect();
+        const pm = document.getElementById('pm');
+        if (!pm || !pm.getClientRects().length) return false;
+        const b = pm.getBoundingClientRect();
         return Math.abs(b.left - (window.innerWidth - b.right)) < 40;
-    }), 'and below the rail the centred column is untouched — its own gates still hold');
+    }), 'and below the rail the page is a centred column — its own gates still hold');
 
     // ============================================================
     //  §9 — THE AI CHAT IS GONE (owner's ask), from every way in: no rail row,

@@ -372,8 +372,13 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.dispatchEvent('#ib-q', 'input');
     await page.waitForTimeout(400);
     ok(!(await page.$eval('#ib-folders-wrap', (w) => w.classList.contains('is-away'))), 'and returns when the search is cleared');
-    // nothing waiting: one card, not an empty page
-    const saved = await page.evaluate(() => { const was = JSON.stringify(ibState().done); __ibPeople.forEach((p) => { ibState().done[p.key] = Date.now(); }); ibBuild(); ibRenderAll(); return was; });
+    // nothing waiting: one card, not an empty page.
+    // Each person is marked done AFTER their own last message, never at a bare
+    // Date.now(): the fixture writes "today 08:12" and "today 09:40", which before
+    // that hour are LATER than now, and ibDone rightly keeps anyone who wrote after
+    // they were marked done — so a now-stamp failed this check every night before
+    // 09:40 (measured at 01:26) while proving nothing about the calm card.
+    const saved = await page.evaluate(() => { const was = JSON.stringify(ibState().done); __ibPeople.forEach((p) => { ibState().done[p.key] = Math.max(Date.now(), p.lastAt || 0, p.enq ? ibT(p.enq.receivedAt) : 0) + 1000; }); ibBuild(); ibRenderAll(); return was; });
     ok(/Nothing waiting on you/.test(await page.$eval('#ib-rows .ib-empty.is-card', (e) => e.textContent).catch(() => '')), 'with everyone done the Inbox shows one calm card');
     await page.evaluate((was) => { ibState().done = JSON.parse(was); ibBuild(); ibRenderAll(); }, saved);
     // a remembered place opens the folder

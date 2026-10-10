@@ -13,7 +13,7 @@
 //       arrows, Today's money pill and the deposit stepper
 //    §3 a sub beside a capsule loses no words at 360 or 390 — neither to an
 //       ellipsis nor past its two-line clamp — on Today, the enquiry hub, the Inbox
-//       landing and the search rows
+//       list's row context lines and the search rows
 //    §4 the timeline lane reads its monogram below 640 ("J", never "Jolly" or
 //       "Pimp"), the short name above it, the full name announced either way
 //    §5 the bookings rows say their state once: the chip, no coloured rail
@@ -175,8 +175,13 @@ const subsOk = (name, list, floor) => {
     if (w !== 1280) {
       await open(page, "(async () => { await openEnquiryHub(11); })()", 1200);
       subsOk(`enquiry hub ${w}`, await page.evaluate(SUBS, '#enquiry-hub-content .bhub-fold-sub'), 1);
+      // The Inbox is ONE list of people now (the three-answers landing and its
+      // verdict subs are gone). The sub beside a capsule there is each row's
+      // CONTEXT line — "Enquiry · 21A Westgate · 19–23 Nov" beside "Decide" — so
+      // that is what must keep its words.
       await open(page, "(async () => { await openInbox(); })()", 1000);
-      subsOk(`inbox ${w}`, await page.evaluate(SUBS, '#inbox-landing .bhub-fold-sub'), 2);
+      await page.waitForFunction(() => document.querySelectorAll('#ib-rows .ib-rctx').length >= 2, null, { timeout: 8000 }).catch(() => {});
+      subsOk(`inbox ${w}`, await page.evaluate(SUBS, '#ib-rows .ib-rctx'), 2);
       await open(page, "(async () => { openCmdK(); })()", 900);
       await open(page, "(async () => { const i = document.getElementById('cmdk-input'); if (i) { i.value = 'who owes me money'; i.dispatchEvent(new Event('input', { bubbles: true })); } })()", 1200);
       subsOk(`search rows ${w}`, await page.evaluate(SUBS, '#cmdk .cmdk-row-sub'), 3);

@@ -5,8 +5,8 @@
 //  D. Emails card shows the logged email with its Show email button.
 //  E. Guest card lists the same guest's other stay; clicking swaps hubs.
 //  F. Back button returns to the Bookings list.
-//  G. Modal availability strip: booked days shaded, clash note on overlap,
-//     no self-clash when editing the same booking, none when dates free.
+//  G. The booking sheet's calendar + verdict: taken nights crossed, ⚠ Overlaps
+//     on a clash (direct or imported), no self-clash when editing, ✓ Free otherwise.
 //  H. Deleting from the hub exits to the Bookings list.
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
@@ -687,71 +687,82 @@ let approveWill409 = false;
   await page.unroute('**/bookings.php');
 
   // ---------- A4. payment plan at ADD time ----------
+  // The one booking SHEET carries the plan as its "First payment" row: standard
+  // by default (the row states the site's own terms), tapping it unfolds the
+  // custom plan (a % stepper and a due date on the sheet's own mini calendar),
+  // and "Back to the standard plan" WIPES what was typed. Only a custom plan
+  // rides the add payload — blank sends nothing, reverted sends nothing.
   console.log('A4. payment plan in the Add Booking flow');
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
+  const addFill = (f) => page.evaluate((x) => {
+    document.getElementById('modal-property').value = '21a';
+    document.getElementById('modal-name').value = x.name;
+    document.getElementById('modal-checkin').value = x.ci;
+    document.getElementById('modal-checkout').value = x.co;
+    updateModalPrice();
+  }, f);
+  const openAddSheet = async () => {
+    await page.evaluate(() => window.openAddBooking());
+    await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && !!document.querySelector('#edit-modal .modal-box.bks'));
+  };
+  // The due date is picked on the plan's mini calendar — turn its months until the day shows.
+  const pickDue = async (iso) => {
+    await page.click('#bks-due-btn');
+    await page.waitForFunction(() => document.getElementById('bks-due-fold').classList.contains('on'));
+    for (let i = 0; i < 14; i++) {
+      const cell = await page.$(`#bks-due-cal [data-bks="one"][data-v="${iso}"]`);
+      if (cell) { await cell.click(); break; }
+      await page.click('#bks-due-cal [data-bks="onenav"][data-v="1"]');
+    }
+    await page.waitForFunction((x) => document.getElementById('modal-plan-due').value === x, iso);
+  };
+  const addPostAfter = async (from) => {
+    await page.click('#modal-save-btn');
+    await page.waitForFunction(() => !document.getElementById('edit-modal').classList.contains('open'), null, { timeout: 8000 }).catch(() => {});
+    return posts.slice(from).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  };
+  await openAddSheet();
+  await addFill({ name: 'Plan At Add', ci: d(46), co: d(49) });
   const planInAdd = await page.evaluate(() => ({
-    shown: getComputedStyle(document.getElementById('modal-plan-group')).display !== 'none',
-    stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
-    fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
+    shown: (() => { const g = document.getElementById('modal-plan-group'); return !!g && g.getClientRects().length > 0; })(),
+    std: document.getElementById('bks-plan-row').getAttribute('aria-expanded') === 'false' && !document.getElementById('bks-plan-fold').classList.contains('on'),
+    says: document.getElementById('bks-first-s').textContent,
     pctBlank: (document.getElementById('modal-plan-pct') || {}).value === '',
     dueBlank: (document.getElementById('modal-plan-due') || {}).value === '',
   }));
-  ok(planInAdd.shown && planInAdd.stdOn && planInAdd.fieldsHidden && planInAdd.pctBlank && planInAdd.dueBlank,
-    'ADD opens on the STANDARD toggle, fields folded and blank');
-  // Toggle CUSTOM, fill a 30% / dated plan → the add POST carries the plan.
-  await page.click('#modal-plan-custom-btn');
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Plan At Add';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    document.getElementById('modal-plan-pct').value = '30';
-    document.getElementById('modal-plan-due').value = f.due;
-  }, { ci: d(46), co: d(49), due: d(44) });
+  ok(planInAdd.shown && planInAdd.std && planInAdd.pctBlank && planInAdd.dueBlank && /25% now with the deposit/.test(planInAdd.says),
+    `ADD opens on the STANDARD plan, its terms stated, the custom fields folded and blank (${planInAdd.says})`);
+  // Tap the First payment row → CUSTOM: 30% and a dated balance → the add POST carries the plan.
+  await page.click('#bks-plan-row');
+  await page.waitForFunction(() => document.getElementById('bks-plan-fold').classList.contains('on'));
+  await page.fill('#modal-plan-pct', '30');
+  await pickDue(d(44));
+  ok(/30% now/.test(await page.evaluate(() => document.getElementById('bks-first-s').textContent)), 'the row re-states the custom plan as it is typed');
   const postsBefore = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost = posts.slice(postsBefore).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  const addPost = await addPostAfter(postsBefore);
   ok(!!addPost && addPost.deposit_pct === '30' && addPost.balance_due_date === d(44),
     `the add payload carries the plan (${addPost ? addPost.deposit_pct + ' / ' + addPost.balance_due_date : 'no add post'})`);
   // A blank plan sends NOTHING — absent keys, never empty strings the server
   // could misread as "clear" (there is nothing to clear at add time).
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Standard At Add';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-  }, { ci: d(60), co: d(63) });
-  const postsBefore2 = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost2 = posts.slice(postsBefore2).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  await openAddSheet();
+  await addFill({ name: 'Standard At Add', ci: d(60), co: d(63) });
+  const addPost2 = await addPostAfter(posts.length);
   ok(!!addPost2 && !('deposit_pct' in addPost2) && !('balance_due_date' in addPost2),
     'blank plan fields stay OUT of the payload');
-  // TYPED THEN REVERTED: values entered under Custom must die with the toggle —
-  // a plan the owner backed out of can never ride the save silently.
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
-  await page.click('#modal-plan-custom-btn');
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Reverted Plan';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    document.getElementById('modal-plan-pct').value = '40';
-    document.getElementById('modal-plan-due').value = f.due;
-  }, { ci: d(66), co: d(69), due: d(64) });
-  await page.click('#modal-plan-std-btn');
-  const postsBefore3 = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost3 = posts.slice(postsBefore3).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  // TYPED THEN REVERTED: values entered under Custom must die with "Back to the
+  // standard plan" — a plan the owner backed out of can never ride the save silently.
+  await openAddSheet();
+  await addFill({ name: 'Reverted Plan', ci: d(66), co: d(69) });
+  await page.click('#bks-plan-row');
+  await page.waitForFunction(() => document.getElementById('bks-plan-fold').classList.contains('on'));
+  await page.fill('#modal-plan-pct', '40');
+  await pickDue(d(64));
+  await page.click('#bks-plan-fold [data-bks="planstd"]');
+  const wiped = await page.evaluate(() => ({ pct: document.getElementById('modal-plan-pct').value, due: document.getElementById('modal-plan-due').value }));
+  ok(wiped.pct === '' && wiped.due === '', `"Back to the standard plan" wipes what was typed (${JSON.stringify(wiped)})`);
+  const addPost3 = await addPostAfter(posts.length);
   ok(!!addPost3 && !('deposit_pct' in addPost3) && !('balance_due_date' in addPost3),
-    'a plan typed then toggled back to Standard sends NOTHING');
-  await page.evaluate(() => closeModal());
+    'a plan typed then reverted to standard sends NOTHING');
+  await page.evaluate(() => { if (document.getElementById('edit-modal').classList.contains('open')) closeModal(); });
   // Back to the b1 hub for the sections that follow.
   await page.evaluate(() => showDetails('21a', findBookingById('b1')));
   await page.waitForTimeout(600);
@@ -1511,79 +1522,58 @@ let approveWill409 = false;
   const backView = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(backView === 'view-backoffice', `back lands on the dashboard workspace (${backView})`);
 
-  // ---------- G. glass date picker (admin mode) + availability strip ----------
-  console.log('G. glass picker + availability strip');
+  // ---------- G. the sheet's own calendar + its overlap verdict ----------
+  // The glass picker and the availability strip are gone from the booking form:
+  // the sheet carries an INLINE calendar (taken nights crossed but still
+  // pickable — a deliberate overlap is the owner's call) and ONE verdict row
+  // under the dates (✓ Free, or ⚠ Overlaps <who>). ui-test-addbooking owns the
+  // sheet's own contract; this keeps the hub fixture's three facts true: a
+  // direct booking, an imported platform stay, and the booking being edited.
+  console.log('G. the sheet calendar + overlap verdict');
   await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(400);
-  // The consumer glass calendar opens from the modal's date trigger, in admin
-  // mode: taken nights shaded but still pickable.
-  await page.click('#modal-date-trigger');
-  await page.waitForTimeout(300);
-  // b1's stay (d+30) is next month — flip the calendar forward to see it.
-  await page.evaluate(() => dpChangeMonth(1));
-  await page.waitForTimeout(200);
-  const dp1 = await page.evaluate(() => ({
-    open: document.getElementById('date-picker').classList.contains('open'),
-    admin: document.getElementById('date-picker').classList.contains('dp-admin'),
-    shaded: document.querySelectorAll('#dp-grid .dp-day.dp-booked').length,
-    shadedClickable: Array.from(document.querySelectorAll('#dp-grid .dp-day.dp-booked')).every((c) => c.getAttribute('onclick') || c.getAttribute('data-act')),
-  }));
-  ok(dp1.open && dp1.admin, 'glass calendar opens from the modal in admin mode');
-  ok(dp1.shaded >= 1 && dp1.shadedClickable, `taken nights shaded yet pickable (${dp1.shaded})`);
-  await page.evaluate(([a, b]) => { dpPick(a); dpPick(b); dpDone(); }, [d(60), d(63)]);
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && !!document.querySelector('#edit-modal .modal-box.bks'));
+  await page.click('#bks-t-in');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  // Turn the sheet's calendar to the month holding a given day.
+  const calTo = async (iso) => {
+    for (let i = 0; i < 14 && !(await page.$(`#bks-cal [data-bks="day"][data-v="${iso}"]`)); i++) await page.click('#bks-cal [data-bks="nav"][data-v="1"]');
+  };
+  await calTo(d(31));
+  const dp1 = await page.evaluate((iso) => {
+    const c = document.querySelector(`#bks-cal [data-bks="day"][data-v="${iso}"]`);
+    return { taken: !!c && c.classList.contains('taken'), pickable: !!c && !c.disabled, label: c ? c.getAttribute('aria-label') : '' };
+  }, d(31));
+  ok(dp1.taken && dp1.pickable && /booked by Walk-in Guest/.test(dp1.label), `the sheet's calendar crosses a taken night yet keeps it pickable (${dp1.label})`);
+  const pick = async (iso) => { await calTo(iso); await page.click(`#bks-cal [data-bks="day"][data-v="${iso}"]`); };
+  await pick(d(60));
+  await pick(d(63));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
   const dp2 = await page.evaluate(() => ({
     ci: document.getElementById('modal-checkin').value,
     co: document.getElementById('modal-checkout').value,
-    label: (document.getElementById('modal-date-display') || {}).textContent || '',
-    closed: !document.getElementById('date-picker').classList.contains('open'),
+    tiles: [document.getElementById('bks-t-in-d').textContent, document.getElementById('bks-t-out-d').textContent],
+    verdict: document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim(),
   }));
-  ok(dp2.ci === d(60) && dp2.co === d(63) && dp2.closed, `picked range lands in the booking fields (${dp2.ci} → ${dp2.co})`);
-  ok(/→/.test(dp2.label), `trigger shows the chosen range (${dp2.label.trim()})`);
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(31)); // overlaps booking 1 (d30→d33)
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(34));
-  await page.waitForTimeout(300);
-  const g1 = await page.evaluate(() => ({
-    shown: (document.getElementById('modal-availability') || {}).style.display !== 'none',
-    strip: (document.querySelector('#modal-availability .mav-strip-txt') || {}).textContent || '',
-    clashDot: !!document.querySelector('#modal-availability .mav-strip-dot.is-clash'),
-    clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
-  }));
-  // The everyday face is the SUMMARY STRIP now — the grid folds behind its
-  // Calendar toggle (ui-test-addbooking owns the strip's own contract).
-  ok(g1.shown && /^Overlaps/.test(g1.strip) && g1.clashDot, `strip leads with the overlap (${g1.strip.slice(0, 40)})`);
-  ok(/overlap/.test(g1.clash) && /Walk-in Guest/.test(g1.clash), `clash note names the conflict (${g1.clash.trim().slice(0, 60)})`);
-  await page.evaluate(() => mavToggle());
-  await page.waitForTimeout(200);
-  // ≥2 not ≥3: the grid starts on the MONDAY of check-in week (by design), so
-  // when d(31) falls on a Monday the booking's first night d(30) sits outside
-  // the window — only the two overlapped nights are guaranteed visible.
-  const g1b = await page.evaluate(() => document.querySelectorAll('#modal-availability .mav-day.is-booked').length);
-  ok(g1b >= 2, `the Calendar toggle opens the grid with booked days shaded (${g1b})`);
-  await page.evaluate(() => mavToggle());
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(60)); // free dates
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(63));
-  await page.waitForTimeout(300);
-  const g2 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-clash'));
-  ok(g2, 'no clash note on free dates');
-  // Airbnb import visible when the window covers it.
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(49));
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(51));
-  await page.waitForTimeout(300);
-  await page.evaluate(() => mavToggle()); // the grid folds by default now
-  await page.waitForTimeout(200);
-  const g3 = await page.evaluate(() => ({
-    external: document.querySelectorAll('#modal-availability .mav-day.is-external').length,
-    clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
-  }));
-  ok(g3.external >= 3 && /airbnb import/.test(g3.clash), `imported block shaded + named (${g3.external} days)`);
-  await page.evaluate(() => mavToggle());
+  const sp = await page.evaluate((a) => a.map((x) => dpSpoken(x)), [d(60), d(63)]);
+  ok(dp2.ci === d(60) && dp2.co === d(63) && dp2.tiles.join('|') === sp.join('|'), `two taps land the stay in the store and on the tiles (${dp2.tiles.join(' → ')})`);
+  ok(/✓ Free/.test(dp2.verdict) && !/Overlaps/.test(dp2.verdict), `free dates → ✓ Free, no clash claimed (${dp2.verdict})`);
+  const verdictFor = (ci, co) => page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+    return document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim();
+  }, { ci, co });
+  const g1 = await verdictFor(d(31), d(34)); // overlaps booking 1 (d30→d33)
+  ok(/⚠ Overlaps Walk-in Guest/.test(g1), `overlapping dates → the verdict names the conflict (${g1})`);
+  // The imported Airbnb stay (d50→d53) is a conflict the same way, named for its platform.
+  const g3 = await verdictFor(d(49), d(51));
+  ok(/⚠ Overlaps an? Airbnb stay/.test(g3), `an imported platform stay is named as one (${g3})`);
   await page.evaluate(() => closeModal());
   // Editing booking 1: its own dates must NOT self-clash.
   await page.evaluate(() => window.openEditBooking('b1'));
-  await page.waitForTimeout(400);
-  const g4 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-clash'));
-  ok(g4, 'editing a booking does not flag itself as a clash');
+  await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && document.getElementById('modal-mode').value === 'booking');
+  const g4 = await page.evaluate(() => document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim());
+  ok(/✓ Free/.test(g4) && !/Overlaps/.test(g4), `editing a booking does not flag itself as a clash (${g4})`);
   await page.evaluate(() => closeModal());
 
   // ---------- H. delete rules: money in → no delete; money-free → deletes ----------
