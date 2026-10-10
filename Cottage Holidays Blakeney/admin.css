@@ -8469,10 +8469,20 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 :is(main, div).one-look :is(.acr-lbl small, .pr-rsub, .sp-ndetail, .sp-offsub, .bhub-fold-sub) { font-size: var(--fs-sub); color: var(--text-muted); font-weight: 400; }
 :is(main, div).one-look :is(.pay-val, .ga-v) { font-size: var(--fs-body); color: var(--text-muted); }
 :is(main, div).one-look .settings-row { padding-left: var(--u-pad); padding-right: var(--u-pad); }
-/* A review link row: the cottage, then its two actions on the right. */
+/* A review link row: the cottage, then its actions on the right. On a phone the three
+   actions take a line of their own as equal pills, so the name is never squeezed into
+   breaking mid-word. The icons keep their size: the button pass strips .rv-act, whose
+   flex: none pinned them, and a squeezed pill shrank its icon to a dot. */
 :is(main, div).one-look .rv-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--u-gap); min-height: var(--u-h-row); padding: 8px var(--u-pad); }
 :is(main, div).one-look .rv-row .rv-acts { display: flex; gap: 8px; padding: 0; border: 0; grid-template-columns: none; }
 :is(main, div).one-look .rv-row .rv-acts button { padding: 0 16px; }
+:is(main, div).one-look .rv-row .rv-acts svg { flex: none; }
+:is(main, div).one-look .rv-row .rv-name { overflow-wrap: break-word; }
+@media (max-width: 640px) {
+  :is(main, div).one-look .rv-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px var(--u-pad); }
+  :is(main, div).one-look .rv-row .rv-acts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  :is(main, div).one-look .rv-row .rv-acts button { padding: 0 8px; }
+}
 :is(main, div).one-look .gst-acts { background: none; border: 0; border-top: 1px solid var(--u-edge); border-radius: 0; }
 
 /* ---------- 5. ICON: one tile, the accent on the page's ground ---------- */
