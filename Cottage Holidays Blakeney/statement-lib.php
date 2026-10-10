@@ -256,7 +256,18 @@ function statement_parse(string $csv, string $filename = ''): array
     $out['money_in'] = round($out['money_in'], 2);
     $out['money_out'] = round($out['money_out'], 2);
     if (!$out['lines']) {
-        $out['error'] = 'There are no payments in that file.';
+        // Say WHY when rows were there but none could be read — "no payments" over a
+        // file full of rows reads as the app being broken, and the count is what
+        // tells an owner (and us) whether it was the dates, the amounts or the currency.
+        $rowsIn = max(0, count($rows) - 1);
+        if ($rowsIn > 0 && $out['unreadable'] > 0) {
+            $out['error'] = $rowsIn === 1 ? 'The one row in that file couldn’t be read as a payment.' : 'None of the ' . $rowsIn . ' rows in that file could be read as a payment.';
+        } elseif ($rowsIn > 0 && $out['other_currency'] > 0) {
+            $out['error'] = 'Every payment in that file is in another currency.';
+        } else {
+            $out['error'] = 'There are no payments in that file.';
+        }
+        $out['rows_in'] = $rowsIn;
         return $out;
     }
     $out['ok'] = true;

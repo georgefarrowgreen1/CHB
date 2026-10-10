@@ -118,9 +118,12 @@ function stmt_known(array $keys): array
 // Parse, split into new / already here / before the start date, and total up.
 function stmt_plan(array $in): array
 {
-    $p = statement_parse(stmt_csv($in), (string) ($in['filename'] ?? ''));
+    $csv = stmt_csv($in);
+    $p = statement_parse($csv, (string) ($in['filename'] ?? ''));
     if (!$p['ok']) {
-        json_out(['error' => $p['error']], 400);
+        // What was read, beside the refusal: the rows, how many could not be read
+        // and why, so a file that "has no payments" can be told from one we misread.
+        json_out(['error' => $p['error'], 'read' => ['bytes' => strlen($csv), 'rows' => $p['rows_in'] ?? null, 'unreadable' => $p['unreadable'] ?? 0, 'other_currency' => $p['other_currency'] ?? 0]], 400);
     }
     $since = stmt_since($in);
     $known = stmt_known(array_column($p['lines'], 'ext_key'));
