@@ -8,6 +8,7 @@
 //  POST {action:'send', which:'all'|<key>}  →  {ok, to, sent, results:[…]}
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/chat-lib.php'; // chat_author_name: a chat reply's sample is signed as it would be
 
 // Build + send the samples. Returns the JSON-ready result array.
 // $prefix is prepended to every subject line so samples are unmistakable.
@@ -291,7 +292,11 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'guest_chat' => [
             'Guest: a new chat message',
             function () use ($owner, $g) {
-                $m = guest_chat_body($g['name'], "Hello! Just to say the key safe code is 1066 and the bins go out on Tuesday.", '', true);
+                // Signed as a reply from the person asking for the sample, as the guest
+                // reads it while that person is shown in the chat.
+                $me = function_exists('admin_me') ? admin_me() : null;
+                $from = $me && function_exists('chat_author_name') ? chat_author_name((int) $me['id']) : '';
+                $m = guest_chat_body($g['name'], "Hello! Just to say the key safe code is 1066 and the bins go out on Tuesday.", '', true, $from);
                 return smtp_send($owner, $g['name'], $m['subject'], $m['text'], $m['html']);
             },
         ],

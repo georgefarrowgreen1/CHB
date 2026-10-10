@@ -1327,6 +1327,22 @@ foreach (['nudge' => enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08
 $n18 = enquiry_rescue_body('Sam', 'Jollyboat', '', site_base_url(), '#43a047');
 chk('§18 with no link, neither half mentions one', stripos($n18['text'], 'unsubscribe') === false && stripos($n18['html'], 'email-optout.php') === false);
 
+// §19 A reply in the guest chat names the person who wrote it, while they are shown in
+// the chat: in the subject, the text half's opener and the HTML heading, each read on
+// its own (the preheader repeats the opener, so the HTML check targets the heading).
+// With no name it speaks for the business, as every reply did.
+echo "\n§19 a chat reply names who wrote it\n";
+$n19 = guest_chat_body('Wren', 'The cot is in the hall cupboard.', '', true, 'Sophia');
+chk('§19 the subject says who replied', strpos($n19['subject'], 'Sophia replied: “') === 0);
+chk('§19 …the text half opens with their name', strpos($n19['text'], "Sophia replied in your chat with Cottage Holidays Blakeney:\n") !== false);
+chk('§19 …and the HTML heading carries it', strpos($n19['html'], 'Sophia replied<') !== false);
+$b19 = guest_chat_body('Wren', 'The cot is in the hall cupboard.', '', true);
+chk('§19 with no name: the business, in the subject and both halves',
+    strpos($b19['subject'], 'New message: “') === 0
+    && strpos($b19['text'], 'You have a new message from Cottage Holidays Blakeney:') !== false
+    && strpos($b19['html'], 'You have a new message<') !== false
+    && stripos($b19['text'] . $b19['html'], 'replied') === false);
+
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.
 if (($dumpDir = getenv('CHB_EMAIL_DUMP')) && is_dir($dumpDir)) {

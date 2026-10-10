@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 774;
+const ADMIN_BUNDLE_V = 775;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 398;
+const ADMIN_CSS_V = 399;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4000,6 +4000,7 @@ async function gaStaysLoad(force) {
     if (hs) hs.textContent = gaHelloLine();
     guestDockNeedsSync();
     gaTodoPaint();
+    chatPinPaint(); // the chat's pinned stay, when the chat is what asked
 }
 function gaStaysSplit() {
     const st = __gaStays && __gaStays !== 'err' ? __gaStays : null;
@@ -5764,6 +5765,8 @@ async function guestLogout() {
     if (gl) gl.innerHTML = '';
     const ct = document.getElementById('chat-thread');
     if (ct) ct.innerHTML = '';
+    // Their stay pinned in the chat goes with them.
+    chatPinPaint();
     setGuestUI();
     nav('view-main');
 }
@@ -12528,12 +12531,242 @@ function dayLabel(at) {
         ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
     });
 }
+// ---- WHO ANSWERS (the guest chat's team) ----
+// messages.php sends the people shown in the chat (first name, the line under it,
+// a photo version) as the chat opens, and whether the away reply is on now. Kept
+// on this device so the header shows their faces before the answer lands. Words
+// the owner wrote reaching a guest page, so the read sanitises: anything malformed
+// is simply not there. An empty team signs everything with the crown, as before.
+const CHAT_TEAM_KEY = 'chb-chat-team';
+/** @type {Array<{id:number,name:string,line:string,v:string}>|null} */
+let __chatTeam = null;
+/** @type {{on:boolean,until:number|null}|null} */
+let __chatAway = null;
+function chatTeamClean(t) {
+    return (Array.isArray(t) ? t : [])
+        .filter((m) => m && +m.id > 0 && typeof m.name === 'string' && m.name.trim())
+        .slice(0, 6)
+        .map((m) => ({
+            id: Math.floor(+m.id),
+            name: String(m.name).trim().slice(0, 40),
+            line: typeof m.line === 'string' ? m.line.trim().slice(0, 40) : '',
+            v: typeof m.v === 'string' && /^[a-f0-9]{10}$/.test(m.v) ? m.v : '',
+        }));
+}
+function chatTeam() {
+    if (__chatTeam === null) {
+        let saved = null;
+        try {
+            saved = JSON.parse(localStorage.getItem(CHAT_TEAM_KEY) || 'null');
+        } catch (e) {}
+        __chatTeam = chatTeamClean(saved);
+    }
+    return __chatTeam;
+}
+// The server's answer. Says whether anything a guest would see changed.
+function chatTeamSet(team, away) {
+    const was = JSON.stringify([chatTeam(), __chatAway]);
+    __chatTeam = chatTeamClean(team);
+    __chatAway =
+        away && typeof away === 'object'
+            ? { on: !!away.on, until: Number.isInteger(away.until) && away.until >= 0 && away.until < 24 ? away.until : null }
+            : null;
+    try {
+        localStorage.setItem(CHAT_TEAM_KEY, JSON.stringify(__chatTeam));
+    } catch (e) {}
+    return was !== JSON.stringify([__chatTeam, __chatAway]);
+}
+function chatMember(id) {
+    const n = +id || 0;
+    return n > 0 ? chatTeam().find((m) => m.id === n) || null : null;
+}
+// "Sophia", "Sophia & George", "Sophia, George & Ann" ($or: "… or …").
+function chatTeamNames(team, or) {
+    const n = team.map((m) => m.name);
+    const and = or ? ' or ' : ' & ';
+    return n.length < 3 ? n.join(and) : n.slice(0, -1).join(', ') + and + n[n.length - 1];
+}
+// When someone is back, as the chat says it ("7am"); '' unless the away reply is
+// on AND the owner's hours say nobody is around now.
+function chatAwayUntil() {
+    const a = __chatAway;
+    return a && a.on && a.until !== null ? fmtClock12(String(a.until).padStart(2, '0') + ':00') : '';
+}
+const CHAT_CROWN = '<img src="logo.svg" alt="">';
+const CHAT_MOON = '<svg class="chat-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 14.3A8.5 8.5 0 0 1 9.7 3.5a8.5 8.5 0 1 0 10.8 10.8z"/></svg>';
+const CHAT_BOOK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>';
+// A face: the person's photo, else their initial; null is the crown (an automatic
+// reply, or someone not shown in the chat). Sizes are classes, so the initial sits
+// on the type scale.
+function chatAva(m, size) {
+    const cls = 'chat-ava is-' + size;
+    if (!m) return `<span class="${cls} is-crown" aria-hidden="true">${CHAT_CROWN}</span>`;
+    const url = m.v ? 'avatar.php?team=' + m.id + '&v=' + m.v : '';
+    return `<span class="${cls}${url ? ' has-photo' : ''}" aria-hidden="true"${url ? ` style="background-image:url('${escapeHtml(chbCssUrl(url))}')"` : ''}>${escapeHtml(m.name.charAt(0).toUpperCase())}</span>`;
+}
+function chatPair(team, size) {
+    return `<span class="chat-pair">${team.slice(0, 3).map((m) => chatAva(m, size)).join('')}</span>`;
+}
+// How things stand now: "Away until 7am", else how soon they usually reply.
+// `away: false` asks for the daytime line whatever the hour (the owner's preview).
+function chatStatusHtml(plural, away) {
+    const until = away === false ? '' : chatAwayUntil();
+    return until
+        ? `${CHAT_MOON}<span>Away until ${escapeHtml(until)}</span>`
+        : `<span class="chat-presence-dot" aria-hidden="true"></span><span>${escapeHtml(chatReplySay(plural, true))}</span>`;
+}
+// The chat's own header. With a team it names them and opens who they are; with
+// none it is the header the chat always had. `preview` draws it for the owner's
+// "See it as a guest" sheet: the same words, nothing to tap.
+function chatHeadHtml(preview) {
+    const team = chatTeam();
+    if (!team.length)
+        return `<div class="chat-head-ava" aria-hidden="true">${CHAT_CROWN}</div><div class="chat-head-t"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>`;
+    const inner = `${chatPair(team, 36)}<span class="chat-who-t"><span class="chat-who-n">${escapeHtml(chatTeamNames(team))}</span><span class="chat-who-s">${chatStatusHtml(team.length > 1, preview ? false : undefined)}</span></span>`;
+    if (preview) return `<div class="chat-who is-static">${inner}</div>`;
+    return `<button type="button" class="chat-who" id="chat-who" data-act="chatTeamToggle" aria-expanded="false" aria-controls="chat-teamfold" aria-label="${escapeHtml(chatTeamNames(team) + ': who answers')}">${inner}<svg class="chat-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>`;
+}
+function chatTeamHtml() {
+    const note = currentGuest
+        ? 'Replies also reach you by email.'
+        : chatGetToken()
+          ? 'Replies come here, and by email if you left one.'
+          : 'Leave your email below and we can reply there too.';
+    return (
+        chatTeam()
+            .map((m) => `<div class="chat-mate">${chatAva(m, 46)}<div><b>${escapeHtml(m.name)}</b>${m.line ? `<span class="chat-mate-l">${escapeHtml(m.line)}</span>` : ''}</div></div>`)
+            .join('') + `<p class="chat-team-note">${note}</p>`
+    );
+}
+// Paints the header and the panel beneath it from the team as it stands, keeping
+// the panel open if it was.
+function chatHeadPaint() {
+    const id = document.getElementById('chat-head-id');
+    if (!id) return;
+    const wasOpen = !!document.querySelector('#chat-who[aria-expanded="true"]');
+    const team = chatTeam();
+    id.innerHTML = chatHeadHtml(false);
+    const fold = document.getElementById('chat-teamfold');
+    const inner = document.getElementById('chat-team');
+    if (fold) {
+        fold.hidden = !team.length;
+        fold.classList.toggle('open', wasOpen && !!team.length);
+    }
+    if (inner) inner.innerHTML = team.length ? chatTeamHtml() : '';
+    const who = document.getElementById('chat-who');
+    if (who && wasOpen) who.setAttribute('aria-expanded', 'true');
+}
+function chatTeamToggle() {
+    const fold = document.getElementById('chat-teamfold');
+    const btn = document.getElementById('chat-who');
+    if (!fold || !btn) return;
+    const open = !fold.classList.contains('open');
+    fold.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+}
+// ---- THE STAY, PINNED UNDER THE HEADER ----
+// A signed-in guest whose stay is coming up (or under way) sees it above the
+// conversation, so both sides know which stay it is about; tapping opens it. A
+// past stay is not pinned: a chat about a finished stay is not usually about it.
+function chatPinStay() {
+    if (!currentGuest || isAuthenticated) return null;
+    const sp = gaStaysSplit();
+    return sp && sp.lead && (sp.kind === 'now' || sp.kind === 'up') ? { x: sp.lead, kind: sp.kind } : null;
+}
+function chatPinPaint() {
+    const pin = document.getElementById('chat-pin');
+    if (!pin) return;
+    const s = chatPinStay();
+    if (!s) {
+        pin.hidden = true;
+        pin.innerHTML = '';
+        return;
+    }
+    const b = s.x.b;
+    const name = gaStayName(s.x);
+    const n = nightsBetween(b.checkIn, b.checkOut);
+    const d = nightsBetween(todayDashed(), b.checkIn);
+    const cap = s.kind === 'now' ? 'Staying now' : d <= 1 ? 'Tomorrow' : 'In ' + d + ' days';
+    const when = dpSpoken(b.checkIn) + ' → ' + dpSpokenEnd(b.checkOut) + ' · ' + n + ' night' + (n === 1 ? '' : 's');
+    pin.hidden = false;
+    pin.innerHTML =
+        `<button type="button" class="chat-stay" ${chbAttrs('chatOpenStay', String(b.id))} aria-label="${escapeHtml('Your stay at ' + name + ', ' + cap.toLowerCase() + ', ' + when + '. Open it')}">` +
+        `<span class="chat-stay-dot" style="background:var(--prop-${escapeHtml(String(s.x.propKey))}, var(--accent))" aria-hidden="true"></span>` +
+        `<span class="chat-stay-t"><span class="chat-stay-n"><b>${escapeHtml(name)}</b><span class="chat-stay-cap${s.kind === 'now' || d <= 1 ? ' is-soon' : ''}">${cap}</span></span>` +
+        `<span class="chat-stay-w">${escapeHtml(when)}</span></span>${GA_CHEV}</button>`;
+}
+function chatOpenStay(id) {
+    closeChat();
+    gaOpenStay(id);
+}
+// ---- A GUEST'S THREAD: every reply signed by who wrote it ----
+// Runs of messages from one author read as one: the name above the first bubble,
+// the face and the time under the last. The away reply says it is automatic and
+// carries the crown; a pay link or the arrival details sent from the chat are one
+// line saying who emailed what. The guest's own latest message says Seen or Sent.
+// Every message is still one .chat-row, so the arrival (only the last row enters)
+// works as it did.
+function chatGuestBubbles(msgs, enter) {
+    const author = (m) => (m.role !== 'admin' ? 'g' : m.kind === 'auto' ? 'auto' : chatMember(m.by) ? 'p' + m.by : 'crown');
+    const same = (x, y) =>
+        !!x && !!y && x.kind !== 'event' && y.kind !== 'event' && author(x) === author(y) && msgDayKey(x.at) === msgDayKey(y.at);
+    let lastGuest = -1;
+    msgs.forEach((m, i) => {
+        if (m.role === 'guest') lastGuest = i;
+    });
+    let prevDay = '';
+    return msgs
+        .map((m, i) => {
+            const dk = msgDayKey(m.at);
+            let sep = '';
+            if (dk && dk !== prevDay) {
+                prevDay = dk;
+                sep = `<div class="chat-daysep"><span>${escapeHtml(dayLabel(m.at))}</span></div>`;
+            }
+            const row = 'chat-row' + (enter && i === msgs.length - 1 ? ' is-new' : '');
+            const hm = chatClock(m.at);
+            if (m.role === 'admin' && m.kind === 'event') {
+                // "Sophia emailed you a secure link to pay your balance of £414.90"
+                const mem = chatMember(m.by);
+                const said = String(m.body || '').replace(/\.\s*$/, '');
+                return `${sep}<div class="${row}"><div class="chat-rowin"><div class="chat-ev">${chatAva(mem, 22)}<span><b>${escapeHtml(mem ? mem.name : 'We')}</b> ${escapeHtml(said.charAt(0).toLowerCase() + said.slice(1))}${hm ? ' · ' + hm : ''}</span></div></div></div>`;
+            }
+            const first = !same(msgs[i - 1], m);
+            const last = !same(m, msgs[i + 1]);
+            const att = m.attachment
+                ? `<a class="chat-attach-link" href="${escapeHtml(m.attachment)}" target="_blank" rel="noopener"><img class="chat-attach" src="${escapeHtml(m.attachment)}" loading="lazy" alt="Photo attachment"></a>`
+                : '';
+            const img = m.attachment && !m.body ? ' chat-msg-img' : '';
+            const body = m.body ? escapeHtml(m.body) : '';
+            if (m.role === 'guest') {
+                const state = i === lastGuest ? ` · <span class="chat-state${m.read ? ' chat-seen' : ''}">${m.read ? 'Seen' : 'Sent'}</span>` : '';
+                return `${sep}<div class="${row}"><div class="chat-rowin"><div class="chat-msg me${last ? '' : ' is-mid'}${img}">${att}${body}</div>${last ? `<div class="chat-meta is-me">${hm}${state}</div>` : ''}</div></div>`;
+            }
+            const a = author(m);
+            const mem = a.charAt(0) === 'p' ? chatMember(m.by) : null;
+            const name = a === 'auto' ? 'Automatic reply' : mem ? mem.name : 'Cottage Holidays Blakeney';
+            return (
+                `${sep}<div class="${row}"><div class="chat-rowin">` +
+                (first ? `<div class="chat-nm">${escapeHtml(name)}</div>` : '') +
+                `<div class="chat-line">${last ? chatAva(mem, 28) : '<span class="chat-slot"></span>'}<div class="chat-msg them${a === 'auto' ? ' is-auto' : ''}${last ? '' : ' is-mid'}${img}">${att}${body}</div></div>` +
+                (last ? `<div class="chat-meta is-them">${hm}</div>` : '') +
+                `</div></div>`
+            );
+        })
+        .join('');
+}
+// A message's clock time ("09:31"), read the way fmtMsgTime reads it.
+function chatClock(at) {
+    const d = msgDate(at);
+    return d ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : '';
+}
 // `enter` marks the LAST bubble as arriving (see .chat-row.is-new in app.css).
 // Only ever the last, and only when something actually arrived: every caller
 // rebuilds the whole thread, so an entrance keyed on anything else replays the
 // conversation on each poll.
 function chatBubbles(msgs, meRole, enter) {
     if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
+    if (meRole === 'guest') return chatGuestBubbles(msgs, enter);
     // Read receipt (owner side only): mark the owner's LATEST reply Read once the
     // guest has opened the thread since it was sent, so the owner can see whether
     // the customer has seen it. `seen` is read_by_guest from messages.php.
@@ -12547,6 +12780,11 @@ function chatBubbles(msgs, meRole, enter) {
         }
     }
     let prevDay = '';
+    // The owner's view names who wrote each reply: "You", someone else by first
+    // name, the away reply as automatic. A reply from before anyone was recorded
+    // reads "You", as every reply did.
+    const meRow = chbMeRaw();
+    const meId = meRow ? +meRow.id || 0 : 0;
     return msgs
         .map((m, i) => {
             const who =
@@ -12555,7 +12793,11 @@ function chatBubbles(msgs, meRole, enter) {
                         ? 'You'
                         : 'Guest'
                     : meRole === 'admin'
-                      ? 'You'
+                      ? m.kind === 'auto'
+                          ? 'Automatic reply'
+                          : m.by && m.by_name && +m.by !== meId
+                            ? m.by_name
+                            : 'You'
                       : 'Host';
             const receipt =
                 i === lastAdminIdx
@@ -12585,7 +12827,23 @@ function chatBubbles(msgs, meRole, enter) {
 // answers and when — the question a hesitant guest has BEFORE typing, and the
 // reason they might chat instead of enquiring. Same facts the header carries, in
 // the place they are read. Keeps .chat-empty so chatClearEmpty() still removes it.
-function chatHelloHtml() {
+// With a team it opens on their faces and names ("Sophia & George"); with none it
+// is the welcome the chat always had. `away: false` keeps the daytime line (the
+// owner's preview of a 2pm message).
+function chatHelloHtml(opts) {
+    const team = chatTeam();
+    const until = opts && opts.away === false ? '' : chatAwayUntil();
+    const when = until
+        ? `<span class="chat-hello-when is-away">${CHAT_MOON}Away until ${escapeHtml(until)}</span>`
+        : `<span class="chat-hello-when"><span class="chat-presence-dot" aria-hidden="true"></span>${escapeHtml(chatReplySay(team.length > 1))}</span>`;
+    if (team.length)
+        return `<div class="chat-hello chat-empty">
+                <div class="chat-hello-faces" aria-hidden="true">${chatPair(team, 64)}</div>
+                <div class="chat-hello-who">${escapeHtml(chatTeamNames(team))}</div>
+                <div class="chat-hello-role">Cottage Holidays Blakeney</div>
+                <p class="chat-hello-ask">${team.length > 1 ? 'Ask us anything about a cottage, your dates or your stay. One of us will answer.' : 'Ask anything about a cottage, your dates or your stay.'}</p>
+                ${when}
+            </div>`;
     const host =
         (typeof siteContent === 'object' && siteContent && siteContent['host-name']) || 'the owner';
     return `<div class="chat-hello chat-empty">
@@ -12593,7 +12851,7 @@ function chatHelloHtml() {
                 <div class="chat-hello-who">${escapeHtml(host)}</div>
                 <div class="chat-hello-role">Owner · Cottage Holidays Blakeney</div>
                 <p class="chat-hello-ask">Ask us anything — about a cottage, your dates, or your stay.</p>
-                <span class="chat-hello-when"><span class="chat-presence-dot" aria-hidden="true"></span>${escapeHtml(chatReplySay())}</span>
+                ${when}
             </div>`;
 }
 
@@ -12681,6 +12939,11 @@ function toggleChat() {
     overlayHistPush(); // Back closes this overlay
     w.classList.add('open');
     document.getElementById('chat-fab').classList.add('hidden');
+    // Who answers, from this device's copy until the server's lands; and the
+    // guest's stay above the conversation (asked for once if not yet known).
+    chatHeadPaint();
+    chatPinPaint();
+    if (currentGuest && __gaStays === null) gaStaysLoad();
     renderChatChips(); // the owner's buttons, for the cottage this page is about
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay('messages');
@@ -12717,6 +12980,13 @@ function closeChat() {
 // Signature of the server-side thread, so background polling can tell when
 // something actually changed (a new host reply) before touching the DOM.
 let __chatSig = '';
+// Whether the guest's latest message has been read: "Sent" turning to "Seen" is
+// not a message arriving, so it repaints without an entrance.
+let __chatSeen = '';
+function chatSeenSig(msgs) {
+    for (let i = (msgs || []).length - 1; i >= 0; i--) if (msgs[i].role === 'guest') return msgs[i].id + ':' + !!msgs[i].read;
+    return '';
+}
 function chatMsgSig(msgs) {
     if (!msgs || !msgs.length) return '0';
     const last = msgs[msgs.length - 1];
@@ -12741,10 +13011,14 @@ async function loadChat() {
     if (intro) intro.style.display = !loggedIn && !token ? 'block' : 'none';
     thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
     try {
-        const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
+        // `team`: who answers and whether they are away now, asked for as the chat
+        // opens (the poll does not need it).
+        const payload = loggedIn ? { action: 'thread', team: 1 } : { action: 'thread', token, team: 1 };
         const r = await apiPost('messages.php', payload);
+        if (Array.isArray(r.team) && chatTeamSet(r.team, r.away)) chatHeadPaint();
         const msgs = r.messages || [];
         __chatSig = chatMsgSig(msgs);
+        __chatSeen = chatSeenSig(msgs);
         // __chatEnterNext is set by sendChat: opening a conversation is not the
         // same event as a message arriving in one, and only the latter animates.
         const enter = !!__chatEnterNext && !chatMotionOff();
@@ -12752,7 +13026,7 @@ async function loadChat() {
         thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest', enter) : chatHelloHtml();
         chatFollow(thread, enter);
         chatNewPill(false);
-        chatSetTyping('chat-thread', !!r.peer_typing);
+        chatSetTyping('chat-thread', !!r.peer_typing, r.typing_by || 0);
     } catch (e) {
         // Don't alarm the visitor — show the greeting and let them type.
         thread.innerHTML = chatHelloHtml();
@@ -12793,9 +13067,11 @@ async function chatPoll() {
         if (__chatSig !== sigAtFire) return;
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
+        const seen = chatSeenSig(msgs);
         if (sig !== __chatSig) {
             // Something new — re-render (leaving any instant bot bubbles alone otherwise).
             __chatSig = sig;
+            __chatSeen = seen;
             const thread = document.getElementById('chat-thread');
             if (thread && msgs.length) {
                 // Read the position BEFORE the re-render: afterwards scrollHeight
@@ -12807,31 +13083,54 @@ async function chatPoll() {
                 if (nearBottom) chatFollow(thread, enter); // only follow if already at the bottom
                 chatNewPill(!nearBottom); // otherwise say a reply landed, and leave them where they are
             }
+        } else if (seen !== __chatSeen) {
+            // Their message has been read. Only the word under it changes: nothing
+            // arrived, and an instant answer on screen stays where it is.
+            __chatSeen = seen;
+            const st = document.querySelector('#chat-thread .chat-state');
+            if (st) {
+                const read = /:true$/.test(seen);
+                st.textContent = read ? 'Seen' : 'Sent';
+                st.classList.toggle('chat-seen', read);
+            }
         }
         // Typing state updates every tick, independent of message changes.
-        chatSetTyping('chat-thread', !!r.peer_typing);
+        chatSetTyping('chat-thread', !!r.peer_typing, r.typing_by || 0);
     } catch (e) {
         /* transient — try again next tick */
     }
 }
 // Show/hide a "typing…" bubble as the last child of a thread container. Used by
-// both the guest widget and the owner's back-office conversation.
-function chatSetTyping(containerId, on) {
+// both the guest widget and the owner's back-office conversation. `by` (the guest's
+// chat only) is who is typing: their name above the dots and their face beside
+// them while they are shown in the chat, the crown otherwise.
+function chatSetTyping(containerId, on, by) {
     const c = document.getElementById(containerId);
     if (!c) return;
-    let el = c.querySelector('.chat-typing');
-    if (on) {
-        if (!el) {
-            el = document.createElement('div');
+    const want = by === undefined ? 'plain' : 'p' + (chatMember(by) ? by : 0);
+    let el = /** @type {HTMLElement|null} */ (c.querySelector('.chat-typingrow') || c.querySelector('.chat-typing'));
+    if (el && (!on || el.dataset.who !== want)) {
+        el.remove();
+        el = null;
+    }
+    if (on && !el) {
+        const dots = '<span></span><span></span><span></span>';
+        el = document.createElement('div');
+        el.dataset.who = want;
+        if (by === undefined) {
             el.className = 'chat-typing';
             el.setAttribute('aria-label', 'typing');
-            el.innerHTML = '<span></span><span></span><span></span>';
-            c.appendChild(el);
-            const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 90;
-            if (nearBottom) c.scrollTop = c.scrollHeight;
+            el.innerHTML = dots;
+        } else {
+            const mem = chatMember(by);
+            el.className = 'chat-typingrow';
+            el.innerHTML =
+                (mem ? `<div class="chat-nm">${escapeHtml(mem.name)} is typing</div>` : '') +
+                `<div class="chat-line">${chatAva(mem, 28)}<div class="chat-typing" aria-label="${escapeHtml(mem ? mem.name + ' is typing' : 'typing')}">${dots}</div></div>`;
         }
-    } else if (el) {
-        el.remove();
+        c.appendChild(el);
+        const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 90;
+        if (nearBottom) c.scrollTop = c.scrollHeight;
     }
 }
 // Tell the server we're composing (throttled) so the other side sees "typing…".
@@ -13105,9 +13404,13 @@ function chatFaqAnswer(f) {
 // the three can never disagree. Owner-written JSON reaching a guest page, so the
 // read sanitises: anything malformed is simply not there.
 const CHAT_REPLY_SAY = { hour: 'within an hour', hours: 'within a few hours', day: 'the same day', next: 'by the next day' };
-function chatReplySay() {
+// `plural`: said of two or more people ("Sophia & George usually reply…").
+// `short`: the header's line, which shares a 390px row with two faces and a
+// close button ("within a few hours" wrapped it to two lines).
+function chatReplySay(plural, short) {
     const k = typeof siteContent === 'object' && siteContent ? siteContent['chat-reply-time'] : '';
-    return 'Usually replies ' + (CHAT_REPLY_SAY[k] || CHAT_REPLY_SAY.hours);
+    const when = CHAT_REPLY_SAY[k] || CHAT_REPLY_SAY.hours;
+    return 'Usually ' + (plural ? 'reply ' : 'replies ') + (short && when === CHAT_REPLY_SAY.hours ? 'in a few hours' : when);
 }
 function chatChipsCfg() {
     const raw = typeof siteContent === 'object' && siteContent ? siteContent['chat-chips'] : null;
@@ -13296,26 +13599,34 @@ function chatBot(html) {
     chatScroll();
     return d;
 }
+// AN INSTANT ANSWER IS THE COTTAGE GUIDE, never one of the people: it is labelled
+// as the guide, and carries a one-tap way to ask a person instead (the exact
+// question, sent past the matcher). `ask` is that question.
+function chatGuide(answer, ask) {
+    const t = chatThreadEl();
+    if (!t) return;
+    const team = chatTeam();
+    const d = document.createElement('div');
+    d.className = 'chat-bot chat-guide chb-appear';
+    d.innerHTML =
+        `<div class="chat-guide-l">${CHAT_BOOK}From the cottage guide</div>` +
+        `<p>${escapeHtml(answer).replace(/\n/g, '<br>')}</p>` +
+        (ask
+            ? `<div class="chat-bot-actions"><button type="button" class="btn-glass btn-sm" ${chbAttrs('chatReachPerson', encodeURIComponent(ask))}>${escapeHtml(team.length ? 'Ask ' + chatTeamNames(team, true) : 'Message a person instead')}</button></div>`
+            : '');
+    t.appendChild(d);
+    chatScroll();
+}
 function chatFaq(which) {
     const x = chatQuickList(true).find((r) => r.id === which);
     if (!x) return;
     chatClearEmpty();
     chatAppendMe(x.q);
-    chatBot(escapeHtml(x.a).replace(/\n/g, '<br>'));
+    chatGuide(x.a, x.q);
 }
-// An instant FAQ answer to a TYPED question, with a one-tap "reach a person"
-// fallback (re-sends the exact question to the owner, bypassing the matcher).
+// An instant FAQ answer to a TYPED question.
 function chatFaqReply(hit, original) {
-    const t = chatThreadEl();
-    if (!t) return;
-    const d = document.createElement('div');
-    d.className = 'chat-bot chb-appear';
-    d.innerHTML =
-        escapeHtml(hit.a).replace(/\n/g, '<br>') +
-        `<div class="cb-meta">Instant answer from this cottage's info.</div>` +
-        `<div class="chat-bot-actions"><button type="button" class="btn-glass btn-sm" ${chbAttrs('chatReachPerson', encodeURIComponent(original || ''))}>Message a person instead</button></div>`;
-    t.appendChild(d);
-    chatScroll();
+    chatGuide(hit.a, original || '');
 }
 // NB the cottage page's "Ask us anything" box was REMOVED (owner's call — guests
 // ask in the chat instead). guestFaqAnswer below stays: it still answers a typed
@@ -21685,7 +21996,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pmplus1';
+    const BUILD = 'chatteam1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

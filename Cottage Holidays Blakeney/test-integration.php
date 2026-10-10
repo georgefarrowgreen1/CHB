@@ -3347,7 +3347,10 @@ $rootDb->exec("USE `$DB_NAME`");
 $newJar = [];
 $r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'Newbie50@Gmail.com']);
 $known = http($noJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'ks@gmail.com']);
-it_check('§50 asking for a code answers the same whether or not an account exists', $r['code'] === 200 && $r['raw'] === $known['raw'] && ($r['json']['ok'] ?? false) === true, $r['raw'] . ' / ' . $known['raw']);
+// srv is the server's clock, which can tick between the two requests on a loaded
+// machine; everything else must be identical (§56's rule).
+$noSrv = fn($x) => json_encode(array_diff_key((array) ($x['json'] ?? []), ['srv' => 1]));
+it_check('§50 asking for a code answers the same whether or not an account exists', $r['code'] === 200 && $known['code'] === 200 && $noSrv($r) === $noSrv($known) && ($r['json']['ok'] ?? false) === true, $r['raw'] . ' / ' . $known['raw']);
 $row = $rootDb->query("SELECT code_hash, expires_at > NOW() AS live, used_at FROM guest_codes WHERE email = 'newbie50@gmail.com' ORDER BY id DESC LIMIT 1")->fetch();
 it_check('§50 the code is stored only as a hash, alive for 30 minutes', $row && strlen($row['code_hash']) === 64 && (int) $row['live'] === 1 && $row['used_at'] === null, json_encode($row));
 $cSet('newbie50@gmail.com', '135790');
@@ -5679,6 +5682,179 @@ it_check('§80 …while an ordinary enquiry and draft are not set aside', $st80(
 $rootDb->exec("DELETE FROM enquiries WHERE id IN ($eOut80, $eIn80)");
 $rootDb->exec("DELETE FROM enquiry_drafts WHERE id IN ($dOut80, $dIn80)");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'email-optout'");
+
+// ---- 81. The guest chat says who answers ----------------------------------
+// Guests see the people who answer — first name, the line under it, the account
+// photo — and every reply is signed by whoever wrote it, while that person is shown
+// in the chat. Someone switched off, removed, or unable to reply is never named: their
+// replies carry the crown. Driven through the real endpoints and tables.
+echo "\n== 81. The guest chat says who answers ==\n";
+foreach ([['messages', 'admin_id'], ['messages', 'kind'], ['chat_threads', 'admin_typing_by'], ['admins', 'chat_show'], ['admins', 'chat_line']] as [$tbl81, $col81]) {
+    it_check("§81 $tbl81.$col81 exists after schema + migrations", count($rootDb->query("SHOW COLUMNS FROM $tbl81 LIKE '$col81'")->fetchAll()) === 1);
+}
+// Four people: two Super Users (one the host the cottage pages name), a Host who may
+// reply, and a Host who may not. Each with a photo on disk, like a real upload.
+$face81 = function () use ($work) {
+    $n = bin2hex(random_bytes(16)) . '.jpg';
+    @mkdir($work . '/uploads/avatars', 0700, true);
+    $im = imagecreatetruecolor(32, 32);
+    imagejpeg($im, $work . '/uploads/avatars/' . $n, 80);
+    return $n;
+};
+$mk81 = function ($user, $name, $full, $perms, $line = '') use ($rootDb, $face81) {
+    $rootDb->prepare('INSERT INTO admins (username, password_hash, name, email, full_access, perms, twofa, photo, chat_line, created_at) VALUES (?,?,?,?,?,?,0,?,?,NOW())')
+        ->execute([$user, password_hash('pw-' . $user, PASSWORD_DEFAULT), $name, $user . '@example.com', $full, $perms, $face81(), $line]);
+    return (int) $rootDb->lastInsertId();
+};
+$mar81 = $mk81('marigold81', 'Marigold Moss', 1, null);
+$gid81 = $mk81('gideon81', 'Gideon Lane', 1, null, 'Bookings & Website');
+$het81 = $mk81('hettie81', 'Hettie Hall', 0, '{}');
+$ned81 = $mk81('ned81', 'Ned Noreply', 0, '{"gu.reply":false}');
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('host-name', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode('Marigold')]);
+$jar81 = [];
+foreach (['marigold81', 'gideon81', 'hettie81'] as $u81) {
+    $jar81[$u81] = [];
+    $r = http($jar81[$u81], 'POST', '/auth.php', ['action' => 'admin_login', 'username' => $u81, 'password' => 'pw-' . $u81]);
+    it_check("§81 $u81 signs in", $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+}
+// What a first-time visitor is told as the chat opens.
+$anon81 = [];
+$r = http($anon81, 'POST', '/messages.php', ['action' => 'thread', 'team' => 1]);
+$team81 = $r['json']['team'] ?? [];
+$ids81 = array_map(fn($m) => (int) ($m['id'] ?? 0), $team81);
+$byId81 = array_combine($ids81, $team81) ?: [];
+it_check('§81 a visitor is told who answers', $r['code'] === 200 && isset($byId81[$mar81], $byId81[$gid81], $byId81[$het81]), $r['raw']);
+it_check('§81 …the host the cottage pages name comes first, as "Host"', ($team81[0]['id'] ?? 0) === $mar81 && ($byId81[$mar81]['line'] ?? '') === 'Host', json_encode($team81[0] ?? null));
+it_check('§81 …each person with their own line, else none', ($byId81[$gid81]['line'] ?? '') === 'Bookings & Website' && ($byId81[$het81]['line'] ?? 'x') === '', json_encode([$byId81[$gid81] ?? null, $byId81[$het81] ?? null]));
+it_check('§81 …never someone who may not reply to guests', !isset($byId81[$ned81]));
+it_check('§81 …first names and a photo version only: no surname, no address', !preg_match('/Moss|Lane|Hall|@/', json_encode($team81)) && array_keys($byId81[$mar81] ?? []) === ['id', 'name', 'line', 'v'] && preg_match('/^[a-f0-9]{10}$/', (string) ($byId81[$mar81]['v'] ?? '')), json_encode($byId81[$mar81] ?? null));
+it_check('§81 …and whether they are away now', isset($r['json']['away']['on']), $r['raw']);
+// The photo route: public for someone shown, and nothing else.
+$photo81 = function ($q) use ($BASE) {
+    $ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
+    $http_response_header = []; // predeclared; the fetch overwrites it
+    $body = @file_get_contents($BASE . '/avatar.php?' . $q, false, $ctx);
+    $hdrs = implode("\n", $http_response_header);
+    preg_match('#^HTTP/\S+ (\d+)#', $hdrs, $m);
+    return ['code' => (int) ($m[1] ?? 0), 'h' => $hdrs, 'body' => (string) $body];
+};
+$p = $photo81('team=' . $mar81);
+it_check('§81 a shown person\'s photo is served to anyone', $p['code'] === 200 && stripos($p['h'], 'Content-Type: image/jpeg') !== false, substr($p['h'], 0, 200));
+it_check('§81 …cached as public, with no cookie stored beside it', stripos($p['h'], 'Cache-Control: public') !== false && stripos($p['h'], 'Set-Cookie') === false, $p['h']);
+it_check('§81 …but not the photo of someone who may not reply', $photo81('team=' . $ned81)['code'] === 404);
+it_check('§81 …nor of nobody', $photo81('team=999999')['code'] === 404);
+it_check('§81 …and the back office\'s own photo route still needs a session', $photo81('admin=' . $mar81)['code'] === 401);
+// A REPLY IS SIGNED BY WHOEVER WROTE IT.
+$tok81 = bin2hex(random_bytes(12));
+$vis81 = [];
+$r = http($vis81, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok81, 'body' => 'IT81 is there parking?', 'name' => 'Vera Visitor', 'email' => 'vera81@example.com']);
+$t81 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE token = '$tok81'")->fetchColumn();
+it_check('§81 a visitor starts a conversation', $r['code'] === 200 && $t81 > 0, $r['raw']);
+$guestView81 = function () use (&$vis81, $tok81) {
+    return http($vis81, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok81]);
+};
+$g = $guestView81();
+$mine81 = array_values(array_filter($g['json']['messages'] ?? [], fn($m) => ($m['role'] ?? '') === 'guest'));
+it_check('§81 their message reads Sent until someone in the back office opens it', isset($mine81[0]) && ($mine81[0]['read'] ?? null) === false, json_encode($mine81));
+$r = http($jar81['gideon81'], 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $t81]);
+$g = $guestView81();
+$mine81 = array_values(array_filter($g['json']['messages'] ?? [], fn($m) => ($m['role'] ?? '') === 'guest'));
+it_check('§81 …and Seen once they have', ($mine81[0]['read'] ?? null) === true, json_encode($mine81));
+$r = http($jar81['gideon81'], 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $t81, 'body' => 'IT81-GIDEON There is a space outside.', 'op_id' => 'it81-send-1']);
+$row81 = $rootDb->query("SELECT admin_id, kind FROM messages WHERE thread_id = $t81 AND body LIKE 'IT81-GIDEON%'")->fetch(PDO::FETCH_ASSOC);
+it_check('§81 a reply records who wrote it', $r['code'] === 200 && (int) ($row81['admin_id'] ?? 0) === $gid81 && ($row81['kind'] ?? 'x') === '', json_encode($row81));
+$last81 = function () use ($guestView81) {
+    $ms = $guestView81()['json']['messages'] ?? [];
+    return end($ms) ?: [];
+};
+it_check('§81 the guest sees it signed by that person', (int) ($last81()['by'] ?? -1) === $gid81, json_encode($last81()));
+$own81 = http($jar81['marigold81'], 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $t81])['json']['messages'] ?? [];
+$ownLast81 = end($own81) ?: [];
+it_check('§81 the back office reads the author\'s first name', ($ownLast81['by_name'] ?? '') === 'Gideon' && (int) ($ownLast81['by'] ?? 0) === $gid81, json_encode($ownLast81));
+// Typing says who.
+http($jar81['gideon81'], 'POST', '/messages.php', ['action' => 'typing', 'thread_id' => $t81]);
+$g = $guestView81();
+it_check('§81 the guest sees who is typing', !empty($g['json']['peer_typing']) && (int) ($g['json']['typing_by'] ?? 0) === $gid81, $g['raw']);
+// THE SWITCH IS THE PERSON'S OR A SUPER USER'S, and switched off they are not named.
+$r = http($jar81['hettie81'], 'POST', '/messages.php', ['action' => 'set_member', 'id' => $gid81, 'show' => 0]);
+it_check('§81 a Host cannot switch someone else off', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'not_allowed', $r['raw']);
+$r = http($jar81['hettie81'], 'POST', '/messages.php', ['action' => 'set_member', 'id' => $het81, 'line' => "Cleaning\n& keys"]);
+$hm81 = array_values(array_filter($r['json']['members'] ?? [], fn($m) => ($m['id'] ?? 0) === $het81));
+it_check('§81 …but sets her own line, one line of plain text', $r['code'] === 200 && ($hm81[0]['lineSet'] ?? '') === 'Cleaning & keys', $r['raw']);
+$canEdit81 = array_map(fn($m) => [$m['id'], $m['canEdit']], $r['json']['members'] ?? []);
+it_check('§81 …and is offered only her own row to change', !in_array([$gid81, true], $canEdit81, true) && in_array([$het81, true], $canEdit81, true), json_encode($canEdit81));
+$r = http($jar81['hettie81'], 'POST', '/messages.php', ['action' => 'set_member', 'id' => $het81, 'line' => str_repeat('x', 41)]);
+it_check('§81 a line over 40 characters is refused in words', $r['code'] === 400 && stripos((string) ($r['json']['error'] ?? ''), '40') !== false, $r['raw']);
+$r = http($jar81['marigold81'], 'POST', '/messages.php', ['action' => 'set_member', 'id' => $gid81, 'show' => 0]);
+it_check('§81 a Super User switches someone off', $r['code'] === 200 && !in_array($gid81, array_map(fn($m) => (int) $m['id'], $r['json']['team'] ?? []), true), $r['raw']);
+it_check('§81 …and their replies are signed with the crown', (int) ($last81()['by'] ?? -1) === 0);
+it_check('§81 …their photo is not public any more', $photo81('team=' . $gid81)['code'] === 404);
+http($jar81['gideon81'], 'POST', '/messages.php', ['action' => 'typing', 'thread_id' => $t81]);
+$g = $guestView81();
+it_check('§81 …and their typing is not named', !empty($g['json']['peer_typing']) && (int) ($g['json']['typing_by'] ?? -1) === 0, $g['raw']);
+http($jar81['marigold81'], 'POST', '/messages.php', ['action' => 'set_member', 'id' => $gid81, 'show' => 1]);
+it_check('§81 switched back on, they are named again', (int) ($last81()['by'] ?? -1) === $gid81);
+// A REMOVED PERSON IS NEVER NAMED by the replies they left.
+$rootDb->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest, admin_id) VALUES (?, 'admin', 'IT81-HETTIE', 1, 0, ?)")->execute([$t81, $het81]);
+it_check('§81 a Host\'s reply is signed by her', (int) ($last81()['by'] ?? -1) === $het81);
+$rootDb->exec("UPDATE admins SET removed_at = NOW() WHERE id = $het81");
+it_check('§81 …until she is removed: then the crown', (int) ($last81()['by'] ?? -1) === 0);
+// A REPLY BY EMAIL is signed by the person it came from; one from an address that is
+// nobody's sign-in (an extra address) by nobody, whoever happens to be signed in.
+$probe81 = function ($code) use ($work) {
+    $f = $work . '/it-chat-probe81.php';
+    file_put_contents($f, "<?php\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailer.php';\nrequire_once __DIR__ . '/chat-lib.php';\n" . $code);
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    return json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+};
+$tokO81 = (string) (($probe81('echo "\n" . json_encode(["tok" => msg_reply_token(' . $t81 . ', "owner")]);') ?: [])['tok'] ?? '');
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('notify-emails', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode(['extra81@example.com'])]);
+$hook81 = function (array $fields) use ($BASE, $SECRET) {
+    $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => 'Content-Type: application/x-www-form-urlencoded', 'content' => http_build_query($fields), 'timeout' => 30, 'ignore_errors' => true]]);
+    return trim((string) @file_get_contents($BASE . '/inbound-mail.php?key=' . rawurlencode($SECRET), false, $ctx));
+};
+$h = $hook81(['recipient' => "reply+$tokO81@yourdomain.co.uk", 'sender' => 'marigold81@example.com', 'subject' => 'Re: New message', 'stripped-text' => 'IT81-MAILED see you Friday']);
+$mailed81 = $rootDb->query("SELECT admin_id FROM messages WHERE thread_id = $t81 AND body LIKE 'IT81-MAILED%'")->fetchColumn();
+it_check('§81 a reply by email is signed by the person whose address it came from', $h === 'ok' && (int) $mailed81 === $mar81, $h . ' / ' . var_export($mailed81, true));
+$h = $hook81(['recipient' => "reply+$tokO81@yourdomain.co.uk", 'sender' => 'extra81@example.com', 'subject' => 'Re: New message', 'stripped-text' => 'IT81-EXTRA the bins go out Tuesday']);
+$extra81 = $rootDb->query("SELECT admin_id FROM messages WHERE thread_id = $t81 AND body LIKE 'IT81-EXTRA%'")->fetch(PDO::FETCH_ASSOC);
+it_check('§81 …and one from an extra address by nobody: the crown', $h === 'ok' && $extra81 && $extra81['admin_id'] === null, $h . ' / ' . json_encode($extra81));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
+// The guest's reply email names who answered, while they are shown.
+$an81 = $probe81('echo "\n" . json_encode(["mar" => chat_author_name(' . $mar81 . '), "het" => chat_author_name(' . $het81 . '), "ned" => chat_author_name(' . $ned81 . ')]);');
+it_check('§81 the reply email is signed "Marigold" for a shown person, by the business otherwise', ($an81['mar'] ?? '') === 'Marigold' && ($an81['het'] ?? 'x') === '' && ($an81['ned'] ?? 'x') === '', json_encode($an81));
+// THE AWAY REPLY SAYS IT IS AUTOMATIC, and the header says until when.
+$hour81 = (int) (new DateTime('now', new DateTimeZone('Europe/London')))->format('G');
+$from81 = sprintf('%02d', ($hour81 + 1) % 24);
+$to81 = sprintf('%02d', ($hour81 + 2) % 24);
+foreach (['chat-away-enabled' => '1', 'chat-away-from' => $from81, 'chat-away-to' => $to81] as $k81 => $v81) {
+    $rootDb->prepare('INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)')->execute([$k81, json_encode($v81)]);
+}
+$tokB81 = bin2hex(random_bytes(12));
+$visB81 = [];
+http($visB81, 'POST', '/messages.php', ['action' => 'send', 'token' => $tokB81, 'body' => 'IT81-LATE our train is late', 'name' => 'Lou Late', 'email' => 'lou81@example.com']);
+$tB81 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE token = '$tokB81'")->fetchColumn();
+$auto81 = null;
+for ($i = 0; $i < 30 && !$auto81; $i++) {
+    usleep(100000);
+    $auto81 = $rootDb->query("SELECT admin_id, kind FROM messages WHERE thread_id = $tB81 AND sender_role = 'admin'")->fetch(PDO::FETCH_ASSOC);
+}
+it_check('§81 the away reply is written as automatic, by nobody', $auto81 && $auto81['kind'] === 'auto' && $auto81['admin_id'] === null, json_encode($auto81));
+$r = http($visB81, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tokB81, 'team' => 1]);
+$lastB81 = end($r['json']['messages']) ?: [];
+it_check('§81 …the guest is told so', ($lastB81['kind'] ?? '') === 'auto' && (int) ($lastB81['by'] ?? -1) === 0, json_encode($lastB81));
+it_check('§81 …and the chat says when someone is back', ($r['json']['away']['on'] ?? null) === true && (int) ($r['json']['away']['until'] ?? -1) === (int) $to81, json_encode($r['json']['away'] ?? null));
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('chat-away-enabled', 'chat-away-from', 'chat-away-to')");
+// A note the chat posts when it emails a pay link or the arrival details is an EVENT
+// signed by whoever sent it (mail is off here, so the send itself cannot be driven).
+$msgSrc81 = (string) file_get_contents(__DIR__ . '/messages.php');
+it_check('§81 the chat\'s pay-link and arrival notes are written as events, signed by the sender', substr_count($msgSrc81, "chat_insert_owner_message(\$tid, \$note, (int) \$_SESSION['admin_id'], 'event')") === 1);
+// Clean up.
+$rootDb->exec("DELETE FROM messages WHERE thread_id IN ($t81, $tB81)");
+$rootDb->exec("DELETE FROM chat_threads WHERE id IN ($t81, $tB81)");
+$rootDb->exec("DELETE FROM admins WHERE id IN ($mar81, $gid81, $het81, $ned81)");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'host-name'");
 
 echo "\n== Summary ==\n";
 if ($fail) {

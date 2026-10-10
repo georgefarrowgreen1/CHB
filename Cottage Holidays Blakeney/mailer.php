@@ -5079,20 +5079,28 @@ function backup_report_body($sizeLabel, $filesNote = '')
  * `$replyable` is whether a reply-to address exists, which changes only the sentence
  * about how to answer.
  */
-function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = false)
+// $from: the first name of the person who wrote it, while they are shown in the guest
+// chat ("Sophia replied"); '' speaks for the business, as every reply did before.
+// strip_quoted_reply knows both openers of the text half.
+function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = false, $from = '')
 {
     $who = $guestName ?: 'there';
+    $from = trim((string) $from);
     $reply = 'Reply on our website chat' . ($replyable ? ' — or just reply to this email' : '') . '.';
     return [
-        'subject' => 'New message: “' . email_snip($message, 50) . '”',
+        'subject' => ($from !== '' ? $from . ' replied' : 'New message') . ': “' . email_snip($message, 50) . '”',
         'text' =>
-            'Hello ' . $who . ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
+            'Hello ' . $who . ",\n\n" .
+            ($from !== ''
+                ? $from . ' replied in your chat with Cottage Holidays Blakeney:'
+                : 'You have a new message from Cottage Holidays Blakeney:') .
+            "\n\n\"" .
             $message . '"' .
             ($photoUrl !== '' ? "\n\nView photo: " . $photoUrl : '') .
             "\n\n" . $reply . "\nCottage Holidays Blakeney",
         'html' => email_shell(
-            'A message from Cottage Holidays Blakeney',
-            email_h('You have a new message') .
+            $from !== '' ? $from . ' replied in your chat with Cottage Holidays Blakeney' : 'A message from Cottage Holidays Blakeney',
+            email_h($from !== '' ? $from . ' replied' : 'You have a new message') .
                 email_p('Hello ' . email_esc($who) . ',') .
                 email_p('&ldquo;' . nl2br(email_esc($message)) . '&rdquo;') .
                 ($photoUrl !== ''

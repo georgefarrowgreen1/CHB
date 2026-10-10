@@ -166,7 +166,9 @@ CREATE TABLE IF NOT EXISTS admins (
     last_seen_at   DATETIME     NULL,
     last_login_fp  VARCHAR(255) NOT NULL DEFAULT '',
     notify_prefs   TEXT         NULL,
-    mail_prefs     TEXT         NULL
+    mail_prefs     TEXT         NULL,
+    chat_show      TINYINT(1)   NOT NULL DEFAULT 1,
+    chat_line      VARCHAR(40)  NOT NULL DEFAULT ''
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- Editable site content (key -> JSON value) ----------

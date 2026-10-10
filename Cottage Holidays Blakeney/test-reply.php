@@ -106,6 +106,18 @@ chk('our-phrase cut with no attribution', strip_quoted_reply($noAttrib) === 'Yep
 // Guest-side relay quoted back.
 $guestQuote = "Thanks!\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"see you then\"";
 chk('guest relay phrase cut', strip_quoted_reply($guestQuote) === 'Thanks!');
+// A reply signed by a person opens "Sophia replied in your chat with …", so a guest
+// answering it quotes that line back, not the business's.
+$namedQuote = "See you Friday!\n\nSophia replied in your chat with Cottage Holidays Blakeney:\n\n\"the cot is in the hall\"";
+chk('a named reply\'s opener is cut too', strip_quoted_reply($namedQuote) === 'See you Friday!');
+
+echo "== The away reply's hours ==\n";
+// [from, to) are the hours someone is around; outside them the away reply answers.
+chk('switched off: off whatever the hour', chat_away_at('', '07', '22', 3) === 'off' && chat_away_at('0', '07', '22', 3) === 'off');
+chk('on with no hours: always', chat_away_at('1', '', '', 14) === 'always' && chat_away_at('1', '07', '', 3) === 'always');
+chk('inside the hours: in (the start hour counts)', chat_away_at('1', '07', '22', 7) === 'in' && chat_away_at('1', '07', '22', 21) === 'in');
+chk('outside them: away (the end hour does not count)', chat_away_at('1', '07', '22', 22) === 'away' && chat_away_at('1', '07', '22', 3) === 'away');
+chk('a window past midnight wraps', chat_away_at('1', '22', '02', 23) === 'in' && chat_away_at('1', '22', '02', 1) === 'in' && chat_away_at('1', '22', '02', 2) === 'away' && chat_away_at('1', '22', '02', 12) === 'away');
 
 echo "== Zero-setup mailbox parsing ==\n";
 require_once __DIR__ . '/mailbox-read.php'; // endpoint block is basename-guarded → no side effects

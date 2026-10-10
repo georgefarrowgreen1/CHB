@@ -6104,12 +6104,6 @@ body.light-mode .tag-pimpernel {
   border: 1px solid var(--glass-border);
   border-radius: var(--r-lg);
 }
-.chat-intro-label {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  font-weight: 600;
-}
 .chat-intro-fields {
   display: grid;
   gap: 8px;
@@ -6489,6 +6483,83 @@ body.light-mode .tag-pimpernel {
   padding: 3px 12px;
   border-radius: var(--r-pill);
 }
+/* ---- WHO ANSWERS: the people's faces and names, every reply signed ----
+   Runs from one author read as one: the name above the first bubble, the face
+   and time under the last. Avatar sizes are classes so an initial sits on the
+   type scale; --chat-ground is the surface a face's ring cuts out of. */
+.chat-widget { --chat-ground: rgb(26, 25, 30); }
+body.light-mode .chat-widget { --chat-ground: rgb(248, 248, 250); }
+.chat-head-id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
+.chat-head-t { flex: 1; min-width: 0; }
+.chat-who { flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 12px; margin: 0; padding: 4px 8px 4px 0; border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.chat-who.is-static { cursor: default; }
+.chat-who-t { display: flex; flex-direction: column; min-width: 0; }
+.chat-who-n { font-family: var(--font-serif); font-size: var(--fs-headline); line-height: 1.2; color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-who-s { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--fs-caption); line-height: 1.3; color: var(--text-muted); }
+.chat-who-s > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The conversation scrolls UNDER the header and the pinned stay: its top edge
+   fades rather than slicing a face in half. Mask alpha, not a colour. */
+#chat-thread { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px); mask-image: linear-gradient(to bottom, transparent, #000 12px); }
+.chat-who-s .chat-presence-dot { margin-right: 2px; }
+.chat-chev { width: 16px; height: 16px; flex: none; margin-left: auto; color: var(--text-muted); transition: rotate 0.3s var(--out); }
+.chat-who[aria-expanded="true"] .chat-chev { rotate: 180deg; }
+.chat-moon { width: 12px; height: 12px; flex: none; color: var(--warn-text); }
+.chat-ava { flex: none; display: inline-grid; place-items: center; border-radius: 50%; background-color: color-mix(in srgb, var(--accent) 34%, var(--chat-ground, var(--dark-grey))); background-size: cover; background-position: center; color: var(--text-light); font-family: var(--font-serif); line-height: 1; }
+.chat-ava.has-photo { color: transparent; }
+.chat-ava.is-crown { background: rgba(214, 167, 133, 0.14); border: 1px solid var(--glass-border); }
+.chat-ava.is-crown img { width: 58%; height: auto; display: block; }
+.chat-ava.is-22 { width: 22px; height: 22px; font-size: var(--fs-micro); }
+.chat-ava.is-28 { width: 28px; height: 28px; font-size: var(--fs-sub); }
+.chat-ava.is-36 { width: 36px; height: 36px; font-size: var(--fs-headline); }
+.chat-ava.is-46 { width: 46px; height: 46px; font-size: var(--fs-title); }
+.chat-ava.is-64 { width: 64px; height: 64px; font-size: var(--fs-display); }
+.chat-pair { display: inline-flex; flex: none; }
+.chat-pair .chat-ava { box-shadow: 0 0 0 2px var(--chat-ground, var(--dark-grey)); }
+.chat-pair .chat-ava + .chat-ava { margin-left: -8px; }
+.chat-hello-faces { display: flex; justify-content: center; margin-bottom: 12px; }
+.chat-hello-faces .chat-ava { box-shadow: 0 0 0 3px var(--chat-ground, var(--dark-grey)); }
+.chat-hello-faces .chat-ava + .chat-ava { margin-left: -16px; }
+.chat-hello-when.is-away { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+/* The people, folded under the header; the stay, pinned under that. */
+.chat-fold { flex: none; display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s var(--unfold); }
+.chat-fold.open { grid-template-rows: 1fr; }
+.chat-fold[hidden], .chat-pin[hidden] { display: none; }
+.chat-fold > div { min-height: 0; overflow: hidden; }
+.chat-fold:not(.open) > div { visibility: hidden; transition: visibility 0s var(--out) 0.32s; }
+.chat-team { display: grid; gap: 12px; padding: 12px 16px 16px; border-bottom: 1px solid var(--glass-border); }
+.chat-mate { display: flex; align-items: center; gap: 12px; }
+.chat-mate b { display: block; font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
+.chat-mate-l { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
+.chat-team-note { margin: 0; font-size: var(--fs-caption); color: var(--text-muted); }
+.chat-pin { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--glass-border); }
+.chat-stay { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--glass-border); border-radius: var(--r-sm); background: var(--glass-bg); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.chat-stay-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+.chat-stay-t { flex: 1; min-width: 0; }
+.chat-stay-n { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-stay-n b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sub); font-weight: 600; color: var(--text-light); }
+.chat-stay-cap { flex: none; padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-micro); font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.chat-stay-cap.is-soon { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.chat-stay-w { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-caption); color: var(--text-muted); }
+.chat-stay .ga-chev { width: 14px; height: 14px; flex: none; color: var(--text-muted); }
+/* The thread. */
+.chat-nm { margin: 8px 0 4px 36px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.chat-line { display: flex; align-items: flex-end; gap: 8px; }
+.chat-line > .chat-msg, .chat-line > .chat-typing { align-self: auto; min-width: 0; }
+.chat-slot { width: 28px; flex: none; }
+.chat-msg.me.is-mid { border-bottom-right-radius: var(--r-md); }
+.chat-msg.them.is-mid { border-bottom-left-radius: var(--r-md); }
+.chat-msg.them.is-auto { background: transparent; }
+.chat-meta.is-me, .chat-meta.is-them { margin-top: 4px; font-size: var(--fs-micro); color: var(--text-muted); opacity: 1; }
+.chat-meta.is-me { align-self: flex-end; margin-right: 4px; }
+.chat-meta.is-them { margin-left: 36px; }
+.chat-seen { color: var(--ok-text); font-weight: 600; }
+.chat-ev { align-self: center; display: flex; align-items: center; gap: 8px; max-width: 94%; margin: 4px 0; padding: 4px 12px 4px 4px; border: 1px solid var(--glass-border); border-radius: var(--r-lg); background: var(--glass-bg); font-size: var(--fs-caption); line-height: 1.4; color: var(--text-muted); }
+.chat-ev b { font-weight: 600; color: var(--text-light); }
+.chat-bot.chat-guide { max-width: 86%; margin: 4px 0 4px 36px; border-radius: var(--r-lg); }
+.chat-guide p { margin: 0; }
+.chat-guide-l { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); }
+.chat-guide-l svg { width: 14px; height: 14px; flex: none; }
+.chat-typingrow { display: flex; flex-direction: column; }
 /* Collapsible "who is this" details in the reply modal */
 .msg-ctx-d {
   font-size: var(--fs-sub);

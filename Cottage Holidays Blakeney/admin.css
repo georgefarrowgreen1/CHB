@@ -9976,6 +9976,13 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
 #gc-page .gc-n { flex: none; font-weight: 600; color: var(--text-muted); }
 #gc-page .gc-v { flex: none; color: var(--text-muted); }
 #gc-page .gc-rowbtn { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+/* Who answers: a face, the name with its line, the switch. The name is a button
+   for whoever may change the line. */
+#gc-page .gc-mate { gap: 12px; justify-content: flex-start; }
+#gc-page .gc-mate + .gc-mate { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+#gc-page .gc-mate > .acr-lbl, #gc-page .gc-mate-t { flex: 1 1 auto; min-width: 0; }
+#gc-page .gc-mate-t { display: flex; min-height: 44px; align-items: center; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#gc-page .gc-team .gc-who { padding-top: 4px; }
 
 /* The preview: the guest chat's own parts in a window. */
 #gc-sheet .gc-sheet-box { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
@@ -9984,8 +9991,8 @@ body.light-mode .cmp-toast { --cmp-act: var(--accent); --cmp-okc: var(--ok); }
 #gc-sheet .gc-sheet-x { flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: var(--r-pill); corner-shape: round; background: none; color: var(--text-light); cursor: pointer; }
 #gc-sheet .gc-sheet-x svg { width: 18px; height: 18px; }
 #gc-sheet .gc-segwrap .u-seg > button { flex: 1 1 0; }
-#gc-sheet .gc-chat { display: flex; flex-direction: column; border: 1px solid var(--glass-highlight); border-radius: var(--r-panel); overflow: hidden; background: rgba(26, 25, 30, 0.96); }
-body.light-mode #gc-sheet .gc-chat { background: rgba(248, 248, 250, 0.97); }
+#gc-sheet .gc-chat { --chat-ground: rgb(26, 25, 30); display: flex; flex-direction: column; border: 1px solid var(--glass-highlight); border-radius: var(--r-panel); overflow: hidden; background: rgba(26, 25, 30, 0.96); }
+body.light-mode #gc-sheet .gc-chat { --chat-ground: rgb(248, 248, 250); background: rgba(248, 248, 250, 0.97); }
 #gc-sheet .gc-chat-head { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 4px 16px; border-bottom: 1px solid var(--glass-border); }
 #gc-sheet .gc-thread { height: min(340px, 44dvh); max-height: none; padding: 16px; }
 #gc-sheet .gc-chat-in { display: flex; align-items: center; gap: 8px; margin: 12px 16px 16px; }

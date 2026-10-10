@@ -2,11 +2,19 @@
 // A guest's profile photo, served to the only two people who may see it: the guest
 // themselves (their own session) and the owner (?email=<the guest's address>).
 // Also the photo of someone who signs in to the back office (?admin=<id>).
-// Never public, never by path — the files sit under a deny-all directory.
+// Never by path — the files sit under a deny-all directory. The one public photo
+// is a back-office person's while they are shown in the guest chat (?team=<id>):
+// guests see who answers, and the switch that shows them is theirs.
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/chat-lib.php';
 
 $name = '';
-if (isset($_GET['admin'])) {
+$public = false;
+if (isset($_GET['team'])) {
+    $row = admin_row((int) $_GET['team']);
+    $name = chat_team_member_ok($row) ? (string) ($row['photo'] ?? '') : '';
+    $public = true;
+} elseif (isset($_GET['admin'])) {
     // A back-office person's own photo: seen inside the back office only.
     require_admin();
     $row = admin_row((int) $_GET['admin']);
@@ -34,8 +42,16 @@ if ($path === '' || !is_file($path)) {
 }
 header('Content-Type: image/jpeg');
 // Versioned by ?v=; kept for a day only, so a shared browser does not hold a guest's
-// photo long after they sign out.
-header('Cache-Control: private, max-age=86400');
+// photo long after they sign out. A chat face is already public, so any cache may
+// keep it for the day — and so it carries no cookie (db.php's session, or its sliding
+// expiry, would otherwise be stored beside the picture) and none of the session's
+// no-cache headers.
+if ($public) {
+    header_remove('Set-Cookie');
+    header_remove('Pragma');
+    header_remove('Expires');
+}
+header('Cache-Control: ' . ($public ? 'public' : 'private') . ', max-age=86400');
 header('X-Content-Type-Options: nosniff');
 header('Content-Length: ' . filesize($path));
 readfile($path);

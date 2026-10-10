@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=66">
+    <link rel="stylesheet" href="guest-app.css?v=67">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=384">
+    <link rel="stylesheet" href="app.css?v=385">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1287,19 +1287,19 @@
     </button>
     <div id="chat-widget" class="chat-widget" role="dialog" aria-label="Chat with Cottage Holidays Blakeney">
         <div class="chat-widget-head">
-            <div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt="Cottage Holidays Blakeney"></div>
-            <div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>
+            <div class="chat-head-id" id="chat-head-id"><div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt=""></div><div class="chat-head-t"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div></div>
             <button class="reviews-modal-close" data-act="closeChat" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
+        <div class="chat-fold" id="chat-teamfold" hidden><div><div class="chat-team" id="chat-team"></div></div></div>
+        <div class="chat-pin" id="chat-pin" hidden></div>
         <div class="chat-threadwrap">
             <div class="chat-thread" id="chat-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
             <button type="button" class="chat-newpill" id="chat-newpill" data-act="chatToNewest">New message &darr;</button>
         </div>
         <div id="chat-intro" class="chat-intro" style="display:none;">
-            <div class="chat-intro-label">So we can reply</div>
             <div class="chat-intro-fields">
-                <input type="text" id="chat-name" aria-label="Your name" class="input-glass field-sm" placeholder="Your name (optional)">
-                <input type="email" id="chat-email" name="email" autocomplete="email" aria-label="Your email" class="input-glass field-sm" placeholder="Email">
+                <input type="text" id="chat-name" autocomplete="name" aria-label="Your name" class="input-glass field-sm" placeholder="Your name">
+                <input type="email" id="chat-email" name="email" autocomplete="email" aria-label="Your email, so we can reply there too" class="input-glass field-sm" placeholder="Email, to reply there too">
             </div>
         </div>
         <div class="chat-quick" id="chat-quick">
@@ -1312,7 +1312,7 @@
         <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
             <button type="button" id="chat-attach-btn" class="chat-attach-btn" data-act="chatAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Ask a question or write a message" placeholder="Ask a question…" data-act-input="chatInputChanged" data-act-keydown="enterSendChat"></textarea>
+            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Message" placeholder="Message" data-act-input="chatInputChanged" data-act-keydown="enterSendChat"></textarea>
             <button class="chat-send" data-act="sendChat" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
@@ -1890,7 +1890,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1188"></script>
+    <script defer src="app.js?v=1189"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

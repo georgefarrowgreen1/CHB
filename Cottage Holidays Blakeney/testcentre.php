@@ -542,8 +542,17 @@ if ($action === 'seed_stage') {
                 as $m
             ) {
                 $ins->execute([$g['id'], $m[0], $m[1], $m[2], $m[3]]);
-                $man['messages'][] = (int) db()->lastInsertId();
+                $mid = (int) db()->lastInsertId();
+                $man['messages'][] = $mid;
                 $made['messages']++;
+                // The reply is signed by whoever set the stage, so the guest seat
+                // shows a named answer the way a real one reads.
+                if ($m[0] === 'admin' && !empty($_SESSION['admin_id'])) {
+                    try {
+                        db()->prepare('UPDATE messages SET admin_id = ? WHERE id = ?')->execute([(int) $_SESSION['admin_id'], $mid]);
+                    } catch (\Throwable $e2) {
+                    }
+                }
             }
         } catch (\Throwable $e) {
         }

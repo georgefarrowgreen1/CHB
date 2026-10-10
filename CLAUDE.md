@@ -692,6 +692,65 @@ block at the foot of admin.css). The two old editors (`#chat-away-editor`, `#cha
   time, the two standard sentences equal), **ui-test-guestchat.js** (the page driven in a browser), plus re-aims in
   ui-test-manage / -hig / -search-learning.
 
+## The guest chat says who answers (approved demo v3, built and merged without CI)
+
+**Asked for as "a new and overhauled messages section for guests, show both host and super user first names and
+their account photos".** The guest's chat names the people who answer, with their photos, and signs every reply.
+Code: the "WHO ANSWERS" blocks in app.js (`chatTeam*`, `chatAva`, `chatHeadHtml`, `chatPinPaint`,
+`chatGuestBubbles`, `chatGuide`) and app.css; chat-lib.php (`chat_team*`, `chat_author_name`, `chat_away_at`,
+`chat_insert_owner_message`); messages.php (`team`, `set_member`); avatar.php `?team=`; migration-142.
+- **WHO IS SHOWN is one rule** (`chat_team_member_ok`): a current person (not removed, not still invited) with a
+  name, `admins.chat_show` on (migration-142, default on; a database without the column shows nobody), and
+  permission to reply to guests (`gu.reply`). The person whose first name is `host-name` comes first, with the line
+  "Host" unless they wrote their own; anyone else shows their own line (`admins.chat_line`, at most 40 characters,
+  e.g. George's "Bookings & Website") or none. **First names only**: the public payload is exactly
+  `{id, name, line, v}`, no surname, no email (integration §81 checks the keys).
+- **EVERY REPLY RECORDS WHO WROTE IT** (`messages.admin_id`, `messages.kind`). `chat_admin_reply` takes the actor
+  (`admin:<id>`), so a reply typed in the app and one sent by email (credited through `people_mail_sender_row`) both
+  carry the person, and an extra "Also emailed" address carries nobody. The guest's copy sends `by` only for someone
+  SHOWN (`chat_team_ids()`); a reply by someone hidden, removed or unknown reads as the business, under the crown,
+  and consecutive replies by nobody shown read as one run. The owner's copy names the writer (`by_name`; "You" for
+  yourself, "Automatic reply" for the away reply).
+- **AUTOMATIC MESSAGES ARE MARKED WHEN WRITTEN**, never guessed from their words: the away reply is `kind 'auto'`
+  (no person) and renders "Automatic reply" with the crown in an outlined bubble; the pay link and arrival details
+  sent from the chat are `kind 'event'`, one line ("George emailed you a secure link to pay your balance of
+  £414.90 · 18:40"). Older messages have `kind ''` and render as ordinary replies.
+- **THE PUBLIC PHOTO ROUTE SERVES ONLY THE PEOPLE SHOWN** (`avatar.php?team=<id>`, the same rule): 404 for anyone
+  else, served `public, max-age=86400` with the session cookie REMOVED (db.php always starts a session, and a
+  publicly cached response must not carry a Set-Cookie). `?admin=` stays owner-only. The URL carries the photo's
+  version (`v`, the first 10 hex of the file name), so a new photo is a new URL.
+- **"Show me in the guest chat"** (Manage → Guest chat → Who answers): `set_member` changes your own row, or anyone's
+  for a Super User (403 `not_allowed` otherwise); the line is whitespace-collapsed with control characters removed,
+  and over 40 characters is refused in words. Switched off, you still answer, signed by the business with the crown.
+- **The header**: the faces and "Sophia & George", and a status line: "Usually reply in a few hours" (the
+  `chat-reply-time` setting, in its short form so it fits at 390px), or "Away until 7am" with a moon while the away
+  reply would answer (`chat_away_state()`; only an away reply WITH hours knows when someone is back). Tapping it
+  unfolds the people (`#chat-teamfold`, a 0fr grid fold) and a footnote: "Replies also reach you by email." for a
+  signed-in guest, else "Leave your email below and we can reply there too."
+- **A signed-in guest's stay is pinned** under the header (`chatPinStay`: the stay in progress, else the soonest
+  upcoming, never a finished one): a 44px button that opens it (`chatOpenStay`).
+- **A run reads as one**: the name above its first bubble, the face and time under its last; a run is one author on
+  one day, and an event line breaks it. Every message is still one `.chat-row`, so only the last row animates in.
+- **Seen, and who is typing**: the guest's latest message reads "Seen" or "Sent" (`read_by_admin`); a poll that only
+  changes that flips the word where it stands (`chatSeenSig`), no re-render. Typing is named ("Sophia is typing",
+  `chat_threads.admin_typing_by`), and unnamed under the crown for someone not shown.
+- **The cottage guide's answers are cards** ("From the cottage guide", `chatGuide`) offering "Ask Sophia or George".
+- **The reply email names the person** (`guest_chat_body(…, $from)`: "Sophia replied: …"). `strip_quoted_reply`
+  cuts that opener from the start of its LINE, because the name comes before the phrase it matches; cutting at the
+  phrase left "Sophia" dangling on the guest's message (test-reply caught it).
+- **The team is cached per device** (localStorage `chb-chat-team`, cleaned by `chatTeamClean`: at most 6, names and
+  lines capped at 40, a photo version only as 10 hex) so the header paints before the chat's first answer;
+  `loadChat` asks with `team: 1` and repaints only when it changed. With nobody shown, the header and welcome are
+  the ones the chat always had, and every reply is signed by the business under the crown.
+- Gates: test-integration **§81** (the columns; the payload's keys; the photo route for a shown person, a person who
+  may not reply, an unknown id and `?admin=`; signing in the app and by email; `set_member`'s refusals; hiding and
+  removal falling back to the crown; `typing_by`; the away reply's kind), **ui-test-chatteam.js** (41 checks),
+  test-reply (the away hours, the named opener), test-emails-render §19, and ui-test-guestchat re-aimed ("Who
+  answers" replaced "Signed by"). Break-tested: three server mutations each fail their named §81 checks, and eight
+  client mutations each fail their named checks (one passed until the one-run check was added).
+- **Not done, said plainly**: the chat button keeps its icon (the demo's faces there were not built), and message
+  times are shown as the database stores them, as before.
+
 ## Analytics says what each figure counts (rebuilt in the one look, no demo, at the owner's ask)
 
 Manage → Analytics (`loadAnalytics` / `buildInsights` / `anaOpenFold` in admin.js, the ANALYTICS block at the foot
