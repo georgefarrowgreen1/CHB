@@ -6537,14 +6537,6 @@ body.light-mode .tag-pimpernel {
   padding-top: 10px;
   border-top: 1px solid var(--glass-border);
 }
-/* NO BOX IN A BOX. These two pages are ONE .acr-well each, and this wrapper put
-   a third bordered surface round every field: textarea (1px, r12) inside
-   .acr-well (1px, r20) inside this (1px, r28 at 390 / r40 at 1280). The well
-   sits on the page ground now, as it does on every other Manage section. */
-#chat-answers-editor,
-#chat-away-editor {
-  padding: 0;
-}
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
   display: flex;

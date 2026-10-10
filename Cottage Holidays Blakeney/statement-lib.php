@@ -14,57 +14,34 @@
 // ============================================================
 
 // Split CSV text into rows of fields. Handles quoted fields (commas, quotes and
-// line breaks inside them), CRLF and a byte-order mark.
+// line breaks inside them), CRLF, a lone CR and a byte-order mark.
+// PHP's own fgetcsv does the splitting. A hand-written character loop did it
+// before, and PHP 8.3's tracing JIT (on by default under setup-php, so in CI)
+// miscompiled it: the first file read in a process came back with eight extra
+// fields in its header, so "Currency" was looked for in the Balance column and
+// every payment was refused as "another currency". C code is not JIT-compiled.
 function statement_csv_rows(string $csv): array
 {
     if (strncmp($csv, "\xEF\xBB\xBF", 3) === 0) {
         $csv = substr($csv, 3);
     }
+    // fgetcsv ends a line at \n only; a file from an old Mac ends lines in \r.
+    $csv = str_replace(["\r\n", "\r"], "\n", $csv);
+    $fh = fopen('php://temp', 'r+');
+    if ($fh === false) {
+        return [];
+    }
+    fwrite($fh, $csv);
+    rewind($fh);
     $rows = [];
-    $row = [];
-    $field = '';
-    $inQ = false;
-    $n = strlen($csv);
-    for ($i = 0; $i < $n; $i++) {
-        $c = $csv[$i];
-        if ($inQ) {
-            if ($c === '"') {
-                if ($i + 1 < $n && $csv[$i + 1] === '"') {
-                    $field .= '"';
-                    $i++;
-                } else {
-                    $inQ = false;
-                }
-            } else {
-                $field .= $c;
-            }
-            continue;
-        }
-        if ($c === '"') {
-            $inQ = true;
-        } elseif ($c === ',') {
-            $row[] = $field;
-            $field = '';
-        } elseif ($c === "\n" || $c === "\r") {
-            if ($c === "\r" && $i + 1 < $n && $csv[$i + 1] === "\n") {
-                $i++;
-            }
-            $row[] = $field;
-            $field = '';
-            if (count($row) > 1 || trim($row[0]) !== '') {
-                $rows[] = $row;
-            }
-            $row = [];
-        } else {
-            $field .= $c;
+    // No escape character: a quote inside a field is written twice, as in Excel and Monzo.
+    while (($r = fgetcsv($fh, 0, ',', '"', '')) !== false) {
+        $r = array_map(fn($v) => (string) $v, $r);
+        if (count($r) > 1 || trim($r[0]) !== '') {
+            $rows[] = $r;
         }
     }
-    if ($field !== '' || $row) {
-        $row[] = $field;
-        if (count($row) > 1 || trim($row[0]) !== '') {
-            $rows[] = $row;
-        }
-    }
+    fclose($fh);
     return $rows;
 }
 
@@ -179,6 +156,7 @@ function statement_parse(string $csv, string $filename = ''): array
     }
     $get = fn(array $r, string $k) => isset($col[$k]) ? trim((string) ($r[$col[$k]] ?? '')) : '';
     $seen = [];
+    $curSeen = [];
     $lastAt = '';
     for ($i = 1, $n = count($rows); $i < $n; $i++) {
         $r = $rows[$i];
@@ -190,6 +168,7 @@ function statement_parse(string $csv, string $filename = ''): array
         $cur = strtoupper($get($r, 'currency'));
         if ($cur !== '' && $cur !== 'GBP') {
             $out['other_currency']++;
+            $curSeen[mb_substr($cur, 0, 12)] = true;
             continue;
         }
         if (isset($col['amount'])) {
@@ -256,7 +235,20 @@ function statement_parse(string $csv, string $filename = ''): array
     $out['money_in'] = round($out['money_in'], 2);
     $out['money_out'] = round($out['money_out'], 2);
     if (!$out['lines']) {
-        $out['error'] = 'There are no payments in that file.';
+        // Say WHY when rows were there but none could be read — "no payments" over a
+        // file full of rows reads as the app being broken, and the count is what
+        // tells an owner (and us) whether it was the dates, the amounts or the currency.
+        $rowsIn = max(0, count($rows) - 1);
+        if ($rowsIn > 0 && $out['unreadable'] > 0) {
+            $out['error'] = $rowsIn === 1 ? 'The one row in that file couldn’t be read as a payment.' : 'None of the ' . $rowsIn . ' rows in that file could be read as a payment.';
+        } elseif ($rowsIn > 0 && $out['other_currency'] > 0) {
+            // Named, so a file in euros is told from a column we misread.
+            $out['error'] = 'Every payment in that file is in another currency (' . implode(', ', array_slice(array_keys($curSeen), 0, 3)) . ').';
+        } else {
+            $out['error'] = 'There are no payments in that file.';
+        }
+        $out['rows_in'] = $rowsIn;
+        $out['cols'] = $col; // which column was read as what: tells a misread from a foreign file
         return $out;
     }
     $out['ok'] = true;

@@ -1,444 +1,458 @@
-// THE ADD/EDIT BOOKING FORM'S REDESIGN, driven in a real browser.
+// THE ADD / EDIT BOOKING SHEET, driven in a real browser.
 //
-// The form went from one flat ~2,100px column to four named sections with the
-// availability calendar folded to a summary strip, the rare controls behind a
-// single More-options row, and a sticky footer whose figure MIRRORS the price
-// box. Every check here is about the things that redesign must keep true:
-// the sections stand in order, the strip tells the truth both ways (free and
-// overlapping), the fold opens and resets, the footer's number can never
-// disagree with the box it mirrors, and a fresh open always starts folded.
+// The sectioned form (four sections, a summary strip, a sticky money foot) was
+// superseded by ONE sheet: `#edit-modal .modal-box.bks` in index.html, painted by
+// admin.js's ADD-BOOKING SHEET block (bksSync) from the hidden `#modal-*` inputs,
+// which are still the form's STORE. Every check here is a behaviour the sheet
+// documents (CLAUDE.md "Add or edit a booking: one sheet"), and every save is
+// read off the REAL POST body saveModal sends — the payload is the contract the
+// server keeps, so a check on what the sheet SHOWS alone could pass over a save
+// that loses data.
+//
+// Reduced motion is emulated on purpose: the folds then open and close without a
+// transition and the sheet's own timers run at 0ms, so the suite measures the
+// RESTING sheet and every wait below is on state, never a clock.
 const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
   const { page, base, done } = await boot({ viewport: { width: 390, height: 844 } });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const json = (route, o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
   const mk = (id, over = {}) => Object.assign({
-    id, prop_key: '21a', name: 'Booked Guest', email: 'g@gmail.com', phone: '',
-    check_in: d(90), check_out: d(93), check_in_time: '15:00', check_out_time: '10:00',
-    adults: 2, children: 0, notes: '', payment: 'unpaid', deposit_paid: 0,
-    agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390,
-    agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30) + ' 12:00:00',
-    damages_deposit: 50, created_at: d(-30) + ' 12:00:00',
+    id, prop_key: 'jollyboat', name: 'Booked Guest', email: 'g@gmail.com', phone: '', address: '', postcode: '',
+    check_in: d(30), check_out: d(33), check_in_time: '15:00', check_out_time: '10:00',
+    adults: 2, children: 0, notes: '', payment: 'unpaid', deposit_paid: 0, payment_method: '', payment_date: '',
+    agreed_total: 450, agreed_per_night: 150, agreed_nights: 3, agreed_nightly: 450,
+    agreed_booking_fee: 75, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30) + ' 12:00:00',
+    hold_status: 'none', created_at: d(-30) + ' 12:00:00',
   }, over);
-  const rows = [mk(1)];
+  const rows = [
+    mk(1), // the blocker: Jollyboat d30→d33
+    mk(2, { name: 'Next Arrival', email: 'next@gmail.com', check_in: d(50), check_out: d(53) }),
+    // Part-paid, upcoming — the EDIT case.
+    mk(4, { name: 'Edith Partpaid', email: 'edith@x.co', check_in: d(60), check_out: d(63), payment: 'deposit', deposit_paid: 100, payment_method: 'Bank transfer', payment_date: d(-5) }),
+    // Paid in full (the £50 cash deposit on top) — the PAID LOCK.
+    mk(5, { prop_key: '21a', name: 'Paula Paidup', email: 'paula@x.co', check_in: d(70), check_out: d(72), payment: 'paid', deposit_paid: 310, payment_method: 'Cash', payment_date: d(-3), agreed_total: 260, agreed_per_night: 130, agreed_nights: 2, agreed_nightly: 260, agreed_booking_fee: 50 }),
+    // Arrived yesterday — the MOVE LOCK.
+    mk(6, { prop_key: 'pimpernel', name: 'Arno Arrived', email: 'arno@x.co', check_in: d(-1), check_out: d(2), payment: 'deposit', deposit_paid: 100, payment_method: 'Card', payment_date: d(-9), agreed_total: 420, agreed_per_night: 140, agreed_nightly: 420, agreed_booking_fee: 60 }),
+    // A hostile-length name for the fit checks.
+    mk(7, { prop_key: '21a', name: 'Alexandrina Featherstonehaugh-Smythe-Worthington', email: 'alex@x.co', check_in: d(100), check_out: d(103), agreed_total: 390, agreed_per_night: 130, agreed_nightly: 390, agreed_booking_fee: 50 }),
+  ];
+  const posts = [];
   await page.route(/\.php/, (route) => {
-    const url = route.request().url();
-    if (route.request().method() === 'POST') return json(route, { ok: true });
+    const req = route.request();
+    const url = req.url();
+    if (req.method() === 'POST') {
+      let b = {};
+      try { b = JSON.parse(req.postData() || '{}'); } catch (e) {}
+      b.__url = url.split('/').pop().split('?')[0];
+      posts.push(b);
+      return json(route, { ok: true, blocks: [] });
+    }
+    // Force every read down its own endpoint, so the fixture below is the only truth.
+    if (url.includes('admin-bootstrap.php')) return json(route, { ok: false });
     if (url.includes('auth.php')) return json(route, { admin: true, admin_id: 1 });
     if (url.includes('bookings.php')) return json(route, { bookings: rows });
-    if (url.includes('rates.php')) return json(route, { properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
+    if (url.includes('rates.php')) {
+      const p = (k, name, rate, dep, sort) => ({ prop_key: k, name, slug: k, couple_rate: rate, extra_adult_rate: 20, child_rate: 10, booking_fee: dep, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, sort_order: sort });
+      return json(route, {
+        properties: [p('jollyboat', 'Jollyboat', 150, 75, 1), p('21a', '21A Westgate', 130, 50, 2), p('pimpernel', 'Pimpernel', 140, 60, 3)],
+        seasons: {},
+        // occupancyLimits is copied VERBATIM from this map — without it the
+        // offline caps (Jollyboat sleeps 2) would decide the party checks.
+        occupancy: {
+          jollyboat: { maxAdults: 4, maxChildren: 2, maxTotal: 4 },
+          '21a': { maxAdults: 2, maxChildren: 0, maxTotal: 2 },
+          pimpernel: { maxAdults: 3, maxChildren: 1, maxTotal: 3 },
+        },
+      });
+    }
     return json(route, { ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [] });
   });
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1300);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => window.__ADMIN_LOADED === true && typeof window.bksSync === 'function');
   await page.evaluate(() => loadData());
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => (dbBookings.jollyboat || []).length === 3 && occupancyLimits.jollyboat.maxAdults === 4);
 
-  // ---------- 1. the sectioned form ----------
-  console.log('1. sections');
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(300);
-  const s1 = await page.evaluate(() => ({
-    secs: Array.from(document.querySelectorAll('#edit-modal .modal-sec')).map((s) => s.textContent.trim()),
-    xUp: (() => { const x = document.querySelector('#edit-modal .modal-x'); const r = x ? x.getBoundingClientRect() : { width: 0, height: 0 }; return r.width >= 24 && r.height >= 24; })(),
-    nameLabel: (document.querySelector('label[for="modal-name"]') || {}).textContent || '',
-    // THE STAY LEADS (the approved demo): the first column holds the cottage +
-    // dates — the decision — with the guest's identity second.
-    stayFirst: !!document.querySelector('#edit-modal .modal-col:first-child #modal-property'),
-  }));
-  ok(s1.secs.join('|') === 'The stay|The guest|Money|Notes', `four sections, the stay leading (${s1.secs.join('|')})`);
-  ok(s1.stayFirst, 'the first column holds the cottage + dates — the decision leads');
-  ok(s1.xUp, 'the ✕ close is in the header at ≥24px');
-  ok(s1.nameLabel === 'Name', `the name label stopped repeating the section (${s1.nameLabel})`);
-
-  // ---------- 2. the availability strip tells the truth both ways ----------
-  console.log('2. availability strip');
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(30), co: d(33) });
-  await page.waitForTimeout(200);
-  const s2 = await page.evaluate(() => ({
-    txt: (document.querySelector('.mav-strip-txt') || {}).textContent || '',
-    clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
-    dot: !!document.querySelector('.mav-strip-dot'),
-    gridUp: !!document.querySelector('#modal-availability .mav-grid'),
-    // The VERDICT capsule on the dates row (break-tested: deleting capSet's
-    // fill in updateModalAvailability fails both capsule checks).
-    cap: (document.getElementById('modal-date-verdict') || {}).textContent || '',
-    capOk: !!document.querySelector('#modal-date-trigger .modal-date-verdict.is-ok'),
-  }));
-  ok(/^Free /.test(s2.txt) && s2.dot && !s2.clashDot, `free dates → green summary (${s2.txt.slice(0, 40)})`);
-  ok(s2.capOk && /free/.test(s2.cap), `and the dates row wears the ✓ free capsule (${s2.cap})`);
-  ok(/next booking starts/.test(s2.txt), 'and it names when the next booking starts');
-  ok(!s2.gridUp, 'the grid stays folded until asked for');
-  await page.click('.mav-toggle');
-  await page.waitForTimeout(200);
-  ok(await page.evaluate(() => !!document.querySelector('#modal-availability .mav-grid')), 'Calendar opens the six-week grid');
-  await page.click('.mav-toggle');
-  await page.waitForTimeout(200);
-  ok(await page.evaluate(() => !document.querySelector('#modal-availability .mav-grid')), 'and closes it again');
-  // Overlapping dates: the strip flips to the clash face and the warning renders.
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(91), co: d(94) });
-  await page.waitForTimeout(200);
-  const s2b = await page.evaluate(() => ({
-    txt: (document.querySelector('.mav-strip-txt') || {}).textContent || '',
-    clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
-    warn: (document.querySelector('.mav-clash') || {}).textContent || '',
-    capWarn: !!document.querySelector('#modal-date-trigger .modal-date-verdict.is-warn'),
-    footSub: (document.getElementById('modal-foot-sub') || {}).textContent || '',
-  }));
-  ok(/^Overlaps Booked Guest/.test(s2b.txt) && s2b.clashDot, `overlapping dates → red summary naming the blocker (${s2b.txt.slice(0, 40)})`);
-  ok(s2b.capWarn, 'the dates-row capsule flips to ⚠ overlaps');
-  ok(/Overlaps Booked Guest/.test(s2b.footSub), `and the foot's sub carries the warning (${s2b.footSub.slice(0, 44)})`);
-  ok(/confirm at save/.test(s2b.warn), 'and the confirm-at-save warning renders with it');
-
-  // ---------- 3. the money controls display all the time ----------
-  // The fold was tried and REMOVED at the owner's ask ("display these items
-  // all the time") — no summary row, nothing behind a disclosure. Times live
-  // in Stay; deposit/override/plan under Money, always painted.
-  console.log('3. always-visible controls');
-  const s3 = await page.evaluate(() => ({
-    fold: !!document.querySelector('#edit-modal details'),
-    visible: ['modal-checkin-time', 'modal-damages-deposit', 'modal-price-override', 'modal-plan-seg']
-      .every((id) => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; }),
-    depLabel: (document.querySelector('label[for="modal-damages-deposit"]') || {}).textContent || '',
-    hints: document.querySelectorAll('#modal-deposit-group .modal-hint, #modal-override-group .modal-hint, #modal-plan-group .modal-hint').length,
-  }));
-  ok(!s3.fold, 'no disclosure fold anywhere in the modal');
-  ok(s3.visible, 'times, deposit, override and the plan toggle all paint without a tap');
-  ok(s3.depLabel === 'Refundable damages deposit (£)' && s3.hints >= 3,
-    `the shouted labels stay short label + quiet hint (${s3.hints} hints)`);
-  // The plan is a Standard | Custom TOGGLE: Standard states the LIVE site
-  // terms in a sentence and hides the fields; Custom reveals them; flipping
-  // back WIPES what was typed. With NOTHING priced yet the line falls back to
-  // the site-standard sentence (the computed brief is §3b's job).
-  const t1 = await page.evaluate(() => {
-    document.getElementById('modal-checkin').value = '';
-    document.getElementById('modal-checkout').value = '';
-    updateModalPrice();
-    return {
-      stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
-      pressed: document.getElementById('modal-plan-std-btn').getAttribute('aria-pressed') === 'true',
-      fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
-      line: (document.getElementById('modal-plan-std-line') || {}).textContent || '',
-    };
+  // ---------- helpers ----------
+  const S = (fn, a) => page.evaluate(fn, a);
+  const isOpen = () => S(() => document.getElementById('edit-modal').classList.contains('open'));
+  const sheetUp = () => page.waitForFunction(() => {
+    const m = document.getElementById('edit-modal');
+    const box = m && m.querySelector('.modal-box.bks');
+    return m.classList.contains('open') && box && box.getBoundingClientRect().height > 200;
   });
-  ok(t1.stdOn && t1.pressed && t1.fieldsHidden, 'the plan opens on Standard, fields folded');
-  ok(/25% deposit/.test(t1.line) && /30 days/.test(t1.line), `unpriced, the line quotes the live site terms (${t1.line.slice(0, 50)})`);
-  await page.click('#modal-plan-custom-btn');
-  const t2 = await page.evaluate(() => ({
-    on: document.getElementById('modal-plan-custom-btn').classList.contains('is-on'),
-    fieldsUp: document.getElementById('modal-plan-custom').style.display !== 'none',
-  }));
-  ok(t2.on && t2.fieldsUp, 'Custom reveals the fields');
-  await page.evaluate(() => { document.getElementById('modal-plan-pct').value = '40'; });
-  await page.click('#modal-plan-std-btn');
-  const t3 = await page.evaluate(() => ({
-    hidden: document.getElementById('modal-plan-custom').style.display === 'none',
-    wiped: document.getElementById('modal-plan-pct').value === '',
-  }));
-  ok(t3.hidden && t3.wiped, 'flipping back to Standard WIPES the typed plan — it can never ship silently');
-  // iOS draws an EMPTY date input SHORTER than its siblings (no text to size
-  // the line box) — owner's screenshot: Balance due by against Deposit %.
-  // Chromium cannot reproduce the collapse, so this asserts the pinning RULE
-  // via CSSOM (the reduced-motion precedent: a computed read passes with the
-  // rule deleted); the WebKit layout leg sees the real paint.
-  const datePin = await page.evaluate(() => {
-    for (const sheet of document.styleSheets) {
-      let rules;
-      try { rules = sheet.cssRules; } catch (e) { continue; }
-      for (const r of rules) {
-        if (r.selectorText && r.selectorText.includes('input[type="date"].input-glass') && r.style && r.style.minHeight) return r.style.minHeight;
-      }
+  const openAdd = async () => { await S(() => window.openAddBooking()); await sheetUp(); };
+  const openEdit = async (id) => { await S((x) => window.openEditBooking(x), id); await sheetUp(); };
+  const closeSheet = async () => { await S(() => closeModal()); await page.waitForFunction(() => !document.getElementById('edit-modal').classList.contains('open')); };
+  const val = (id) => S((x) => (document.getElementById(x) || {}).value, id);
+  const txt = (id) => S((x) => ((document.getElementById(x) || {}).textContent || '').replace(/\s+/g, ' ').trim(), id);
+  const calOpen = () => S(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  // A day on the sheet's own calendar: turn the months until it is painted, then
+  // TAP it — the real route (bksDay), never a write to the hidden inputs.
+  const pickDay = async (iso) => {
+    for (let i = 0; i < 14; i++) {
+      const cell = await page.$(`#bks-cal [data-bks="day"][data-v="${iso}"]`);
+      if (cell) { await cell.click(); return; }
+      await page.click('#bks-cal [data-bks="nav"][data-v="1"]');
     }
-    return '';
-  });
-  ok(/calc\(/.test(datePin), `the empty-date height pin stands in the stylesheet (${datePin})`);
+    throw new Error('the calendar never showed ' + iso);
+  };
+  const pickStay = async (ci, co) => {
+    if (!(await calOpen())) await page.click('#bks-t-in');
+    await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+    await pickDay(ci);
+    await pickDay(co);
+    await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on')); // a finished stay folds the calendar away
+  };
+  // Playwright treats aria-disabled as "not enabled" and would wait for ever; the
+  // owner's finger does not — a not-ready Add is still tappable and NUDGES.
+  const tapAdd = () => page.click('#modal-save-btn', { force: true });
+  const lastPost = (action, from) => posts.slice(from).filter((p) => p.__url === 'bookings.php' && p.action === action).pop() || null;
+  const saveAndWait = async (action) => {
+    const from = posts.length;
+    await tapAdd();
+    await page.waitForFunction(() => !document.getElementById('edit-modal').classList.contains('open'), null, { timeout: 8000 }).catch(() => {});
+    return lastPost(action, from);
+  };
+  const spoken = (iso) => S((x) => dpSpoken(x), iso);
+  const r2 = (x) => Math.round(x * 100) / 100;
 
-  // ---------- 3b. the plan brief speaks the derivation ----------
-  // Every figure below is computed IN THE GATE from the page's own
-  // priceBreakdown — equality of derivations, never hardcoded pounds. The
-  // brief's first payment must be the plan deposit + the refundable ride
-  // pay.php bundles with it (break-tested: dropping `+ m.dep` from
-  // modalPlanFacts fails the first-payment equality here AND the prefill).
-  console.log('3b. plan brief + window rule');
-  const exp = (ci, co, pct) => page.evaluate((f) => {
-    const p = priceBreakdown('21a', 2, 0, f.ci, f.co, null);
-    const dep = p.damagesDeposit || 0;
-    const planDep = Math.round(p.total * f.pct) / 100;
-    const g = (n) => gbp(n);
-    return { first: g(Math.round((planDep + dep) * 100) / 100), planDep: g(planDep), balance: g(Math.round((p.total - planDep) * 100) / 100), full: g(Math.round((p.total + dep) * 100) / 100) };
-  }, { ci, co, pct });
-  // Outside the 30-day window → the staged plan with its due date.
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(60), co: d(63) });
-  const e1 = await exp(d(60), d(63), 25);
-  const b1 = await page.evaluate(() => ({
-    line: document.getElementById('modal-plan-std-line').textContent,
-    sub: document.getElementById('modal-foot-sub').textContent,
-    due: fmtDate(ukShiftDays(document.getElementById('modal-checkin').value, -30)),
-  }));
-  ok(b1.line.includes(`First payment ${e1.first}`) && b1.line.includes(`25% deposit ${e1.planDep}`) && b1.line.includes(`balance ${e1.balance} due by ${b1.due}`),
-    `outside the window the brief states first payment / deposit / balance / date (${b1.line.slice(0, 76)}…)`);
-  ok(b1.sub.includes(`First payment ${e1.first}`) && b1.sub.includes(b1.due), `and the foot sub carries the same facts (${b1.sub})`);
-  // Inside the 30-day window → the full amount is asked up front (the live
-  // booking_payment_kind rule, mirrored with the strict standard boundary).
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(10), co: d(13) });
-  const e2 = await exp(d(10), d(13), 100);
-  const b2 = await page.evaluate(() => ({
-    line: document.getElementById('modal-plan-std-line').textContent,
-    sub: document.getElementById('modal-foot-sub').textContent,
-  }));
-  ok(/full amount is asked up front/.test(b2.line) && b2.line.includes(`first payment ${e2.first}`),
-    `inside 30 days the brief flips to full-up-front (${b2.line.slice(0, 72)}…)`);
-  ok(/Full amount up front/.test(b2.sub), `and the foot sub says so (${b2.sub})`);
-  // A CUSTOM percentage follows into the brief — stepped, not typed: the pct
-  // stepper starts from the site standard (25 + 5 + 5 = 35).
-  await page.click('#modal-plan-custom-btn');
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(60), co: d(63) });
-  await page.click('#modal-plan-custom [data-arg="pct"][data-arg2="5"]');
-  await page.click('#modal-plan-custom [data-arg="pct"][data-arg2="5"]');
-  const e3 = await exp(d(60), d(63), 35);
-  const b3 = await page.evaluate(() => ({
-    pct: document.getElementById('modal-plan-pct').value,
-    line: document.getElementById('modal-plan-std-line').textContent,
-  }));
-  ok(b3.pct === '35', `the pct stepper steps from the site standard (${b3.pct})`);
-  ok(b3.line.includes(`35% deposit`) && b3.line.includes(`First payment ${e3.first}`), `and the brief follows the custom plan (${b3.line.slice(0, 66)}…)`);
-  await page.click('#modal-plan-std-btn'); // back to standard (wipes)
-
-  // ---------- 3c. party steppers + the payment segment ----------
-  console.log('3c. steppers + payment segment');
-  // Adults caps at the cottage's occupancy (21A tops out at 2) — the + stops
-  // offering, TYPING past stays possible (the server confirm is the override).
-  const st1 = await page.evaluate(() => {
-    const plus = document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="1"]');
-    plus.click();
+  // ---------- 1. Add opens the sheet ----------
+  console.log('1. the Add sheet');
+  await openAdd();
+  const s1 = await S(() => {
+    const btn = document.getElementById('modal-save-btn');
     return {
-      val: document.getElementById('modal-adults').value,
-      plusDisabled: plus.disabled,
-      minus: document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').disabled,
-      occNote: document.getElementById('modal-occ-note').textContent,
+      sheet: !!document.querySelector('#edit-modal .modal-box.bks'),
+      title: document.getElementById('modal-title').textContent.trim(),
+      btn: btn.textContent.trim(),
+      dis: btn.getAttribute('aria-disabled'),
+      sum: document.getElementById('bks-sum').textContent,
+      tiles: [document.getElementById('bks-t-in-d').textContent, document.getElementById('bks-t-out-d').textContent],
+      times: [document.getElementById('bks-t-in-tm').textContent, document.getElementById('bks-t-out-tm').textContent],
+      hiddenTimes: [document.getElementById('modal-checkin-time').value, document.getElementById('modal-checkout-time').value],
+      cot: document.getElementById('bks-cot-val').textContent.trim(),
+      verdictHidden: document.getElementById('bks-verdict').hidden,
+      oldForm: !!document.querySelector('#edit-modal .modal-foot, #edit-modal .mav-strip, #edit-modal .modal-cols, #modal-date-verdict'),
     };
   });
-  ok(st1.val === '2' && st1.plusDisabled, `+ stops at 21A's occupancy (adults ${st1.val}, + disabled ${st1.plusDisabled})`);
-  ok(/Sleeps up to 2/.test(st1.occNote), `the occupancy note names the cottage's limit (${st1.occNote})`);
-  const st2 = await page.evaluate(() => {
-    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').click();
-    const a = document.getElementById('modal-adults').value;
-    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').click();
-    return { after: a, floor: document.getElementById('modal-adults').value };
-  });
-  ok(st2.after === '1' && st2.floor === '1', `− steps down and floors at 1 (${st2.after}/${st2.floor})`);
-  await page.evaluate(() => { document.getElementById('modal-adults').value = '2'; updateModalPrice(); });
-  // The deposit stepper steps the REAL input from the cottage default.
-  const st3 = await page.evaluate(() => {
-    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="dmg"][data-arg2="25"]').click();
-    return document.getElementById('modal-damages-deposit').value;
-  });
-  ok(parseFloat(st3) > 0, `the deposit stepper fills the real input from the cottage default (£${st3})`);
-  await page.evaluate(() => { document.getElementById('modal-damages-deposit').value = ''; updateModalPrice(); });
-  // The payment segment writes the hidden select, reveals the fields, and in
-  // ADD mode prefills the amount with the plan's own first payment.
-  const p1 = await page.evaluate(() => {
-    document.querySelector('#modal-pay-seg [data-arg="deposit"]').click();
-    return {
-      sel: document.getElementById('modal-payment').value,
-      detailsUp: document.getElementById('modal-payment-details').style.display !== 'none',
-      amt: document.getElementById('modal-deposit-amount').value,
-      on: document.querySelector('#modal-pay-seg [data-arg="deposit"]').classList.contains('is-on'),
-    };
-  });
-  const e4 = await exp(d(60), d(63), 25);
-  ok(p1.sel === 'deposit' && p1.detailsUp && p1.on, 'tapping "Deposit paid" sets the select and reveals the inline fields');
-  ok('£' + p1.amt === e4.first.replace(',', ''), `and prefills the amount with the plan's first payment (£${p1.amt} = ${e4.first})`);
-  // Dates change → OUR prefill follows the plan (a typed figure would not).
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(90), co: d(94) });
-  const e5 = await page.evaluate((f) => {
-    const p = priceBreakdown('21a', 2, 0, f.ci, f.co, null);
-    const dep = p.damagesDeposit || 0;
-    return (Math.round(p.total * 25) / 100 + dep).toFixed(2);
-  }, { ci: d(90), co: d(94) });
-  const p2 = await page.evaluate(() => document.getElementById('modal-deposit-amount').value);
-  ok(p2 === e5, `the auto prefill re-derives when the dates move (£${p2})`);
-  // A figure the OWNER types is theirs — never clobbered by a re-derivation.
-  await page.evaluate(() => { document.getElementById('modal-deposit-amount').value = '123.00'; });
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(60), co: d(63) });
-  ok(await page.evaluate(() => document.getElementById('modal-deposit-amount').value) === '123.00',
-    'a typed amount is never clobbered by the plan');
-  // "Nothing yet" folds the fields; a PROGRAMMATIC select write + change event
-  // repaints the segment (the offline suite's path — the select stays truth).
-  const p3 = await page.evaluate(() => {
-    document.querySelector('#modal-pay-seg [data-arg="unpaid"]').click();
-    const hidden = document.getElementById('modal-payment-details').style.display === 'none';
-    const sel = document.getElementById('modal-payment');
-    sel.value = 'paid';
-    sel.dispatchEvent(new Event('change', { bubbles: true }));
-    return { hidden, paidOn: document.querySelector('#modal-pay-seg [data-arg="paid"]').classList.contains('is-on') };
-  });
-  ok(p3.hidden, '"Nothing yet" folds the inline fields away');
-  ok(p3.paidOn, 'a programmatic select write repaints the segment — the select stays the source of truth');
-  await page.evaluate(() => { modalPayMode('unpaid'); });
-  // The foot button names the ACTION in add mode.
-  ok(await page.evaluate(() => document.getElementById('modal-save-btn').textContent) === 'Add booking',
-    'the foot button says what it will do — Add booking');
+  ok(s1.sheet && !s1.oldForm && s1.title === 'New booking' && s1.btn === 'Add', `Add opens the one sheet (no sectioned form left) — "New booking", the button says Add (${s1.title} / ${s1.btn})`);
+  ok(s1.dis === 'true' && /no dates yet/.test(s1.sum), `with no dates or name, Add is aria-disabled and the summary says so (${s1.sum})`);
+  ok(s1.tiles.join('|') === 'Add a date|Add a date' && s1.verdictHidden && s1.times.join('|') === 'from 3pm|by 10am' && s1.hiddenTimes.join('|') === '15:00|10:00',
+    `the Arrive | Leave tiles ask for dates and STATE 3pm in / 10am out, which the store still carries (${s1.times.join(', ')})`);
+  ok(s1.cot === 'Jollyboat', `a new booking starts on the first real cottage (${s1.cot})`);
 
-  // ---------- 4. the sticky footer mirrors the price box ----------
-  console.log('4. sticky footer');
-  await page.evaluate((f) => {
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    updateModalPrice();
-  }, { ci: d(30), co: d(33) });
-  await page.waitForTimeout(200);
-  const s4 = await page.evaluate(() => {
-    const boxAmt = (document.querySelector('#modal-price-box .price-row.total .price-amount') || {}).textContent || '';
-    const footFig = (document.getElementById('modal-foot-fig') || {}).textContent || '';
-    const box = document.querySelector('#edit-modal .modal-box');
-    box.scrollTop = 0; // the top of the form — where the sticky claim matters
-    const foot = document.querySelector('.modal-foot');
-    const fr = foot.getBoundingClientRect();
-    const br = box.getBoundingClientRect();
-    const save = document.getElementById('modal-save-btn').getBoundingClientRect();
-    return { boxAmt, footFig, onScreen: fr.bottom <= br.bottom + 1 && fr.top < window.innerHeight, saveH: save.height };
-  });
-  ok(s4.boxAmt !== '' && s4.footFig === s4.boxAmt, `the footer MIRRORS the box's total (${s4.footFig})`);
-  ok(s4.onScreen, 'the footer is on screen with the form scrolled to the top (sticky)');
-  ok(s4.saveH >= 44, `Save meets the touch floor (${Math.round(s4.saveH)}px)`);
-  // THE DOCKED BAR: full box width through the --mpad token (a hardcoded
-  // bleed once overhung the phone's narrower padding and cut "£440.00" to
-  // "£6"), bottom corners matching the box radius, its TEXT back on the
-  // content rail, and a hostile-length figure squeezes SAVE, never itself.
-  const s4b = await page.evaluate(() => {
-    const box = document.querySelector('#edit-modal .modal-box');
-    const foot = document.querySelector('.modal-foot');
-    const br = box.getBoundingClientRect();
-    const fr0 = foot.getBoundingClientRect();
-    const fullBleed = Math.abs(fr0.left - br.left) <= 1.5 && Math.abs(fr0.right - br.right) <= 1.5;
-    const radiusMatch = getComputedStyle(foot).borderBottomLeftRadius === getComputedStyle(box).borderBottomLeftRadius;
-    // The content rail is the SCROLLER's padding now — the box pads 0 and
-    // the form scrolls in its own region so iOS overscroll can't move the bar.
-    const scroller = document.querySelector('#edit-modal .modal-scroll');
-    const padL = parseFloat(getComputedStyle(scroller).paddingLeft);
-    const outsideScroller = foot.parentElement === box && !scroller.contains(foot);
-    const textOnRail = Math.abs(document.querySelector('.modal-foot-total').getBoundingClientRect().left - (br.left + padL)) <= 1.5;
-    const fig = document.getElementById('modal-foot-fig');
-    fig.textContent = '£123,456.00'; // hostile figure (the §14 injection discipline)
-    const fr = fig.getBoundingClientRect();
-    const noClip = Math.ceil(fr.width) >= fig.scrollWidth - 1 && fr.right <= document.getElementById('modal-save-btn').getBoundingClientRect().left + 1;
-    fig.textContent = '£440.00';
-    return { fullBleed, radiusMatch, textOnRail, noClip, outsideScroller };
-  });
-  ok(s4b.fullBleed && s4b.radiusMatch, 'the foot docks edge to edge with the box\'s own bottom corners');
-  ok(s4b.outsideScroller, 'the foot lives OUTSIDE the scroller — overscroll cannot move it');
-  ok(s4b.textOnRail, 'its text stands on the content rail');
-  ok(s4b.noClip, 'a hostile-length figure squeezes Save, never itself');
-  // The foot's ground is the OPAQUE theme surface — the bhub-sticky gradient
-  // painted a strange-fading slab over the modal's glass (owner's light-mode
-  // screenshot). No gradient, no alpha, in EITHER theme.
-  const footGround = await page.evaluate(() => {
-    const read = () => {
-      const cs = getComputedStyle(document.querySelector('.modal-foot'));
-      const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
-      const alpha = m && m[1].split(',').length === 4 ? parseFloat(m[1].split(',')[3]) : 1;
-      return { noGrad: cs.backgroundImage === 'none', opaque: alpha >= 0.999 };
-    };
-    const dark = read();
-    document.body.classList.add('light-mode');
-    const light = read();
-    document.body.classList.remove('light-mode');
-    return { dark, light };
-  });
-  ok(footGround.dark.noGrad && footGround.dark.opaque && footGround.light.noGrad && footGround.light.opaque,
-    'the foot is a solid theme surface in both themes — no gradient fade');
-  // ONE visible name for the notes field: the section cap carries the words,
-  // the label goes .sr-only (announced, not doubled on screen).
-  const s4c = await page.evaluate(() => {
-    const lbl = document.querySelector('label[for="modal-notes"]');
-    const r = lbl.getBoundingClientRect();
-    return { hidden: r.width <= 1 && r.height <= 1, named: lbl.textContent.trim().length > 0 };
-  });
-  ok(s4c.hidden && s4c.named, 'the notes label is announced but not doubled under the Notes cap');
-  // Invalid dates → the mirror goes honest, never stale.
-  await page.evaluate(() => {
-    document.getElementById('modal-checkin').value = '';
-    document.getElementById('modal-checkout').value = '';
-    updateModalPrice();
-  });
-  ok(await page.evaluate(() => (document.getElementById('modal-foot-fig') || {}).textContent === '—'),
-    'no computable total → the footer shows a dash, not the last number');
-
-  // ---------- 5. a fresh open resets ----------
-  console.log('5. fresh-open reset');
-  await page.evaluate(() => {
-    mavToggle();
-    closeModal();
-  });
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
-  const s5 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-grid'));
-  ok(s5, 'reopening starts with the availability calendar folded to its strip');
-  // The ✕ goes through the dispatcher and actually closes.
-  await page.click('#edit-modal .modal-x');
-  await page.waitForTimeout(250);
-  ok(await page.evaluate(() => !document.getElementById('edit-modal').classList.contains('open')),
-    'the header ✕ closes the modal');
-
-  // ---------- 6. desktop uses the width ----------
-  console.log('6. desktop two-column');
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(300);
-  const s6 = await page.evaluate(() => {
-    const cols = document.querySelector('#edit-modal .modal-cols');
-    const tracks = getComputedStyle(cols).gridTemplateColumns.split(' ').length;
-    const w = document.querySelector('#edit-modal .modal-box').getBoundingClientRect().width;
-    return { tracks, w };
-  });
-  ok(s6.tracks === 2 && s6.w > 700, `Guest and Stay sit side by side in a wide box (${s6.tracks} tracks, ${Math.round(s6.w)}px)`);
-
-  // ---------- 7. custom-property mode stands the mirror down ----------
-  console.log('7. custom-property mode');
-  await page.evaluate(() => {
-    document.getElementById('modal-property').value = '__new__';
-    applyModalPropertyMode();
-  });
-  const s7 = await page.evaluate(() => ({
-    totalHidden: getComputedStyle(document.getElementById('modal-foot-total')).display === 'none',
-    saveLabel: document.getElementById('modal-save-btn').textContent,
+  // ---------- 2. nudges, the calendar, the verdict ----------
+  console.log('2. nudges + the calendar + ✓ Free');
+  const p0 = posts.length;
+  await tapAdd();
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  const n1 = await S(() => ({
+    sum: document.getElementById('bks-sum').textContent,
+    arriveOn: document.getElementById('bks-t-in').getAttribute('aria-expanded'),
   }));
-  ok(s7.totalHidden && /Next/.test(s7.saveLabel), `new-property flow hides the total and relabels Save (${s7.saveLabel})`);
-  await page.evaluate(() => closeModal());
+  ok(posts.length === p0, 'tapping a not-ready Add sends nothing');
+  ok(/Pick the dates first/.test(n1.sum) && n1.arriveOn === 'true', `…it opens the calendar on Arrive and says what is missing (${n1.sum})`);
+  // Each free night carries its price; a taken night is crossed and carries none.
+  for (let i = 0; i < 14 && !(await page.$(`#bks-cal [data-v="${d(31)}"]`)); i++) await page.click('#bks-cal [data-bks="nav"][data-v="1"]');
+  const cal = await S((f) => {
+    const cell = (iso) => document.querySelector(`#bks-cal [data-bks="day"][data-v="${iso}"]`);
+    const free = cell(f.free), taken = cell(f.taken);
+    const want = bksGbp0(nightlyRateFor(f.free, propertyRates.jollyboat, propertySeasons.jollyboat || []));
+    return {
+      freePrice: free && free.querySelector('small') ? free.querySelector('small').textContent : '',
+      want,
+      takenCls: !!taken && taken.classList.contains('taken'),
+      takenPrice: !!taken && !!taken.querySelector('small'),
+      takenPickable: !!taken && !taken.disabled,
+      label: taken ? taken.getAttribute('aria-label') : '',
+    };
+  }, { free: d(36), taken: d(31) });
+  ok(cal.freePrice !== '' && cal.freePrice === cal.want, `a free night shows its price, nightlyRateFor's own figure (${cal.freePrice} = ${cal.want})`);
+  ok(cal.takenCls && !cal.takenPrice && cal.takenPickable && /booked by Booked Guest/.test(cal.label),
+    `a taken night is crossed, unpriced, still pickable and says who has it (${cal.label})`);
+  await pickStay(d(40), d(43));
+  const s2 = await S(() => ({
+    ci: document.getElementById('modal-checkin').value,
+    co: document.getElementById('modal-checkout').value,
+    tin: document.getElementById('bks-t-in-d').textContent,
+    verdict: document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim(),
+    freeCap: !!document.querySelector('#bks-verdict .bks-sc.ok'),
+    dis: document.getElementById('modal-save-btn').getAttribute('aria-disabled'),
+  }));
+  const nextSpoken = await spoken(d(50));
+  ok(s2.ci === d(40) && s2.co === d(43) && s2.tin === (await spoken(d(40))), `the calendar writes the store, the tile speaks the date (${s2.ci} → ${s2.co}, "${s2.tin}")`);
+  ok(/^3 nights/.test(s2.verdict) && s2.freeCap && /✓ Free/.test(s2.verdict) && s2.verdict.includes('next arrival ' + nextSpoken),
+    `free dates → the verdict says ✓ Free, with the next arrival (${s2.verdict})`);
+  await S(() => { if (document.activeElement) document.activeElement.blur(); });
+  const p1 = posts.length;
+  await tapAdd();
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'modal-name');
+  ok(s2.dis === 'true' && posts.length === p1 && /Add the guest.s name/.test(await txt('bks-sum')),
+    `dates alone are not ready: Add focuses the name and says so (${await txt('bks-sum')})`);
+  await page.fill('#modal-name', 'Sally Standard');
+  ok((await S(() => document.getElementById('modal-save-btn').getAttribute('aria-disabled'))) === 'false', 'a name + dates make Add ready');
 
+  // ---------- 3. the confirmation switch, and a standard save ----------
+  console.log('3. the confirmation switch + a standard Add');
+  const c0 = await S(() => ({ dis: document.getElementById('bks-conf').disabled, sub: document.getElementById('bks-conf-s').textContent }));
+  ok(c0.dis && /Add an email address/.test(c0.sub), `with no email the switch cannot send, and says why (${c0.sub})`);
+  await page.fill('#modal-email', 'sally@x.co');
+  const c1 = await S(() => ({ on: document.getElementById('bks-conf').checked, dis: document.getElementById('bks-conf').disabled, label: document.getElementById('bks-conf-l').textContent, sub: document.getElementById('bks-conf-s').textContent }));
+  ok(c1.on && !c1.dis && /Email Sally the confirmation/.test(c1.label) && /sally@x\.co/.test(c1.sub),
+    `on Add the confirmation switch is ON by default, naming who and where (${c1.label} · ${c1.sub})`);
+  const a1 = await saveAndWait('add');
+  const closed = !(await isOpen());
+  ok(!!a1 && closed && a1.prop_key === 'jollyboat' && a1.check_in === d(40) && a1.check_out === d(43) && a1.name === 'Sally Standard' && a1.email === 'sally@x.co',
+    `Add posts the stay and the sheet closes (${a1 && [a1.prop_key, a1.check_in, a1.check_out, a1.name].join(' · ')})`);
+  ok(!!a1 && a1.price_override === '' && a1.price_reason === '' && a1.send_confirmation === true && a1.payment === 'unpaid',
+    `a standard price posts no override, no reason, the confirmation ON (${a1 && JSON.stringify({ ov: a1.price_override, why: a1.price_reason, conf: a1.send_confirmation, pay: a1.payment })})`);
+
+  // ---------- 4. an overlap, the free cottage that FITS, the party coming down ----------
+  console.log('4. ⚠ Overlaps + a free cottage that fits + the party');
+  await openAdd();
+  await page.click('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="1"]'); // 2 → 3
+  const adults3 = await val('modal-adults');
+  await pickStay(d(31), d(34)); // overlaps Booked Guest on Jollyboat
+  const s4 = await S(() => {
+    const alt = document.querySelector('#bks-verdict [data-bks="alt"]');
+    return {
+      verdict: document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim(),
+      warn: !!document.querySelector('#bks-verdict .bks-sc.warn'),
+      alt: alt ? alt.getAttribute('data-v') : '',
+      altTxt: alt ? alt.textContent.trim() : '',
+    };
+  });
+  ok(s4.warn && /Overlaps Booked Guest/.test(s4.verdict), `overlapping dates → ⚠ Overlaps, naming who (${s4.verdict})`);
+  // 21A Westgate is free too but sleeps 2 — the offer skips it for the first that fits.
+  ok(adults3 === '3' && s4.alt === 'pimpernel' && /Pimpernel is free/.test(s4.altTxt), `…offering the first free cottage that FITS the 3 adults (the + stepper took them there), not merely the next one (${s4.altTxt})`);
+  await page.click('#bks-verdict [data-bks="alt"]');
+  await page.waitForFunction(() => document.getElementById('modal-property').value === 'pimpernel');
+  const s4b = await S(() => ({
+    cot: document.getElementById('bks-cot-val').textContent.trim(),
+    verdict: document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim(),
+    adults: document.getElementById('modal-adults').value,
+  }));
+  ok(s4b.cot === 'Pimpernel' && /✓ Free/.test(s4b.verdict) && s4b.adults === '3', `one tap moves the stay there and the verdict flips to ✓ Free (${s4b.cot} · ${s4b.verdict})`);
+  // The list states each cottage's fit for THESE dates.
+  await page.click('#bks-cot-row');
+  await page.waitForFunction(() => document.getElementById('bks-cot-fold').classList.contains('on'));
+  const caps = await S(() => Object.fromEntries([...document.querySelectorAll('#bks-cot-list .bks-opt')].map((o) => [o.getAttribute('data-v'), (o.querySelector('.bks-sc') || {}).textContent || ''])));
+  ok(caps.jollyboat === 'Booked' && caps['21a'] === 'Too small' && caps.pimpernel === 'Free', `the cottage list says Booked / Too small / Free for these dates (${JSON.stringify(caps)})`);
+  await page.click('#bks-cot-list .bks-opt[data-v="21a"]');
+  await page.waitForFunction(() => document.getElementById('modal-property').value === '21a');
+  const s4c = await S(() => ({
+    adults: document.getElementById('modal-adults').value,
+    note: document.getElementById('modal-occ-note').textContent,
+    warn: document.getElementById('modal-occ-note').classList.contains('warn'),
+  }));
+  ok(s4c.adults === '2', `picking a cottage that sleeps fewer brings the party down WITH it (adults ${s4c.adults})`);
+  // CLAUDE.md: "Picking a smaller cottage brings the party down and SAYS SO".
+  ok(/came down/.test(s4c.note) && s4c.warn, `…and says so beside the party (note: "${s4c.note}")`);
+
+  // ---------- 5. a custom price: always a TOTAL, re-derived as the stay moves ----------
+  console.log('5. Standard | Custom');
+  const std = (ci, co) => S((f) => priceBreakdown('21a', 2, 0, f.ci, f.co).total, { ci, co });
+  const std3 = await std(d(31), d(34));
+  await page.click('#bks-pmode [data-v="custom"]');
+  await page.waitForFunction(() => document.getElementById('bks-cus-fold').classList.contains('on') && !!document.getElementById('bks-c-amt'));
+  await page.fill('#bks-c-amt', '300');
+  const c5a = await S(() => ({
+    ov: document.getElementById('modal-price-override').value,
+    res: document.getElementById('bks-c-res-l').textContent,
+    doc: document.getElementById('bks-c-gs').textContent.replace(/\s+/g, ' '),
+  }));
+  ok(c5a.ov === '300', `"A total" writes the override as that total (${c5a.ov})`);
+  ok(new RegExp('£' + (std3 - 300).toFixed(2) + ' off').test(c5a.res) && /Agreed price for your stay \(3 nights\)\s*£300\.00/.test(c5a.doc),
+    `…states it against the standard £${std3.toFixed(2)} and shows the one coherent line the guest's documents print (${c5a.res})`);
+  await page.click('#bks-cmode [data-v="night"]');
+  await page.fill('#bks-c-amt', '95');
+  ok((await val('modal-price-override')) === '285', `"A night" still stores a TOTAL — £95 × 3 = ${await val('modal-price-override')}`);
+  await page.click('#bks-t-out');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  await pickDay(d(35));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
+  ok((await val('modal-checkout')) === d(35) && (await val('modal-price-override')) === '380',
+    `a night price FOLLOWS the stay: one more night re-derives the total (£95 × 4 = ${await val('modal-price-override')})`);
+  const std4 = await std(d(31), d(35));
+  await page.click('#bks-cmode [data-v="off"]');
+  await page.click('#bks-c-off [data-bks="off"][data-v="10"]');
+  ok((await val('modal-price-override')) === String(r2(std4 * 0.9)), `"10% off" stores 90% of the standard as the total (${await val('modal-price-override')} = 0.9 × £${std4.toFixed(2)})`);
+  await page.click('#bks-t-out');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  await pickDay(d(36));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
+  const std5 = await std(d(31), d(36));
+  ok((await val('modal-price-override')) === String(r2(std5 * 0.9)), `…and the discount is re-derived when the standard moves (${await val('modal-price-override')} = 0.9 × £${std5.toFixed(2)})`);
+  await page.click('#bks-why [data-v="Friends & family"]'); // the reason rides the save payload below
+  // Standard drops the override; Custom brings the same price back (values carry).
+  await page.click('#bks-pmode [data-v="std"]');
+  const ovStd = await val('modal-price-override');
+  await page.click('#bks-pmode [data-v="custom"]');
+  ok(ovStd === '' && (await val('modal-price-override')) === String(r2(std5 * 0.9)), `Standard clears the override; Custom restores the same price (${JSON.stringify(ovStd)} → ${await val('modal-price-override')})`);
+  // The confirmation switched OFF.
+  await page.fill('#modal-name', 'Cara Custom');
+  await page.fill('#modal-email', 'cara@x.co');
+  await page.click('#bks-conf');
+  // A TAP on the switch (the real checkbox sits over the drawn track). NB its
+  // `input` event runs bksSync BEFORE `change` records the choice, and the
+  // repaint writes the stale state straight back — see the report on this suite.
+  ok((await S(() => document.getElementById('bks-conf').checked)) === false, 'a tap turns the confirmation switch off');
+  const a2 = await saveAndWait('add');
+  ok(!!a2 && a2.price_override === r2(std5 * 0.9) && a2.price_reason === 'Friends & family',
+    `the save posts the TOTAL and the reason (${a2 && JSON.stringify({ ov: a2.price_override, why: a2.price_reason })})`);
+  ok(!!a2 && a2.prop_key === '21a' && a2.adults === 2 && a2.check_out === d(36), `…on the cottage, party and stay the sheet shows (${a2 && [a2.prop_key, a2.adults, a2.check_out].join(' · ')})`);
+  ok(!!a2 && a2.send_confirmation === false, `…and the switched-off confirmation posts send_confirmation: false (${a2 && a2.send_confirmation})`);
+
+  // ---------- 6. an edit shows the money and never re-sends it ----------
+  console.log('6. an EDIT');
+  await openEdit('b4');
+  const e1 = await S(() => {
+    const vis = (id) => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; };
+    return {
+      title: document.getElementById('modal-title').textContent.trim(),
+      btn: document.getElementById('modal-save-btn').textContent.trim(),
+      rcvd: vis('bks-rcvd-row') ? document.getElementById('bks-rcvd').textContent : '',
+      payGroup: vis('modal-payment-group'),
+      conf: document.getElementById('bks-conf').checked,
+      confL: document.getElementById('bks-conf-l').textContent,
+      confS: document.getElementById('bks-conf-s').textContent,
+    };
+  });
+  ok(e1.title === 'Edith Partpaid' && e1.btn === 'Save', `an edit is titled with the guest and saves (${e1.title} / ${e1.btn})`);
+  ok(e1.rcvd === '£100.00' && !e1.payGroup, `it shows "Received so far" (${e1.rcvd}) and offers no payment entry`);
+  ok(!e1.conf && /Email Edith the changes/.test(e1.confL) && /Nothing they.d notice/.test(e1.confS), `nothing material changed → the switch stays off (${e1.confS})`);
+  const u1 = await saveAndWait('update');
+  const moneyKeys = u1 ? ['payment', 'deposit', 'payment_date', 'payment_method'].filter((k) => k in u1) : ['no update post'];
+  ok(!!u1 && u1.id === 4 && moneyKeys.length === 0, `an edit posts NO payment fields — absent keeps what was received (${moneyKeys.join(',') || 'none'})`);
+  ok(!!u1 && u1.price_override === '' && !('send_confirmation' in u1) && !lastPost('send_confirmation', posts.indexOf(u1)),
+    'no override, no confirmation flag, and no confirmation email follows a plain edit');
+  await openEdit('b4');
+  await page.click('#bks-t-out');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  await pickDay(d(64));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
+  const e2 = await S(() => ({ conf: document.getElementById('bks-conf').checked, sub: document.getElementById('bks-conf-s').textContent }));
+  ok(e2.conf && /changed/.test(e2.sub), `moving the dates turns the switch ON by itself (${e2.sub})`);
+  const fromE = posts.length;
+  await tapAdd();
+  await page.waitForFunction(() => !document.getElementById('edit-modal').classList.contains('open'), null, { timeout: 8000 }).catch(() => {});
+  // The confirmation is posted AFTER the update lands and the sheet closes.
+  for (let i = 0; i < 60 && !lastPost('send_confirmation', fromE); i++) await page.waitForTimeout(100);
+  const u2 = lastPost('update', fromE), sc = lastPost('send_confirmation', fromE);
+  ok(!!u2 && u2.check_out === d(64) && !('deposit' in u2), `the moved stay saves with no money fields (${u2 && u2.check_out})`);
+  ok(!!sc && sc.guest_only === true && sc.id === 4, 'and the switch sends the updated confirmation to the guest only');
+  // "…unless the owner touched it": a material change the owner chooses NOT to
+  // email about must stay off when tapped off.
+  await openEdit('b4');
+  await page.click('#bks-t-out');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  await pickDay(d(65));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
+  const onBefore = await S(() => document.getElementById('bks-conf').checked);
+  await page.click('#bks-conf');
+  ok(onBefore && (await S(() => document.getElementById('bks-conf').checked)) === false,
+    `after a material change the owner can still tap the changes email OFF (on ${onBefore} → ${await S(() => document.getElementById('bks-conf').checked)})`);
+  await closeSheet();
+
+  // ---------- 7. a fully paid booking offers no custom price ----------
+  console.log('7. the paid lock');
+  await openEdit('b5');
+  const pl = await S(() => {
+    const vis = (id) => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; };
+    return {
+      cls: document.querySelector('#edit-modal .modal-box').classList.contains('bks-paidlock'),
+      seg: vis('modal-override-group'),
+      depRo: vis('bks-dep-ro'), depStep: vis('bks-dep-step'),
+      sub: document.getElementById('bks-n-s').textContent,
+    };
+  });
+  ok(pl.cls && !pl.seg, 'a fully paid booking wears bks-paidlock and offers no Standard | Custom');
+  ok(pl.depRo && !pl.depStep && /Paid in full/.test(pl.sub), `its deposit is a fact, not a stepper, and the price row says why (${pl.sub})`);
+  await closeSheet();
+
+  // ---------- 8. an arrived booking locks its cottage and dates ----------
+  console.log('8. the move lock');
+  await openEdit('b6');
+  const ml = await S(() => {
+    const before = document.getElementById('bks-cal-fold').classList.contains('on');
+    bksOpenCal('in'); // the guard holds even when called directly
+    bksChooseCot('jollyboat');
+    return {
+      cls: document.querySelector('#edit-modal .modal-box').classList.contains('bks-movelock'),
+      tiles: [...document.querySelectorAll('#modal-date-trigger .bks-tile')].every((b) => b.disabled),
+      cotRow: document.getElementById('bks-cot-row').disabled,
+      note: (document.getElementById('modal-move-locked') || {}).textContent || '',
+      calStill: !before && !document.getElementById('bks-cal-fold').classList.contains('on'),
+      cot: document.getElementById('modal-property').value,
+    };
+  });
+  ok(ml.cls && ml.tiles && ml.cotRow, 'an arrived booking wears bks-movelock: both date tiles and the cottage row are disabled');
+  ok(/arrived/.test(ml.note) && /locked/.test(ml.note), `…with the note saying why (${ml.note})`);
+  ok(ml.calStill && ml.cot === 'pimpernel', 'and the calendar and cottage choice refuse even a direct call');
+  await closeSheet();
+
+  // ---------- 9. nothing wider than the sheet ----------
+  console.log('9. fit at 390 and 1280');
+  const fit = () => S(() => {
+    const box = document.querySelector('#edit-modal .modal-box.bks');
+    const br = box.getBoundingClientRect();
+    const bad = [];
+    let n = 0;
+    box.querySelectorAll('*').forEach((el) => {
+      if (!el.getClientRects().length || getComputedStyle(el).visibility === 'hidden') return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      n++;
+      if (r.left < br.left - 1 || r.right > br.right + 1) bad.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}.${String(el.className).split(' ')[0]} [${Math.round(r.left)},${Math.round(r.right)}]`);
+    });
+    const body = document.getElementById('bks-body');
+    return { n, bad: bad.slice(0, 6), boxIn: br.left >= -0.5 && br.right <= innerWidth + 0.5, spill: body.scrollWidth - body.clientWidth, w: Math.round(br.width) };
+  });
+  // Everything a sheet can unfold, unfolded: the cottage list, the calendar, a
+  // custom DISCOUNT (chips + the Other box), the plan, the paid card, the address.
+  const unfoldAll = async () => {
+    await page.click('#bks-pmode [data-v="custom"]');
+    await page.click('#bks-cmode [data-v="off"]');
+    await page.waitForFunction(() => !!document.querySelector('#bks-c-off .bks-chipin input'));
+    await page.fill('#bks-c-off .bks-chipin input', '12.5');
+    await S(() => {
+      const open = (row, fold) => { const f = document.getElementById(fold); if (f && !f.classList.contains('on')) document.getElementById(row).click(); };
+      open('bks-cot-row', 'bks-cot-fold');
+      open('bks-addr-row', 'bks-addr-fold');
+      const plan = document.getElementById('bks-plan-row');
+      if (plan && plan.getClientRects().length && !document.getElementById('bks-plan-fold').classList.contains('on')) plan.click();
+      const some = document.querySelector('#modal-pay-seg [data-arg="deposit"]');
+      if (some && some.getClientRects().length) some.click();
+      if (!document.getElementById('bks-cal-fold').classList.contains('on')) document.getElementById('bks-t-out').click();
+    });
+    await page.waitForFunction(() => ['bks-cot-fold', 'bks-addr-fold', 'bks-cal-fold', 'bks-cus-fold'].every((id) => document.getElementById(id).classList.contains('on')));
+  };
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(vp);
+    await openAdd();
+    await page.fill('#modal-name', 'Fit Check');
+    await pickStay(d(31), d(34)); // the overlap, so the verdict carries its offer
+    await unfoldAll();
+    const f = await fit();
+    ok(f.n > 150 && f.boxIn && f.spill <= 0 && f.bad.length === 0,
+      `at ${vp.width}px nothing is wider than the ${f.w}px sheet (${f.n} boxes measured, spill ${f.spill}${f.bad.length ? ', over: ' + f.bad.join(' | ') : ''})`);
+    await closeSheet();
+  }
+  // A hostile guest name in the title, at phone width.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openEdit('b7');
+  const fl = await fit();
+  const tt = await S(() => { const h = document.getElementById('modal-title'); return { clips: h.scrollWidth > h.clientWidth, cs: getComputedStyle(h).textOverflow }; });
+  ok(fl.boxIn && fl.spill <= 0 && fl.bad.length === 0 && tt.cs === 'ellipsis',
+    `a 49-character guest name ellipsises in the title and widens nothing (${fl.bad.join(' | ') || 'all inside'})`);
+  await closeSheet();
+
+  console.log(fails ? `ADD-BOOKING TEST FAILED ❌ (${fails})` : 'ADD-BOOKING TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error(e); process.exit(1); });

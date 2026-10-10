@@ -509,7 +509,12 @@ const stub = (page) => page.route(/\.php/, (r) => {
     for (let i = 0; i < 30; i++) lines.push(`Guest Number ${i + 1} — £${100 + i}.00 · Jollyboat`);
     const p = glassConfirm(lines.join('\n'), 'Send 30 requests');
     await until(() => document.getElementById('glass-dialog').classList.contains('open'));
-    await new Promise((r) => setTimeout(r, 400));
+    // The box settles in from 1.08x: measure once its motion has FINISHED, not
+    // after a fixed 400ms — under CI load that sample caught it still scaled
+    // (783 of 780px) while the resting box ends at 760.
+    await new Promise((r) => setTimeout(r, 50));
+    await Promise.all(document.getElementById('glass-dialog').getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {})));
+    await until(() => !document.getElementById('glass-dialog').getAnimations({ subtree: true }).length, 3000);
     const m = document.getElementById('glass-dialog-msg');
     const btns = document.querySelector('.glass-dialog-btns').getBoundingClientRect();
     m.scrollTop = 99999;

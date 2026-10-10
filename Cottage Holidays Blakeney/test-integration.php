@@ -3231,7 +3231,9 @@ $r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Sophi
 $sId = (int) ($r['json']['id'] ?? 0);
 $sRow = $rootDb->query("SELECT * FROM admins WHERE id = $sId")->fetch();
 it_check('§51 inviting someone adds them, waiting for their own password', $r['code'] === 200 && $sId > 0 && count($r['json']['people'] ?? []) === 2 && $sRow['password_hash'] === '' && $sRow['invited_at'] !== null && strlen((string) $sRow['invite_hash']) === 64, $r['raw']);
-it_check('§51 …with the everyday work and Take payments, nothing more', (int) $sRow['full_access'] === 0 && json_decode($sRow['caps'], true) === ['payments' => true, 'refunds' => false, 'money' => false, 'prices' => false, 'website' => false] && $sRow['email'] === 'sophia51@example.com' && $sRow['username'] === 'sophiahart', json_encode($sRow));
+// Permissions: a new person is a plain HOST — perms stored as the difference from a
+// Host, so '{}' — never a Super User unless the invite said so.
+it_check('§51 …as a plain Host: no differences stored, not a Super User', (int) $sRow['full_access'] === 0 && $sRow['perms'] === '{}' && $sRow['email'] === 'sophia51@example.com' && $sRow['username'] === 'sophiahart', json_encode($sRow));
 $r = http($admin, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Someone Else', 'email' => 'sophia51@example.com']);
 it_check('§51 an email that already has a sign-in is refused', $r['code'] === 409, $r['raw']);
 // The first sign-in carries the config owner address until its owner sets their
@@ -3263,9 +3265,13 @@ it_check('§51 the link works once', $r['code'] === 410, $r['raw']);
 $refused = function ($res) {
     return $res['code'] === 403 && ($res['json']['code'] ?? '') === 'not_allowed' && ($res['json']['error'] ?? '') === 'That’s for Owner to change.';
 };
-it_check('§51 the Payments screens need Money overview', $refused(http($soph, 'GET', '/accounts.php')), '');
+// A plain Host has the money permissions; the owner takes two away, and the server
+// holds her to it on the very next request.
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.view', 'on' => false]);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.refund', 'on' => false]);
+it_check('§51 the Payments screens need See the money', $refused(http($soph, 'GET', '/accounts.php')), '');
 $r = http($soph, 'POST', '/bookings.php', ['action' => 'refund', 'id' => 1, 'amount' => 10]);
-it_check('§51 a refund needs Refunds and deposits (refused before any money moves)', $refused($r), $r['raw']);
+it_check('§51 a refund needs Refunds (refused before any money moves)', $refused($r), $r['raw']);
 it_check('§51 People & access is full access only', $refused(http($soph, 'POST', '/people.php', ['action' => 'list'])), '');
 it_check('§51 the system check is full access only', $refused(http($soph, 'POST', '/diagnostics.php', ['action' => 'run'])), '');
 it_check('§51 rates are Prices and cottages', $refused(http($soph, 'POST', '/rates.php', ['action' => 'save', 'prop_key' => $propKey, 'couple_rate' => 1])), '');
@@ -3307,19 +3313,20 @@ $oAll = http($admin, 'POST', '/content.php', ['action' => 'get_all'])['json']['c
 $sAll = http($soph, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
 it_check('§51 …and the private read hides the backup passphrase', ($oAll['backup-passphrase'] ?? '') === 'a very long backup phrase' && !array_key_exists('backup-passphrase', $sAll) && !array_key_exists('bacs-details', $sAll), json_encode(array_keys($sAll)));
 // A switch takes effect on the next request — no signing out and in.
-$r = http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $sId, 'cap' => 'money', 'on' => true]);
-it_check('§51 switching on Money overview opens the Payments screens at once', $r['code'] === 200 && http($soph, 'GET', '/accounts.php')['code'] === 200, $r['raw']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.view', 'on' => true]);
+it_check('§51 switching See the money back on opens the Payments screens at once', $r['code'] === 200 && http($soph, 'GET', '/accounts.php')['code'] === 200, $r['raw']);
 // A booking edit keeps its money unless the person takes payments.
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, price_override) VALUES ('$propKey','Edit Guest','edit51@example.com','2031-03-01','2031-03-04',2,0,'unpaid',0,300,300,0,3,250)");
 $bId = (int) $rootDb->lastInsertId();
-http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $sId, 'cap' => 'payments', 'on' => false]);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.record', 'on' => false]);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.ask', 'on' => false]);
 $r = http($soph, 'POST', '/bookings.php', ['action' => 'update', 'id' => $bId, 'notes' => 'Late arrival', 'price_override' => 1, 'payment' => 'paid', 'deposit' => 999, 'op_id' => 'it51-edit-0001']);
 $bRow = $rootDb->query("SELECT notes, price_override, payment, deposit_paid FROM bookings WHERE id = $bId")->fetch();
-it_check('§51 without Take payments, an edit changes the booking and never its money', $r['code'] === 200 && $bRow['notes'] === 'Late arrival' && abs((float) $bRow['price_override'] - 250) < 0.005 && $bRow['payment'] === 'unpaid' && abs((float) $bRow['deposit_paid']) < 0.005, $r['raw'] . json_encode($bRow));
+it_check('§51 without Record payments or Ask for money, an edit changes the booking and never its money', $r['code'] === 200 && $bRow['notes'] === 'Late arrival' && abs((float) $bRow['price_override'] - 250) < 0.005 && $bRow['payment'] === 'unpaid' && abs((float) $bRow['deposit_paid']) < 0.005, $r['raw'] . json_encode($bRow));
 $r = http($soph, 'POST', '/bookings.php', ['action' => 'request_payment', 'id' => $bId]);
 it_check('§51 …and asking for money is refused', $refused($r), $r['raw']);
 $r = http($soph, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => 1, 'price_override' => 99]);
-it_check('§51 approving an enquiry WITH an agreed price is Take payments', $refused($r), $r['raw']);
+it_check('§51 approving an enquiry WITH an agreed price needs Ask for money too', $refused($r), $r['raw']);
 // The activity log names who did what.
 $r = http($admin, 'POST', '/activity-log.php', ['action' => 'list']);
 $named = array_values(array_filter($r['json']['events'] ?? ($r['json']['items'] ?? []), fn($e) => ($e['actor'] ?? '') === 'Sophia Hart'));
@@ -3451,17 +3458,17 @@ it_check('§52 you can stop an email for yourself while someone else gets it', $
 $r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'enquiry', 'on' => false]);
 it_check('§52 …but not take it from the last person, said in words', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'must' && strpos((string) ($r['json']['error'] ?? ''), 'a guest is waiting for a reply') !== false, $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'ideas', 'on' => true]);
-it_check('§52 an email for an area switched off for her can\'t be switched on', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'locked' && strpos((string) ($r['json']['error'] ?? ''), 'Website and marketing') !== false, $r['raw']);
+it_check('§52 an email for a permission she does not have can\'t be switched on', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'locked' && strpos((string) ($r['json']['error'] ?? ''), 'Home page and things to do') !== false, $r['raw']);
 $r = http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'paid', 'on' => false]);
 $R = $rcpts();
 it_check('§52 switching one off for her stops it reaching her', $r['code'] === 200 && !in_array('ellie52@example.com', $R['paid'] ?? [], true) && in_array($ownMail, $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
 // Her Take payments switched off takes payment emails with it — and back on
 // brings her old choice back (she had chosen them again).
 http($admin, 'POST', '/people.php', ['action' => 'set_mail', 'id' => $eId, 'kind' => 'paid', 'on' => true]);
-http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $eId, 'cap' => 'payments', 'on' => false]);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $eId, 'perm' => 'mo.record', 'on' => false]);
 $R = $rcpts();
-it_check('§52 an area switched off takes its emails with it', !in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
-http($admin, 'POST', '/people.php', ['action' => 'set_cap', 'id' => $eId, 'cap' => 'payments', 'on' => true]);
+it_check('§52 a permission switched off takes its emails with it', !in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $eId, 'perm' => 'mo.record', 'on' => true]);
 $R = $rcpts();
 it_check('§52 …and switching it back on brings her choice back', in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R['paid'] ?? null));
 // An email that must reach someone is never lost: with nobody choosing it, it
@@ -3493,11 +3500,17 @@ $r = http($stAnon, 'POST', '/statements.php', ['action' => 'status']);
 it_check('§53 a visitor is refused', $r['code'] === 401, $r['raw']);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'status']);
 it_check('§53 before any statement: the tables exist and nothing is switched on', $r['code'] === 200 && ($r['json']['ready'] ?? false) === true && ($r['json']['on'] ?? true) === false && ($r['json']['unsorted'] ?? -1) === 0 && array_key_exists('last', $r['json'] ?? []) && $r['json']['last'] === null, $r['raw']);
+// The real file BEFORE the PDF as well as after it: in CI (PHP 8.3 + MySQL) the
+// preview after the PDF refusal answered "no payments in that file" while the
+// identical import a moment later read all four — this pair says whether the
+// refusal is what poisons the next read.
+$r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
+it_check('§53 the preview reads the file (before any refusal)', $r['code'] === 200 && (($r['json']['summary']['adding'] ?? 0) === 4), 'cols=' . json_encode($r['json']['read']['cols'] ?? null) . ' code=' . $r['code'] . ' php=' . PHP_VERSION);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => '%PDF-1.4 …', 'filename' => 'statement.pdf']);
 it_check('§53 a PDF is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'pick CSV') !== false, $r['raw']);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
 $sm = $r['json']['summary'] ?? [];
-it_check('§53 the preview says what would be added, and writes nothing', $r['code'] === 200 && ($sm['adding'] ?? 0) === 4 && ($sm['already'] ?? -1) === 0 && abs((float) ($sm['balance'] ?? 0) - 1234.56) < 0.001 && $sm['to'] === '2026-09-30' && $stCount() === 0, $r['raw']);
+it_check('§53 the preview says what would be added, and writes nothing', $r['code'] === 200 && ($sm['adding'] ?? 0) === 4 && ($sm['already'] ?? -1) === 0 && abs((float) ($sm['balance'] ?? 0) - 1234.56) < 0.001 && $sm['to'] === '2026-09-30' && $stCount() === 0, 'code=' . $r['code'] . ' ' . $r['raw'] . ' len=' . strlen($stA) . ' head=' . json_encode(substr($stA, 0, 40)));
 $r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stA, 'filename' => 'monzo.csv', 'op_id' => 'it53-import-a']);
 $sm = $r['json']['summary'] ?? [];
 it_check('§53 adding it stores four payments, two of which sorted themselves', $r['code'] === 200 && ($sm['added'] ?? 0) === 4 && ($sm['auto'] ?? 0) === 2 && $stCount() === 4, $r['raw']);

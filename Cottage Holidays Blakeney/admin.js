@@ -7354,7 +7354,7 @@ function cmdkServerItem(x) {
         guest: () => { closeCmdK(); cmdkRevealGuest(x.email || ''); },
         message: () => { closeCmdK(); if (x.thread_id) inboxOpenThread(x.thread_id); else openInbox(); },
         review: () => { closeCmdK(); cmdkRevealReview(x.id); },
-        email: () => { closeCmdK(); cmdkOpenEmail(x.id); },
+        email: () => { closeCmdK(); cmdkOpenEmail(x.id, x.sub || (x.to ? 'to ' + x.to : '')); },
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
         activity: () => { closeCmdK(); cmdkRevealActivity(x.title || ''); },
         expense: () => cmdkOpenAccounts('expenses'),
@@ -7432,14 +7432,17 @@ function cmdkRevealActivity(text) {
         if (typeof activityLogSearch === 'function') activityLogSearch(q);
     }, 25);
 }
-async function cmdkOpenEmail(id) {
+async function cmdkOpenEmail(id, sub) {
+    // The Inbox is one list of people, so a sent email opens the conversation of
+    // the person it went to. The search row names them in its sub ("Email · to …");
+    // failing that, the sent list the Inbox loads does.
+    const named = /\bto\s+(\S+@\S+)/.exec(String(sub || ''));
+    if (named) { inboxOpenEmailAddress(named[1]); return; }
+    const sentTo = () => { const m = (Array.isArray(__mbxSent) ? __mbxSent : []).find((x) => String(x.id) === String(id)); return m && m.to_email ? m.to_email : null; };
+    const known = sentTo();
+    if (known) { inboxOpenEmailAddress(known); return; }
     await Promise.resolve(openInbox());
-    if (typeof inboxFolder === 'function') inboxFolder('email'); // lazy-loads the mailbox
-    cmdkPoll(
-        () => (typeof __mbxSent !== 'undefined' && Array.isArray(__mbxSent) && __mbxSent.some((m) => m.id === id)) ? true : null,
-        () => { if (typeof mailboxOpenSent === 'function') mailboxOpenSent(id); },
-        40,
-    );
+    cmdkPoll(sentTo, (to) => inboxOpenEmailAddress(to), 40);
 }
 // Open the Payments workspace on a given sub-tab (used by the "add expense" /
 // "export CSV" search actions), then run a follow-up once it's rendered.
@@ -9791,7 +9794,7 @@ function manageVerdicts() {
     try { misses = chbMissList() || []; } catch (err) {}
     let guestQ = [];
     try { guestQ = slGuestQuestions() || []; } catch (err) {}
-    const teachN = misses.length + guestQ.length;
+    const teachN = misses.length;
     // "ALL CLEAR" IS ONLY CLAIMED WHEN IT WAS ASKED: cron and the feeds ride ONE
     // bootstrap request, so a dropped one must read as "couldn't check", never as
     // a clean bill of health. The system check is undefined until it answers
@@ -9822,8 +9825,13 @@ function manageVerdicts() {
     if (mod.ph) probs.push({ id: 'ph', t: 'Guest photos to approve', s: mod.ph === 1 ? '1 shared photo' : mod.ph + ' shared photos', cap: mod.ph + ' waiting', tone: 'warn', go: ['settingsOpen', 'photos'] });
     if (mod.exp) probs.push({ id: 'exp', t: 'Things to do to approve', s: mod.exp === 1 ? '1 guest suggestion' : mod.exp + ' guest suggestions', cap: mod.exp + ' waiting', tone: 'warn', go: ['settingsOpen', 'experiences'] });
     if (teachN) {
-        const q = misses[0] ? String(misses[0].t || '') : guestQ[0] ? String(guestQ[0].q || '') : '';
+        const q = misses[0] ? String(misses[0].t || '') : '';
         probs.push({ id: 'teach', t: 'Teach your assistant', s: q ? '“' + q.slice(0, 28) + '”' + (teachN > 1 ? ' and ' + (teachN - 1) + ' more' : '') : teachN + ' to teach', cap: 'Teach', tone: 'warn', go: ['settingsOpen', 'search-learning'] });
+    }
+    // What guests typed in the chat that nothing answered is answered on Guest chat.
+    if (guestQ.length) {
+        const q = String(guestQ[0].q || '');
+        probs.push({ id: 'guestq', t: 'Guests asked the chat', s: '“' + q.slice(0, 28) + '”' + (guestQ.length > 1 ? ' and ' + (guestQ.length - 1) + ' more' : ''), cap: 'Answer', tone: 'warn', go: ['settingsOpen', 'chat-away'] });
     }
 
     const n = probs.length;
@@ -10081,7 +10089,9 @@ function stCap(tone, text) {
             : tone === 'warn' || tone === 'bad'
               ? CHB_IC_WARN
               : '';
-    return `<span class="st-cap is-${tone}">${mark}${text}</span>`;
+    // A capsule is sentence case wherever it was written: "Not linked", "None yet".
+    const said = String(text).replace(/^[a-z]/, (c) => c.toUpperCase());
+    return `<span class="st-cap is-${tone}">${mark}${said}</span>`;
 }
 // Crossing 1200px live (rotating an iPad): re-seat the folder divs for the
 // new layout — the same live re-parenting the hubs' panes already do.
@@ -11731,9 +11741,9 @@ function renderBookingHub() {
     (dbBookings[propKey] || []).forEach((o) => {
         if (o.id === b.id) return;
         if (o.checkIn === b.checkOut)
-            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves${BHUB_CHEV}</button>`;
         else if (o.checkOut === b.checkIn)
-            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives${BHUB_CHEV}</button>`;
     });
 
     // ---- Payments block (built first — the header template embeds it) ----
@@ -11865,7 +11875,9 @@ function renderBookingHub() {
                 ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
                     ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
-                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
+                ${/* Said once: when the ask above IS "Record a payment" (no card rail),
+                      the quiet copy of it stands down. */ ''}
+                ${!gt.fullyPaid && !(__hubNext && /data-act="recordPayment"/.test(String(__hubNext.onclick || ''))) ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
                       story. Shown only once money has actually been taken and
@@ -12555,10 +12567,7 @@ function settingsRenderSection(section) {
         loadContentEditor();
         renderHeroOptCard();
     }
-    else if (section === 'chat-away') {
-        renderChatAwayEditor();
-        renderChatAnswersEditor();
-    }
+    else if (section === 'chat-away') renderGuestChat();
     else if (section === 'backups') renderBackups();
     else if (section === 'follow-ups') hydrateFollowUpToggles();
     else if (section === 'diagnostics') loadDiagnostics();
@@ -13410,7 +13419,7 @@ function renderPeople() {
         'people',
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">Permissions</h1>` +
-            gaGroup(rows) +
+            gaGroup(rows, 'People') +
             gaGroup([gaRow({ ic: 'bank', t: 'Cottages & money', s: oaSplitSummary(), act: chbAttrs('oaGo', 'split'), chev: true, cls: 'oa-r-split' })]),
     );
     if (__split === null && !__splitBusy) splitLoad();
@@ -13485,6 +13494,15 @@ function renderSplitSettings() {
         const f = (__oaPeople || []).find((x) => x.id === p.id);
         return !f || f.state === 'active' || p.id === Number(S.holder);
     });
+    // One person signed in: there is no one to share with, so no switcher with a
+    // single option and no row of one face per cottage — just what is true.
+    if (ppl.length < 2) {
+        box.innerHTML = oaPage('split', head + gaGroup([
+            gaRow({ ic: 'bank', t: 'All the money is yours', s: 'Every cottage’s money stays in one account', static: true }),
+            gaRow({ ic: 'plus', t: 'Add someone', s: 'Then a cottage’s money can go to them', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }),
+        ]));
+        return;
+    }
     const person = (id) => ppl.find((p) => p.id === Number(id)) || null;
     const holder = person(S.holder);
     const hi = Math.max(0, ppl.findIndex((p) => holder && p.id === holder.id));
@@ -13606,7 +13624,7 @@ function renderPerson() {
     html +=
         `<h2 class="ga-cap">Role</h2>` +
         (p.you
-            ? `<div class="oa-rolebox">Super User</div>`
+            ? gaGroup([gaRow({ ic: 'shield', t: 'Super User', s: 'Another Super User can change your role', static: true, cls: 'oa-r-role' })])
             : `<div class="u-seg oa-seg" role="radiogroup" aria-label="Role" style="--i:${sup ? 1 : 0};--n:2">` +
               [['host', 'Host'], ['super', 'Super User']]
                   .map(([k, t]) => `<button type="button" role="radio" aria-checked="${(k === 'super') === sup}" class="${(k === 'super') === sup ? 'is-on' : ''}" ${chbAttrs('oaRoleSet', k)}>${t}</button>`)
@@ -13665,13 +13683,13 @@ function renderPerms() {
     const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
     if (!p || !__oaPermDefs.length) {
         if (!Array.isArray(__oaPeople) || !__oaPermDefs.length) loadPeople();
-        box.innerHTML = oaPage('perms', oaBack('person', p ? (p.you ? 'You' : p.first) : 'Back') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
+        box.innerHTML = oaPage('perms', oaBack('person', p ? p.first : 'Back') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
         return;
     }
     const sup = p.full !== false;
     const who = p.you ? 'you' : p.first;
     const n = oaChanges(p);
-    let html = oaBack('person', p.you ? 'You' : p.first) + `<h1 class="section-title ga-h1">What ${escapeHtml(who)} can do</h1>`;
+    let html = oaBack('person', p.first) + `<h1 class="section-title ga-h1">What ${escapeHtml(who)} can do</h1>`;
     if (n) html += `<div class="oa-permreset"><span><i class="oa-chg" aria-hidden="true"></i>${oaChangeWords(n)} from Host</span><button type="button" class="oa-mini" data-act="oaPermsReset">Reset</button></div>`;
     Object.keys(__oaPermGroups).forEach((g) => {
         const items = __oaPermDefs.filter((d) => d.g === g);
@@ -13805,7 +13823,7 @@ function renderEmails() {
     if (!box) return;
     if (!chbFull()) return renderMyEmails(box);
     const person = (__oaPeople || []).find((x) => x.id === __oaPerson);
-    const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'People') : oaBack('notify', 'Notifications');
+    const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'Permissions') : oaBack('notify', 'Notifications');
     const head = back + `<h1 class="section-title ga-h1">Who gets which emails</h1><p class="ga-lead">Tap a photo to send or stop an email.</p>`;
     if (!Array.isArray(__oaPeople)) {
         box.innerHTML = oaPage('emails', head + gaGroup([gaRow({ ic: 'mail', t: 'Loading…', static: true })]));
@@ -13990,11 +14008,14 @@ function slCanonicals() {
 }
 // ---- Guest-side learning: the questions GUESTS typed in chat that the on-device
 // FAQ assistant couldn't answer (captured by guest-faq.php into the internal
-// 'guest-faq-misses' content key; admin siteContent carries it). Surfaced so the
-// owner can turn the recurring ones into an instant answer on the cottage FAQ. ----
+// 'guest-faq-misses' content key). Manage → Guest chat lists them and turns one
+// into an instant answer (gcAskedSave); Manage's "Needs a look" points there. ----
 function slGuestQuestions() {
     try {
-        const list = typeof siteContent === 'object' && siteContent && Array.isArray(siteContent['guest-faq-misses']) ? siteContent['guest-faq-misses'] : [];
+        // adminPrivateContent FIRST: an internal key is absent from the anonymous
+        // boot GET, so siteContent alone read an empty list over real questions.
+        const raw = gcVal('guest-faq-misses');
+        const list = Array.isArray(raw) ? raw : [];
         // Most-asked first, then most-recent.
         return list.filter((r) => r && r.q).slice().sort((a, b) => (b.n || 1) - (a.n || 1) || String(b.at || '').localeCompare(String(a.at || '')));
     } catch (e) { return []; }
@@ -14002,36 +14023,8 @@ function slGuestQuestions() {
 // Persist the guest-question store back (admin can write content.php). Used by
 // dismiss + add-answer so a handled question leaves the list on every device.
 function slGuestQuestionsSave(list) {
-    try { siteContent['guest-faq-misses'] = list; } catch (e) {}
+    try { siteContent['guest-faq-misses'] = list; if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['guest-faq-misses'] = list; } catch (e) {}
     try { apiPost('content.php', { action: 'set', key: 'guest-faq-misses', value: list }).catch(() => {}); } catch (e) {}
-}
-function slDismissGuestQ(q) {
-    const list = slGuestQuestions().filter((r) => r.q !== q);
-    slGuestQuestionsSave(list);
-    renderSearchLearning();
-}
-// One-tap "add an instant answer": ask the owner for the answer, append it to the
-// named cottage's FAQ (faqs-<prop>), and clear the question. Next time a guest
-// types it the on-device matcher answers on the spot — no owner ping.
-async function slAddFaq(q, prop, prefill) {
-    const pk = prop || Object.keys(propertyMeta || {})[0] || '';
-    if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
-    const name = (propertyMeta[pk] || {}).name || pk;
-    let a = '';
-    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || ''), { title: 'Answer this question', okLabel: 'Save the answer' }); } catch (e) { return; }
-    a = (a || '').trim();
-    if (!a) return; // cancelled or empty — leave the question in the list
-    try {
-        const faqs = Array.isArray(siteContent['faqs-' + pk]) ? siteContent['faqs-' + pk].slice() : [];
-        faqs.push({ icon: '', q: String(q).slice(0, 200), a: a.slice(0, 2000) });
-        await saveContent('faqs-' + pk, faqs);
-        siteContent['faqs-' + pk] = faqs;
-        slGuestQuestionsSave(slGuestQuestions().filter((r) => r.q !== q)); // handled → drop it
-        try { toast(`Added — guests asking that about ${name} now get an instant answer.`); } catch (e) {}
-    } catch (e) {
-        try { glassAlert("Couldn't save the answer: " + (e && e.message || e)); } catch (e2) {}
-    }
-    renderSearchLearning();
 }
 // "Test the assistant": read a phrasing through the SAME pipeline search uses and
 // report, in plain words, whether it's understood, by which path, and what it
@@ -14130,22 +14123,6 @@ function renderSearchLearning() {
             </div>`).join('')
         : `<p class="sl-empty">You haven't taught it any wording yet. When a dead-end search is tagged “Means: …”, it appears here.</p>`;
 
-    // 3b) Guests asked these — the questions guests typed in chat that the
-    // on-device FAQ couldn't answer. Each is one tap from becoming an instant
-    // answer on the cottage's FAQ (or a dismiss). Only shown when there are any.
-    let guestQs = [];
-    try { guestQs = slGuestQuestions(); } catch (e) {}
-    const guestRows = guestQs.slice(0, 20).map((r) => {
-            const nm = (propertyMeta[r.prop] || {}).name || '';
-            return `<div class="sl-row">
-                <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
-                <div class="sl-row-acts">
-                    <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
-                    <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
-                </div>
-            </div>`;
-        }).join('');
-
     // 4) Made literal — suppressed phrasings, each restorable.
     const supRows = suppressed.length
         ? suppressed.slice().reverse().map((t) => `<div class="sl-row sl-row-tight">
@@ -14162,14 +14139,11 @@ function renderSearchLearning() {
     const teachSub = misses.length
         ? `“${esc(misses[0].t)}”${misses.length > 1 ? ' + ' + (misses.length - 1) + ' more' : ''} found nothing`
         : '';
-    const guestSum = stCap('warn', guestQs.length + ' unanswered');
-    const guestSub = `“${esc((guestQs[0] || {}).q || '')}”`;
     const taughtSum = learned.length ? stCap('ok', learned.length + ' phrasing' + (learned.length === 1 ? '' : 's')) : stCap('unk', 'none yet');
     const supSum = suppressed.length ? stCap('unk', String(suppressed.length)) : stCap('unk', 'none');
     wrap.innerHTML =
         statusHtml +
         bhubFoldGrp('sl-teach', 'Teach the assistant', teachSub, teachSum, `<div class="sl-fold-body">${missRows}</div>`) +
-        (guestQs.length ? bhubFoldGrp('sl-guest', 'Guests asked these', guestSub, guestSum, `<div class="sl-fold-body">${guestRows}</div>`) : '') +
         bhubFoldGrp('sl-taught', 'What you’ve taught it', '', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
         bhubFoldGrp('sl-literal', 'Made literal', '', supSum, `<div class="sl-fold-body">${supRows}</div>`);
 }
@@ -15429,7 +15403,7 @@ function calendarPropBoxHtml(key, label, data) {
               ${url ? `<button type="button" class="cal-txt" aria-label="Unlink ${escapeHtml(P.name)}" ${chbAttrs('calRemoveFeed', String(key), String(p.source))}>Unlink</button>` : ''}</div>
             <label class="sr-only" for="${id}">${escapeHtml(P.name)} calendar link</label>
             <input class="input-glass cal-in" id="${id}" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-              placeholder="Paste the ${escapeHtml(P.name)} calendar link" value="${escapeHtml(url)}"
+              placeholder="Paste the calendar link" value="${escapeHtml(url)}"
               ${chbInput('calFieldInput', String(key), String(p.source))} data-pass="value" ${chbBlur('calFieldBlur', String(key), String(p.source))}>
             <div class="cal-hint" id="cal-hint-${p.source}-${key}">${url ? '' : escapeHtml(P.where)}</div>
           </div>`;
@@ -15713,7 +15687,7 @@ function gstRender() {
     const nBack = all.filter((g) => g.f.kind === 'back').length;
     const nInv = all.filter((g) => g.f.kind === 'invite' && !g.f.invitedAt).length;
     const stat = (key, fig, cap, tone) => `<button type="button" class="gst-stat is-${tone}${__gst.filter === key ? ' is-on' : ''}"${key ? ` aria-pressed="${__gst.filter === key}" ${chbAttrs('gstFilter', key)}` : ' disabled'}><b>${fig}</b><span>${cap}</span></button>`;
-    statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
+    statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), 'Spent by ' + all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
         + stat('back', String(nBack), 'Coming back', 'back') + stat('invite', String(nInv), 'To invite back', 'invite');
     const q = __gst.q.trim().toLowerCase();
     const shown = all.filter((g) => (!q || String(g.name || '').toLowerCase().includes(q) || g.f.email.includes(q)) && (!__gst.filter || g.f.kind === __gst.filter))
@@ -15737,7 +15711,7 @@ function gstRowHtml(g) {
     const initials = String(g.name || '?').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
     const invited = f.invitedAt;
     const sub = invited && f.kind === 'invite' ? 'Invited ' + (String(invited).slice(0, 10) === todayDashed() ? 'today' : gstShort(invited)) + ' · ' + f.cot
-        : f.kind === 'back' ? gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + ((propertyMeta[f.next.pk] || {}).name || f.next.pk)
+        : f.kind === 'back' ? fmtStayRange(String(f.next.b.checkIn || '').slice(0, 10), String(f.next.b.checkOut || '').slice(0, 10)) + ' · ' + ((propertyMeta[f.next.pk] || {}).name || f.next.pk)
           : f.kind === 'invite' ? 'Last here ' + (f.daysSince < 45 ? 'a month' : Math.round(f.daysSince / 30.4) + ' months') + ' ago · ' + f.cot
             : [f.cot, f.lastOut ? gstShort(f.last ? f.last.b.checkIn : f.lastOut) : ''].filter(Boolean).join(' · ');
     const tone = invited && f.kind === 'invite' ? 'sent' : f.kind;
@@ -15757,8 +15731,8 @@ function gstDetailHtml(g, first) {
         ? gstCardHtml('Invitation sent', email, GST_IC.home, 'Invites ' + escapeHtml(first) + ' back to ' + escapeHtml(f.cot), '',
             !!(__gst.invitedFresh && __gst.invitedFresh.email === email && Date.now() - __gst.invitedFresh.at < 2000)) : '';
     const facts = [['Email', escapeHtml(email), '']];
-    if (f.next) facts.push(['Booked', gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
-    f.past.forEach((s) => facts.push(['Stayed', gstShort(s.b.checkIn) + ' → ' + gstShort(s.b.checkOut) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
+    if (f.next) facts.push(['Booked', fmtStayRange(String(f.next.b.checkIn || '').slice(0, 10), String(f.next.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
+    f.past.forEach((s) => facts.push(['Stayed', fmtStayRange(String(s.b.checkIn || '').slice(0, 10), String(s.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
     const target = f.next || f.last;
     const acts = [];
     if (target) acts.push(gstActHtml(GST_IC.mail, 'Email ' + escapeHtml(first), chbAttrs('openBookingEmail', String(target.b.id)), ''));
@@ -16457,7 +16431,7 @@ function renderExpenses() {
                         .map(
                             (x) => `<div class="xp-item" data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
                       <div class="xp-row">
-                        <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
+                        <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].name || propertyMeta[x.prop_key].short) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
                         <span class="feed-amt">${gbp(x.amount)}</span>
                         <span class="exp-acts">${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" aria-label="View the scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : ''}<button class="feed-del" title="Edit" aria-label="Edit this expense" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" aria-label="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" aria-label="Remove this expense" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
@@ -17218,6 +17192,8 @@ function pmRange(a, b) {
         : `${x.getDate()} ${PM_MON[x.getMonth()]} – ${y.getDate()} ${PM_MON[y.getMonth()]}`;
 }
 const pmProp = (pk) => (propertyMeta[pk] && propertyMeta[pk].name) || pk || '';
+// A deduction is written with its minus; nothing deducted is £0.00, never −£0.00.
+const pmMinus = (n) => (Math.abs(Number(n) || 0) >= 0.005 ? '−' + gbp(n) : gbp(0));
 const pmDot = (pk) => (pk ? `<i class="pm-cd" style="background:var(--prop-${escapeHtml(pk)}, var(--accent))" aria-hidden="true"></i>` : '');
 function pmHue(name) {
     let h = 0;
@@ -17553,7 +17529,7 @@ function pmBooksCardHtml() {
     if (!b) return '';
     return `<div class="pm-capline"><span>The books · ${taxYearShort(b.year)}</span></div><section class="pm-books">
         <div class="pm-books-top"><b>${gbp(b.profit)}</b><span>${b.profit < 0 ? 'loss' : 'profit'} so far</span></div>
-        <div class="pm-books-mini"><div><small>Income</small><span>${gbp(b.income + b.kept)}</span></div><div><small>Card fees</small><span>−${gbp(b.fees)}</span></div><div><small>Expenses</small><span>−${gbp(b.expenses)}</span></div></div>
+        <div class="pm-books-mini"><div><small>Income</small><span>${gbp(b.income + b.kept)}</span></div><div><small>Card fees</small><span>${pmMinus(b.fees)}</span></div><div><small>Expenses</small><span>${pmMinus(b.expenses)}</span></div></div>
         ${pmQuarters(b, false)}
         <button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button>
     </section>`;
@@ -17694,7 +17670,7 @@ function pmPayoutPage(id) {
         <div class="pm-dcap">What it is made of</div>
         <div class="pm-kvs pm-calc">${d.charges.map((e) => `<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="b${e.booking_id}"><span><span class="pm-ink">${escapeHtml(e.name || 'A guest')} · ${escapeHtml(String(e.what || 'payment').toLowerCase())}</span><br><span class="pm-s">${pmDm(e.at * 1000)} · ${gbp(e.amount)}${e.fee != null ? ` less ${gbp(e.fee)} fee` : ''}</span></span><b>${gbp(e.amount - (e.fee || 0))}</b></button>`).join('')}
             <div class="pm-kv"><span>Taken from guests</span><b>${gbp(gross)}</b></div>
-            <div class="pm-kv"><span>Square’s fees</span><b>−${gbp(fees)}</b></div>
+            <div class="pm-kv"><span>Square’s fees</span><b>${pmMinus(fees)}</b></div>
             ${Math.abs(other) > 0.005 ? `<div class="pm-kv"><span>Refunds and adjustments</span><b>${other < 0 ? '−' : ''}${gbp(Math.abs(other))}</b></div>` : ''}
             <div class="pm-kv total"><span>Paid to your bank</span><b>${gbp(po.amount)}</b></div></div>
         ${d.unmatched ? `<p class="pm-note">${d.unmatched === 1 ? 'One payment' : d.unmatched + ' payments'} in it ${d.unmatched === 1 ? 'isn’t' : 'aren’t'} in this app’s records, such as a sale taken in Square itself.</p>` : ''}
@@ -17780,8 +17756,8 @@ function pmBooksPage() {
         <div class="pm-kvs pm-calc">
             <div class="pm-kv"><span>Rental income</span><b>${gbp(b.income)}</b></div>
             ${b.kept > 0.005 ? `<div class="pm-kv"><span>Deposits kept</span><b>${gbp(b.kept)}</b></div>` : ''}
-            <div class="pm-kv"><span>Square’s card fees</span><b>−${gbp(b.fees)}</b></div>
-            <div class="pm-kv"><span>Expenses</span><b>−${gbp(b.expenses)}</b></div>
+            <div class="pm-kv"><span>Square’s card fees</span><b>${pmMinus(b.fees)}</b></div>
+            <div class="pm-kv"><span>Expenses</span><b>${pmMinus(b.expenses)}</b></div>
             <div class="pm-kv total"><span>${b.profit < 0 ? 'Loss' : 'Profit'}</span><b>${gbp(b.profit)}</b></div></div>
         <div class="pm-dcap">Expenses</div>
         <div class="pm-kvs pm-calc">${(b.by_category || []).map((c) => `<div class="pm-kv"><span>${escapeHtml(c.category)}</span><b>${gbp(c.amount)}</b></div>`).join('') || '<div class="pm-kv"><span>None logged</span><b>£0.00</b></div>'}
@@ -18974,6 +18950,13 @@ async function splitLoad() {
     pmRenderList();
     if (!__pmOpen && pmWide()) pmRenderDetail();
     try { if (settingsShowing('split')) renderSplitSettings(); } catch (e) {}
+    // Permissions' "Cottages & money" row states whose account the money lands in;
+    // its words are patched where they stand (the oaPeoplePatch rule) or the row
+    // keeps its placeholder until something else repaints the page.
+    try {
+        const sub = document.querySelector('#people-body .oa-r-split .ga-s');
+        if (sub && sub.textContent !== oaSplitSummary()) sub.textContent = oaSplitSummary();
+    } catch (e) {}
 }
 const pmSplitOn = () => !!(__split && __split.on);
 // 'paid' (only what has been sent to them), 'holder' (the account's side) or 'all'.
@@ -19101,7 +19084,7 @@ function pmSplitBooksHtml() {
     let h = `<div class="pm-capline"><span>Your cottages</span><span class="pm-capn">This tax year</span></div><div class="pm-kvs pm-split">`;
     S.mine.forEach((c) => { h += row(pmDot(c.k) + escapeHtml(c.name), 'After card fees', gbp(c.net), { fig: 'n-' + c.k }); });
     if (Math.abs(S.other || 0) > 0.005) h += row('Not tied to a cottage', 'After card fees', gbp(S.other));
-    h += row('Your costs', 'The expenses you’ve recorded', '−' + gbp(S.costs || 0));
+    h += row('Your costs', 'The expenses you’ve recorded', pmMinus(S.costs || 0));
     h += row('Your profit', '', gbp(S.profit), { total: true, fig: 'profit' });
     h += `<button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button></div>`;
     pmPaidPeople().forEach((p) => {
@@ -19111,7 +19094,7 @@ function pmSplitBooksHtml() {
         h += `<div class="pm-capline"><span>${escapeHtml(pmCotNames(p))} ${cots.length > 1 ? 'are' : 'is'} ${escapeHtml(p.first)}’s</span></div><div class="pm-kvs pm-split">`;
         h += row(cots.length === 1 ? pmDot(cots[0].k) + escapeHtml(cots[0].name) : 'Their cottages', 'Paid by guests, after card fees', gbp(p.share), { fig: 'ps-' + p.id });
         if (linked) {
-            h += row(`Paid to ${escapeHtml(p.first)}`, `${n} payment${n === 1 ? '' : 's'}`, '−' + gbp(p.sent));
+            h += row(`Paid to ${escapeHtml(p.first)}`, `${n} payment${n === 1 ? '' : 's'}`, pmMinus(p.sent));
             h += row(`Still to pay ${escapeHtml(p.first)}`, '', gbp(Math.max(0, p.owed)), p.owed > 0.005 ? { total: true, act: 'split-pay', arg: p.id } : { total: true });
         }
         h += '</div>';
@@ -22511,12 +22494,12 @@ function prLearnedHtml(pk) {
     const nm = (propertyMeta[pk] || {}).name || pk;
     const cap = `What it has learned about ${escapeHtml(nm)}’s guests`;
     // Read-only, so it folds under its own row (the one look's simpler format).
-    if (L.count < 3) return `<section class="rv-sec">${bhubFoldGrp('prf-learn', cap, '', '', `<div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div>`)}</section>`;
+    if (L.count < 3) return bhubFoldGrp('prf-learn', cap, '', '', `<div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div>`);
     const bar = (row) => {
         const v = row.avg;
         return `<div class="pr-lrow"><span class="pr-lk">${escapeHtml(row.k)}</span><span class="pr-lbar"><span class="${v != null && v < 3 ? 'is-short' : ''}" style="width:${v != null ? Math.min(100, Math.round((v / 7) * 100)) : 0}%"></span></span><span class="pr-lv">${v != null ? v.toFixed(1) : '—'}</span></div>`;
     };
-    return `<section class="rv-sec">${bhubFoldGrp(
+    return bhubFoldGrp(
         'prf-learn',
         cap,
         '',
@@ -22525,7 +22508,7 @@ function prLearnedHtml(pk) {
             <span class="pr-lt">Nights per stay, by when they book</span>${L.lead.map(bar).join('')}
             <span class="pr-lt">Nights per stay, by time of year</span>${L.season.map(bar).join('')}
         </div>`,
-    )}</section>`;
+    );
 }
 function prCostsPageHtml(pk, keysHtml) {
     const c = prCosts(), K = prKept(pk), F = prFleetShare();
@@ -22691,8 +22674,7 @@ function renderPricing() {
             : prSearchCount(pk) || liveProfit.length ? '' : `<div class="acr-well pr-calm" id="pr-calm"${__prSugg ? '' : ' hidden'}><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
             <div id="pr-search-ideas">${prSearchIdeasHtml(pk)}</div>
         </section>
-        ${prLearnedHtml(pk)}
-        ${prRadarHtml()}
+        <section class="rv-sec">${prLearnedHtml(pk)}${prRadarHtml()}</section>
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
             <div class="acr-well rv-well">
@@ -22773,7 +22755,7 @@ function prRadarHtml() {
     if (!sig.searches60 && !weeks.length) return '';
     const max = Math.max(1, ...weeks.map((w) => w.count));
     // Read-only, so it folds under its own row.
-    return `<section class="rv-sec">${bhubFoldGrp('prf-radar', 'What guests searched for · last 60 days', '', '', `
+    return `${bhubFoldGrp('prf-radar', 'What guests searched for · last 60 days', '', '', `
         <div class="pr-radar">
             <div class="pr-rnums"><span><b>${sig.searches60 || 0}</b>search${sig.searches60 === 1 ? '' : 'es'}</span>${sig.noResult60 ? `<span class="is-miss"><b>${sig.noResult60}</b>found nothing free</span>` : ''}</div>
             ${weeks.map((w) => {
@@ -22786,7 +22768,7 @@ function prRadarHtml() {
                 </button>`;
             }).join('')}
             <div class="pr-rkey"><span><i></i>searched</span><span><i class="is-miss"></i>nothing free</span></div>
-        </div>`)}</section>`;
+        </div>`)}`;
 }
 // A searched week → that week on the calendar (its first free night, if any).
 function prRadarWeek(iso) {
@@ -22994,7 +22976,7 @@ function chbDutiesAll() {
                 label: `Rotate ${pname(pk)}’s key safe`,
                 sub: d0.dep
                     ? `${d0.dep.name} leaves at ${d0.dep.out} — rotate once they’ve gone; ${next.name || 'the next guest'} arrives ${when}`
-                    : `${next.name || 'The next guest'} arrives ${when} — their code isn’t on the safe yet`,
+                    : `For ${next.name || 'the next guest'}, arriving ${when}`,
                 act: 'Rotate', go: chbAttrs('openKeysafe'),
                 board: 'today', scope: 'bookings',
                 run: () => { closeCmdK(); openKeysafe(); },
@@ -23372,13 +23354,21 @@ function chbDutyRestore(key) {
 // goes. The click a swipe ends in — on THAT row — is swallowed, or dismissing would also open it.
 let __nySwipe = null;
 let __nySwallow = null;
+// A refresh that lands mid-drag waits for the finger: rebuilding the strip would pull the
+// row out from under it. The gesture's end runs the render it deferred.
+let __nyRenderLater = false;
+function nyRenderDeferred() {
+    if (!__nyRenderLater) return;
+    __nyRenderLater = false;
+    try { renderNeedsYou(); } catch (e) {}
+}
 function nySwipeInit(list) {
     if (/** @type {any} */ (list).__nySwipe) return;
     /** @type {any} */ (list).__nySwipe = true;
     list.addEventListener('pointerdown', nySwipeDown);
     list.addEventListener('pointermove', nySwipeMove);
     list.addEventListener('pointerup', nySwipeUp);
-    list.addEventListener('pointercancel', () => { if (__nySwipe && __nySwipe.on) nySwipeBack(__nySwipe.row, __nySwipe.dx); __nySwipe = null; });
+    list.addEventListener('pointercancel', () => { if (__nySwipe && __nySwipe.on) nySwipeBack(__nySwipe.row, __nySwipe.dx); __nySwipe = null; nyRenderDeferred(); });
     list.addEventListener('click', (e) => {
         const r = e.target instanceof Element ? e.target.closest('.ny-row') : null;
         if (__nySwallow && r && r.getAttribute('data-nykey') === __nySwallow.key && Date.now() - __nySwallow.at < 600) { e.stopImmediatePropagation(); e.preventDefault(); }
@@ -23401,6 +23391,9 @@ function nySwipeDown(e) {
 function nySwipeMove(e) {
     const g = __nySwipe;
     if (!g || e.pointerId !== g.id) return;
+    // The strip re-rendered under the finger (a data refresh): that row is gone, so the
+    // gesture stands down rather than throwing on every move.
+    if (!g.row.isConnected) { __nySwipe = null; return; }
     const dx = e.clientX - g.x0;
     const dy = e.clientY - g.y0;
     if (!g.on) {
@@ -23422,11 +23415,11 @@ function nySwipeUp(e) {
     const g = __nySwipe;
     if (!g || e.pointerId !== g.id) return;
     __nySwipe = null;
-    if (!g.on) return;
+    if (!g.on || !g.row.isConnected) { nyRenderDeferred(); return; }
     __nySwallow = { key: g.row.getAttribute('data-nykey'), at: Date.now() };
     const v = g.dx / Math.max(1, e.timeStamp - g.t0);
-    if (-g.dx >= Math.max(80, g.w * 0.35) || (v < -0.5 && -g.dx > 40)) nyDismissRow(g.row, g.dx);
-    else nySwipeBack(g.row, g.dx);
+    if (-g.dx >= Math.max(80, g.w * 0.35) || (v < -0.5 && -g.dx > 40)) { __nyRenderLater = false; nyDismissRow(g.row, g.dx); }
+    else { nySwipeBack(g.row, g.dx); nyRenderDeferred(); }
 }
 function nyCalm() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -23445,6 +23438,7 @@ function nySwipeBack(row, from) {
 }
 function nyReveal(row, make, w) {
     const list = row.parentNode;
+    if (!list) return;
     let el = list.querySelector('.ny-reveal');
     if (make && !el) {
         el = document.createElement('div');
@@ -23461,7 +23455,7 @@ function nyDismissRow(row, dx) {
     // No longer a live duty (it was resolved while the row sat there): show the truth, don't bounce.
     if (!chbDutyDismiss(row.getAttribute('data-nykey'))) { renderNeedsYou(); return; }
     const done = () => { try { renderNeedsYou(); } catch (e) {} };
-    if (nyCalm() || !row.animate) { done(); return; }
+    if (nyCalm() || !row.animate || !row.parentNode) { done(); return; }
     // Slide out, then close the gap.
     row.classList.remove('ny-drag');
     row.style.pointerEvents = 'none';
@@ -23545,6 +23539,7 @@ function needsYouExpand() {
 /** @type {Set<string>|null} */
 let __nySeen = null; // the to-dos on screen at the last render; null before the first
 function renderNeedsYou() {
+    if (__nySwipe && __nySwipe.on && __nySwipe.row.isConnected) { __nyRenderLater = true; return; }
     try { chbFrameSync(); } catch (e) {}
     try { refreshInboxBadge(); } catch (e) {}
     const wrap = document.getElementById('needs-you');
@@ -24427,11 +24422,13 @@ function keysafeOpen(pk) {
     const e = escapeHtml;
     const n = v.next;
     const code = v.rec.code || '';
+    // A guest staying on a code never recorded for them sees NOTHING (the
+    // server reveals only a code set for their booking), not "now".
     const see = !n
         ? 'Nobody — no one is booked'
         : n.ota
           ? 'Share it in your ' + n.name.replace(' guest', '') + ' message thread — platform guests don’t see this site'
-          : v.needs
+          : !keysafeSetFor(v.rec, n)
             ? 'Nothing yet — the code appears only after you confirm the safe is set'
             : v.seesNow ? 'Now, on their booking page' : 'From ' + v.revealFrom + ', on their booking page';
     const facts = (code && v.rec.setAt ? '<dt>Set</dt><dd>' + e(fmtDate(String(v.rec.setAt).slice(0, 10)) + (v.forGuest ? ' for ' + v.forGuest : '')) + '</dd>' : '')
@@ -24835,7 +24832,7 @@ function odsDutiesHtml(rows) {
         out.push({
             sev: r.ci === today ? 'ny-danger' : '',
             l: 'Rotate ' + (r.cot || r.pk) + '’s key safe',
-            s: (r.nm || 'The next guest') + ' arrives ' + (r.ci === today ? 'today' : 'tomorrow') + ' — their code isn’t on the safe yet',
+            s: 'For ' + (r.nm || 'the next guest') + ', arriving ' + (r.ci === today ? 'today' : 'tomorrow'),
             act: chbAttrs('odsKeysafe', String(r.pk)),
         });
     });
@@ -25912,54 +25909,579 @@ function applyMsgFilter() {
     const card = /** @type {HTMLElement|null} */ (list.querySelector('.msg-threads'));
     if (card) card.style.display = shown === 0 ? 'none' : '';
 }
-// Owner-editable instant answers for the chat quick chips.
-function renderChatAnswersEditor() {
-    const host = document.getElementById('chat-answers-editor');
-    if (!host) return;
-    host.innerHTML =
-        '<div class="acr-cap">Quick-question chips</div>' +
-        '' +
-        '<div class="acr-well">' +
-        CHAT_FAQ_ORDER.map((which) => {
-            const f = CHAT_FAQ[which];
-            const val =
-                siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
-            return (
-                `<div class="acw-frow"><label>\u201c${escapeHtml(f.q)}\u201d</label>` +
-                `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContentField', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
-            );
-        }).join('') +
-        '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:var(--fs-caption);">✓ Saves by itself as you edit</span></div></div>';
+// ---- GUEST CHAT (Manage → Guest chat; the approved demo, built) ----
+// The page the owner runs the chat from. The title's pill says where it stands;
+// "See it as a guest" shows the real chat with these words in it; the questions
+// guests asked that nothing answered are answered here (they used to wait on
+// Search learning); the away reply reads as sentences rather than two bare
+// hours; every instant answer is a row that says whether it is the standard
+// words or the owner's, and the owner can add their own or take one off the
+// buttons. The chat-away-* keys are INTERNAL, so they are read from
+// adminPrivateContent FIRST — the anonymous boot GET never carries them, and
+// reading siteContent alone painted the switch OFF over a real ON (the
+// bacs-details rule).
+const GC_AWAY_STD = 'Thanks for your message — we’re not at the desk right now, but we’ll reply as soon as we can, usually within a few hours.';
+const GC_REPLY = [['hour', 'Within an hour'], ['hours', 'Within a few hours'], ['day', 'The same day'], ['next', 'By the next day']];
+function gcVal(k) {
+    const apc = typeof adminPrivateContent === 'object' && adminPrivateContent ? adminPrivateContent : {};
+    const v = apc[k] !== undefined ? apc[k] : siteContent[k];
+    return v == null ? '' : v;
 }
-// Away / auto-reply settings: enable, message, and optional office hours.
-function renderChatAwayEditor() {
-    const host = document.getElementById('chat-away-editor');
+// Saves, then mirrors into BOTH stores (the chat reads siteContent, this page
+// reads adminPrivateContent first). saveContent alerts and rethrows on a refusal,
+// so a rejected value never reaches either mirror.
+async function gcSave(k, v) {
+    await saveContent(k, v);
+    siteContent[k] = v;
+    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent[k] = v;
+}
+const gcHm = (h) => (+h % 12 || 12) + (+h < 12 ? 'am' : 'pm');
+function gcHours() {
+    const f = String(gcVal('chat-away-from')), t = String(gcVal('chat-away-to'));
+    return f !== '' && t !== '' && f !== t ? { from: +f, to: +t } : null;
+}
+// Who gets the reply, in the server's own terms (messages.php replies outside
+// [from, to), wrapping midnight; anything less than two different hours is any time).
+function gcWho() {
+    const h = gcHours();
+    return h
+        ? `Guests who write between <b>${gcHm(h.to)}</b> and <b>${gcHm(h.from)}</b> get it straight away.`
+        : 'Everyone who writes gets it straight away. Set the hours you’re around to reply only when you’re not.';
+}
+// The owner's own answers and which answers are buttons ('chat-chips', public:
+// the chat reads it). Read through app.js's sanitiser, written back whole.
+function gcChips() {
+    const c = chatChipsCfg();
+    return { hide: c.hide.slice(), extra: c.extra.map((x) => Object.assign({}, x)) };
+}
+async function gcChipsSave(c) {
+    await gcSave('chat-chips', { hide: c.hide, extra: c.extra.map((x) => ({ id: x.id, q: x.q, chip: x.chip, a: x.a, btn: x.btn, prop: x.prop })) });
+}
+function gcStd(id) {
+    const f = CHAT_FAQ[id];
+    if (!f) return '';
+    try {
+        return (f.live && f.live()) || f.def;
+    } catch (e) {
+        return f.def;
+    }
+}
+function gcPill() {
+    if (!settingsShowing('chat-away')) return;
+    const n = slGuestQuestions().length;
+    const on = gcVal('chat-away-enabled') === '1';
+    headPillSet(
+        'settings-panel-cap',
+        n
+            ? headPill('warn', n + ' to answer', { label: n + (n === 1 ? ' question guests asked is' : ' questions guests asked are') + ' waiting for an answer' })
+            : on ? headPill('ok', 'Away reply on') : headPill('unk', 'Away reply off'),
+    );
+}
+// A small "Saved" beside the label of the field that changed, then gone.
+function gcSaved(id) {
+    const el = document.getElementById('gc-saved-' + id);
+    if (!el) return;
+    el.textContent = 'Saved';
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+    clearTimeout(el.__t);
+    el.__t = setTimeout(() => el.classList.remove('on'), 1800);
+}
+function gcGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 2 + 'px';
+}
+// ONE delegated listener grows every box. It cannot ride a data-act-input: an
+// element carries ONE data-pass, and the box's change handler needs its VALUE —
+// with both, the first attribute won and the save stored "[object
+// HTMLTextAreaElement]" (ui-test-guestchat §5 found it).
+document.addEventListener('input', (ev) => {
+    const t = /** @type {HTMLElement|null} */ (ev.target instanceof HTMLElement ? ev.target : null);
+    if (t && t.classList.contains('gc-grow')) gcGrow(t);
+});
+function gcAskedRow(r, i) {
+    const e = escapeHtml;
+    const name = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+    const n = r.n || 1;
+    const sub = 'Asked ' + (n === 1 ? 'once' : n + ' times') + (name ? ' · ' + e(name) : '') + (r.at ? ' · ' + e(relTime(String(r.at).length === 10 ? r.at + 'T12:00:00' : r.at)) : '');
+    const props = Object.keys(propertyMeta || {}).filter((k) => !propertyMeta[k].archived);
+    const forSel =
+        `<select class="acw-pill" id="gc-for-${i}" aria-label="Which cottage this answer is for">` +
+        `<option value=""${r.prop ? '' : ' selected'}>Every cottage</option>` +
+        props.map((k) => `<option value="${e(k)}"${r.prop === k ? ' selected' : ''}>${e(propertyMeta[k].name || k)}</option>`).join('') +
+        `</select>`;
+    return bhubFoldGrp(
+        'gca-' + i,
+        '“' + e(r.q) + '”',
+        sub,
+        stCap('warn', 'No answer'),
+        `<div class="acw-frow"><label for="gc-asked-${i}">Your answer</label><textarea id="gc-asked-${i}" class="input-glass gc-grow" rows="2" maxlength="1500" placeholder="What the chat should say when someone asks this"></textarea></div>` +
+            `<div class="acr-row"><span class="acr-lbl">For</span>${forSel}</div>` +
+            `<div class="acw-acts gc-acts"><button type="button" class="u-btn1" ${chbAttrs('gcAskedSave', i)}>Save the answer</button><button type="button" class="u-btn2" ${chbAttrs('gcAskedDismiss', i)}>Not now</button></div>`,
+        '',
+        'gc-asked',
+    );
+}
+function gcAnsRow(x) {
+    const e = escapeHtml;
+    const mine = x.std && String(gcVal(CHAT_FAQ[x.id].key) || '').trim() !== '';
+    // The page reads the owner's words through gcVal (private map first), so a
+    // stale boot copy can never show the standard text under "Your words".
+    if (x.std) x = Object.assign({}, x, { a: mine ? String(gcVal(CHAT_FAQ[x.id].key)).trim() : gcStd(x.id) });
+    // ONE capsule, so the label keeps its line: off the buttons says so first.
+    const caps = stCap('unk', !x.btn ? 'Typed only' : x.std ? (mine ? 'Your words' : 'Standard') : 'Added');
+    const cot = x.prop && propertyMeta[x.prop] ? propertyMeta[x.prop].name : '';
+    const sub = (cot ? cot + ' · ' : '') + x.a;
+    const id = e(x.id);
+    const extraFields = x.std
+        ? ''
+        : `<div class="acw-frow"><label for="gc-q-${id}">Question</label><input id="gc-q-${id}" class="input-glass" maxlength="200" value="${e(x.q)}" ${chbChange('gcExtraField', x.id, 'q', CHB_VALUE)}></div>` +
+          `<div class="acw-frow"><label for="gc-c-${id}">Button</label><input id="gc-c-${id}" class="input-glass" maxlength="28" placeholder="${e(chatChipLabel(x))}" value="${e(x.chip)}" ${chbChange('gcExtraField', x.id, 'chip', CHB_VALUE)}></div>`;
+    const foot = x.std
+        ? `<button type="button" class="gc-link" ${chbAttrs('gcAnsStd', x.id)}${mine ? '' : ' hidden'}>Use the standard answer</button><span class="gc-note"${mine ? ' hidden' : ''}>${x.id === 'checkin' ? 'The standard follows each cottage’s own times.' : 'You haven’t changed this one.'}</span>`
+        : `<span class="gc-note">${cot ? 'Answered on ' + e(cot) + '’s page only.' : 'Answered on every cottage.'}</span><button type="button" class="gc-link is-danger" ${chbAttrs('gcExtraRemove', x.id)}>Remove</button>`;
+    return bhubFoldGrp(
+        'gcq-' + x.id,
+        e(chatChipLabel(x)),
+        e(sub),
+        caps,
+        extraFields +
+            `<div class="acw-frow"><label for="gc-a-${id}">Answer <span class="gc-saved" id="gc-saved-${id}" aria-live="polite"></span></label><textarea id="gc-a-${id}" class="input-glass gc-grow" rows="2" maxlength="1500" ${chbChange('gcAnswer', x.id, CHB_VALUE)}>${e(x.a)}</textarea><div class="gc-foot">${foot}</div></div>` +
+            `<div class="acr-row"><span class="acr-lbl">Show as a button<small>Typed questions are answered either way</small></span><span class="chb-switch"><input type="checkbox"${x.btn ? ' checked' : ''} ${chbChange('gcBtn', x.id, CHB_CHECKED)} aria-label="Show “${e(chatChipLabel(x))}” as a button"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`,
+        ` data-gcq="${id}"`,
+        'gc-ans',
+    );
+}
+function renderGuestChat() {
+    const host = document.getElementById('gc-page');
     if (!host) return;
-    const sc = (k) => (siteContent[k] != null ? String(siteContent[k]) : '');
-    const enabled = sc('chat-away-enabled') === '1';
-    const msgVal = sc('chat-away-msg');
-    const from = sc('chat-away-from');
-    const to = sc('chat-away-to');
-    const hourOpts = (sel) => {
-        let o = `<option value=""${sel === '' ? ' selected' : ''}>—</option>`;
-        for (let h = 0; h < 24; h++) {
-            const hh = String(h).padStart(2, '0');
-            o += `<option value="${hh}"${sel === hh ? ' selected' : ''}>${hh}:00</option>`;
-        }
-        return o;
-    };
+    const e = escapeHtml;
+    const on = gcVal('chat-away-enabled') === '1';
+    const h = { from: String(gcVal('chat-away-from')), to: String(gcVal('chat-away-to')) };
+    const msg = String(gcVal('chat-away-msg') || '').trim() || GC_AWAY_STD;
+    const asked = slGuestQuestions();
+    const hrs = gcHours();
+    const reply = String(gcVal('chat-reply-time') || 'hours');
+    const replyLbl = (GC_REPLY.find((r) => r[0] === reply) || GC_REPLY[1])[1];
+    const hostName = String(gcVal('host-name') || '').trim() || 'the owner';
+    // The cottages' own written questions (the on-device matcher reads these too).
+    const cots = Object.keys(propertyMeta || {})
+        .filter((k) => !propertyMeta[k].archived)
+        .map((k) => { const f = gcVal('faqs-' + k); return { k, name: propertyMeta[k].name || k, n: Array.isArray(f) ? f.length : 0 }; });
+    const cotTotal = cots.reduce((a, c) => a + c.n, 0);
+    const list = chatQuickList(true);
     host.innerHTML =
-        '<div class="acr-cap">Away reply</div>' +
-        '' +
-        `<div class="acr-well">
-            <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
-            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message — we\u2019re not at the desk right now, but we\u2019ll reply as soon as we can, usually within a few hours." ${chbChange('saveContentField', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
-            <div class="acr-row"><span class="acr-lbl">Only outside these hours</span>
-                <span style="display:flex;gap:6px;align-items:center;">
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContentField', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContentField', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
-                </span></div>
-        </div>`;
+        `<div class="acr-cap">Preview</div><div class="ga-group gc-prev">${gaRow({ ic: 'chat', t: 'See it as a guest', s: 'The chat, with your words in it', act: 'data-act="gcPreview"', chev: true })}</div>` +
+        (asked.length ? `<div class="acr-cap">Guests asked</div><div class="gc-run">${asked.map(gcAskedRow).join('')}</div>` : '') +
+        `<div class="acr-cap">When you’re away</div>` +
+        `<div class="acr-well gc-away">` +
+        `<div class="acr-row"><span class="acr-lbl">Reply when I’m away<small>An automatic reply, then they wait for you</small></span><span class="chb-switch"><input type="checkbox" id="gc-away-on"${on ? ' checked' : ''} ${chbChange('gcAway', CHB_CHECKED)} aria-label="Reply when I’m away"><span class="chb-switch-track" aria-hidden="true"></span></span></div>` +
+        `<div class="gc-awayf" id="gc-awayf"${on ? '' : ' hidden'}><div class="gc-awayin">` +
+        `<button type="button" class="acr-row gc-rowbtn" data-act="gcHoursPick"><span class="acr-lbl">You’re around</span><span class="gc-v" id="gc-hours-v">${hrs ? gcHm(hrs.from) + ' – ' + gcHm(hrs.to) : 'Not set'}</span>${BHUB_CHEV}</button>` +
+        `<p class="gc-who" id="gc-who">${gcWho()}</p>` +
+        `<div class="acw-frow"><label for="gc-a-away">Your reply <span class="gc-saved" id="gc-saved-away" aria-live="polite"></span></label><textarea id="gc-a-away" class="input-glass gc-grow" rows="2" maxlength="1000" ${chbChange('gcAwayMsg', CHB_VALUE)}>${e(msg)}</textarea>` +
+        `<div class="gc-foot"><button type="button" class="gc-link" id="gc-away-std" data-act="gcAwayStd"${msg === GC_AWAY_STD ? ' hidden' : ''}>Use the standard words</button><span class="gc-note">Sent at most once every 4 hours in a conversation, and emailed to them too.</span></div></div>` +
+        `</div></div></div>` +
+        `<div class="acr-cap">Instant answers</div>` +
+        `<div class="gc-run">${list.map(gcAnsRow).join('')}<div class="u-win u-join">${uAddRow('Add a question', 'data-act="gcAddQ"', true)}</div>` +
+        bhubFoldGrp(
+            'gc-cots',
+            'Your cottages’ own questions',
+            'Typed questions are answered from these too',
+            stCap('unk', String(cotTotal)),
+            cots.map((c) => `<button type="button" class="acr-row gc-cot" ${chbAttrs('settingsOpenAccomSec', c.k, 'faq')}><span class="cot-dot" style="background:var(--prop-${e(c.k)}, var(--accent))" aria-hidden="true"></span><span class="acr-lbl">${e(c.name)}</span><span class="gc-n">${c.n}</span>${BHUB_CHEV}</button>`).join(''),
+            '',
+            'gc-cotsgrp',
+        ) +
+        `</div>` +
+        `<div class="acr-cap">The welcome</div>` +
+        `<div class="acr-well">` +
+        `<button type="button" class="acr-row gc-rowbtn" data-act="gcReplyPick"><span class="acr-lbl">Reply time<small>Shown under your name in the chat</small></span><span class="gc-v" id="gc-reply-v">${e(replyLbl)}</span>${BHUB_CHEV}</button>` +
+        `<button type="button" class="acr-row gc-rowbtn" ${chbAttrs('settingsOpen', 'host')}><span class="acr-lbl">Signed by<small>From your host profile</small></span><span class="gc-v">${e(String(hostName).replace(/^[a-z]/, (c) => c.toUpperCase()))}</span>${BHUB_CHEV}</button>` +
+        `</div>`;
+    host.querySelectorAll('textarea.gc-grow').forEach((t) => gcGrow(/** @type {HTMLElement} */ (t)));
+    gcPill();
+}
+// Kept by name: the search sheet and older routes render the section through these.
+function renderChatAwayEditor() {
+    renderGuestChat();
+}
+function renderChatAnswersEditor() {}
+async function gcAway(on) {
+    const fold = document.getElementById('gc-awayf');
+    if (fold) fold.hidden = !on;
+    try {
+        await gcSave('chat-away-enabled', on ? '1' : '');
+        toast(on ? 'Away reply on' : 'Away reply off — guests wait for you');
+    } catch (e) {
+        const sw = /** @type {HTMLInputElement|null} */ (document.getElementById('gc-away-on'));
+        if (sw) sw.checked = !on;
+        if (fold) fold.hidden = on;
+    }
+    gcPill();
+}
+// Both ends or neither (the Quiet hours rule): half a window means "any time" to
+// the server, so the form says so rather than storing a half it would ignore.
+async function gcHoursPick() {
+    const cur = gcHours();
+    const opts = [{ value: '', label: 'Not set' }].concat(Array.from({ length: 24 }, (_, i) => ({ value: String(i).padStart(2, '0'), label: gcHm(i) })));
+    const fields = [
+        { id: 'from', label: 'From', type: 'select', options: opts, value: cur ? String(cur.from).padStart(2, '0') : '' },
+        { id: 'to', label: 'Until', type: 'select', options: opts, value: cur ? String(cur.to).padStart(2, '0') : '' },
+    ];
+    let msg = 'The reply goes to guests who write outside these hours. Leave both unset to reply at any time.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'You’re around', okLabel: 'Save' });
+        if (!v) return;
+        const f = String(v.from || ''), t = String(v.to || '');
+        fields[0].value = f;
+        fields[1].value = t;
+        if ((f === '') !== (t === '')) {
+            msg = 'Set both times, or neither.';
+            continue;
+        }
+        if (f !== '' && f === t) {
+            msg = 'Choose two different times.';
+            continue;
+        }
+        try {
+            await gcSave('chat-away-from', f);
+            await gcSave('chat-away-to', t);
+        } catch (e) {
+            continue;
+        }
+        break;
+    }
+    const h = gcHours();
+    const val = document.getElementById('gc-hours-v');
+    if (val) val.textContent = h ? gcHm(h.from) + ' – ' + gcHm(h.to) : 'Not set';
+    const who = document.getElementById('gc-who');
+    if (who) {
+        who.innerHTML = gcWho();
+        who.classList.remove('bk-verdict-settle');
+        void who.offsetWidth;
+        who.classList.add('bk-verdict-settle');
+    }
+    toast(h ? 'Saved — you’re around ' + gcHm(h.from) + ' to ' + gcHm(h.to) : 'Saved — the reply goes at any time');
+}
+async function gcAwayMsg(v) {
+    const t = String(v || '').trim();
+    // An empty box means the standard words — the server sends them then too.
+    const val = !t || t === GC_AWAY_STD ? '' : t;
+    try {
+        await gcSave('chat-away-msg', val);
+    } catch (e) {
+        return;
+    }
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-away'));
+    if (box && !t) {
+        box.value = GC_AWAY_STD;
+        gcGrow(box);
+    }
+    const std = document.getElementById('gc-away-std');
+    if (std) std.hidden = !val;
+    gcSaved('away');
+}
+async function gcAwayStd() {
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-away'));
+    if (box) box.value = '';
+    await gcAwayMsg('');
+}
+// One standard answer's own words. Typing the standard words back (or clearing
+// the box) is the standard again, never a copy of it that stops following it.
+async function gcAnswer(id, v) {
+    const t = String(v || '').trim();
+    if (CHAT_FAQ[id]) {
+        const val = !t || t === gcStd(id) ? '' : t;
+        try {
+            await gcSave(CHAT_FAQ[id].key, val);
+        } catch (e) {
+            return;
+        }
+        if (!t) {
+            const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-' + id));
+            if (box) {
+                box.value = gcStd(id);
+                gcGrow(box);
+            }
+        }
+    } else {
+        if (!t) {
+            toast('An answer needs some words — use Remove to take it away.');
+            renderGuestChat();
+            return;
+        }
+        const c = gcChips();
+        const x = c.extra.find((r) => r.id === id);
+        if (!x) return;
+        x.a = t.slice(0, 1500);
+        try {
+            await gcChipsSave(c);
+        } catch (e) {
+            return;
+        }
+    }
+    gcRowSync(id);
+    gcSaved(id);
+}
+async function gcAnsStd(id) {
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-a-' + id));
+    if (box) box.value = '';
+    await gcAnswer(id, '');
+}
+async function gcExtraField(id, field, v) {
+    const c = gcChips();
+    const x = c.extra.find((r) => r.id === id);
+    if (!x) return;
+    const t = String(v || '').trim();
+    if (field === 'q') {
+        if (!t) {
+            toast('The question needs some words.');
+            renderGuestChat();
+            return;
+        }
+        x.q = t.slice(0, 200);
+    } else x.chip = t.slice(0, 28);
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    gcRowSync(id);
+}
+// Repaint ONE row's summary (label, sub, capsules) without touching its open
+// fold — a re-render would close it under the owner's hands.
+function gcRowSync(id) {
+    const x = chatQuickList(true).find((r) => r.id === id);
+    const grp = document.querySelector(`[data-gcq="${CSS.escape(id)}"]`);
+    if (!x || !grp) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = gcAnsRow(x);
+    const fresh = tmp.querySelector('.bhub-fold-row');
+    const row = grp.querySelector('.bhub-fold-row');
+    if (fresh && row) {
+        const lbl = row.querySelector('.bhub-fold-lbl'), right = row.querySelector('.bhub-fold-right');
+        const fl = fresh.querySelector('.bhub-fold-lbl'), fr = fresh.querySelector('.bhub-fold-right');
+        if (lbl && fl) lbl.innerHTML = fl.innerHTML;
+        if (right && fr && right.innerHTML !== fr.innerHTML) {
+            right.innerHTML = fr.innerHTML;
+            const cap = right.querySelector('.st-cap');
+            if (cap) cap.classList.add('bk-verdict-settle');
+        }
+    }
+    const std = grp.querySelector('.gc-foot .gc-link:not(.is-danger)');
+    const note = grp.querySelector('.gc-foot .gc-note');
+    if (x.std && std && note) {
+        const mine = String(gcVal(CHAT_FAQ[id].key) || '').trim() !== '';
+        /** @type {HTMLElement} */ (std).hidden = !mine;
+        /** @type {HTMLElement} */ (note).hidden = mine;
+    }
+}
+async function gcBtn(id, on) {
+    const c = gcChips();
+    if (CHAT_FAQ[id]) {
+        c.hide = c.hide.filter((k) => k !== id);
+        if (!on) c.hide.push(id);
+    } else {
+        const x = c.extra.find((r) => r.id === id);
+        if (!x) return;
+        x.btn = !!on;
+    }
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        renderGuestChat();
+        return;
+    }
+    const x = chatQuickList(true).find((r) => r.id === id);
+    toast(on ? '“' + chatChipLabel(x || { q: '' }) + '” is a button on the chat' : '“' + chatChipLabel(x || { q: '' }) + '” is off the buttons — typed questions still get it');
+    gcRowSync(id);
+}
+const gcNewId = () => Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, '') || 'q' + Date.now().toString(36);
+async function gcAddQ() {
+    const fields = [
+        { id: 'chip', label: 'Button', type: 'text', def: '', placeholder: 'Short, like “Dogs?”', maxlength: 28 },
+        { id: 'a', label: 'Answer', type: 'textarea', def: '', placeholder: 'What the chat says when they tap it', rows: 4 },
+    ];
+    let msg = 'A button on the chat, and an instant answer to anyone who types the question.';
+    for (;;) {
+        const v = await glassForm(msg, fields, { title: 'Add a question', okLabel: 'Add' });
+        if (!v) return;
+        const chip = String(v.chip || '').trim(), a = String(v.a || '').trim();
+        fields[0].def = chip;
+        fields[1].def = a;
+        if (!chip || !a) {
+            msg = chip ? 'Write the answer the chat should give.' : 'Give the button a few words.';
+            continue;
+        }
+        const c = gcChips();
+        if (c.extra.length >= 40) {
+            glassAlert('That’s the most the chat can hold — remove one first.');
+            return;
+        }
+        c.extra.push({ id: gcNewId(), q: chip, chip: chip.slice(0, 28), a: a.slice(0, 1500), btn: true, prop: '' });
+        try {
+            await gcChipsSave(c);
+        } catch (e) {
+            continue;
+        }
+        toast('Added — “' + chip + '” is a button on the chat now');
+        renderGuestChat();
+        return;
+    }
+}
+async function gcExtraRemove(id) {
+    const c = gcChips();
+    const x = c.extra.find((r) => r.id === id);
+    if (!x) return;
+    if (!(await glassConfirm('Remove “' + chatChipLabel(x) + '”? The chat stops answering it.', 'Remove'))) return;
+    c.extra = c.extra.filter((r) => r.id !== id);
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    toast('Removed');
+    renderGuestChat();
+}
+// A question a guest asked becomes one of the chat's answers — typed-only (it was
+// never a button) and on the cottage it was asked about, or every cottage. It
+// lives with the other instant answers, so anyone who can run the chat can
+// answer it (a cottage's written FAQ needs the cottage-pages permission).
+async function gcAskedSave(i) {
+    const r = slGuestQuestions()[i];
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gc-asked-' + i));
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('gc-for-' + i));
+    const a = box ? box.value.trim() : '';
+    if (!r) return;
+    if (!a) {
+        if (box) box.focus();
+        toast('Write the answer first.');
+        return;
+    }
+    const prop = sel ? sel.value : '';
+    const c = gcChips();
+    if (c.extra.length >= 40) {
+        glassAlert('That’s the most the chat can hold — remove one first.');
+        return;
+    }
+    c.extra.push({ id: gcNewId(), q: String(r.q).slice(0, 200), chip: '', a: a.slice(0, 1500), btn: false, prop });
+    try {
+        await gcChipsSave(c);
+    } catch (e) {
+        return;
+    }
+    slGuestQuestionsSave(slGuestQuestions().filter((x) => x.q !== r.q));
+    const name = prop && propertyMeta[prop] ? propertyMeta[prop].name : '';
+    toast('Saved — the chat answers “' + r.q + '”' + (name ? ' about ' + name : '') + ' on the spot now');
+    renderGuestChat();
+}
+function gcAskedDismiss(i) {
+    const r = slGuestQuestions()[i];
+    if (!r) return;
+    slGuestQuestionsSave(slGuestQuestions().filter((x) => x.q !== r.q));
+    toast('Taken off the list');
+    renderGuestChat();
+}
+async function gcReplyPick() {
+    const cur = String(gcVal('chat-reply-time') || 'hours');
+    const v = await glassForm('Shown under your name when a guest opens the chat.', [{ id: 'r', label: 'You usually reply', type: 'select', options: GC_REPLY.map(([value, label]) => ({ value, label })), value: cur }], { title: 'Reply time', okLabel: 'Save' });
+    if (!v) return;
+    const k = GC_REPLY.some((r) => r[0] === v.r) ? v.r : 'hours';
+    try {
+        await gcSave('chat-reply-time', k);
+    } catch (e) {
+        return;
+    }
+    const el = document.getElementById('gc-reply-v');
+    if (el) el.textContent = (GC_REPLY.find((r) => r[0] === k) || GC_REPLY[1])[1];
+    toast('The chat now says “' + chatReplySay() + '”');
+}
+// ---- "See it as a guest": the real chat's parts, with these words in them ----
+// Built from the guest chat's own classes and composers (chatHelloHtml, the chip
+// list, chatChipLabel), so the preview cannot drift from what guests are shown.
+let __gcWhen = 'day';
+function gcPreviewEl() {
+    let el = document.getElementById('gc-sheet');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'gc-sheet';
+        el.className = 'modal-overlay chb-sheet';
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-modal', 'true');
+        el.setAttribute('aria-labelledby', 'gc-sheet-t');
+        el.addEventListener('click', (ev) => {
+            if (ev.target === el) gcPreviewClose();
+        });
+        document.body.appendChild(el);
+    }
+    return el;
+}
+function gcPreviewClose() {
+    const el = document.getElementById('gc-sheet');
+    if (el) chbCloseOverlay(el);
+}
+function gcPreview() {
+    const el = gcPreviewEl();
+    el.innerHTML =
+        `<div class="modal-box glass-panel gc-sheet-box">` +
+        `<div class="gc-sheet-head"><h2 id="gc-sheet-t">As a guest sees it</h2><button type="button" class="gc-sheet-x" aria-label="Close" data-act="gcPreviewClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>` +
+        `<div class="one-look gc-segwrap"><div class="u-seg" role="group" aria-label="When they write">` +
+        `<button type="button" ${chbAttrs('gcWhen', 'day')} aria-pressed="${__gcWhen === 'day'}">They write at 2pm</button>` +
+        `<button type="button" ${chbAttrs('gcWhen', 'night')} aria-pressed="${__gcWhen === 'night'}">At 11:40pm</button></div></div>` +
+        `<div class="gc-chat">` +
+        `<div class="gc-chat-head"><div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt=""></div><div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div></div>` +
+        `<div class="chat-thread gc-thread" id="gc-thread"></div>` +
+        `<div class="chat-quick gc-quick" id="gc-quick"></div>` +
+        `<div class="gc-chat-in" aria-hidden="true"><span>Ask a question…</span><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></i></div>` +
+        `</div></div>`;
+    el.classList.remove('closing');
+    el.classList.add('open');
+    gcPaint();
+    const x = /** @type {HTMLElement|null} */ (el.querySelector('.gc-sheet-x'));
+    if (x) x.focus();
+}
+function gcWhen(w) {
+    __gcWhen = w === 'night' ? 'night' : 'day';
+    document.querySelectorAll('#gc-sheet .u-seg > button').forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-args') === JSON.stringify([__gcWhen]))));
+    gcPaint();
+}
+function gcPaint() {
+    const th = document.getElementById('gc-thread');
+    const qk = document.getElementById('gc-quick');
+    if (!th || !qk) return;
+    th.innerHTML = chatHelloHtml();
+    qk.innerHTML =
+        `<button type="button" class="chat-chip chat-chip-avail" tabindex="-1">Check availability</button>` +
+        chatQuickList(true)
+            .filter((x) => x.btn && !x.prop)
+            .map((x) => `<button type="button" class="chat-chip" ${chbAttrs('gcChip', x.id)}>${escapeHtml(chatChipLabel(x))}</button>`)
+            .join('') +
+        `<button type="button" class="chat-chip chat-chip-issue" tabindex="-1">Report an issue</button>`;
+    if (__gcWhen !== 'night') return;
+    // 23:40 against the owner's hours, the server's rule exactly.
+    const h = gcHours();
+    const around = !!h && (h.from <= h.to ? 23 >= h.from && 23 < h.to : 23 >= h.from || 23 < h.to);
+    const on = gcVal('chat-away-enabled') === '1';
+    const msg = String(gcVal('chat-away-msg') || '').trim() || GC_AWAY_STD;
+    const host = String(gcVal('host-name') || '').trim() || 'The owner';
+    th.innerHTML =
+        `<div class="chat-daysep"><span>Today, 11:40pm</span></div>` +
+        `<div class="chat-msg me">Hi! Is Jollyboat free the weekend of the 24th?</div>` +
+        (on && !around
+            ? `<div class="chat-msg them gc-in">${escapeHtml(msg)}<div class="chat-meta">${escapeHtml(host)} · sent automatically</div></div>`
+            : `<p class="gc-wait gc-in">${on ? 'You’re around at this hour, so no automatic reply.' : 'The away reply is off, so nothing goes back.'} They wait for you.</p>`);
+}
+function gcChip(id) {
+    const x = chatQuickList(true).find((r) => r.id === id);
+    const th = document.getElementById('gc-thread');
+    if (!x || !th) return;
+    const hello = th.querySelector('.chat-hello');
+    if (hello) hello.remove();
+    th.insertAdjacentHTML('beforeend', `<div class="chat-msg me gc-in">${escapeHtml(x.q)}</div><div class="chat-bot gc-in">${escapeHtml(x.a).replace(/\n/g, '<br>')}<div class="cb-meta">Quick answer — type below to reach a person.</div></div>`);
+    th.scrollTop = th.scrollHeight;
 }
 function toggleArchivedMessages() {
     __msgShowArchived = !__msgShowArchived;
@@ -26354,7 +26876,7 @@ function accomSectionHtml(k, sec) {
                                   .join('')
                             : '<div class="acr-row"><span class="acr-lbl" style="color:var(--text-muted);font-weight:400;">No seasonal rates set for this cottage.</span></div>'
                     }
-                        <div class="acw-acts"><button class="btn-sm btn-edit" data-act="settingsOpen" data-arg="seasongrid">Edit seasonal rates — all cottages →</button></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" data-act="settingsOpen" data-arg="seasongrid">Open Seasonal rates</button></div>
                     </div>`;
         case 'arrival':
             return `
@@ -26542,14 +27064,13 @@ function exportAnalyticsCsv() {
         ['Generated', chbNow().toISOString()],
         [],
         ['Metric', 'Value'],
-        ['Page views', d.totalViews || 0],
-        ['Unique visitors', d.uniqueVisitors || 0],
-        ['New visitors', (d.visitorMix || {}).new || 0],
-        ['Returning visitors', (d.visitorMix || {}).returning || 0],
+        ['Pages viewed', d.totalViews || 0],
+        ['People (by device and connection)', d.uniqueVisitors || 0],
         ['Views this week', d.weekViews || 0],
         ['Unique this week', d.weekUnique || 0],
-        ['Enquiries', d.enquiries || 0],
-        ['Bookings', d.bookings || 0],
+        ['Enquiries sent from the site', (d.events || {}).enquiry_submit || 0],
+        ['Booked through the site', d.siteBookings || 0],
+        ['All bookings made (incl. added by hand)', d.bookings || 0],
         ['Searches', (d.searchDemand || {}).total || 0],
         ['Searches found nothing', (d.searchDemand || {}).noResult || 0],
         [],
@@ -26572,86 +27093,68 @@ function exportAnalyticsCsv() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Turn the analytics summary into a few ranked plain-English "so what" lines.
+// ---- ANALYTICS (Manage → Analytics; rebuilt in the one look) ----
+// Every figure says what it counts. The old page called page views "Visits",
+// showed two different enquiry counts on one screen (the enquiries table — which
+// loses every APPROVED enquiry, approval deletes the row — beside the site's own
+// "sent an enquiry" events), divided EVERY booking by visitors (a phone booking
+// the owner typed in counted as the site converting), and showed "Returning 0%"
+// from a fingerprint that changes with a phone's connection. Now: People and
+// Pages viewed, Enquiries sent (the event), Booked through the site (bookings
+// carrying the terms a guest accepted on the form), and no returning figure.
+const ANA_WIN = (n) => (n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days');
+const anaPct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+// Change against the equal window before, as words a person says.
+function anaDelta(cur, prev, win) {
+    if (!prev || prev <= 0) return '';
+    const p = Math.round(((cur - prev) / prev) * 100);
+    if (p === 0) return 'Same as the ' + win + ' before';
+    return (p > 0 ? '▲ ' : '▼ ') + Math.abs(p) + '% on the ' + win + ' before';
+}
+// The few things worth saying, most useful first; each names what to do where
+// there is something to do.
 function buildInsights(d) {
     const out = [];
-    const uniq = d.uniqueVisitors || 0,
-        views = d.totalViews || 0;
-    const prevV = d.prevTotalViews || 0,
-        bookings = d.bookings || 0;
     const days = d.days || 30;
-    const winLabel =
-        days === 7 ? '7 days' : days === 90 ? '90 days' : days === 365 ? '12 months' : '30 days';
+    const win = ANA_WIN(days);
+    const people = d.uniqueVisitors || 0;
+    const sent = (d.events || {}).enquiry_submit || 0;
     const mName = (ym) => {
         const [y, m] = (ym || '').split('-');
         return y && m ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'long' }) : ym;
     };
-    // Momentum vs the previous equal-length window.
-    if (prevV > 0) {
-        const p = Math.round(((views - prevV) / prevV) * 100);
-        if (Math.abs(p) >= 10)
-            out.push({
-                t: `Visits are ${p >= 0 ? 'up' : 'down'} ${Math.abs(p)}% versus the previous ${winLabel}.`,
-                s: Math.abs(p) + (p < 0 ? 25 : 0),
-            });
-    }
-    // Conversion (only worth saying once there's a meaningful base).
-    if (uniq >= 20) {
-        const c = Math.round((bookings / uniq) * 1000) / 10;
-        out.push({ t: `${c}% of unique visitors booked (${bookings} from ${uniq}).`, s: 30 });
-    }
-    // Device mix.
-    const devs = d.devices || [],
-        devTot = devs.reduce((a, b) => a + b.count, 0);
-    if (devTot > 0) {
-        const m = devs.find((x) => x.device === 'mobile');
-        const mp = m ? Math.round((m.count / devTot) * 100) : 0;
-        if (mp >= 50)
-            out.push({
-                t: `${mp}% of visits are on mobile — keep the booking flow thumb-friendly.`,
-                s: 24,
-            });
-        else if (mp > 0 && mp <= 25)
-            out.push({ t: `Most visitors are on desktop (${100 - mp}%).`, s: 12 });
-    }
-    // Bounce.
-    if ((d.bounceRate || 0) >= 60 && uniq >= 20)
-        out.push({
-            t: `${d.bounceRate}% of visitors leave after a single page — stronger calls-to-action could help.`,
-            s: 26,
-        });
-    // Returning interest.
-    const mix = d.visitorMix || { new: 0, returning: 0 },
-        mt = (mix.new || 0) + (mix.returning || 0);
-    if (mt >= 20) {
-        const rp = Math.round((mix.returning / mt) * 100);
-        if (rp >= 30)
-            out.push({ t: `${rp}% of visitors are returning — interest is building.`, s: 16 });
-    }
-    // Top channel.
-    const ch = d.channels || [];
-    if (ch.length) out.push({ t: `${ch[0].channel} is your top traffic source.`, s: 10 });
-    // Unmet demand.
     const sd = d.searchDemand || {};
     if ((sd.noResult || 0) > 0 && (sd.total || 0) > 0) {
-        const np = Math.round((sd.noResult / sd.total) * 100);
+        const np = anaPct(sd.noResult, sd.total);
         const top = (sd.topMonths || []).find((m) => m.count > m.found);
-        out.push({
-            t: `${np}% of availability searches found nothing free${top ? ` — most for ${mName(top.month)}` : ''}.`,
-            s: 22 + (np >= 40 ? 15 : 0),
-        });
+        out.push({ t: `${sd.noResult} of ${sd.total} date searches found nothing free${top ? ` — most for ${mName(top.month)}` : ''}.`, s: 40 + (np >= 40 ? 20 : 0), tone: np >= 40 ? 'warn' : '', go: 'search' });
     }
-    return out
-        .sort((a, b) => b.s - a.s)
-        .slice(0, 4)
-        .map((x) => x.t);
+    const prevP = d.prevUniqueVisitors || 0;
+    if (prevP > 0) {
+        const p = Math.round(((people - prevP) / prevP) * 100);
+        if (Math.abs(p) >= 10) out.push({ t: `${p > 0 ? 'More' : 'Fewer'} people visited: ${people}, ${Math.abs(p)}% ${p > 0 ? 'up' : 'down'} on the ${win} before.`, s: 30 + (p < 0 ? 10 : 0), tone: p < 0 ? 'warn' : 'ok' });
+    }
+    if (people >= 20) out.push({ t: `${sent} ${sent === 1 ? 'enquiry was' : 'enquiries were'} sent from ${people} people (${Math.round((sent / people) * 1000) / 10}%).`, s: 25 });
+    const devs = d.devices || [];
+    const devTot = devs.reduce((a, b) => a + b.count, 0);
+    const mob = (devs.find((x) => x.device === 'mobile') || {}).count || 0;
+    if (devTot > 0 && anaPct(mob, devTot) >= 50) out.push({ t: `${anaPct(mob, devTot)}% of pages were viewed on a phone.`, s: 15 });
+    const ch = d.channels || [];
+    if (ch.length) out.push({ t: `${ch[0].channel === 'Direct' ? 'Most people came straight to the site' : ch[0].channel + ' brought the most people'}.`, s: 10 });
+    return out.sort((a, b) => b.s - a.s).slice(0, 4);
 }
-
+// A tool row in the Status page's own anatomy (the weekly email's sender reports
+// under its row through spToolSay).
+function anaTool(icon, name, verb, attrs) {
+    return `<div class="sp-tool"><button type="button" class="sp-tbtn" ${attrs}><span class="sp-sysic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon}"></path></svg></span><span class="sp-systext"><span class="sp-sysname">${name}</span></span><span class="sp-tend" aria-hidden="true"><span class="sp-tverb">${verb}</span><span class="sp-spin"></span><span class="sp-tmark"></span></span></button><div class="sp-tres" role="status" hidden></div></div>`;
+}
 async function loadAnalytics(days = 30) {
     const wrap = document.getElementById('analytics-body');
     if (!wrap) return;
     days = [7, 30, 90, 365].includes(+days) ? +days : 30;
-    wrap.innerHTML = skelRows(3);
+    // The switcher stays while a new window loads; only the figures below wait.
+    const keep = wrap.querySelector('.ana-pick');
+    wrap.innerHTML = (keep ? keep.outerHTML : '') + skelRows(3);
     let d;
     try {
         d = await apiGet('track.php?action=summary&days=' + days);
@@ -26660,12 +27163,14 @@ async function loadAnalytics(days = 30) {
         return;
     }
     __analyticsSummary = d; // stashed for the CSV export below
-
-    // ---- labels / formatters ----
-    const rangeLabel = (n) =>
-        n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days';
+    const e = escapeHtml;
     const winDays = d.days || days;
-    const winLabel = rangeLabel(winDays);
+    const win = ANA_WIN(winDays);
+    const people = d.uniqueVisitors || 0;
+    const views = d.totalViews || 0;
+    const ev = d.events || {};
+    const sent = ev.enquiry_submit || 0;
+    const booked = d.siteBookings || 0;
     const PAGE_LABELS = {
         'view-main': 'Home',
         'view-cottages': 'All cottages',
@@ -26674,81 +27179,69 @@ async function loadAnalytics(days = 30) {
         'view-guest-bookings': 'My stays',
         'view-pay': 'Payment',
         'view-account': 'Account',
+        'view-guest-account': 'Account',
     };
-    const pageLabel = (p) =>
-        PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
+    const pageLabel = (p) => PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
     const monthName = (ym) => {
         const [y, m] = (ym || '').split('-');
-        return y && m
-            ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', {
-                  month: 'short',
-                  year: 'numeric',
-              })
-            : ym || '';
+        return y && m ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : ym || '';
     };
-    // A card with nothing in it yet says nothing: it is left out, and a pair or a
-    // section left empty goes with it (the one look's simpler format).
-    const emptyNote = (t) =>
-        `<p class="ana-empty" style="font-size:var(--fs-sub);color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
-    const moCard = (title, body) =>
-        /^<p class="ana-empty"[^<]*>[^<]*<\/p>$/.test(String(body).trim()) ? '' : `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
-    const grid2 = (a, b) => (a && b ? `<div class="mo-grid2">${a}${b}</div>` : a || b);
-
-    // Category palette — colour bars by meaning rather than one flat hue.
-    const HUE = {
-        Direct: 'var(--accent)',
-        Search: '#5BA8FF',
-        Social: '#C792EA',
-        Referral: '#7FD1AE',
-        mobile: '#5BA8FF',
-        tablet: '#7FD1AE',
-        desktop: 'var(--accent)',
+    const bars = (rows, color) => {
+        const max = rows.reduce((m, r) => Math.max(m, r.value), 0) || 1;
+        return osHBars(rows.map((r) => ({ label: r.label, value: r.value, max, valLabel: r.valLabel, color: r.color || color || 'var(--accent)' })));
     };
+    const cap = (t) => `<div class="acr-cap">${t}</div>`;
+    const sub = (t) => `<div class="acw-cap ana-subcap">${t}</div>`;
 
-    // Period-over-period delta vs the previous equal-length window.
-    const delta = (cur, prev) => {
-        if (!prev || prev <= 0) return '';
-        const pct = Math.round(((cur - prev) / prev) * 100);
-        return ` · ${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs prev ${winLabel}`;
-    };
+    // ---- the title's pill: how many people came, against the window before ----
+    const prevP = d.prevUniqueVisitors || 0;
+    const dp = prevP > 0 ? Math.round(((people - prevP) / prevP) * 100) : null;
+    if (settingsShowing('analytics')) {
+        const label = `${people} ${people === 1 ? 'person' : 'people'} in the last ${win}` + (dp === null ? '' : `, ${Math.abs(dp)}% ${dp >= 0 ? 'more' : 'fewer'} than the ${win} before`);
+        headPillSet('settings-panel-cap', dp === null ? '' : dp <= -10 ? headPill('warn', 'Down ' + Math.abs(dp) + '%', { label }) : dp >= 10 ? headPill('ok', 'Up ' + dp + '%', { label }) : headPill('unk', 'Steady', { label }));
+    }
 
-    // ---- KPI tiles ----
-    const uniq = d.uniqueVisitors || 0,
-        bookings = d.bookings || 0;
-    const convPct = uniq > 0 ? (bookings / uniq) * 100 : 0;
-    const convDisp = convPct >= 10 ? Math.round(convPct) : Math.round(convPct * 10) / 10;
-    const mix = d.visitorMix || { new: 0, returning: 0 };
-    const mixTotal = (mix.new || 0) + (mix.returning || 0);
-    const retPct = mixTotal > 0 ? Math.round((mix.returning / mixTotal) * 100) : 0;
-    const kpis = `<div class="mo-kpis">
-                <div class="mo-kpi"><div class="mo-label">Visits</div><div class="mo-value">${d.totalViews || 0}</div><div class="mo-sub">${winLabel}${delta(d.totalViews || 0, d.prevTotalViews || 0)}</div></div>
-                <div class="mo-kpi"><div class="mo-label">Unique visitors</div><div class="mo-value">${uniq}</div><div class="mo-sub">${winLabel}${delta(uniq, d.prevUniqueVisitors || 0)}</div></div>
-                <div class="mo-kpi"><div class="mo-label">Conversion</div><div class="mo-value">${convDisp}%</div><div class="mo-sub">${bookings} booking${bookings === 1 ? '' : 's'} ÷ visitors</div></div>
-                <div class="mo-kpi"><div class="mo-label">Returning</div><div class="mo-value">${retPct}%</div><div class="mo-sub">${mix.new || 0} new · ${mix.returning || 0} returning</div></div>
-            </div>`;
+    // ---- the switcher: the one look's segmented control ----
+    const seg = `<div class="ana-pick"><div class="ana-seg" role="tablist" aria-label="Time window">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" role="tab" aria-selected="${n === winDays}" ${chbAttrs('loadAnalytics', n)}>${ANA_WIN(n)}</button>`).join('')}</div></div>`;
 
-    // ---- daily trend → vertical bars, rolled up so long windows stay readable ----
+    // ---- the four figures ----
+    const tile = (n, l, s) => `<div class="u-stat"><div class="u-stat-n">${e(String(n))}</div><div class="u-stat-l">${l}</div>${s ? `<div class="ana-tsub">${e(s)}</div>` : ''}</div>`;
+    const tiles =
+        `<div class="u-stats ana-stats">` +
+        tile(people, 'People', anaDelta(people, prevP, win)) +
+        tile(views, 'Pages viewed', anaDelta(views, d.prevTotalViews || 0, win)) +
+        tile(sent, sent === 1 ? 'Enquiry sent' : 'Enquiries sent', people > 0 ? Math.round((sent / people) * 1000) / 10 + '% of people' : '') +
+        tile(booked, 'Booked through the site', sent > 0 ? anaPct(booked, sent) + '% of enquiries' : '') +
+        `</div>`;
+
+    // ---- worth knowing ----
+    const ins = buildInsights(d);
+    const insHtml = ins.length
+        ? cap('Worth knowing') +
+          `<div class="acr-well ana-ins">` +
+          ins
+              .map((x) =>
+                  x.go
+                      ? `<button type="button" class="acr-row ana-insrow" ${chbAttrs('anaOpenFold', x.go)}><span class="ana-dot${x.tone ? ' is-' + x.tone : ''}" aria-hidden="true"></span><span class="acr-lbl">${e(x.t)}</span>${BHUB_CHEV}</button>`
+                      : `<div class="acr-row ana-insrow"><span class="ana-dot${x.tone ? ' is-' + x.tone : ''}" aria-hidden="true"></span><span class="acr-lbl">${e(x.t)}</span></div>`,
+              )
+              .join('') +
+          `</div>`
+        : '';
+
+    // ---- pages viewed each day (rolled up so a long window stays readable) ----
     const daily = Array.isArray(d.daily) ? d.daily : [];
-    const fmtDM = (s) => {
-        const [y, m, dd] = (s || '').split('-');
-        return dd ? `${+dd}/${+m}` : s;
+    const fmtDM = (x) => {
+        const [, m, dd] = (x || '').split('-');
+        return dd ? `${+dd}/${+m}` : x;
     };
-    let trendItems;
-    if (winDays <= 30) {
-        trendItems = daily.map((r) => ({
-            short: (r.date || '').slice(8),
-            label: fmtDM(r.date),
-            value: r.views,
-        }));
-    } else if (winDays <= 120) {
-        trendItems = [];
+    let items;
+    if (winDays <= 30) items = daily.map((r) => ({ short: (r.date || '').slice(8), label: fmtDM(r.date), value: r.views }));
+    else if (winDays <= 120) {
+        items = [];
         for (let i = 0; i < daily.length; i += 7) {
-            const chunk = daily.slice(i, i + 7);
-            trendItems.push({
-                short: fmtDM(chunk[0].date),
-                label: 'week of ' + fmtDM(chunk[0].date),
-                value: chunk.reduce((a, b) => a + b.views, 0),
-            });
+            const c = daily.slice(i, i + 7);
+            items.push({ short: fmtDM(c[0].date), label: 'week of ' + fmtDM(c[0].date), value: c.reduce((a, b) => a + b.views, 0) });
         }
     } else {
         const mm = {};
@@ -26756,229 +27249,110 @@ async function loadAnalytics(days = 30) {
             const k = (r.date || '').slice(0, 7);
             mm[k] = (mm[k] || 0) + r.views;
         });
-        trendItems = Object.keys(mm)
-            .sort()
-            .map((k) => ({
-                short: monthName(k).replace(/\s\d+$/, ''),
-                label: monthName(k),
-                value: mm[k],
-            }));
+        items = Object.keys(mm).sort().map((k) => ({ short: monthName(k).replace(/\s\d+$/, ''), label: monthName(k), value: mm[k] }));
     }
-    const peak = daily.reduce((mx, r) => Math.max(mx, r.views), 0);
-    const trendHtml = daily.length
-        ? osVBars(trendItems) +
-          `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:4px;">peak ${peak}/day · ${winDays <= 30 ? 'by day' : winDays <= 120 ? 'by week' : 'by month'}</div>`
-        : emptyNote('No visits recorded yet — check back once guests have browsed the site.');
-
-    // ---- funnels (green→amber so drop-off reads at a glance) ----
-    const stepColor = (i, n) =>
-        `hsl(${Math.round(140 - (140 - 35) * (n > 1 ? i / (n - 1) : 0))}, 52%, 56%)`;
-    const funnelBars = (steps) => {
-        const top = steps[0].value || 0,
-            n = steps.length;
-        return osHBars(
-            steps.map((s, i) => {
-                const prev = i === 0 ? null : steps[i - 1].value;
-                const fromPrev =
-                    prev != null && prev > 0 ? Math.round((s.value / prev) * 100) : null;
-                return {
-                    label: s.label,
-                    value: s.value,
-                    max: top || 1,
-                    valLabel: s.value + (fromPrev != null ? ` · ${fromPrev}%` : ''),
-                    color: stepColor(i, n),
-                };
-            }),
-        );
-    };
-    const funnel =
-        funnelBars([
-            { label: 'Unique visitors', value: uniq },
-            { label: 'Enquiries', value: d.enquiries || 0 },
-            { label: 'Bookings', value: bookings },
-        ]);
-    const ev = d.events || {};
-    const engagement = funnelBars([
-        { label: 'Clicked “Enquire now”', value: ev.book_click || 0 },
-        { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
-        { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
-        { label: 'Started a payment', value: ev.pay_start || 0 },
-    ]);
-    const convDonut = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">${osDonut(Math.round(convPct), 'var(--accent)')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">${bookings} booking${bookings === 1 ? '' : 's'} from ${uniq} unique visitor${uniq === 1 ? '' : 's'} this ${winLabel}.</div></div>`;
-
-    // ---- audience: new/returning + devices ----
-    const mixMax = Math.max(mix.new || 0, mix.returning || 0, 1);
-    const mixHtml = mixTotal
-        ? osHBars([
-              { label: 'New', value: mix.new || 0, max: mixMax, color: '#5BA8FF' },
-              { label: 'Returning', value: mix.returning || 0, max: mixMax, color: '#7FD1AE' },
-          ])
-        : emptyNote('No visitors recorded yet.');
-    const DEVICE_LABELS = { mobile: 'Mobile', tablet: 'Tablet', desktop: 'Desktop' };
-    const devices = Array.isArray(d.devices) ? d.devices : [];
-    const devMax = devices.reduce((m, x) => Math.max(m, x.count), 0);
-    const devicesHtml = devices.length
-        ? osHBars(
-              devices.map((x) => ({
-                  label: DEVICE_LABELS[x.device] || x.device,
-                  value: x.count,
-                  max: devMax,
-                  color: HUE[x.device] || 'var(--accent)',
-              })),
-          )
-        : emptyNote('No device data yet.');
-
-    // ---- acquisition: channels / engines / sources / referrers ----
-    const channels = Array.isArray(d.channels) ? d.channels : [];
-    const chMax = channels.reduce((m, c) => Math.max(m, c.count), 0);
-    const channelsHtml = channels.length
-        ? osHBars(
-              channels.map((c) => ({
-                  label: c.channel,
-                  value: c.count,
-                  max: chMax,
-                  color: HUE[c.channel] || 'var(--accent)',
-              })),
-          )
-        : emptyNote('No visits recorded yet.');
-    const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
-    const enMax = engines.reduce((m, e) => Math.max(m, e.count), 0);
-    const enginesHtml = engines.length
-        ? osHBars(
-              engines.map((e) => ({ label: e.name, value: e.count, max: enMax, color: '#5BA8FF' })),
-          )
-        : emptyNote('No search-engine visits yet.');
-    const sources = Array.isArray(d.sources) ? d.sources : [];
-    const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
-    const sourcesHtml = sources.length
-        ? osHBars(
-              sources.map((s) => ({
-                  label: s.source,
-                  value: s.count,
-                  max: srcMax,
-                  color: '#C792EA',
-              })),
-          )
-        : emptyNote('No tagged campaign links yet.');
-    const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
-    const refMax = refs.reduce((m, r) => Math.max(m, r.count), 0);
-    const refsHtml = refs.length
-        ? osHBars(
-              refs.map((r) => ({ label: r.host, value: r.count, max: refMax, color: '#7FD1AE' })),
-          )
-        : emptyNote('Mostly direct visits (no referrer) so far.');
-
-    // ---- behaviour: devices already built above; pages / exit pages / cottages ----
-    const pages = Array.isArray(d.topPages) ? d.topPages : [];
-    const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
-    const fmtDur = (ms) => {
-        if (!ms) return '';
-        const s = Math.round(ms / 1000);
-        return s < 60 ? ` · ${s}s` : ` · ${Math.floor(s / 60)}m ${s % 60}s`;
-    };
-    const pagesHtml = pages.length
-        ? osHBars(
-              pages.map((p) => ({
-                  label: pageLabel(p.path),
-                  value: p.views,
-                  max: pgMax,
-                  valLabel: `${p.views}${fmtDur(p.dwellMs)}`,
-                  color: 'var(--accent)',
-              })),
-          )
-        : emptyNote('No page views yet.');
-    const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
-    const exMax = exits.reduce((m, x) => Math.max(m, x.count), 0);
-    const exitsHtml = exits.length
-        ? osHBars(
-              exits.map((x) => ({
-                  label: pageLabel(x.path),
-                  value: x.count,
-                  max: exMax,
-                  color: '#C792EA',
-              })),
-          )
-        : emptyNote('Not enough data yet.');
-    const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
-    const cotMax = cottages.reduce((m, c) => Math.max(m, c.views), 0);
-    const cottageHtml = cottages.length
-        ? osHBars(
-              cottages.map((c) => ({
-                  label: (propertyMeta[c.prop_key] || {}).name || c.prop_key,
-                  value: c.views,
-                  max: cotMax,
-                  color: `var(--prop-${c.prop_key}, var(--accent))`,
-              })),
-          )
-        : emptyNote('No cottage page views yet.');
-
-    // Search demand: what guests searched + how often nothing was free.
-    const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
-    const noPct = sd.total ? Math.round((sd.noResult / sd.total) * 100) : 0;
-    const tmMax = (sd.topMonths || []).reduce((m, x) => Math.max(m, x.count), 0);
-    const topMonthsHtml = (sd.topMonths || []).length
-        ? osHBars(
-              (sd.topMonths || []).map((x) => ({
-                  label: `${monthName(x.month)} · ${x.count ? Math.round((x.found / x.count) * 100) : 0}% found space`,
-                  value: x.count,
-                  max: tmMax,
-                  color: 'var(--accent)',
-              })),
-          )
+    const peak = daily.reduce((m, r) => Math.max(m, r.views), 0);
+    const chart = daily.length
+        ? cap('Pages viewed ' + (winDays <= 30 ? 'each day' : winDays <= 120 ? 'each week' : 'each month')) +
+          `<div class="u-win is-pad ana-chart">${osVBars(items)}<div class="ana-foot">Busiest day: ${peak} ${peak === 1 ? 'page' : 'pages'}</div></div>`
         : '';
-    const recentNoHtml = (sd.recentNoResult || [])
+
+    // ---- from a visit to a booking: one colour, each step's share of the last ----
+    const steps = [
+        { label: 'People', value: people },
+        { label: 'Tapped “Enquire now”', value: ev.book_click || 0 },
+        { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
+        { label: 'Sent an enquiry', value: sent },
+        { label: 'Booked through the site', value: booked },
+    ];
+    const funnel =
+        cap('From a visit to a booking') +
+        `<div class="u-win is-pad ana-funnel">` +
+        osHBars(steps.map((s, i) => ({ label: s.label, value: s.value, max: people || 1, valLabel: s.value + (i > 0 && steps[i - 1].value > 0 ? ' · ' + anaPct(s.value, steps[i - 1].value) + '%' : ''), color: 'var(--accent)' }))) +
+        `<div class="ana-foot">Each step’s share is of the step above it.</div></div>`;
+
+    // ---- the deeper answers fold under their own rows ----
+    const ch = Array.isArray(d.channels) ? d.channels : [];
+    const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
+    const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
+    const srcs = Array.isArray(d.sources) ? d.sources : [];
+    const chTot = ch.reduce((a, b) => a + b.count, 0);
+    const fromSum = ch.length ? (ch[0].channel === 'Direct' ? 'Mostly straight to the site' : 'Mostly ' + ch[0].channel.toLowerCase()) + ' · ' + anaPct(ch[0].count, chTot) + '%' : '';
+    const fromBody =
+        (ch.length ? bars(ch.map((c) => ({ label: c.channel === 'Direct' ? 'Straight to the site' : c.channel, value: c.count }))) : '') +
+        (engines.length ? sub('Search engines') + bars(engines.map((x) => ({ label: x.name, value: x.count }))) : '') +
+        (refs.length ? sub('Other sites') + bars(refs.map((r) => ({ label: r.host, value: r.count }))) : '') +
+        (srcs.length ? sub('Your tagged links') + bars(srcs.map((x) => ({ label: x.source, value: x.count }))) : '');
+
+    const cots = Array.isArray(d.byCottage) ? d.byCottage : [];
+    const pages = Array.isArray(d.topPages) ? d.topPages : [];
+    const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
+    const dur = (ms) => {
+        if (!ms) return '';
+        const t = Math.round(ms / 1000);
+        return t < 60 ? ` · ${t}s` : ` · ${Math.floor(t / 60)}m ${t % 60}s`;
+    };
+    const topCot = cots[0] ? (propertyMeta[cots[0].prop_key] || {}).name || cots[0].prop_key : '';
+    const lookBody =
+        (cots.length ? sub('Cottages') + bars(cots.map((c) => ({ label: (propertyMeta[c.prop_key] || {}).name || c.prop_key, value: c.views, color: `var(--prop-${c.prop_key}, var(--accent))` }))) : '') +
+        (pages.length ? sub('Pages, with the time spent on each') + bars(pages.map((p) => ({ label: pageLabel(p.path), value: p.views, valLabel: `${p.views}${dur(p.dwellMs)}` }))) : '') +
+        (exits.length ? sub('Where they left') + bars(exits.map((x) => ({ label: pageLabel(x.path), value: x.count }))) : '') +
+        (d.bounceRate ? `<p class="ana-line">${d.bounceRate}% looked at one page and left.</p>` : '');
+
+    const devs = Array.isArray(d.devices) ? d.devices : [];
+    const devTot = devs.reduce((a, b) => a + b.count, 0);
+    const DEV = { mobile: 'Phone', tablet: 'Tablet', desktop: 'Computer' };
+    const mob = (devs.find((x) => x.device === 'mobile') || {}).count || 0;
+    const devBody = devTot
+        ? `<div class="ana-split" role="img" aria-label="${e(devs.map((x) => (DEV[x.device] || x.device) + ' ' + anaPct(x.count, devTot) + '%').join(', '))}">${devs.map((x) => `<i class="is-${e(x.device)}" style="flex:${x.count}"></i>`).join('')}</div>` +
+          `<div class="ana-legend">${devs.map((x) => `<span><i class="is-${e(x.device)}" aria-hidden="true"></i>${e(DEV[x.device] || x.device)} ${anaPct(x.count, devTot)}%</span>`).join('')}</div>`
+        : '';
+
+    const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
+    const noPct = anaPct(sd.noResult || 0, sd.total || 0);
+    const recent = (sd.recentNoResult || [])
         .map((r) => {
-            const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
-            const when =
-                r.mode === 'flex'
-                    ? `${r.nights || '?'} night${r.nights === 1 ? '' : 's'} in ${monthName(r.month)}`
-                    : `${dpPretty(r.check_in) || 'dates'}${r.nights ? ` · ${r.nights} night${r.nights === 1 ? '' : 's'}` : ''}`;
-            return `<li style="margin-bottom:5px;">${escapeHtml(when)} · ${escapeHtml(who)}</li>`;
+            const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
+            const when = r.mode === 'flex' ? `${r.nights || '?'} night${r.nights === 1 ? '' : 's'} in ${monthName(r.month)}` : `${r.check_in ? fmtDate(r.check_in) : 'dates'}${r.nights ? ` · ${r.nights} night${r.nights === 1 ? '' : 's'}` : ''}`;
+            return `<div class="acr-row ana-srow"><span class="acr-lbl">${e(when)}<small>${e(who)}</small></span></div>`;
         })
         .join('');
-
-    // ---- sticky period bar (full-width segmented control). CSV export lives at
-    // the very bottom as its own action, so the sticky header stays clean. ----
-    const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" ${chbAttrs('loadAnalytics', n)}>${rangeLabel(n)}</button>`).join('')}</div>`;
-    const pickerRow = `<div class="ana-pick">${seg}</div>`;
-    const exportRow = `<button type="button" class="ana-export" data-act="exportAnalyticsCsv"><svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Export these figures (CSV)</button>`;
-
-    // Auto-generated highlights ("so what") from the summary above.
-    const insights = buildInsights(d);
-    const insightsHtml = insights.length
-        ? `<div class="ana-insights"><div class="mo-card-title" style="margin-bottom:6px;">Highlights</div><ul style="margin:0;padding-left:18px;">${insights.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`
+    const searchBody = sd.total
+        ? ((sd.topMonths || []).length ? sub('The months they asked about') + bars(sd.topMonths.map((x) => ({ label: monthName(x.month), value: x.count, valLabel: `${x.count} · ${anaPct(x.found, x.count)}% found space` }))) : '') +
+          (recent ? sub('Recent searches that found nothing') + `<div class="ana-srows">${recent}</div>` : '') +
+          `<div class="ana-acts"><button type="button" class="u-btn2" ${chbAttrs('settingsOpen', 'pricing')}>Open Price ideas</button><button type="button" class="u-btn2" ${chbAttrs('settingsOpen', 'waitlist')}>Open the waitlist</button></div>`
         : '';
 
-    // The headline figures and the visits chart stay open; the four deeper
-    // sections fold under their own rows. An empty section is not drawn at all.
-    const anaGroup = (key, label, html) => (String(html).trim() ? bhubFoldGrp('ana-' + key, label, '', '', html) : '');
-    const over = moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml) + grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement));
+    const grp = (key, label, sub2, cap2, body) => (String(body).trim() ? bhubFoldGrp('ana-' + key, label, e(sub2), cap2, body) : '');
+    const folds =
+        grp('from', 'Where they came from', fromSum, '', fromBody) +
+        grp('look', 'What they looked at', topCot ? topCot + ' most of all' : '', '', lookBody) +
+        grp('dev', 'What they used', devTot ? anaPct(mob, devTot) + '% on a phone' : '', '', devBody) +
+        grp('search', 'Date searches', sd.total ? `${sd.noResult} of ${sd.total} found nothing free` : '', sd.total ? stCap(noPct >= 40 ? 'warn' : 'unk', noPct + '% unmet') : '', searchBody);
+
+    const tools =
+        cap('Tools') +
+        `<div class="sp-card sp-tlist ana-tools">` +
+        anaTool('M4 6h16v12H4z M4 7l8 6 8-6', 'Email me this week’s analytics now', 'Send', `data-act="sendWeeklyEmailNow" data-arg="analytics" data-pass="self"`) +
+        anaTool('M12 4v11 M7 10l5 5 5-5 M5 20h14', 'Download these figures (CSV)', 'Save', 'data-act="exportAnalyticsCsv"') +
+        `</div>`;
+
     wrap.innerHTML =
-        pickerRow +
-        insightsHtml +
-        kpis +
-        (over ? `<div class="ana-group-title">Behaviour over time</div>${over}` : '') +
-        `<div class="ana-folds">` +
-        anaGroup('audience', 'Audience', grid2(moCard('New vs returning', mixHtml), moCard('How visitors browse', devicesHtml))) +
-        anaGroup('sources', 'Where visitors come from', grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml)) + grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))) +
-        anaGroup('onsite', 'On-site behaviour', grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml)) + grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))) +
-        anaGroup(
-            'search',
-            'What guests are searching for',
-            moCard(
-                'Search demand',
-                `
-                    <div class="mo-kpis" style="margin-bottom:12px;">
-                        <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
-                        <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
-                    </div>
-                    ${topMonthsHtml ? `<div class="acw-cap" style="margin:4px 0 8px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul>` : ''}
-                `,
-            ),
-        ) +
-        `</div>` +
-        exportRow;
+        seg +
+        tiles +
+        `<p class="ana-note">A person is counted by device and connection, so one guest on a phone and a laptop counts twice.</p>` +
+        insHtml +
+        chart +
+        funnel +
+        (folds ? cap('In more detail') + `<div class="ana-folds">${folds}</div>` : '') +
+        tools;
+}
+// A "worth knowing" row that leads to its detail opens that fold and brings it on screen.
+function anaOpenFold(key) {
+    const f = document.getElementById('bhub-fold-ana-' + key);
+    if (f && f.hidden) bhubFoldToggle('ana-' + key);
+    const g = document.querySelector(`[data-grp="ana-${key}"]`);
+    if (g) chbScroll(g, { block: 'start' });
 }
 
 // ---- Waitlist manager (Manage → Waitlist) ----
@@ -27005,12 +27379,12 @@ async function loadWaitlist() {
     // One well of person-rows (the approved realistic demo): the guest leads,
     // the facts as the sub, their state as a capsule — same actions, same ids.
     wrap.innerHTML =
-        '<div class="acr-well" style="max-width:640px;">' +
+        '<div class="acr-cap">Waiting for dates</div><div class="acr-well" style="max-width:640px;">' +
         rows
             .map((w) => {
                 const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
                 const dates =
-                    w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
+                    w.check_in && w.check_out ? fmtStayRange(String(w.check_in).slice(0, 10), String(w.check_out).slice(0, 10)) : 'Any dates';
                 const cap = w.notified_at
                     ? stCap('ok', 'Notified ' + fmtDate(String(w.notified_at).slice(0, 10)))
                     : stCap('unk', 'Waiting');
@@ -27020,7 +27394,7 @@ async function loadWaitlist() {
                         ${cap}
                     </div>
                     <div class="acw-acts" style="border-top:0;padding-top:0;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Email "dates available"</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Tell them it’s free</button>
                         <button class="btn-sm btn-delete" ${chbAttrs('deleteWaitlist', w.id)}>Remove</button>
                     </div>
                 </div>`;
@@ -27053,7 +27427,7 @@ async function loadNewsletter() {
     // The two figures are stat tiles; who is on the list folds under its own count.
     const list = recent.length
         ? bhubFoldGrp('nlsubs', 'Who’s subscribed', '', stCap('unk', String(active)), `<div style="font-size:var(--fs-sub);color:var(--text-muted);">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`)
-        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:12px 4px 0;">No subscribers yet.</p>`;
+        : ''; // the tile above already says 0
     stats.innerHTML = `<div class="u-stats">
                     <div class="u-stat"><div class="u-stat-n">${active}</div><div class="u-stat-l">Active subscribers</div></div>
                     <div class="u-stat"><div class="u-stat-n">${total - active}</div><div class="u-stat-l">Unsubscribed</div></div>
@@ -27343,7 +27717,7 @@ function spVitals(r) {
         const failing = list.filter((f) => f.ok === false).length;
         out.push({ cap: 'Calendars', big: !c.feeds ? 'Not linked' : c.lastImport ? 'Synced ' + spAgo(c.lastImport) : 'Not synced yet',
             small: !c.feeds ? 'No platform calendars' : `${c.feeds} feed${c.feeds === 1 ? '' : 's'}` + (c.cottages ? ` · ${c.cottages} cottage${c.cottages === 1 ? '' : 's'}` : '') + (failing ? ` · ${failing} failing` : ''),
-            data: c.days, tone: failing || c.recentErrors ? 'warn' : 'ok' });
+            data: c.days, tone: !c.feeds ? 'unk' : failing || c.recentErrors ? 'warn' : 'ok' });
     }
     const e = ins.email;
     if (e) {
@@ -27607,7 +27981,7 @@ function renderBackups() {
     const body = document.getElementById('backups-body');
     if (!body) return;
     body.innerHTML = `
-                <h3 class="u-cap is-first">Backups</h3>
+                <h3 class="u-cap is-first">Your bookings and settings</h3>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div id="backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -27615,17 +27989,22 @@ function renderBackups() {
                         <button class="btn-sm btn-edit" ${chbAttrs('verifyBackupNow', CHB_SELF)}>Verify latest</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download">Download latest</button>
                     </div>
-                    <div id="files-backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
+                </div>
+                <h3 class="u-cap">Photos and files</h3>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div id="files-backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" ${chbAttrs('runFilesBackupNow', CHB_SELF)}>Archive files now</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download_files">Download files</button>
                     </div>
-                    <!-- The emailed copy is ENCRYPTED or it is not sent. Without a
-                         passphrase the Monday email carries the report only — the
-                         backup itself stays on the server, downloadable above. -->
-                    <div class="acr-cap" style="margin-top:18px;">The emailed copy</div>
+                </div>
+                <!-- The emailed copy is ENCRYPTED or it is not sent. Without a
+                     passphrase the Monday email carries the report only — the
+                     backup itself stays on the server, downloadable above. -->
+                <h3 class="u-cap">The emailed copy</h3>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <!-- The one sentence kept: losing the passphrase loses the backup. -->
-                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 12px;">Keep it somewhere other than your inbox — without it the file can’t be opened.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Keep it somewhere other than your inbox — without it the file can’t be opened.</p>
                     <label class="modal-label" for="backup-pass">Backup passphrase</label>
                     <input type="password" class="input-glass" id="backup-pass" autocomplete="new-password" placeholder="a few unrelated words" style="max-width:340px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
@@ -27745,15 +28124,17 @@ async function refreshBackupStatus() {
     try {
         const r = await apiPost('backup.php', { action: 'status' });
         const b = (r.backups || [])[0];
+        // The server says 'Y-m-d H:i'; a screen date is DD/MM/YYYY.
+        const when = (at) => { const m = /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(String(at || '')); return m ? fmtDate(m[1]) + ' at ' + m[2] : String(at || ''); };
         el.textContent = b
-            ? `Latest: ${b.file} · ${Math.round(b.bytes / 1024)} KB · ${b.at}`
+            ? `Latest: ${when(b.at)} · ${Math.round(b.bytes / 1024)} KB`
             : 'No backup stored yet';
         const fe = document.getElementById('files-backup-status');
         if (fe) {
             const f = r.files_backup;
             fe.textContent = f
-                ? `Photos & uploads: ${f.file} · ${(f.bytes / 1048576).toFixed(1)} MB · ${f.at} — too big to email, download a copy now and then.`
-                : 'No photo archive yet';
+                ? `Latest: ${when(f.at)} · ${(f.bytes / 1048576).toFixed(1)} MB — too big to email, so download a copy now and then.`
+                : 'No archive yet';
         }
     } catch (e) {
         el.textContent = "Couldn't check backups: " + (e.message || '');
@@ -29825,10 +30206,10 @@ function sgSyncExtras(cards, changes) {
         mo.innerHTML = Array.from({ length: 12 }, (_, k) => `<span>${SG_MON[(m0 + k) % 12].charAt(0)}</span>`).join('');
     }
     const count = document.getElementById('sg-count');
-    if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
+    if (count) count.textContent = cards.length ? `${cards.length} season${cards.length === 1 ? '' : 's'}` : 'Seasons';
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-seasongrid');
-    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', `${cards.length} coming up`));
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', cards.length ? `${cards.length} coming up` : 'No seasons'));
     const bar = document.getElementById('sg-savebar');
     if (bar) bar.hidden = !changes;
 }
@@ -30364,7 +30745,7 @@ function alPaintList() {
             const grp = alGroupOf(e.type);
             const title = e.nice || e.label;
             const actor = e.actor && e.actor !== 'guest' ? actorLabel(e.actor) : e.actor === 'guest' ? 'Guest' : '';
-            const cottage = e.prop_key && propertyMeta[e.prop_key] ? propertyMeta[e.prop_key].short : '';
+            const cottage = e.prop_key && propertyMeta[e.prop_key] ? propertyMeta[e.prop_key].name || propertyMeta[e.prop_key].short : ''; // a row has room for the whole name ("Pimp" is the timeline lane's, not a list's)
             const meta = [actor, cottage].filter(Boolean).join(' · ');
             const plain = e.verdict || e.detail || '';
             const tech = e.nice ? e.label : '';
@@ -31960,7 +32341,7 @@ function ibItems(p) {
     });
     p.mails.forEach((m) => {
         const full = __ibMailBody[m.uid];
-        it.push({ who: 'them', ch: 'email', t: ibT(m.date), subj: m.subject || '', text: full ? full.text : (m.preview || ''), quoted: full ? full.quoted : '', attach: full ? full.attach : '', uid: m.uid, partial: !full });
+        it.push({ who: 'them', ch: 'email', t: ibT(m.date), subj: m.subject || '', text: full ? full.text : (m.preview || ''), quoted: full ? full.quoted : '', attach: full ? full.attach : '', files: full ? full.files : null, uid: m.uid, partial: !full });
     });
     p.sent.forEach((s) => it.push({ who: 'me', ch: 'email', t: ibT(s.sent_at), subj: s.subject || '', text: s.body || '' }));
     (__ibLocal[p.key] || []).forEach((l) => {
@@ -32155,7 +32536,7 @@ function ibListShell() {
     const lp = /** @type {any} */ (document.getElementById('ib-list'));
     if (!lp || lp.__ibShell) return;
     lp.__ibShell = true;
-    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search people, cottages, messages" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div class="ib-folders-wrap" id="ib-folders-wrap"><div><div class="ib-folders" id="ib-folders" data-on="${__ibFolder}" role="group" aria-label="Folder"><span class="ib-folders-pill" aria-hidden="true"></span><button type="button" id="ib-f-inbox" data-ib="folder" data-arg="inbox" aria-pressed="${__ibFolder === 'inbox'}">Inbox</button><button type="button" id="ib-f-done" data-ib="folder" data-arg="done" aria-pressed="${__ibFolder === 'done'}">Done</button></div></div></div><div id="ib-rows"></div>`;
+    lp.innerHTML = `<label class="ib-search">${IB_IC.search}<input id="ib-q" type="search" placeholder="Search the inbox" aria-label="Search the inbox" autocomplete="off"><button type="button" class="ib-clear" id="ib-q-clear" aria-label="Clear search" hidden>${IB_IC.x}</button></label><div class="ib-folders-wrap" id="ib-folders-wrap"><div><div class="ib-folders" id="ib-folders" data-on="${__ibFolder}" role="group" aria-label="Folder"><span class="ib-folders-pill" aria-hidden="true"></span><button type="button" id="ib-f-inbox" data-ib="folder" data-arg="inbox" aria-pressed="${__ibFolder === 'inbox'}">Inbox</button><button type="button" id="ib-f-done" data-ib="folder" data-arg="done" aria-pressed="${__ibFolder === 'done'}">Done</button></div></div></div><div id="ib-rows"></div>`;
     const q = /** @type {HTMLInputElement} */ (document.getElementById('ib-q'));
     const clr = /** @type {HTMLButtonElement} */ (document.getElementById('ib-q-clear'));
     q.addEventListener('input', () => { __ibQ = q.value.trim(); clr.hidden = !__ibQ; ibRenderList(); });
@@ -32311,7 +32692,7 @@ function ibRenderList() {
         const hits = all.filter((p) => ibMatches(p, __ibQ)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 80);
         html = hits.length
             ? group(`${hits.length} found`, hits, null)
-            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and every message, in the Inbox and in Done.</div>`;
+            : `<div class="ib-empty"><b>Nobody matches “${ibEsc(__ibQ)}”</b>Search covers names, email addresses, cottages and the messages loaded here, in the Inbox and in Done.${__mbxHasMore ? ' Older emails still on the server aren’t searched.' : ''}</div>`;
     } else if (!all.length && !__ibLoaded) {
         html = skelRows(4);
     } else if (__ibFolder === 'done') {
@@ -32389,7 +32770,10 @@ function ibThreadHtml(p) {
             body += `<div class="ib-enqh">${ibDot(q.propKey)}Enquiry · ${ibEsc(ibPropName(q.propKey))} · ${ibRange(q.checkIn, q.checkOut)} · ${ibEsc(q.guests || '')}</div>`;
         } else if (it.ch === 'email' && it.subj && !cont) body += `<div class="ib-subj">${IB_IC.email}<span>${ibEsc(it.subj)}</span></div>`;
         body += `<div class="ib-text">${ibEsc(it.text || (it.partial ? 'Opening…' : ''))}</div>`;
-        if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
+        // An email's files open from where they are read: the same plain
+        // download the old reader linked (mailbox.php forces octet-stream).
+        if (it.files && it.files.length && it.uid != null) body += it.files.map((f) => `<a class="ib-file" href="mailbox.php?action=attachment&uid=${encodeURIComponent(String(it.uid))}&i=${f.i}" download>${IB_IC.clip}${ibEsc(f.name)}</a>`).join('');
+        else if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
         if (it.quoted) {
             const qid = `ib-q-${idx}`;
             body += `<button type="button" class="ib-quotebtn" data-ib="quote" data-arg="${qid}" aria-expanded="false" aria-controls="${qid}">Show the rest of the email</button><div class="ib-quoted" id="${qid}" hidden>${ibEsc(it.quoted)}</div>`;
@@ -32502,6 +32886,7 @@ function ibCtxHtml(p) {
             <div class="ib-kv"><span>Party</span><span>${ibEsc(enq.guests || '')}</span></div>
             ${f.total != null ? `<div class="ib-kv"><span>Quote</span><span>${gbp(f.total)}</span></div>` : ''}
             ${p.enq && f.deposit != null ? `<div class="ib-kv"><span>${f.inWindow ? 'Asked on approval' : 'Deposit on approval'}</span><span>${gbp(f.deposit)}</span></div>` : ''}</div>`;
+        if (!p.enq) h += '<button type="button" class="ib-btn" data-ib="undecline">Put back in Waiting</button>';
     }
     if (n) {
         const sorted = p.bookings.slice().sort((a, b) => String(b.b.checkIn).localeCompare(String(a.b.checkIn)));
@@ -32836,6 +33221,7 @@ async function ibOpen(key, opts) {
                 text: String(sp.body || '').trim(),
                 quoted: [sp.quoted, sp.sig].filter(Boolean).join('\n\n').trim(),
                 attach: ((r && r.attachments) || []).map((a) => a.name).join(', '),
+                files: ((r && r.attachments) || []).map((a) => ({ i: Number(a.i) || 0, name: String(a.name || 'attachment') })),
             };
             m.seen = true;
         }).catch(() => {}));
@@ -33083,7 +33469,19 @@ function ibRecord(p) {
     const s = ibCurrentStay(p);
     if (s) { openBookingHub(s.b.id); return; }
     const q = p.enq || p.declined[0];
-    if (q && p.enq) openEnquiryHub(q.id);
+    if (q && p.enq) { openEnquiryHub(q.id); return; }
+    // A declined enquiry has no page of its own: the way back is to put it back in
+    // Waiting. That used to live only in the old drawer, so once the Undo toast had
+    // gone a decline could not be reversed from the Inbox at all.
+    if (q) ibUndecline(p);
+}
+async function ibUndecline(p) {
+    const q = p && p.declined && p.declined[0];
+    if (!q) return;
+    const ok = await glassConfirm(`Put ${ibFirst(p)}’s enquiry back in Waiting? It goes back to being yours to approve or decline.`, 'Put back in Waiting');
+    if (!ok) return;
+    await restoreDeclinedEnquiry(q.dbId, q.name || p.name);
+    ibSoon();
 }
 const IB_ACT = {
     open(arg, el) {
@@ -33328,6 +33726,10 @@ const IB_ACT = {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
         __ibMenuOpen = false;
         if (p) ibRecord(p);
+    },
+    undecline() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (p) ibUndecline(p);
     },
     async delete() {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
@@ -35256,7 +35658,7 @@ const BKS_IC = {
 const __bks = {
     pmode: 'std', cmode: 'total', cTotal: null, cNight: null, cOff: null, why: '',
     nightsOpen: false, picking: '', view: [2026, 0], pick: { rcv: null, due: null },
-    returning: null, conf: true, confTouched: false, orig: null, clamped: '', wave: false, pop: '',
+    returning: null, conf: true, confTouched: false, orig: null, clamped: /** @type {any} */ (null), wave: false, pop: '',
 };
 const bksEl = (id) => document.getElementById(id);
 const bksR2 = (x) => Math.round(x * 100) / 100;
@@ -35330,7 +35732,9 @@ function bksClashFor(k, ci, co) {
     for (const b of dbBookings[k] || []) if (b.id !== self && b.checkIn < co && b.checkOut > ci) return b.name || 'a booking';
     for (const bl of dbBlocks[k] || []) {
         if (bl.checkIn < co && bl.checkOut > ci) {
-            return bl.source === 'owner' ? 'your own block' : `a ${otaSourceName(bl.source, 'platform')} stay`;
+            if (bl.source === 'owner') return 'your own block';
+            const plat = otaSourceName(bl.source, 'platform');
+            return `${/^[aeiou]/i.test(plat) ? 'an' : 'a'} ${plat} stay`;
         }
     }
     return null;
@@ -35358,7 +35762,7 @@ function bksReset(f) {
         cNight: null, cOff: null,
         why: f.priceReason || '',
         nightsOpen: false, picking: '', pick: { rcv: null, due: null },
-        returning: null, conf: mode === 'add', confTouched: false, clamped: '', wave: false, pop: '',
+        returning: null, conf: mode === 'add', confTouched: false, clamped: /** @type {any} */ (null), wave: false, pop: '',
     });
     const ref = /^\d{4}-\d{2}-\d{2}$/.test(f.checkIn || '') ? f.checkIn : todayDashed();
     __bks.view = [+ref.slice(0, 4), +ref.slice(5, 7) - 1];
@@ -35543,6 +35947,13 @@ function bksInput(e) {
         updateModalPrice();
         return;
     }
+    // The confirmation switch: a tap fires `input` BEFORE `change`, and a repaint
+    // here would write the OLD state back over the tap (bksPaintConf sets
+    // .checked from __bks.conf) — so the switch could never be turned off.
+    if (t.id === 'bks-conf') {
+        __bks.conf = t.checked;
+        __bks.confTouched = true;
+    }
     if (t.hasAttribute('data-bks-in')) bksSync();
 }
 
@@ -35566,7 +35977,7 @@ function bksChooseCot(k) {
         if (nad !== ad || nch !== ch) {
             a.value = String(nad);
             c.value = String(nch);
-            __bks.clamped = bksCotName(k);
+            __bks.clamped = { name: bksCotName(k), pk: k, a: nad, c: nch };
         }
     }
     sel.value = k;
@@ -35767,10 +36178,14 @@ function bksPaintParty() {
     const lim = pk ? occupancyLimits[pk] : null;
     const note = bksEl('modal-occ-note');
     if (!note) return;
-    note.classList.toggle('warn', !!__bks.clamped);
-    if (__bks.clamped && lim) note.textContent = `${__bks.clamped} sleeps ${lim.maxTotal || lim.maxAdults}, so this came down`;
+    // The "came down" note stands while the cottage and party are the ones it was
+    // set for: one pick repaints more than once (onModalPropertyChange runs two
+    // repaints), so clearing it on the first paint meant nobody ever saw it.
+    const cl = __bks.clamped;
+    const showCl = !!(cl && typeof cl === 'object' && lim && cl.pk === pk && (parseInt(dpVal('modal-adults'), 10) || 0) === cl.a && (parseInt(dpVal('modal-children'), 10) || 0) === cl.c);
+    note.classList.toggle('warn', showCl);
+    if (showCl && lim) note.textContent = `${cl.name} sleeps ${lim.maxTotal || lim.maxAdults}, so this came down`;
     else note.textContent = lim ? (lim.maxChildren === 0 || (lim.maxTotal || 0) <= lim.maxAdults ? `Sleeps ${lim.maxAdults} adult${lim.maxAdults === 1 ? '' : 's'}` : `Sleeps ${lim.maxAdults} adults, ${lim.maxTotal} in all`) : '';
-    __bks.clamped = '';
 }
 // What one stay costs, night by night — every line from the price model's own
 // parts, so the lines always add up to the figure on the row above them.
@@ -35844,10 +36259,13 @@ function bksPaintPrice(m, mode, isNew) {
                 sub = `Today’s rates · replaces the agreed ${gbp(m.agreedWas)}`;
                 if (nS) nS.classList.add('warn');
             }
-            if (paidLock) sub = 'Paid in full · money is managed on the booking page';
+            // A paid-in-full booking keeps its own line — unless the stay moved, when
+            // saving re-prices it and the owner must see that before they save.
+            const repriced = m.stayChanged && m.agreedWas != null;
+            if (paidLock && !repriced) sub = 'Paid in full · money is managed on the booking page';
             bksSetText(nS, sub);
         }
-        bksSetText(nV, gbp(paidLock ? m.total : m.stdTotal), 'bks-settle');
+        bksSetText(nV, gbp(paidLock && !(m.stayChanged && m.agreedWas != null) ? m.total : m.stdTotal), 'bks-settle');
         bksSetHtml(bksEl('bks-nights'), rows.map((x) => `<div class="bks-night"><span class="bks-rt"><span class="bks-rl">${escapeHtml(x.l)}</span>${x.s ? `<span class="bks-rs">${escapeHtml(x.s)}</span>` : ''}</span><span class="bks-rv">${gbp(x.v)}</span></div>`).join(''));
     }
     bksExpanded('bks-nights-row', __bks.nightsOpen);

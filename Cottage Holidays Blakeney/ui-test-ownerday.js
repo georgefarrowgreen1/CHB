@@ -4,29 +4,30 @@
 //
 //  §1  ONE COUNT FOR ONE FACT. The Today dock pip, the Needs-you badge and
 //      the rail's Today row are the SAME number — and it is the DUTY count,
-//      not the unseen-enquiry count they used to disagree over. The Inbox
-//      pip keeps unseen and says so in words.
+//      not the Inbox's count they used to disagree over. The Inbox pip is the
+//      one list's own number (people WAITING on you) and says so in words.
 //  §2  NOTHING LOSES WORDS. Every .bk-row-name / .bk-row-dates /
-//      .bhub-sticky-verb / .bhub-kv-label and every enquiry-row sub at 360
-//      AND 390, swept for text lost sideways or past its clamp — with a
-//      60-character verb and a 34-character guest name INJECTED, because the
-//      real strings fit and the sweep would otherwise be vacuous.
-//  §3  ONE ROW SHAPE. The row's IDENTITY LINE is one line whatever the data
-//      (the invariant), and on a fixture where the two enquiries differ only
-//      in how long they have waited they are the same height (the defect: a
-//      pixel comparison of the status chip's text against the row's width —
-//      the cottage-cards lesson, here driven by the enquiry's AGE).
-//  §4  THE DECLINED TAB TELLS THE TRUTH. Capsule, sub and fold state all
-//      describe declined enquiries — not "⚠ 3 waiting" and a WAITING
-//      enquirer's name above a declined list.
+//      .bhub-sticky-verb / .bhub-kv-label and every Inbox row's name and
+//      context line at 360 AND 390, swept for text lost sideways or past its
+//      clamp — with a 60-character verb and a 34-character guest name
+//      INJECTED, because the real strings fit and the sweep would otherwise
+//      be vacuous.
+//  §3  ONE ROW SHAPE. An Inbox row's IDENTITY LINE (name + time) is one line
+//      whatever the data (the invariant), and on a fixture where the two
+//      enquiries differ only in how long they have waited they are the same
+//      height (the defect: a pixel comparison of the status text against the
+//      row's width — the cottage-cards lesson, here driven by the AGE).
+//  §4  A DECLINE TELLS THE TRUTH. In the one list a declined enquirer is a row
+//      wearing a muted "Declined" capsule — a decision, not a fault — that
+//      never asks you to decide again, and the conversation records it.
 //  §5  SEND IS IN REACH. The email composer's Send button is inside the
 //      viewport the moment it opens, at 390 and at 1280.
 //
 //  §6  THE SMALLER DECLARATIONS, one measurable claim each: the accent CTA's
 //      size, the day line's unbreakable money unit, the past stay's caption,
-//      the "Also stayed" row, the intel sub, the Needs-attention capsule, the
-//      enquiry quote's shape, the conversation sheet + its composer, the
-//      ledger row's time, the filled desktop CTA and the un-repeated heading.
+//      the "Also stayed" row, the intel sub, the decision card's capsule, the
+//      enquiry quote's shape, the conversation + its composer, the ledger
+//      row's time, the filled desktop CTA and the list's unpainted heading.
 //
 //  §2 asks each leaf whether it clipped its OWN content (scrollWidth /
 //  scrollHeight against its client box — the round-eight detector), with a
@@ -99,14 +100,17 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         }
         if (url.includes('messages.php')) {
             if (act === 'thread') return json({ ok: true,
-                thread: { thread_id: 1, name: LONG_NAME, email: 'ali@example.com', archived: 0, is_guest: 1 },
+                thread: { thread_id: 1, name: 'Ali Khan', email: 'ali@example.com', archived: 0, is_guest: 1 },
                 messages: [
-                    { id: 1, role: 'guest', body: 'Is there parking at the cottage?', created_at: hrsAgo(3) },
-                    { id: 2, role: 'admin', body: 'Yes — off-street, right outside.', created_at: hrsAgo(2) },
+                    // The guest spoke LAST, as the thread list says (last_role guest).
+                    { id: 1, role: 'admin', body: 'Hello — just ask if anything comes up.', at: hrsAgo(4), created_at: hrsAgo(4) },
+                    { id: 2, role: 'guest', body: 'Is there parking at the cottage?', at: hrsAgo(3), created_at: hrsAgo(3) },
                 ],
                 bookings: [] });
+            // A real thread shape (email + last_at): without them the one list has
+            // nothing to file the chat under and the person never appears.
             return json({ ok: true, threads: [
-                { thread_id: 1, name: 'Ali', unread: 1, last_role: 'guest', archived: 0, last_body: 'Hi' },
+                { thread_id: 1, name: 'Ali Khan', email: 'ali@example.com', unread: 1, last_role: 'guest', archived: 0, last_at: hrsAgo(3), last_body: 'Is there parking at the cottage?' },
             ] });
         }
         if (url.includes('reviews.php')) return json({ ok: true, reviews: [] });
@@ -125,7 +129,12 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
 
     // ---------- §1. one count for one fact -----------------------------
     console.log('§1. one count for one fact');
-    const counts = await page.evaluate(() => {
+    const counts = await page.evaluate(async () => {
+        // The chat store is filled by its own loader (it runs when the Inbox opens and
+        // on the message poll); load it here so the Inbox's number has every person
+        // it counts, then let the one list rebuild from it (ibSoon's frame).
+        await loadAdminMessages();
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         renderNeedsYou();
         refreshInboxBadge();
         const txt = (id) => ((document.getElementById(id) || {}).textContent || '').trim();
@@ -135,6 +144,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
             rail: txt('rail-cnt-today'),
             duties: String((window.chbDuties() || []).length),
             unseen: String(window.unseenEnquiries()),
+            waiting: String(window.ibWaitingCount()),
             inboxPip: txt('dock-badge-inbox'),
             // The BUTTON's name, not the pip's: a span with no role inside a
             // button that carries an explicit aria-label is never traversed.
@@ -152,10 +162,15 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(counts.dock === counts.duties, `the Today dock pip counts DUTIES (${counts.dock} vs ${counts.duties})`);
     ok(counts.strip === counts.duties, `…the Needs-you badge says the same (${counts.strip})`);
     ok(counts.rail === counts.duties, `…and so does the rail's Today row (${counts.rail})`);
-    // The Inbox pip is a DIFFERENT question (unseen, Mail's own sidebar badge)
-    // and is DISTINGUISHED IN WORDS rather than being folded into one number.
-    ok(counts.inboxPip === counts.unseen, `the Inbox pip still counts unseen (${counts.inboxPip})`);
-    ok(/^Inbox, \d+ unseen$/.test(counts.inboxLbl) && /^\d+ unseen$/.test(counts.pipTitle),
+    // The Inbox pip is a DIFFERENT question: since the one-list Inbox it is the
+    // list's own number — people WAITING on you (an enquiry to decide, a chat they
+    // spoke last in) — no longer unseen enquiries. The fixture's chat is what keeps
+    // the two apart: it waits, and it is not an enquiry, so a pip still counting
+    // unseen enquiries would read one short.
+    ok(counts.waiting !== counts.unseen, `the fixture separates waiting from unseen (${counts.waiting} waiting vs ${counts.unseen} unseen)`);
+    ok(counts.inboxPip === counts.waiting, `the Inbox pip counts the people WAITING (${counts.inboxPip} vs ${counts.waiting})`);
+    // …and is DISTINGUISHED IN WORDS rather than being folded into one number.
+    ok(/^Inbox, \d+ waiting$/.test(counts.inboxLbl) && /^\d+ waiting$/.test(counts.pipTitle),
         `…and names itself so the two numbers do not read as a disagreement ("${counts.inboxLbl}")`);
     ok(/^Today, \d+ needing you$/.test(counts.todayLbl),
         `…while the Today button says what ITS number counts ("${counts.todayLbl}")`);
@@ -196,9 +211,11 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         });
         await page.waitForTimeout(600);
         seen.push(...await lost(page));
-        // The Inbox list.
+        // The Inbox list — ONE list of people now; each row's name and its context
+        // line (the sub beside the row's capsule) are the leaves that must keep their
+        // words. Waited on by state: the list fills as its stores land.
         await page.evaluate(async () => { await openInbox(); });
-        await page.waitForTimeout(900);
+        await page.waitForFunction(() => [...document.querySelectorAll('#ib-rows .ib-rctx')].filter((e) => e.getClientRects().length).length >= 2, null, { timeout: 8000 }).catch(() => {});
         seen.push(...await lost(page));
         return seen;
     };
@@ -208,7 +225,7 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     // is measured too, but only as the vacuity gate: a leaf that paints no
     // text at all must be skipped, never counted as clean.
     const lost = (p) => p.evaluate(() => {
-        const SEL = '.bk-row-name, .bk-row-dates, .bhub-sticky-verb, .bhub-kv-label';
+        const SEL = '.bk-row-name, .bk-row-dates, .bhub-sticky-verb, .bhub-kv-label, #ib-rows .ib-name, #ib-rows .ib-rctx';
         const out = [];
         const rng = document.createRange();
         document.querySelectorAll(SEL).forEach((el) => {
@@ -243,9 +260,11 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(lost360.length === 0, `360: nothing loses words (${lost360.length ? JSON.stringify(lost360[0]) : 'clean'})`);
     const lost390 = await sweep(390);
     ok(lost390.length === 0, `390: nothing loses words (${lost390.length ? JSON.stringify(lost390[0]) : 'clean'})`);
-    // VACUITY GUARD: a sweep that found nothing to measure proves nothing.
-    const swept = await page.evaluate(() => document.querySelectorAll('.bk-row-name, .bk-row-dates, .bhub-sticky-verb, .bhub-kv-label').length);
-    ok(swept >= 4, `the sweep had something to measure (${swept} leaves on the last screen)`);
+    // VACUITY GUARD: a sweep that found nothing to measure proves nothing. Counted
+    // as PAINTED leaves on the last screen (the Inbox) — the old count also counted
+    // the hidden legacy lists, so it could pass with nothing on screen at all.
+    const swept = await page.evaluate(() => [...document.querySelectorAll('#ib-rows .ib-name, #ib-rows .ib-rctx')].filter((e) => e.getClientRects().length).length);
+    ok(swept >= 4, `the sweep had something to measure (${swept} painted Inbox leaves on the last screen)`);
     // THE STICKY'S DEFAULT VERB FITS. It clipped ("£340.00 Record a pay…") on
     // the page's primary control — the everyday label, not a hostile one.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -288,71 +307,84 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
 
     // ---------- §3. one row shape --------------------------------------
     // The enquiries differ ONLY in how long they have waited — which used to
-    // wrap one row's chip under the cottage pill and make it 145px beside a
-    // neighbour at 109.
+    // wrap one row's status under the cottage pill and make it 145px beside a
+    // neighbour at 109. The Inbox is ONE list of people now; each enquirer is a
+    // row there (name + time, context + capsule, preview), so that is the row.
     console.log('§3. every enquiry row is the same height');
     await page.evaluate(async () => { await openInbox(); });
-    await page.waitForTimeout(1000);
-    const heights = await page.evaluate(() => {
-        const els = [...document.querySelectorAll('#inbox-list .bk-row')].filter((e) => e.getClientRects().length);
-        return els.map((e) => Math.round(e.getBoundingClientRect().height));
-    });
+    const ENQ_KEYS = ['e:e7@x.com', 'e:e8@x.com']; // Jane (5 days) · Ravi (fresh)
+    await page.waitForFunction((ks) => ks.every((k) => { const r = document.querySelector(`#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`); return r && r.getClientRects().length; }), ENQ_KEYS, { timeout: 8000 }).catch(() => {});
+    const erows = await page.evaluate((ks) => ks.map((k) => {
+        const row = document.querySelector(`#ib-rows .ib-rowwrap[data-key="${k}"] .ib-row`);
+        if (!row || !row.getClientRects().length) return null;
+        const name = row.querySelector('.ib-name'), time = row.querySelector('.ib-time');
+        const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+        return {
+            h: Math.round(row.getBoundingClientRect().height),
+            // The IDENTITY LINE is the name and its time, side by side on one line.
+            oneLine: !!(name && time) && Math.abs(mid(name) - mid(time)) <= 3 && time.getBoundingClientRect().left >= name.getBoundingClientRect().right - 1,
+            time: time ? time.textContent.trim() : '',
+            aged: !!time && time.classList.contains('is-age'),
+            label: row.getAttribute('aria-label') || '',
+            caps: [...row.querySelectorAll('.ib-cap')].map((c) => c.textContent.trim()),
+        };
+    }), ENQ_KEYS);
+    const heights = erows.filter(Boolean).map((r) => r.h);
     ok(heights.length >= 2, `two enquiry rows render (${heights.length})`);
     // The fixture's two enquiries differ ONLY in how long they have waited —
     // same cottage-name length, same dates, same party — so any difference in
     // height can only have come from the status text.
     ok(heights.length >= 2 && Math.max(...heights) - Math.min(...heights) <= 1,
         `their heights match — the status text does not decide the anatomy (${heights.join(' / ')})`);
-    // …AND THE INVARIANT THAT HOLDS WITH ANY DATA: the row's top line is ONE
-    // line. A sub wrapping to its second clamped line is ordinary text flow;
-    // the status chip dropping BELOW the cottage pill is the anatomy
-    // collapsing, and that is what made one row 145px beside a 109px twin.
-    const tops = await page.evaluate(() =>
-        [...document.querySelectorAll('#inbox-list .bk-row-top')].filter((e) => e.getClientRects().length).map((e) => {
-            const kids = [...e.children].filter((c) => c.getClientRects().length);
-            const tallest = Math.max(0, ...kids.map((c) => c.getBoundingClientRect().height));
-            return { h: Math.round(e.getBoundingClientRect().height), tallest: Math.round(tallest), n: kids.length };
-        }));
-    ok(tops.length >= 2, `the top lines were measured (${tops.length}, vacuity guard ≥2)`);
-    ok(tops.every((t) => t.n >= 2 && t.h - t.tallest <= 2),
-        `every row's identity line stays ONE line (${tops.map((t) => t.h + '/' + t.tallest).join(' · ')})`);
-    // …and the wait is still SAID — in the SUB, not just somewhere on the row.
-    // Reading the whole list's textContent would pass on the broken code too,
-    // because the old chip said it as well (break-tested; it did).
-    const waitSaid = await page.evaluate(() =>
-        [...document.querySelectorAll('#inbox-list .bk-row-dates')].map((e) => e.textContent || '').join(' | '));
-    ok(/waiting 5 days/.test(waitSaid), `the wait moved into the sub rather than being dropped (“${waitSaid.slice(0, 70)}”)`);
-    const capText = await page.evaluate(() =>
-        [...document.querySelectorAll('#inbox-list .bk-row-top .st-cap')].map((e) => (e.textContent || '').trim()));
-    ok(capText.length >= 2 && capText.every((t) => !/waiting/i.test(t)),
-        `…and the capsule carries only the decision (${capText.join(' / ')})`);
+    // …AND THE INVARIANT THAT HOLDS WITH ANY DATA: the row's identity line is ONE
+    // line, the name with its time beside it.
+    ok(erows.filter(Boolean).length >= 2 && erows.every((r) => r && r.oneLine),
+        `every row's identity line stays ONE line (${erows.map((r) => (r ? r.oneLine : 'none')).join(' · ')})`);
+    // …and the wait is still SAID, on the row itself: the stale one's time becomes
+    // its age, in the warning ink, and a screen reader is told it is waiting.
+    const [jane, ravi] = erows;
+    ok(!!jane && /^5 days$/.test(jane.time) && jane.aged && /waiting 5 days/.test(jane.label),
+        `the stale enquiry says how long it has waited (“${jane && jane.time}”, “${jane && jane.label}”)`);
+    ok(!!ravi && !ravi.aged, `…and the fresh one does not (“${ravi && ravi.time}”)`);
+    ok(erows.every((r) => r && r.caps.length === 1 && r.caps[0] === 'Decide'),
+        `…and the capsule carries only the decision (${erows.map((r) => (r ? r.caps.join('+') : 'none')).join(' / ')})`);
 
-    // ---------- §4. the declined tab tells the truth --------------------
-    console.log('§4. the declined verdict describes declined enquiries');
+    // ---------- §4. a decline tells the truth ---------------------------
+    // The declined DRAWER is gone with the folders: a declined enquirer is a row of
+    // the one list, and what used to be the drawer's verdict is that row's capsule.
+    console.log('§4. a declined enquiry is said as a decline');
     declined = [{ ...mkE(9, 'pimpernel', 'Jem Beighton', 30, 34, 60, null), declined_at: hrsAgo(72) }];
-    await page.evaluate(async () => { await inboxTab('declined'); });
-    await page.waitForTimeout(900);
-    const dec = await page.evaluate(() => ({
-        cap: ((document.getElementById('iv-sum-enquiries') || {}).textContent || '').trim(),
-        tone: ((document.querySelector('#iv-sum-enquiries .st-cap') || {}).className || ''),
-        warn: !!document.querySelector('#iv-sum-enquiries .st-wic'),
-        sub: ((document.getElementById('iv-sub-enquiries') || {}).textContent || '').trim(),
-        lbl: ((document.getElementById('iv-lbl-enquiries') || {}).textContent || '').trim(),
-        foldOpen: !((document.getElementById('iv-fold-enquiries') || { hidden: true }).hidden),
-        listShown: !!(document.getElementById('inbox-list') || {}).getClientRects().length,
-        rows: ((document.getElementById('inbox-list') || {}).textContent || ''),
+    await page.evaluate(async () => { await ibLoadAll(true); });
+    await page.waitForFunction(() => { const r = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:e9@x.com"] .ib-row'); return r && r.getClientRects().length; }, null, { timeout: 8000 }).catch(() => {});
+    const dec = await page.evaluate(() => {
+        const w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:e9@x.com"]');
+        const row = w && w.querySelector('.ib-row');
+        const cap = w && w.querySelector('.ib-cap');
+        return {
+            painted: !!(row && row.getClientRects().length),
+            cap: cap ? cap.textContent.trim() : '',
+            capCls: cap ? cap.className : '',
+            ctx: w ? ((w.querySelector('.ib-rctx') || {}).textContent || '').trim() : '',
+            label: row ? row.getAttribute('aria-label') || '' : '',
+        };
+    });
+    ok(dec.painted, 'the declined enquirer is a row of the one list');
+    ok(dec.cap === 'Declined', `its capsule says Declined (“${dec.cap}”)`);
+    ok(/\bunk\b/.test(dec.capCls) && !/\b(warn|bad)\b/.test(dec.capCls), `a decline is a DECISION — the muted capsule, no warning tone (${dec.capCls})`);
+    ok(!/Decide/.test(dec.label + dec.cap), 'and it never asks for the decision again');
+    ok(/Pimpernel/.test(dec.ctx), `its context names the stay that was declined (“${dec.ctx}”)`);
+    // …and the conversation keeps the record: their own words, then the decline.
+    await page.click('#ib-rows .ib-rowwrap[data-key="e:e9@x.com"] .ib-row');
+    await page.waitForFunction(() => /Jem Beighton/.test((document.querySelector('#ib-conv .ib-hname') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    const decConv = await page.evaluate(() => ({
+        words: [...document.querySelectorAll('#ib-thread .ib-msg.is-them .ib-text')].some((t) => /parking/.test(t.textContent)),
+        event: [...document.querySelectorAll('#ib-thread .ib-event')].some((e) => /Enquiry declined/.test(e.textContent)),
+        decide: !!document.querySelector('#ib-conv [data-ib="approve"]'),
     }));
-    ok(/declined/i.test(dec.cap) && !/waiting/i.test(dec.cap), `the capsule counts declines (“${dec.cap}”)`);
-    ok(/is-unk/.test(dec.tone) && !dec.warn, 'a decline is a DECISION — muted, no warning triangle');
-    ok(/Jem Beighton/.test(dec.sub) && /declined/i.test(dec.sub), `the sub names a DECLINED enquirer (“${dec.sub}”)`);
-    ok(dec.lbl === 'Enquiries', `the fold label keeps one title on both tabs (“${dec.lbl}”)`);
-    ok(dec.foldOpen && dec.listShown, 'the drawer opens on the tap that asked for it');
-    ok(/Jem Beighton/.test(dec.rows), 'and the declined row is the one in it');
-    // Back to Waiting: the verdict returns to the waiting queue's own numbers.
-    await page.evaluate(async () => { await inboxTab('waiting'); });
-    await page.waitForTimeout(700);
-    const wait = await page.evaluate(() => ((document.getElementById('iv-sum-enquiries') || {}).textContent || '').trim());
-    ok(/waiting/i.test(wait), `switching back restores the waiting verdict (“${wait}”)`);
+    ok(decConv.words && decConv.event, 'the conversation shows what they asked and that it was declined');
+    ok(!decConv.decide, '…with no Approve on a declined enquiry');
+    await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && b.getClientRects().length) b.click(); });
+    await page.waitForTimeout(500);
 
     // ---------- §5. Send is in reach -----------------------------------
     console.log('§5. the composer opens with Send on screen');
@@ -494,17 +526,22 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         ok(false, 'the intel card rendered (fixture)');
     }
 
-    // (Q) The Needs-attention row's capsule is a STATE, not a pound figure
-    // dressed as a warning.
+    // (Q) A capsule is a STATE, never a pound figure dressed as one. The Inbox's
+    // Needs-attention rows went with its landing; the capsule that sits over an
+    // enquiry now is the decision card's, in the conversation — the state in the
+    // capsule, the money in the figure beside it.
     await page.evaluate(async () => { await openInbox(); });
-    await page.waitForTimeout(1000);
-    const attn = await page.evaluate(() => {
-        const cap = document.querySelector('#iv-attn .bhub-fold-grp .st-cap');
-        const sub = document.querySelector('#iv-attn .bhub-fold-sub');
-        return { cap: cap ? (cap.textContent || '').trim() : '', sub: sub ? (sub.textContent || '').trim() : '' };
-    });
-    ok(attn.cap !== '' && !/£/.test(attn.cap), `the attention capsule states the state, not the money (“${attn.cap}”)`);
-    ok(/£/.test(attn.sub), `…and the figure joins the facts in the sub (“${attn.sub.slice(0, 60)}”)`);
+    await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:e7@x.com"] .ib-row'), null, { timeout: 8000 }).catch(() => {});
+    await page.evaluate(() => { const r = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:e7@x.com"] .ib-row'); if (r) r.click(); });
+    await page.waitForFunction(() => !!document.querySelector('#ib-conv .ib-decide .ib-decide-cap'), null, { timeout: 8000 }).catch(() => {});
+    const attn = await page.evaluate(() => ({
+        cap: ((document.querySelector('#ib-conv .ib-decide .ib-decide-cap') || {}).textContent || '').trim(),
+        fig: ((document.querySelector('#ib-conv .ib-decide .ib-decide-fig') || {}).textContent || '').trim(),
+    }));
+    ok(attn.cap !== '' && !/£/.test(attn.cap), `the decision's capsule states the state, not the money (“${attn.cap}”)`);
+    ok(/£/.test(attn.fig), `…and the figure stands beside it (“${attn.fig}”)`);
+    await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && b.getClientRects().length) b.click(); });
+    await page.waitForTimeout(400);
 
     // (E) The enquiry's quote uses the BOOKING HUB'S OWN breakdown shape. As
     // .bhub-kv rows it had a 96px LABEL COLUMN — right for "Email / Phone /
@@ -537,62 +574,65 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     const tall = quote.rows.filter((r) => r.lines > 2);
     ok(tall.length === 0, `and no label is squeezed into a column (${tall.length ? '“' + tall[0].t + '” ' + tall[0].lines + ' lines' : 'all ≤2 lines'})`);
 
-    // (L + M) The conversation is a sheet, and its composer is ONE row.
-    await page.evaluate(async () => { await openMessageThread(1); });
-    await page.waitForTimeout(900);
+    // (L + M) The conversation takes the whole phone, and its composer meets the
+    // thumb. The chat SHEET this measured (#messages-modal, openMessageThread) is no
+    // longer reachable — its only opener was the old Messages folder list — and a
+    // guest's chat now opens in the one list's conversation, so that is the subject.
+    // (Its quick-replies select went with the sheet.)
+    await page.evaluate(async () => { await openInbox(); });
+    await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:ali@example.com"] .ib-row'), null, { timeout: 8000 }).catch(() => {});
+    await page.evaluate(() => { const r = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:ali@example.com"] .ib-row'); if (r) r.click(); });
+    await page.waitForFunction(() => /Ali Khan/.test((document.querySelector('#ib-conv .ib-hname') || {}).textContent || '') && !!document.getElementById('ib-reply')
+        && [...document.querySelectorAll('#ib-thread .ib-msg')].length >= 2, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(450); // the pane slides in on a phone; measure where it lands
+    // Words in the box, so Send is in its live state (an empty box disables it and
+    // shrinks it to 0.9) — the floor is about the control the owner actually taps.
+    await page.fill('#ib-reply', 'Yes, right outside.');
+    await page.waitForTimeout(250);
     const chat = await page.evaluate(() => {
-        const ov = document.getElementById('messages-modal');
-        const box = ov ? ov.querySelector('.modal-box') : null;
-        if (!ov || !box) return null;
-        const r = box.getBoundingClientRect();
-        const cs = getComputedStyle(box);
-        const q = (s) => { const e = box.querySelector(s); return e ? e.getBoundingClientRect() : null; };
-        const att = q('.chat-attach-btn'), ta = q('.chat-composer textarea'), snd = q('.chat-send');
-        const quick = box.querySelector('.msg-quick');
-        const title = box.querySelector('#messages-modal-title');
+        const conv = document.getElementById('ib-conv');
+        if (!conv || !conv.getClientRects().length) return null;
+        const r = conv.getBoundingClientRect();
+        const q = (s) => { const e = conv.querySelector(s); return e && e.getClientRects().length ? e.getBoundingClientRect() : null; };
+        // A control's EFFECTIVE hit region: its own box grown by any absolutely
+        // positioned ::before/::after region (the round-seven mechanism — the
+        // Chat / Email buttons carry one), as ui-test-reach measures it.
+        const reach = (el) => {
+            const b = el.getBoundingClientRect();
+            const box = { t: b.top, b: b.bottom, l: b.left, r: b.right };
+            for (const ps of ['::before', '::after']) {
+                const cs = getComputedStyle(el, ps);
+                if (cs.content === 'none' || cs.position !== 'absolute' || !/px/.test(cs.top) || !/px/.test(cs.left)) continue;
+                const p = (v) => parseFloat(v) || 0;
+                box.t = Math.min(box.t, b.top + p(cs.top)); box.l = Math.min(box.l, b.left + p(cs.left));
+                box.r = Math.max(box.r, b.right - p(cs.right)); box.b = Math.max(box.b, b.bottom - p(cs.bottom));
+            }
+            return { width: box.r - box.l, height: box.b - box.t };
+        };
+        const name = q('.ib-hname'), acts = q('.ib-acts');
+        const replyEl = conv.querySelector('#ib-reply'), sendEl = conv.querySelector('#ib-send');
+        const reply = replyEl && replyEl.getClientRects().length ? reach(replyEl) : null;
+        const send = sendEl && sendEl.getClientRects().length ? reach(sendEl) : null;
+        const chans = [...conv.querySelectorAll('.ib-chan button')].filter((b) => b.getClientRects().length).map(reach);
+        const sugg = q('.ib-sugg');
         return {
-            sheet: ov.classList.contains('chb-sheet'),
-            edge: Math.round(r.bottom) >= window.innerHeight - 1 && Math.round(r.left) <= 1 && Math.round(r.right) >= window.innerWidth - 1,
-            topCorners: parseFloat(cs.borderBottomLeftRadius) === 0 && parseFloat(cs.borderTopLeftRadius) > 0,
-            opaque: cs.backdropFilter === 'none' || cs.backdropFilter === '',
-            // ONE ROW: the composer aligns its children to the FIELD's bottom
-            // (align-items: flex-end), so the shared edge is the bottom, and a
-            // row that had wrapped would be taller than its tallest child.
-            oneRow: !!(att && ta && snd)
-                && Math.abs(att.bottom - snd.bottom) <= 2 && Math.abs(ta.bottom - snd.bottom) <= 2
-                && Math.abs(box.querySelector('.chat-composer').getBoundingClientRect().height - ta.height) <= 2,
-            floors: !!(att && ta && snd) && Math.min(att.height, ta.height, snd.height) >= 43.5,
-            // The chrome ABOVE the field: the quick row only.
-            chrome: quick ? Math.round(quick.getBoundingClientRect().height) : -1,
-            sendRound: snd ? Math.round(snd.width) === Math.round(snd.height) : false,
-            // A <select> clips with no ellipsis, so its own label has to fit.
-            cannedWhole: (() => {
-                const sel = box.querySelector('#msg-canned');
-                if (!sel) return false;
-                const cs = getComputedStyle(sel);
-                const probe = document.createElement('span');
-                probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
-                probe.style.font = cs.font; probe.textContent = sel.options[0].text;
-                document.body.appendChild(probe);
-                const need = probe.getBoundingClientRect().width; probe.remove();
-                return sel.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) >= need;
-            })(),
-            titleOwnRow: !!(title && att) && (() => {
-                const acts = box.querySelector('.msg-head-acts');
-                const tr = title.getBoundingClientRect(), ar = acts.getBoundingClientRect();
-                return ar.top >= tr.bottom - 1; // the actions sit UNDER the name
-            })(),
+            edge: Math.round(r.left) <= 1 && Math.round(r.right) >= window.innerWidth - 1 && Math.round(r.bottom) >= window.innerHeight - 1,
+            // The name has its OWN row: under the actions, and the width of the pane.
+            nameOwnRow: !!(name && acts) && name.top >= acts.bottom - 1 && name.width >= r.width * 0.8,
+            sendRound: !!send && Math.round(send.width) === Math.round(send.height),
+            floors: { reply: reply ? Math.round(reply.height) : 0, send: send ? Math.round(Math.min(send.width, send.height)) : 0, chan: chans.length ? Math.round(Math.min(...chans.map((c) => c.height))) : 0, n: chans.length },
+            chrome: sugg ? Math.round(sugg.height) : 0,
         };
     });
-    ok(!!chat && chat.sheet && chat.edge, 'the conversation is a bottom sheet — edge-attached');
-    ok(!!chat && chat.topCorners && chat.opaque, '…with top corners only, and opaque (no blur over the scrim)');
-    ok(!!chat && chat.titleOwnRow, 'the guest\'s name has its own row, not a 72px column beside three pills');
-    ok(!!chat && chat.oneRow && chat.sendRound, 'attach · field · send are ONE row, send a circle');
-    ok(!!chat && chat.floors, 'and all three meet the 44px floor');
-    ok(!!chat && chat.chrome > 0 && chat.chrome <= 60, `the chrome above the field is one line (${chat && chat.chrome}px, was 175)`);
-    ok(!!chat && chat.cannedWhole, 'the quick-replies control shows its own label whole (a select cannot ellipsise)');
-    await page.evaluate(() => { window.closeMessagesModal(); });
-    await page.waitForTimeout(300);
+    ok(!!chat && chat.edge, 'the conversation takes the phone edge to edge, down to the bottom');
+    ok(!!chat && chat.nameOwnRow, 'the guest\'s name has its own row, not a column beside the buttons');
+    ok(!!chat && chat.sendRound, 'Send is a circle');
+    ok(!!chat && chat.floors.n === 2 && Math.min(chat.floors.reply, chat.floors.send, chat.floors.chan) >= 43.5,
+        `the reply box, Chat / Email and Send all reach the 44px floor (effective regions: box ${chat && chat.floors.reply}, Chat/Email ${chat && chat.floors.chan}, Send ${chat && chat.floors.send})`);
+    ok(!!chat && chat.chrome <= 60, `the chrome above the reply box is one line at most (${chat && chat.chrome}px)`);
+    await page.fill('#ib-reply', ''); // and the draft it would have kept goes with it
+    await page.evaluate(() => { const b = document.querySelector('#ib-conv .ib-back'); if (b && b.getClientRects().length) b.click(); });
+    await page.waitForTimeout(400);
 
     // ---- desktop: the filled primary action + the un-repeated heading ----
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -657,46 +697,25 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     });
     ok(!!apprHover && apprHover.before === apprHover.after, 'and it does not change colour under the pointer');
 
-    // (R) The middle column stops repeating the rail's own label 20px away —
-    // clipped, NOT removed: the heading's text is still readable.
+    // (R) The list stops repeating the page's own title. The old middle column
+    // carried an "Enquiries" h2 20px from the rail's label; the one list's column
+    // is NAMED for a screen reader (its aria-label says which folder) and paints no
+    // heading of its own, so the page's title says Inbox once. (The CSSOM check that
+    // the old h2's clip was scoped to the rail widths went with that h2.)
     await page.evaluate(async () => { await openInbox(); });
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-row'), null, { timeout: 8000 }).catch(() => {});
     const head = await page.evaluate(() => {
-        const h = document.querySelector('#inbox-folder-enquiries .bo-sec-title');
-        if (!h) return null;
-        const r = h.getBoundingClientRect();
-        return { txt: (h.textContent || '').trim(), w: Math.round(r.width), h: Math.round(r.height), inDom: true };
+        const list = document.getElementById('ib-list');
+        const painted = (e) => e.getClientRects().length && e.getBoundingClientRect().width > 2 && e.getBoundingClientRect().height > 2;
+        return {
+            name: list ? list.getAttribute('aria-label') : '',
+            listHeads: list ? [...list.querySelectorAll('h1, h2, h3, h4')].filter(painted).map((h) => h.textContent.trim()) : ['(no list)'],
+            titles: [...document.querySelectorAll('#view-inbox h1')].filter(painted).map((h) => h.textContent.trim()),
+        };
     });
-    ok(!!head && head.inDom && /Enquiries/.test(head.txt), `the heading is still in the DOM and readable (“${head && head.txt}”)`);
-    ok(!!head && head.w <= 2 && head.h <= 2, `…and painted nowhere at 1280 (${head && head.w}×${head && head.h})`);
-    // SCOPED TO THE RAIL WIDTHS, by declaration. Below 1200 the folder divs
-    // are re-parented INTO the landing's folds, where an older rule already
-    // hides these h2s (the fold LABEL is the visible heading there) — so a
-    // painted/not-painted check below 1200 would pass whatever this rule says.
-    // The CSSOM is the honest reading: the clip lives inside min-width 1200.
-    const scoped = await page.evaluate(async () => {
-        // admin.css: the markup is owner-only, and app.css is the sheet every
-        // anonymous visitor pays for (the PR2 rule, applied).
-        const css = await (await fetch('admin.css')).text();
-        const i = css.indexOf('#inbox-main .bo-sec-title');
-        if (i < 0) return { found: false };
-        // Walk back to the nearest @media opener that is still open at `i`.
-        let depth = 0, at = '';
-        for (let p = i; p >= 0; p--) {
-            const c = css[p];
-            if (c === '}') depth++;
-            else if (c === '{') {
-                if (depth === 0) {
-                    const head = css.slice(Math.max(0, p - 160), p);
-                    const m = head.match(/@media([^{]*)$/);
-                    if (m) { at = m[1].trim(); break; }
-                } else depth--;
-            }
-        }
-        return { found: true, at };
-    });
-    ok(scoped.found && /min-width:\s*1200px/.test(scoped.at),
-        `the hide is scoped to the rail widths by declaration (@media ${scoped.at || 'none'})`);
+    ok(head.name === 'Inbox', `the list is named for a screen reader (“${head.name}”)`);
+    ok(head.listHeads.length === 0 && head.titles.length === 1 && head.titles[0] === 'Inbox',
+        `…and paints no heading of its own: the title says Inbox once (${head.titles.join(', ')}${head.listHeads.length ? '; list: ' + head.listHeads.join(', ') : ''})`);
 
     console.log(fails ? `\n${fails} check(s) failed ❌` : '\nAll ownerday checks passed ✅');
     await done(fails);

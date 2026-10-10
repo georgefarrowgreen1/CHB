@@ -5,14 +5,22 @@
 //  D. Emails card shows the logged email with its Show email button.
 //  E. Guest card lists the same guest's other stay; clicking swaps hubs.
 //  F. Back button returns to the Bookings list.
-//  G. Modal availability strip: booked days shaded, clash note on overlap,
-//     no self-clash when editing the same booking, none when dates free.
+//  G. The booking sheet's calendar + verdict: taken nights crossed, ⚠ Overlaps
+//     on a clash (direct or imported), no self-clash when editing, ✓ Free otherwise.
 //  H. Deleting from the hub exits to the Bookings list.
+//  I. The ≥1200 split: the hub docks beside Today's bookings list.
+//  J. The enquiry hub, opened from the one-list Inbox as its own page.
+//  K2. A declined enquiry can still be put back (soft check — see the section).
+//  L. Payments → a stay's money page → its booking hub → back to Payments.
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
 const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+// A check that must not stop the run: counted, reported, and failing the suite at
+// the END — used where a gap in the product would otherwise hide every later section.
+let softFails = 0;
+const softOk = (cond, label) => { console.log((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) softFails++; };
 
 (async () => {
   // <1200px so sections A–H exercise the STANDALONE hub flow (the ≥1200
@@ -687,71 +695,82 @@ let approveWill409 = false;
   await page.unroute('**/bookings.php');
 
   // ---------- A4. payment plan at ADD time ----------
+  // The one booking SHEET carries the plan as its "First payment" row: standard
+  // by default (the row states the site's own terms), tapping it unfolds the
+  // custom plan (a % stepper and a due date on the sheet's own mini calendar),
+  // and "Back to the standard plan" WIPES what was typed. Only a custom plan
+  // rides the add payload — blank sends nothing, reverted sends nothing.
   console.log('A4. payment plan in the Add Booking flow');
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
+  const addFill = (f) => page.evaluate((x) => {
+    document.getElementById('modal-property').value = '21a';
+    document.getElementById('modal-name').value = x.name;
+    document.getElementById('modal-checkin').value = x.ci;
+    document.getElementById('modal-checkout').value = x.co;
+    updateModalPrice();
+  }, f);
+  const openAddSheet = async () => {
+    await page.evaluate(() => window.openAddBooking());
+    await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && !!document.querySelector('#edit-modal .modal-box.bks'));
+  };
+  // The due date is picked on the plan's mini calendar — turn its months until the day shows.
+  const pickDue = async (iso) => {
+    await page.click('#bks-due-btn');
+    await page.waitForFunction(() => document.getElementById('bks-due-fold').classList.contains('on'));
+    for (let i = 0; i < 14; i++) {
+      const cell = await page.$(`#bks-due-cal [data-bks="one"][data-v="${iso}"]`);
+      if (cell) { await cell.click(); break; }
+      await page.click('#bks-due-cal [data-bks="onenav"][data-v="1"]');
+    }
+    await page.waitForFunction((x) => document.getElementById('modal-plan-due').value === x, iso);
+  };
+  const addPostAfter = async (from) => {
+    await page.click('#modal-save-btn');
+    await page.waitForFunction(() => !document.getElementById('edit-modal').classList.contains('open'), null, { timeout: 8000 }).catch(() => {});
+    return posts.slice(from).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  };
+  await openAddSheet();
+  await addFill({ name: 'Plan At Add', ci: d(46), co: d(49) });
   const planInAdd = await page.evaluate(() => ({
-    shown: getComputedStyle(document.getElementById('modal-plan-group')).display !== 'none',
-    stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
-    fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
+    shown: (() => { const g = document.getElementById('modal-plan-group'); return !!g && g.getClientRects().length > 0; })(),
+    std: document.getElementById('bks-plan-row').getAttribute('aria-expanded') === 'false' && !document.getElementById('bks-plan-fold').classList.contains('on'),
+    says: document.getElementById('bks-first-s').textContent,
     pctBlank: (document.getElementById('modal-plan-pct') || {}).value === '',
     dueBlank: (document.getElementById('modal-plan-due') || {}).value === '',
   }));
-  ok(planInAdd.shown && planInAdd.stdOn && planInAdd.fieldsHidden && planInAdd.pctBlank && planInAdd.dueBlank,
-    'ADD opens on the STANDARD toggle, fields folded and blank');
-  // Toggle CUSTOM, fill a 30% / dated plan → the add POST carries the plan.
-  await page.click('#modal-plan-custom-btn');
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Plan At Add';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    document.getElementById('modal-plan-pct').value = '30';
-    document.getElementById('modal-plan-due').value = f.due;
-  }, { ci: d(46), co: d(49), due: d(44) });
+  ok(planInAdd.shown && planInAdd.std && planInAdd.pctBlank && planInAdd.dueBlank && /25% now with the deposit/.test(planInAdd.says),
+    `ADD opens on the STANDARD plan, its terms stated, the custom fields folded and blank (${planInAdd.says})`);
+  // Tap the First payment row → CUSTOM: 30% and a dated balance → the add POST carries the plan.
+  await page.click('#bks-plan-row');
+  await page.waitForFunction(() => document.getElementById('bks-plan-fold').classList.contains('on'));
+  await page.fill('#modal-plan-pct', '30');
+  await pickDue(d(44));
+  ok(/30% now/.test(await page.evaluate(() => document.getElementById('bks-first-s').textContent)), 'the row re-states the custom plan as it is typed');
   const postsBefore = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost = posts.slice(postsBefore).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  const addPost = await addPostAfter(postsBefore);
   ok(!!addPost && addPost.deposit_pct === '30' && addPost.balance_due_date === d(44),
     `the add payload carries the plan (${addPost ? addPost.deposit_pct + ' / ' + addPost.balance_due_date : 'no add post'})`);
   // A blank plan sends NOTHING — absent keys, never empty strings the server
   // could misread as "clear" (there is nothing to clear at add time).
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Standard At Add';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-  }, { ci: d(60), co: d(63) });
-  const postsBefore2 = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost2 = posts.slice(postsBefore2).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  await openAddSheet();
+  await addFill({ name: 'Standard At Add', ci: d(60), co: d(63) });
+  const addPost2 = await addPostAfter(posts.length);
   ok(!!addPost2 && !('deposit_pct' in addPost2) && !('balance_due_date' in addPost2),
     'blank plan fields stay OUT of the payload');
-  // TYPED THEN REVERTED: values entered under Custom must die with the toggle —
-  // a plan the owner backed out of can never ride the save silently.
-  await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(250);
-  await page.click('#modal-plan-custom-btn');
-  await page.evaluate((f) => {
-    document.getElementById('modal-property').value = '21a';
-    document.getElementById('modal-name').value = 'Reverted Plan';
-    document.getElementById('modal-checkin').value = f.ci;
-    document.getElementById('modal-checkout').value = f.co;
-    document.getElementById('modal-plan-pct').value = '40';
-    document.getElementById('modal-plan-due').value = f.due;
-  }, { ci: d(66), co: d(69), due: d(64) });
-  await page.click('#modal-plan-std-btn');
-  const postsBefore3 = posts.length;
-  await page.evaluate(() => saveModal());
-  await page.waitForTimeout(600);
-  const addPost3 = posts.slice(postsBefore3).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  // TYPED THEN REVERTED: values entered under Custom must die with "Back to the
+  // standard plan" — a plan the owner backed out of can never ride the save silently.
+  await openAddSheet();
+  await addFill({ name: 'Reverted Plan', ci: d(66), co: d(69) });
+  await page.click('#bks-plan-row');
+  await page.waitForFunction(() => document.getElementById('bks-plan-fold').classList.contains('on'));
+  await page.fill('#modal-plan-pct', '40');
+  await pickDue(d(64));
+  await page.click('#bks-plan-fold [data-bks="planstd"]');
+  const wiped = await page.evaluate(() => ({ pct: document.getElementById('modal-plan-pct').value, due: document.getElementById('modal-plan-due').value }));
+  ok(wiped.pct === '' && wiped.due === '', `"Back to the standard plan" wipes what was typed (${JSON.stringify(wiped)})`);
+  const addPost3 = await addPostAfter(posts.length);
   ok(!!addPost3 && !('deposit_pct' in addPost3) && !('balance_due_date' in addPost3),
-    'a plan typed then toggled back to Standard sends NOTHING');
-  await page.evaluate(() => closeModal());
+    'a plan typed then reverted to standard sends NOTHING');
+  await page.evaluate(() => { if (document.getElementById('edit-modal').classList.contains('open')) closeModal(); });
   // Back to the b1 hub for the sections that follow.
   await page.evaluate(() => showDetails('21a', findBookingById('b1')));
   await page.waitForTimeout(600);
@@ -1511,79 +1530,58 @@ let approveWill409 = false;
   const backView = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(backView === 'view-backoffice', `back lands on the dashboard workspace (${backView})`);
 
-  // ---------- G. glass date picker (admin mode) + availability strip ----------
-  console.log('G. glass picker + availability strip');
+  // ---------- G. the sheet's own calendar + its overlap verdict ----------
+  // The glass picker and the availability strip are gone from the booking form:
+  // the sheet carries an INLINE calendar (taken nights crossed but still
+  // pickable — a deliberate overlap is the owner's call) and ONE verdict row
+  // under the dates (✓ Free, or ⚠ Overlaps <who>). ui-test-addbooking owns the
+  // sheet's own contract; this keeps the hub fixture's three facts true: a
+  // direct booking, an imported platform stay, and the booking being edited.
+  console.log('G. the sheet calendar + overlap verdict');
   await page.evaluate(() => window.openAddBooking());
-  await page.waitForTimeout(400);
-  // The consumer glass calendar opens from the modal's date trigger, in admin
-  // mode: taken nights shaded but still pickable.
-  await page.click('#modal-date-trigger');
-  await page.waitForTimeout(300);
-  // b1's stay (d+30) is next month — flip the calendar forward to see it.
-  await page.evaluate(() => dpChangeMonth(1));
-  await page.waitForTimeout(200);
-  const dp1 = await page.evaluate(() => ({
-    open: document.getElementById('date-picker').classList.contains('open'),
-    admin: document.getElementById('date-picker').classList.contains('dp-admin'),
-    shaded: document.querySelectorAll('#dp-grid .dp-day.dp-booked').length,
-    shadedClickable: Array.from(document.querySelectorAll('#dp-grid .dp-day.dp-booked')).every((c) => c.getAttribute('onclick') || c.getAttribute('data-act')),
-  }));
-  ok(dp1.open && dp1.admin, 'glass calendar opens from the modal in admin mode');
-  ok(dp1.shaded >= 1 && dp1.shadedClickable, `taken nights shaded yet pickable (${dp1.shaded})`);
-  await page.evaluate(([a, b]) => { dpPick(a); dpPick(b); dpDone(); }, [d(60), d(63)]);
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && !!document.querySelector('#edit-modal .modal-box.bks'));
+  await page.click('#bks-t-in');
+  await page.waitForFunction(() => document.getElementById('bks-cal-fold').classList.contains('on'));
+  // Turn the sheet's calendar to the month holding a given day.
+  const calTo = async (iso) => {
+    for (let i = 0; i < 14 && !(await page.$(`#bks-cal [data-bks="day"][data-v="${iso}"]`)); i++) await page.click('#bks-cal [data-bks="nav"][data-v="1"]');
+  };
+  await calTo(d(31));
+  const dp1 = await page.evaluate((iso) => {
+    const c = document.querySelector(`#bks-cal [data-bks="day"][data-v="${iso}"]`);
+    return { taken: !!c && c.classList.contains('taken'), pickable: !!c && !c.disabled, label: c ? c.getAttribute('aria-label') : '' };
+  }, d(31));
+  ok(dp1.taken && dp1.pickable && /booked by Walk-in Guest/.test(dp1.label), `the sheet's calendar crosses a taken night yet keeps it pickable (${dp1.label})`);
+  const pick = async (iso) => { await calTo(iso); await page.click(`#bks-cal [data-bks="day"][data-v="${iso}"]`); };
+  await pick(d(60));
+  await pick(d(63));
+  await page.waitForFunction(() => !document.getElementById('bks-cal-fold').classList.contains('on'));
   const dp2 = await page.evaluate(() => ({
     ci: document.getElementById('modal-checkin').value,
     co: document.getElementById('modal-checkout').value,
-    label: (document.getElementById('modal-date-display') || {}).textContent || '',
-    closed: !document.getElementById('date-picker').classList.contains('open'),
+    tiles: [document.getElementById('bks-t-in-d').textContent, document.getElementById('bks-t-out-d').textContent],
+    verdict: document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim(),
   }));
-  ok(dp2.ci === d(60) && dp2.co === d(63) && dp2.closed, `picked range lands in the booking fields (${dp2.ci} → ${dp2.co})`);
-  ok(/→/.test(dp2.label), `trigger shows the chosen range (${dp2.label.trim()})`);
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(31)); // overlaps booking 1 (d30→d33)
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(34));
-  await page.waitForTimeout(300);
-  const g1 = await page.evaluate(() => ({
-    shown: (document.getElementById('modal-availability') || {}).style.display !== 'none',
-    strip: (document.querySelector('#modal-availability .mav-strip-txt') || {}).textContent || '',
-    clashDot: !!document.querySelector('#modal-availability .mav-strip-dot.is-clash'),
-    clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
-  }));
-  // The everyday face is the SUMMARY STRIP now — the grid folds behind its
-  // Calendar toggle (ui-test-addbooking owns the strip's own contract).
-  ok(g1.shown && /^Overlaps/.test(g1.strip) && g1.clashDot, `strip leads with the overlap (${g1.strip.slice(0, 40)})`);
-  ok(/overlap/.test(g1.clash) && /Walk-in Guest/.test(g1.clash), `clash note names the conflict (${g1.clash.trim().slice(0, 60)})`);
-  await page.evaluate(() => mavToggle());
-  await page.waitForTimeout(200);
-  // ≥2 not ≥3: the grid starts on the MONDAY of check-in week (by design), so
-  // when d(31) falls on a Monday the booking's first night d(30) sits outside
-  // the window — only the two overlapped nights are guaranteed visible.
-  const g1b = await page.evaluate(() => document.querySelectorAll('#modal-availability .mav-day.is-booked').length);
-  ok(g1b >= 2, `the Calendar toggle opens the grid with booked days shaded (${g1b})`);
-  await page.evaluate(() => mavToggle());
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(60)); // free dates
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(63));
-  await page.waitForTimeout(300);
-  const g2 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-clash'));
-  ok(g2, 'no clash note on free dates');
-  // Airbnb import visible when the window covers it.
-  await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(49));
-  await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(51));
-  await page.waitForTimeout(300);
-  await page.evaluate(() => mavToggle()); // the grid folds by default now
-  await page.waitForTimeout(200);
-  const g3 = await page.evaluate(() => ({
-    external: document.querySelectorAll('#modal-availability .mav-day.is-external').length,
-    clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
-  }));
-  ok(g3.external >= 3 && /airbnb import/.test(g3.clash), `imported block shaded + named (${g3.external} days)`);
-  await page.evaluate(() => mavToggle());
+  const sp = await page.evaluate((a) => a.map((x) => dpSpoken(x)), [d(60), d(63)]);
+  ok(dp2.ci === d(60) && dp2.co === d(63) && dp2.tiles.join('|') === sp.join('|'), `two taps land the stay in the store and on the tiles (${dp2.tiles.join(' → ')})`);
+  ok(/✓ Free/.test(dp2.verdict) && !/Overlaps/.test(dp2.verdict), `free dates → ✓ Free, no clash claimed (${dp2.verdict})`);
+  const verdictFor = (ci, co) => page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+    return document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim();
+  }, { ci, co });
+  const g1 = await verdictFor(d(31), d(34)); // overlaps booking 1 (d30→d33)
+  ok(/⚠ Overlaps Walk-in Guest/.test(g1), `overlapping dates → the verdict names the conflict (${g1})`);
+  // The imported Airbnb stay (d50→d53) is a conflict the same way, named for its platform.
+  const g3 = await verdictFor(d(49), d(51));
+  ok(/⚠ Overlaps an? Airbnb stay/.test(g3), `an imported platform stay is named as one (${g3})`);
   await page.evaluate(() => closeModal());
   // Editing booking 1: its own dates must NOT self-clash.
   await page.evaluate(() => window.openEditBooking('b1'));
-  await page.waitForTimeout(400);
-  const g4 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-clash'));
-  ok(g4, 'editing a booking does not flag itself as a clash');
+  await page.waitForFunction(() => document.getElementById('edit-modal').classList.contains('open') && document.getElementById('modal-mode').value === 'booking');
+  const g4 = await page.evaluate(() => document.getElementById('bks-verdict').textContent.replace(/\s+/g, ' ').trim());
+  ok(/✓ Free/.test(g4) && !/Overlaps/.test(g4), `editing a booking does not flag itself as a clash (${g4})`);
   await page.evaluate(() => closeModal());
 
   // ---------- H. delete rules: money in → no delete; money-free → deletes ----------
@@ -1831,50 +1829,74 @@ let approveWill409 = false;
   ok(i2.active === 'view-backoffice', 'row click keeps the dashboard (no page swap)');
   ok(i2.name === i2.openRow && i2.name !== i1.name, `pane swapped to the clicked booking (${i2.name})`);
 
-  // ---------- J. inbox master–detail (same playbook) ----------
-  console.log('J. inbox workspace');
+  // ---------- J. the enquiry hub, reached from the Inbox ----------
+  // The Inbox is ONE LIST OF PEOPLE now (ui-test-inbox owns it): no enquiry rows,
+  // no reading pane, so the hub is never docked there — it opens as its OWN page
+  // from the person's "Enquiry" record button. The decision-first anatomy below
+  // is read on that page.
+  console.log('J. the enquiry hub, from the Inbox');
   await page.evaluate(() => window.openInbox());
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => document.querySelectorAll('#ib .ib-row').length >= 2);
+  const j0 = await page.evaluate(() => ({
+    active: (document.querySelector('.page-view.active') || {}).id,
+    names: [...document.querySelectorAll('#ib .ib-row .ib-name')].filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()),
+    pane: !!document.getElementById('inbox-detail-pane'),
+    oldCards: [...document.querySelectorAll('.enquiry-card, #inbox-list .bk-row[data-enqid]')].filter((x) => x.getClientRects().length).length,
+  }));
+  ok(j0.active === 'view-inbox' && j0.names.includes('Enq Alpha') && j0.names.includes('Enq Beta') && !j0.pane && j0.oldCards === 0,
+    `each enquirer is a person on the Inbox's one list; no enquiry cards, no reading pane (${j0.names.join(', ')})`);
+  await page.click('#ib .ib-row[aria-label^="Enq Alpha"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib [data-ib="record"]'));
+  // The record button lives in the person's context (its own column on a wide
+  // Inbox, a drop-down otherwise) — open the drop-down if it is closed.
+  for (let i = 0; i < 3; i++) {
+    const tapped = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#ib [data-ib="record"]')].find((x) => x.getClientRects().length && !x.disabled);
+      if (b) { b.click(); return true; }
+      const t = document.querySelector('#ib [data-ib="ctx"]');
+      if (t) t.click();
+      return false;
+    });
+    if (tapped) break;
+    await page.waitForTimeout(200);
+  }
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-enquiry-hub' && !!document.querySelector('#enquiry-hub-content .bhub-head'));
   const j1 = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
-    rows: document.querySelectorAll('#inbox-list .bk-row[data-enqid]').length,
-    oldCards: document.querySelectorAll('#inbox-list .enquiry-card').length,
-    paneHub: !!document.querySelector('#inbox-detail-pane #enquiry-hub-content .bhub-head'),
-    name: (document.querySelector('#inbox-detail-pane .bhub-name') || {}).textContent || '',
-    openRows: document.querySelectorAll('#inbox-list .bk-row.is-open').length,
+    name: (document.querySelector('#enquiry-hub-content .bhub-name') || {}).textContent || '',
     // The decision-first anatomy: Approve is the ONE loud control riding the
     // green state card; Edit/Email/DECLINE live behind the ⋯ (decline is
     // reversible via the drawer, so the page leads with the yes — quiet,
     // last, in danger ink); the contact email is a composer button, never a
     // mailto; the MESSAGE never folds.
-    approveInNext: !!document.querySelector('#inbox-detail-pane .bhub-next [data-act="approveEnquiry"]'),
-    readyCap: ((document.querySelector('#inbox-detail-pane .bhub-next.is-ready .bhub-next-cap') || {}).textContent || '').trim(),
-    eyebrow: ((document.querySelector('#inbox-detail-pane .bhub-eyebrow') || {}).textContent || '').trim(),
+    approveInNext: !!document.querySelector('#enquiry-hub-content .bhub-next [data-act="approveEnquiry"]'),
+    readyCap: ((document.querySelector('#enquiry-hub-content .bhub-next.is-ready .bhub-next-cap') || {}).textContent || '').trim(),
+    eyebrow: ((document.querySelector('#enquiry-hub-content .bhub-eyebrow') || {}).textContent || '').trim(),
     msgOpen: (() => {
-      const m = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      const m = document.querySelector('#enquiry-hub-content .bhub-msg-text');
       return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
     })(),
-    draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'), // must be gone
+    draftRow: !!document.querySelector('#enquiry-hub-content .bhub-msg [data-act="enqReplyDraft"]'), // must be gone
     // A FOURTH MATERIAL: the message card inherited .bhub-card's --r-panel and
     // .glass-panel's drop shadow, so it was the one RAISED, 28/40px-rounded
     // element between a 20px state card and 12px fold groups. It leads by SIZE.
     msgMaterial: (() => {
-      const m = document.querySelector('#inbox-detail-pane .bhub-msg');
-      const t = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      const m = document.querySelector('#enquiry-hub-content .bhub-msg');
+      const t = document.querySelector('#enquiry-hub-content .bhub-msg-text');
       if (!m || !t) return null;
       const c = getComputedStyle(m);
       return { r: c.borderTopLeftRadius, sh: c.boxShadow, fs: Math.round(parseFloat(getComputedStyle(t).fontSize)) };
     })(),
-    menuItems: document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]').length,
+    menuItems: document.querySelectorAll('#enquiry-hub-content .bhub-menu [role="menuitem"]').length,
     dangerLast: (() => {
-      const rows = document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]');
+      const rows = document.querySelectorAll('#enquiry-hub-content .bhub-menu [role="menuitem"]');
       const last = rows[rows.length - 1];
       return !!last && last.classList.contains('bhub-menu-danger') && /decline/i.test(last.textContent);
     })(),
     // The danger ink must actually PAINT — class-only would pass with the
     // CSS rule deleted. Probe var(--danger-text) in the page's own theme.
     dangerInk: (() => {
-      const el = document.querySelector('#inbox-detail-pane .bhub-menu .bhub-menu-danger');
+      const el = document.querySelector('#enquiry-hub-content .bhub-menu .bhub-menu-danger');
       if (!el) return false;
       const probe = document.createElement('span');
       probe.style.color = 'var(--danger-text)';
@@ -1884,14 +1906,13 @@ let approveWill409 = false;
       return getComputedStyle(el).color === want;
     })(),
     mailtos: document.querySelectorAll('#enquiry-hub-content a[href^="mailto:"]').length,
-    emailKvBtn: !!document.querySelector('#inbox-detail-pane .bhub-kv-act[data-act="openEnquiryEmail"]'),
-    priceBtn: !!document.querySelector('#inbox-detail-pane [data-act="setEnquiryPrice"]'),
-    quoteFig: ((document.querySelector('#inbox-detail-pane [data-grp="equote"] .bhub-payline-fig') || {}).textContent || '').trim(),
+    emailKvBtn: !!document.querySelector('#enquiry-hub-content .bhub-kv-act[data-act="openEnquiryEmail"]'),
+    priceBtn: !!document.querySelector('#enquiry-hub-content [data-act="setEnquiryPrice"]'),
+    quoteFig: ((document.querySelector('#enquiry-hub-content [data-grp="equote"] .bhub-payline-fig') || {}).textContent || '').trim(),
     // The No-dog row prints the house DD/MM/YYYY form, never the raw SQL stamp.
-    noDog: (document.querySelector('#inbox-detail-pane #enquiry-hub-content') || {}).textContent || '',
+    noDog: (document.querySelector('#enquiry-hub-content') || {}).textContent || '',
   }));
-  ok(j1.active === 'view-inbox' && j1.rows === 2 && j1.oldCards === 0, `compact enquiry rows (${j1.rows}), old cards gone`);
-  ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
+  ok(j1.active === 'view-enquiry-hub' && j1.name === 'Enq Alpha', `the person's Enquiry button opens the enquiry hub as its own page (${j1.name})`);
   ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
   ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
   ok(j1.msgOpen && !j1.draftRow, 'the MESSAGE never folds, and carries no ✨ draft row');
@@ -1903,7 +1924,7 @@ let approveWill409 = false;
   ok(/^£/.test(j1.quoteFig), `the quote is ONE row with the figure on it (${j1.quoteFig})`);
   ok(/Confirmed 01\/07\/2026/.test(j1.noDog) && !j1.noDog.includes('2026-07-01'), 'No-dog row prints the house date form, not the raw stamp');
   // Approve from the hub → lands on the NEW booking's hub.
-  const apr = page.evaluate(() => approveEnquiry(document.querySelector('#inbox-list .bk-row[data-enqid]').getAttribute('data-enqid')));
+  const apr = page.evaluate(() => approveEnquiry('e6'));
   await page.waitForTimeout(700);
   await page.evaluate(() => { try { glassDialogResolve(true); } catch (e) {} }); // clash/confirm if any
   // Approving now PREVIEWS the confirmation first — hit Send to proceed.
@@ -2069,115 +2090,93 @@ let approveWill409 = false;
   const j4 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(j4 === 'view-inbox', `decline exits the hub to the Inbox (${j4})`);
 
-  // ---------- K. inbox-zero clears the docked pane (hardening audit C1) ----------
-  console.log('K. inbox-zero pane');
+  // ---------- K. inbox-zero clears the docked pane — REMOVED ----------
+  // Its subject is gone: the one-list Inbox has no reading pane (#inbox-detail-pane)
+  // for a stale enquiry hub to linger in. ui-test-inbox owns the empty Inbox.
+
+  // ---------- K2. a declined enquiry can still be put back ----------
+  // enquiry_decline is a SOFT delete precisely so a mistake can be undone, and the
+  // old Inbox kept a Declined drawer with "Put back in Waiting" for exactly that —
+  // because the toast's Undo is gone in seconds. The drawer's markup now sits in the
+  // hidden #inbox-legacy; this asks the SCREEN the owner actually has. Checked
+  // softly (counted, never thrown) so a gap here cannot hide section L.
+  console.log('K2. a declined enquiry can still be put back');
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.evaluate(() => window.openInbox()); // both enquiries handled in J → inbox zero
-  await page.waitForTimeout(800);
-  const k = await page.evaluate(() => ({
-    emptyShown: getComputedStyle(document.getElementById('inbox-detail-empty')).display !== 'none',
-    hubEmpty: !document.querySelector('#enquiry-hub-content .bhub-head'),
-    zeroNote: /Inbox zero/.test((document.getElementById('inbox-list') || {}).textContent || ''),
-  }));
-  ok(k.zeroNote && k.emptyShown && k.hubEmpty, `empty inbox restores the pane placeholder (no stale enquiry hub) ${JSON.stringify(k)}`);
-
-  // ---------- K2. the declined drawer ----------
-  // enquiry_decline is a SOFT delete precisely so a mistake can be undone, but
-  // the only way back was the Undo on a toast — gone in seconds. Decline the
-  // wrong one, look away, and a recoverable row was unreachable.
-  console.log('K2. declined enquiries can be found and restored');
-  const k2switch = await page.evaluate(() => ({
-    hasSwitch: !!document.querySelector('#inbox-list .inbox-sort.seg'),
-    labels: [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].map((b) => b.textContent.trim()),
-  }));
-  ok(k2switch.hasSwitch && /Declined/.test(k2switch.labels.join(' ')),
-    `the switch is there even on inbox zero — which is exactly when you go looking (${k2switch.labels.join(' | ')})`);
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
-  await page.waitForTimeout(700);
-  const k2 = await page.evaluate(() => ({
-    txt: ((document.getElementById('inbox-list') || {}).textContent || '').replace(/\s+/g, ' '),
-    rows: document.querySelectorAll('#inbox-list .enq-declined-row').length,
-    // Count RESTORE, not every button: the row also offers "Email the guest"
-    // when there is an address, and a bare button count made "every row offers
-    // Restore" fail on a row that offers Restore and one more thing.
-    restores: document.querySelectorAll('#inbox-list .enq-declined-restore').length,
-  }));
-  ok(k2.rows >= 1 && /Declined/.test(k2.txt), `the one declined in J is listed (${k2.rows} row/s)`);
-  ok(k2.restores === k2.rows, 'every row offers Restore — the whole point of the drawer');
-  // THE SWITCH IS ONE CONTROL: its pill travels to the chosen tab, each tab carries its count (as a
-  // data attribute, so the button's text stays the bare word), and a switch slides one pane out as
-  // the other comes in rather than swapping them.
-  const k2pill = await page.evaluate(() => {
-    const seg = document.querySelector('#inbox-list .enq-tabs .inbox-sort.seg');
-    const pill = seg && seg.querySelector(':scope > .chb-pill');
-    const on = seg && seg.querySelector('.is-on');
-    if (!seg || !pill || !on) return null;
-    const sb = seg.getBoundingClientRect(), ob = on.getBoundingClientRect();
-    return { dx: Math.round(parseFloat(pill.style.translate) - (ob.left - sb.left)), w: Math.round(parseFloat(pill.style.width) - ob.width),
-      declN: (seg.querySelector('[data-n]:not(.is-on)') || {}).dataset || null, counts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.getAttribute('data-n')),
-      texts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.textContent.trim()) };
+  await page.evaluate(() => window.openInbox());
+  // The Inbox fetches the declined list with its other slow sources; ask it again
+  // the owner's way (the refresh beside the title) so the decline made in J is in it.
+  await page.click('#ib-refresh');
+  await page.waitForFunction(() => !!document.querySelector('#ib .ib-row[aria-label^="Enq Beta"]'), null, { timeout: 8000 }).catch(() => {});
+  const k2row = await page.evaluate(() => {
+    const r = document.querySelector('#ib .ib-row[aria-label^="Enq Beta"]');
+    return { row: !!r && r.getClientRects().length > 0, label: r ? r.getAttribute('aria-label') : '' };
   });
-  ok(k2pill && Math.abs(k2pill.dx) <= 1 && Math.abs(k2pill.w) <= 1, `the pill sits under the chosen tab (dx ${k2pill && k2pill.dx}, dw ${k2pill && k2pill.w})`);
-  ok(k2pill && k2pill.counts.every((n) => n !== null && /^\d+$/.test(n)) && k2pill.texts.join('|') === 'Waiting|Declined', `each tab carries its count and keeps its bare label (${k2pill && k2pill.counts.join('/')} · ${k2pill && k2pill.texts.join('|')})`);
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Waiting/.test(x.textContent)); b && b.click(); });
-  const k2swap = await page.evaluate(() => new Promise((res) => setTimeout(() => res({ panes: document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length, out: document.querySelectorAll('#inbox-list .enq-pane.enq-out').length, inn: document.querySelectorAll('#inbox-list .enq-pane.enq-in-l').length }), 60)));
-  ok(k2swap.panes === 2 && k2swap.out === 1 && k2swap.inn === 1, `mid-switch one pane leaves as the other arrives (${JSON.stringify(k2swap)})`);
-  await page.waitForTimeout(700);
-  ok(await page.evaluate(() => document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length === 1), 'and the old pane is gone once it has left');
-  ok(await page.evaluate(() => /^Enquiries/.test((document.querySelector('#inbox-folder-enquiries .bo-sec-title') || { textContent: '' }).textContent.trim())), 'the page title stays "Enquiries" on both tabs');
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
-  await page.waitForTimeout(800);
-  // RESTORING puts it back in the inbox and takes it out of the drawer.
-  await page.evaluate(() => { const b = document.querySelector('#inbox-list .enq-declined-row button'); b && b.click(); });
-  await page.waitForTimeout(1200);
-  const k3 = await page.evaluate(() => ({
-    backOnWaiting: !!document.querySelector('#inbox-list .bk-row[data-enqid]'),
-    stillDeclined: document.querySelectorAll('#inbox-list .enq-declined-row').length,
-  }));
-  ok(k3.backOnWaiting && k3.stillDeclined === 0,
-    `restoring returns it to Waiting and drops it from the drawer (waiting ${k3.backOnWaiting}, drawer ${k3.stillDeclined})`);
+  ok(k2row.row && /Declined/.test(k2row.label), `the declined enquirer stays on the list, marked Declined (${k2row.label})`);
+  await page.click('#ib .ib-row[aria-label^="Enq Beta"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib-conv [data-ib="menu"]'));
+  await page.click('#ib-conv [data-ib="menu"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib-conv .ib-menu'));
+  const k2 = await page.evaluate(() => {
+    // Everything the owner can press for this person: the conversation, its ⋯ menu
+    // (opened above) and the person's context (its own column on a wide Inbox).
+    const vis = [...document.querySelectorAll('#ib-conv button, #ib-conv [role="menuitem"], #ib .ib-ctx button')].filter((x) => x.getClientRects().length && !x.disabled);
+    const say = (x) => (x.textContent || '').replace(/\s+/g, ' ').trim();
+    const put = vis.filter((x) => /put (it )?back|restore|back in waiting|undo the decline/i.test(say(x)));
+    const rec = vis.find((x) => x.getAttribute('data-ib') === 'record');
+    return { put: put.map(say), rec: !!rec, offered: vis.map(say).filter(Boolean).slice(0, 14) };
+  });
+  softOk(k2.put.length > 0,
+    `the declined enquiry can be put back in Waiting from the Inbox, once the toast has gone (visible: ${k2.offered.join(' | ')})`);
+  // The person's "Enquiry" button is OFFERED (enabled) for a declined-only enquirer;
+  // a tap must lead somewhere rather than do nothing.
+  if (k2.rec) {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#ib [data-ib="record"]')].find((x) => x.getClientRects().length && !x.disabled); if (b) b.click(); });
+    // It asks to put the enquiry back in Waiting (a declined enquiry has no page of
+    // its own) — and backing out of that ask leaves everything as it was.
+    await page.waitForFunction(() => !!document.querySelector('#glass-dialog.open'), null, { timeout: 4000 }).catch(() => {});
+    const after = await page.evaluate(() => ({ view: (document.querySelector('.page-view.active') || {}).id, ask: (document.querySelector('#glass-dialog.open #glass-dialog-ok') || {}).textContent || '' }));
+    softOk(/Put back in Waiting/.test(after.ask), `the enabled "Enquiry" button on a declined enquirer asks to put it back in Waiting (view ${before} → ${after.view}, ask "${after.ask}")`);
+    await page.evaluate(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); });
+    await page.waitForFunction(() => !document.querySelector('#glass-dialog.open'), null, { timeout: 4000 }).catch(() => {});
+  }
 
-  // ---------- L. Money workspace: find-rows → booking hub → back to Money ----------
-  console.log('L. money workspace');
+  // ---------- L. Payments → booking hub → back to Payments ----------
+  // The Payments page is the money journey now (#pm — ui-test-money owns it): who
+  // owes is the "Guests still to pay" card, a row opens that stay's money page,
+  // and "Open the booking" opens its hub. What this suite keeps is the hub's half:
+  // the back link names Payments and returns there.
+  console.log('L. payments → hub → back');
+  await page.setViewportSize({ width: 1000, height: 900 });
   await page.evaluate(() => window.openAccounts());
-  await page.waitForTimeout(900);
-  await page.evaluate(() => accountsOpen('payments'));
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-accounts' && document.querySelectorAll('#pm-coming .pm-orow').length > 0, null, { timeout: 10000 });
   const l1 = await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('#money-panel .bk-row'));
+    const rows = [...document.querySelectorAll('#pm-coming .pm-orow')];
     const r = rows[0];
     return {
       count: rows.length,
-      actionCards: document.querySelectorAll('#money-panel .money-row').length,
-      edge: r ? Array.from(r.classList).find((c) => c.startsWith('pay-')) : '',
-      chip: r ? (r.querySelector('.bk-chip') || {}).textContent : '',
-      figures: r ? (r.querySelector('.bk-row-dates') || {}).textContent : '',
-      owed: /owed/.test((document.querySelector('#money-panel .money-owed') || {}).textContent || ''),
+      oldCards: document.querySelectorAll('#money-panel .money-row').length,
+      label: r ? r.getAttribute('aria-label') : '',
+      fig: r ? ((r.querySelector('.pm-v') || {}).textContent || '').trim() : '',
     };
   });
-  ok(l1.count >= 1 && l1.actionCards === 0, `payments section is find-rows, not action cards (${l1.count} rows)`);
-  ok(l1.edge === 'pay-danger' && /Unpaid/.test(l1.chip), `unpaid row: red edge + chip with balance (${l1.chip.trim()})`);
-  // RE-AIMED to the PROPERTY, not the word. The row's sub is a two-line clamp
-  // and the composed line overran it ("5–12 Nov 2026 · £300.00 of £960.00
-  // received · £50.00 deposit held" wanted 420px of 309), so the DEPOSIT — the
-  // last fact, and the one nothing else on this screen states — was what fell
-  // off. The copy dropped "received" (the chip directly above already says
-  // Part-paid) and the pennies; what must hold is that the row still states
-  // what has come in AGAINST the total.
-  ok(/£[\d,.]+ of £[\d,.]+/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
-  ok(l1.owed, 'owed banner still leads the section');
-  await page.click('#money-panel .bk-row');
-  await page.waitForTimeout(800);
+  ok(l1.count >= 1 && l1.oldCards === 0, `who owes is a list of rows, not action cards (${l1.count} rows)`);
+  ok(/^£[\d,]+\.\d{2}$/.test(l1.fig) && l1.label.includes(l1.fig), `each row states the balance it owes (${l1.label})`);
+  await page.click('#pm-coming .pm-orow');
+  await page.waitForFunction(() => !!document.querySelector('#pm [data-pm="hub"]'));
+  await page.click('#pm [data-pm="hub"]');
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-booking-hub' && !!document.querySelector('#booking-hub-content .bhub-name'));
   const l2 = await page.evaluate(() => ({
-    active: (document.querySelector('.page-view.active') || {}).id,
-    recordBtn: /Record a payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
+    back: ((document.querySelector('#view-booking-hub > .back-link') || {}).textContent || '').trim(),
+    name: (document.querySelector('#booking-hub-content .bhub-name') || {}).textContent || '',
   }));
-  ok((l2.active === 'view-booking-hub' || l2.active === 'view-backoffice') && l2.recordBtn, `money row opens the booking hub (${l2.active})`);
+  ok(l2.name !== '' && l2.back === 'Payments', `"Open the booking" opens its hub, whose back link names Payments (${l2.name} · ‹ ${l2.back})`);
   await page.evaluate(() => bookingHubBack());
-  await page.waitForTimeout(900);
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-accounts', null, { timeout: 8000 }).catch(() => {});
   const l3 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
-  ok(l3 === 'view-accounts', `hub back returns to Money (${l3})`);
+  ok(l3 === 'view-accounts', `hub back returns to Payments (${l3})`);
 
-  console.log('HUB TEST PASSED ✅');
-  await done();
+  console.log(softFails ? `HUB TEST FAILED ❌ (${softFails} product check(s) above)` : 'HUB TEST PASSED ✅');
+  await done(softFails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

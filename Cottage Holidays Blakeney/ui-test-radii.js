@@ -13,7 +13,8 @@
 //    §2 the picker's cells are 44px tall and the card is padded to fit seven at 390
 //    §4 the chat header is a 52px bar; the terms sheet carries ONE close
 //    §5 the system check's mark is a 28px symbol, Re-run is a text button,
-//       the income headline has no stripe
+//       the books page's headline (Income & tax, on the one Payments page)
+//       has no stripe
 //    §6 THE SWEEP: every painted corner on view-pay, the assistant (three
 //       states) and the Manage landing is 12, 20, a pill or
 //       --r-panel on a sheet — read COMPUTED, so a var() cannot hide a fourth
@@ -26,6 +27,8 @@ const fails = [];
 const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails.push(m); };
 const today = new Date();
 const d = (n) => { const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+// The UK tax year today falls in (it starts 6 April), which the books page opens on.
+const taxYear = d(0) < `${today.getFullYear()}-04-06` ? today.getFullYear() - 1 : today.getFullYear();
 const props = [
   { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, extra_adult_rate: 42, child_rate: 25, booking_fee: 75, transaction_pct: 3, weekend_pct: 0, weekend_days: '5,6', max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
   { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 120, extra_adult_rate: 0, child_rate: 0, booking_fee: 75, transaction_pct: 3, weekend_pct: 0, weekend_days: '5,6', max_adults: 2, max_children: 0, max_total: 2, sort_order: 2 },
@@ -44,6 +47,9 @@ function stub(page) {
     if (url.includes('bookings.php')) { if (b.action === 'hub_bundle') return json({ ok: true, payments: [], events: [] }); if (b.action === 'email_logs') return json({ logs: {} }); return json({ bookings }); }
     if (url.includes('accounts.php')) return json({ years: [], deposit_liability: { gross: 75, feeBack: 1.31, net: 73.69, count: 1, rate: 0.0175, items: [], transactions: { settled: 368.44, ringFence: 73.69, movable: 294.75, count: 1, items: [] }, payouts: { inBank: 294.75, onWay: 0, unknown: 0, nextArrival: null, counts: { inBank: 1, onWay: 0, unknown: 0 }, checked: Math.floor(Date.now() / 1000), error: null, known: 1, items: { inBank: [], onWay: [], unknown: [] } } } });
     if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 0, fail: 0 }, checks: [], mail_ready: true });
+    // The one Payments page reads money.php: its books card and the books page's hero
+    // need a tax year's figures to paint (§5 measures that hero).
+    if (url.includes('money.php')) return json({ ok: true, at: Math.floor(Date.now() / 1000), position: { with_square: 0, with_square_count: 0, unknown: 0, unreported: 0, unreported_count: 0, in_bank: 0, ready: 0, held: 0, failed: [] }, bank_items: [], way_items: [], landed_map: {}, moved_map: {}, books: { year: taxYear, income: 1200, kept: 0, fees: 21, expenses: 120, profit: 1059, quarters: [400, 800, 0, 0], by_category: [{ category: 'Maintenance', amount: 120 }], undated: null }, years: [taxYear], activity: [] });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences: [], content: {}, blocks: [], ranges: [], events: [], results: [] });
   });
 }
@@ -101,8 +107,13 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   });
   ok(sys.r === '20px', `the verdict card wears the card radius (${sys.r})`);
   ok(sys.againR === '999px' && sys.againH >= 44, `Check again is a pill at the floor (${sys.againR}, ${sys.againH}px)`);
-  await open(page, "(async () => { await openAccounts(); accountsOpen('income'); })()", 1200);
-  const inc = await page.evaluate(() => { const el = document.querySelector('.accounts-stat.headline'); return el ? { stripe: parseFloat(getComputedStyle(el).borderLeftWidth), r: getComputedStyle(el).borderTopLeftRadius } : null; });
+  // Income & tax is the Payments page's BOOKS page now (accountsOpen('income') routes to
+  // it), and its headline is the hero card carrying the year's profit. Same property:
+  // no coloured stripe beside a figure that already says it, and the card radius.
+  await open(page, "(async () => { await openAccounts(); accountsOpen('income'); })()", 300);
+  await page.waitForFunction(() => !!document.querySelector('#pm-detail .pm-hero'), null, { timeout: 15000 }).catch(() => {});
+  const inc = await page.evaluate(() => { const el = document.querySelector('#pm-detail .pm-hero'); return el ? { stripe: parseFloat(getComputedStyle(el).borderLeftWidth), r: getComputedStyle(el).borderTopLeftRadius, fig: (el.querySelector('b') || {}).textContent || '' } : null; });
+  ok(inc && /£1,059\.00/.test(inc.fig), `the books page's headline renders the year's profit (${inc && inc.fig}) — vacuity guard`);
   // The card's own hairline (1px) is not a stripe; the stripe was 4px of --ok.
   ok(inc && inc.stripe <= 1, `the income headline has no green stripe (left border ${inc && inc.stripe}px) — its figure already says it`);
   ok(inc && inc.r === '20px', `and wears the card radius (${inc && inc.r})`);

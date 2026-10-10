@@ -252,6 +252,15 @@ function analytics_summary($days)
         $bookingsN = (int) $qDays("SELECT COUNT(*) FROM bookings  WHERE created_at >= $sinceSql")->fetchColumn();
     } catch (\Throwable $e) {
     }
+    // Bookings that came THROUGH THE SITE: an approved enquiry carries the terms
+    // the guest accepted on the form; a booking the owner added by hand (a phone
+    // call, a repeat guest) never does. `bookings` above counts both, so it is no
+    // measure of what the site turned into stays.
+    $siteBookingsN = 0;
+    try {
+        $siteBookingsN = (int) $qDays("SELECT COUNT(*) FROM bookings WHERE created_at >= $sinceSql AND terms_accepted_at IS NOT NULL")->fetchColumn();
+    } catch (\Throwable $e) {
+    }
 
     // Search demand (own table; default gracefully if the migration hasn't run).
     $searchDemand = ['total' => 0, 'noResult' => 0, 'topMonths' => [], 'recentNoResult' => []];
@@ -317,6 +326,7 @@ function analytics_summary($days)
         'devices' => $devices,
         'enquiries' => $enquiriesN,
         'bookings' => $bookingsN,
+        'siteBookings' => $siteBookingsN,
         'searchDemand' => $searchDemand,
     ];
 }

@@ -8,22 +8,22 @@
 //  replaced them:
 //    §1 ONE MATERIAL FOR LISTS — adjacent fold groups join (no shadow, one
 //       hairline, squared shared corners), Needs-you rows likewise.
-//    §1b THE SAME MATERIAL ON EVERY .bk-row LIST — Today's bookings, the Inbox
-//       enquiries, the declined drawer and Payments & balances are one class on
-//       four screens: the cell radius with the outer corners on the run's ends
-//       only, no shadow, one hairline between rows, and no lift under a held
-//       pointer. They were --r-panel (28px on a phone, 40 on a desktop) with the
+//    §1b THE SAME MATERIAL ON EVERY LIST — Today's bookings (.bk-row), the one
+//       Inbox's people and the Payments page's two lists (cards of squared rows):
+//       the corners on the run's ends only, no shadow, one hairline between
+//       rows, and no lift under a held pointer. They were --r-panel (28px on a phone, 40 on a desktop) with the
 //       glass drop shadow and a 10px gap — floating SHEETS directly under
 //       Needs-you rows that already joined at 12.
 //    §1c WELLS LIFT, AND A FIELD SITS IN AT MOST TWO BOXES — the settings well
 //       carried a raw INSET shadow (a sunken material beside lifted ones), and
 //       three pages put a third bordered surface round every field.
 //    §2 STATE IS SAID ONCE — no left rail or icon tile on a duty row; a
-//       Payments row TITLE stays in ink; the calm capsule is quiet text.
+//       Payments row TITLE stays in ink beside ONE capsule; the calm capsule is
+//       quiet text.
 //    §3 ONE CAPTION TIER — in-card captions are sentence case; §3b sweeps the
-//       ten in-container rules that were still tracked caps (the modal sections,
-//       the plan caption, the act card, the stat tiles, the season count) across
-//       five screens; on Manage the caption above a card is the same one tier.
+//       in-container rules that were still tracked caps (the booking sheet's
+//       sections and labels, the plan caption, the stat tiles, the season count)
+//       across five screens; on Manage the caption above a card is the same tier.
 //    §4 THE CHEVRON IS A SYMBOL.
 //    §5 THE PHONE'S CHROME — the spine is a sentence + ONE scrolling chip row
 //       ≤640, every chip still routes; the condensed title stands down <480.
@@ -87,6 +87,11 @@ function stub(page, guest) {
     if (url.includes('enquiries.php')) { if (b.action === 'declined') return json({ ok: true, enquiries: declinedEnq }); return json({ enquiries }); }
     if (url.includes('accounts.php')) return json({ years: [], deposit_liability: { gross: 75, feeBack: 1.31, net: 73.69, count: 1, rate: 0.0175, items: [{ outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: d(-3) }], transactions: { settled: 368.44, ringFence: 73.69, movable: 294.75, count: 1, items: [] }, payouts: { inBank: 294.75, onWay: 0, unknown: 0, nextArrival: null, counts: { inBank: 1, onWay: 0, unknown: 0 }, checked: Math.floor(Date.now() / 1000), error: null, known: 1, items: { inBank: [], onWay: [], unknown: [] } } } });
     if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 1, warn: 1, fail: 1 }, checks: DIAG_CHECKS, mail_ready: true, insights: {} });
+    // The one Payments page: two movements on one day, so the Money list is a RUN.
+    if (url.includes('money.php')) { const at = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12).getTime() / 1000); return json({ ok: true, at, position: { with_square: 0, in_bank: 0, ready: 0, held: 0, unreported_count: 0, failed: [] }, bank_items: [], way_items: [], moved_map: {}, landed_map: {}, books: { year: 2026, income: 1200, kept: 0, fees: 21, expenses: 120, profit: 1059, quarters: [400, 800, 0, 0], by_category: [], undated: null }, years: [2026], activity: [
+      { id: 'p2', at: at + 600, kind: 'in', what: 'Deposit', booking_id: 2, name: 'Debbie McGoldrick', prop: 'pimpernel', amount: 200, deposit: 0, fee: 3.5, method: 'card', status: 'done', payout: null },
+      { id: 'p1', at, kind: 'in', what: 'Balance', booking_id: 1, name: 'Priya Patel', prop: '21a', amount: 450, deposit: 0, fee: null, method: 'Bank transfer', status: 'done', payout: null },
+    ] }); }
     return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences: [], content: {}, blocks: [], ranges: [], events: [], results: [] });
   });
 }
@@ -119,6 +124,30 @@ const ROWS = (sel) => {
     gaps, seams,
     rails: cs.map((c) => parseFloat(c.borderLeftWidth)),
     railColours: cs.map((c) => c.borderLeftColor),
+  };
+};
+// §1b — the same material where the CARD draws it: the one Inbox and the one
+// Payments page put their rows in a bordered card that clips the corners, so the
+// card carries the radius and the rows are squared cells on one hairline each.
+const CARD = ([cardSel, rowSel]) => {
+  const card = [...document.querySelectorAll(cardSel)].find((c) => c.getClientRects().length && c.querySelectorAll(rowSel).length >= 2);
+  if (!card) return { n: 0 };
+  const rows = [...card.querySelectorAll(rowSel)].filter((r) => r.getClientRects().length);
+  const cc = getComputedStyle(card);
+  const cs = rows.map((r) => getComputedStyle(r));
+  const gaps = [], seams = [];
+  for (let i = 1; i < rows.length; i++) {
+    gaps.push(+(rows[i].getBoundingClientRect().top - rows[i - 1].getBoundingClientRect().bottom).toFixed(1));
+    seams.push(parseFloat(cs[i].borderTopWidth));
+  }
+  return {
+    n: rows.length,
+    outerShadow: [cc.boxShadow].concat(cs.map((c) => c.boxShadow)).filter((sh) => sh !== 'none' && !/inset/.test(sh)),
+    cardR: [cc.borderTopLeftRadius, cc.borderTopRightRadius, cc.borderBottomRightRadius, cc.borderBottomLeftRadius].map(parseFloat),
+    clips: cc.overflow === 'hidden' || cc.overflow === 'clip',
+    rowCorners: cs.map((c) => parseFloat(c.borderTopLeftRadius) + parseFloat(c.borderTopRightRadius) + parseFloat(c.borderBottomLeftRadius) + parseFloat(c.borderBottomRightRadius)),
+    bottoms: cs.map((c) => parseFloat(c.borderBottomWidth)),
+    gaps, seams,
   };
 };
 // The nesting question: how many BOXES (bordered on all four sides — a row
@@ -159,68 +188,80 @@ const NEST = (rootSel) => {
   // driven through its real route; the fixture mints a RUN on every one, since
   // a join is a claim about two rows and a single row cannot fail it.
   const sweepLists = async (page, w) => {
-    console.log(`§1b list material at ${w} — Today, Inbox, the declined drawer, Payments & balances`);
-    const surfaces = [];
+    console.log(`§1b list material at ${w} — Today, the Inbox, and the Payments page's two lists`);
+    // RE-AIMED: the Inbox is ONE list of people and Payments one page, so the .bk-row
+    // material lives on Today alone; the Inbox and Payments draw the same material
+    // as a CARD of squared rows (CARD above). Payments & balances, the Inbox's
+    // enquiry folder and its declined drawer went with those screens.
     let railedSeen = 0;
     await open(page, "(async () => { nav('view-backoffice'); })()", 900);
-    surfaces.push(['Today bookings', await page.evaluate(ROWS, '#bookings-list .bk-row'), '#bookings-list']);
-    // Below 1200 the Inbox is three FOLDS; a list inside a closed one paints
-    // nothing, so the fold rule applies — open it before measuring.
-    await open(page, "(async () => { await openInbox(); inboxFolder('enquiries'); })()", 1600);
-    surfaces.push(['Inbox enquiries', await page.evaluate(ROWS, '#inbox-list .bk-row[data-enqid]'), '#inbox-list']);
-    await open(page, "(async () => { await inboxTab('declined'); inboxFolder('enquiries'); })()", 1600);
-    surfaces.push(['declined drawer', await page.evaluate(ROWS, '.enq-declined-row'), '#inbox-list']);
-    await open(page, "(async () => { await inboxTab('waiting'); await openAccounts(); })()", 1800);
-    const landingPairs = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-fold-grp')].filter((x) => x.getClientRects().length); const out = []; for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push(+(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1)); return out; });
-    await open(page, "accountsOpen('payments')", 1400);
-    surfaces.push(['Payments & balances', await page.evaluate(ROWS, '#money-panel .bk-row'), '#money-panel']);
+    const today = await page.evaluate(ROWS, '#bookings-list .bk-row');
     const cell = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-sm')));
-    for (const [name, r, host] of surfaces) {
+    const card = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-lg')));
+    {
+      const name = 'Today bookings', r = today;
       ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the run (vacuity guard — one row cannot fail a join)`);
-      if (r.n < 2) continue;
-      ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
-      // Today's bookings are their OWN card now (who owes is the pill beside the Today title), so the
-      // run's ends take the card radius like every other one-look list.
-      const card = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-lg')));
-      const bodyOfCard = false;
-      // A screen that has joined the one look draws its run of rows as ONE list
-      // card, so the run's ends take the CARD radius; elsewhere they keep the cell's.
-      // Inside an open fold the run is the card's own INSET panel, on the cell radius.
-      const where = await page.evaluate((sel) => { const h = document.querySelector(sel) || document.body; return { oneLook: !!h.closest('.one-look'), inFold: !!h.closest('.bhub-fold') }; }, host);
-      const oneLook = where.oneLook && !where.inFold;
-      const end = oneLook ? card : cell;
-      ok((bodyOfCard ? r.firstTL === 0 && r.lastBL === card : r.firstTL === end && r.lastBL === end) && r.firstBL === 0 && r.lastTL === 0,
-        `${w} ${name}: the outer corners are the ${oneLook ? 'one look\'s CARD' : where.inFold ? 'inset panel\'s CELL' : 'CELL'} radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, end ${end})`);
-      ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
-      ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),
-        `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')})`);
-      // Only the rows that CARRY a traffic light have a rail; an ordinary row's
-      // left border is the hairline every side has.
-      const railed = r.rails.map((v, i) => [v, r.railColours[i]]).filter(([v]) => v >= 3);
-      if (railed.length) ok(railed.every(([, c]) => /rgba\(.*,\s*0\)|transparent/.test(c)),
-        `${w} ${name}: the ${railed.length} traffic-light rail(s) keep 3px of geometry and none of the colour (${railed[0][1]})`);
-      railedSeen += railed.length;
+      if (r.n >= 2) {
+        ok(r.outerShadow.length === 0, `${w} ${name}: no row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
+        // Today's bookings are their OWN card (who owes is the pill beside the Today title):
+        // a one-look screen draws its run as ONE list card, so the ends take the CARD radius.
+        const where = await page.evaluate(() => { const h = document.querySelector('#bookings-list') || document.body; return { oneLook: !!h.closest('.one-look'), inFold: !!h.closest('.bhub-fold') }; });
+        const oneLook = where.oneLook && !where.inFold;
+        const end = oneLook ? card : cell;
+        ok(r.firstTL === end && r.lastBL === end && r.firstBL === 0 && r.lastTL === 0,
+          `${w} ${name}: the outer corners are the ${oneLook ? 'one look\'s CARD' : 'CELL'} radius and only on the run's ends (${r.firstTL}/${r.firstBL} … ${r.lastTL}/${r.lastBL}, end ${end})`);
+        ok(r.midCorners.every((v) => v === 0), `${w} ${name}: every row between them is squared (${r.midCorners.join(',') || 'n/a'})`);
+        ok(r.gaps.every((g) => g === 0) && r.seams.slice().every((v) => v === 0),
+          `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')})`);
+        // Only the rows that CARRY a traffic light have a rail; an ordinary row's
+        // left border is the hairline every side has.
+        const railed = r.rails.map((v, i) => [v, r.railColours[i]]).filter(([v]) => v >= 3);
+        if (railed.length) ok(railed.every(([, c]) => /rgba\(.*,\s*0\)|transparent/.test(c)),
+          `${w} ${name}: the ${railed.length} traffic-light rail(s) keep 3px of geometry and none of the colour (${railed[0][1]})`);
+        railedSeen += railed.length;
+      }
     }
     ok(railedSeen >= 2, `${w}: the sweep really met traffic-light rails (${railedSeen}) — the rail check is not vacuous`);
+    const cards = [];
+    await open(page, "(async () => { await openInbox(); })()", 1600);
+    await page.waitForFunction(() => document.querySelectorAll('#ib-rows .ib-rows .ib-rowwrap').length >= 2, null, { timeout: 8000 }).catch(() => {});
+    cards.push(['Inbox people', await page.evaluate(CARD, ['#ib-rows .ib-rows', ':scope > .ib-rowwrap'])]);
+    await open(page, "(async () => { await openAccounts(); if (typeof pmClose === 'function') pmClose(); })()", 900);
+    await page.waitForFunction(() => document.querySelectorAll('#pm-list .pm-mrow').length >= 2, null, { timeout: 8000 }).catch(() => {});
+    cards.push(['Guests still to pay', await page.evaluate(CARD, ['#pm-coming', ':scope > .pm-orow'])]);
+    cards.push(['the Money list', await page.evaluate(CARD, ['#pm-list .pm-rows', ':scope > .pm-mrow'])]);
+    for (const [name, r] of cards) {
+      ok(r.n >= 2, `${w} ${name}: ${r.n} rows in the card (vacuity guard — one row cannot fail a join)`);
+      if (r.n < 2) continue;
+      ok(r.outerShadow.length === 0, `${w} ${name}: neither the card nor a row casts a drop shadow (${r.outerShadow[0] || 'none'})`);
+      ok(r.cardR.every((v) => v === card) && r.clips, `${w} ${name}: the CARD carries the one card radius on its four corners and clips its rows (${r.cardR.join('/')})`);
+      ok(r.rowCorners.every((v) => v === 0), `${w} ${name}: every row in it is a squared cell (${r.rowCorners.join(',')})`);
+      ok(r.gaps.every((g) => g === 0) && r.seams.every((v) => v === 1) && r.bottoms.every((v) => v === 0),
+        `${w} ${name}: rows abut on exactly ONE hairline (gaps ${r.gaps.join(',')}, top borders ${r.seams.join(',')}, bottoms ${r.bottoms.join(',')})`);
+    }
 
     // §1 THE JOIN IS CONTAINER-INDEPENDENT. The negative margin that cancelled the
-    // join used to be one container's gap hardcoded: right on the Money LANDING
+    // join used to be one container's gap hardcoded: right on the old Money landing
     // (a flex column with a 12px gap, where it netted to 0) and an OVERLAP of
-    // -12px on every #asec-* section, which is a block and has no gap to cancel —
-    // two translucent 2% fills stacked into a lighter band with an edge at both
-    // ends. Both are measured, because it is the ASYMMETRY that was the defect.
+    // -12px in a block parent with no gap to cancel — two translucent 2% fills
+    // stacked into a lighter band with an edge at both ends. Both kinds of parent
+    // are measured, because it is the ASYMMETRY that was the defect. Those two
+    // screens are gone; Website content (a flex column with a 12px gap) and
+    // Calendar sync (a block) are the pair today.
     const foldPairs = async (sel) => page.evaluate((s2) => {
       const g = [...document.querySelectorAll(s2)].filter((x) => x.getClientRects().length);
       const out = [];
-      for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push(+(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1));
+      for (let i = 1; i < g.length; i++) if (g[i - 1].nextElementSibling === g[i]) out.push({ gap: +(g[i].getBoundingClientRect().top - g[i - 1].getBoundingClientRect().bottom).toFixed(1), disp: getComputedStyle(g[i].parentElement).display, rowGap: getComputedStyle(g[i].parentElement).rowGap });
       return out;
     }, sel);
-    const landing = landingPairs;
-    await open(page, "accountsOpen('income')", 1500);
-    const income = await foldPairs('#asec-income .bhub-fold-grp');
-    ok(landing.length >= 2 && income.length >= 1, `${w}: fold runs on both the Money landing (${landing.length}) and Income & tax (${income.length}) — vacuity guard`);
-    ok(landing.every((v) => v === 0), `${w}: the LANDING's groups abut, in a flex parent with a gap (${landing.join(',')})`);
-    ok(income.every((v) => v === 0), `${w}: and Income & tax's abut too, in a BLOCK parent with none — no overlapped fill (${income.join(',')})`);
+    await open(page, "(async () => { await openArea('settings'); settingsOpen('content'); })()", 1300);
+    const flexRun = await foldPairs('#content-editor > .bhub-fold-grp');
+    await open(page, "settingsOpen('calendar')", 1300);
+    const blockRun = await foldPairs('#calendar-list > .bhub-fold-grp');
+    ok(flexRun.length >= 1 && flexRun.every((p) => p.disp === 'flex' && parseFloat(p.rowGap) > 0) && blockRun.length >= 1 && blockRun.every((p) => p.disp === 'block'),
+      `${w}: fold runs in a flex parent WITH a gap (${flexRun.length}, ${flexRun[0] && flexRun[0].rowGap}) and in a block parent with none (${blockRun.length}) — vacuity guard`);
+    ok(flexRun.every((p) => p.gap === 0), `${w}: the flex parent's groups abut — its gap cancelled (${flexRun.map((p) => p.gap).join(',')})`);
+    ok(blockRun.every((p) => p.gap === 0), `${w}: and the block parent's abut too — no overlapped fill (${blockRun.map((p) => p.gap).join(',')})`);
     // A HELD POINTER MUST NOT MOVE A LIST CELL — the row used to translateY(-1px)
     // and take a shadow, a card saying "I respond to you" on a row you select.
     await open(page, "(async () => { nav('view-backoffice'); })()", 900);
@@ -320,7 +361,8 @@ const NEST = (rootSel) => {
   await open(page, "(async () => { await openBookingHub('b2'); ['money', 'guest'].forEach((k) => { const f = document.getElementById('bhub-fold-' + k); if (f && f.hidden) bhubFoldToggle(k); }); const m = document.getElementById('bhub-money-more'); if (m && m.hidden) bhubMoneyExpand(); })()", 1300);
   await grabCaps(['#booking-hub-content .bhub-plan-cap', '#booking-hub-content .bhub-kv-label']);
   await open(page, "(async () => { await openEditBookingNow('b2'); })()", 1200);
-  await grabCaps(['.modal-sec', '.modal-foot-cap']);
+  // The booking form is ONE sheet now: its section captions and its field labels.
+  await grabCaps(['#edit-modal .bks-cap', '#edit-modal .bks-fr label']);
   await open(page, 'closeModal()', 400);
   await open(page, "(async () => { await openArea('settings'); settingsOpen('search-learning'); })()", 1400);
   await grabCaps(['.sl-stat-l']);
@@ -342,15 +384,18 @@ const NEST = (rootSel) => {
   ok(outside && outside.tt === 'none' && outside.fw === '600', `Manage's section caption is the one tier, sentence case at 600 ("${outside && outside.t}")`);
 
   console.log('§2 Payments — row titles in ink, the capsule carries the state');
-  await open(page, "(async () => { await openAccounts(); })()", 1200);
+  // RE-AIMED for the one Payments page: the five answer rows went; the rows that say a
+  // state are "Guests still to pay", each a name in ink with ONE capsule beside its figure.
+  await open(page, "(async () => { await openAccounts(); if (typeof pmClose === 'function') pmClose(); })()", 1200);
   const pay = await page.evaluate(() => {
     const body = getComputedStyle(document.body).getPropertyValue('--text-light').trim();
-    const lbls = [...document.querySelectorAll('#money-overview .bhub-fold-lbl')].map((l) => { const inner = l.firstElementChild && l.firstElementChild.tagName === 'SPAN' && !l.firstElementChild.classList.length ? l.firstElementChild : l; return { text: l.textContent.trim().slice(0, 14), color: getComputedStyle(inner).color, style: inner.getAttribute('style') || '' }; });
     const probe = document.createElement('span'); probe.style.color = body; document.body.appendChild(probe); const ink = getComputedStyle(probe).color; probe.remove();
-    return { ink, lbls: lbls.filter((x) => /^To (collect|move|give)|^The books/.test(x.text)) };
+    const rows = [...document.querySelectorAll('#pm-coming .pm-orow')].filter((r) => r.getClientRects().length);
+    return { ink, rows: rows.map((r) => { const t = r.querySelector('.pm-t'); return { text: t.textContent.trim().slice(0, 14), color: getComputedStyle(t).color, style: t.getAttribute('style') || '', caps: r.querySelectorAll('.pm-cap').length }; }) };
   });
-  ok(pay.lbls.length >= 3, `${pay.lbls.length} answer rows found (vacuity guard)`);
-  ok(pay.lbls.every((l) => l.color === pay.ink && !/ok-text/.test(l.style)), `every answer title is body ink, none green (${pay.lbls.map((l) => l.text + '=' + l.color).join('; ')})`);
+  ok(pay.rows.length >= 2, `${pay.rows.length} guests-to-pay rows found (vacuity guard)`);
+  ok(pay.rows.every((l) => l.color === pay.ink && !/ok-text/.test(l.style)), `every guest's title is body ink, none green (${pay.rows.map((l) => l.text + '=' + l.color).join('; ')})`);
+  ok(pay.rows.every((l) => l.caps === 1), `each says its state ONCE, as one capsule (${pay.rows.map((l) => l.caps).join(',')})`);
 
   console.log('§2 Manage — the status is said ONCE, by the pill, not by a card or a column of green pills');
   await open(page, "(async () => { await openArea('manage'); })()", 1000);
@@ -382,8 +427,6 @@ const NEST = (rootSel) => {
   ok(!!calm && calm.heads === 1 && !calm.card, `Manage says its status with one pill and no summary card (${calm && calm.heads} pill, card ${calm && calm.card})`);
   ok(calm && calm.pills === 0, `no green "all fine" pills on the landing (${calm && calm.pills})`);
   ok(calm && calm.tone === 'ok' && calm.dot === calm.okRgb, `and when all is well its dot is the ONE green mark (${calm && calm.tone} ${calm && calm.dot})`);
-  await open(page, "(async () => { await openAccounts(); })()", 1200);
-  const grpcapSpec = await page.evaluate(() => { const g = [...document.querySelectorAll('#money-overview .bhub-grpcap, #accounts-index .bhub-grpcap')].filter((e) => e.getClientRects().length)[0]; if (!g) return null; const c = getComputedStyle(g); return Math.round(parseFloat(c.fontSize)) + '/' + c.fontWeight + '/' + c.letterSpacing; });
 
   await open(page, "(async () => { await openArea('manage'); })()", 900);
   console.log('§1c Manage — the well LIFTS, and a field sits in at most two boxes');
@@ -402,8 +445,8 @@ const NEST = (rootSel) => {
   ok(well && well.radius === '20px', `and wears the CARD radius (${well && well.radius})`);
   // The two pages the box-in-a-box pass touched, driven through their own routes.
   await open(page, "settingsOpen('chat-answers')", 1100);
-  const nestChat = await page.evaluate(NEST, '#chat-answers-editor');
-  ok(nestChat && nestChat.worst > 0, `Instant answers renders its fields (${nestChat && nestChat.worst})`);
+  const nestChat = await page.evaluate(NEST, '#gc-page');
+  ok(nestChat && nestChat.worst > 0, `Guest chat renders its fields (${nestChat && nestChat.worst})`);
   ok(nestChat && nestChat.worst <= 2, `…each inside at most TWO boxes — the field and its well (${nestChat && nestChat.where})`);
   await open(page, "settingsOpen('guests')", 1400);
   const guests = await page.evaluate(() => ({ outer: !!document.querySelector('#sec-guests .accounts-stat'), well: !!document.querySelector('#guest-admin-list .acr-well'), rows: document.querySelectorAll('#guest-admin-list .acw-prow').length }));

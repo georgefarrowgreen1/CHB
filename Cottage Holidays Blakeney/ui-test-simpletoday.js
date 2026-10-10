@@ -186,7 +186,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       seg: (() => {
         const f = document.getElementById('bookings-filters'), on = f.querySelector('.is-on');
         const acc = (() => { const p = document.createElement('span'); p.style.color = getComputedStyle(document.body).getPropertyValue('--accent').trim(); document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; })();
-        return { shadow: getComputedStyle(f).boxShadow, on: on ? getComputedStyle(on).backgroundColor : '', acc };
+        // Today's switch carries the chosen side on a TRAVELLING pill (chbSeatPill):
+        // once it is seated the button itself is transparent, so the accent is the pill's.
+        const pill = f.classList.contains('has-pill') ? f.querySelector(':scope > .chb-pill') : null;
+        return { shadow: getComputedStyle(f).boxShadow, on: pill ? getComputedStyle(pill).backgroundColor : (on ? getComputedStyle(on).backgroundColor : ''), acc };
       })(),
     };
   });

@@ -485,7 +485,7 @@ function people_content_cap($key)
         'email-templates', 'reviews', 'google-review-url',
         'duty-dismissed', 'inbox-state', 'search-pins', 'search-undo', 'nlu-learned', 'nlu-suppressed', 'search-misses', 'search-canon', 'guest-faq-misses',
     ];
-    if (in_array($k, $everyday, true) || preg_match('/^chat-(away|ans)-/', $k)) {
+    if (in_array($k, $everyday, true) || preg_match('/^chat-(away|ans)-/', $k) || $k === 'chat-chips' || $k === 'chat-reply-time') {
         return 'all';
     }
     if ($k === 'plan-presets') {

@@ -321,9 +321,14 @@ const VERBS = /^(add|approve|block|cancel|capture|change|check|clear|continue|de
       // the ✕. That is the form the defect took — the tap that should have
       // added an adult closed the form.
       const px = document.elementFromPoint(xr.x + xr.width / 2, xr.y + xr.height / 2) || {};
-      if (bad.length || !/modal-x/.test(px.className || '')) {
+      // The ✕ draws an SVG glyph, so the point can land on the <svg>/<path>
+      // inside it: ask for the button, and read classes as an attribute (an
+      // SVG element's className is an SVGAnimatedString, not a string).
+      const cls = (el) => (el && el.getAttribute && el.getAttribute('class')) || '';
+      const hitX = px && px.closest ? px.closest('.modal-x') : null;
+      if (bad.length || !hitX) {
         out.hits++;
-        if (out.sample.length < 4) out.sample.push(top + ':' + ((bad[0] && (bad[0].id || bad[0].className)) || px.id || px.className));
+        if (out.sample.length < 4) out.sample.push(top + ':' + ((bad[0] && (bad[0].id || cls(bad[0]))) || px.id || cls(px)));
       }
     }
     sc.scrollTop = 0;

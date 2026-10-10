@@ -61,6 +61,9 @@ const enquiries = [
   { id: 11, prop_key: 'jollyboat', name: 'Lucy Grant-Worthington', email: 'lucy.grant.worthington@example.com', phone: '07700 900123', address: '14 Extraordinarily Long Street Name, Little Snoring', postcode: 'NR21 0AB', check_in: d(14), check_out: d(18), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: 'We would love to bring our very well behaved cocker spaniel if at all possible please — happy to pay extra.' },
 ];
 
+// money.php `summary`, generated from money-lib.php's own composers.
+const MONEY_SUMMARY = {"ok":true,"at":1785412800,"position":{"with_square":0,"with_square_count":0,"unknown":0,"unreported":0,"unreported_count":0,"next_arrival":"2026-07-31","in_bank":0,"ready":0,"held":0,"last_moved":0,"error":false,"checked":1785412800,"payout_error":null,"failed":[],"disputes":null,"bank":"Monzo ending 1234"},"bank_items":[],"moved_map":{},"landed_map":{},"way_items":[],"books":{"year":2026,"income":4280.5,"kept":75,"fees":61.2,"expenses":326.4,"profit":3967.9,"quarters":[1200,3080.5,0,0],"by_category":[{"category":"Repairs and maintenance","amount":240},{"category":"Cleaning","amount":86.4}],"undated":null},"years":[2026,2025],"activity":[{"id":"p4","at":1785063600,"kind":"back","what":"Deposit returned","booking_id":1,"name":"Dan Rowe","prop":"21a","amount":75,"deposit":0,"fee":null,"method":"card","status":"done","sid":""},{"id":"x9","at":1784980800,"kind":"expense","what":"Cleaning","who":"Changeover clean and laundry for the whole of the week","prop":"21a","amount":86.4},{"id":"p2","at":1784883600,"kind":"in","what":"Balance","booking_id":2,"name":"Sarah Pemberton","prop":"jollyboat","amount":700,"deposit":0,"fee":12.25,"method":"card","status":"done","sid":""},{"id":"p3","at":1784559600,"kind":"in","what":"Payment","booking_id":1,"name":"Dan Rowe","prop":"21a","amount":260,"deposit":0,"fee":null,"method":"Bank transfer","status":"done","sid":""},{"id":"p1","at":1784282400,"kind":"in","what":"Deposit","booking_id":2,"name":"Alexandrina Featherstonehaugh-Smythe","prop":"21a","amount":375,"deposit":75,"fee":6.56,"method":"card","status":"done","sid":""}]};
+
 // Channel-sync stub: one healthy feed and one FAILING feed, so the calendar
 // sync box renders both the "synced" and "not syncing" status lines.
 const icalList = {
@@ -232,6 +235,18 @@ async function waitForServer(url, tries = 40) {
           },
         },
       });
+      // The Payments page reads ONE summary (money.php). Shaped by money-lib's own
+      // composers (events, position, books), with a long guest name and a long
+      // expense line — the rows where overhang hides.
+      if (url.includes('money.php')) return json(MONEY_SUMMARY);
+      // One email from the enquirer, with a long subject, so the Inbox's
+      // conversation has an email in it to lay out.
+      if (url.includes('mailbox.php')) {
+        const mb = (() => { try { return JSON.parse(route.request().postData() || '{}'); } catch (e) { return {}; } })();
+        if (mb.action === 'list') return json({ messages: [{ uid: 'u1', from: 'lucy.grant.worthington@example.com', fromRaw: 'Lucy Grant-Worthington <lucy.grant.worthington@example.com>', subject: 'Re: Your enquiry about Jollyboat — a question about bringing our cocker spaniel along', date: d(-1) + 'T09:12:00Z', seen: false, preview: 'Thank you so much for getting back to us so quickly — would the downstairs be suitable for a well behaved dog?' }], hasMore: false });
+        if (mb.action === 'read') return json({ ok: true, message: { uid: 'u1', subject: 'Re: Your enquiry about Jollyboat', from: 'lucy.grant.worthington@example.com', fromRaw: 'Lucy Grant-Worthington <lucy.grant.worthington@example.com>', text: 'Thank you so much for getting back to us so quickly — would the downstairs be suitable for a well behaved dog?\n\nOn Mon, someone wrote:\n> Hello Lucy', attachments: [] } });
+        return json({ messages: [] });
+      }
       if (url.includes('ical-import.php')) return json(icalList);
       if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 1, fail: 0 }, checks: [], mail_ready: true });
       if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
@@ -325,11 +340,13 @@ async function waitForServer(url, tries = 40) {
       // what must be on screen is its field and its result list, not a separate sheet.
       { key: 'admin-crown-sheet', open: "(async () => { crownSheetToggle(); await new Promise(r => setTimeout(r, 500)); })()", mustSee: ['#cmdk', '#cmdk-input', '#cmdk-results'] },
       { key: 'admin-crown-closed', open: "(async () => { closeCmdK(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#bookings-list'] },
-      { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#messages-list'] },
-      { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-list'] },
-      { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
-      { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
-      { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#money-overview'] },
+      // The Inbox is ONE list of people: the list, then one person's conversation
+      // (their enquiry, its decision card and the email they sent, in time order).
+      { key: 'admin-inbox', open: "(async () => { await openInbox(); await new Promise(r => setTimeout(r, 600)); })()", mustSee: ['#ib-list', '#ib-list .ib-row'] },
+      { key: 'admin-inbox-person', open: "(async () => { const r = document.querySelector('#ib-list .ib-row'); if (r) r.click(); await new Promise(r => setTimeout(r, 700)); })()", mustSee: ['#ib-conv', '#ib-conv .ib-thread'] },
+      // Payments: the landing list, then the books page beside or over it.
+      { key: 'admin-money', open: '(async () => { await openAccounts(); await new Promise(r => setTimeout(r, 500)); })()', mustSee: ['#pm-list'] },
+      { key: 'admin-money-books', open: "(async () => { pmOpen('books'); await new Promise(r => setTimeout(r, 500)); })()", mustSee: ['#pm-detail'] },
       { key: 'admin-manage', open: "(async () => { await openArea('manage'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpenAccom('21a'); })()", mustSee: ['#sec-accom'] },
       { key: 'admin-seasongrid', open: "(async () => { await openArea('cottages'); settingsOpen('seasongrid'); })()", mustSee: ['#sec-seasongrid'] },
@@ -342,7 +359,8 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-host', open: "(async () => { settingsOpen('host'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#host-body .ga-hero', '#host-body .oa-preview .host-card'] },
       { key: 'admin-notify', open: "(async () => { settingsOpen('notify'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#notify-device', '#notify-prefs-body .chb-switch'] },
       { key: 'admin-security', open: "(async () => { settingsOpen('security'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#admin-passkey-list', '#admin-2fa-toggle'] },
-      { key: 'admin-mailbox', open: "(async () => { await openInbox(); inboxFolder('email'); })()", mustSee: ['#inbox-folder-email'] },
+      // The Done folder (the Inbox's one switch), so the folder's own layout is measured.
+      { key: 'admin-inbox-done', open: "(async () => { await openInbox(); if (window.ibSetFolder) ibSetFolder('done'); await new Promise(r => setTimeout(r, 600)); })()", mustSee: ['#ib-list'] },
     ];
     for (const vp of WIDTHS) {
       const page = await newPage(browser, vp, 'admin-' + vp.name);

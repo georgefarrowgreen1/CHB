@@ -430,28 +430,41 @@ const reachOk = (name, list, floor, axis) => {
     await run(page, "(async () => { await window.loadAdminBundle(); nav('view-backoffice'); await initBackOffice(); })()", 2500);
     // 1. TODAY: the two booking tabs.
     reachOk('today 390 · the booking filters', await page.evaluate(REACH, '#bookings-filters .inbox-sort-btn'), 2, 'y');
-    // 2. THE INBOX: the folder switch and the sort segments.
-    // the folder SWITCH is hidden on the stacked landing by design, so the seg
-    // measured here is the enquiry tab bar inside the folder (the fold rule:
-    // anything that MEASURES has to open the fold first).
-    await run(page, "(async () => { await openInbox(); const f = document.getElementById('iv-fold-enquiries'); if (!f || f.hidden) inboxFolder('enquiries'); })()", 1500);
-    reachOk('inbox 390 · the segmented switches', await page.evaluate(REACH, '#view-inbox .inbox-sort.seg .inbox-sort-btn'), 2, 'y');
+    // 2. THE INBOX: its one segmented switch. The Inbox is ONE list of people now
+    // (the Enquiries / Messages / Email folders and their tab bars are gone), and
+    // the control left in their place is the Inbox | Done switch over the list.
+    await run(page, "(async () => { await openInbox(); })()", 1500);
+    await page.waitForFunction(() => document.querySelectorAll('#ib-folders > button').length === 2, null, { timeout: 8000 }).catch(() => {});
+    reachOk('inbox 390 · the Inbox | Done switch', await page.evaluate(REACH, '#ib-folders > button'), 2, 'y');
     ok(await page.evaluate(() => {
-      const seg = document.querySelector('#view-inbox .inbox-sort.seg');
-      const btn = seg && seg.querySelector('.inbox-sort-btn');
-      if (!seg || !btn) return false;
-      // AN OVERFLOW SCROLLER CLIPS AT ITS PADDING BOX, not its border box — the
-      // first version of this compared against getBoundingClientRect() (which
-      // includes the 1px hairline) and so PASSED with the track put back to 3px,
-      // i.e. with the region clipped by the very pixel it was measuring.
-      const s = seg.getBoundingClientRect(), b = btn.getBoundingClientRect();
-      const sc = getComputedStyle(seg);
-      const padTop = s.top + (parseFloat(sc.borderTopWidth) || 0);
-      const padBot = s.bottom - (parseFloat(sc.borderBottomWidth) || 0);
-      const cs = getComputedStyle(btn, '::before');
-      const top = b.top + (parseFloat(cs.top) || 0), bot = b.bottom - (parseFloat(cs.bottom) || 0);
-      return top >= padTop - 0.05 && bot <= padBot + 0.05;
-    }), 'inbox 390 · the region lives INSIDE the seg\u2019s own overflow-x scroller, so nothing clips it');
+      const btns = [...document.querySelectorAll('#ib-folders > button')];
+      if (btns.length !== 2) return false;
+      // The switch sits inside a CLIPPING wrapper (.ib-folders-wrap's child is
+      // overflow:hidden, for its step-aside while a search runs), so any hit region
+      // it grows must stay inside that clip or the clip eats it. AN OVERFLOW CLIP
+      // CUTS AT ITS PADDING BOX, not its border box — the first version of this
+      // check (on the old seg) compared against getBoundingClientRect() and so
+      // passed with the region clipped by the very pixel it was measuring.
+      return btns.every((btn) => {
+        const b = btn.getBoundingClientRect();
+        let top = b.top, bot = b.bottom;
+        for (const ps of ['::before', '::after']) {
+          const cs = getComputedStyle(btn, ps);
+          if (cs.content === 'none' || cs.position !== 'absolute') continue;
+          top = Math.min(top, b.top + (parseFloat(cs.top) || 0));
+          bot = Math.max(bot, b.bottom - (parseFloat(cs.bottom) || 0));
+        }
+        for (let a = btn.parentElement; a && a !== document.body; a = a.parentElement) {
+          const sc = getComputedStyle(a);
+          if (sc.overflowY === 'visible' && sc.overflowX === 'visible') continue;
+          const s = a.getBoundingClientRect();
+          const padTop = s.top + (parseFloat(sc.borderTopWidth) || 0);
+          const padBot = s.bottom - (parseFloat(sc.borderBottomWidth) || 0);
+          if (top < padTop - 0.05 || bot > padBot + 0.05) return false;
+        }
+        return true;
+      });
+    }), 'inbox 390 · the switch’s region lives INSIDE every clipping ancestor, so nothing cuts it off');
     // 3. THE BOOKING HUB: "Show email".
     await run(page, "(async () => { await openBookingHub('b3'); bhubFoldToggle('activity'); })()", 1400);
     reachOk('hub 390 · Show email', await page.evaluate(REACH, '#booking-hub-content .bhub-feed-mail summary'), 1, 'y');

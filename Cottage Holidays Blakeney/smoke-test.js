@@ -1836,9 +1836,10 @@ for (const [name, src] of [['app.js', appScript], ['admin.js', adminScript]]) {
         offenders.length === 0,
     );
 }
-// The edit modal must keep its locked-price branch (agreed figures + note while
-// the stay is unchanged; live reprice only once it genuinely changes).
-check('updateModalPrice keeps the locked-price branch', /locked at the rates in effect when booked/.test(appScript));
+// The edit modal must keep its locked-price branch (agreed figures while the stay
+// is unchanged; live reprice only once it genuinely changes). The add-booking sheet
+// rewrote the words, so the gate reads the BRANCH, not a sentence.
+check('updateModalPrice keeps the locked-price branch', /if \(!stayChanged\) agreed = a;/.test(appScript) && /const stdTotal = agreed\b/.test(appScript));
 check('updateModalPrice keeps the replaces-the-agreed reprice note', /saving replaces the agreed/.test(appScript));
 
 // ---- Guest FAQ assistant: a TYPED guest question is answered on-device from the
@@ -1931,6 +1932,50 @@ if (typeof get('guestQuestionShaped') === 'function') {
     check('question-shaped capture: a trailing "?" is captured', qs('parking nearby?') === true);
     check('question-shaped capture: a bare greeting is not captured', qs('hi there') === false);
     check('question-shaped capture: a too-short message is not captured', qs('cot') === false);
+}
+
+// ---- Guest chat: the owner's instant answers (chat-chips), read through ONE
+// sanitiser by the chat's buttons, the on-device matcher and the owner's preview.
+console.log('\n== Guest chat instant answers ==');
+if (typeof get('chatQuickList') === 'function') {
+    const sc = vm.runInContext('siteContent', ctx);
+    const before = { chips: sc['chat-chips'], reply: sc['chat-reply-time'], prop: vm.runInContext('activeFrontProperty', ctx) };
+    sc['chat-chips'] = {
+        hide: ['wifi', 'nonsense'],
+        extra: [
+            { id: 'dogs1', chip: 'Dogs?', q: 'Dogs?', a: 'Sorry, no dogs at any of our cottages.', btn: true, prop: '' },
+            { id: 'cot1', chip: '', q: 'Is there a cot for a baby?', a: 'Yes, a travel cot is in the cupboard.', btn: false, prop: 'jollyboat' },
+            { id: 'BAD ID', chip: 'x', a: 'y' },
+            { id: 'empty1', chip: 'Empty', a: '   ' },
+        ],
+    };
+    sc['chat-reply-time'] = 'day';
+    const all = get('chatQuickList')(true);
+    check('the three standard answers lead, the owner\'s follow', all.slice(0, 3).map((x) => x.id).join() === 'checkin,parking,wifi' && all.some((x) => x.id === 'dogs1'));
+    check('a hidden standard answer is not a button', all.find((x) => x.id === 'wifi').btn === false && all.find((x) => x.id === 'parking').btn === true);
+    check('a malformed or empty entry is simply not there', !all.some((x) => x.id === 'BAD ID' || x.id === 'empty1'));
+    check('an unknown id in hide is ignored', get('chatChipsCfg')().hide.join() === 'wifi');
+    vm.runInContext("activeFrontProperty = 'pimpernel'", ctx);
+    check('a cottage\'s own answer is not offered on another cottage', !get('chatQuickList')().some((x) => x.id === 'cot1'));
+    vm.runInContext("activeFrontProperty = 'jollyboat'", ctx);
+    check('…and is on its own cottage', get('chatQuickList')().some((x) => x.id === 'cot1'));
+    const corpus = get('guestFaqCorpus')();
+    check('the matcher reads a typed-only answer too', corpus.some((r) => /travel cot/.test(r.a)));
+    check('a long question makes a short button', get('chatChipLabel')({ chip: '', q: 'Is there a cot for a baby in the cottage please?' }).length <= 29);
+    check('the welcome says the reply time the owner chose', get('chatReplySay')() === 'Usually replies the same day');
+    sc['chat-reply-time'] = 'nonsense';
+    check('an unknown reply time falls back to a few hours', get('chatReplySay')() === 'Usually replies within a few hours');
+    sc['chat-chips'] = before.chips;
+    sc['chat-reply-time'] = before.reply;
+    vm.runInContext('activeFrontProperty = ' + JSON.stringify(before.prop), ctx);
+} else {
+    fail('chatQuickList is not defined');
+}
+{
+    // The page shows these words as the reply; the server sends them when the box is empty.
+    const adm = fs.readFileSync(path.join(__dirname, 'admin.js'), 'utf8').match(/const GC_AWAY_STD = '([^']+)';/);
+    const php = fs.readFileSync(path.join(__dirname, 'messages.php'), 'utf8').match(/const CHAT_AWAY_DEFAULT = '([^']+)';/);
+    check('the away reply\'s standard words are one sentence in admin.js and messages.php', !!(adm && php && adm[1] === php[1]));
 }
 
 // chbSwallow: the reporter for a CAUGHT error on a path where quietly carrying on

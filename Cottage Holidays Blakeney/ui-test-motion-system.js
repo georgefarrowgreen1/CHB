@@ -568,9 +568,12 @@ const EXPS = [
     // a press written at (0,2,0). A held press is the only thing that sees it.
     await held('.tl-bar', '.tl-bar', 'scale');
     await held('.tl-cell', '.tl-cell', 'list');
-    await op.evaluate(() => window.openInbox());
-    await op.waitForTimeout(800);
-    await held('.bhub-fold-row', '.bhub-fold-row', 'list');
+    // The booking page's Money / Guest / History rows are fold rows (the Inbox,
+    // where this used to press one, is a list of people now and has none).
+    await op.evaluate(() => window.openBookingHub(1));
+    await op.waitForFunction(() => !!document.querySelector('#view-booking-hub.active .bhub-fold-row'), null, { timeout: 8000 }).catch(() => {});
+    await op.waitForTimeout(400);
+    await held('#view-booking-hub .bhub-fold-row', '.bhub-fold-row', 'list');
     // THE RAIL only exists from 1200px, so its rows are pressed on their own page.
     const railPage = await ownerBoot({ width: 1440, height: 900 });
     const railPress = await (async () => {

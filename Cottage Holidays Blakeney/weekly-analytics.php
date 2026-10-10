@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 //  weekly-analytics.php — a Sunday-evening "your week online" email to the
-//  owner: visits, unique visitors, conversion, top channel/page and any unmet
+//  owner: people, pages viewed, enquiries sent, bookings through the site, top channel/page and any unmet
 //  search demand — plus a heads-up alert if visits dropped sharply.
 //
 //  Add it to the SAME daily cron as the others — it only actually sends on a
@@ -59,12 +59,13 @@ try {
 }
 
 $views = (int) ($a['totalViews'] ?? 0);
-$prevViews = (int) ($a['prevTotalViews'] ?? 0);
 $uniq = (int) ($a['uniqueVisitors'] ?? 0);
-$bookings = (int) ($a['bookings'] ?? 0);
-$enquiries = (int) ($a['enquiries'] ?? 0);
-$convPct = $uniq > 0 ? round(($bookings / $uniq) * 100, 1) : 0;
-$dropPct = $prevViews > 0 ? (int) round((($views - $prevViews) / $prevViews) * 100) : null;
+$prevUniq = (int) ($a['prevUniqueVisitors'] ?? 0);
+// Manage → Analytics' figures: enquiries SENT (the site's own event — approval
+// deletes the enquiry row) and bookings made through the site.
+$sent = (int) (($a['events'] ?? [])['enquiry_submit'] ?? 0);
+$booked = (int) ($a['siteBookings'] ?? 0);
+$dropPct = $prevUniq > 0 ? (int) round((($uniq - $prevUniq) / $prevUniq) * 100) : null;
 $arrow = $dropPct === null ? '' : ($dropPct >= 0 ? '▲' : '▼');
 $deltaTxt = $dropPct === null ? '' : $arrow . abs($dropPct) . '%';
 
@@ -92,8 +93,8 @@ $siteUrl = function_exists('site_base_url') ? site_base_url() : '/';
 // Composed by weekly_analytics_body() in mailer.php — one payload, so the template can
 // be previewed and render-gated instead of only existing inside this cron run.
 $m = weekly_analytics_body([
-    'views' => $views, 'uniq' => $uniq, 'convPct' => $convPct, 'bookings' => $bookings,
-    'enquiries' => $enquiries, 'topChannel' => $topChannel, 'topPage' => $topPage,
+    'views' => $views, 'uniq' => $uniq, 'sent' => $sent, 'booked' => $booked,
+    'topChannel' => $topChannel, 'topPage' => $topPage,
     'noResult' => $noResult, 'dropPct' => $dropPct, 'deltaTxt' => $deltaTxt,
     'siteUrl' => $siteUrl,
 ]);
@@ -121,8 +122,8 @@ json_out([
     'sent' => true,
     'views' => $views,
     'unique' => $uniq,
-    'conversion_pct' => $convPct,
-    'bookings' => $bookings,
+    'enquiries_sent' => $sent,
+    'booked' => $booked,
     'drop_pct' => $dropPct,
     'mail' => $res,
 ]);

@@ -211,7 +211,9 @@ swchk('…and returns it in the payload the screen already fetches (no extra rou
 
 // The liability is "what is still owed back", which has nothing to do with a tax
 // year — held_deposits above IS year-filtered and would be the wrong basis.
-if (preg_match('/SAFE TO MOVE(.*?)json_out\(/s', $acct, $m)) {
+// The block ends where the report is assembled (\$accountsOut) — accounts.php is
+// a library for money.php now, so its one json_out sits after the report.
+if (preg_match('/SAFE TO MOVE(.*?)\$accountsOut = \[/s', $acct, $m)) {
     swchk('the liability query is NOT filtered to a tax year',
         strpos($m[1], '$requested') === false && strpos($m[1], 'tax_year') === false);
     swchk('only deposits actually taken are counted', strpos($m[1], "hold_status IN ('charged','captured')") !== false);

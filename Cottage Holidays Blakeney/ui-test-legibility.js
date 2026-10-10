@@ -187,7 +187,10 @@ const CUT_SUBS = () => {
       await page.waitForTimeout(500);
       const n = await page.evaluate(() => document.querySelectorAll('.bhub-fold-sub').length);
       const cut = await page.evaluate(CUT_SUBS);
-      ok(n >= 3, `${w}px ${name}: ${n} summary subs on screen`);
+      // The one-look Manage and the one Payments page carry fewer fold rows than
+      // when this was written (two each in the fixture); the floor follows, so the
+      // truncation check below still reads real subs.
+      ok(n >= 2, `${w}px ${name}: ${n} summary subs on screen`);
       ok(cut.length === 0, `${w}px ${name}: none truncated${cut.length ? ' — ' + cut.map((c) => `“${c.txt}” ${c.lost}% lost in ${c.w}px`).join('; ') : ''}`);
     }
   }

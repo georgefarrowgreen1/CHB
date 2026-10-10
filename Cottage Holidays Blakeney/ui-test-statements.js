@@ -5,14 +5,18 @@
 // the screens see exactly what the server would send. The server itself is gated
 // by test-statements.php and test-integration §53.
 //
-// Covers: the way in, the + menu, the add sheet (a PDF refused, the check, the
-// receipt, one import carrying an op id), the bank page (the closing balance,
-// what sorted itself, a suggestion per kind), recording a guest's transfer on the
-// booking dated the day it arrived, an expense on its own date and linked, the
-// next payment from that payee remembered, tax and a platform payout, the kind
-// sheet, Undo of an expense, a recorded transfer offering Open rather than Undo,
-// the reminder switch, Needs you, the same file adding nothing, and a due
-// statement asking on the landing. And the LIVE LINK to Monzo (monzo.php, stubbed;
+// Covers: the way in (the landing's "In the bank" row), the + menu, the add sheet
+// (a PDF refused, the first statement read from the tax year's start, the review,
+// the receipt, one import carrying an op id), the bank page (the closing balance
+// and the count of what waits), the ONE Money list's To sort filter (what sorted
+// itself, a suggestion per kind), recording a guest's transfer on the booking
+// dated the day it arrived, an expense on its own date and linked, the next
+// payment from that payee remembered, tax and a platform payout, the kind sheet,
+// Undo of an expense on the payment's own page, a recorded transfer offering Open
+// rather than Undo, the reminder switch, Needs you, the same file adding nothing,
+// and a due statement asking on the landing. (The bank page's own To sort /
+// Sorted lists and the way-in card went into the Money list: CLAUDE.md "One money
+// list".) And the LIVE LINK to Monzo (monzo.php, stubbed;
 // the real flow against a fake Monzo is test-integration §54): set up in three
 // steps with the redirect address to copy, a non-confidential client refused in
 // the server's words, connecting, waiting for approval in the app (polled, then
@@ -170,7 +174,15 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const clickText = (scope, text) => page.evaluate(([sc, t]) => { const e = [...document.querySelectorAll(sc + ' button')].find((b) => b.textContent.trim() === t); if (!e) throw new Error('no button ' + t); e.click(); }, [scope, text]);
 
     await shot('1-landing');
-    ok(/Bring in your Monzo Business account/.test(await list()), 'the landing offers the way in');
+    // THE WAY IN is the landing's "In the bank" row now (the way-in card and its
+    // Not now went with "One money list"): with nothing linked it says so, offers
+    // Link, and opens the bank page.
+    const way = await page.evaluate(() => {
+        const b = document.querySelector('#pm-list .pm-bankstrip [data-pm="bank"]');
+        return b ? { txt: b.textContent.replace(/\s+/g, ' '), go: ((b.querySelector('.pm-go') || {}).textContent || '').trim() } : null;
+    });
+    ok(!!way && /In the bank\s*Not linked/.test(way.txt) && way.go === 'Link', 'the landing offers the way in: "In the bank · Not linked", with Link (' + (way && way.txt) + ')');
+    ok(/Open Banking\s*Your bank, in this list\s*Not linked/.test(await list()), '…and "Where it comes from" says the bank is not linked yet');
     const owed = await page.evaluate(() => pmOwed().map((r) => [r.b.name, r.dg.balance]));
     const marcus = owed.find((o) => o[0] === 'Marcus Hill');
     ok(!!marcus, 'Marcus owes ' + JSON.stringify(owed));
@@ -192,18 +204,21 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForTimeout(200);
     ok(await page.evaluate(() => !!document.querySelector('#pm-menu [data-pm="bank-add"]')), 'the + menu has "Add a bank statement"');
     await click('#pm-menu [data-pm="bank-add"]');
-    await page.waitForTimeout(500);
-    await shot('2-export');
-    ok(/Export a statement from Monzo Business/.test(await sheet()) && /6 Apr/.test(await sheet()), 'step 1 says how, from the start of the tax year');
-    await clickText('#pm-sheet', 'I have the file');
-    await page.waitForTimeout(300);
-    await shot('3-add');
+    await page.waitForFunction(() => !!document.getElementById('pm-stmt-file'), null, { timeout: 6000 }).catch(() => {});
+    await shot('2-add');
+    // The how-to-export step was removed at the owner's ask: the sheet opens on the file.
+    ok(await page.evaluate(() => !!document.getElementById('pm-stmt-file')) && /Add a statement/.test(await sheet()) && !/I have the file/.test(await sheet()), 'the sheet opens on choosing the file (the how-to step is gone)');
     await page.setInputFiles('#pm-stmt-file', { name: 'statement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
     await page.waitForTimeout(300);
     ok(/That’s a PDF/.test(await sheet()), 'a PDF is named for what it is');
     await page.setInputFiles('#pm-stmt-file', csvPath);
-    await page.waitForFunction(() => /Check before it goes in/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 8000 });
+    await page.waitForFunction(() => /Review before it goes in/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 8000 });
     await shot('4-check');
+    // THE FIRST STATEMENT READS FROM THE START OF THE TAX YEAR: older lines in the file
+    // are left out unless the owner says otherwise.
+    const tyStart = `${d(0) < `${dt(0).getFullYear()}-04-06` ? dt(0).getFullYear() - 1 : dt(0).getFullYear()}-04-06`;
+    const pv1 = posts.filter((p) => p.__url === 'statements.php' && p.action === 'preview').pop();
+    ok(!!pv1 && pv1.since === tyStart, `the first statement is read from the start of the tax year (since ${pv1 && pv1.since}, expected ${tyStart})`);
     const chk = await sheet();
     ok(/Payments in the file\s*8/.test(chk) && /Already here\s*None/.test(chk), 'the check counts the file: ' + chk.slice(0, 220));
     ok(/Add 8 payments/.test(chk), 'the button says what it will add');
@@ -215,17 +230,31 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const imp = posts.filter((p) => p.__url === 'statements.php' && p.action === 'import');
     ok(imp.length === 1 && /^[\w-]+/.test(imp[0].op_id || ''), 'one import, carrying an op id');
     await clickText('#pm-sheet', 'See your bank');
-    await page.waitForTimeout(700);
+    await page.waitForFunction(() => /Your bank/.test((document.getElementById('pm-detail') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
     await shot('6-bank');
     let dt1 = await detail();
     ok(/Balance on .*£1,257\.06/.test(dt1), 'the bank page leads with the closing balance');
-    ok(/To sort · 6/.test(dt1), 'six to sort');
-    ok(/Marcus Hill owes .*reference is their booking/.test(dt1), 'the guest transfer is matched by its reference');
-    ok(/Looks like cleaning/.test(dt1) && /Tax\. It isn’t a cottage cost/.test(dt1) && /A Airbnb payout|An Airbnb payout|Airbnb payout/.test(dt1), 'cleaning, tax and the platform payout each get a suggestion');
-    ok(/Square payout/.test(dt1) && /To a pot/.test(dt1), 'the Square payout and the pot move sorted themselves');
+    // The bank page's To sort / Sorted lists went into the ONE Money list on the
+    // landing: the bank page counts what waits and its row is the way there.
+    ok(/6 payments to sort/.test(dt1) && /in the Money list/.test(dt1), 'six to sort, and the bank page points at the Money list');
+    await click('#pm-detail [data-pm="tosort"]');
+    await page.waitForFunction(() => document.querySelector('#pm-list [data-pm="filter"][data-arg="tosort"][aria-pressed="true"]'), null, { timeout: 6000 }).catch(() => {});
+    let L0 = await list();
+    ok(await page.evaluate(() => !document.getElementById('pm').classList.contains('is-detail')), 'its row closes the bank page on a phone and lands on the list');
+    ok(/To sort\s*6/.test(L0), 'the Money list carries a To sort filter with its count');
+    ok(/Marcus Hill owes .*reference is their booking/.test(L0), 'the guest transfer is matched by its reference');
+    ok(/Looks like cleaning/.test(L0) && /Tax\. It isn’t a cottage cost/.test(L0) && /An Airbnb payout/.test(L0), 'cleaning, tax and the platform payout each get a suggestion');
+    ok(!/SQUARE PAYOUT|Tax pot/.test(L0), 'the Square payout and the pot move are not waiting to be sorted');
+    await click('#pm-list [data-pm="filter"][data-arg="all"]');
+    await page.waitForTimeout(200);
+    const Lall = await list();
+    ok(/SQUARE PAYOUT\s*Square payout/.test(Lall) && /Tax pot\s*To a pot/.test(Lall), 'the Square payout and the pot move sorted themselves, and say so in the Money list');
+    await click('#pm-list [data-pm="filter"][data-arg="tosort"]');
+    await page.waitForTimeout(200);
     // ── record Marcus's transfer ──
-    await clickText('#pm-detail', 'Record Marcus’s payment');
-    await page.waitForTimeout(1200);
+    await clickText('#pm-list', 'Record Marcus’s payment');
+    await page.waitForFunction(() => pmBankLines().some((l) => l.as === 'payment'), null, { timeout: 6000 }).catch(() => {});
+    await page.waitForTimeout(400);
     const sp = posts.filter((p) => p.__url === 'bookings.php' && p.action === 'set_payment').pop();
     ok(sp && sp.payment === 'paid' && sp.payment_date === d(-11) && sp.payment_method === 'Bank transfer' && sp.op_id, 'recorded on the booking, dated the day it arrived: ' + JSON.stringify(sp));
     const mk1 = posts.filter((p) => p.__url === 'statements.php' && p.action === 'mark').pop();
@@ -234,40 +263,55 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForTimeout(400);
     await shot('7-recorded');
     // ── add the cleaning as an expense ──
-    dt1 = await detail();
-    await clickText('#pm-detail', 'Add as Cleaning');
-    await page.waitForTimeout(900);
+    await clickText('#pm-list', 'Add as Cleaning');
+    await page.waitForFunction(() => /Cleaning, as last time/.test(document.getElementById('pm-list').textContent), null, { timeout: 6000 }).catch(() => {});
     const ex = posts.filter((p) => p.__url === 'expenses.php' && p.action === 'add').pop();
     ok(ex && ex.category === 'Cleaning' && ex.amount === 72 && ex.date === d(-8) && ex.description === 'NORFOLK CLEAN CO', 'the expense is added on its own date: ' + JSON.stringify(ex));
     const mk2 = posts.filter((p) => p.__url === 'statements.php' && p.action === 'mark').pop();
     ok(mk2 && mk2.as === 'expense' && mk2.expense_id === 900, 'linked to the expense it made');
-    dt1 = await detail();
-    ok(/Cleaning, as last time/.test(dt1), 'the second payment to the same cleaner is remembered');
+    L0 = await list();
+    ok(/Cleaning, as last time/.test(L0), 'the second payment to the same cleaner is remembered');
     await shot('8-learned');
-    await clickText('#pm-detail', 'Leave it out');
+    await clickText('#pm-list', 'Leave it out');
     await page.waitForTimeout(500);
-    await clickText('#pm-detail', 'That’s it');
+    await clickText('#pm-list', 'That’s it');
     await page.waitForTimeout(500);
     const marks = posts.filter((p) => p.__url === 'statements.php' && p.action === 'mark');
     ok(marks.some((m) => m.as === 'tax') && marks.some((m) => m.as === 'platform' && m.label === 'Airbnb payout'), 'tax left out, the Airbnb payout noted');
     // ── something else: the category sheet ──
-    await clickText('#pm-detail', 'An expense');
-    await page.waitForTimeout(500);
+    await clickText('#pm-list', 'An expense');
+    await page.waitForFunction(() => /What was £23\.10 for\?/.test((document.getElementById('pm-sheet') || {}).textContent || ''), null, { timeout: 4000 }).catch(() => {});
     await shot('9-cat');
     ok(/What was £23\.10 for\?/.test(await sheet()), 'the category sheet names the figure');
     await page.evaluate(() => [...document.querySelectorAll('#pm-sheet [data-pms="cat"]')].find((b) => b.textContent === 'Supplies').click());
-    await page.waitForTimeout(900);
+    await page.waitForFunction(() => pmBankLines().some((l) => /TESCO/.test(l.name) && l.as === 'expense'), null, { timeout: 6000 }).catch(() => {});
     const ex2 = posts.filter((p) => p.__url === 'expenses.php' && p.action === 'add').pop();
     ok(ex2 && ex2.category === 'Supplies' && ex2.amount === 23.1, 'the chosen kind is added');
-    // ── undo an expense ──
-    const undoBtn = await page.evaluate(() => { const b = [...document.querySelectorAll('#pm-detail [data-pm="bank-undo"]')].find((x) => /Supplies/.test(x.closest('.pm-needrow').textContent)); if (b) b.click(); return !!b; });
-    await page.waitForTimeout(900);
+    // ── undo an expense: it lives on the payment's own page now, not in a Sorted list ──
+    await click('#pm-list [data-pm="filter"][data-arg="all"]');
+    await page.waitForTimeout(200);
+    const tesco = await page.evaluate(() => { const b = [...document.querySelectorAll('#pm-list [data-pm="line"]')].find((x) => /TESCO/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); return b ? b.getAttribute('aria-label') : ''; });
+    await page.waitForFunction(() => !!document.querySelector('#pm-detail [data-pm="bank-undo"]'), null, { timeout: 4000 }).catch(() => {});
+    ok(/Supplies/.test(tesco), 'the sorted payment is one plain row saying what it was (' + tesco + ')');
+    const ln = await detail();
+    ok(/−£23\.10/.test(ln) && /Paid out/.test(ln) && /What it was/.test(ln) && /Counted, as a cost/.test(ln), 'its page says what it was and that the books count it');
+    await click('#pm-detail [data-pm="bank-undo"]');
+    await page.waitForFunction(() => /What was it\?/.test((document.getElementById('pm-detail') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
     const del = posts.filter((p) => p.__url === 'expenses.php' && p.action === 'delete').pop();
-    ok(undoBtn && del && del.id === 901, 'Undo deletes the expense it made and puts the payment back to sort');
-    ok(/TESCO/.test((await detail()).split('Sorted')[0]), '…and it is back to sort');
+    ok(!!del && del.id === 901, 'Undo deletes the expense it made');
+    const back = await detail();
+    ok(/To sort/.test(back) && /What was it\?/.test(back) && await page.evaluate(() => pmBankLines().some((l) => /TESCO/.test(l.name) && !l.as)), '…the page stays open and asks again: it is back to sort');
+    await page.evaluate(() => { const b = document.querySelector('#pm-detail [data-pm="close"]'); if (b && b.offsetParent) b.click(); });
+    await page.waitForTimeout(400);
     // the recorded transfer offers its booking, never an undo that could double it
-    ok(await page.evaluate(() => { const r = [...document.querySelectorAll('#pm-detail .pm-needrow')].find((x) => /M HILL/.test(x.textContent)); return !!r && !!r.querySelector('[data-pm="stay"]') && !r.querySelector('[data-pm="bank-undo"]'); }), 'a recorded transfer offers Open, not Undo');
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#pm-list [data-pm="line"]')].find((x) => /M HILL/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); });
+    await page.waitForFunction(() => /M HILL/.test((document.getElementById('pm-detail') || {}).textContent || ''), null, { timeout: 4000 }).catch(() => {});
+    ok(await page.evaluate(() => { const p = document.getElementById('pm-detail'); return /Recorded on their booking/.test(p.textContent) && !!p.querySelector('[data-pm="stay"]') && !p.querySelector('[data-pm="bank-undo"]'); }), 'a recorded transfer offers Open the booking, not Undo');
+    await page.evaluate(() => { const b = document.querySelector('#pm-detail [data-pm="close"]'); if (b && b.offsetParent) b.click(); });
+    await page.waitForTimeout(400);
     // ── the reminder switch ──
+    await click('#pm-list [data-pm="bank"]');
+    await page.waitForFunction(() => !!document.querySelector('#pm-detail [data-pm="bank-remind"]'), null, { timeout: 4000 }).catch(() => {});
     await click('#pm-detail [data-pm="bank-remind"]');
     await page.waitForTimeout(500);
     const st = posts.filter((p) => p.__url === 'statements.php' && p.action === 'settings').pop();
@@ -278,15 +322,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForTimeout(500);
     const L = await list();
     ok(/2 bank payments to sort/.test(L), 'Needs you counts what is left to sort: ' + (L.match(/\d+ bank payments? to sort/) || [''])[0]);
-    ok(/Monzo Business\s*Statements up to/.test(L), 'the landing shows the account in one row');
+    ok(/In the bank\s*Statement · [^£]*£1,257\.06/.test(L), 'the landing shows the account in one row, with the statement’s balance: ' + (L.match(/In the bank[^£]*£[\d,.]+/) || [''])[0]);
     await shot('11-landing');
     // ── the same file again ──
     await page.evaluate(() => pmBankSheet());
-    await page.waitForTimeout(400);
-    await clickText('#pm-sheet', 'I have the file');
-    await page.waitForTimeout(200);
+    await page.waitForFunction(() => !!document.getElementById('pm-stmt-file'), null, { timeout: 4000 }).catch(() => {});
     await page.setInputFiles('#pm-stmt-file', csvPath);
-    await page.waitForFunction(() => /Check before it goes in/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 8000 });
+    await page.waitForFunction(() => /Review before it goes in/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 8000 });
     const again = await sheet();
     ok(/Already here\s*8 · skipped/.test(again) && /Nothing new to add/.test(again) && await page.evaluate(() => document.querySelector('#pm-sheet [data-pms="save"]').disabled), 'the same file adds nothing');
     await shot('12-again');
@@ -300,68 +342,83 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await shot('13-due');
 
     // ── THE LIVE LINK ──
-    await click('[data-pm="bank"]');
-    await page.waitForTimeout(500);
-    ok(/Live from Monzo\s*Payments arrive by themselves/.test(await detail()) && await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]')), 'the bank page offers the live link');
+    // The connection is called "Open Banking" everywhere; the account stays "Monzo
+    // Business", and the developer-client steps still say Monzo (it is what the owner
+    // types into).
+    await click('#pm-list [data-pm="bank"]');
+    await page.waitForFunction(() => /Your bank/.test((document.getElementById('pm-detail') || {}).textContent || ''), null, { timeout: 4000 }).catch(() => {});
+    ok(/Open Banking\s*Payments arrive by themselves/.test(await detail()) && await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]')), 'the bank page offers the live link');
     await click('#pm-detail [data-pm="mz-setup"]');
     await page.waitForTimeout(400);
     let sh = await sheet();
     ok(/Create a client in Monzo/.test(sh) && /chb\.example\/monzo-callback\.php/.test(sh) && /Confidential/.test(sh), 'step 1 shows the redirect address to paste and asks for a confidential client');
     await shot('14-mz-create');
     await clickText('#pm-sheet', 'I’ve made it');
-    await page.waitForTimeout(300);
+    // A FORM IS TYPED INTO ONLY AFTER IT HAS FOCUSED ITSELF: the sheet focuses its first
+    // field on a timer, and under load that timer can fire mid-fill and pull the secret
+    // into the client ID (the glassDialog lesson). Wait for the sheet's own focus.
+    const sheetFocused = () => page.waitForFunction(() => document.activeElement && document.activeElement.id === 'pm-mz-id', null, { timeout: 6000 }).catch(() => {});
+    await sheetFocused();
     await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
     await page.fill('#pm-mz-secret', 'mnzpub.notconfidential');
     await clickText('#pm-sheet', 'Save');
     await page.waitForFunction(() => /isn’t confidential/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
     ok(/isn’t confidential/.test(await sheet()), 'a non-confidential client is refused in the server’s words');
+    await sheetFocused(); // the refusal redraws the sheet, which focuses itself again
     await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
     await page.fill('#pm-mz-secret', 'mnzconf.secret-value-123');
     await clickText('#pm-sheet', 'Save');
-    await page.waitForFunction(() => /Connect to Monzo/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
+    await page.waitForFunction(() => /first five minutes/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
     sh = await sheet();
-    ok(/Connect to Monzo/.test(sh) && /first five minutes/.test(sh), 'step 3 says what happens next, and why to approve at once');
+    ok(/Connect Open Banking/.test(sh) && /first five minutes/.test(sh), 'step 3 says what happens next, and why to approve at once');
     const saved = posts.filter((p) => p.__url === 'monzo.php' && p.action === 'save_client').pop();
     ok(saved && saved.client_secret === 'mnzconf.secret-value-123', 'the client is sent to be saved');
     await shot('15-mz-connect');
-    await clickText('#pm-sheet', 'Connect to Monzo');
+    await clickText('#pm-sheet', 'Connect Open Banking');
     await page.waitForURL(/auth\.monzo\.test/, { timeout: 6000 }).catch(() => {});
     ok(/auth\.monzo\.test\/\?client_id=oauth2client_0000Abc/.test(page.url()), 'Connect sends the owner to Monzo');
     // Back from Monzo (the callback page links to Payments): waiting for approval in the app.
     Object.assign(LIVE, { state: 'approve', say: 'Approve access in the Monzo app.', connected_at: Math.floor(Date.now() / 1000) });
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await enterApp();
-    ok(/Approve access in the Monzo app/.test(await list()), 'the landing asks for approval in the app');
-    await click('[data-pm="bank"]');
+    await page.waitForFunction(() => /Approve in your banking app/.test((document.getElementById('pm-list') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+    const La = await list();
+    ok(/Approve in your banking app/.test(La) && /In the bank\s*Waiting for approval/.test(La), 'the landing asks for approval in the app: Needs you, and the bank row');
+    await click('#pm-list [data-pm="bank"]');
     await page.waitForTimeout(400);
-    ok(/Approve in the Monzo app/.test(await detail()), 'the bank page says it is waiting');
+    ok(/Approve in your banking app/.test(await detail()), 'the bank page says it is waiting');
     await shot('16-mz-approve');
-    await page.waitForFunction(() => /Live from Monzo/.test(document.getElementById('pm-detail').textContent), null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => /live through Open Banking/.test(document.getElementById('pm-detail').textContent), null, { timeout: 15000 }).catch(() => {});
     ok(checks >= 2, 'it asks again by itself while waiting (' + checks + ' checks)');
     const dt2 = await detail();
-    ok(/Live from Monzo/.test(dt2) && /Business account ending 4471/.test(dt2), 'approval lands: live, named by its last four digits');
+    ok(/live through Open Banking/.test(dt2) && /Ending 4471/.test(dt2), 'approval lands: live, named by its last four digits');
     ok(/Balance now\s*£1,880\.25/.test(dt2) && /£2,511\.69 with pots/.test(dt2), 'Monzo’s own balance leads, with the pots beside it');
     ok(/Not needed/.test(dt2) && !/Remind me on the 1st/.test(dt2), 'while live, no statement is needed and no reminder is offered');
     await shot('17-mz-live');
     await page.evaluate(() => { const b = document.querySelector('#pm-detail [data-pm="close"]'); if (b && b.offsetParent) b.click(); });
     await page.waitForTimeout(400);
     const L3 = await list();
-    ok(/Monzo Business\s*Live · synced \d+:\d\d/.test(L3) && !/Time for .*statement/.test(L3), 'the landing says live, and the due statement stands down: ' + (L3.match(/Monzo Business[^£]{0,40}/) || [''])[0]);
-    await click('[data-pm="bank"]');
+    ok(/In the bank\s*Live · \d+:\d\d/.test(L3) && !/Time for .*statement/.test(L3), 'the landing says live, and the due statement stands down: ' + (L3.match(/In the bank[^£]{0,40}/) || [''])[0]);
+    await click('#pm-list [data-pm="bank"]');
     await page.waitForTimeout(400);
     await click('#pm-detail [data-pm="mz-sync"]');
     await page.waitForTimeout(600);
     ok(posts.some((p) => p.__url === 'monzo.php' && p.action === 'sync'), 'Sync asks Monzo for new payments');
     await click('#pm-detail [data-pm="mz-disconnect"]');
     await page.waitForTimeout(400);
-    ok(/Disconnect Monzo\?/.test(await page.evaluate(() => document.getElementById('glass-dialog-msg').textContent)), 'disconnecting asks first');
+    ok(/Disconnect Open Banking\?/.test(await page.evaluate(() => document.getElementById('glass-dialog-msg').textContent)), 'disconnecting asks first');
     await page.evaluate(() => document.getElementById('glass-dialog-ok').click());
     await page.waitForTimeout(800);
     ok(posts.some((p) => p.__url === 'monzo.php' && p.action === 'disconnect') && /Client saved · not connected/.test(await detail()), 'disconnected: the client stays for next time');
-    // A person without full access sees the link but is offered no setup.
+    // A person without full access sees the link but is offered no setup. The state is
+    // read back from the server first (with no client, the owner IS offered setup), so
+    // the absence below is the permission, not a state with no setup to offer.
     Object.assign(LIVE, { state: 'off', client: false });
+    await page.evaluate(() => pmBankLoad());
+    const offered = await page.evaluate(() => { pmRenderDetail(); return !!document.querySelector('#pm-detail [data-pm="mz-setup"]'); });
+    ok(offered, 'with no client saved, full access is offered the setup (the control the next check withholds)');
     await page.evaluate(() => { window.__me = { full: false, caps: { money: true } }; pmRenderDetail(); });
-    ok(!(await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]'))), 'someone without full access is offered no setup');
+    ok(!(await page.evaluate(() => !!document.querySelector('#pm-detail [data-pm="mz-setup"]'))) && /Open Banking/.test(await detail()), 'someone without full access sees the link but is offered no setup');
     await page.evaluate(() => { window.__me = null; });
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(ov <= 0, 'no sideways scroll (' + ov + ')');

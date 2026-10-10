@@ -72,6 +72,9 @@ function chat_attach_message($messageId, $att)
     } catch (\Throwable $e) {
     }
 }
+// The away reply's standard words. admin.js's GC_AWAY_STD is the same sentence
+// (smoke-test holds the two equal): the page shows it, this sends it.
+const CHAT_AWAY_DEFAULT = 'Thanks for your message — we’re not at the desk right now, but we’ll reply as soon as we can, usually within a few hours.';
 // Away auto-reply: acknowledge a guest who messages when the owner isn't around.
 // Gated on the owner's Settings (enabled + message + optional office hours), fires
 // at most once per few hours per thread, and never when the owner has just replied.
@@ -82,9 +85,12 @@ function chat_maybe_autoreply($tid)
     if ((int) $tid <= 0 || content_value('chat-away-enabled') !== '1') {
         return;
     }
+    // An empty box sends the standard words. The switch is the owner's decision
+    // to reply, and Manage → Guest chat shows these words as the reply; before
+    // this an empty box sent NOTHING while the page showed them as if it would.
     $msg = trim((string) content_value('chat-away-msg'));
     if ($msg === '') {
-        return;
+        $msg = CHAT_AWAY_DEFAULT;
     }
     // Optional office hours: if BOTH set, only auto-reply OUTSIDE [from, to)
     // (handles a window that wraps past midnight).

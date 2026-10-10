@@ -134,7 +134,7 @@ stc('…and records the month it went', strpos($sr, "\$stSet['reminded'] = subst
 $db = (string) file_get_contents(__DIR__ . '/db.php');
 stc('the setting is classified, never public', strpos($db, "\$key === 'bank-statements'") !== false);
 $pl = (string) file_get_contents(__DIR__ . '/people-lib.php');
-stc('only someone with Money overview can reach it', strpos($pl, "'statements.php' => ['*' => 'money']") !== false);
+stc('only someone who can see the money can reach it', strpos($pl, "'statements.php' => ['*' => 'mo.view']") !== false);
 
 echo "\n== Summary ==\n";
 if ($fails) {

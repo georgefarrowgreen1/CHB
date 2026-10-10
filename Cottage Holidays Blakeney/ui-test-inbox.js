@@ -296,25 +296,53 @@ const SHOTS = process.env.IB_SHOTS || '';
     ok((await capsDone()) === 0 && !(await keys()).includes('e:daniel@example.com'), 'the Inbox holds no done rows and no Done capsules');
     ok((await folderOn()) === 'inbox' && (await page.$eval('#ib-f-inbox', (b) => b.getAttribute('aria-pressed'))) === 'true', 'the switch starts on Inbox');
     const x0 = await pillX();
+    // SEEK, NEVER RACE. This sampled every animation frame for 750ms, and under a
+    // loaded runner the page painted three frames of the 0.46s glide — a working
+    // pill read as a teleport (measured: "3 positions", and the 130ms step-away fell
+    // between frames entirely). Each animation is paused and SEEKED instead, so the
+    // checks read the motion itself rather than how many frames the machine managed.
     const cross = await page.evaluate(async () => {
-        document.getElementById('ib-f-done').click();
         const pill = document.querySelector('#ib-folders .ib-folders-pill'), host = document.getElementById('ib-rows');
         const base = pill.parentElement.getBoundingClientRect().left;
-        const fr = [];
-        const t0 = performance.now();
-        while (performance.now() - t0 < 750) {
-            await new Promise((r) => requestAnimationFrame(r));
-            fr.push({ x: Math.round(pill.getBoundingClientRect().left - base), o: +getComputedStyle(host).opacity, tx: getComputedStyle(host).transform, done: !!host.querySelector('.ib-rowwrap[data-key="e:daniel@example.com"]') });
+        const px = () => Math.round(pill.getBoundingClientRect().left - base);
+        const look = () => ({ o: +getComputedStyle(host).opacity, tx: getComputedStyle(host).transform, done: !!host.querySelector('.ib-rowwrap[data-key="e:daniel@example.com"]') });
+        const out = { xs: [], away: null, arrive: null, end: null };
+        document.getElementById('ib-f-done').click();
+        // the pill: its CSS transition on `translate`, seeked across its own duration
+        const tr = pill.getAnimations().find((x) => x.transitionProperty === 'translate');
+        if (tr) {
+            tr.pause();
+            const dur = Number(tr.effect.getComputedTiming().duration) || 0;
+            for (let i = 0; i <= 10; i++) { tr.currentTime = (dur * i) / 10; out.xs.push(px()); }
+            tr.finish();
         }
-        return fr;
+        // the Inbox stepping away: the list's own outgoing animation, at its midpoint
+        const outA = host.getAnimations()[0];
+        if (outA) {
+            outA.pause();
+            outA.currentTime = (Number(outA.effect.getComputedTiming().duration) || 0) / 2;
+            out.away = look();
+            outA.finish(); // its `finished` is what lands the Done folder
+        }
+        // Done arriving: wait for the landing to start its own animation, then seek it
+        for (let i = 0; i < 80 && !(host.getAnimations().length && look().done); i++) await new Promise((r) => setTimeout(r, 25));
+        const inA = host.getAnimations()[0];
+        if (inA) {
+            inA.pause();
+            inA.currentTime = (Number(inA.effect.getComputedTiming().duration) || 0) / 3;
+            out.arrive = look();
+            inA.finish();
+        }
+        for (let i = 0; i < 80 && host.getAnimations().length; i++) await new Promise((r) => setTimeout(r, 25));
+        out.end = Object.assign(look(), { x: px() });
+        return out;
     });
-    const xs = cross.map((f) => f.x);
-    ok(xs[xs.length - 1] > x0 + 100 && new Set(xs).size > 5, `the pill travels to Done (${x0} → ${xs[xs.length - 1]}, ${new Set(xs).size} positions)`);
-    ok(Math.max(...xs) <= xs[xs.length - 1] + 2, 'and settles without swinging wide');
-    const arrive = cross.find((f) => f.done && f.o < 0.9);
-    ok(cross.some((f) => !f.done && f.o < 0.9 && /matrix\(1, 0, 0, 1, -/.test(f.tx)), 'the Inbox steps away to the left as it fades');
-    ok(arrive && /matrix\(1, 0, 0, 1, [1-9]/.test(arrive.tx), `Done arrives from the right (${arrive && arrive.tx})`);
-    ok(cross[cross.length - 1].o === 1, 'and settles fully visible');
+    const xs = cross.xs.length ? cross.xs : [x0];
+    ok(cross.end.x > x0 + 100 && new Set(xs).size > 5, `the pill travels to Done (${x0} → ${cross.end.x}, ${new Set(xs).size} positions)`);
+    ok(Math.max(...xs) <= cross.end.x + 2, 'and settles without swinging wide');
+    ok(!!cross.away && !cross.away.done && cross.away.o < 0.9 && /matrix\(1, 0, 0, 1, -/.test(cross.away.tx), `the Inbox steps away to the left as it fades (${cross.away && cross.away.tx})`);
+    ok(!!cross.arrive && cross.arrive.done && cross.arrive.o < 0.9 && /matrix\(1, 0, 0, 1, [1-9]/.test(cross.arrive.tx), `Done arrives from the right (${cross.arrive && cross.arrive.tx})`);
+    ok(cross.end.o === 1, 'and settles fully visible');
     ok((await folderOn()) === 'done' && (await keys()).includes('e:daniel@example.com'), 'Done shows the done conversations');
     await shot('ph-done');
     ok((await capsDone()) === 0, 'with no Done capsule on any row');
@@ -327,18 +355,34 @@ const SHOTS = process.env.IB_SHOTS || '';
     ok((await page.$eval('#ib-conv .ib-back', (b) => b.textContent.trim())) === 'Done', 'the back link names the folder');
     ok(await page.$eval('#ib-conv [data-ib="undone"]', (b) => b.classList.contains('is-on')), 'the tick shows it is done');
     await page.click('#ib-conv [data-ib="undone"]');
+    // Seeked, like the crossing above: a frame sampler under load caught too few
+    // frames of the 300ms fold to tell a fold from a jump.
     const fold = await page.evaluate(async () => {
-        const fr = []; const t0 = performance.now();
-        while (performance.now() - t0 < 1200) {
-            await new Promise((r) => requestAnimationFrame(r));
-            const w = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"]');
-            fr.push({ h: w ? Math.round(w.getBoundingClientRect().height) : -1, landed: document.getElementById('ib-f-inbox').classList.contains('is-landed') });
+        const sel = '#ib-rows .ib-rowwrap[data-key="e:daniel@example.com"]';
+        let a = null;
+        for (let i = 0; i < 120 && !a; i++) {
+            const w = document.querySelector(sel);
+            a = w ? w.getAnimations().find((x) => x.effect && x.effect.getKeyframes().some((k) => 'height' in k)) : null;
+            if (!a) await new Promise((r) => setTimeout(r, 20));
         }
-        return fr;
+        const hs = [];
+        if (a) {
+            const w = document.querySelector(sel);
+            a.pause();
+            const end = Number(a.effect.getComputedTiming().endTime) || 0;
+            for (let i = 0; i <= 10; i++) { a.currentTime = (end * i) / 10; hs.push(Math.round(w.getBoundingClientRect().height)); }
+            a.finish();
+        }
+        let landed = false, gone = false;
+        for (let i = 0; i < 120 && !(gone && landed); i++) {
+            landed = landed || document.getElementById('ib-f-inbox').classList.contains('is-landed');
+            gone = !document.querySelector(sel);
+            if (!(gone && landed)) await new Promise((r) => setTimeout(r, 25));
+        }
+        return { hs: hs.filter((h) => h > 0), gone, landed };
     });
-    const hs = fold.map((f) => f.h).filter((h) => h > 0);
-    ok(hs.length && new Set(hs).size > 4 && fold[fold.length - 1].h === -1, `moving back folds the row away (${new Set(hs).size} heights, then gone)`);
-    ok(fold.some((f) => f.landed), 'and the Inbox side of the switch settles as it lands');
+    ok(fold.hs.length && new Set(fold.hs).size > 4 && fold.gone, `moving back folds the row away (${new Set(fold.hs).size} heights, then gone)`);
+    ok(fold.landed, 'and the Inbox side of the switch settles as it lands');
     ok(!(state.done || {})['e:daniel@example.com'], 'saved: no longer done');
     ok(/back in your Inbox/.test(await page.$eval('#ib-toast-msg', (e) => e.textContent)), 'the toast says where it went');
     await page.click('#ib-toast-undo');
@@ -372,8 +416,13 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.dispatchEvent('#ib-q', 'input');
     await page.waitForTimeout(400);
     ok(!(await page.$eval('#ib-folders-wrap', (w) => w.classList.contains('is-away'))), 'and returns when the search is cleared');
-    // nothing waiting: one card, not an empty page
-    const saved = await page.evaluate(() => { const was = JSON.stringify(ibState().done); __ibPeople.forEach((p) => { ibState().done[p.key] = Date.now(); }); ibBuild(); ibRenderAll(); return was; });
+    // nothing waiting: one card, not an empty page.
+    // Each person is marked done AFTER their own last message, never at a bare
+    // Date.now(): the fixture writes "today 08:12" and "today 09:40", which before
+    // that hour are LATER than now, and ibDone rightly keeps anyone who wrote after
+    // they were marked done — so a now-stamp failed this check every night before
+    // 09:40 (measured at 01:26) while proving nothing about the calm card.
+    const saved = await page.evaluate(() => { const was = JSON.stringify(ibState().done); __ibPeople.forEach((p) => { ibState().done[p.key] = Math.max(Date.now(), p.lastAt || 0, p.enq ? ibT(p.enq.receivedAt) : 0) + 1000; }); ibBuild(); ibRenderAll(); return was; });
     ok(/Nothing waiting on you/.test(await page.$eval('#ib-rows .ib-empty.is-card', (e) => e.textContent).catch(() => '')), 'with everyone done the Inbox shows one calm card');
     await page.evaluate((was) => { ibState().done = JSON.parse(was); ibBuild(); ibRenderAll(); }, saved);
     // a remembered place opens the folder

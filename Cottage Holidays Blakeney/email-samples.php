@@ -384,8 +384,8 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
             'Weekly analytics',
             function () {
                 $m = weekly_analytics_body([
-                    'views' => 412, 'uniq' => 318, 'convPct' => 2.4, 'bookings' => 3,
-                    'enquiries' => 7, 'topChannel' => 'Google', 'topPage' => '/cottages/jollyboat',
+                    'views' => 412, 'uniq' => 318, 'sent' => 7, 'booked' => 3,
+                    'topChannel' => 'Google', 'topPage' => '/cottages/jollyboat',
                     'noResult' => 4, 'dropPct' => -35, 'deltaTxt' => '+12%',
                     'siteUrl' => site_base_url(),
                 ]);
