@@ -1054,6 +1054,61 @@ Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced firs
   (`guest_register` 409 / `verify`, `account_exists`); fixing it changes the sign-up flow. And `script-src` still
   allows the whole of jsDelivr and cdnjs.
 
+## A refresh does the work once (round 5, performance)
+
+Found by the client-performance review and measured in a vm harness: app.js + admin.js against a seeded business with
+3 cottages, 3 years of history, 662 bookings and 120 platform stays. Every change was first checked for byte-identical
+output there: the duty list, the timeline's HTML, the bookings list, the Needs-you strip, the ops line and sentence,
+the Inbox's people, every booking's chase decision and every search result for nine queries typed letter by letter.
+One Today refresh went from 214 ms to 67 ms of JavaScript. A search keystroke went from 39 ms to 14 ms on average
+(118 → 50 ms worst).
+- **THE CLOCK IS READ ONCE A MINUTE** (`ukNowParts`). `formatToParts` costs ~10 µs and the per-booking checks
+  (`hasCheckedOut`, the balance window, the chase) asked for it about 40,000 times in one desktop refresh. The
+  reading is kept for its epoch minute, which is the London wall-clock minute because London's offset is whole
+  hours. It follows `chbNow` (the server skew, a pinned test clock), and every caller gets its own copy. Gated by
+  smoke-test 12d-ii: at most one format per minute, a mutated copy leaks nowhere, the next minute reads afresh.
+- **ONE DUTY LIST PER RENDER.** `renderNeedsYou` is a wrapper that opens a scope (`__nyScope`) for one render of
+  `renderNeedsYouOnce`. Inside it, `chbDuties()` (the strip, `chbFrameSync`'s rail, `refreshInboxBadge`'s dock
+  count) shares the first answer. It is deliberately NOT a whole-task memo: a swipe-dismiss stores and re-renders
+  in the same task, and would read the stale list. Gated by search-test §46 (one computation per render, afresh
+  after); a scope left open fails §40's dismissal checks by name. NB the body keeps a name containing
+  `renderNeedsYou` because test-webpush measures a 700-character window from that name to `setAppBadgeCount`.
+- **The duty loop asks the cheap date questions first**: the register window as two ISO dates before any parsing
+  or clock read, `chbChaseInfo`'s own 14-day cutoff before `bookingDue`, and the deposit's checked-out test before
+  `damageHeld`. `chbDayTuples` skips stays that ended before today (`chbOpsParts` reads nothing earlier).
+- **The timeline marks nights only inside the window it draws**, and a cell finds its booking in a map built in
+  the same loop. `findBookingById` used to scan every list per taken cell: 64% of `renderCalendar`.
+- **An Inbox that is not on screen builds its people, its count and its title's pill, not its DOM** (`ibRender`
+  returns after `ibBuild`, `ibPill` and `refreshInboxBadge` unless `view-inbox` is active). Every way to show it
+  repaints it already (`nav('view-inbox')` → `renderInbox` → `ibSoon`, and `openInbox`). The pill is kept because
+  ui-test-needs-you §8 holds it equal to the dock pip. Gated by ui-test-inbox §11.
+- **Search**: `chbRankQuery` sums only the query's own dimensions (20–35 of 4,096; the zero terms add nothing, so
+  the scores are identical), and `cmdkLev` is remembered per (word, word, cut-off) in a map cleared at 20,000
+  entries. `cmdkLevNow` is the computation; search-test §45 holds the two equal for every pair and cut-off.
+- **TWO GUEST-VISIBLE DEFECTS, found the same way**:
+  - **The homepage headline rose in again every 30 seconds.** The live tick reapplies every `[data-edit-text]`,
+    and rewriting the hero's h1 threw away its word spans, so `heroWordsRise` wrapped them afresh and they
+    animated in for every visitor, twice a minute. A content override is now written only when it changes what
+    shows (`chbTextSquash`: ordinary whitespace collapsed, so the wrapped words compare equal; a no-break space
+    still counts, so the separator binding is still written).
+  - **Both cottage grids were rebuilt every tick**, dropping keyboard focus on a card and the map hover wired to
+    the old cards (it was wired only on navigation). `renderCottageGrid` rebuilds only when the markup changed and
+    wires the hover itself (`wireCottageCardHover`, once per card). Price, rating and availability are still
+    written by id on every render.
+  Gated by **`ui-test-steady.js`**: node identity across real live ticks, focus kept, a new headline / price /
+  name still landing, and the hover on rebuilt cards. Each of the three changes was break-tested.
+- **A DRAG IS TIMED BY THE FINGER, NOT THE HANDLER** (the composer sheet's drag-to-close, found when PR #1388's CI
+  closed the sheet on a short drag). A busy phone hands a slow drag's moves over in one batch, and timed by
+  `performance.now()` in the handler they read as a flick of several px per ms. `cmpWireSheet` reads each event's
+  own `timeStamp`. Gated by ui-test-composer's batched-events check (synthetic moves with real 30ms/200ms gaps,
+  dispatched at once; break-tested by restoring the handler clock), and the suite now waits for the sheet to come
+  to rest (`atRest`, `grabAt`) rather than sleeping 700ms. ui-test-guestchat §9 likewise waits for the welcome line.
+- **Not done, said plainly**: the document-wide `touchmove` listener stays non-passive. Its comment says iOS Safari
+  ignores `touch-action`, so it is what blocks pinch-zoom there, and nothing here can confirm an iPhone still
+  blocks it without the listener.
+- Budgets: admin.js +900 bytes gz (owner-only, immutable-cached) and app.js +500 as measured. The deploy strips
+  app.js's comments, so the shipped growth is +185.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
