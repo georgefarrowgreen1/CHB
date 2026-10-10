@@ -126,7 +126,9 @@ const ok = (b, m) => {
                     return document.activeElement === (f || document.getElementById('glass-dialog-ok'));
                 },
                 re ? re.source : '',
-                { timeout: 5000 },
+                // A wait on STATE: the cap only has to outlast a loaded machine (the
+                // 70-suite local run reached 5s and failed here; alone it is instant).
+                { timeout: 15000 },
             );
         } catch (e) {
             ok(false, re ? `the dialog says /${re.source}/` : 'the dialog opens');
@@ -135,7 +137,7 @@ const ok = (b, m) => {
     };
     const waitShut = async () => {
         try {
-            await page.waitForFunction(() => !document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 5000 });
+            await page.waitForFunction(() => !document.getElementById('glass-dialog').classList.contains('open'), null, { timeout: 15000 });
         } catch (e) {
             ok(false, `the dialog closes (it still says: ${await page.evaluate(() => document.getElementById('glass-dialog-msg').innerText)})`);
             throw new Error('stopped at a dialog step');
