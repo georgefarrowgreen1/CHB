@@ -13282,9 +13282,13 @@ function oaDevLoad(pid) {
         let err = '';
         try {
             res = await apiPost('devices.php', k ? { action: 'list', id: k } : { action: 'list' });
+            // An answer with no list is not an empty list: "Not signed in anywhere"
+            // would be a claim about nothing.
+            if (!res || !Array.isArray(res.devices)) res = null;
         } catch (e) {
-            err = (e && e.message) || 'Couldn’t load the devices';
+            err = (e && e.message) || '';
         }
+        err = err || 'Couldn’t load the devices';
         // Only the latest ask paints: an older answer landing late is not the list now.
         if (!__oaDevAsk[k] || __oaDevAsk[k][0] !== n) return;
         __oaDevAsk[k][2] = true;
@@ -13315,7 +13319,8 @@ function oaDevSeen(d) {
     const mins = Math.round((Date.now() - t.getTime()) / 60000);
     if (mins < 5) return 'Active now';
     if (mins < 60) return 'Active ' + mins + ' minutes ago';
-    const days = Math.floor((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    // Rounded, not floored: the day the clocks go forward is 23 hours, midnight to midnight.
+    const days = Math.round((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
     if (days <= 0) {
         const h = Math.max(1, Math.round(mins / 60));
         return 'Last active ' + h + (h === 1 ? ' hour' : ' hours') + ' ago';
@@ -13422,9 +13427,12 @@ async function oaDevSignOut(k, id) {
     const st = __oaDevs[k];
     const p = oaDevPerson(k);
     const n = p ? p.first : '';
-    const back = st && st.twofa ? (p ? n + '’s password and an emailed code' : 'your password and an emailed code') : p ? n + ' to sign in again' : 'you to sign in again';
+    // What getting back in takes, said exactly: a passkey saved on the device still
+    // signs in, so a lost one's passkey should go too.
+    const back = st && st.twofa ? (p ? n + '’s password and an emailed code, or a passkey' : 'your password and an emailed code, or a passkey') : p ? n + ' to sign in again' : 'a fresh sign-in';
+    const lost = !p && Array.isArray(__oaKeys) && __oaKeys.length ? ' If it’s lost, remove its passkey too.' : '';
     const ok = await glassConfirm(
-        'It’s signed out the next time it’s used. Getting back in on it will need ' + back + '.' + (p ? ' ' + n + ' gets an email saying you did this.' : ''),
+        'It’s signed out the next time it’s used. Getting back in on it will need ' + back + '.' + (p ? ' ' + n + ' gets an email saying you did this.' : lost),
         'Sign out',
         { title: p ? 'Sign ' + n + ' out of ' + d.label + '?' : 'Sign out of ' + d.label + '?', danger: true },
     );
@@ -13546,7 +13554,8 @@ function oaSeenWords(p) {
     const mins = Math.round((Date.now() - t.getTime()) / 60000);
     if (mins < 10) return 'here now';
     const hm = t.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' }).replace(/^0/, '');
-    const days = Math.floor((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    // Rounded, not floored: the day the clocks go forward is 23 hours, midnight to midnight.
+    const days = Math.round((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
     if (days <= 0) return 'active today at ' + hm;
     if (days === 1) return 'active yesterday';
     return 'active ' + (days < 7 ? days + ' days ago' : fmtDate(String(p.seen).split(' ')[0]));

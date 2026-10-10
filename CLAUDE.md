@@ -5209,9 +5209,20 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
   (no history entry, the last list dropped, the danger ink, the route) each failed their named checks — the history
   one only after the check was made to read `history.state`: Back closed the sheet without its entry too, by
   spending the previous screen's.
+- **AN ANSWER WITH NO LIST IS NOT AN EMPTY LIST**: `oaDevLoad` treats a reply without a `devices` array as
+  "Couldn't load the devices", because "Not signed in anywhere" from `{ok: true}` is a claim about nothing (the
+  Permissions suite's generic stub showed exactly that until its fixture served a real list).
+- **A DAY COUNT IS ROUNDED, NOT FLOORED** (`oaDevSeen`, and `oaSeenWords` beside it): midnight to midnight is 23 hours
+  on the day the clocks go forward, so a floored count read yesterday as "today". ui-test-devices §10 pins the clock
+  to the morning after 28/03/2027.
+- **The confirm says exactly what getting back in takes**: with two-step, "your password and an emailed code, or a
+  passkey" (a passkey saved on the device still signs in), and on your own list, when you have passkeys, "If it's
+  lost, remove its passkey too."
 - NB test-session-lock exempts devices-lib.php as part of db.php (its writes run inside admin_session_check before
   the release) and lists `devices_record` as a session writer. The recorder is not called devices_session_start
   because that gate counts `session_start(` in db.php by substring.
+- NB a person's page now has a second red row ("Sign <name> out everywhere") before "Remove <name>": ui-test-people
+  clicks Remove by its name.
 
 ## Signing in to the back office with an email (reported: "you can only get in with a password reset")
 

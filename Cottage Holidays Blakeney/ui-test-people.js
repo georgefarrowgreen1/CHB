@@ -2,7 +2,8 @@
 //   §A the owner's Permissions pages: who signs in, adding someone (with a role,
 //      never a password), who gets which emails, one person's page (the role,
 //      What X can do with a switch per permission, their emails, passkeys only
-//      when they have one, a reset link, removal and giving access back)
+//      when they have one, their devices, a reset link, removal and giving
+//      access back)
 //   §B what a HOST sees, permission by permission: the menus and rail, Manage,
 //      Today's jobs, the money buttons and the booking form's money parts; a
 //      stale tap refused in the server's words; their own alerts and emails
@@ -197,6 +198,13 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
             if (file === 'auth.php' && b.action === 'admin_status') return json({ admin: true, me: GEORGE, ownerFirst: 'George' });
             if (file === 'split.php' && b.action === 'status') {
                 return json({ ok: true, ready: true, on: false, holder: 1, people: [{ id: 1, first: 'George', name: 'George Farrow' }, { id: 2, first: 'Sophia', name: 'Sophia Hart' }], cottages: [], hosts: {}, payees: {} });
+            }
+            // devices.php's list (ui-test-devices drives the rest): Sophia's phone, last
+            // used when her row says she was last here.
+            if (file === 'devices.php' && b.action === 'list') {
+                const k = Number(b.id) || 0;
+                const devices = k === 2 ? [{ id: 21, label: 'iPhone · App', kind: 'phone', here: false, seen: d(-1) + ' 09:41:00', since: d(-30) + ' 08:00:00', earlier: false, how: 'Passkey', trusted: true, alerts: true }] : [];
+                return json({ ok: true, id: k || 1, devices, twofa: false, began: '2026-01-01', partial: false });
             }
             if (file === 'people.php') {
                 const row = st.rows[b.id];
@@ -408,6 +416,7 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         // Sophia's page.
         await page.click(rowByTitle('#people-body', 'Sophia Hart'));
         await until(page, () => ((document.querySelector('#person-body h1') || {}).textContent || '') === 'Sophia Hart');
+        await until(page, () => !!document.querySelector('#oa-pdev-host .oa-dev'));
         const pp = await page.evaluate(() => ({
             back: (document.querySelector('#person-body .oa-back') || {}).textContent,
             hero: [...document.querySelectorAll('#person-body .oa-hero-t span')].map((s) => s.textContent),
@@ -418,8 +427,11 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
             last: (() => { const r = [...document.querySelectorAll('#person-body .ga-row')].pop(); return r ? (r.querySelector('.ga-t') || {}).textContent + (r.classList.contains('is-danger') ? ' (danger)' : '') : ''; })(),
         }));
         ok(pp.back === 'Permissions' && pp.hero.join(' | ') === 'sophia@example.com | Active yesterday', `her page is headed with her email and when she was here, back to Permissions (${pp.hero.join(' | ')})`);
-        ok(pp.caps.join() === 'Role' && pp.seg.join() === 'Host=true,Super User=false', `her role is the one switcher, on Host (${pp.seg.join(', ')})`);
-        ok(pp.rows.join(' | ') === 'What Sophia can do: 4 changes from Host | Emails: 5 of 6 | Passkeys: 1 passkey | Send a password reset link | Remove Sophia', `it says what she can do, her emails, her passkey, a reset link and removal (${pp.rows.join(' | ')})`);
+        ok(pp.caps.join() === 'Role,Devices' && pp.seg.join() === 'Host=true,Super User=false', `her role is the one switcher, on Host (${pp.caps.join(', ')} · ${pp.seg.join(', ')})`);
+        ok(
+            pp.rows.join(' | ') === 'What Sophia can do: 4 changes from Host | Emails: 5 of 6 | Passkeys: 1 passkey | iPhone · App: Last active yesterday | Sign Sophia out everywhere | Send a password reset link | Remove Sophia',
+            `it says what she can do, her emails, her passkey, her devices, a reset link and removal (${pp.rows.join(' | ')})`,
+        );
         ok(pp.last === 'Remove Sophia (danger)' && pp.pwField === 0, 'removing her is the last, destructive row — and no password is ever asked for');
 
         // Her emails fold open in place: only the ones she may have, a switch each.
@@ -522,7 +534,8 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         const rl = await sent(posts, (p) => p.b.action === 'reset_link');
         ok(!!rl && rl.b.id === 2 && (await toastSays(page, /Sophia chooses the new password/)), 'a reset sends her a link; she chooses the password');
 
-        await page.click('#person-body .ga-row.is-danger');
+        // By name: "Sign Sophia out everywhere" (her Devices) is red too, and comes first.
+        await page.click(rowByTitle('#person-body', 'Remove Sophia'));
         await waitDlg(page, /Remove Sophia’s access/);
         ok(await page.evaluate(() => document.getElementById('glass-dialog-ok').classList.contains('is-danger') && /signed out everywhere straight away/.test(document.getElementById('glass-dialog-msg').innerText)), 'removing access asks first, in the destructive style, saying what happens');
         await page.click('#glass-dialog-ok');

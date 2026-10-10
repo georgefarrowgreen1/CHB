@@ -10,8 +10,10 @@
 //  §6 a list that may not be complete yet keeps the way out on offer and says why
 //  §7 a Super User on someone's page: their devices, and signing them out everywhere
 //  §8 the new-sign-in alert's link opens the device; one already gone says so
-//  §9 a list that couldn't load says so and tries again; a device signed out from
-//     elsewhere is told why; the page names itself for the server's label
+//  §9 a list that couldn't load says so and tries again; an answer with no list
+//     is never "Not signed in anywhere"; a device signed out from elsewhere is
+//     told why; the page names itself for the server's label
+//  §10 "last active yesterday" holds across the night the clocks go forward
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => {
@@ -38,7 +40,7 @@ const ok = (b, m) => {
             { id: 22, label: 'Mac · Safari', kind: 'laptop', here: false, seen: ago(60 * 26), since: '2026-10-02 20:31:00', earlier: false, how: 'Password and emailed code', trusted: false, alerts: false },
         ],
     });
-    const st = { devs: fresh(), partial: false, failList: false };
+    const st = { devs: fresh(), partial: false, failList: false, noList: false };
     const me = {
         id: 1, name: 'George Farrow', first: 'George', named: true, email: 'george@example.com', contact: 'george@example.com', username: 'george',
         full: true, original: true, caps: {}, photo: '', state: 'active', twofa: true, twofaLive: true, notify: {},
@@ -56,7 +58,7 @@ const ok = (b, m) => {
         if (file === 'devices.php') {
             const k = Number(b.id) || 0;
             const answer = (extra) => json(Object.assign({ ok: true, id: k || 1, devices: st.devs[k] || [], twofa: true, began: '2026-10-10', partial: st.partial }, extra || {}));
-            if (b.action === 'list') return st.failList ? json({ error: 'Couldn’t reach the server' }, 500) : answer();
+            if (b.action === 'list') return st.failList ? json({ error: 'Couldn’t reach the server' }, 500) : st.noList ? json({ ok: true }) : answer();
             if (b.action === 'sign_out') {
                 const d = (st.devs[k] || []).find((x) => x.id === Number(b.sid));
                 st.devs[k] = (st.devs[k] || []).filter((x) => x.id !== Number(b.sid));
@@ -169,7 +171,7 @@ const ok = (b, m) => {
     await waitDlg();
     let dg = await dlg();
     ok(dg.title === 'Sign out of Mac · Chrome?' && dg.ok === 'Sign out' && dg.danger, `it asks first, naming the device (${dg.title} / ${dg.ok})`);
-    ok(/signed out the next time it’s used/.test(dg.msg) && /your password and an emailed code/.test(dg.msg), 'and says what happens to it');
+    ok(/signed out the next time it’s used/.test(dg.msg) && /your password and an emailed code, or a passkey\./.test(dg.msg), `and says exactly what getting back in takes (${dg.msg})`);
     await page.click('#glass-dialog-cancel');
     await waitShut();
     ok(devPosts('sign_out').length === 0 && (await sheetOpen()), 'backing out sends nothing and leaves the sheet up');
@@ -293,11 +295,29 @@ const ok = (b, m) => {
     await page.waitForTimeout(300);
     ok((await rows('oa-dev-host')).some((x) => x.here), 'a failed refresh keeps the last list rather than emptying it');
     st.failList = false;
+    // An answer that carries no list is not an empty list.
+    st.noList = true;
+    const nl = await page.evaluate(async () => {
+        delete __oaDevs[2];
+        await oaDevLoad(2);
+        const el = document.createElement('div');
+        el.innerHTML = oaDevHtml(2);
+        return el.textContent;
+    });
+    ok(/Couldn’t load the devices/.test(nl) && !/Not signed in anywhere/.test(nl), `an answer with no list says it couldn't check, never "Not signed in anywhere" (${nl})`);
+    st.noList = false;
     // The session this page holds was signed out from a Devices list somewhere else.
     await page.evaluate(() => { forceAdminLogout('device'); });
     await waitDlg().catch(() => {});
     const msg = await page.evaluate(() => document.getElementById('glass-dialog-msg').innerText);
     ok(msg === 'This device was signed out of the back office. Sign in again to carry on.', `a device signed out from elsewhere is told why (${msg})`);
+
+    console.log('§10 across the night the clocks go forward');
+    // The morning after 28/03/2027: midnight to midnight is 23 hours, so a day count
+    // that floors reads yesterday as "today" (or "25 hours ago").
+    await page.clock.setFixedTime(new Date('2027-03-29T10:00:00+01:00'));
+    const dst = await page.evaluate(() => ({ dev: oaDevSeen({ seen: '2027-03-28 09:00:00' }), person: oaSeenWords({ seen: '2027-03-28 09:00:00' }) }));
+    ok(dst.dev === 'Last active yesterday' && dst.person === 'active yesterday', `yesterday is yesterday (${dst.dev} · ${dst.person})`);
 
     console.log(fails ? `\n${fails} check(s) failed` : '\nALL CHECKS PASSED');
     await done(fails);
