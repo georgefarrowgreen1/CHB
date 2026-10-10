@@ -3500,11 +3500,17 @@ $r = http($stAnon, 'POST', '/statements.php', ['action' => 'status']);
 it_check('§53 a visitor is refused', $r['code'] === 401, $r['raw']);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'status']);
 it_check('§53 before any statement: the tables exist and nothing is switched on', $r['code'] === 200 && ($r['json']['ready'] ?? false) === true && ($r['json']['on'] ?? true) === false && ($r['json']['unsorted'] ?? -1) === 0 && array_key_exists('last', $r['json'] ?? []) && $r['json']['last'] === null, $r['raw']);
+// The real file BEFORE the PDF as well as after it: in CI (PHP 8.3 + MySQL) the
+// preview after the PDF refusal answered "no payments in that file" while the
+// identical import a moment later read all four — this pair says whether the
+// refusal is what poisons the next read.
+$r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
+it_check('§53 the preview reads the file (before any refusal)', $r['code'] === 200 && (($r['json']['summary']['adding'] ?? 0) === 4), 'code=' . $r['code'] . ' ' . $r['raw'] . ' php=' . PHP_VERSION);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => '%PDF-1.4 …', 'filename' => 'statement.pdf']);
 it_check('§53 a PDF is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'pick CSV') !== false, $r['raw']);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
 $sm = $r['json']['summary'] ?? [];
-it_check('§53 the preview says what would be added, and writes nothing', $r['code'] === 200 && ($sm['adding'] ?? 0) === 4 && ($sm['already'] ?? -1) === 0 && abs((float) ($sm['balance'] ?? 0) - 1234.56) < 0.001 && $sm['to'] === '2026-09-30' && $stCount() === 0, $r['raw']);
+it_check('§53 the preview says what would be added, and writes nothing', $r['code'] === 200 && ($sm['adding'] ?? 0) === 4 && ($sm['already'] ?? -1) === 0 && abs((float) ($sm['balance'] ?? 0) - 1234.56) < 0.001 && $sm['to'] === '2026-09-30' && $stCount() === 0, 'code=' . $r['code'] . ' ' . $r['raw'] . ' len=' . strlen($stA) . ' head=' . json_encode(substr($stA, 0, 40)));
 $r = http($admin, 'POST', '/statements.php', ['action' => 'import', 'csv' => $stA, 'filename' => 'monzo.csv', 'op_id' => 'it53-import-a']);
 $sm = $r['json']['summary'] ?? [];
 it_check('§53 adding it stores four payments, two of which sorted themselves', $r['code'] === 200 && ($sm['added'] ?? 0) === 4 && ($sm['auto'] ?? 0) === 2 && $stCount() === 4, $r['raw']);
