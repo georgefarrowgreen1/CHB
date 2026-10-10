@@ -201,9 +201,21 @@ if ($isCron) {
         );
     } catch (\Throwable $e) {
     }
+    // THE LOG KEEPS ITS HISTORY BY AGE, NOT BY COUNT. "Keep the newest 5,000 rows"
+    // let anyone erase it: the public report endpoints add rows, and enough of them
+    // pushed out every sign-in warning and each booking's email history (read from
+    // this table), which this prune then deleted for good. Machine reports keep 30
+    // days and at most 2,000 rows; everything else keeps three years, under a
+    // 200,000-row ceiling that is there for the disk, not for routine pruning.
     try {
+        $noise = "('csp.violation', 'request.blocked', 'client.error', 'client.swallow')";
+        db()->exec("DELETE FROM activity_log WHERE action IN $noise AND created_at < (NOW() - INTERVAL 30 DAY)");
         db()->exec(
-            'DELETE FROM activity_log WHERE id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log ORDER BY id DESC LIMIT 1 OFFSET 5000) x)',
+            "DELETE FROM activity_log WHERE action IN $noise AND id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log WHERE action IN $noise ORDER BY id DESC LIMIT 1 OFFSET 2000) x)",
+        );
+        db()->exec('DELETE FROM activity_log WHERE created_at < (NOW() - INTERVAL 3 YEAR)');
+        db()->exec(
+            'DELETE FROM activity_log WHERE id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log ORDER BY id DESC LIMIT 1 OFFSET 200000) x)',
         );
     } catch (\Throwable $e) {
     }

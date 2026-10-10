@@ -19,7 +19,7 @@ function exp_public_row($r)
         'id' => (int) $r['id'],
         'title' => $r['title'],
         'body' => $r['body'],
-        'image' => $r['image_url'],
+        'image' => exp_safe_image($r['image_url']),
         'linkLabel' => $r['link_label'],
         'linkUrl' => $r['link_url'],
         'phone' => $r['phone'],
@@ -41,6 +41,16 @@ function exp_published()
         return [];
     } // table not migrated yet — empty
     return array_map('exp_public_row', $rows);
+}
+// A place's photo is painted as a CSS url('…') inside a style attribute, where
+// HTML escaping is no protection: the browser decodes &#39; back into a quote
+// before the CSS is read, so a quote or a bracket ends the url() and the rest
+// becomes CSS on that element. Only the uploader's own uploads/ path or a plain
+// https address is kept; anything else is no photo.
+function exp_safe_image($u)
+{
+    $u = trim((string) $u);
+    return preg_match('~^(uploads/[A-Za-z0-9._-]+|https://[^\s\'"()\\\\<>]+)$~', $u) ? $u : '';
 }
 function exp_norm_url($u)
 {
@@ -191,6 +201,9 @@ if ($action === 'save') {
     $title = trim((string) ($in['title'] ?? ''));
     $bodyTxt = trim((string) ($in['body'] ?? ''));
     $image = trim((string) ($in['image_url'] ?? ''));
+    if ($image !== '' && exp_safe_image($image) === '') {
+        json_out(['error' => "That photo address can't be used — choose the photo again."], 400);
+    }
     $linkLabel = clean($in['link_label'] ?? '');
     $linkUrl = exp_norm_url($in['link_url'] ?? '');
     $phone = trim((string) ($in['phone'] ?? ''));
@@ -200,6 +213,15 @@ if ($action === 'save') {
     if (mb_strlen($title) < 1) {
         json_out(['error' => 'A title is required'], 400);
     }
+    require_fits($in, [
+        'title' => [160, 'The name'],
+        'link_label' => [80, 'The link label'],
+        'link_url' => [512, 'The website address'],
+        'phone' => [40, 'The phone number'],
+        'category' => [48, 'The kind'],
+        'distance' => [80, 'The distance'],
+        'map_query' => [255, 'The map search'],
+    ]);
     try {
         if ($id) {
             db()
@@ -240,6 +262,10 @@ if ($action === 'save') {
             $id = (int) db()->lastInsertId();
         }
     } catch (\Throwable $e) {
+        // Only a missing table is an install step; anything else is a real error.
+        if (!db_schema_missing($e)) {
+            throw $e;
+        }
         json_out(['error' => 'Experiences not ready — run migrate.php (migration-experiences.sql).'], 500);
     }
     log_activity('media', 'experience.save', 'Experience saved — ' . mb_substr($title, 0, 60), ['entity' => 'experience', 'entity_id' => (string) $id]);

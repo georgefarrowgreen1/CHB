@@ -47,7 +47,9 @@ try {
         if ($p) {
             $found = true;
             $propKey = $p['prop_key'];
-            $accent = $p['accent'] ?: $accent;
+            // Only a #RRGGBB code reaches the <style> block below — HTML escaping
+            // cannot stop a ';}' ending the declaration there (prop_accent_ok).
+            $accent = preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($p['accent'] ?? '')) ? $p['accent'] : $accent;
             // Owner-edited title wins over the row name (mirror content_value decode).
             $cv = function ($key) use ($pdo) {
                 $s = $pdo->prepare('SELECT item_value FROM content WHERE item_key = ?');

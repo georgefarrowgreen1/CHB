@@ -136,6 +136,8 @@ $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUA
 // seeder for real. These gate NOTHING else: every staging action also demands
 // a staging.* Host header, which no other section sends.
 $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MONZO_AUTH_BASE', 'http://127.0.0.1:$MONZO_PORT/auth/');\n";
+// §17(k) holds an op's lock to prove a repeat is refused; a short wait keeps it quick.
+$cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
@@ -261,6 +263,29 @@ it_check(
     $paySched && (int) $paySched['balance_days'] === payment_balance_days(),
     json_encode($paySched),
 );
+// A COTTAGE'S COLOUR IS ONLY EVER #RRGGBB. It is painted into style attributes on
+// every staff member's Today and into the stylesheet every visitor loads, so a
+// quote or a brace in it breaks out of both — and `save` took any string, from
+// anyone with the prices permission (prop_accent_ok).
+$accentOf = function () use ($guest, $propKey) {
+    $rows = http($guest, 'GET', '/rates.php')['json']['properties'] ?? [];
+    foreach ($rows as $p) {
+        if (is_array($p) && ($p['prop_key'] ?? '') === $propKey) {
+            return (string) ($p['accent'] ?? '');
+        }
+    }
+    return null;
+};
+$before = $accentOf();
+$r = http($admin, 'POST', '/rates.php', ['action' => 'save', 'prop_key' => $propKey, 'accent' => '#8fb3c7" data-act="x']);
+it_check('§4 a colour that is not #RRGGBB is refused', $r['code'] === 400, $r['raw']);
+it_check('§4 …and the stored colour is unchanged', $accentOf() === $before, (string) $accentOf());
+$r = http($admin, 'POST', '/rates.php', ['action' => 'save', 'prop_key' => $propKey, 'accent' => '#12ab34']);
+it_check('§4 a real colour saves (normalised to upper case)', $r['code'] === 200 && $accentOf() === '#12AB34', (string) $accentOf());
+// 16 characters: the column is VARCHAR(16), which still fits a break-out.
+$rootDb->exec("UPDATE properties SET accent = 'red;}*{color:red' WHERE prop_key = " . $rootDb->quote($propKey));
+it_check('§4 a bad colour already stored is never served', $accentOf() === '', (string) $accentOf());
+$rootDb->exec("UPDATE properties SET accent = '#12AB34' WHERE prop_key = " . $rootDb->quote($propKey));
 
 // ---- 6. Enquiry → approval → booking with a locked snapshot --------------
 echo "\n== 5. Enquiry → booking (price snapshot through the real stack) ==\n";
@@ -1554,6 +1579,25 @@ $r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' =
 $evFiles2 = glob($work . '/uploads/deposit-evidence-' . $evBid2 . '-*.jpg') ?: [];
 it_check('a MALFORMED photo is ignored and the refund still stands (best-effort contract)', ($r['json']['ok'] ?? false) && count($evFiles2) === 0, $r['raw'] . ' files=' . count($evFiles2));
 
+// (k) A REPEAT THAT ARRIVES WHILE THE FIRST IS STILL RUNNING IS REFUSED, NOT RUN.
+// The first may be stuck in a slow email after the money has moved; running the
+// repeat would move it again (a refund's Square key changes once money has gone
+// back). The op's lock is held here on another connection, as a still-running
+// first request would hold it.
+$opK = 'op-int-' . bin2hex(random_bytes(6));
+$opKAdmin = (int) $rootDb->query("SELECT MIN(id) FROM admins")->fetchColumn();
+$opKLock = 'chb_op_k' . substr(hash('sha256', 'a:' . $opKAdmin . '|bookings.php|' . $opK), 0, 46);
+$hold = $rootDb->prepare('SELECT GET_LOCK(?, 0)');
+$hold->execute([$opKLock]);
+it_check('(fixture) the first request\'s lock is held', (int) $hold->fetchColumn() === 1);
+$before = $dep();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 250, 'payment_method' => 'Cash', 'payment_date' => '2026-08-03', 'op_id' => $opK]);
+it_check('a repeat while the first still runs is refused as in flight', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'in_flight', $r['raw']);
+it_check('…and it changed nothing', abs($dep() - $before) < 0.001, 'deposit now ' . $dep());
+$rootDb->prepare('SELECT RELEASE_LOCK(?)')->execute([$opKLock]);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 250, 'payment_method' => 'Cash', 'payment_date' => '2026-08-03', 'op_id' => $opK]);
+it_check('…and once the first has finished, the same op applies normally', ($r['json']['ok'] ?? false) && abs($dep() - 250.0) < 0.001, $r['raw']);
+
 // ══════════════════════════════════════════════════════════════════════════
 // §18 THE KEY SAFE KEEPER — the reveal gate and the replay, against the real
 // stack (encrypted content row, op ledger, the payload the guest's page
@@ -1935,6 +1979,34 @@ it_check('a guest session cannot confirm as the owner', $r['code'] === 401, $r['
 $r = http($rg, 'POST', '/passkeys.php', ['action' => 'admin_reauth_begin']);
 it_check('…nor start a passkey confirmation', $r['code'] !== 200 && empty($r['json']['options']), $r['raw']);
 
+// THE SIGN-IN ITSELF IS GATED TOO. Changing the sign-in email, turning two-step
+// off or adding a passkey would turn a few minutes on a borrowed session into
+// the account for good, so each asks for the same fresh proof.
+$rs = [];
+http($rs, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-123']);
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_email_begin', 'email' => 'taken-over@gmail.com']);
+it_check('§24 a fresh session cannot change the sign-in email', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'reauth_required', $r['raw']);
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_twofa_set', 'on' => false]);
+it_check('§24 …nor turn two-step off', $r['code'] === 401 && ($r['json']['code'] ?? '') === 'reauth_required', $r['raw']);
+// The WebAuthn library may be absent here (then passkeys.php refuses everything),
+// so assert what holds either way: no registration options for a fresh session.
+$r = http($rs, 'POST', '/passkeys.php', ['action' => 'admin_register_begin']);
+it_check('§24 …nor start adding a passkey', $r['code'] !== 200 && empty($r['json']['options']), $r['raw']);
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_twofa_set', 'on' => true]);
+it_check('§24 turning two-step ON asks for nothing extra (it only adds protection)', ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_reauth($rs);
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_twofa_set', 'on' => false]);
+it_check('§24 …and once confirmed, two-step can be turned off again', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_email_begin', 'email' => 'owner-new-it@gmail.com']);
+it_check('§24 …and the email change goes ahead to its code', $r['code'] !== 401, $r['raw']);
+// The password change guesses on the same counter as sign-in, and says so.
+$r = http($rs, 'POST', '/auth.php', ['action' => 'admin_change_password', 'current' => 'wrong-wrong-wrong', 'next' => 'a-long-new-password-1']);
+$pcSev = $rootDb->query("SELECT severity FROM activity_log WHERE action = 'admin.password_change_fail' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§24 a wrong current password is refused and logged as a warning', $r['code'] === 403 && $pcSev === 'warn', $r['raw'] . ' severity=' . var_export($pcSev, true));
+$rfSev = $rootDb->query("SELECT severity FROM activity_log WHERE action = 'admin.reauth_fail' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§24 a failed confirmation is recorded as a warning (it was an info row)', $rfSev === 'warn', var_export($rfSev, true));
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'admin:owner'");
+
 // KEEPING a deposit is not money out, so it is NOT gated — a control that
 // asks for everything is one people route around.
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status, hold_amount) VALUES ('$propKey','Keep Guest','keep@gmail.com','$raIn','$raOut',2,0,'paid',360,300,300,0,3,60,'charged',60)");
@@ -2240,6 +2312,48 @@ $r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'hero-tit
 it_check('(fixture) a content write succeeds', $r['code'] === 200, $r['raw']);
 $b3 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
 it_check('a write is visible to the very next request (no stale memo)', strpos((string) $b3, 'Memo Probe') !== false, substr((string) $b3, 0, 160));
+// THE 304 FIRES BEHIND APACHE'S DEFLATE. htaccess compresses application/json,
+// and Apache then sends the tag as "<md5>-gzip" and gets it back that way, so the
+// byte-exact comparison bootstrap.php used never matched in production: every
+// 30-second poll downloaded the whole payload. php -S compresses nothing, so the
+// forms a browser really sends back are sent here by hand.
+$bootGet = function (array $extra = []) {
+    global $BASE;
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", array_merge(['Accept: application/json'], $extra)), 'timeout' => 30, 'ignore_errors' => true]]));
+    $code = 0;
+    $hdr = [];
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        } elseif (strpos($h, ':') !== false) {
+            [$k, $v] = explode(':', $h, 2);
+            $hdr[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'h' => $hdr];
+};
+$bt = $bootGet();
+$btTag = (string) ($bt['h']['etag'] ?? '');
+$btMd5 = trim($btTag, '"');
+it_check('the public payload carries a strong ETag and varies by encoding',
+    preg_match('/^"[0-9a-f]{32}"$/', $btTag) === 1 && stripos((string) ($bt['h']['vary'] ?? ''), 'accept-encoding') !== false, json_encode($bt['h']));
+foreach ([
+    'the tag as sent' => $btTag,
+    'Apache\'s deflated form ("…-gzip")' => '"' . $btMd5 . '-gzip"',
+    'a weak validator (W/"…")' => 'W/"' . $btMd5 . '"',
+    'a list that holds it' => '"' . str_repeat('0', 32) . '", "' . $btMd5 . '-gzip"',
+] as $what => $inm) {
+    $r = $bootGet(['If-None-Match: ' . $inm]);
+    it_check("…answers 304 to $what", $r['code'] === 304 && $r['raw'] === '', $r['code'] . ' / ' . strlen($r['raw']) . ' bytes');
+}
+$r = $bootGet(['If-None-Match: "' . str_repeat('0', 32) . '-gzip"']);
+it_check('…and a stale tag still gets the payload', $r['code'] === 200 && strlen($r['raw']) > 200, (string) $r['code']);
+// An owner's copy carries internal settings and is asked for only at boot, so it
+// is never stored and never offered a 304.
+$r = $bootGet(['Cookie: ' . implode('; ', array_map(fn($k) => "$k={$admin[$k]}", array_keys($admin)))]);
+it_check('an owner\'s copy is never stored (no-store, no ETag)',
+    $r['code'] === 200 && stripos((string) ($r['h']['cache-control'] ?? ''), 'no-store') !== false && !isset($r['h']['etag']), json_encode($r['h']));
 
 // ---------------------------------------------------------------------------
 //  §22  THE EMAIL OUTBOX — the row lifecycle against the real schema, driven
@@ -2501,6 +2615,38 @@ it_check('§32c the orphan flag row carries its act (booking + payment id)',
 $actCount = 0;
 foreach (($r['json']['events'] ?? []) as $ev) { if (isset($ev['act'])) { $actCount++; } }
 it_check('§32c …and NO other row grows an action from log data', $actCount === 1, 'actCount=' . $actCount);
+
+// (d) A READ-CHANGE-SAVE OF ONE CONTENT KEY IS ONE STEP (content_locked). Requests
+// from one browser no longer queue on the PHP session, so two "Seen it" taps can
+// each read the list, add to it and save — and one is lost. Hold the key's lock on
+// a second connection, fire the request in a child, wait until it is parked, land
+// a different change directly, release: both must be in the stored list.
+$ckLock = 'chb_ck_' . substr(sha1('activity-seen'), 0, 40);
+$slot3 = new PDO("mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4", $DB_USER, $DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$st = $slot3->prepare('SELECT GET_LOCK(?, 0)');
+$st->execute([$ckLock]);
+it_check('§32d (fixture) the seen list\'s lock is held on a second connection', (int) $st->fetchColumn() === 1);
+$ckPayload = json_encode(['action' => 'seen', 'ids' => [990001]]);
+$ckScript = sys_get_temp_dir() . '/chb-it-ck-' . getmypid() . '.php';
+file_put_contents($ckScript, '<?php $o = ["http" => ["method" => "POST", "header" => "Content-Type: application/json\r\nAccept: application/json\r\nCookie: ' . $raceCookie . '\r\nX-CSRF-Token: ' . ($admin['csrf'] ?? '') . '", "content" => ' . var_export($ckPayload, true) . ', "timeout" => 40, "ignore_errors" => true]]; echo file_get_contents(' . var_export($BASE . '/activity-log.php', true) . ', false, stream_context_create($o));');
+$ckp = [];
+$ckProc = proc_open('exec php ' . escapeshellarg($ckScript), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $ckp);
+$ckParked = false;
+for ($i = 0; $i < 100; $i++) {
+    $n = (int) $rootDb->query("SELECT COUNT(*) FROM information_schema.processlist WHERE state = 'User lock'")->fetchColumn();
+    if ($n > 0) { $ckParked = true; break; }
+    usleep(100000);
+}
+it_check('§32d the "Seen it" request waits for the lock', $ckParked);
+$rootDb->exec("INSERT INTO `$DB_NAME`.content (item_key, item_value) VALUES ('activity-seen', '[990002]') ON DUPLICATE KEY UPDATE item_value = '[990002]'");
+$slot3->prepare('SELECT RELEASE_LOCK(?)')->execute([$ckLock]);
+$ckOut = stream_get_contents($ckp[1]);
+proc_close($ckProc);
+@unlink($ckScript);
+$ckSeen = json_decode((string) $rootDb->query("SELECT item_value FROM `$DB_NAME`.content WHERE item_key = 'activity-seen'")->fetchColumn(), true);
+it_check('§32d …and saves its change on top of the one that landed while it waited',
+    is_array($ckSeen) && in_array(990001, $ckSeen, true) && in_array(990002, $ckSeen, true), json_encode($ckSeen) . ' ' . substr((string) $ckOut, 0, 120));
+$slot3 = null;
 
 // ── §33 the CASH rail's damages deposit has the same lifecycle as the card's ──
 // Both halves were card-only. A deposit collected in cash (hold_status stays
@@ -3137,6 +3283,16 @@ $r = http($noJar, 'GET', '/experiences-page.php');
 it_check('§49 /experiences no longer renders the list for crawlers', $r['code'] === 200 && strpos($r['raw'], '§49 Seal trip') === false, (string) $r['code']);
 $r = http($noJar, 'GET', '/sitemap.php');
 it_check('§49 …and the sitemap no longer lists it', strpos($r['raw'], '/experiences<') === false, '');
+// A place's photo is painted as CSS url('…') inside a style attribute, where HTML
+// escaping cannot stop a quote ending the url() (exp_safe_image).
+$r = http($admin, 'POST', '/experiences.php', ['action' => 'save', 'title' => '§49 Bad photo', 'image_url' => "uploads/a.jpg') ;background:red"]);
+it_check('§49 a photo address that could break out of its url() is refused', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/experiences.php', ['action' => 'save', 'title' => '§49 Good photo', 'image_url' => 'uploads/seal-trip.jpg']);
+it_check('§49 …the uploader\'s own path saves', $r['code'] === 200, $r['raw']);
+$rootDb->exec("INSERT INTO experiences (title, body, image_url, status) VALUES ('§49 Stored bad', '', 'https://x.com/a.jpg'') ;x:y', 'published')");
+$r = http($admin, 'GET', '/experiences.php');
+$stored = array_values(array_filter($r['json']['experiences'] ?? [], fn($x) => is_array($x) && ($x['title'] ?? '') === '§49 Stored bad'));
+it_check('§49 …and one already stored is served as no photo', $stored && ($stored[0]['image'] ?? null) === '', json_encode($stored));
 $rootDb->exec("DELETE FROM experiences WHERE title LIKE '§49%'");
 $rootDb->exec("DELETE FROM bookings WHERE email = 'notbooked49@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email = 'notbooked49@gmail.com'");
@@ -3792,6 +3948,112 @@ $rootDb->exec("DELETE FROM payments WHERE booking_id IN ($bc55, $bb55)");
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($bc55, $bb55)");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'money-split'");
 $rootDb->exec("DELETE FROM admins WHERE id = $h55");
+
+// ── §56 malformed and over-long input answers in words ─────────────────────
+// An array where text belongs threw a TypeError (a "Site error detected" push to
+// the owner), and text longer than its column was rejected by the database and
+// reported as "Something went wrong on our side" — or blamed on migrations.
+echo "\n== \u{00A7}56 malformed and over-long input answers in words ==\n";
+$rootDb->exec("DELETE FROM login_attempts"); // earlier sections spent the public rate limits
+$errs56 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'server.error'")->fetchColumn();
+$errsBefore56 = $errs56();
+$anon56 = [];
+$r = http($anon56, 'POST', '/waitlist.php', ['action' => 'join', 'prop' => $propKey, 'name' => ['x'], 'email' => 'w56@gmail.com']);
+it_check('§56 an array where a name belongs is answered, not a server error', $r['code'] < 500 && is_array($r['json']), $r['raw']);
+$r = http($anon56, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'nobody56', 'password' => ['x']]);
+it_check('§56 an array for a password is refused like a wrong password', $r['code'] === 401, $r['raw']);
+$add56 = fn($pc) => http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey, 'name' => 'Long Postcode', 'check_in' => $dd(940), 'check_out' => $dd(943), 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'postcode' => $pc]);
+$r = $add56('D02 X285 Ireland');
+it_check('§56 a postcode longer than its column is refused, naming the postcode', $r['code'] === 400 && ($r['json']['field'] ?? '') === 'postcode' && stripos((string) ($r['json']['error'] ?? ''), 'postcode') !== false, $r['raw']);
+$r = $add56('D02 X285');
+it_check('§56 …while one that fits saves', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/experiences.php', ['action' => 'save', 'title' => '§56 Long', 'distance' => str_repeat('x', 85)]);
+it_check('§56 a Things-to-do field too long is named, not blamed on migrations', $r['code'] === 400 && ($r['json']['field'] ?? '') === 'distance', $r['raw']);
+it_check('§56 and none of it logged a server error', $errs56() === $errsBefore56, 'server.error rows: ' . ($errs56() - $errsBefore56));
+$rootDb->exec("DELETE FROM bookings WHERE name = 'Long Postcode'");
+$rootDb->exec("DELETE FROM experiences WHERE title LIKE '§56%'");
+
+// (b) THE ACTIVITY LOG CANNOT BE FLOODED AWAY. Anyone can POST a CSP report for a
+// made-up host (each one a new de-dupe signature), and the daily prune kept only
+// the newest 5,000 rows, so enough reports erased the owner's real history.
+$rootDb->exec("DELETE FROM activity_log WHERE action = 'csp.violation'");
+for ($i = 0; $i < 15; $i++) {
+    $ch = curl_init($BASE . '/csp-report.php');
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/csp-report'],
+        CURLOPT_POSTFIELDS => json_encode(['csp-report' => ['violated-directive' => 'img-src', 'blocked-uri' => 'https://made-up-' . $i . '.example/x.png']])]);
+    curl_exec($ch);
+    curl_close($ch);
+}
+$cspN = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'csp.violation'")->fetchColumn();
+it_check('§56 one address can add at most 10 CSP reports an hour', $cspN === 10, 'rows=' . $cspN);
+// …and a real warning stays in Needs attention under a pile of machine reports.
+// (Earlier sections' warnings are cleared first: the list shows six groups.)
+$rootDb->exec("DELETE FROM activity_log WHERE severity IN ('warn', 'action')");
+$rootDb->exec("INSERT INTO activity_log (actor, category, action, summary, severity) VALUES ('system', 'payment', 'deposit.owed', '§56 A deposit is owed back', 'warn')");
+$owedId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO activity_log (actor, category, action, summary, severity) SELECT 'system', 'security', 'csp.violation', CONCAT('§56 noise ', n), 'warn' FROM (SELECT a.N + b.N * 10 + c.N * 100 + d.N * 1000 AS n FROM (SELECT 0 N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a, (SELECT 0 N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b, (SELECT 0 N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) c, (SELECT 0 N UNION SELECT 1) d) t WHERE n < 1200");
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'summary']);
+$owedSeen = false;
+foreach (($r['json']['needs'] ?? []) as $g) {
+    if (in_array($owedId, array_map('intval', (array) ($g['ids'] ?? [])), true)) { $owedSeen = true; }
+}
+it_check('§56 a real warning is still in Needs attention under 1,200 newer machine reports', $owedSeen, substr($r['raw'], 0, 200));
+$rootDb->exec("DELETE FROM activity_log WHERE summary LIKE '§56%' OR action = 'csp.violation'");
+// (c) ONE INBOX GETS AT MOST TEN SIGN-IN EMAILS A DAY, however many connections
+// ask. Each request below clears the per-sender throttles first (as a fresh
+// address would arrive with none), so only the shared daily allowance can stop it.
+$codeLogs = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'guest.code'")->fetchColumn();
+$codeBefore = $codeLogs();
+$bombAnswers = [];
+for ($i = 0; $i < 12; $i++) {
+    $rootDb->exec("DELETE FROM login_attempts WHERE identifier NOT LIKE 'mailto:%'");
+    $rb = http($anon56, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'bomb56@gmail.com']);
+    $bombAnswers[] = $rb['code'] . ' ' . json_encode(array_diff_key((array) ($rb['json'] ?? []), ['srv' => 1])); // srv is the clock
+}
+it_check('§56 twelve code requests for one inbox send ten emails', $codeLogs() - $codeBefore === 10, 'sent ' . ($codeLogs() - $codeBefore));
+it_check('§56 …and every request is answered the same way', count(array_unique($bombAnswers)) === 1 && strpos($bombAnswers[0], '200 {"ok":true') === 0, implode(' | ', array_unique($bombAnswers)));
+$rootDb->exec("DELETE FROM login_attempts");
+// (d) A SIGN-IN FOR NOBODY TAKES AS LONG AS ONE FOR SOMEBODY. The dummy hash was a
+// fixed cost 12 beside cost-10 accounts, so an unknown name answered four times
+// slower; and an account with no password answered at once.
+it_check('§56 the dummy hash costs what this PHP makes a real one cost', !password_needs_rehash(auth_dummy_hash(), PASSWORD_DEFAULT), auth_dummy_hash());
+it_check('§56 …and it is what an absent account or an empty password is checked against',
+    auth_hash_for(false) === auth_dummy_hash() && auth_hash_for(['password_hash' => '']) === auth_dummy_hash() && auth_hash_for(['password_hash' => '$2y$10$x']) === '$2y$10$x');
+// (e) SIGNING OUT ENDS THE SESSION, not just the name on it.
+$lo = [];
+http($lo, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-123']);
+$loOld = (string) ($lo['PHPSESSID'] ?? '');
+http($lo, 'POST', '/auth.php', ['action' => 'admin_logout']);
+it_check('§56 signing out issues a new session id', $loOld !== '' && ($lo['PHPSESSID'] ?? '') !== '' && ($lo['PHPSESSID'] ?? '') !== $loOld, $loOld . ' → ' . ($lo['PHPSESSID'] ?? ''));
+$loStale = ['PHPSESSID' => $loOld];
+$r = http($loStale, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§56 …and the old id is signed in as nobody', ($r['json']['admin'] ?? null) === false, $r['raw']);
+$cronSrc56 = preg_replace('#//[^\n]*#', '', (string) file_get_contents(__DIR__ . '/cron.php'));
+it_check('§56 the daily prune keeps history by age, not by a bare row count', strpos($cronSrc56, 'OFFSET 5000') === false && strpos($cronSrc56, 'INTERVAL 3 YEAR') !== false, '');
+
+// ── §57 the reads that run on every booking page, send and limit check can use an index ──
+// activity_log is kept for three years under a 200,000-row ceiling, and a booking
+// page's feed, the send guard and the per-hour caps scanned all of it. The plan is
+// read from EXPLAIN's possible_keys — whether an index is USABLE, which is what
+// was missing, and unlike the optimiser's final choice it does not depend on how
+// few rows this harness holds.
+echo "\n== §57 the hot reads can use an index ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$keys57 = function (string $sql, array $args = []) use ($rootDb) {
+    $st = $rootDb->prepare('EXPLAIN ' . $sql);
+    $st->execute($args);
+    return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? ''), $st->fetchAll(PDO::FETCH_ASSOC)));
+};
+foreach ([
+    ['a booking page\'s feed', "SELECT action, summary, actor, created_at FROM activity_log WHERE entity = 'booking' AND entity_id = ? ORDER BY id DESC LIMIT 80", ['42'], 'idx_activity_entity'],
+    ['the send guard', "SELECT created_at FROM activity_log WHERE entity = 'booking' AND entity_id = ? AND action = ? AND created_at >= (NOW() - INTERVAL 180 SECOND) ORDER BY created_at DESC LIMIT 1", ['42', 'payment.request'], 'idx_activity_entity'],
+    ['the per-hour report caps', "SELECT SUM(ip = ?) AS mine, COUNT(*) AS allr FROM activity_log WHERE action = 'csp.violation' AND created_at > (NOW() - INTERVAL 1 HOUR)", ['1.2.3.4'], 'idx_activity_action'],
+    ['the per-account limits', 'SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)', ['mailto:x'], 'idx_attempt_ident'],
+    ['a guest\'s own enquiries', 'SELECT * FROM enquiries WHERE email = ?', ['g@example.org'], 'idx_enq_email'],
+] as [$what, $sql, $args, $want]) {
+    $have = $keys57($sql, $args);
+    it_check("§57 $what can use $want", strpos($have, $want) !== false, $have);
+}
 
 echo "\n== Summary ==\n";
 if ($fail) {

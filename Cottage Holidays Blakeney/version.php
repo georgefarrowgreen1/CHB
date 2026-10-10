@@ -9,9 +9,18 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
 $build = '';
-// BUILD lives in app.js; fall back to index.html for older deploys.
+// BUILD lives in app.js; fall back to index.html for older deploys. It is
+// app.js's LAST statement (bump.js keeps it there), so the tail answers: every
+// open tab asks this every minute or so, and reading and scanning the whole
+// 1MB bundle each time was all this endpoint cost. The whole file is still read
+// if the tail does not have it.
 foreach (['/app.js', '/index.html'] as $f) {
-    $src = @file_get_contents(__DIR__ . $f);
+    $path = __DIR__ . $f;
+    $size = (int) @filesize($path);
+    $src = $size > 16384 ? @file_get_contents($path, false, null, $size - 16384) : false;
+    if ($src === false || !preg_match("/const BUILD = '([^']+)'/", $src)) {
+        $src = @file_get_contents($path);
+    }
     if ($src !== false && preg_match("/const BUILD = '([^']+)'/", $src, $m)) {
         $build = $m[1];
         break;

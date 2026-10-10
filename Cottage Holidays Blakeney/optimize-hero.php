@@ -23,7 +23,9 @@ $action = $in['action'] ?? '';
 function hero_current()
 {
     $v = content_value('hero-bg');
-    if ($v === '' || !preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png)$#i', $v)) {
+    // Only a file the uploader made: the old pattern allowed "../", so the hero
+    // could be pointed at (and re-published from) any image on the server.
+    if ($v === '' || !preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png)$#', $v) || strpos($v, '..') !== false) {
         return null;
     }
     $path = __DIR__ . '/' . ltrim($v, '/');

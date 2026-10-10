@@ -45,7 +45,11 @@ function chb_dump_sql()
         "-- Cottage Holidays Blakeney database backup\n-- Created " .
         date('c') .
         "\n" .
-        "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+        // The values below are quoted with backslash escapes, which only read back
+        // correctly under a mode WITHOUT NO_BACKSLASH_ESCAPES: restored where that
+        // mode is on, a guest's \' would end the string early and the rest of their
+        // text would run as SQL. The dump states its own mode, as mysqldump does.
+        "SET NAMES utf8mb4;\nSET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\nSET FOREIGN_KEY_CHECKS=0;\n\n";
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     foreach ($tables as $t) {
         $tq = '`' . str_replace('`', '``', $t) . '`';
@@ -74,7 +78,7 @@ function chb_dump_sql()
         }
         $out .= "\n";
     }
-    return $out . "SET FOREIGN_KEY_CHECKS=1;\n";
+    return $out . "SET FOREIGN_KEY_CHECKS=1;\nSET SQL_MODE=@OLD_SQL_MODE;\n";
 }
 
 // ---- Write the gzipped dump into backups/, rotating out the oldest ----

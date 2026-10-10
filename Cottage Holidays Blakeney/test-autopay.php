@@ -751,6 +751,10 @@ chk('the per-instalment ceiling is rest ÷ n rounded UP', $of && abs($of['per'] 
 chk('the owner can switch the offer off', booking_instalment_offer(ofbk(['autopay_offer' => 0]), $NOW) === null);
 $of3 = booking_instalment_offer(ofbk(['autopay_offer' => 3]), $NOW);
 chk('...or pin the count — 3 × £175.00 exactly', $of3 && $of3['n'] === 3 && abs($of3['per'] - 175.0) < 0.005 && abs($of3['last'] - 175.0) < 0.005);
+// A balance that divides into whole pence must split into whole pence: £150.24 / 3
+// in floating point is 5008.000000000001 pence, and ceil() made it £50.09.
+$ofP = booking_instalment_offer(ofbk(['agreed_total' => 200.24, 'deposit_pct_override' => null, 'deposit_amount_override' => 50.0, 'autopay_offer' => 3]), $NOW);
+chk('an even split stays even — 3 × £50.08, not £50.09 + £50.06', $ofP && $ofP['n'] === 3 && abs($ofP['per'] - 50.08) < 0.001 && abs($ofP['last'] - 50.08) < 0.001);
 // The £50 floor: a small balance spreads less, or not at all.
 chk('a small balance shrinks n to keep every instalment over the floor',
     booking_instalment_offer(ofbk(['agreed_total' => 180.0]), $NOW)['n'] === 2); // rest £135 → 3× would be £45

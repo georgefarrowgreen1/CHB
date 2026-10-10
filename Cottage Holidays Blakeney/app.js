@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 759;
+const ADMIN_BUNDLE_V = 763;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -465,7 +465,7 @@ const CHB_ACT_CAP = {
     'bk.block': ['openBlockDates', 'tlBlockTap'],
     'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'chatSendArrival', 'notifyWaitlist', 'deleteWaitlist', 'deleteCurrentThread', 'gstInvite', 'gstResend'],
     'gu.approve': ['approveEnquiry', 'declineEnquiry', 'openEditEnquiry'],
-    'gu.reviews': ['setReviewStatus', 'moderatePhoto'],
+    'gu.reviews': ['setReviewStatus', 'moderatePhoto', 'setLeadStatus', 'deleteLead'],
     'ks.see': ['openKeysafe', 'keysafeOpen'],
     'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe'],
     'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'moChaseDue', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
@@ -1279,6 +1279,9 @@ async function oqFlushRun(items) {
                 // wedge — but the refusal is NAMED (a clash-refused enquiry saying only
                 // "try again" would be advice that can't work).
                 if (e.status === 401 || e.status === 403) continue;
+                // The same write is still running from an earlier try: keep it.
+                // The next flush finds its stored answer and counts it as sent.
+                if (/** @type {any} */ (e).code === 'in_flight') continue;
                 failed++;
                 failMsgs.push((it.label ? it.label + ' — ' : '') + String(e.message || 'rejected').slice(0, 120));
                 // The toast covers the owner who is LOOKING; the record is a
@@ -1768,15 +1771,29 @@ async function maybeHandleStaleAdmin() {
         __staleAdminChecking = false;
     }
 }
+// What a signed-out device must not keep, said once for both ways out (this one
+// and admin.js's logoutStaff). The boot hint, the day-sheet snapshot (guest names,
+// key-safe notes) and the unconfirmed deposit decisions, plus every unsent draft
+// to a guest: the Inbox's reply drafts (`chb-ib-draft:`) and the email sheet's
+// (`chb-cmp-draft:`) hold the words of a message to a named person and outlived
+// the session they were written in.
+const CHB_OWNER_DEVICE_KEYS = ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions'];
+const CHB_OWNER_DRAFT_PREFIXES = ['chb-ib-draft:', 'chb-cmp-draft:'];
+function chbOwnerDeviceForget() {
+    try {
+        CHB_OWNER_DEVICE_KEYS.forEach((k) => localStorage.removeItem(k));
+        const drop = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i) || '';
+            if (CHB_OWNER_DRAFT_PREFIXES.some((p) => k.startsWith(p))) drop.push(k);
+        }
+        drop.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {}
+}
 function forceAdminLogout() {
     isAuthenticated = false;
-    // The session is over, so the device stops being "the owner's phone": the
-    // boot hint AND the snapshot (guest names, key-safe notes) both go.
-    try {
-        localStorage.removeItem('chb-was-admin');
-        localStorage.removeItem('chb-daysheet');
-        localStorage.removeItem('chb-dep-decisions');
-    } catch (e) {}
+    // The session is over, so the device stops being "the owner's phone".
+    chbOwnerDeviceForget();
     try {
         chbSecForget(); // the at-rest key goes with the ciphertext it guarded
     } catch (e) {}
@@ -11069,7 +11086,7 @@ async function loadRates(pre) {
             prop_key: p.prop_key,
             name: p.name,
             slug: p.slug || p.prop_key,
-            accent: p.accent || '',
+            accent: chbHexColour(p.accent),
             sort_order: p.sort_order || 100,
             archived: !!p.archived,
             unlisted: !!p.unlisted, // private cottage — hidden from the public site
@@ -11114,7 +11131,7 @@ async function loadRates(pre) {
                 name: p.name || existing.name || k,
                 short: existing.short || (p.name || k).split(/\s+/)[0],
                 color: existing.color || '',
-                accent: p.accent || existing.accent || '#8FB3C7',
+                accent: chbHexColour(p.accent) || existing.accent || '#8FB3C7',
                 slug: p.slug || k,
                 archived: !!p.archived,
                 unlisted: !!p.unlisted,
@@ -15119,6 +15136,12 @@ function renderCardPrices() {
     });
 }
 
+// A cottage's colour is painted into style attributes and into the stylesheet
+// generated here, so only a #RRGGBB code is ever used: a quote or a brace in it
+// would break out of either (rates.php refuses one at the write as well).
+function chbHexColour(v) {
+    return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : '';
+}
 // Give cottages the owner has ADDED their own accent colour at runtime (the
 // original three keep their hand-tuned colours in app.css). Writes the same
 // CSS custom properties + .swatch-/.tag-/.bar- rules the static ones use, so
@@ -15131,7 +15154,7 @@ function injectPropColors() {
         (propertyList || []).forEach((p) => {
             const k = p.prop_key;
             if (STATIC_COLOR_KEYS[k]) return; // app.css already styles these
-            const a = (propertyMeta[k] && propertyMeta[k].accent) || p.accent || '#8FB3C7';
+            const a = chbHexColour((propertyMeta[k] && propertyMeta[k].accent) || p.accent) || '#8FB3C7';
             varRules += `--prop-${k}:${a};--prop-${k}-bg:${a}22;--prop-${k}-border:${a}55;`;
             classRules +=
                 `.swatch-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);}` +
@@ -21398,7 +21421,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'design2e';
+    const BUILD = 'perf1010c';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

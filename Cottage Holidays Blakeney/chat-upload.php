@@ -20,7 +20,9 @@ $token = preg_replace('/[^a-f0-9]/i', '', (string) ($_POST['token'] ?? ''));
 if ($isAdmin) {
     require_admin(); // owner: enforce CSRF
 } elseif ($guestId) {
-    // logged-in guest — session is enough (parity with messages.php's guest path)
+    // logged-in guest: the session is enough to send, but each upload keeps up to
+    // 6MB for good, so an account (free to make) gets 12 an hour.
+    rate_limit_key('chat-upload:g' . (int) $guestId, 12, 60);
 } elseif (strlen($token) >= 16) {
     // anonymous visitor with a chat token — curb abuse (per-IP), images only.
     // A token is only a string the visitor made up, so one with NO conversation

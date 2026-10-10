@@ -448,5 +448,27 @@ chk("mailbox.php routes 'new' through mailbox_new_pending",
     strpos($mbx, "if (\$action === 'new') {") !== false
     && strpos($mbx, "json_out(['ok' => true, 'new' => mailbox_new_pending()]);") !== false);
 
+// EMAIL TEXT ARRIVES IN ITS OWN CHARSET. Outlook still sends Windows-1252, and
+// those bytes passed on unconverted made json_out refuse the whole answer: the
+// email opened empty and was marked read, and a reply by email reached the guest
+// chat with its quotes and £ signs as '?'. Headers with no encoded words lost
+// every accented letter to iconv's continue-on-error mode.
+echo "\n== Email text in any charset reaches the screen as UTF-8 ==\n";
+chk('a raw UTF-8 subject keeps its accents', mailbox_decode_subject('Réservation – octobre') === 'Réservation – octobre');
+chk('an encoded UTF-8 header decodes', mailbox_decode_subject('=?UTF-8?Q?Si=C3=A2n_Jones?=') === 'Siân Jones');
+chk('an encoded Latin-1 header decodes', mailbox_decode_subject('=?iso-8859-1?Q?R=E9servation?=') === 'Réservation');
+chk('raw Latin-1 bytes in a header become UTF-8', mailbox_decode_subject("R\xE9servation") === 'Réservation');
+chk("an encoded sender's name is decoded for the alert", mailbox_sender_name('=?UTF-8?Q?Si=C3=A2n_Jones?= <sian@x.test>') === 'Siân Jones');
+$p = parse_email_message("From: x@y.test\r\nContent-Type: text/plain; charset=Windows-1252\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nI=92m hoping 24=9628 October =A375 deposit");
+chk('a Windows-1252 body converts (quotes, dash, £)', $p['body'] === 'I’m hoping 24–28 October £75 deposit');
+$p = parse_email_message("From: x@y.test\r\nContent-Type: text/plain; charset=\"iso-8859-1\"\r\n\r\nCaf\xE9 \x92ok\x92");
+chk('a Latin-1 label carrying Windows-1252 quotes reads as the browser would', $p['body'] === 'Café ’ok’');
+$p = parse_email_message("From: x@y.test\r\nContent-Type: multipart/alternative; boundary=\"b1\"\r\n\r\n--b1\r\nContent-Type: text/plain; charset=windows-1252\r\nContent-Transfer-Encoding: 8bit\r\n\r\n\x93Hello\x94 \xA3100\r\n--b1\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>x</p>\r\n--b1--\r\n");
+chk('a multipart part converts from its own charset', trim($p['body']) === '“Hello” £100');
+$p = parse_email_message("From: x@y.test\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . base64_encode('Thanks — see you Friday £50'));
+chk('a UTF-8 body is left exactly as sent', $p['body'] === 'Thanks — see you Friday £50');
+$p = parse_email_message("From: x@y.test\r\nContent-Type: text/plain; charset=x-made-up\r\n\r\nabc \xC3");
+chk('an unknown charset still yields valid UTF-8', mb_check_encoding($p['body'], 'UTF-8'));
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);

@@ -145,12 +145,14 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
 
 # ---- Protect sensitive files from being downloaded as text ----
 # config.php holds your DB password; schema.sql and the .md guide shouldn't be public.
-<FilesMatch "(^config\.php$|\.sql(\.gz)?$|\.md$)">
+# Copies count too: an editor's config.php~ or .swp, a config.php.bak, or the
+# *.lftp temp file an interrupted deploy leaves would otherwise be served as text.
+<FilesMatch "(^config\.php|\.sql(\.gz)?$|\.md$|\.(bak|old|orig|save|swp|swo|tmp|lftp)$|~$)">
     Require all denied
 </FilesMatch>
 
 # Fallback for older Apache (2.2) where "Require" isn't available
-<FilesMatch "(^config\.php$|\.sql(\.gz)?$|\.md$)">
+<FilesMatch "(^config\.php|\.sql(\.gz)?$|\.md$|\.(bak|old|orig|save|swp|swo|tmp|lftp)$|~$)">
     Order allow,deny
     Deny from all
 </FilesMatch>

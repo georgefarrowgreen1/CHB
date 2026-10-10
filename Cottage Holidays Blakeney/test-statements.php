@@ -133,8 +133,16 @@ stc('the daily job sends the reminder through statement_reminder_due', strpos($s
 stc('…and records the month it went', strpos($sr, "\$stSet['reminded'] = substr(\$stToday, 0, 7)") !== false);
 $db = (string) file_get_contents(__DIR__ . '/db.php');
 stc('the setting is classified, never public', strpos($db, "\$key === 'bank-statements'") !== false);
-$pl = (string) file_get_contents(__DIR__ . '/people-lib.php');
-stc('only someone who can see the money can reach it', strpos($pl, "'statements.php' => ['*' => 'mo.view']") !== false);
+// Asked of the policy itself, action by action, rather than of how people-lib
+// spells it: reading needs the money, sorting needs Record payments, stopping
+// statements is a Super User's.
+require_once __DIR__ . '/people-lib.php';
+$capOf = function (string $a): string { return (string) people_cap_for('statements.php', $a, []); };
+$reads = ['status', 'preview', 'import'];
+$writes = ['mark', 'unmark', 'settings'];
+stc('only someone who can see the money can reach it', count(array_filter($reads, function ($a) use ($capOf) { return $capOf($a) === 'mo.view'; })) === count($reads));
+stc('sorting a payment needs Record payments', count(array_filter($writes, function ($a) use ($capOf) { return $capOf($a) === 'mo.record'; })) === count($writes));
+stc('stopping statements, or an action nobody listed, is a Super User\'s', $capOf('remove') === 'owner' && $capOf('no_such_action') === 'owner');
 
 echo "\n== Summary ==\n";
 if ($fails) {

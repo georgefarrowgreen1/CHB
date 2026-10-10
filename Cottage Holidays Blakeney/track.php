@@ -104,6 +104,11 @@ if ($method === 'POST') {
         $checkIn = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($s['check_in'] ?? '')) ? $s['check_in'] : null;
         $results = max(0, min(999, (int) ($s['results'] ?? 0)));
         $found = !empty($s['found']) ? 1 : 0;
+        // These rows feed the pricing ideas ("unmet demand", "a busy week"), so one
+        // address may add at most 30 an hour; past that they are quietly not kept.
+        if (!rate_allow('track-search', 30, 60)) {
+            json_out(['ok' => true]);
+        }
         try {
             db()
                 ->prepare(

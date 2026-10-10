@@ -193,6 +193,18 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
         'entity_id' => (string) $threadId,
         'meta' => ['detail' => mb_substr($bodyTxt, 0, 120)],
     ]);
+    // At most 20 owner alerts an hour from one conversation. Every message is
+    // still saved and logged; past that, the email and the buzz stop until it calms.
+    if ($threadId > 0) {
+        try {
+            $q = db()->prepare("SELECT COUNT(*) FROM activity_log WHERE action = 'message.guest' AND entity = 'thread' AND entity_id = ? AND created_at > (NOW() - INTERVAL 1 HOUR)");
+            $q->execute([(string) $threadId]);
+            if ((int) $q->fetchColumn() > 20) {
+                return;
+            }
+        } catch (\Throwable $e) {
+        }
+    }
     try {
         require_once __DIR__ . '/mailer.php';
         if (function_exists('send_owner')) {
@@ -321,7 +333,9 @@ if ($isAdmin && empty($in['token'])) {
                 if (empty($res['ok'])) {
                     json_out(['error' => $res['error'] ?? 'The arrival email failed to send.'], 500);
                 }
-                $note = "📋 I've emailed your arrival information — check-in details, directions and your door code.";
+                // The email never carries the code; it appears on their booking
+                // page inside its reveal window, so the note must not promise it.
+                $note = "📋 I've emailed your arrival information — check-in details and directions. Your entry details will be on your booking page.";
                 log_activity('comms', 'email.arrival', 'Arrival info emailed from chat — ' . ($b['name'] ?? ''), [
                     'prop_key' => $b['prop_key'] ?? '',
                     'entity' => 'booking',
@@ -565,6 +579,9 @@ if ($guestId) {
             // its replay path could double-post a guest's message on an ambiguous
             // timeout since the day it was built.
             $opTok = op_claim($in);
+            // An account costs nothing to make, and each message emails and pushes
+            // the owner: a lively chat stays well inside 30 in ten minutes.
+            rate_limit_key('chat-send:g' . (int) $guestId, 30, 10);
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
             $att = chat_valid_attachment($in['attachment'] ?? '');
             if ($bodyTxt === '' && $att === '') {

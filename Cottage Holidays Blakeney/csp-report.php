@@ -70,8 +70,22 @@ try {
         DB_PASS,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 3],
     );
-    $fwd = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-    $ip = mb_substr($fwd !== '' ? trim(explode(',', $fwd)[0]) : ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 60);
+    // The connection's own address, as everywhere else in the app: the first
+    // X-Forwarded-For value is whatever the sender chose to write.
+    $ip = mb_substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 60);
+    // A CEILING THE SENDER CANNOT ROTATE AROUND. Anyone can POST a report for a
+    // made-up host, and each new host is a new de-dupe signature — so without a
+    // cap, a few thousand reports pushed the owner's real history out of the log.
+    // At most 10 an hour from one address, and 60 an hour in all.
+    $cap = $pdo->prepare(
+        "SELECT SUM(ip = ?) AS mine, COUNT(*) AS allr FROM activity_log
+          WHERE action = 'csp.violation' AND created_at > (NOW() - INTERVAL 1 HOUR)",
+    );
+    $cap->execute([$ip]);
+    $c = $cap->fetch(PDO::FETCH_ASSOC) ?: [];
+    if ((int) ($c['mine'] ?? 0) >= 10 || (int) ($c['allr'] ?? 0) >= 60) {
+        exit;
+    }
     // De-dupe on (directive, blocked HOST) — NOT on the IP, which was the bug.
     // A phone on mobile data rotates its IPv6 address every few minutes (RFC 4941
     // privacy extensions), so an IP-keyed signature never matched and the hourly

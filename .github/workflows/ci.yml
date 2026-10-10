@@ -181,7 +181,7 @@ jobs:
         run: php test-csp-report.php
 
       - name: Weekly backup encryption (opens with the real openssl binary)
-        working-directory: Cottage Holidays Blakeney
+        working-directory: "Cottage Holidays Blakeney"
         run: php test-backup-crypt.php
 
       - name: Web Push payload encryption (RFC 8291)
@@ -223,6 +223,10 @@ jobs:
       - name: Calendar sync — a bad feed must never empty the calendar
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php
+
+      - name: Session lock — a slow request no longer queues the rest (and every writer declares itself)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-session-lock.php
 
       - name: Waitlist — who gets told a space opened, and who must NOT
         working-directory: "Cottage Holidays Blakeney"

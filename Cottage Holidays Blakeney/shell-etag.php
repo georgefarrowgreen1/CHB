@@ -1,7 +1,8 @@
 <?php
 // ============================================================================
 //  shell-etag.php — the conditional-GET ending for the three SSR shell routes
-//  (home.php, cottage.php, experiences-page.php), stated ONCE.
+//  (home.php, cottage.php, experiences-page.php), stated ONCE. bootstrap.php
+//  uses shell_etag_matches() for its JSON too, which htaccess deflates alike.
 //
 //  WHY. All three emitted only `Content-Type: text/html` — no ETag, no
 //  Last-Modified, no Cache-Control — and none calls session_start(), so PHP

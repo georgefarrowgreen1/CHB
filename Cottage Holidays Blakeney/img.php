@@ -75,6 +75,11 @@ if (!$info) {
     $stream($path, $origType(), 86400);
 }
 [$srcW, $srcH, $type] = [$info[0], $info[1], $info[2]];
+// Never decode an image past the upload's own pixel budget (image-save.php): an
+// older file, or one placed by hand, is served as it is rather than resized.
+if ((int) $srcW * (int) $srcH > 40000000) {
+    $stream($path, $origType(), 86400);
+}
 
 $im = null;
 if ($type === IMAGETYPE_JPEG) {

@@ -10,7 +10,9 @@
 // ============================================================
 require_once __DIR__ . '/tide-data.php';
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: public, max-age=1800');
+// private: this response can carry the visitor's session cookie, which a shared
+// cache must never store and hand to someone else. The browser still caches it.
+header('Cache-Control: private, max-age=1800');
 
 // Public, and each cache miss spends paid credits: a per-visitor ceiling
 // (generous — a page asks once or twice) on top of the date clamp in tide-data.

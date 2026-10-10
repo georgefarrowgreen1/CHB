@@ -16,5 +16,7 @@
 require_once __DIR__ . '/weather-data.php';
 header('Content-Type: application/json; charset=utf-8');
 // Half an hour at the edge; weather-data.php caches for three hours behind it.
-header('Cache-Control: public, max-age=1800');
+// private: this response can carry the visitor's session cookie, which a shared
+// cache must never store and hand to someone else. The browser still caches it.
+header('Cache-Control: private, max-age=1800');
 echo json_encode(weather_daily($_GET['days'] ?? 5));

@@ -305,6 +305,52 @@ es_ok('a nested inner error key does not count', es_judge_call($tok("['ok' => tr
 // 'error' as a VALUE, not a key, must not count.
 es_ok("'error' as a value is not a key", es_judge_call($tok("['status' => 'error'], 200")) === null);
 
+// THE RESPONSE FUNCTION ITSELF, run for real. json_out used to refuse the WHOLE
+// response over one invalid UTF-8 byte (one bad email would turn a whole list
+// into an error), and it answered that error with the caller's 200. Driven in a
+// subprocess because json_out exits; the subprocess removes its own session file.
+echo "\n-- json_out: one bad byte never blanks the answer, and a real failure is a 500 --\n";
+$es_run = function ($payloadPhp) {
+    $code = '$_SERVER["SCRIPT_FILENAME"] = "probe.php"; require ' . var_export(__DIR__ . '/db.php', true) . ';'
+        . ' register_shutdown_function(function () { $f = session_save_path() . "/sess_" . session_id(); if (session_id() !== "" && is_file($f)) { @unlink($f); } });'
+        . ' json_out(' . $payloadPhp . ');';
+    return (string) shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($code) . ' 2>/dev/null');
+};
+$bad = json_decode($es_run('["rows" => ["fine", "cut mid-character \xC3", "also fine"], "n" => 3]'), true);
+es_ok('a bad byte in one row leaves every other row in the answer', is_array($bad) && ($bad['n'] ?? 0) === 3 && ($bad['rows'][2] ?? '') === 'also fine');
+es_ok('…and the bad byte itself becomes U+FFFD, not a refusal', is_array($bad) && ($bad['rows'][1] ?? '') === "cut mid-character \u{FFFD}" && !isset($bad['error']));
+$nan = json_decode($es_run('["total" => NAN]'), true);
+es_ok('a genuinely unencodable answer (NAN) still says so rather than sending garbage', is_array($nan) && ($nan['error'] ?? '') === 'Response encoding error');
+$jsrc = '';
+foreach (token_get_all((string) file_get_contents(__DIR__ . '/db.php')) as $t) {
+    $jsrc .= is_array($t) ? (in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true) ? '' : $t[1]) : $t;
+}
+es_ok('…and answers it with a 500, not the caller\'s 2xx', (bool) preg_match('/if \(\$json === false\) \{\s*http_response_code\(500\);/', $jsrc));
+
+// A CRASH FROM THE COMMAND LINE MUST FAIL THE RUN. db.php's exception handler
+// logs the error and stops the script — and from the command line PHP then exits
+// with status 0. Six test gates load db.php, so a crash partway through one of
+// them ended its checks early and still reported a pass.
+echo "\n-- an uncaught exception after db.php is loaded fails the command-line run --\n";
+// From a FILE: `php -r` never calls a user exception handler, so a probe run that
+// way passes whatever db.php does. The file lives in the system temp dir, never
+// beside the app.
+$probe = tempnam(sys_get_temp_dir(), 'es-crash-') . '.php';
+file_put_contents($probe, '<?php $_SERVER["SCRIPT_FILENAME"] = "probe.php"; require ' . var_export(__DIR__ . '/db.php', true) . ';'
+    . ' register_shutdown_function(function () { $f = session_save_path() . "/sess_" . session_id(); if (session_id() !== "" && is_file($f)) { @unlink($f); } });'
+    . ' echo "loaded\n"; throw new RuntimeException("es-probe-crash");');
+$proc = proc_open([PHP_BINARY, $probe], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+$out = stream_get_contents($pipes[1]);
+$err = stream_get_contents($pipes[2]);
+fclose($pipes[1]);
+fclose($pipes[2]);
+$rc = proc_close($proc);
+@unlink($probe);
+@unlink(substr($probe, 0, -4));
+es_ok('the probe really loaded db.php before it crashed', strpos((string) $out, 'loaded') !== false);
+es_ok('the run exits non-zero', $rc !== 0);
+es_ok('…and says what crashed on stderr', strpos((string) $err, 'es-probe-crash') !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail ERROR-STATUS CHECK(S) FAILED \u{274C}\n";

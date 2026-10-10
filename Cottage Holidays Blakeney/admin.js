@@ -624,21 +624,15 @@ function chbSeasonCur(pk) {
 }
 // '' when the undo may proceed, else the sentence — every row this apply
 // added must still stand, or the neighbourhood changed since (refuse).
+// An entry that added nothing (the old whole-list shape too) is refused: it could
+// only put rows of someone else's choosing into the prices.
 function chbSeasonUndoStale(pl) {
+    if (!pl || !Array.isArray(pl.added) || !pl.added.length) return 'that has changed since';
     const cur = chbSeasonCur(pl.pk);
-    if (Array.isArray(pl.added)) {
-        return pl.added.every((a) => cur.some((c) => chbSeasonRowEq(c, a))) ? '' : 'that has changed since';
-    }
-    // A LEGACY snapshot entry: safe only when NOTHING changed since —
-    // current must equal the splice of its own snapshot.
-    const want = chbSeasonSplice((pl.prev || []).map((x) => ({ label: x.label || '', start: x.start, end: x.end, rate: x.rate })), { label: '', start: pl.mine.start, end: pl.mine.end, rate: pl.mine.rate });
-    if (cur.length !== want.length || !want.every((w) => cur.some((c) => chbSeasonRowEq(c, w)))) return 'that has changed since';
-    return '';
+    return pl.added.every((a) => cur.some((c) => chbSeasonRowEq(c, a))) ? '' : 'that has changed since';
 }
-// The list the undo saves: current minus the added rows, plus the removed
-// originals (legacy shape: the checked-safe snapshot itself).
+// The list the undo saves: current minus the added rows, plus the removed originals.
 function chbSeasonUndoList(pl) {
-    if (!Array.isArray(pl.added)) return pl.prev;
     const cur = chbSeasonCur(pl.pk).filter((c) => !pl.added.some((a) => chbSeasonRowEq(c, a)));
     return cur.concat(pl.removed || []).sort((a, z) => String(a.start).localeCompare(String(z.start)));
 }
@@ -13219,7 +13213,9 @@ function renderSecurity() {
 async function oaTwoStep(on) {
     let res;
     try {
-        res = await apiPost('auth.php', { action: 'admin_twofa_set', on: !!on });
+        // Turning it OFF asks for a fresh proof first (the server decides).
+        res = await chbWithReauth('turning off two-step sign-in', () =>
+            apiPost('auth.php', { action: 'admin_twofa_set', on: !!on }), 'nothing was changed');
     } catch (e) {
         // Put the switch back to the truth and say why.
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById('admin-2fa-toggle'));
@@ -13363,10 +13359,16 @@ async function oaMeEmail() {
         if (!v) return;
         f.value = String(v.email || '').trim().toLowerCase();
         try {
-            const res = await apiPost('auth.php', { action: 'admin_email_begin', email: f.value });
+            // Where codes and reset links go: the server asks for a fresh proof first.
+            const res = await chbWithReauth('changing the email you sign in with', () =>
+                apiPost('auth.php', { action: 'admin_email_begin', email: f.value }), 'nothing was changed');
             to = res.to || f.value;
             break;
         } catch (e) {
+            if (e && e.code === 'reauth_cancelled') {
+                toast(e.message);
+                return;
+            }
             msg = e.message || 'That didn’t send. Try again.';
         }
     }
@@ -19727,13 +19729,19 @@ function afterPaymentChange(bookingId) {
     if (fresh && loc) showDetails(loc.propKey, fresh);
 }
 
+// A cell starting like a formula (= + - @) is written as text: guest names reach
+// these exports, and a spreadsheet runs a formula even inside quotes.
+function chbCsvSafe(v) {
+    const s = String(v == null ? '' : v);
+    return /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? "'" + s : s;
+}
 function exportAccountsCSV() {
     if (!accountsReport) return;
     const startYear = accountsReport.year;
     const payments = (accountsReport.payments || [])
         .slice()
         .sort((a, b) => (a.payment_date || '').localeCompare(b.payment_date || ''));
-    const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const esc = (v) => `"${chbCsvSafe(v).replace(/"/g, '""')}"`;
     let csv =
         'Date,Booking Ref,Guest,Property,Method,Rental Income (GBP),Refundable Deposit (GBP),Received (GBP)\n';
     payments.forEach((r) => {
@@ -19955,7 +19963,9 @@ async function addAdminPasskey() {
         return;
     }
     try {
-        const begin = await apiPost('passkeys.php', { action: 'admin_register_begin' });
+        // A passkey signs in on its own, so adding one asks for a fresh proof.
+        const begin = await chbWithReauth('adding a passkey', () =>
+            apiPost('passkeys.php', { action: 'admin_register_begin' }), 'nothing was changed');
         const publicKey = prepCreateOptions(begin.options.publicKey || begin.options);
         const cred = await navigator.credentials.create({ publicKey });
         await apiPost('passkeys.php', {
@@ -20353,14 +20363,9 @@ async function logoutStaff() {
         await apiPost('auth.php', { action: 'admin_logout' });
     } catch (e) {}
     isAuthenticated = false;
-    // Same hygiene as forceAdminLogout: a signed-out device keeps neither the
-    // offline-boot hint, the day-sheet snapshot, nor an unconfirmed deposit
-    // decision (it names a guest and an amount).
-    try {
-        localStorage.removeItem('chb-was-admin');
-        localStorage.removeItem('chb-daysheet');
-        localStorage.removeItem('chb-dep-decisions');
-    } catch (e) {}
+    // Same hygiene as forceAdminLogout, from the one list (app.js): the boot hint,
+    // the day-sheet snapshot, unconfirmed deposit decisions and unsent drafts.
+    chbOwnerDeviceForget();
     // …and the at-rest key + mirrors go too: a fresh sign-in mints a fresh key.
     __chbSnapCache = null;
     __odsDepCache = [];
@@ -23812,17 +23817,21 @@ function chbFrameSync() {
     } catch (e) {}
     // ONE derivation per sync: the day sentence (its tuple walk carries the
     // owed figure the rail's Payments count needs) and the duty list, each
-    // computed once and passed down.
+    // computed once and passed down — and only while the rail is ON SCREEN (not
+    // on a phone). chbRailEnsure still runs: its width listeners re-sync on show.
+    const railShown = owner && document.body.classList.contains('rail-on');
     let duties = [];
     let day = null;
-    if (owner) {
+    if (railShown) {
         try { duties = chbDuties(); } catch (e) {}
         try { day = chbDaySentence(); } catch (e) {}
     }
     try {
         chbRailEnsure();
-        chbRailSync(duties, day ? day.shape.owed : 0);
-        chbRailPlaceInd();
+        if (railShown) {
+            chbRailSync(duties, day ? day.shape.owed : 0);
+            chbRailPlaceInd();
+        }
     } catch (e) {}
     // Today's head follows the rail band (the greeting joins the ops line
     // there) — re-render it when we're on it; its own changed-guard makes
@@ -25416,7 +25425,18 @@ async function odsRetry() {
     }
 }
 let __odsPatienceUsed = false; // the boot's patience window — armed once per page
-async function initBackOffice() {
+// Calls in ONE TASK share a run (nav() inits, then its caller did again on the
+// next line: two loads per trip to Today). A later refresh always loads afresh.
+let __boInit = null;
+let __boInitTurn = false;
+function initBackOffice() {
+    if (__boInit && __boInitTurn) return __boInit;
+    __boInitTurn = true;
+    setTimeout(() => { __boInitTurn = false; }, 0);
+    __boInit = initBackOfficeRun();
+    return __boInit;
+}
+async function initBackOfficeRun() {
     // Unlock the encrypted phone-side stores BEFORE anything reads them — the
     // day sheet and the deposit sweep both render from the decrypted mirrors.
     try {
@@ -25643,12 +25663,16 @@ async function autoSyncIcalBlocks(force = false) {
     if (btn) btn.classList.add('syncing');
     renderCalUpdated();
     try {
-        await apiPost('ical-import.php', { action: 'sync' });
+        const res = await apiPost('ical-import.php', { action: 'sync' });
         try {
             localStorage.setItem(ICAL_LAST_SYNC_KEY, String(Date.now()));
         } catch (e) {}
-        await loadData();
-        renderCalendar();
+        // Reload only for news (or while a feed is in trouble: its warning
+        // lives in what loadData brings).
+        if (icalSyncChanged(res) || chbFeedTrouble().length) {
+            await loadData();
+            renderCalendar();
+        }
     } catch (e) {
         // Non-fatal: a feed being unreachable shouldn't disturb the back office.
     } finally {
@@ -25658,6 +25682,13 @@ async function autoSyncIcalBlocks(force = false) {
     }
 }
 
+// "No change" only when EVERY feed worked and says unchanged; a failure, an
+// older server's answer (no flag) or a malformed one all reload, as before.
+function icalSyncChanged(res) {
+    const all = res && res.result && typeof res.result === 'object' ? Object.values(res.result) : null;
+    if (!all) return true;
+    return !all.every((rows) => Array.isArray(rows) && rows.every((r) => r && r.ok === true && r.changed === false));
+}
 // Human-friendly "x minutes ago" / date for the calendar's last-updated line.
 function formatRelativeTime(ts) {
     const diff = Date.now() - ts;
@@ -27055,7 +27086,7 @@ function exportAnalyticsCsv() {
         return;
     }
     const q = (v) => {
-        const s = String(v ?? '');
+        const s = chbCsvSafe(v);
         return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const rows = [
@@ -35191,7 +35222,8 @@ async function chbReauthPrompt(what) {
 }
 // Run fn; if the server asks for a fresh confirmation, get one and run it ONCE
 // more. Any other failure is the caller's to handle, exactly as before.
-async function chbWithReauth(what, fn) {
+// `notDone` ends the not-confirmed sentence ("nothing was refunded" by default).
+async function chbWithReauth(what, fn, notDone) {
     try {
         return await fn();
     } catch (e) {
@@ -35199,7 +35231,7 @@ async function chbWithReauth(what, fn) {
         if (!(await chbReauthPrompt(what))) {
             // Not confirmed = not done. Said plainly, because the money did NOT
             // move and the owner must not be left thinking it did.
-            throw Object.assign(new Error('Not confirmed — nothing was refunded.'), { code: 'reauth_cancelled' });
+            throw Object.assign(new Error('Not confirmed — ' + (notDone || 'nothing was refunded') + '.'), { code: 'reauth_cancelled' });
         }
         return await fn();
     }
@@ -36555,21 +36587,13 @@ async function refreshModerationCounts() {
             b.style.display = n > 0 ? '' : 'none';
         }
     };
-    let rev = 0,
-        ph = 0,
-        exp = 0;
-    try {
-        const r = await apiPost('reviews.php', { action: 'list_admin' });
-        rev = (r.reviews || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
-    try {
-        const r = await apiPost('photos.php', { action: 'list_admin' });
-        ph = (r.photos || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
-    try {
-        const r = await apiPost('experiences.php', { action: 'list_admin' });
-        exp = (r.experiences || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
+    // All three at once — they are independent.
+    const pending = (file, key) =>
+        apiPost(file, { action: 'list_admin' }).then(
+            (r) => ((r && r[key]) || []).filter((x) => x.status === 'pending').length,
+            () => 0,
+        );
+    const [rev, ph, exp] = await Promise.all([pending('reviews.php', 'reviews'), pending('photos.php', 'photos'), pending('experiences.php', 'experiences')]);
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
     setBadge('exp-pending-badge', exp);

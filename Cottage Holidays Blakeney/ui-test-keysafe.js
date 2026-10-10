@@ -215,8 +215,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { await openBookings(); renderNeedsYou(); });
   await page.waitForTimeout(600);
   ok(await page.evaluate(() => /Rotate 21A/.test((document.getElementById('needs-you-list') || {}).textContent || '')), 'and it renders on Today’s strip');
-  // Confirmed for Marcus → the duty stands down (never nags a done job).
-  await page.evaluate(() => { __keysafe['21a'] = Object.assign({}, __keysafe['21a'], { code: '4826', forBooking: 2 }); });
+  // Confirmed for Marcus → the duty stands down (never nags a done job). The SERVER says
+  // so too: openBookings reloads the mirror, and a reload still in flight that lands after
+  // the local change put Hannah's code back (a loaded runner, once in a gauntlet).
+  SAFE = Object.assign({}, SAFE, { code: '4826', forBooking: 2 });
+  await page.evaluate(async () => { if (__keysafeLoading) await __keysafeLoading; __keysafe['21a'] = Object.assign({}, __keysafe['21a'], { code: '4826', forBooking: 2 }); });
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 0, 'once the safe is set for him, the duty is gone');
   // …and no mirror means NO duty — never a duty from ignorance.
   ok(await page.evaluate(() => { const keep = __keysafe; __keysafe = null; const n = chbDuties().filter((x) => x.kind === 'keysafe').length; __keysafe = keep; return n; }) === 0, 'an unloaded mirror mints no duty');

@@ -205,18 +205,19 @@ try {
 } catch (\Throwable $e) {
 }
 
-// ---- 3. Active cottages missing slug/accent --------------------------------
+// ---- 3. Active cottages missing slug/accent (or carrying a bad colour) --------
 // Pre-migration rows (or hand-inserted ones) without a slug break /cottages/<slug>
 // SEO pages; without an accent the UI falls back to grey. Regenerate with the
 // exact helpers the owner's "Add accommodation" flow uses.
 try {
     $s = db()->query(
         "SELECT prop_key, name, slug, accent FROM properties
-          WHERE archived_at IS NULL AND (slug IS NULL OR slug = '' OR accent IS NULL OR accent = '')",
+          WHERE archived_at IS NULL AND (slug IS NULL OR slug = '' OR accent IS NULL OR accent NOT REGEXP '^#[0-9A-Fa-f]{6}$')",
     );
     foreach ($s->fetchAll() as $p) {
         $slug = $p['slug'] !== null && $p['slug'] !== '' ? $p['slug'] : unique_prop_slug($p['name'] ?: $p['prop_key'], $p['prop_key']);
-        $accent = $p['accent'] !== null && $p['accent'] !== '' ? $p['accent'] : next_prop_accent();
+        // A colour that is not #RRGGBB is replaced as well as a missing one (prop_accent_ok).
+        $accent = prop_accent_ok($p['accent']) ? $p['accent'] : next_prop_accent();
         db()
             ->prepare('UPDATE properties SET slug = ?, accent = ? WHERE prop_key = ?')
             ->execute([$slug, $accent, $p['prop_key']]);
@@ -471,6 +472,18 @@ try {
     if ($n) {
         $fixed[] = 'seasons:' . $n;
         log_activity('rates', 'selfrepair.seasons', 'Self-repair: cleared ' . $n . ' seasonal rate' . ($n === 1 ? '' : 's') . ' that ended over a year ago', ['actor' => $actor, 'entity' => 'selfrepair']);
+    }
+} catch (\Throwable $e) {
+}
+
+// ---- 4d-ii. The session folder -----------------------------------------------
+// Empty session files a day old and any past the session lifetime (the rule and
+// why nothing else clears this folder: session-lib.php). Only the app's own
+// folder — never the host's default session path, which may not be ours alone.
+try {
+    $sx = session_files_prune(__DIR__ . '/sessions', time());
+    if ($sx['empty'] + $sx['expired'] > 0) {
+        $fixed[] = 'sessions:' . ($sx['empty'] + $sx['expired']);
     }
 } catch (\Throwable $e) {
 }

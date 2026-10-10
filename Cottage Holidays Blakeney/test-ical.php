@@ -209,6 +209,37 @@ $imp = file_get_contents(__DIR__ . '/ical-import.php');
 ick('the sync stores kind + label through ical_classify', strpos($imp, "ical_classify(\$e['summary']") !== false && strpos($imp, 'kind, label) VALUES') !== false);
 ick('…guarded by a column probe, so an un-migrated install still syncs', strpos($imp, 'ical_has_kind()') !== false && strpos($imp, 'SHOW COLUMNS FROM ical_blocks LIKE') !== false);
 
+
+// ---- 6. AN UNCHANGED CALENDAR IS NOT REWRITTEN (ical_block_sig) -------------
+// The sync compares what the feed would write with what is stored and leaves an
+// unchanged source alone (and tells the back office not to reload). Two ways that
+// goes wrong, both expensive: a real change read as "same" leaves a stale block
+// (or a freed night still blocked), and "same" read as a change is the old cost.
+echo "\n6. an unchanged calendar is left alone\n";
+$A = ['check_in' => '2026-10-10', 'check_out' => '2026-10-14', 'uid' => 'a1', 'kind' => 'booking', 'label' => 'Reserved'];
+$B = ['check_in' => '2026-10-20', 'check_out' => '2026-10-24', 'uid' => 'a2', 'kind' => 'blocked', 'label' => 'Airbnb (Not available)'];
+$same = fn($x, $y) => ical_block_sig($x) === ical_block_sig($y);
+ick('the same stays in another order are the same calendar', $same([$A, $B], [$B, $A]));
+ick('a moved check-out is a change', !$same([$A, $B], [['check_out' => '2026-10-15'] + $A, $B]));
+ick('a new stay is a change', !$same([$A], [$A, $B]));
+ick('a cancelled stay is a change (it frees nights)', !$same([$A, $B], [$A]));
+ick('two identical blocks are not one', !$same([$A, $A], [$A]));
+ick('a relabelled block is a change (the owner sees the label)', !$same([$A], [['label' => 'Reserved - 2 guests'] + $A]));
+ick('…and a re-classified one (booking ↔ blocked)', !$same([$A], [['kind' => 'blocked'] + $A]));
+ick('a stored NULL label or uid reads as the empty one the feed writes', $same([['label' => null, 'uid' => null] + $A], [['label' => '', 'uid' => ''] + $A]));
+ick('an empty feed against an empty table is unchanged', $same([], []));
+ick('the column order a SELECT returns does not matter',
+    $same([['uid' => 'a1', 'label' => 'Reserved', 'check_out' => '2026-10-14', 'kind' => 'booking', 'check_in' => '2026-10-10']], [$A]));
+// THE WIRING: the comparison has to sit BEFORE the rewrite, and an unreadable
+// snapshot has to count as a change (rewrite) rather than as "same" (skip).
+$imp = file_get_contents(__DIR__ . '/ical-import.php');
+$cmpAt = strpos($imp, 'ical_block_sig($oldRows) === ical_block_sig($newRows)');
+$delAt = strpos($imp, "DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?");
+ick('the sync compares before it deletes', $cmpAt !== false && $delAt !== false && $cmpAt < $delAt);
+ick('…an unreadable snapshot is never taken as "unchanged"', strpos($imp, '$oldRows !== null && ical_block_sig(') !== false);
+ick('…and every source says whether it changed', strpos($imp, "'changed' => false]") !== false && strpos($imp, "'changed' => true]") !== false);
+ick('…the rows written are the rows compared', strpos($imp, 'foreach ($newRows as $nr)') !== false);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED \xE2\x9D\x8C\n\n";

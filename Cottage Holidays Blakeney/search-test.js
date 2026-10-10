@@ -2592,7 +2592,7 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         check('a caller with NO descriptor stays session-only', vm.runInContext('__undoSaved', ctx) === null);
         // Rehydrated from storage with nothing in memory — the whole point.
         vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = [{ id:'u1', kind:'seasons', label:'£148/night on Jollyboat', at: Date.now() - 2*864e5,
-            payload:{ pk:'jollyboat', prev:[], mine:{ start:'${dFut(30)}', end:'${dFut(33)}', rate:148 } } }];`, ctx);
+            payload:{ pk:'jollyboat', added:[{ label:'Gap offer', start:'${dFut(30)}', end:'${dFut(33)}', rate:148 }], removed:[], mine:{ start:'${dFut(30)}', end:'${dFut(33)}', rate:148 } } }];`, ctx);
         const listed = ctx.chbUndoList();
         check('yesterday\'s change is still offered with nothing in memory', listed.length === 1 && listed[0].durable === true, listed.length);
         check('and the undo command finds it rather than saying "nothing to undo"', /Undo — £148/.test(((ctx.cmdkIntent('undo') || [])[0] || {}).label || ''), ((ctx.cmdkIntent('undo') || [])[0] || {}).label);
@@ -2606,6 +2606,18 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         let threw2 = '';
         try { await ctx.chbUndoList()[0].run(); } catch (e) { threw2 = e.message; }
         check('and goes ahead when its change is still there', threw2 === '', threw2);
+        // A PLANTED entry: one that added nothing (or the old whole-list shape) could only
+        // put rows of someone else's choosing into the prices, so it is refused.
+        vm.runInContext(`propertySeasons.jollyboat = [{label:'Summer',start_date:'${dFut(10)}',end_date:'${dFut(30)}',couple_rate:100}]; __undoSaved = null;`, ctx);
+        for (const [what, payload] of [
+            ['an entry that added nothing', `{ pk:'jollyboat', added:[], removed:[{ label:'Planted', start:'${dFut(10)}', end:'${dFut(30)}', rate:1 }] }`],
+            ['the old whole-list shape', `{ pk:'jollyboat', prev:[{ label:'Planted', start:'${dFut(10)}', end:'${dFut(30)}', rate:1 }], mine:{ start:'${dFut(10)}', end:'${dFut(30)}', rate:100 } }`],
+        ]) {
+            vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = [{ id:'up', kind:'seasons', label:'Looks harmless', at: Date.now(), payload: ${payload} }];`, ctx);
+            let why = '';
+            try { await ctx.chbUndoList()[0].run(); } catch (e) { why = e.message; }
+            check(`${what} is REFUSED — nothing is put into the prices`, /changed since/.test(why) && vm.runInContext('propertySeasons.jollyboat.length === 1 && +propertySeasons.jollyboat[0].couple_rate === 100', ctx), why || '(it went ahead)');
+        }
         // Expiry: nothing older than the window is offered.
         vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = [{ id:'u9', kind:'seasons', label:'Ancient', at: Date.now() - 90*864e5, payload:{ pk:'jollyboat', prev:[], mine:{} } }];`, ctx);
         check('a change from three months ago is not offered', ctx.chbUndoList().length === 0);

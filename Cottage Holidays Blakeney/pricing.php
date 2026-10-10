@@ -701,8 +701,11 @@ function booking_instalment_offer($b, $today = null)
         return null;
     }
     $maxN = $ownerSay !== null ? min((int) $ownerSay, AUTOPAY_INSTALMENTS_MAX) : AUTOPAY_INSTALMENTS_MAX;
+    // In whole pence: ceil() of a float that floating point left a hair above a
+    // whole penny (1.10 / 2 * 100 = 55.000000000000007) added a penny.
+    $restP = (int) round($rest * 100);
     for ($n = $maxN; $n >= 2; $n--) {
-        $per = ceil(($rest / $n) * 100) / 100;
+        $per = (int) ceil($restP / $n) / 100;
         $dates = booking_instalment_schedule($due, $n);
         $first = $dates[0];
         if ($per < AUTOPAY_INSTALMENT_MIN) {

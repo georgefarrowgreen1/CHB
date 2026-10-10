@@ -30,9 +30,10 @@ try {
                 DB_PASS,
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 3],
             );
-            // The forwarding proxy (IONOS) puts the real client IP in X-Forwarded-For.
-            $fwd = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-            $ip = $fwd !== '' ? trim(explode(',', $fwd)[0]) : ($_SERVER['REMOTE_ADDR'] ?? '');
+            // The connection's own address, as everywhere else in the app: an
+            // X-Forwarded-For value is whatever the sender chose to write, so
+            // de-duping on it let one scanner log a fresh row per request.
+            $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             $meta = json_encode([
                 'uri' => mb_substr((string) ($_SERVER['REQUEST_URI'] ?? ''), 0, 300),
                 'ua' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 160),
@@ -44,7 +45,9 @@ try {
                 "SELECT 1 FROM activity_log WHERE action = 'request.blocked' AND ip = ? AND created_at > (NOW() - INTERVAL 1 HOUR) LIMIT 1",
             );
             $recent->execute([$ip]);
-            if (!$recent->fetchColumn()) {
+            // …and at most 30 an hour in all, however many addresses send them.
+            $all = (int) $pdo->query("SELECT COUNT(*) FROM activity_log WHERE action = 'request.blocked' AND created_at > (NOW() - INTERVAL 1 HOUR)")->fetchColumn();
+            if (!$recent->fetchColumn() && $all < 30) {
                 $pdo->prepare(
                     "INSERT INTO activity_log (actor, category, action, summary, ip, meta, severity)
                      VALUES ('system', 'security', 'request.blocked', 'Blocked a suspicious request (possible injection attempt)', ?, ?, 'warn')",
