@@ -1447,7 +1447,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const cells = pb.querySelectorAll('.pr-grid .pr-day');
     const cots = pb.querySelectorAll('.pr-cots button').length;
     // The price on the calendar IS the booking quote's price for that night.
-    const free = sgIsoAdd(t, 20);
+    // A WEEKDAY (Mon–Thu): the Saturday below must out-price it, and a fixed
+    // t+20 lands on a Friday (a weekend day here) whenever today is a Saturday.
+    let free = sgIsoAdd(t, 20);
+    while (![1, 2, 3, 4].includes(new Date(free + 'T12:00:00Z').getUTCDay())) free = sgIsoAdd(free, 1);
     const cell = [...pb.querySelectorAll('.pr-grid button.pr-day')].find((b) => b.getAttribute('data-args') && b.getAttribute('data-args').includes(free));
     const shown = cell ? +(/£(\d+)/.exec(cell.textContent) || [0, 0])[1] : -1;
     const quoted = Math.round(priceBreakdown(pk, 2, 0, free, sgIsoAdd(free, 1)).nightly);
