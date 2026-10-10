@@ -5844,7 +5844,7 @@ it_check('§81 the away reply is written as automatic, by nobody', $auto81 && $a
 $r = http($visB81, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tokB81, 'team' => 1]);
 $lastB81 = end($r['json']['messages']) ?: [];
 it_check('§81 …the guest is told so', ($lastB81['kind'] ?? '') === 'auto' && (int) ($lastB81['by'] ?? -1) === 0, json_encode($lastB81));
-it_check('§81 …and the chat says when someone is back', ($r['json']['away']['on'] ?? null) === true && (int) ($r['json']['away']['until'] ?? -1) === (int) $to81, json_encode($r['json']['away'] ?? null));
+it_check('§81 …and the chat says when someone is back: the hour they start, not the hour they stop', ($r['json']['away']['on'] ?? null) === true && (int) ($r['json']['away']['until'] ?? -1) === (int) $from81, json_encode($r['json']['away'] ?? null));
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('chat-away-enabled', 'chat-away-from', 'chat-away-to')");
 // A note the chat posts when it emails a pay link or the arrival details is an EVENT
 // signed by whoever sent it (mail is off here, so the send itself cannot be driven).
