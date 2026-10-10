@@ -3505,7 +3505,7 @@ it_check('§53 before any statement: the tables exist and nothing is switched on
 // identical import a moment later read all four — this pair says whether the
 // refusal is what poisons the next read.
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
-it_check('§53 the preview reads the file (before any refusal)', $r['code'] === 200 && (($r['json']['summary']['adding'] ?? 0) === 4), 'code=' . $r['code'] . ' ' . $r['raw'] . ' php=' . PHP_VERSION);
+it_check('§53 the preview reads the file (before any refusal)', $r['code'] === 200 && (($r['json']['summary']['adding'] ?? 0) === 4), 'cols=' . json_encode($r['json']['read']['cols'] ?? null) . ' code=' . $r['code'] . ' php=' . PHP_VERSION);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => '%PDF-1.4 …', 'filename' => 'statement.pdf']);
 it_check('§53 a PDF is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'pick CSV') !== false, $r['raw']);
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $stA, 'filename' => 'monzo.csv']);
