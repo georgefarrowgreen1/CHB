@@ -1778,14 +1778,26 @@ function is_internal_content_key($key)
 // pre-filter), so private keys are still decrypted per read exactly as before.
 // A key ABSENT from the table memoises as false — the same thing fetchColumn()
 // returns — so a miss is answered from memory too rather than re-querying.
-function content_memo_warm(array $raw): void
+function content_memo_warm(array $raw, array $skipKeys = [], array $skipPrefixes = []): void
 {
     $GLOBALS['__content_all'] = $raw;
+    $GLOBALS['__content_skip'] = [array_flip($skipKeys), $skipPrefixes];
 }
 function content_memo_get(string $key)
 {
     if (!isset($GLOBALS['__content_all']) || !is_array($GLOBALS['__content_all'])) {
         return null; // not warmed — the caller falls back to its own SELECT
+    }
+    // A key the warming read left in the database (a visitor's leaves the operational
+    // caches there) is asked for by itself: the memo cannot say it is "not set".
+    [$skipKeys, $skipPrefixes] = $GLOBALS['__content_skip'] ?? [[], []];
+    if (isset($skipKeys[$key])) {
+        return null;
+    }
+    foreach ($skipPrefixes as $p) {
+        if (strpos($key, $p) === 0) {
+            return null;
+        }
     }
     return array_key_exists($key, $GLOBALS['__content_all']) ? $GLOBALS['__content_all'][$key] : false;
 }

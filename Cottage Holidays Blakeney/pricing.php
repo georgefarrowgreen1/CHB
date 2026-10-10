@@ -379,6 +379,14 @@ function booking_payment_kind($b, $requested = null)
 // (content key 'square-deposit-pct'); defaults to 25%.
 function square_deposit_pct()
 {
+    // Read once a request: the back office's booking list asked for it per booking
+    // with a plan (two round trips each), and it is written only by content.php's
+    // own request, so it cannot change under this one.
+    static $pct = null;
+    if ($pct !== null) {
+        return $pct;
+    }
+    $pct = 25.0;
     try {
         $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
         $s->execute(['square-deposit-pct']);
@@ -386,12 +394,14 @@ function square_deposit_pct()
         if ($r) {
             $v = (float) json_decode($r['item_value'], true);
             if ($v > 0 && $v <= 100) {
-                return $v;
+                $pct = $v;
             }
         }
     } catch (\Throwable $e) {
+        $pct = null; // a database that did not answer is asked again next time
+        return 25.0;
     }
-    return 25.0;
+    return $pct;
 }
 // THE deposit figure for one booking, given its rental total. The per-booking
 // plan wins: a fixed £ override first (capped at the total — a deposit larger

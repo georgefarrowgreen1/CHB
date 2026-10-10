@@ -1205,6 +1205,39 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
 
   Twenty changes break-tested, each failing its own named check.
 
+## What every visitor's poll and every platform's fetch cost (round 6, server performance)
+
+- **A VISITOR'S CONTENT READ LEAVES THE OPERATIONAL CACHES IN THE DATABASE.** The public content GET runs on every
+  visitor's 30-second poll. It read every value in the table and threw the internal ones away, including the payout
+  cache, the mailbox's handled list, the opt-out list, the Inbox's record and the retired chat's stored words.
+  - **The read is still ONE query.** It leaves out `CONTENT_VISITOR_SKIP` (exact keys) and
+    `CONTENT_VISITOR_SKIP_PREFIX` (the private families) by name. The owner's read is unchanged.
+  - **A names-first version was built and rejected, measured.** It cost the public bootstrap a ninth statement
+    against §24's ratchet of eight.
+  - **The memo knows what the read left behind**
+    (`content_memo_warm($raw, $skipKeys, $skipPrefixes)`). A later read of a skipped key in the same request (the
+    cron watchdog's, straight after the payload) asks for itself rather than reading "not set". Without that, the
+    watchdog would have seen its own stamp as missing.
+  - **Every listed name must be one the public filter drops anyway**, so the output cannot change. test-integration
+    §72 asserts it for each key and prefix. A missing internal key is merely fetched and dropped, as before; a
+    public key on the list fails the gate.
+- **THE PLATFORMS' CALENDAR FEED CARRIES WHAT IS AHEAD, AND ANSWERS 304 WHEN NOTHING CHANGED** (`ical-export.php`).
+  - Each platform polls it many times a day. It carried every stay since the first, so it now leaves out stays
+    and owner blocks that ended more than 30 days ago; a platform only blocks what is ahead.
+  - A fresh `DTSTAMP` every second made each answer new. The ETag is now taken over the body with the DTSTAMP
+    lines removed, and compared with `shell_etag_matches`, the deflate-tolerant comparison from the shell routes.
+  - §73 asserts the window, a 304 a second later, the `-gzip` form, a new tag after a change, and that a wrong
+    token is still refused.
+- **The site's deposit percentage is read once a request** (`square_deposit_pct`, a static). The back office's
+  booking list asked for it for every booking with a plan, two round trips each. A database that does not answer
+  is asked again, so one failure is not cached.
+- Gates: test-integration §72 and §73, and §24's statement count, still 8. Six changes break-tested, each failing
+  its own named check: the visitor query, the memo, the list check, the window, the DTSTAMP-free tag and the
+  deflate-tolerant comparison.
+- **Not done, said plainly**: each guest chat poll still reads the whole handled-mail list (`mailbox-poll`) to
+  check a 25-second throttle. The clean fix moves the stamp to its own key, a change to the mailbox's state that
+  wants testing against a real POP3 box.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

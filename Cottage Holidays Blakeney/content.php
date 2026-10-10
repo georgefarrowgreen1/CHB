@@ -8,6 +8,22 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
+// The operational caches and lists a VISITOR's read leaves in the database (see
+// content_public_payload). Every name and prefix here is one the public filter drops
+// anyway, so leaving it out cannot change what a visitor gets: integration §72 asserts
+// that of each, so a public key can never be listed by mistake. An internal key missing
+// from the list is merely fetched and dropped, as every key used to be.
+const CONTENT_VISITOR_SKIP = [
+    'square-payouts', 'square-bank', 'mailbox-seen', 'mailbox-new', 'mailbox-poll',
+    'email-optout', 'inbox-state', 'activity-seen', 'uptime-history', 'weather-cache',
+    'nlu-learned', 'nlu-suppressed', 'search-misses', 'search-undo', 'search-pins',
+    'search-watchers', 'search-canon', 'guest-faq-misses', 'mail-sent-days', 'notify-prefs',
+    'mac-chat', 'mac-chat-memory', 'mac-chat-imports', 'mac-chat-sum', 'night-shift',
+    'chat-handoff', 'email-templates', 'sweep-moved', 'sweep-landed', 'duty-dismissed',
+    'testcentre-staged', 'bank-statements', 'money-split', 'conflict-audit-state', 'self-repair-state',
+];
+const CONTENT_VISITOR_SKIP_PREFIX = ['welcome-', 'arrival-', 'ops-', 'keysafe-', 'ical-feeds-'];
+
 // The GET payload, as a function so bootstrap.php can serve the SAME data in
 // its combined first-paint response without duplicating this logic.
 function content_public_payload()
@@ -22,7 +38,20 @@ function content_public_payload()
     // no others (bank details, payout figures and the like stay full-access).
     $me = $isAdmin ? admin_me() : null;
     $limited = $me !== null && !people_is_full($me);
-    $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    // A VISITOR'S READ LEAVES THE OPERATIONAL CACHES IN THE DATABASE. The table also
+    // holds the payout cache, the mailbox's handled list, the opt-out list and the like:
+    // read on every visitor's 30-second poll and thrown away below. Still ONE query (the
+    // public bootstrap's statement count is a ratchet, test-integration §24), with those
+    // keys left out by name; the memo is told, so a later read of one in this request
+    // asks for itself rather than reading "not set".
+    if ($isAdmin) {
+        $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    } else {
+        $q = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key NOT IN (' . implode(',', array_fill(0, count(CONTENT_VISITOR_SKIP), '?')) . ')'
+            . str_repeat(' AND item_key NOT LIKE ?', count(CONTENT_VISITOR_SKIP_PREFIX)));
+        $q->execute(array_merge(CONTENT_VISITOR_SKIP, array_map(fn($p) => $p . '%', CONTENT_VISITOR_SKIP_PREFIX)));
+        $rows = $q->fetchAll();
+    }
     // Every other content read in this request can now be answered from memory —
     // this is the ONLY caller that warms the memo, which is what keeps it safe:
     // no write path ever populates it, so there is nothing to invalidate.
@@ -30,7 +59,7 @@ function content_public_payload()
     foreach ($rows as $r) {
         $raw[$r['item_key']] = $r['item_value'];
     }
-    content_memo_warm($raw);
+    content_memo_warm($raw, $isAdmin ? [] : CONTENT_VISITOR_SKIP, $isAdmin ? [] : CONTENT_VISITOR_SKIP_PREFIX);
     $out = [];
     foreach ($rows as $r) {
         $key = $r['item_key'];

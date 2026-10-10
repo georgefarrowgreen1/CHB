@@ -4808,6 +4808,54 @@ it_check('§71 deleting the expense puts the payment back to be sorted', $r['cod
 it_check('§71 …with nothing of the old sorting left (its cottage too, as the bank page\'s own undo)', $row71['prop_key'] === null, json_encode($row71));
 $rootDb->exec("DELETE FROM bank_lines WHERE id = $l71");
 
+// §72 A VISITOR'S CONTENT READ LEAVES THE OPERATIONAL CACHES IN THE DATABASE. The
+// public content GET (every visitor, every 30 seconds) read every value in the table —
+// the payout cache, the mailbox's handled list, the opt-out list — and threw them away.
+// It leaves them out by name now, in the same one query (§24 counts the statements), and
+// a later read of one in the same request (the cron watchdog's, straight after the
+// payload) still asks for it rather than reading "not set" from the memo.
+echo "\n== §72 a visitor's content read leaves the operational caches in the database ==\n";
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('mac-chat-sum', ?), ('welcome-it72', ?), ('it72-pub', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode('it72-internal'), json_encode('it72-private'), json_encode('it72-public')]);
+$c72 = $mailProbe('require_once __DIR__ . "/content.php"; $p = content_public_payload(); $all = $GLOBALS["__content_all"] ?? []; echo "\n" . json_encode(["pub" => $p["content"]["it72-pub"] ?? null, "leak" => array_key_exists("mac-chat-sum", $p["content"]) || array_key_exists("welcome-it72", $p["content"]), "fetched" => array_key_exists("mac-chat-sum", $all) || array_key_exists("welcome-it72", $all), "later" => content_value("mac-chat-sum"), "absent" => content_value("it72-nope"), "listed" => array_values(array_filter(CONTENT_VISITOR_SKIP, fn($k) => !is_internal_content_key($k) && !is_private_content_key($k))), "prefixed" => array_values(array_filter(CONTENT_VISITOR_SKIP_PREFIX, fn($x) => strpbrk($x, "%_") !== false || (!is_internal_content_key($x . "z") && !is_private_content_key($x . "z"))))]);');
+it_check('§72 a visitor still gets the public content, and no internal or private key', is_array($c72) && ($c72['pub'] ?? null) === 'it72-public' && ($c72['leak'] ?? true) === false, json_encode($c72));
+it_check('§72 …and the listed caches never leave the database', ($c72['fetched'] ?? true) === false, json_encode($c72));
+it_check('§72 …while a later read of one in the same request still finds it', ($c72['later'] ?? '') === 'it72-internal' && ($c72['absent'] ?? 'x') === '', json_encode($c72));
+it_check('§72 every key and prefix left out is one a visitor never gets (so the output cannot change)', ($c72['listed'] ?? null) === [] && ($c72['prefixed'] ?? null) === [], json_encode([$c72['listed'] ?? null, $c72['prefixed'] ?? null]));
+$a72 = $mailProbe('require_once __DIR__ . "/content.php"; $_SESSION["admin_id"] = ' . (int) $ownerId . '; $p = content_public_payload(); echo "\n" . json_encode(["fetched" => array_key_exists("mac-chat-sum", $GLOBALS["__content_all"] ?? []), "shown" => array_key_exists("mac-chat-sum", $p["content"])]);');
+it_check('§72 the owner\'s read is unchanged: the whole table, internal keys included', is_array($a72) && ($a72['fetched'] ?? false) === true && ($a72['shown'] ?? false) === true, json_encode($a72));
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('mac-chat-sum', 'welcome-it72', 'it72-pub')");
+
+// §73 THE PLATFORMS' CALENDAR FEED CARRIES WHAT IS AHEAD, AND SAYS WHEN NOTHING
+// CHANGED. Each platform polls it many times a day. It carried every stay since the
+// first, and a fresh DTSTAMP every second made each answer new. A stay that ended over
+// a month ago is left out (a platform only blocks what is ahead), and the tag is taken
+// over the events alone, so a feed whose stays have not changed answers 304.
+echo "\n== §73 the calendar feed: what is ahead, and a 304 when nothing changed ==\n";
+$tok73 = (string) (($mailProbe('echo "\n" . json_encode(["t" => ical_token(' . var_export($propKey, true) . ')]);') ?: [])['t'] ?? '');
+$day73 = fn($n) => (new DateTime($ukToday, new DateTimeZone('Europe/London')))->modify(($n < 0 ? '' : '+') . $n . ' days')->format('Y-m-d');
+$mk73 = function ($name, $in, $out) use ($rootDb, $propKey) {
+    $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey'," . $rootDb->quote($name) . ",'f73@example.com','$in','$out',2,0,'unpaid',0,400,400,0,3)");
+    return (int) $rootDb->lastInsertId();
+};
+$old73 = $mk73('Feed Old', $day73(-60), $day73(-55));
+$recent73 = $mk73('Feed Recent', $day73(-12), $day73(-8));
+$ahead73 = $mk73('Feed Ahead', $day73(50), $day73(53));
+$url73 = '/ical-export.php?prop=' . rawurlencode($propKey) . '&token=' . rawurlencode($tok73);
+$f73 = $shellGet($url73);
+$has73 = fn($id, $body) => strpos($body, 'UID:chb-' . $propKey . '-' . $id . '@') !== false;
+it_check('§73 the feed carries the stays ahead and the last month', $f73['code'] === 200 && $has73($ahead73, $f73['raw']) && $has73($recent73, $f73['raw']), 'code ' . $f73['code'] . ' ' . substr($f73['raw'], 0, 200));
+it_check('§73 …and not a stay that ended two months ago', !$has73($old73, $f73['raw']), substr($f73['raw'], 0, 400));
+sleep(1); // the next answer carries a different DTSTAMP
+$g73 = $shellGet($url73, $f73['etag']);
+it_check('§73 an unchanged feed answers 304, a second later (its DTSTAMP is not part of the tag)', $f73['etag'] !== '' && $g73['code'] === 304 && $g73['len'] === 0, "etag {$f73['etag']} code {$g73['code']} len {$g73['len']}");
+$z73 = $shellGet($url73, '"' . trim($f73['etag'], '"') . '-gzip"');
+it_check('§73 …the tag as Apache\'s compression rewrites it too', $z73['code'] === 304, "code {$z73['code']}");
+$rootDb->exec("UPDATE bookings SET check_out = DATE_ADD(check_out, INTERVAL 1 DAY) WHERE id = $ahead73");
+$m73 = $shellGet($url73, $f73['etag']);
+it_check('§73 a stay that changed sends the feed again, with a new tag', $m73['code'] === 200 && $m73['etag'] !== '' && $m73['etag'] !== $f73['etag'] && $has73($ahead73, $m73['raw']), "code {$m73['code']} etag {$m73['etag']}");
+it_check('§73 a wrong token still gets nothing', $shellGet('/ical-export.php?prop=' . rawurlencode($propKey) . '&token=nope')['code'] === 403);
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($old73, $recent73, $ahead73)");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
