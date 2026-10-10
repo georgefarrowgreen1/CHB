@@ -362,6 +362,9 @@ const PEOPLE_POLICY = [
         '' => 'all', 'threads' => 'all', 'thread' => 'all', 'unread' => 'all', 'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all',
         'typing' => 'gu.reply', 'send' => 'gu.reply', 'delete' => 'gu.reply', 'send_arrival' => 'gu.reply',
         'send_balance' => 'mo.ask',
+        // Who answers the guest chat: anyone may look; your own name and line are
+        // yours to change, anyone else's a Super User's (messages.php decides).
+        'team' => 'all', 'set_member' => 'all',
     ],
     'waitlist.php' => ['' => 'all', 'list' => 'all', 'notify' => 'gu.reply', 'delete' => 'gu.reply'],
     'photos.php' => ['list_admin' => 'all', 'approve' => 'gu.reviews', 'reject' => 'gu.reviews', 'delete' => 'gu.reviews'],

@@ -110,7 +110,7 @@ $REGISTRY = [
     // ---- Serve both roles ------------------------------------------------
     'experiences.php' => ['admin', [$GUEST]], // list: booked guests + owner only (viewer_has_booked), guest suggest, admin moderate
     'my-bookings.php' => ['guest', [$ADMIN]], // guest's own stays; admin path powers the account preview
-    'avatar.php' => ['guest', [$ADMIN]], // a guest's own profile photo; the owner reads it by ?email=
+    'avatar.php' => ['guest', [$ADMIN, 'chat_team_member_ok(']], // a guest's own profile photo; the owner reads it by ?email=; a back-office person's photo is public (?team=) only while they are shown in the guest chat
     'guest-checkout.php' => ['guest'], // the "we've left" tap — one guest-scoped write, its own door (my-bookings stays read-only)
     'photos.php' => ['admin', [$GUEST]],
     'push.php' => ['admin', [$GUEST, $CRON]],

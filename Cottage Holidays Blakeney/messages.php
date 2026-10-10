@@ -25,14 +25,39 @@ $action = $in['action'] ?? '';
 $isAdmin = !empty($_SESSION['admin_id']);
 $guestId = current_guest_id();
 
-function chat_msgs($threadId)
+// $forAdmin: the back office's copy, which names every author. A guest's copy names
+// only the people shown in the chat (chat_team_ids); anyone else's message is
+// signed with the crown, so a person switched off is never named by an old reply.
+function chat_msgs($threadId, $forAdmin = false)
 {
     // SELECT * so a pre-migration DB (no `attachment` column yet) still reads
     // fine — the key is simply absent and defaults to ''.
     $s = db()->prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC');
     $s->execute([$threadId]);
-    return array_map(
-        fn($r) => [
+    $rows = $s->fetchAll();
+    $shown = null;
+    $names = [];
+    $out = [];
+    foreach ($rows as $r) {
+        $by = (int) ($r['admin_id'] ?? 0);
+        if ($by > 0 && $r['sender_role'] === 'admin') {
+            if ($forAdmin) {
+                if (!array_key_exists($by, $names)) {
+                    $ar = function_exists('admin_row') ? admin_row($by) : null;
+                    $names[$by] = $ar ? people_first_name($ar) : '';
+                }
+            } else {
+                if ($shown === null) {
+                    $shown = chat_team_ids();
+                }
+                if (empty($shown[$by])) {
+                    $by = 0;
+                }
+            }
+        } else {
+            $by = 0;
+        }
+        $m = [
             'id' => (int) $r['id'],
             'role' => $r['sender_role'],
             'body' => $r['body'],
@@ -40,11 +65,22 @@ function chat_msgs($threadId)
             // Whether the guest has opened the thread since this was sent — drives
             // the owner-side read receipt on their own replies ('seen').
             'seen' => (int) $r['read_by_guest'] === 1,
+            // Whether someone in the back office has read a guest's message: the
+            // guest's "Seen" under their own latest message.
+            'read' => (int) $r['read_by_admin'] === 1,
             // Optional image attachment (path under uploads/), '' if none.
             'attachment' => $r['attachment'] ?? '',
-        ],
-        $s->fetchAll(),
-    );
+            // Who wrote an owner-side message (0: the crown) and what it is: '' typed,
+            // 'auto' the away reply, 'event' something emailed from the chat.
+            'by' => $by,
+            'kind' => (string) ($r['kind'] ?? ''),
+        ];
+        if ($forAdmin) {
+            $m['by_name'] = $by > 0 ? $names[$by] : '';
+        }
+        $out[] = $m;
+    }
+    return $out;
 }
 // Accept an attachment path only if it's one our uploader produced and the file
 // is really on disk — never trust a client-supplied path beyond that shape.
@@ -89,8 +125,20 @@ const CHAT_AWAY_DEFAULT = 'Thanks for your message — we’re not at the desk r
 // as needing a real reply.
 function chat_maybe_autoreply($tid)
 {
-    if ((int) $tid <= 0 || content_value('chat-away-enabled') !== '1') {
+    if ((int) $tid <= 0) {
         return;
+    }
+    // Optional office hours: if BOTH set, only auto-reply OUTSIDE [from, to)
+    // (handles a window that wraps past midnight). chat_away_at is the one rule:
+    // the chat's header reads it too, to say "Away until 7am".
+    $state = chat_away_at(
+        content_value('chat-away-enabled'),
+        content_value('chat-away-from'),
+        content_value('chat-away-to'),
+        (int) date('G'),
+    );
+    if ($state !== 'away' && $state !== 'always') {
+        return; // switched off, or within office hours: the owner's around
     }
     // An empty box sends the standard words. The switch is the owner's decision
     // to reply, and Manage → Guest chat shows these words as the reply; before
@@ -98,19 +146,6 @@ function chat_maybe_autoreply($tid)
     $msg = trim((string) content_value('chat-away-msg'));
     if ($msg === '') {
         $msg = CHAT_AWAY_DEFAULT;
-    }
-    // Optional office hours: if BOTH set, only auto-reply OUTSIDE [from, to)
-    // (handles a window that wraps past midnight).
-    $from = (string) content_value('chat-away-from');
-    $to = (string) content_value('chat-away-to');
-    if ($from !== '' && $to !== '') {
-        $h = (int) date('G');
-        $f = (int) $from;
-        $t = (int) $to;
-        $available = $f <= $t ? $h >= $f && $h < $t : $h >= $f || $h < $t;
-        if ($available) {
-            return; // within office hours → owner's around, no auto-reply
-        }
     }
     // Cool-down: skip if any admin message (a real reply OR a prior auto-reply)
     // landed in this thread in the last few hours.
@@ -126,11 +161,8 @@ function chat_maybe_autoreply($tid)
         return;
     }
     try {
-        db()
-            ->prepare(
-                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
-            )
-            ->execute([(int) $tid, mb_substr($msg, 0, 1000)]);
+        // Nobody wrote it: the guest's chat draws it as an automatic reply.
+        chat_insert_owner_message((int) $tid, mb_substr($msg, 0, 1000), 0, 'auto');
         db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([(int) $tid]);
     } catch (\Throwable $e) {
         return;
@@ -183,6 +215,33 @@ function chat_peer_typing($tid, $col)
     } catch (\Throwable $e) {
         return false;
     }
+}
+// Who in the back office is typing to this guest: their id while they are shown in
+// the chat ("Sophia is typing"), 0 for anyone else or no one. Only asked once the
+// guest's poll already knows someone is typing.
+function chat_typing_by($tid)
+{
+    try {
+        $q = db()->prepare('SELECT admin_typing_by FROM chat_threads WHERE id = ?');
+        $q->execute([(int) $tid]);
+        $by = (int) $q->fetchColumn();
+    } catch (\Throwable $e) {
+        return 0;
+    }
+    return $by > 0 && !empty(chat_team_ids()[$by]) ? $by : 0;
+}
+// What a guest's chat is told beside its messages: who is typing, and, when the page
+// asks (it does as the chat opens), who answers and whether they are away now.
+function chat_guest_payload($tid, array $in, array $out)
+{
+    $typing = $tid > 0 && chat_peer_typing($tid, 'admin_typing_at');
+    $out['peer_typing'] = $typing;
+    $out['typing_by'] = $typing ? chat_typing_by($tid) : 0;
+    if (!empty($in['team'])) {
+        $out['team'] = chat_team();
+        $out['away'] = chat_away_state();
+    }
+    return $out;
 }
 function chat_source($ref)
 {
@@ -327,14 +386,98 @@ if ($isAdmin && empty($in['token'])) {
             $tid = (int) ($in['thread_id'] ?? 0);
             if ($tid > 0) {
                 try {
+                    // Who is typing, so the guest reads "Sophia is typing".
                     db()
-                        ->prepare('UPDATE chat_threads SET admin_typing_at = NOW() WHERE id = ?')
-                        ->execute([$tid]);
+                        ->prepare('UPDATE chat_threads SET admin_typing_at = NOW(), admin_typing_by = ? WHERE id = ?')
+                        ->execute([(int) $_SESSION['admin_id'], $tid]);
                 } catch (\Throwable $e) {
-                    // typing columns not migrated yet — silently no-op
+                    try {
+                        db()
+                            ->prepare('UPDATE chat_threads SET admin_typing_at = NOW() WHERE id = ?')
+                            ->execute([$tid]);
+                    } catch (\Throwable $e2) {
+                        // typing columns not migrated yet — silently no-op
+                    }
                 }
             }
             json_out(['ok' => true]);
+        }
+        // Who answers the guest chat: everyone who may reply to guests, with their
+        // "Show me in the guest chat" switch and the line under their name, plus
+        // exactly what a guest is shown (the same composer the guest's chat reads).
+        if ($action === 'team' || $action === 'set_member') {
+            $me = admin_me();
+            if ($action === 'set_member') {
+                $id = (int) ($in['id'] ?? 0);
+                $target = $id > 0 ? admin_row($id, true) : null;
+                if (!$target || !empty($target['removed_at'])) {
+                    json_out(['error' => 'That person isn’t in the back office any more.'], 404);
+                }
+                // Your own row is yours; anyone else's is a Super User's.
+                if ($id !== (int) ($me['id'] ?? 0) && !people_is_full($me)) {
+                    json_out(['error' => people_refusal(admin_owner_first()), 'code' => 'not_allowed'], 403);
+                }
+                if (!array_key_exists('chat_show', $target)) {
+                    json_out(['error' => 'Run the migrations first (Manage → System check).'], 409);
+                }
+                $sets = [];
+                $vals = [];
+                if (array_key_exists('show', $in)) {
+                    $sets[] = 'chat_show = ?';
+                    $vals[] = !empty($in['show']) ? 1 : 0;
+                }
+                if (array_key_exists('line', $in)) {
+                    // One line of plain text: runs of space (a pasted newline among
+                    // them) become one, and other control characters go.
+                    $line = trim((string) preg_replace(['/\s+/u', '/[\x00-\x1F\x7F]/u'], [' ', ''], field_text($in['line'] ?? '')));
+                    if (mb_strlen($line) > 40) {
+                        json_out(['error' => 'Keep the line under the name to 40 characters.'], 400);
+                    }
+                    $sets[] = 'chat_line = ?';
+                    $vals[] = $line;
+                }
+                if (!$sets) {
+                    json_out(['error' => 'Nothing to change.'], 400);
+                }
+                $vals[] = $id;
+                db()->prepare('UPDATE admins SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($vals);
+                $target = admin_row($id, true);
+                log_activity('account', 'people.chat', people_first_name($me ?: []) . ' changed how ' . ($id === (int) ($me['id'] ?? 0) ? 'they appear' : people_first_name($target ?: []) . ' appears') . ' in the guest chat', [
+                    'entity' => 'admin',
+                    'entity_id' => (string) $id,
+                    'meta' => ['shown' => (int) ($target['chat_show'] ?? 0) === 1, 'line' => (string) ($target['chat_line'] ?? '')],
+                ]);
+            }
+            $host = (string) content_value('host-name');
+            $members = [];
+            foreach (chat_team_rows(true) as $r) {
+                if (!empty($r['removed_at']) || !empty($r['invited_at']) || !people_can($r, 'gu.reply')) {
+                    continue;
+                }
+                $members[] = [
+                    'id' => (int) $r['id'],
+                    'name' => people_display_name($r),
+                    'first' => people_first_name($r),
+                    'named' => trim((string) ($r['name'] ?? '')) !== '',
+                    'show' => (int) ($r['chat_show'] ?? 0) === 1,
+                    'line' => chat_team_line($r, $host),
+                    'lineSet' => (string) ($r['chat_line'] ?? ''),
+                    'host' => chat_team_is_host($r, $host),
+                    'v' => chat_team_photo_v($r),
+                    'shown' => chat_team_member_ok($r),
+                    'you' => (int) $r['id'] === (int) ($me['id'] ?? 0),
+                    'canEdit' => (int) $r['id'] === (int) ($me['id'] ?? 0) || people_is_full($me),
+                ];
+            }
+            // The order a guest meets them in: the host first.
+            usort($members, fn($a, $b) => $a['host'] === $b['host'] ? $a['id'] <=> $b['id'] : ($a['host'] ? -1 : 1));
+            json_out([
+                'ok' => true,
+                'members' => $members,
+                'team' => chat_team(),
+                'away' => chat_away_state(),
+                'ready' => array_key_exists('chat_show', admin_row((int) ($me['id'] ?? 0)) ?: []),
+            ]);
         }
         // Booking-aware one-tap replies: email the guest their arrival info or a
         // secure balance-payment link (reusing the normal senders), then drop a
@@ -369,7 +512,9 @@ if ($isAdmin && empty($in['token'])) {
                 }
                 // The email never carries the code; it appears on their booking
                 // page inside its reveal window, so the note must not promise it.
-                $note = "📋 I've emailed your arrival information — check-in details and directions. Your entry details will be on your booking page.";
+                // An EVENT: the guest's chat reads "Sophia emailed you the arrival
+                // information…", so the note starts with its verb.
+                $note = 'Emailed you the arrival information: check-in details and directions. Your entry details will be on your booking page.';
                 log_activity('comms', 'email.arrival', 'Arrival info emailed from chat — ' . ($b['name'] ?? ''), [
                     'prop_key' => $b['prop_key'] ?? '',
                     'entity' => 'booking',
@@ -388,7 +533,7 @@ if ($isAdmin && empty($in['token'])) {
                 } catch (\Throwable $e) {
                 }
                 $amt = isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '';
-                $note = "💳 I've sent a secure link to pay your balance" . $amt . ' by email.';
+                $note = 'Emailed you a secure link to pay your balance' . $amt . '.';
                 log_activity('payment', 'payment.request', 'Balance payment request emailed from chat — ' . ($b['name'] ?? ''), [
                     'prop_key' => $b['prop_key'] ?? '',
                     'entity' => 'booking',
@@ -397,12 +542,10 @@ if ($isAdmin && empty($in['token'])) {
             }
             // Post the note as an admin message (no separate email — the info email
             // already went). read_by_admin=1 so it doesn't count as unread to us.
+            // An 'event', signed by whoever sent it: one line in the guest's chat,
+            // not a bubble pretending to be typed.
             try {
-                db()
-                    ->prepare(
-                        "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
-                    )
-                    ->execute([$tid, $note]);
+                chat_insert_owner_message($tid, $note, (int) $_SESSION['admin_id'], 'event');
                 db()
                     ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
                     ->execute([$tid]);
@@ -465,7 +608,7 @@ if ($isAdmin && empty($in['token'])) {
                     'archived' => !empty($thread['archived']),
                 ],
                 'bookings' => $bookings,
-                'messages' => chat_msgs($tid),
+                'messages' => chat_msgs($tid, true),
                 'peer_typing' => chat_peer_typing($tid, 'guest_typing_at'),
             ]);
         }
@@ -518,7 +661,9 @@ if ($isAdmin && empty($in['token'])) {
             if ($tid <= 0 || ($bodyTxt === '' && $att === '')) {
                 json_out(['error' => 'A thread and a message are required'], 400);
             }
-            chat_admin_reply($tid, $bodyTxt, $att);
+            // Signed by whoever is sending it: the guest sees their name and photo
+            // while they are shown in the chat.
+            chat_admin_reply($tid, $bodyTxt, $att, 'admin:' . (int) $_SESSION['admin_id']);
             // Reply sent → clear our typing stamp so the guest doesn't see "typing…"
             // linger under the message that just arrived.
             try {
@@ -667,11 +812,7 @@ if ($guestId) {
         db()
             ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
             ->execute([$tid]);
-        json_out([
-            'ok' => true,
-            'messages' => chat_msgs($tid),
-            'peer_typing' => chat_peer_typing($tid, 'admin_typing_at'),
-        ]);
+        json_out(chat_guest_payload($tid, $in, ['ok' => true, 'messages' => chat_msgs($tid)]));
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }
@@ -681,8 +822,9 @@ if ($guestId) {
 $token = preg_replace('/[^a-f0-9]/i', '', (string) ($in['token'] ?? ''));
 if (strlen($token) < 16) {
     // No usable token: only a 'send' that supplies name/email can start a thread.
+    // A first visit still meets who answers.
     if ($action !== 'send') {
-        json_out(['ok' => true, 'messages' => []]);
+        json_out(chat_guest_payload(0, $in, ['ok' => true, 'messages' => []]));
     }
 }
 try {
@@ -760,18 +902,14 @@ try {
     }
     // thread / default
     if (!$tid) {
-        json_out(['ok' => true, 'messages' => []]);
+        json_out(chat_guest_payload(0, $in, ['ok' => true, 'messages' => []]));
     }
     // Active anonymous thread polling → pull any emailed owner reply in the background.
     chat_nudge_mailbox();
     db()
         ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
         ->execute([$tid]);
-    json_out([
-        'ok' => true,
-        'messages' => chat_msgs($tid),
-        'peer_typing' => chat_peer_typing($tid, 'admin_typing_at'),
-    ]);
+    json_out(chat_guest_payload($tid, $in, ['ok' => true, 'messages' => chat_msgs($tid)]));
 } catch (\Throwable $e) {
     json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
 }

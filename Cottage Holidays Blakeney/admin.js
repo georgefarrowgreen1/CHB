@@ -26356,7 +26356,6 @@ function renderGuestChat() {
     const hrs = gcHours();
     const reply = String(gcVal('chat-reply-time') || 'hours');
     const replyLbl = (GC_REPLY.find((r) => r[0] === reply) || GC_REPLY[1])[1];
-    const hostName = String(gcVal('host-name') || '').trim() || 'the owner';
     // The cottages' own written questions (the on-device matcher reads these too).
     const cots = Object.keys(propertyMeta || {})
         .filter((k) => !propertyMeta[k].archived)
@@ -26387,13 +26386,89 @@ function renderGuestChat() {
             'gc-cotsgrp',
         ) +
         `</div>` +
+        `<div class="acr-cap">Who answers</div>` +
+        `<div class="acr-well gc-team" id="gc-team-host">${gcTeamHtml()}</div>` +
         `<div class="acr-cap">The welcome</div>` +
         `<div class="acr-well">` +
-        `<button type="button" class="acr-row gc-rowbtn" data-act="gcReplyPick"><span class="acr-lbl">Reply time<small>Shown under your name in the chat</small></span><span class="gc-v" id="gc-reply-v">${e(replyLbl)}</span>${BHUB_CHEV}</button>` +
-        `<button type="button" class="acr-row gc-rowbtn" ${chbAttrs('settingsOpen', 'host')}><span class="acr-lbl">Signed by<small>From your host profile</small></span><span class="gc-v">${e(String(hostName).replace(/^[a-z]/, (c) => c.toUpperCase()))}</span>${BHUB_CHEV}</button>` +
+        `<button type="button" class="acr-row gc-rowbtn" data-act="gcReplyPick"><span class="acr-lbl">Reply time<small>Shown under your names in the chat</small></span><span class="gc-v" id="gc-reply-v">${e(replyLbl)}</span>${BHUB_CHEV}</button>` +
         `</div>`;
     host.querySelectorAll('textarea.gc-grow').forEach((t) => gcGrow(/** @type {HTMLElement} */ (t)));
     gcPill();
+    gcTeamLoad();
+}
+// ---- WHO ANSWERS: each person's place in the guest chat ----
+// Everyone who may reply to guests, with their "Show me in the guest chat" switch
+// and the line under their name. Your own row is yours; anyone else's is a Super
+// User's (messages.php decides, this only offers). Guests see the first name and
+// the account photo; someone switched off still answers, signed with the crown.
+/** @type {any} */
+let __gcTeam = null;
+let __gcTeamAsk = 0;
+async function gcTeamLoad() {
+    const ask = ++__gcTeamAsk;
+    let r = null;
+    try {
+        r = await apiPost('messages.php', { action: 'team' });
+    } catch (e) {}
+    if (ask !== __gcTeamAsk) return;
+    if (r && Array.isArray(r.members)) gcTeamTake(r);
+    else if (!__gcTeam) __gcTeam = 'err';
+    gcTeamPaint();
+}
+function gcTeamTake(r) {
+    __gcTeam = r;
+    // What guests are shown, so the preview draws exactly that.
+    chatTeamSet(r.team, r.away);
+}
+function gcTeamPaint() {
+    const host = document.getElementById('gc-team-host');
+    if (host) host.innerHTML = gcTeamHtml();
+}
+// The back office's own copy of a photo (avatar.php?admin=), so a person switched
+// off still shows theirs here.
+function gcMateAva(m) {
+    const url = m.v ? 'avatar.php?admin=' + encodeURIComponent(String(m.id)) + '&v=' + encodeURIComponent(m.v) : '';
+    return `<span class="chat-ava is-36${url ? ' has-photo' : ''}" aria-hidden="true"${url ? ` style="background-image:url('${escapeHtml(chbCssUrl(url))}')"` : ''}>${escapeHtml(String(m.first || '?').charAt(0).toUpperCase())}</span>`;
+}
+function gcTeamHtml() {
+    const t = __gcTeam;
+    const e = escapeHtml;
+    if (t === null) return `<div class="acr-row"><span class="acr-lbl">Loading…</span></div>`;
+    if (t === 'err') return `<div class="acr-row"><span class="acr-lbl">Couldn’t load who answers</span><button type="button" class="u-btn2" data-act="gcTeamLoad">Try again</button></div>`;
+    if (!t.ready) return `<div class="acr-row"><span class="acr-lbl">Run the migrations first<small>Manage → System check</small></span></div>`;
+    return t.members
+        .map((m) => {
+            const sub = !m.named ? 'No name on their account, so replies show the crown' : !m.show ? 'Hidden: replies show the crown' : m.line || 'No line under the name';
+            const lbl = `<span class="acr-lbl">${e(m.first)}${m.you ? ' (you)' : ''}<small>${e(sub)}</small></span>`;
+            return (
+                `<div class="acr-row gc-mate" data-mate="${m.id}">${gcMateAva(m)}` +
+                (m.canEdit && m.named ? `<button type="button" class="gc-mate-t" ${chbAttrs('gcMateLine', m.id)} aria-label="${e('The line under ' + m.first + '’s name')}">${lbl}</button>` : lbl) +
+                `<span class="chb-switch"><input type="checkbox"${m.show ? ' checked' : ''}${m.canEdit ? '' : ' disabled'} ${chbChange('gcMateShow', m.id, CHB_CHECKED)} aria-label="${e('Show ' + m.first + ' in the guest chat')}"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`
+            );
+        })
+        .join('');
+}
+async function gcMateShow(id, on) {
+    try {
+        gcTeamTake(await apiPost('messages.php', { action: 'set_member', id, show: on ? 1 : 0 }));
+        toast(on ? 'Shown in the guest chat' : 'Hidden from the guest chat');
+    } catch (e) {
+        glassAlert(chbActErrSay(e, { label: 'change that' }));
+    }
+    gcTeamPaint();
+}
+async function gcMateLine(id) {
+    const m = __gcTeam && Array.isArray(__gcTeam.members) ? __gcTeam.members.find((x) => x.id === id) : null;
+    if (!m) return;
+    const v = await glassForm('A few words under ' + m.first + '’s name in the chat. Leave it empty for ' + (m.host ? '“Host”.' : 'none.'), [{ id: 'l', label: 'Line', def: m.lineSet, maxlength: 40, placeholder: m.host ? 'Host' : 'Bookings & Website' }], { title: m.first + ' in the chat', okLabel: 'Save' });
+    if (!v) return;
+    try {
+        gcTeamTake(await apiPost('messages.php', { action: 'set_member', id, line: String(v.l || '') }));
+        toast('Saved');
+    } catch (e) {
+        glassAlert(chbActErrSay(e, { label: 'save the line' }));
+    }
+    gcTeamPaint();
 }
 // Kept by name: the search sheet and older routes render the section through these.
 function renderChatAwayEditor() {
@@ -26729,10 +26804,10 @@ function gcPreview() {
         `<button type="button" ${chbAttrs('gcWhen', 'day')} aria-pressed="${__gcWhen === 'day'}">They write at 2pm</button>` +
         `<button type="button" ${chbAttrs('gcWhen', 'night')} aria-pressed="${__gcWhen === 'night'}">At 11:40pm</button></div></div>` +
         `<div class="gc-chat">` +
-        `<div class="gc-chat-head"><div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt=""></div><div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div></div>` +
+        `<div class="gc-chat-head" id="gc-chat-head">${chatHeadHtml(true)}</div>` +
         `<div class="chat-thread gc-thread" id="gc-thread"></div>` +
         `<div class="chat-quick gc-quick" id="gc-quick"></div>` +
-        `<div class="gc-chat-in" aria-hidden="true"><span>Ask a question…</span><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></i></div>` +
+        `<div class="gc-chat-in" aria-hidden="true"><span>Message</span><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></i></div>` +
         `</div></div>`;
     el.classList.remove('closing');
     el.classList.add('open');
@@ -26749,7 +26824,9 @@ function gcPaint() {
     const th = document.getElementById('gc-thread');
     const qk = document.getElementById('gc-quick');
     if (!th || !qk) return;
-    th.innerHTML = chatHelloHtml();
+    const hd = document.getElementById('gc-chat-head');
+    if (hd) hd.innerHTML = chatHeadHtml(true);
+    th.innerHTML = chatHelloHtml({ away: false });
     qk.innerHTML =
         `<button type="button" class="chat-chip chat-chip-avail" tabindex="-1">Check availability</button>` +
         chatQuickList(true)
@@ -26763,13 +26840,15 @@ function gcPaint() {
     const around = !!h && (h.from <= h.to ? 23 >= h.from && 23 < h.to : 23 >= h.from || 23 < h.to);
     const on = gcVal('chat-away-enabled') === '1';
     const msg = String(gcVal('chat-away-msg') || '').trim() || GC_AWAY_STD;
-    const host = String(gcVal('host-name') || '').trim() || 'The owner';
+    // The guest chat's own thread: their message, then the away reply as guests
+    // see it (labelled automatic, under the crown) or nothing.
+    const at = todayDashed() + ' 23:40:00';
+    /** @type {Array<any>} */
+    const msgs = [{ role: 'guest', body: 'Hi! Is Jollyboat free the weekend of the 24th?', at, read: false }];
+    if (on && !around) msgs.push({ role: 'admin', kind: 'auto', body: msg, at });
     th.innerHTML =
-        `<div class="chat-daysep"><span>Today, 11:40pm</span></div>` +
-        `<div class="chat-msg me">Hi! Is Jollyboat free the weekend of the 24th?</div>` +
-        (on && !around
-            ? `<div class="chat-msg them gc-in">${escapeHtml(msg)}<div class="chat-meta">${escapeHtml(host)} · sent automatically</div></div>`
-            : `<p class="gc-wait gc-in">${on ? 'You’re around at this hour, so no automatic reply.' : 'The away reply is off, so nothing goes back.'} They wait for you.</p>`);
+        chatBubbles(msgs, 'guest', false) +
+        (on && !around ? '' : `<p class="gc-wait gc-in">${on ? 'You’re around at this hour, so no automatic reply.' : 'The away reply is off, so nothing goes back.'} They wait for you.</p>`);
 }
 function gcChip(id) {
     const x = chatQuickList(true).find((r) => r.id === id);
@@ -26777,7 +26856,12 @@ function gcChip(id) {
     if (!x || !th) return;
     const hello = th.querySelector('.chat-hello');
     if (hello) hello.remove();
-    th.insertAdjacentHTML('beforeend', `<div class="chat-msg me gc-in">${escapeHtml(x.q)}</div><div class="chat-bot gc-in">${escapeHtml(x.a).replace(/\n/g, '<br>')}<div class="cb-meta">Quick answer — type below to reach a person.</div></div>`);
+    const team = chatTeam();
+    th.insertAdjacentHTML(
+        'beforeend',
+        `<div class="chat-msg me gc-in">${escapeHtml(x.q)}</div><div class="chat-bot chat-guide gc-in"><div class="chat-guide-l">${CHAT_BOOK}From the cottage guide</div><p>${escapeHtml(x.a).replace(/\n/g, '<br>')}</p>` +
+            `<div class="chat-bot-actions"><span class="btn-glass btn-sm">${escapeHtml(team.length ? 'Ask ' + chatTeamNames(team, true) : 'Message a person instead')}</span></div></div>`,
+    );
     th.scrollTop = th.scrollHeight;
 }
 function toggleArchivedMessages() {
@@ -32623,6 +32707,15 @@ function ibBuild() {
     __ibPeopleMap = new Map(__ibPeople.map((p) => [p.key, p]));
     return __ibPeople;
 }
+// Who wrote an owner-side chat message when it was not you: a teammate's first
+// name, or the away reply. '' for your own, and for every reply from before
+// replies recorded who wrote them.
+function ibChatBy(m) {
+    if (m.role === 'guest') return '';
+    if (m.kind === 'auto') return 'Automatic reply';
+    const me = chbMeRaw();
+    return m.by && m.by_name && (!me || +me.id !== +m.by) ? String(m.by_name) : '';
+}
 function ibItems(p) {
     const it = [];
     const enqs = (p.enq ? [p.enq] : []).concat(p.approving ? [p.approving] : [], p.declined);
@@ -32641,7 +32734,7 @@ function ibItems(p) {
     p.threads.forEach((t) => {
         const full = __ibThreadMsgs[t.thread_id];
         if (full) {
-            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '' }));
+            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '', by: ibChatBy(m) }));
         } else if (t.last_at) {
             it.push({ who: t.last_role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(t.last_at), text: t.last_body || '', summary: true });
         }
@@ -33062,7 +33155,7 @@ function ibPill(wait) {
 function ibThreadHtml(p) {
     let out = '', lastDay = null, prevCh = null;
     const items = p.items;
-    const same = (a, b) => a && b && a.who !== 'sys' && b.who !== 'sys' && a.who === b.who && a.ch === b.ch && Math.abs(b.t - a.t) < 15 * 60000 && ibDayStart(a.t) === ibDayStart(b.t);
+    const same = (a, b) => a && b && a.who !== 'sys' && b.who !== 'sys' && a.who === b.who && a.ch === b.ch && (a.by || '') === (b.by || '') && Math.abs(b.t - a.t) < 15 * 60000 && ibDayStart(a.t) === ibDayStart(b.t);
     items.forEach((it, idx) => {
         if (ibDayStart(it.t) !== lastDay) { out += `<div class="ib-daysep">${ibSep(it.t)}</div>`; lastDay = ibDayStart(it.t); }
         const fresh = __ibFreshMsgs.has(it) ? ' is-new' : '';
@@ -33092,7 +33185,7 @@ function ibThreadHtml(p) {
             const word = it.ch !== prevCh ? ibChWord(it.ch) + ' · ' : '';
             const state = it.pending ? 'Sending… <button type="button" class="ib-undo" data-ib="undo-pending" aria-label="Undo: don’t send this">Undo</button>' : it.failed ? '<span class="ib-failed">Not sent</span>' : ibClock(it.t);
             const seen = it.who === 'me' && it.ch === 'chat' && !it.pending && !it.failed && !it.summary ? (it.seen ? ' · <span class="ib-seen">Seen</span>' : ' · Delivered') : '';
-            meta = `<div class="ib-meta">${ibChIcon(it.ch)}${word}${state}${seen}</div>`;
+            meta = `<div class="ib-meta">${ibChIcon(it.ch)}${word}${it.by ? ibEsc(it.by) + ' · ' : ''}${state}${seen}</div>`;
         }
         prevCh = it.ch;
         out += `<div class="ib-msg is-${it.who}${cont ? ' is-cont' : ''}${tail ? ' is-tail' : ''}${it.pending ? ' is-pending' : ''}${fresh}" data-i="${idx}"><div class="ib-bub">${body}</div>${meta}</div>`;

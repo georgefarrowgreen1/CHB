@@ -669,6 +669,7 @@ body.guest-app:not(.owner-mode) #chat-widget {
      header (z 1410) still sits above it. */
   box-shadow: 0 0 0 200vmax var(--dark-grey);
   background: var(--dark-grey);
+  --chat-ground: var(--dark-grey);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   z-index: 1390;

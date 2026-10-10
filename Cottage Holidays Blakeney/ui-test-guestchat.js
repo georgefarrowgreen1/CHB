@@ -58,6 +58,18 @@ const check = (cond, label) => {
             if (url.includes('content.php') || url.includes('bootstrap.php')) return json({ content: pub, rates: { properties: PROPS, seasons: {}, occupancy: {} } });
             if (url.includes('rates.php')) return json({ properties: PROPS, seasons: {}, occupancy: {} });
             if (url.includes('admin_status')) return json({ ok: true, admin: true });
+            // Who answers: the owner signed in, and a Host who answers too.
+            if (url.includes('messages.php') && b.action === 'team')
+                return json({
+                    ok: true,
+                    ready: true,
+                    members: [
+                        { id: 1, name: 'George Farrow', first: 'George', named: true, show: true, line: 'Host', lineSet: '', host: true, v: '', shown: true, you: true, canEdit: true },
+                        { id: 2, name: 'Sophia Farrow', first: 'Sophia', named: true, show: false, line: '', lineSet: '', host: false, v: '', shown: false, you: false, canEdit: true },
+                    ],
+                    team: [{ id: 1, name: 'George', line: 'Host', v: '' }],
+                    away: { on: false, until: null },
+                });
             return json({ ok: true, bookings: [], enquiries: [], threads: [], messages: [], content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, feeds: [], properties: PROPS });
         });
     const last = (key) => {
@@ -107,7 +119,9 @@ const check = (cond, label) => {
         parkSub: (document.querySelector('[data-gcq="parking"] .bhub-fold-sub') || {}).textContent || '',
         cots: (document.querySelector('[data-grp="gc-cots"] .bhub-fold-right') || {}).textContent.trim(),
         reply: document.getElementById('gc-reply-v').textContent,
-        signer: (document.querySelector('#gc-page .gc-rowbtn .gc-v') && [...document.querySelectorAll('#gc-page .gc-rowbtn .gc-v')].pop().textContent) || '',
+        // The label's words (name, then the line under it) and the switch; the face
+        // beside them carries an initial, which is not part of the label.
+        mates: [...document.querySelectorAll('#gc-team-host .gc-mate')].map((r) => ((r.querySelector('.acr-lbl') || {}).textContent || '').trim() + ':' + (r.querySelector('input') || {}).checked).join(' | '),
         over: document.documentElement.scrollWidth - innerWidth,
     }));
     check(p1.pill === '2 to answer', `the title's pill counts the questions waiting (${p1.pill})`);
@@ -119,7 +133,10 @@ const check = (cond, label) => {
     check(p1.caps === 'checkin:Standard parking:Your words wifi:Standard', `each answer says whose words it is (${p1.caps})`);
     check(p1.parkSub.indexOf('Blakeney has a few car parks') === 0, 'a changed answer shows the owner’s words, not the standard text');
     check(p1.cots === '3', `the cottages' own questions are counted (${p1.cots})`);
-    check(p1.reply === 'Within a few hours' && p1.signer === 'George', `the welcome rows say what the chat says (${p1.reply} / ${p1.signer})`);
+    check(p1.reply === 'Within a few hours', `the welcome row says what the chat says (${p1.reply})`);
+    // The "Signed by" row went with the chat signing every reply itself: who answers
+    // is a group of its own, each person with their line and their switch.
+    check(p1.mates === 'George (you)Host:true | SophiaHidden: replies show the crown:false', `who answers, each with their switch (${p1.mates})`);
     check(p1.over <= 0, `nothing is wider than the phone (${p1.over})`);
 
     console.log('§2 a question guests asked becomes an instant answer');
