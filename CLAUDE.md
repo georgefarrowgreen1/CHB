@@ -4903,9 +4903,9 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
 - **In the search-first layout** the pages open in the search sheet; `oaGo` swaps the sheet between them, and the
   account page's own back link is hidden there (the sheet's "Back to results" is the way out).
 - **Every detail is edited on its own** in a small `glassForm` with Save (`oaEdit` / `OA_EDIT`, `oaEditPhone`,
-  `oaQuiet`, `addNotifyEmail`, `changeAdminPassword`). A refusal, the client's or the server's, keeps the form
-  open with what was typed. The password is ONE form (it was three prompts in a row; a mismatch in the third threw
-  away the first two), still ≥12 characters.
+  `oaQuiet`, `addNotifyEmail`). A refusal, the client's or the server's, keeps the form open with what was typed.
+  The password is not a glassForm any more: it has its own sheet, still ≥12 characters (see "Change password: one
+  sheet").
 - **"Where I studied:" / "My work:" are stored WITH their label**, because the cottage page prints them that way.
   The row and the form show only the answer; the label goes back on when it saves (`OA_LINE`). Rows show
   `hostVal`, i.e. what guests see: an emptied fact falls back to `HOST_DEFAULTS`, as it always did.
