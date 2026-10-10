@@ -121,6 +121,11 @@ if ($action === 'set') {
     if ($key === '' || strlen($key) > 190) {
         json_out(['error' => 'Invalid key'], 400);
     }
+    // A photo key holds a link the pages print inside url('…'); anything else in one
+    // could end the link and the attribute around it.
+    if (content_image_key($key) && !content_image_value_ok($key, $in['value'] ?? null)) {
+        json_out(['error' => 'A photo must be an uploaded image.'], 400);
+    }
     // Store the value as JSON so arrays/objects round-trip cleanly.
     $value = json_encode($in['value'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     // Secrets-like keys (arrival info, iCal feed URLs) are encrypted at rest.

@@ -4521,6 +4521,57 @@ $rootDb->exec("DELETE FROM push_subscriptions WHERE guest_id IN ($gid62, $sGid62
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($w62Bid, $g62Bid)");
 $rootDb->exec("DELETE FROM guests WHERE id IN ($gid62, $sGid62)");
 
+// §63 A PHOTO IS AN UPLOADED IMAGE. The photo keys are printed inside url('…') in
+// style attributes on the public pages; a stored quote or bracket ended the link and
+// the attribute around it. content.php refuses one at the write (app.js encodes at
+// every sink as well — smoke-test 12j).
+echo "\n== §63 a photo is an uploaded image ==\n";
+$evil63 = "x');\"><iframe src=\"https://evil.example/pay\"></iframe><i x=\"";
+$set63 = fn($k, $v) => http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => $k, 'value' => $v]);
+$r = $set63('images-' . $propKey, ['uploads/ok-63.jpg', $evil63]);
+it_check('§63 a gallery with a link that could end its url() is refused, in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'uploaded image') !== false, $r['raw']);
+$r = $set63('hero-bg', $evil63);
+it_check('§63 …and so is a hero photo', $r['code'] === 400, $r['raw']);
+$r = $set63('card-img-' . $propKey, "uploads/a.jpg'),url(data:x);position:fixed;x:url('");
+it_check('§63 …and a home card photo built to break out of CSS alone', $r['code'] === 400, $r['raw']);
+$r = $set63('images-' . $propKey, ['uploads/ok-63.jpg', 'https://images.example.com/cottage/2.jpg?w=800&q=80']);
+it_check('§63 an upload and a clean https link are saved', $r['code'] === 200, $r['raw']);
+$r = $set63('host-photo', '');
+it_check('§63 …and clearing a photo still works', $r['code'] === 200, $r['raw']);
+$r = $set63('hero-title', 'Three "lovely" cottages (by the quay)');
+it_check('§63 a TEXT key with quotes and brackets is untouched by the rule', $r['code'] === 200, $r['raw']);
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('images-$propKey', 'hero-title', 'host-photo')");
+
+// §64 DELETING AN ACCOUNT NEVER TAKES AN UPCOMING STAY WITH IT. It anonymised every
+// booking under the address, the one next month included: the owner was left a
+// "Former guest" with no way to reach them, and the arrival email, the balance chase
+// and the guest's own door code all match by that address.
+echo "\n== §64 deleting an account never takes an upcoming stay with it ==\n";
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('register', 'guestcode', 'chat')");
+$d64 = 'dora64-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$dj64 = [];
+http($dj64, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Dora Sixtyfour', 'email' => $d64, 'password' => 'dorapass64x', 'address' => '4 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$dGid64 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($d64))->fetchColumn();
+$ts64 = time();
+$r = http($dj64, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $dGid64, 'ts' => $ts64, 'token' => substr(hash_hmac('sha256', 'login:' . $dGid64 . ':' . $ts64, $SECRET), 0, 32)]);
+it_check('§64 (fixture) a proven, signed-in guest', $dGid64 > 0 && ($r['json']['ok'] ?? false) === true, $r['raw']);
+$ci64 = date('Y-m-d', strtotime('+20 days'));
+$co64 = date('Y-m-d', strtotime('+23 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Dora Sixtyfour'," . $rootDb->quote($d64) . ",'07700 900164','$ci64','$co64',2,0,'deposit',100,400,400,0,3)");
+$dBid64 = (int) $rootDb->lastInsertId();
+$r = http($dj64, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+$b64 = $rootDb->query("SELECT name, email, phone FROM bookings WHERE id = $dBid64")->fetch(PDO::FETCH_ASSOC);
+it_check('§64 an account with a stay still to come is not deleted: the stay\'s date, in words', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'stay_ahead' && strpos((string) ($r['json']['error'] ?? ''), date('d/m/Y', strtotime($ci64))) !== false, $r['raw']);
+it_check('§64 …the stay keeps its guest, email and phone', ($b64['name'] ?? '') === 'Dora Sixtyfour' && ($b64['email'] ?? '') === $d64 && ($b64['phone'] ?? '') === '07700 900164', json_encode($b64));
+it_check('§64 …and the account is still there', (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE id = $dGid64")->fetchColumn() === 1, '');
+// Once the stay has ended, the same tap deletes the account and anonymises the record.
+$rootDb->exec("UPDATE bookings SET check_in = DATE_SUB(CURDATE(), INTERVAL 5 DAY), check_out = DATE_SUB(CURDATE(), INTERVAL 2 DAY) WHERE id = $dBid64");
+$r = http($dj64, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+$b64 = $rootDb->query("SELECT name, email, phone FROM bookings WHERE id = $dBid64")->fetch(PDO::FETCH_ASSOC);
+it_check('§64 once the stay has ended the account is deleted', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE id = $dGid64")->fetchColumn() === 0, $r['raw']);
+it_check('§64 …and the past stay is kept, anonymised', ($b64['name'] ?? '') === 'Former guest' && $b64['email'] === null && $b64['phone'] === null, json_encode($b64));
+$rootDb->exec("DELETE FROM bookings WHERE id = $dBid64");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
