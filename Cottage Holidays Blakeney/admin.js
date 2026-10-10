@@ -10089,7 +10089,9 @@ function stCap(tone, text) {
             : tone === 'warn' || tone === 'bad'
               ? CHB_IC_WARN
               : '';
-    return `<span class="st-cap is-${tone}">${mark}${text}</span>`;
+    // A capsule is sentence case wherever it was written: "Not linked", "None yet".
+    const said = String(text).replace(/^[a-z]/, (c) => c.toUpperCase());
+    return `<span class="st-cap is-${tone}">${mark}${said}</span>`;
 }
 // Crossing 1200px live (rotating an iPad): re-seat the folder divs for the
 // new layout — the same live re-parenting the hubs' panes already do.
@@ -11739,9 +11741,9 @@ function renderBookingHub() {
     (dbBookings[propKey] || []).forEach((o) => {
         if (o.id === b.id) return;
         if (o.checkIn === b.checkOut)
-            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves${BHUB_CHEV}</button>`;
         else if (o.checkOut === b.checkIn)
-            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives${BHUB_CHEV}</button>`;
     });
 
     // ---- Payments block (built first — the header template embeds it) ----
@@ -11873,7 +11875,9 @@ function renderBookingHub() {
                 ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
                     ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
-                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
+                ${/* Said once: when the ask above IS "Record a payment" (no card rail),
+                      the quiet copy of it stands down. */ ''}
+                ${!gt.fullyPaid && !(__hubNext && /data-act="recordPayment"/.test(String(__hubNext.onclick || ''))) ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record a payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
                       story. Shown only once money has actually been taken and
@@ -13415,7 +13419,7 @@ function renderPeople() {
         'people',
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">Permissions</h1>` +
-            gaGroup(rows) +
+            gaGroup(rows, 'People') +
             gaGroup([gaRow({ ic: 'bank', t: 'Cottages & money', s: oaSplitSummary(), act: chbAttrs('oaGo', 'split'), chev: true, cls: 'oa-r-split' })]),
     );
     if (__split === null && !__splitBusy) splitLoad();
@@ -13490,6 +13494,15 @@ function renderSplitSettings() {
         const f = (__oaPeople || []).find((x) => x.id === p.id);
         return !f || f.state === 'active' || p.id === Number(S.holder);
     });
+    // One person signed in: there is no one to share with, so no switcher with a
+    // single option and no row of one face per cottage — just what is true.
+    if (ppl.length < 2) {
+        box.innerHTML = oaPage('split', head + gaGroup([
+            gaRow({ ic: 'bank', t: 'All the money is yours', s: 'Every cottage’s money stays in one account', static: true }),
+            gaRow({ ic: 'plus', t: 'Add someone', s: 'Then a cottage’s money can go to them', act: 'data-act="oaPeopleAdd"', cls: 'oa-accent' }),
+        ]));
+        return;
+    }
     const person = (id) => ppl.find((p) => p.id === Number(id)) || null;
     const holder = person(S.holder);
     const hi = Math.max(0, ppl.findIndex((p) => holder && p.id === holder.id));
@@ -13611,7 +13624,7 @@ function renderPerson() {
     html +=
         `<h2 class="ga-cap">Role</h2>` +
         (p.you
-            ? `<div class="oa-rolebox">Super User</div>`
+            ? gaGroup([gaRow({ ic: 'shield', t: 'Super User', s: 'Another Super User can change your role', static: true, cls: 'oa-r-role' })])
             : `<div class="u-seg oa-seg" role="radiogroup" aria-label="Role" style="--i:${sup ? 1 : 0};--n:2">` +
               [['host', 'Host'], ['super', 'Super User']]
                   .map(([k, t]) => `<button type="button" role="radio" aria-checked="${(k === 'super') === sup}" class="${(k === 'super') === sup ? 'is-on' : ''}" ${chbAttrs('oaRoleSet', k)}>${t}</button>`)
@@ -13670,13 +13683,13 @@ function renderPerms() {
     const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
     if (!p || !__oaPermDefs.length) {
         if (!Array.isArray(__oaPeople) || !__oaPermDefs.length) loadPeople();
-        box.innerHTML = oaPage('perms', oaBack('person', p ? (p.you ? 'You' : p.first) : 'Back') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
+        box.innerHTML = oaPage('perms', oaBack('person', p ? p.first : 'Back') + gaGroup([gaRow({ t: 'Loading…', static: true })]));
         return;
     }
     const sup = p.full !== false;
     const who = p.you ? 'you' : p.first;
     const n = oaChanges(p);
-    let html = oaBack('person', p.you ? 'You' : p.first) + `<h1 class="section-title ga-h1">What ${escapeHtml(who)} can do</h1>`;
+    let html = oaBack('person', p.first) + `<h1 class="section-title ga-h1">What ${escapeHtml(who)} can do</h1>`;
     if (n) html += `<div class="oa-permreset"><span><i class="oa-chg" aria-hidden="true"></i>${oaChangeWords(n)} from Host</span><button type="button" class="oa-mini" data-act="oaPermsReset">Reset</button></div>`;
     Object.keys(__oaPermGroups).forEach((g) => {
         const items = __oaPermDefs.filter((d) => d.g === g);
@@ -13810,7 +13823,7 @@ function renderEmails() {
     if (!box) return;
     if (!chbFull()) return renderMyEmails(box);
     const person = (__oaPeople || []).find((x) => x.id === __oaPerson);
-    const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'People') : oaBack('notify', 'Notifications');
+    const back = __oaEmailsFrom === 'person' && person && person.state !== 'removed' ? oaBack('person', person.first) : __oaEmailsFrom === 'people' ? oaBack('people', 'Permissions') : oaBack('notify', 'Notifications');
     const head = back + `<h1 class="section-title ga-h1">Who gets which emails</h1><p class="ga-lead">Tap a photo to send or stop an email.</p>`;
     if (!Array.isArray(__oaPeople)) {
         box.innerHTML = oaPage('emails', head + gaGroup([gaRow({ ic: 'mail', t: 'Loading…', static: true })]));
@@ -15698,7 +15711,7 @@ function gstRowHtml(g) {
     const initials = String(g.name || '?').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
     const invited = f.invitedAt;
     const sub = invited && f.kind === 'invite' ? 'Invited ' + (String(invited).slice(0, 10) === todayDashed() ? 'today' : gstShort(invited)) + ' · ' + f.cot
-        : f.kind === 'back' ? gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + ((propertyMeta[f.next.pk] || {}).name || f.next.pk)
+        : f.kind === 'back' ? fmtStayRange(String(f.next.b.checkIn || '').slice(0, 10), String(f.next.b.checkOut || '').slice(0, 10)) + ' · ' + ((propertyMeta[f.next.pk] || {}).name || f.next.pk)
           : f.kind === 'invite' ? 'Last here ' + (f.daysSince < 45 ? 'a month' : Math.round(f.daysSince / 30.4) + ' months') + ' ago · ' + f.cot
             : [f.cot, f.lastOut ? gstShort(f.last ? f.last.b.checkIn : f.lastOut) : ''].filter(Boolean).join(' · ');
     const tone = invited && f.kind === 'invite' ? 'sent' : f.kind;
@@ -15718,8 +15731,8 @@ function gstDetailHtml(g, first) {
         ? gstCardHtml('Invitation sent', email, GST_IC.home, 'Invites ' + escapeHtml(first) + ' back to ' + escapeHtml(f.cot), '',
             !!(__gst.invitedFresh && __gst.invitedFresh.email === email && Date.now() - __gst.invitedFresh.at < 2000)) : '';
     const facts = [['Email', escapeHtml(email), '']];
-    if (f.next) facts.push(['Booked', gstShort(f.next.b.checkIn) + ' → ' + gstShort(f.next.b.checkOut) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
-    f.past.forEach((s) => facts.push(['Stayed', gstShort(s.b.checkIn) + ' → ' + gstShort(s.b.checkOut) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
+    if (f.next) facts.push(['Booked', fmtStayRange(String(f.next.b.checkIn || '').slice(0, 10), String(f.next.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
+    f.past.forEach((s) => facts.push(['Stayed', fmtStayRange(String(s.b.checkIn || '').slice(0, 10), String(s.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
     const target = f.next || f.last;
     const acts = [];
     if (target) acts.push(gstActHtml(GST_IC.mail, 'Email ' + escapeHtml(first), chbAttrs('openBookingEmail', String(target.b.id)), ''));
@@ -17179,6 +17192,8 @@ function pmRange(a, b) {
         : `${x.getDate()} ${PM_MON[x.getMonth()]} – ${y.getDate()} ${PM_MON[y.getMonth()]}`;
 }
 const pmProp = (pk) => (propertyMeta[pk] && propertyMeta[pk].name) || pk || '';
+// A deduction is written with its minus; nothing deducted is £0.00, never −£0.00.
+const pmMinus = (n) => (Math.abs(Number(n) || 0) >= 0.005 ? '−' + gbp(n) : gbp(0));
 const pmDot = (pk) => (pk ? `<i class="pm-cd" style="background:var(--prop-${escapeHtml(pk)}, var(--accent))" aria-hidden="true"></i>` : '');
 function pmHue(name) {
     let h = 0;
@@ -17514,7 +17529,7 @@ function pmBooksCardHtml() {
     if (!b) return '';
     return `<div class="pm-capline"><span>The books · ${taxYearShort(b.year)}</span></div><section class="pm-books">
         <div class="pm-books-top"><b>${gbp(b.profit)}</b><span>${b.profit < 0 ? 'loss' : 'profit'} so far</span></div>
-        <div class="pm-books-mini"><div><small>Income</small><span>${gbp(b.income + b.kept)}</span></div><div><small>Card fees</small><span>−${gbp(b.fees)}</span></div><div><small>Expenses</small><span>−${gbp(b.expenses)}</span></div></div>
+        <div class="pm-books-mini"><div><small>Income</small><span>${gbp(b.income + b.kept)}</span></div><div><small>Card fees</small><span>${pmMinus(b.fees)}</span></div><div><small>Expenses</small><span>${pmMinus(b.expenses)}</span></div></div>
         ${pmQuarters(b, false)}
         <button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button>
     </section>`;
@@ -17655,7 +17670,7 @@ function pmPayoutPage(id) {
         <div class="pm-dcap">What it is made of</div>
         <div class="pm-kvs pm-calc">${d.charges.map((e) => `<button type="button" class="pm-kv pm-plain" data-pm="stay" data-arg="b${e.booking_id}"><span><span class="pm-ink">${escapeHtml(e.name || 'A guest')} · ${escapeHtml(String(e.what || 'payment').toLowerCase())}</span><br><span class="pm-s">${pmDm(e.at * 1000)} · ${gbp(e.amount)}${e.fee != null ? ` less ${gbp(e.fee)} fee` : ''}</span></span><b>${gbp(e.amount - (e.fee || 0))}</b></button>`).join('')}
             <div class="pm-kv"><span>Taken from guests</span><b>${gbp(gross)}</b></div>
-            <div class="pm-kv"><span>Square’s fees</span><b>−${gbp(fees)}</b></div>
+            <div class="pm-kv"><span>Square’s fees</span><b>${pmMinus(fees)}</b></div>
             ${Math.abs(other) > 0.005 ? `<div class="pm-kv"><span>Refunds and adjustments</span><b>${other < 0 ? '−' : ''}${gbp(Math.abs(other))}</b></div>` : ''}
             <div class="pm-kv total"><span>Paid to your bank</span><b>${gbp(po.amount)}</b></div></div>
         ${d.unmatched ? `<p class="pm-note">${d.unmatched === 1 ? 'One payment' : d.unmatched + ' payments'} in it ${d.unmatched === 1 ? 'isn’t' : 'aren’t'} in this app’s records, such as a sale taken in Square itself.</p>` : ''}
@@ -17741,8 +17756,8 @@ function pmBooksPage() {
         <div class="pm-kvs pm-calc">
             <div class="pm-kv"><span>Rental income</span><b>${gbp(b.income)}</b></div>
             ${b.kept > 0.005 ? `<div class="pm-kv"><span>Deposits kept</span><b>${gbp(b.kept)}</b></div>` : ''}
-            <div class="pm-kv"><span>Square’s card fees</span><b>−${gbp(b.fees)}</b></div>
-            <div class="pm-kv"><span>Expenses</span><b>−${gbp(b.expenses)}</b></div>
+            <div class="pm-kv"><span>Square’s card fees</span><b>${pmMinus(b.fees)}</b></div>
+            <div class="pm-kv"><span>Expenses</span><b>${pmMinus(b.expenses)}</b></div>
             <div class="pm-kv total"><span>${b.profit < 0 ? 'Loss' : 'Profit'}</span><b>${gbp(b.profit)}</b></div></div>
         <div class="pm-dcap">Expenses</div>
         <div class="pm-kvs pm-calc">${(b.by_category || []).map((c) => `<div class="pm-kv"><span>${escapeHtml(c.category)}</span><b>${gbp(c.amount)}</b></div>`).join('') || '<div class="pm-kv"><span>None logged</span><b>£0.00</b></div>'}
@@ -19069,7 +19084,7 @@ function pmSplitBooksHtml() {
     let h = `<div class="pm-capline"><span>Your cottages</span><span class="pm-capn">This tax year</span></div><div class="pm-kvs pm-split">`;
     S.mine.forEach((c) => { h += row(pmDot(c.k) + escapeHtml(c.name), 'After card fees', gbp(c.net), { fig: 'n-' + c.k }); });
     if (Math.abs(S.other || 0) > 0.005) h += row('Not tied to a cottage', 'After card fees', gbp(S.other));
-    h += row('Your costs', 'The expenses you’ve recorded', '−' + gbp(S.costs || 0));
+    h += row('Your costs', 'The expenses you’ve recorded', pmMinus(S.costs || 0));
     h += row('Your profit', '', gbp(S.profit), { total: true, fig: 'profit' });
     h += `<button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button></div>`;
     pmPaidPeople().forEach((p) => {
@@ -19079,7 +19094,7 @@ function pmSplitBooksHtml() {
         h += `<div class="pm-capline"><span>${escapeHtml(pmCotNames(p))} ${cots.length > 1 ? 'are' : 'is'} ${escapeHtml(p.first)}’s</span></div><div class="pm-kvs pm-split">`;
         h += row(cots.length === 1 ? pmDot(cots[0].k) + escapeHtml(cots[0].name) : 'Their cottages', 'Paid by guests, after card fees', gbp(p.share), { fig: 'ps-' + p.id });
         if (linked) {
-            h += row(`Paid to ${escapeHtml(p.first)}`, `${n} payment${n === 1 ? '' : 's'}`, '−' + gbp(p.sent));
+            h += row(`Paid to ${escapeHtml(p.first)}`, `${n} payment${n === 1 ? '' : 's'}`, pmMinus(p.sent));
             h += row(`Still to pay ${escapeHtml(p.first)}`, '', gbp(Math.max(0, p.owed)), p.owed > 0.005 ? { total: true, act: 'split-pay', arg: p.id } : { total: true });
         }
         h += '</div>';
@@ -22479,12 +22494,12 @@ function prLearnedHtml(pk) {
     const nm = (propertyMeta[pk] || {}).name || pk;
     const cap = `What it has learned about ${escapeHtml(nm)}’s guests`;
     // Read-only, so it folds under its own row (the one look's simpler format).
-    if (L.count < 3) return `<section class="rv-sec">${bhubFoldGrp('prf-learn', cap, '', '', `<div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div>`)}</section>`;
+    if (L.count < 3) return bhubFoldGrp('prf-learn', cap, '', '', `<div class="acr-well pr-calm">Not enough stays yet to learn how long guests stay — it fills in as bookings come in.</div>`);
     const bar = (row) => {
         const v = row.avg;
         return `<div class="pr-lrow"><span class="pr-lk">${escapeHtml(row.k)}</span><span class="pr-lbar"><span class="${v != null && v < 3 ? 'is-short' : ''}" style="width:${v != null ? Math.min(100, Math.round((v / 7) * 100)) : 0}%"></span></span><span class="pr-lv">${v != null ? v.toFixed(1) : '—'}</span></div>`;
     };
-    return `<section class="rv-sec">${bhubFoldGrp(
+    return bhubFoldGrp(
         'prf-learn',
         cap,
         '',
@@ -22493,7 +22508,7 @@ function prLearnedHtml(pk) {
             <span class="pr-lt">Nights per stay, by when they book</span>${L.lead.map(bar).join('')}
             <span class="pr-lt">Nights per stay, by time of year</span>${L.season.map(bar).join('')}
         </div>`,
-    )}</section>`;
+    );
 }
 function prCostsPageHtml(pk, keysHtml) {
     const c = prCosts(), K = prKept(pk), F = prFleetShare();
@@ -22659,8 +22674,7 @@ function renderPricing() {
             : prSearchCount(pk) || liveProfit.length ? '' : `<div class="acr-well pr-calm" id="pr-calm"${__prSugg ? '' : ' hidden'}><span class="st-tick" aria-hidden="true">✓</span>Nothing to change — your prices look right for now.</div>`}
             <div id="pr-search-ideas">${prSearchIdeasHtml(pk)}</div>
         </section>
-        ${prLearnedHtml(pk)}
-        ${prRadarHtml()}
+        <section class="rv-sec">${prLearnedHtml(pk)}${prRadarHtml()}</section>
         <section class="rv-sec">
             <h3 class="acr-cap">${escapeHtml(nm(pk))}’s usual prices</h3>
             <div class="acr-well rv-well">
@@ -22741,7 +22755,7 @@ function prRadarHtml() {
     if (!sig.searches60 && !weeks.length) return '';
     const max = Math.max(1, ...weeks.map((w) => w.count));
     // Read-only, so it folds under its own row.
-    return `<section class="rv-sec">${bhubFoldGrp('prf-radar', 'What guests searched for · last 60 days', '', '', `
+    return `${bhubFoldGrp('prf-radar', 'What guests searched for · last 60 days', '', '', `
         <div class="pr-radar">
             <div class="pr-rnums"><span><b>${sig.searches60 || 0}</b>search${sig.searches60 === 1 ? '' : 'es'}</span>${sig.noResult60 ? `<span class="is-miss"><b>${sig.noResult60}</b>found nothing free</span>` : ''}</div>
             ${weeks.map((w) => {
@@ -22754,7 +22768,7 @@ function prRadarHtml() {
                 </button>`;
             }).join('')}
             <div class="pr-rkey"><span><i></i>searched</span><span><i class="is-miss"></i>nothing free</span></div>
-        </div>`)}</section>`;
+        </div>`)}`;
 }
 // A searched week → that week on the calendar (its first free night, if any).
 function prRadarWeek(iso) {
@@ -26847,7 +26861,7 @@ function accomSectionHtml(k, sec) {
                                   .join('')
                             : '<div class="acr-row"><span class="acr-lbl" style="color:var(--text-muted);font-weight:400;">No seasonal rates set for this cottage.</span></div>'
                     }
-                        <div class="acw-acts"><button class="btn-sm btn-edit" data-act="settingsOpen" data-arg="seasongrid">Edit seasonal rates — all cottages →</button></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" data-act="settingsOpen" data-arg="seasongrid">Open Seasonal rates</button></div>
                     </div>`;
         case 'arrival':
             return `
@@ -27688,7 +27702,7 @@ function spVitals(r) {
         const failing = list.filter((f) => f.ok === false).length;
         out.push({ cap: 'Calendars', big: !c.feeds ? 'Not linked' : c.lastImport ? 'Synced ' + spAgo(c.lastImport) : 'Not synced yet',
             small: !c.feeds ? 'No platform calendars' : `${c.feeds} feed${c.feeds === 1 ? '' : 's'}` + (c.cottages ? ` · ${c.cottages} cottage${c.cottages === 1 ? '' : 's'}` : '') + (failing ? ` · ${failing} failing` : ''),
-            data: c.days, tone: failing || c.recentErrors ? 'warn' : 'ok' });
+            data: c.days, tone: !c.feeds ? 'unk' : failing || c.recentErrors ? 'warn' : 'ok' });
     }
     const e = ins.email;
     if (e) {

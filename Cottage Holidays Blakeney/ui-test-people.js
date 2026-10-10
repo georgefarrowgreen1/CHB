@@ -382,7 +382,7 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         await page.click(rowByTitle('#people-body', 'George Farrow'));
         await until(page, () => ((document.querySelector('#person-body h1') || {}).textContent || '') === 'George Farrow');
         const mine = await page.evaluate(() => ({
-            role: ((document.querySelector('#person-body .oa-rolebox') || {}).textContent || ''),
+            role: ((document.querySelector('#person-body .oa-r-role .ga-t') || {}).textContent || '').trim(),
             seg: !!document.querySelector('#person-body .oa-seg'),
             can: ((document.querySelector('#person-body .oa-r-perms') || {}).textContent || ''),
             danger: document.querySelectorAll('#person-body .ga-row.is-danger').length,

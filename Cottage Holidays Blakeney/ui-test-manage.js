@@ -470,7 +470,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(cot.grps >= 10, `every section renders as a fold group (${cot.grps})`);
   ok(cot.hasRates && cot.rateFig, 'the Rates row carries the real nightly figure');
-  ok(/none yet|photo/.test(cot.photosCap), `the Photos verdict counts the gallery (${cot.photosCap.trim()})`);
+  ok(/none yet|photo/i.test(cot.photosCap), `the Photos verdict counts the gallery (${cot.photosCap.trim()})`);
   ok(cot.foldsClosed, 'every section starts folded');
   ok(cot.textEditor, 'the REAL text editor lives inside its fold');
   ok(cot.removeRow, 'the private/remove controls survive below the groups');
@@ -753,7 +753,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(wc.grps.includes('wc-images') && wc.grps.includes('wc-text'), `Images + Text are verdict fold groups (${wc.grps.join(',')})`);
-  ok(/field/.test(wc.textCap) && /image|none found/.test(wc.imgCap), `the capsules count the real fields (${wc.textCap.trim()} / ${wc.imgCap.trim()})`);
+  ok(/field/.test(wc.textCap) && /image|none found/i.test(wc.imgCap), `the capsules count the real fields (${wc.textCap.trim()} / ${wc.imgCap.trim()})`);
   ok(wc.foldsClosed, 'both groups start folded');
   ok(wc.fieldInFold && wc.imgBtnInFold, 'the real ce-<key> editors + Replace-image live inside the folds');
 
