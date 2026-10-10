@@ -5057,42 +5057,45 @@ function newsletter_body($subject, $bodyText, $bodyHtml, $unsubUrl)
  */
 function weekly_analytics_body($d)
 {
+    // The same figures as Manage → Analytics: PEOPLE (by device and connection),
+    // pages viewed, enquiries SENT from the site (the event — the enquiries table
+    // loses every approved one) and bookings made THROUGH the site. The old email
+    // divided every booking, hand-added ones too, by visitors and called it
+    // conversion.
+    $people = (int) ($d['uniq'] ?? 0);
+    $views = (int) ($d['views'] ?? 0);
+    $sent = (int) ($d['sent'] ?? ($d['enquiries'] ?? 0));
+    $booked = (int) ($d['booked'] ?? 0);
+    $plural = fn($n, $one, $many) => $n . ' ' . ($n === 1 ? $one : $many);
     $subject =
         'Your Blakeney week online: ' .
-        $d['views'] .
-        ' visit' .
-        ($d['views'] === 1 ? '' : 's') .
+        $plural($people, 'person', 'people') .
         ($d['deltaTxt'] !== '' ? ' (' . $d['deltaTxt'] . ')' : '') .
         ', ' .
-        $d['bookings'] .
-        ' booking' .
-        ($d['bookings'] === 1 ? '' : 's');
+        $plural($sent, 'enquiry', 'enquiries');
 
     $text =
         "Good evening,\n\n" .
         "Here's how Cottage Holidays Blakeney did online this week.\n\n" .
-        "  • Visits: {$d['views']}" .
-        ($d['deltaTxt'] !== '' ? " ({$d['deltaTxt']} vs last week)" : '') .
+        "  • People: {$people}" .
+        ($d['deltaTxt'] !== '' ? " ({$d['deltaTxt']} on last week)" : '') .
         "\n" .
-        "  • Unique visitors: {$d['uniq']}\n" .
-        "  • Conversion: {$d['convPct']}% ({$d['bookings']} booking" .
-        ($d['bookings'] === 1 ? '' : 's') .
-        ", {$d['enquiries']} enquir" .
-        ($d['enquiries'] === 1 ? 'y' : 'ies') .
-        ")\n" .
+        "  • Pages viewed: {$views}\n" .
+        '  • Enquiries sent: ' . $sent . "\n" .
+        '  • Booked through the site: ' . $booked . "\n" .
         "  • Top source: {$d['topChannel']}\n" .
         "  • Most-viewed page: {$d['topPage']}\n" .
-        ($d['noResult'] > 0 ? "  • Availability searches that found nothing: {$d['noResult']}\n" : '') .
-        ($d['dropPct'] !== null && $d['dropPct'] <= -30 ? "\nHeads-up: visits are down " . abs($d['dropPct']) . "% on last week.\n" : '') .
+        ($d['noResult'] > 0 ? "  • Date searches that found nothing free: {$d['noResult']}\n" : '') .
+        ($d['dropPct'] !== null && $d['dropPct'] <= -30 ? "\nHeads-up: " . abs($d['dropPct']) . "% fewer people than last week.\n" : '') .
         "\nSee the full picture in Manage → Analytics.\n\nyour website";
 
     // ---- HTML ----
     $alertHtml =
         $d['dropPct'] !== null && $d['dropPct'] <= -30
             ? email_note(
-                '<strong>Heads-up:</strong> visits are down ' .
+                '<strong>Heads-up:</strong> ' .
                     abs($d['dropPct']) .
-                    '% on last week. Worth a look — refresh a listing photo, post an update, or check your search rankings.',
+                    '% fewer people than last week. Worth a look — refresh a listing photo, post an update, or check your search rankings.',
                 '#FFA726',
             )
             : '';
@@ -5102,28 +5105,17 @@ function weekly_analytics_body($d)
         email_p(email_esc(date('l j F Y')), true) .
         $alertHtml .
         email_amount(
-            'Visits this week',
-            $d['views'] . ($d['deltaTxt'] !== '' ? ' <span style="font-size:15px;color:' . email_muted_ink() . ';">' . $d['deltaTxt'] . '</span>' : ''),
-            $d['uniq'] . ' unique visitors',
+            'People this week',
+            $people . ($d['deltaTxt'] !== '' ? ' <span style="font-size:15px;color:' . email_muted_ink() . ';">' . $d['deltaTxt'] . '</span>' : ''),
+            $plural($views, 'page', 'pages') . ' viewed',
         ) .
         email_rows(
             [
-                [
-                    'Conversion',
-                    $d['convPct'] .
-                    '% <span style="color:' . email_muted_ink() . ';">(' .
-                    $d['bookings'] .
-                    ' booking' .
-                    ($d['bookings'] === 1 ? '' : 's') .
-                    ', ' .
-                    $d['enquiries'] .
-                    ' enquir' .
-                    ($d['enquiries'] === 1 ? 'y' : 'ies') .
-                    ')</span>',
-                ],
+                ['Enquiries sent', (string) $sent],
+                ['Booked through the site', (string) $booked],
                 ['Top source', email_esc($d['topChannel'])],
                 ['Most-viewed page', email_esc($d['topPage'])],
-            ] + ($d['noResult'] > 0 ? [3 => ['Searches finding nothing', (string) $d['noResult']]] : []),
+            ] + ($d['noResult'] > 0 ? [4 => ['Searches finding nothing free', (string) $d['noResult']]] : []),
         ) .
         email_btn($d['siteUrl'], 'Open analytics') .
         email_p('You can switch this weekly email off in Manage.', true);

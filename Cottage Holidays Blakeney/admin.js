@@ -27025,14 +27025,13 @@ function exportAnalyticsCsv() {
         ['Generated', chbNow().toISOString()],
         [],
         ['Metric', 'Value'],
-        ['Page views', d.totalViews || 0],
-        ['Unique visitors', d.uniqueVisitors || 0],
-        ['New visitors', (d.visitorMix || {}).new || 0],
-        ['Returning visitors', (d.visitorMix || {}).returning || 0],
+        ['Pages viewed', d.totalViews || 0],
+        ['People (by device and connection)', d.uniqueVisitors || 0],
         ['Views this week', d.weekViews || 0],
         ['Unique this week', d.weekUnique || 0],
-        ['Enquiries', d.enquiries || 0],
-        ['Bookings', d.bookings || 0],
+        ['Enquiries sent from the site', (d.events || {}).enquiry_submit || 0],
+        ['Booked through the site', d.siteBookings || 0],
+        ['All bookings made (incl. added by hand)', d.bookings || 0],
         ['Searches', (d.searchDemand || {}).total || 0],
         ['Searches found nothing', (d.searchDemand || {}).noResult || 0],
         [],
@@ -27055,86 +27054,68 @@ function exportAnalyticsCsv() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Turn the analytics summary into a few ranked plain-English "so what" lines.
+// ---- ANALYTICS (Manage → Analytics; rebuilt in the one look) ----
+// Every figure says what it counts. The old page called page views "Visits",
+// showed two different enquiry counts on one screen (the enquiries table — which
+// loses every APPROVED enquiry, approval deletes the row — beside the site's own
+// "sent an enquiry" events), divided EVERY booking by visitors (a phone booking
+// the owner typed in counted as the site converting), and showed "Returning 0%"
+// from a fingerprint that changes with a phone's connection. Now: People and
+// Pages viewed, Enquiries sent (the event), Booked through the site (bookings
+// carrying the terms a guest accepted on the form), and no returning figure.
+const ANA_WIN = (n) => (n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days');
+const anaPct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+// Change against the equal window before, as words a person says.
+function anaDelta(cur, prev, win) {
+    if (!prev || prev <= 0) return '';
+    const p = Math.round(((cur - prev) / prev) * 100);
+    if (p === 0) return 'Same as the ' + win + ' before';
+    return (p > 0 ? '▲ ' : '▼ ') + Math.abs(p) + '% on the ' + win + ' before';
+}
+// The few things worth saying, most useful first; each names what to do where
+// there is something to do.
 function buildInsights(d) {
     const out = [];
-    const uniq = d.uniqueVisitors || 0,
-        views = d.totalViews || 0;
-    const prevV = d.prevTotalViews || 0,
-        bookings = d.bookings || 0;
     const days = d.days || 30;
-    const winLabel =
-        days === 7 ? '7 days' : days === 90 ? '90 days' : days === 365 ? '12 months' : '30 days';
+    const win = ANA_WIN(days);
+    const people = d.uniqueVisitors || 0;
+    const sent = (d.events || {}).enquiry_submit || 0;
     const mName = (ym) => {
         const [y, m] = (ym || '').split('-');
         return y && m ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'long' }) : ym;
     };
-    // Momentum vs the previous equal-length window.
-    if (prevV > 0) {
-        const p = Math.round(((views - prevV) / prevV) * 100);
-        if (Math.abs(p) >= 10)
-            out.push({
-                t: `Visits are ${p >= 0 ? 'up' : 'down'} ${Math.abs(p)}% versus the previous ${winLabel}.`,
-                s: Math.abs(p) + (p < 0 ? 25 : 0),
-            });
-    }
-    // Conversion (only worth saying once there's a meaningful base).
-    if (uniq >= 20) {
-        const c = Math.round((bookings / uniq) * 1000) / 10;
-        out.push({ t: `${c}% of unique visitors booked (${bookings} from ${uniq}).`, s: 30 });
-    }
-    // Device mix.
-    const devs = d.devices || [],
-        devTot = devs.reduce((a, b) => a + b.count, 0);
-    if (devTot > 0) {
-        const m = devs.find((x) => x.device === 'mobile');
-        const mp = m ? Math.round((m.count / devTot) * 100) : 0;
-        if (mp >= 50)
-            out.push({
-                t: `${mp}% of visits are on mobile — keep the booking flow thumb-friendly.`,
-                s: 24,
-            });
-        else if (mp > 0 && mp <= 25)
-            out.push({ t: `Most visitors are on desktop (${100 - mp}%).`, s: 12 });
-    }
-    // Bounce.
-    if ((d.bounceRate || 0) >= 60 && uniq >= 20)
-        out.push({
-            t: `${d.bounceRate}% of visitors leave after a single page — stronger calls-to-action could help.`,
-            s: 26,
-        });
-    // Returning interest.
-    const mix = d.visitorMix || { new: 0, returning: 0 },
-        mt = (mix.new || 0) + (mix.returning || 0);
-    if (mt >= 20) {
-        const rp = Math.round((mix.returning / mt) * 100);
-        if (rp >= 30)
-            out.push({ t: `${rp}% of visitors are returning — interest is building.`, s: 16 });
-    }
-    // Top channel.
-    const ch = d.channels || [];
-    if (ch.length) out.push({ t: `${ch[0].channel} is your top traffic source.`, s: 10 });
-    // Unmet demand.
     const sd = d.searchDemand || {};
     if ((sd.noResult || 0) > 0 && (sd.total || 0) > 0) {
-        const np = Math.round((sd.noResult / sd.total) * 100);
+        const np = anaPct(sd.noResult, sd.total);
         const top = (sd.topMonths || []).find((m) => m.count > m.found);
-        out.push({
-            t: `${np}% of availability searches found nothing free${top ? ` — most for ${mName(top.month)}` : ''}.`,
-            s: 22 + (np >= 40 ? 15 : 0),
-        });
+        out.push({ t: `${sd.noResult} of ${sd.total} date searches found nothing free${top ? ` — most for ${mName(top.month)}` : ''}.`, s: 40 + (np >= 40 ? 20 : 0), tone: np >= 40 ? 'warn' : '', go: 'search' });
     }
-    return out
-        .sort((a, b) => b.s - a.s)
-        .slice(0, 4)
-        .map((x) => x.t);
+    const prevP = d.prevUniqueVisitors || 0;
+    if (prevP > 0) {
+        const p = Math.round(((people - prevP) / prevP) * 100);
+        if (Math.abs(p) >= 10) out.push({ t: `${p > 0 ? 'More' : 'Fewer'} people visited: ${people}, ${Math.abs(p)}% ${p > 0 ? 'up' : 'down'} on the ${win} before.`, s: 30 + (p < 0 ? 10 : 0), tone: p < 0 ? 'warn' : 'ok' });
+    }
+    if (people >= 20) out.push({ t: `${sent} ${sent === 1 ? 'enquiry was' : 'enquiries were'} sent from ${people} people (${Math.round((sent / people) * 1000) / 10}%).`, s: 25 });
+    const devs = d.devices || [];
+    const devTot = devs.reduce((a, b) => a + b.count, 0);
+    const mob = (devs.find((x) => x.device === 'mobile') || {}).count || 0;
+    if (devTot > 0 && anaPct(mob, devTot) >= 50) out.push({ t: `${anaPct(mob, devTot)}% of pages were viewed on a phone.`, s: 15 });
+    const ch = d.channels || [];
+    if (ch.length) out.push({ t: `${ch[0].channel === 'Direct' ? 'Most people came straight to the site' : ch[0].channel + ' brought the most people'}.`, s: 10 });
+    return out.sort((a, b) => b.s - a.s).slice(0, 4);
 }
-
+// A tool row in the Status page's own anatomy (the weekly email's sender reports
+// under its row through spToolSay).
+function anaTool(icon, name, verb, attrs) {
+    return `<div class="sp-tool"><button type="button" class="sp-tbtn" ${attrs}><span class="sp-sysic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon}"></path></svg></span><span class="sp-systext"><span class="sp-sysname">${name}</span></span><span class="sp-tend" aria-hidden="true"><span class="sp-tverb">${verb}</span><span class="sp-spin"></span><span class="sp-tmark"></span></span></button><div class="sp-tres" role="status" hidden></div></div>`;
+}
 async function loadAnalytics(days = 30) {
     const wrap = document.getElementById('analytics-body');
     if (!wrap) return;
     days = [7, 30, 90, 365].includes(+days) ? +days : 30;
-    wrap.innerHTML = skelRows(3);
+    // The switcher stays while a new window loads; only the figures below wait.
+    const keep = wrap.querySelector('.ana-pick');
+    wrap.innerHTML = (keep ? keep.outerHTML : '') + skelRows(3);
     let d;
     try {
         d = await apiGet('track.php?action=summary&days=' + days);
@@ -27143,12 +27124,14 @@ async function loadAnalytics(days = 30) {
         return;
     }
     __analyticsSummary = d; // stashed for the CSV export below
-
-    // ---- labels / formatters ----
-    const rangeLabel = (n) =>
-        n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days';
+    const e = escapeHtml;
     const winDays = d.days || days;
-    const winLabel = rangeLabel(winDays);
+    const win = ANA_WIN(winDays);
+    const people = d.uniqueVisitors || 0;
+    const views = d.totalViews || 0;
+    const ev = d.events || {};
+    const sent = ev.enquiry_submit || 0;
+    const booked = d.siteBookings || 0;
     const PAGE_LABELS = {
         'view-main': 'Home',
         'view-cottages': 'All cottages',
@@ -27157,81 +27140,69 @@ async function loadAnalytics(days = 30) {
         'view-guest-bookings': 'My stays',
         'view-pay': 'Payment',
         'view-account': 'Account',
+        'view-guest-account': 'Account',
     };
-    const pageLabel = (p) =>
-        PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
+    const pageLabel = (p) => PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
     const monthName = (ym) => {
         const [y, m] = (ym || '').split('-');
-        return y && m
-            ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', {
-                  month: 'short',
-                  year: 'numeric',
-              })
-            : ym || '';
+        return y && m ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : ym || '';
     };
-    // A card with nothing in it yet says nothing: it is left out, and a pair or a
-    // section left empty goes with it (the one look's simpler format).
-    const emptyNote = (t) =>
-        `<p class="ana-empty" style="font-size:var(--fs-sub);color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
-    const moCard = (title, body) =>
-        /^<p class="ana-empty"[^<]*>[^<]*<\/p>$/.test(String(body).trim()) ? '' : `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
-    const grid2 = (a, b) => (a && b ? `<div class="mo-grid2">${a}${b}</div>` : a || b);
-
-    // Category palette — colour bars by meaning rather than one flat hue.
-    const HUE = {
-        Direct: 'var(--accent)',
-        Search: '#5BA8FF',
-        Social: '#C792EA',
-        Referral: '#7FD1AE',
-        mobile: '#5BA8FF',
-        tablet: '#7FD1AE',
-        desktop: 'var(--accent)',
+    const bars = (rows, color) => {
+        const max = rows.reduce((m, r) => Math.max(m, r.value), 0) || 1;
+        return osHBars(rows.map((r) => ({ label: r.label, value: r.value, max, valLabel: r.valLabel, color: r.color || color || 'var(--accent)' })));
     };
+    const cap = (t) => `<div class="acr-cap">${t}</div>`;
+    const sub = (t) => `<div class="acw-cap ana-subcap">${t}</div>`;
 
-    // Period-over-period delta vs the previous equal-length window.
-    const delta = (cur, prev) => {
-        if (!prev || prev <= 0) return '';
-        const pct = Math.round(((cur - prev) / prev) * 100);
-        return ` · ${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs prev ${winLabel}`;
-    };
+    // ---- the title's pill: how many people came, against the window before ----
+    const prevP = d.prevUniqueVisitors || 0;
+    const dp = prevP > 0 ? Math.round(((people - prevP) / prevP) * 100) : null;
+    if (settingsShowing('analytics')) {
+        const label = `${people} ${people === 1 ? 'person' : 'people'} in the last ${win}` + (dp === null ? '' : `, ${Math.abs(dp)}% ${dp >= 0 ? 'more' : 'fewer'} than the ${win} before`);
+        headPillSet('settings-panel-cap', dp === null ? '' : dp <= -10 ? headPill('warn', 'Down ' + Math.abs(dp) + '%', { label }) : dp >= 10 ? headPill('ok', 'Up ' + dp + '%', { label }) : headPill('unk', 'Steady', { label }));
+    }
 
-    // ---- KPI tiles ----
-    const uniq = d.uniqueVisitors || 0,
-        bookings = d.bookings || 0;
-    const convPct = uniq > 0 ? (bookings / uniq) * 100 : 0;
-    const convDisp = convPct >= 10 ? Math.round(convPct) : Math.round(convPct * 10) / 10;
-    const mix = d.visitorMix || { new: 0, returning: 0 };
-    const mixTotal = (mix.new || 0) + (mix.returning || 0);
-    const retPct = mixTotal > 0 ? Math.round((mix.returning / mixTotal) * 100) : 0;
-    const kpis = `<div class="mo-kpis">
-                <div class="mo-kpi"><div class="mo-label">Visits</div><div class="mo-value">${d.totalViews || 0}</div><div class="mo-sub">${winLabel}${delta(d.totalViews || 0, d.prevTotalViews || 0)}</div></div>
-                <div class="mo-kpi"><div class="mo-label">Unique visitors</div><div class="mo-value">${uniq}</div><div class="mo-sub">${winLabel}${delta(uniq, d.prevUniqueVisitors || 0)}</div></div>
-                <div class="mo-kpi"><div class="mo-label">Conversion</div><div class="mo-value">${convDisp}%</div><div class="mo-sub">${bookings} booking${bookings === 1 ? '' : 's'} ÷ visitors</div></div>
-                <div class="mo-kpi"><div class="mo-label">Returning</div><div class="mo-value">${retPct}%</div><div class="mo-sub">${mix.new || 0} new · ${mix.returning || 0} returning</div></div>
-            </div>`;
+    // ---- the switcher: the one look's segmented control ----
+    const seg = `<div class="ana-pick"><div class="ana-seg" role="tablist" aria-label="Time window">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" role="tab" aria-selected="${n === winDays}" ${chbAttrs('loadAnalytics', n)}>${ANA_WIN(n)}</button>`).join('')}</div></div>`;
 
-    // ---- daily trend → vertical bars, rolled up so long windows stay readable ----
+    // ---- the four figures ----
+    const tile = (n, l, s) => `<div class="u-stat"><div class="u-stat-n">${e(String(n))}</div><div class="u-stat-l">${l}</div>${s ? `<div class="ana-tsub">${e(s)}</div>` : ''}</div>`;
+    const tiles =
+        `<div class="u-stats ana-stats">` +
+        tile(people, 'People', anaDelta(people, prevP, win)) +
+        tile(views, 'Pages viewed', anaDelta(views, d.prevTotalViews || 0, win)) +
+        tile(sent, sent === 1 ? 'Enquiry sent' : 'Enquiries sent', people > 0 ? Math.round((sent / people) * 1000) / 10 + '% of people' : '') +
+        tile(booked, 'Booked through the site', sent > 0 ? anaPct(booked, sent) + '% of enquiries' : '') +
+        `</div>`;
+
+    // ---- worth knowing ----
+    const ins = buildInsights(d);
+    const insHtml = ins.length
+        ? cap('Worth knowing') +
+          `<div class="acr-well ana-ins">` +
+          ins
+              .map((x) =>
+                  x.go
+                      ? `<button type="button" class="acr-row ana-insrow" ${chbAttrs('anaOpenFold', x.go)}><span class="ana-dot${x.tone ? ' is-' + x.tone : ''}" aria-hidden="true"></span><span class="acr-lbl">${e(x.t)}</span>${BHUB_CHEV}</button>`
+                      : `<div class="acr-row ana-insrow"><span class="ana-dot${x.tone ? ' is-' + x.tone : ''}" aria-hidden="true"></span><span class="acr-lbl">${e(x.t)}</span></div>`,
+              )
+              .join('') +
+          `</div>`
+        : '';
+
+    // ---- pages viewed each day (rolled up so a long window stays readable) ----
     const daily = Array.isArray(d.daily) ? d.daily : [];
-    const fmtDM = (s) => {
-        const [y, m, dd] = (s || '').split('-');
-        return dd ? `${+dd}/${+m}` : s;
+    const fmtDM = (x) => {
+        const [, m, dd] = (x || '').split('-');
+        return dd ? `${+dd}/${+m}` : x;
     };
-    let trendItems;
-    if (winDays <= 30) {
-        trendItems = daily.map((r) => ({
-            short: (r.date || '').slice(8),
-            label: fmtDM(r.date),
-            value: r.views,
-        }));
-    } else if (winDays <= 120) {
-        trendItems = [];
+    let items;
+    if (winDays <= 30) items = daily.map((r) => ({ short: (r.date || '').slice(8), label: fmtDM(r.date), value: r.views }));
+    else if (winDays <= 120) {
+        items = [];
         for (let i = 0; i < daily.length; i += 7) {
-            const chunk = daily.slice(i, i + 7);
-            trendItems.push({
-                short: fmtDM(chunk[0].date),
-                label: 'week of ' + fmtDM(chunk[0].date),
-                value: chunk.reduce((a, b) => a + b.views, 0),
-            });
+            const c = daily.slice(i, i + 7);
+            items.push({ short: fmtDM(c[0].date), label: 'week of ' + fmtDM(c[0].date), value: c.reduce((a, b) => a + b.views, 0) });
         }
     } else {
         const mm = {};
@@ -27239,229 +27210,110 @@ async function loadAnalytics(days = 30) {
             const k = (r.date || '').slice(0, 7);
             mm[k] = (mm[k] || 0) + r.views;
         });
-        trendItems = Object.keys(mm)
-            .sort()
-            .map((k) => ({
-                short: monthName(k).replace(/\s\d+$/, ''),
-                label: monthName(k),
-                value: mm[k],
-            }));
+        items = Object.keys(mm).sort().map((k) => ({ short: monthName(k).replace(/\s\d+$/, ''), label: monthName(k), value: mm[k] }));
     }
-    const peak = daily.reduce((mx, r) => Math.max(mx, r.views), 0);
-    const trendHtml = daily.length
-        ? osVBars(trendItems) +
-          `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:4px;">peak ${peak}/day · ${winDays <= 30 ? 'by day' : winDays <= 120 ? 'by week' : 'by month'}</div>`
-        : emptyNote('No visits recorded yet — check back once guests have browsed the site.');
-
-    // ---- funnels (green→amber so drop-off reads at a glance) ----
-    const stepColor = (i, n) =>
-        `hsl(${Math.round(140 - (140 - 35) * (n > 1 ? i / (n - 1) : 0))}, 52%, 56%)`;
-    const funnelBars = (steps) => {
-        const top = steps[0].value || 0,
-            n = steps.length;
-        return osHBars(
-            steps.map((s, i) => {
-                const prev = i === 0 ? null : steps[i - 1].value;
-                const fromPrev =
-                    prev != null && prev > 0 ? Math.round((s.value / prev) * 100) : null;
-                return {
-                    label: s.label,
-                    value: s.value,
-                    max: top || 1,
-                    valLabel: s.value + (fromPrev != null ? ` · ${fromPrev}%` : ''),
-                    color: stepColor(i, n),
-                };
-            }),
-        );
-    };
-    const funnel =
-        funnelBars([
-            { label: 'Unique visitors', value: uniq },
-            { label: 'Enquiries', value: d.enquiries || 0 },
-            { label: 'Bookings', value: bookings },
-        ]);
-    const ev = d.events || {};
-    const engagement = funnelBars([
-        { label: 'Clicked “Enquire now”', value: ev.book_click || 0 },
-        { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
-        { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
-        { label: 'Started a payment', value: ev.pay_start || 0 },
-    ]);
-    const convDonut = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">${osDonut(Math.round(convPct), 'var(--accent)')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">${bookings} booking${bookings === 1 ? '' : 's'} from ${uniq} unique visitor${uniq === 1 ? '' : 's'} this ${winLabel}.</div></div>`;
-
-    // ---- audience: new/returning + devices ----
-    const mixMax = Math.max(mix.new || 0, mix.returning || 0, 1);
-    const mixHtml = mixTotal
-        ? osHBars([
-              { label: 'New', value: mix.new || 0, max: mixMax, color: '#5BA8FF' },
-              { label: 'Returning', value: mix.returning || 0, max: mixMax, color: '#7FD1AE' },
-          ])
-        : emptyNote('No visitors recorded yet.');
-    const DEVICE_LABELS = { mobile: 'Mobile', tablet: 'Tablet', desktop: 'Desktop' };
-    const devices = Array.isArray(d.devices) ? d.devices : [];
-    const devMax = devices.reduce((m, x) => Math.max(m, x.count), 0);
-    const devicesHtml = devices.length
-        ? osHBars(
-              devices.map((x) => ({
-                  label: DEVICE_LABELS[x.device] || x.device,
-                  value: x.count,
-                  max: devMax,
-                  color: HUE[x.device] || 'var(--accent)',
-              })),
-          )
-        : emptyNote('No device data yet.');
-
-    // ---- acquisition: channels / engines / sources / referrers ----
-    const channels = Array.isArray(d.channels) ? d.channels : [];
-    const chMax = channels.reduce((m, c) => Math.max(m, c.count), 0);
-    const channelsHtml = channels.length
-        ? osHBars(
-              channels.map((c) => ({
-                  label: c.channel,
-                  value: c.count,
-                  max: chMax,
-                  color: HUE[c.channel] || 'var(--accent)',
-              })),
-          )
-        : emptyNote('No visits recorded yet.');
-    const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
-    const enMax = engines.reduce((m, e) => Math.max(m, e.count), 0);
-    const enginesHtml = engines.length
-        ? osHBars(
-              engines.map((e) => ({ label: e.name, value: e.count, max: enMax, color: '#5BA8FF' })),
-          )
-        : emptyNote('No search-engine visits yet.');
-    const sources = Array.isArray(d.sources) ? d.sources : [];
-    const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
-    const sourcesHtml = sources.length
-        ? osHBars(
-              sources.map((s) => ({
-                  label: s.source,
-                  value: s.count,
-                  max: srcMax,
-                  color: '#C792EA',
-              })),
-          )
-        : emptyNote('No tagged campaign links yet.');
-    const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
-    const refMax = refs.reduce((m, r) => Math.max(m, r.count), 0);
-    const refsHtml = refs.length
-        ? osHBars(
-              refs.map((r) => ({ label: r.host, value: r.count, max: refMax, color: '#7FD1AE' })),
-          )
-        : emptyNote('Mostly direct visits (no referrer) so far.');
-
-    // ---- behaviour: devices already built above; pages / exit pages / cottages ----
-    const pages = Array.isArray(d.topPages) ? d.topPages : [];
-    const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
-    const fmtDur = (ms) => {
-        if (!ms) return '';
-        const s = Math.round(ms / 1000);
-        return s < 60 ? ` · ${s}s` : ` · ${Math.floor(s / 60)}m ${s % 60}s`;
-    };
-    const pagesHtml = pages.length
-        ? osHBars(
-              pages.map((p) => ({
-                  label: pageLabel(p.path),
-                  value: p.views,
-                  max: pgMax,
-                  valLabel: `${p.views}${fmtDur(p.dwellMs)}`,
-                  color: 'var(--accent)',
-              })),
-          )
-        : emptyNote('No page views yet.');
-    const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
-    const exMax = exits.reduce((m, x) => Math.max(m, x.count), 0);
-    const exitsHtml = exits.length
-        ? osHBars(
-              exits.map((x) => ({
-                  label: pageLabel(x.path),
-                  value: x.count,
-                  max: exMax,
-                  color: '#C792EA',
-              })),
-          )
-        : emptyNote('Not enough data yet.');
-    const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
-    const cotMax = cottages.reduce((m, c) => Math.max(m, c.views), 0);
-    const cottageHtml = cottages.length
-        ? osHBars(
-              cottages.map((c) => ({
-                  label: (propertyMeta[c.prop_key] || {}).name || c.prop_key,
-                  value: c.views,
-                  max: cotMax,
-                  color: `var(--prop-${c.prop_key}, var(--accent))`,
-              })),
-          )
-        : emptyNote('No cottage page views yet.');
-
-    // Search demand: what guests searched + how often nothing was free.
-    const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
-    const noPct = sd.total ? Math.round((sd.noResult / sd.total) * 100) : 0;
-    const tmMax = (sd.topMonths || []).reduce((m, x) => Math.max(m, x.count), 0);
-    const topMonthsHtml = (sd.topMonths || []).length
-        ? osHBars(
-              (sd.topMonths || []).map((x) => ({
-                  label: `${monthName(x.month)} · ${x.count ? Math.round((x.found / x.count) * 100) : 0}% found space`,
-                  value: x.count,
-                  max: tmMax,
-                  color: 'var(--accent)',
-              })),
-          )
+    const peak = daily.reduce((m, r) => Math.max(m, r.views), 0);
+    const chart = daily.length
+        ? cap('Pages viewed ' + (winDays <= 30 ? 'each day' : winDays <= 120 ? 'each week' : 'each month')) +
+          `<div class="u-win is-pad ana-chart">${osVBars(items)}<div class="ana-foot">Busiest day: ${peak} ${peak === 1 ? 'page' : 'pages'}</div></div>`
         : '';
-    const recentNoHtml = (sd.recentNoResult || [])
+
+    // ---- from a visit to a booking: one colour, each step's share of the last ----
+    const steps = [
+        { label: 'People', value: people },
+        { label: 'Tapped “Enquire now”', value: ev.book_click || 0 },
+        { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
+        { label: 'Sent an enquiry', value: sent },
+        { label: 'Booked through the site', value: booked },
+    ];
+    const funnel =
+        cap('From a visit to a booking') +
+        `<div class="u-win is-pad ana-funnel">` +
+        osHBars(steps.map((s, i) => ({ label: s.label, value: s.value, max: people || 1, valLabel: s.value + (i > 0 && steps[i - 1].value > 0 ? ' · ' + anaPct(s.value, steps[i - 1].value) + '%' : ''), color: 'var(--accent)' }))) +
+        `<div class="ana-foot">Each step’s share is of the step above it.</div></div>`;
+
+    // ---- the deeper answers fold under their own rows ----
+    const ch = Array.isArray(d.channels) ? d.channels : [];
+    const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
+    const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
+    const srcs = Array.isArray(d.sources) ? d.sources : [];
+    const chTot = ch.reduce((a, b) => a + b.count, 0);
+    const fromSum = ch.length ? (ch[0].channel === 'Direct' ? 'Mostly straight to the site' : 'Mostly ' + ch[0].channel.toLowerCase()) + ' · ' + anaPct(ch[0].count, chTot) + '%' : '';
+    const fromBody =
+        (ch.length ? bars(ch.map((c) => ({ label: c.channel === 'Direct' ? 'Straight to the site' : c.channel, value: c.count }))) : '') +
+        (engines.length ? sub('Search engines') + bars(engines.map((x) => ({ label: x.name, value: x.count }))) : '') +
+        (refs.length ? sub('Other sites') + bars(refs.map((r) => ({ label: r.host, value: r.count }))) : '') +
+        (srcs.length ? sub('Your tagged links') + bars(srcs.map((x) => ({ label: x.source, value: x.count }))) : '');
+
+    const cots = Array.isArray(d.byCottage) ? d.byCottage : [];
+    const pages = Array.isArray(d.topPages) ? d.topPages : [];
+    const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
+    const dur = (ms) => {
+        if (!ms) return '';
+        const t = Math.round(ms / 1000);
+        return t < 60 ? ` · ${t}s` : ` · ${Math.floor(t / 60)}m ${t % 60}s`;
+    };
+    const topCot = cots[0] ? (propertyMeta[cots[0].prop_key] || {}).name || cots[0].prop_key : '';
+    const lookBody =
+        (cots.length ? sub('Cottages') + bars(cots.map((c) => ({ label: (propertyMeta[c.prop_key] || {}).name || c.prop_key, value: c.views, color: `var(--prop-${c.prop_key}, var(--accent))` }))) : '') +
+        (pages.length ? sub('Pages, with the time spent on each') + bars(pages.map((p) => ({ label: pageLabel(p.path), value: p.views, valLabel: `${p.views}${dur(p.dwellMs)}` }))) : '') +
+        (exits.length ? sub('Where they left') + bars(exits.map((x) => ({ label: pageLabel(x.path), value: x.count }))) : '') +
+        (d.bounceRate ? `<p class="ana-line">${d.bounceRate}% looked at one page and left.</p>` : '');
+
+    const devs = Array.isArray(d.devices) ? d.devices : [];
+    const devTot = devs.reduce((a, b) => a + b.count, 0);
+    const DEV = { mobile: 'Phone', tablet: 'Tablet', desktop: 'Computer' };
+    const mob = (devs.find((x) => x.device === 'mobile') || {}).count || 0;
+    const devBody = devTot
+        ? `<div class="ana-split" role="img" aria-label="${e(devs.map((x) => (DEV[x.device] || x.device) + ' ' + anaPct(x.count, devTot) + '%').join(', '))}">${devs.map((x) => `<i class="is-${e(x.device)}" style="flex:${x.count}"></i>`).join('')}</div>` +
+          `<div class="ana-legend">${devs.map((x) => `<span><i class="is-${e(x.device)}" aria-hidden="true"></i>${e(DEV[x.device] || x.device)} ${anaPct(x.count, devTot)}%</span>`).join('')}</div>`
+        : '';
+
+    const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
+    const noPct = anaPct(sd.noResult || 0, sd.total || 0);
+    const recent = (sd.recentNoResult || [])
         .map((r) => {
-            const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
-            const when =
-                r.mode === 'flex'
-                    ? `${r.nights || '?'} night${r.nights === 1 ? '' : 's'} in ${monthName(r.month)}`
-                    : `${dpPretty(r.check_in) || 'dates'}${r.nights ? ` · ${r.nights} night${r.nights === 1 ? '' : 's'}` : ''}`;
-            return `<li style="margin-bottom:5px;">${escapeHtml(when)} · ${escapeHtml(who)}</li>`;
+            const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
+            const when = r.mode === 'flex' ? `${r.nights || '?'} night${r.nights === 1 ? '' : 's'} in ${monthName(r.month)}` : `${r.check_in ? fmtDate(r.check_in) : 'dates'}${r.nights ? ` · ${r.nights} night${r.nights === 1 ? '' : 's'}` : ''}`;
+            return `<div class="acr-row ana-srow"><span class="acr-lbl">${e(when)}<small>${e(who)}</small></span></div>`;
         })
         .join('');
-
-    // ---- sticky period bar (full-width segmented control). CSV export lives at
-    // the very bottom as its own action, so the sticky header stays clean. ----
-    const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" ${chbAttrs('loadAnalytics', n)}>${rangeLabel(n)}</button>`).join('')}</div>`;
-    const pickerRow = `<div class="ana-pick">${seg}</div>`;
-    const exportRow = `<button type="button" class="ana-export" data-act="exportAnalyticsCsv"><svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Export these figures (CSV)</button>`;
-
-    // Auto-generated highlights ("so what") from the summary above.
-    const insights = buildInsights(d);
-    const insightsHtml = insights.length
-        ? `<div class="ana-insights"><div class="mo-card-title" style="margin-bottom:6px;">Highlights</div><ul style="margin:0;padding-left:18px;">${insights.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`
+    const searchBody = sd.total
+        ? ((sd.topMonths || []).length ? sub('The months they asked about') + bars(sd.topMonths.map((x) => ({ label: monthName(x.month), value: x.count, valLabel: `${x.count} · ${anaPct(x.found, x.count)}% found space` }))) : '') +
+          (recent ? sub('Recent searches that found nothing') + `<div class="ana-srows">${recent}</div>` : '') +
+          `<div class="ana-acts"><button type="button" class="u-btn2" ${chbAttrs('settingsOpen', 'pricing')}>Open Price ideas</button><button type="button" class="u-btn2" ${chbAttrs('settingsOpen', 'waitlist')}>Open the waitlist</button></div>`
         : '';
 
-    // The headline figures and the visits chart stay open; the four deeper
-    // sections fold under their own rows. An empty section is not drawn at all.
-    const anaGroup = (key, label, html) => (String(html).trim() ? bhubFoldGrp('ana-' + key, label, '', '', html) : '');
-    const over = moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml) + grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement));
+    const grp = (key, label, sub2, cap2, body) => (String(body).trim() ? bhubFoldGrp('ana-' + key, label, e(sub2), cap2, body) : '');
+    const folds =
+        grp('from', 'Where they came from', fromSum, '', fromBody) +
+        grp('look', 'What they looked at', topCot ? topCot + ' most of all' : '', '', lookBody) +
+        grp('dev', 'What they used', devTot ? anaPct(mob, devTot) + '% on a phone' : '', '', devBody) +
+        grp('search', 'Date searches', sd.total ? `${sd.noResult} of ${sd.total} found nothing free` : '', sd.total ? stCap(noPct >= 40 ? 'warn' : 'unk', noPct + '% unmet') : '', searchBody);
+
+    const tools =
+        cap('Tools') +
+        `<div class="sp-card sp-tlist ana-tools">` +
+        anaTool('M4 6h16v12H4z M4 7l8 6 8-6', 'Email me this week’s analytics now', 'Send', `data-act="sendWeeklyEmailNow" data-arg="analytics" data-pass="self"`) +
+        anaTool('M12 4v11 M7 10l5 5 5-5 M5 20h14', 'Download these figures (CSV)', 'Save', 'data-act="exportAnalyticsCsv"') +
+        `</div>`;
+
     wrap.innerHTML =
-        pickerRow +
-        insightsHtml +
-        kpis +
-        (over ? `<div class="ana-group-title">Behaviour over time</div>${over}` : '') +
-        `<div class="ana-folds">` +
-        anaGroup('audience', 'Audience', grid2(moCard('New vs returning', mixHtml), moCard('How visitors browse', devicesHtml))) +
-        anaGroup('sources', 'Where visitors come from', grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml)) + grid2(moCard('Where visitors came from', sourcesHtml), moCard('Top referrers', refsHtml))) +
-        anaGroup('onsite', 'On-site behaviour', grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml)) + grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))) +
-        anaGroup(
-            'search',
-            'What guests are searching for',
-            moCard(
-                'Search demand',
-                `
-                    <div class="mo-kpis" style="margin-bottom:12px;">
-                        <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
-                        <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
-                    </div>
-                    ${topMonthsHtml ? `<div class="acw-cap" style="margin:4px 0 8px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div class="acw-cap" style="margin:16px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul>` : ''}
-                `,
-            ),
-        ) +
-        `</div>` +
-        exportRow;
+        seg +
+        tiles +
+        `<p class="ana-note">A person is counted by device and connection, so one guest on a phone and a laptop counts twice.</p>` +
+        insHtml +
+        chart +
+        funnel +
+        (folds ? cap('In more detail') + `<div class="ana-folds">${folds}</div>` : '') +
+        tools;
+}
+// A "worth knowing" row that leads to its detail opens that fold and brings it on screen.
+function anaOpenFold(key) {
+    const f = document.getElementById('bhub-fold-ana-' + key);
+    if (f && f.hidden) bhubFoldToggle('ana-' + key);
+    const g = document.querySelector(`[data-grp="ana-${key}"]`);
+    if (g) chbScroll(g, { block: 'start' });
 }
 
 // ---- Waitlist manager (Manage → Waitlist) ----

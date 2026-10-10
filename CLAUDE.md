@@ -685,6 +685,35 @@ block at the foot of admin.css). The two old editors (`#chat-away-editor`, `#cha
   time, the two standard sentences equal), **ui-test-guestchat.js** (the page driven in a browser), plus re-aims in
   ui-test-manage / -hig / -search-learning.
 
+## Analytics says what each figure counts (rebuilt in the one look, no demo, at the owner's ask)
+
+Manage → Analytics (`loadAnalytics` / `buildInsights` / `anaOpenFold` in admin.js, the ANALYTICS block at the foot
+of admin.css). **The old page's figures did not mean what their labels said**, and the rebuild is first a correction:
+- "Visits" were page views → the tiles are **People** (`uniqueVisitors`) and **Pages viewed** (`totalViews`).
+- Enquiries came from the `enquiries` table, which loses every APPROVED enquiry (approval deletes the row), while
+  the funnel beside them read the site's own events (3 against 6 on one screen) → **Enquiries sent** is
+  `events.enquiry_submit`.
+- "Conversion" divided EVERY booking, the owner's hand-added ones included, by visitors → **Booked through the
+  site** is the new `siteBookings` in `analytics_summary()`: bookings in the window carrying `terms_accepted_at`,
+  which only an approved site enquiry has.
+- "Returning 0%" came from a fingerprint (IP + browser) that changes with a phone's connection → removed. A one-line
+  note under the tiles says a person is counted by device and connection.
+- The donut rounded 0.6% to "1%", and the funnel's green→amber ramp read as status → both are gone; the funnel is one
+  accent colour.
+
+The page:
+- The title's pill is the change in people (Down N% amber at −10%, Up N% green at +10%, else Steady).
+- The four tiles are `.u-stats`, each with its change in words.
+- **Worth knowing** rows, the unmet date searches first; that row opens its fold (`anaOpenFold`).
+- Pages viewed each day (`osVBars`, still measured by ui-test-manage §9), then the funnel.
+- Four fold rows: Where they came from / What they looked at / What they used (one split bar) / Date searches, with
+  a capsule and links to Price ideas and the waitlist.
+- Tools as the Status page's `.sp-tool` rows: email this week's analytics, download the CSV.
+
+The CSV and the **weekly analytics email** (`weekly_analytics_body`, payload `sent` / `booked`) use the same figures.
+Gated by **ui-test-analytics.js**: its fixture makes each wrong pair DISAGREE (3 table rows against 6 sent, 4
+bookings against 1 through the site), so reading the wrong one fails by name. test-emails-render covers the email.
+
 ## Email a guest: one sheet, and the email it sends (approved demo v3, built and pushed to main without CI)
 
 **Asked for as "overhaul guest email", demoed three times, then "Build and merge without CI".** One sheet for a

@@ -9953,3 +9953,40 @@ body.light-mode #gc-sheet .gc-chat { background: rgba(248, 248, 250, 0.97); }
   #gc-sheet .gc-in { animation: none; }
   #gc-page :is(.gc-saved, .gc-awayf, .gc-awayf[hidden]) { transition: none; }
 }
+
+/* ================================================================
+   ANALYTICS (Manage → Analytics; rebuilt in the one look)
+   Stat tiles, captions over wells and windows, fold rows for the detail, the
+   Status page's tool rows at the foot. One colour for the funnel: a green-to-
+   amber ramp read as status where it was only order.
+   ================================================================ */
+#analytics-body { max-width: 640px; }
+#analytics-body .ana-pick { margin-bottom: var(--u-gap, 16px); }
+#analytics-body .ana-stats { margin: 0; }
+#analytics-body .ana-tsub { margin-top: 4px; font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.4; }
+#analytics-body .ana-note { margin: 8px 4px 0; font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.45; text-wrap: pretty; }
+#analytics-body .ana-insrow { gap: 12px; justify-content: flex-start; }
+#analytics-body button.ana-insrow { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#analytics-body .ana-insrow .acr-lbl { flex: 1 1 auto; text-wrap: pretty; }
+#analytics-body .ana-insrow + .ana-insrow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+#analytics-body .ana-dot { flex: none; width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--text-muted); }
+#analytics-body .ana-dot.is-warn { background: var(--warn); }
+#analytics-body .ana-dot.is-ok { background: var(--ok); }
+#analytics-body .ana-foot { margin-top: 4px; font-size: var(--fs-caption); color: var(--text-muted); }
+#analytics-body .ana-subcap { margin: 16px 0 8px; }
+#analytics-body .bhub-foldin > .ana-subcap:first-child { margin-top: 0; }
+#analytics-body .ana-line { margin: 8px 0 0; font-size: var(--fs-sub); color: var(--text-muted); }
+/* What they used: one split bar, then its legend — three bars of one total
+   made the reader do the sum the split shows at a glance. */
+#analytics-body .ana-split { display: flex; gap: 2px; height: 12px; border-radius: var(--r-pill); overflow: hidden; }
+#analytics-body .ana-split i, #analytics-body .ana-legend i { display: block; background: var(--accent); }
+#analytics-body :is(.ana-split, .ana-legend) i.is-mobile { background: var(--accent); }
+#analytics-body :is(.ana-split, .ana-legend) i.is-desktop { background: color-mix(in srgb, var(--accent) 55%, var(--text-muted)); }
+#analytics-body :is(.ana-split, .ana-legend) i.is-tablet { background: var(--text-muted); }
+#analytics-body .ana-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; font-size: var(--fs-sub); color: var(--text-light); }
+#analytics-body .ana-legend span { display: inline-flex; align-items: center; gap: 8px; }
+#analytics-body .ana-legend i { width: 8px; height: 8px; border-radius: var(--r-pill); }
+#analytics-body .ana-srows { background: var(--u-inset, transparent); border-radius: var(--u-r-cell, 12px); }
+#analytics-body .ana-srow + .ana-srow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+#analytics-body .ana-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+#analytics-body .ana-tools { margin-top: 0; }

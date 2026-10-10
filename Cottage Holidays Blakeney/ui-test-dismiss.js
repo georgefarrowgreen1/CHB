@@ -36,7 +36,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       let body = {}; try { body = JSON.parse(post || '{}'); } catch (e) {}
       const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
       if (url.includes('admin-bootstrap.php')) return json({ ok: true, dismissed: serverDismissed });
-      if (url.includes('content.php') && body.action === 'set') { saves.push({ key: body.key, value: body.value }); return json({ ok: true }); }
+      // The Inbox's own record ('inbox-state': the line its first open draws) is
+      // written in the background on boot — not a dismissal, and not counted here.
+      if (url.includes('content.php') && body.action === 'set') { if (body.key !== 'inbox-state') saves.push({ key: body.key, value: body.value }); return json({ ok: true }); }
       return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] });
     });
     await p.addInitScript(() => {
