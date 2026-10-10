@@ -13349,16 +13349,15 @@ function oaDevHtml(k) {
     if (!k && !devs.length) rows.push(gaRow({ ic: 'dphone', t: 'No devices listed yet', static: true }));
     // The list is complete only a session lifetime after it began: before then a
     // device signed in earlier and not used since has no row yet, so signing out
-    // everywhere stays on offer and the note says why.
+    // everywhere stays on offer.
     if (k) {
         if (devs.length || st.partial) rows.push(gaRow({ ic: 'out', t: 'Sign ' + n + ' out everywhere', act: chbAttrs('oaDevSignOutAll', k), danger: true }));
         else rows.push(gaRow({ ic: 'check', t: 'Not signed in anywhere', s: n + ' can sign in with a password, a passkey or an emailed code', static: true }));
     } else if (others.length || st.partial) {
         rows.push(gaRow({ ic: 'out', t: 'Sign out of all other devices', act: chbAttrs('oaDevSignOutAll', 0), danger: true }));
     }
-    let note = '';
-    if (st.partial && st.began) note = 'Listed since ' + fmtDate(st.began) + ': a device not used since then appears here the next time it is. ' + (k ? 'Signing ' + n + ' out everywhere' : 'Signing out of all other devices') + ' covers it too.';
-    else if (!k && devs.length && !others.length) note = 'You’re signed in on this ' + oaDevName(devs[0]) + ' only.';
+    // "Only" is a claim the list can make once it is complete.
+    const note = !k && !st.partial && devs.length && !others.length ? 'You’re signed in on this ' + oaDevName(devs[0]) + ' only.' : '';
     return `<div class="ga-group oa-devs">${rows.join('')}</div>` + (note ? `<p class="ga-note oa-dev-note">${escapeHtml(note)}</p>` : '');
 }
 const oaDevFind = (k, id) => {

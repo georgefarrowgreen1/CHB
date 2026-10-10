@@ -7,7 +7,7 @@
 //     confirming posts it and the row goes
 //  §4 this device's sheet offers Log out, never a sign-out from here
 //  §5 signing out of all other devices: one ask, counted; the note that follows
-//  §6 a list that may not be complete yet keeps the way out on offer and says why
+//  §6 a list that may not be complete yet keeps the way out on offer, with no note
 //  §7 a Super User on someone's page: their devices, and signing them out everywhere
 //  §8 the new-sign-in alert's link opens the device; one already gone says so
 //  §9 a list that couldn't load says so and tries again; an answer with no list
@@ -221,7 +221,7 @@ const ok = (b, m) => {
     r = await rows('oa-dev-host');
     const pnote = await page.evaluate(() => (document.querySelector('#oa-dev-host .oa-dev-note') || {}).textContent);
     ok(r.some((x) => x.t === 'Sign out of all other devices'), 'with only this device listed, signing out the others stays on offer');
-    ok(/^Listed since 10\/10\/2026: a device not used since then appears here the next time it is\. Signing out of all other devices covers it too\.$/.test(pnote || ''), `…and the note says why (${pnote})`);
+    ok(!pnote, `…with no note under the list, and no claim that this is the only device (${pnote})`);
     await page.click('#oa-dev-host .ga-row.is-danger');
     await waitDlg();
     dg = await dlg();

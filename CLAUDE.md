@@ -5165,7 +5165,8 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
 - **A SESSION FROM BEFORE THE LIST BEGAN** has no row; it is recorded (`how` = 'earlier', "Not recorded") the next
   time it is used. One never used again has no row at all, so for a session lifetime (60 days) after migration-143
   the list can be incomplete: `devices_partial` (the migration's `applied_at`), and the page then keeps "Sign out of
-  all other devices" on offer with a note saying so. **Signing out everywhere moves the epoch** as well as ending
+  all other devices" on offer. It says nothing about it (the "Listed since…" note was removed at the owner's ask),
+  and "You're signed in on this iPhone only" is never said while the list may be incomplete. **Signing out everywhere moves the epoch** as well as ending
   rows, which is what reaches a session with no row (integration §82 makes one by taking its row id out of its
   session file — break-tested).
 - **WHAT A DEVICE IS CALLED** is `devices_label($ua, $hint)` (pure): "iPhone · App", "Mac · Chrome". An iPad's
