@@ -9,22 +9,24 @@
 //     appearing on screen the moment the hero existed. Asserted as EQUALITY with
 //     the composer's own data, so the hero cannot render a different answer.
 //  §2 (removed with the Move money out screen it measured)
-//  §3 NOTHING LOSES ITS WORDS. The subs, labels and money lines on six owner
-//     surfaces, at 360 / 390 / 1280. Measured as INK — a Range over each
-//     element's contents against its own content box — never `scrollWidth`,
-//     because a `::before` hit region inflates that (the searchpage §13 lesson)
-//     and a clamped element's overflow is VERTICAL, which a width check cannot
-//     see at all.
-//  §4 THE FORECAST STATES ALL FOUR OF ITS FACTS, and Income & tax stands on ONE
-//     RAIL. The four-column <table> ran to 548px in a 362px box with
-//     `overflow-x: visible`, so at 390 Bookings and Occupancy were simply
-//     clipped off the page with nothing to scroll and nothing saying they were
-//     there; at 1280 the select spanned 1120px, the headline 460, the folds 640
-//     and the forecast 718 — four widths on one page.
-//  §5 ONE DISCLOSURE VOCABULARY. Six <details> summaries wore three chevrons and
-//     two heights (two of them 29px, under the app's own 44px floor). One spec,
-//     and the chevron is BHUB_CHEV drawn as a mask — so the check reads the
-//     ::after's mask, not a text glyph.
+//  §3 NOTHING LOSES ITS WORDS. The subs, labels and money lines on the owner's
+//     reference surfaces, at 360 / 390 / 1280: the one Payments page (the
+//     landing, the books — Income & tax lives there now — a stay's payments,
+//     which replaced Payments & balances, and With Square), the key safes and
+//     the assistant's thread. Measured as INK — a Range over each element's
+//     contents against its own content box — never `scrollWidth`, because a
+//     `::before` hit region inflates that (the searchpage §13 lesson) and a
+//     clamped element's overflow is VERTICAL, which a width check cannot see.
+//  §4 INCOME & TAX STANDS ON ONE RAIL. It is the Payments page's books page now;
+//     at 1280 the old page ran four widths on one page (select 1120px, headline
+//     460, folds 640, forecast 718). Its blocks share one left and one right
+//     edge, and at 390 nothing in it reaches past the viewport. (The monthly
+//     forecast and its four-column table went with the old page; the books
+//     page's quarters carry the year's shape.)
+//  §5 (removed: ONE DISCLOSURE VOCABULARY had no subject left on the screens it
+//     walked — the Status page's text disclosures became the Tools card row, the
+//     key safe's moved into its sheet, and the last one, Move money out's "Show
+//     how these figures are worked out", went with that screen.)
 //
 // TZ is pinned by ui-test-lib at require time (the app reckons "today" in UK
 // time, so fixtures built from new Date() must agree with it on any runner).
@@ -73,6 +75,12 @@ const READ_SELS = [
     '.bhub-fold-sub', '.bhub-kv-label', '.bhub-kv-sub',
     '.mo-pulse', '.bk-row-dates', '.bk-row-name', '.feed-who',
     '.cmdk-turn-a', '.ks-say', '.ks-row-sub', '.acr-cap', '.mf-name', '.mf-sub',
+    // The one Payments page's reading tiers: a row's title and sub, a caption, the
+    // owed card's caption line, a detail page's title and sub, a sum row's label, a
+    // stay's timeline and a page's note.
+    '#pm .pm-t', '#pm .pm-s', '#pm .pm-capline > span:first-child', '#pm .pm-owe-top > span',
+    '#pm .pm-dname', '#pm .pm-dsub', '#pm .pm-kv > span:first-child', '#pm .pm-tl-t', '#pm .pm-tl-s',
+    '#pm .pm-note', '#pm .pm-hero-sub', '#pm .pm-hero-top > span',
 ].join(', ');
 
 (async () => {
@@ -125,6 +133,34 @@ const READ_SELS = [
             },
         },
     };
+    // THE ONE PAYMENTS PAGE reads money.php: where the money is (a 40-day-old card
+    // charge Square has not reported, so Needs you raises "Card payments to check" and
+    // With Square lists it), the tax year's books, and the movements — the hostile
+    // name among them, on a deposit return still on its way.
+    const now = Math.floor(Date.now() / 1000);
+    const TY = d(0) < `${new Date().getFullYear()}-04-06` ? new Date().getFullYear() - 1 : new Date().getFullYear();
+    const MONEY = {
+        ok: true, at: now,
+        position: { with_square: 1179, with_square_count: 2, unknown: 491.25, unreported: 491.25, unreported_count: 1, next_arrival: d(2), in_bank: 368.44, ready: 294.75, held: 73.69, last_moved: 0, error: false, checked: now, payout_error: null, failed: [], disputes: null, bank: '' },
+        bank_items: [{ txn_id: 11, booking_id: 2, name: 'Sarah Pemberton', prop: '21a', paid_on: d(-12), gross: 375, fee: 6.56, settled: 368.44, fenced: 73.69, movable: 294.75, arrival: d(-10), moved_at: 0, by_owner: 0, failed: false }],
+        moved_map: {}, landed_map: {},
+        way_items: [
+            { txn_id: 12, booking_id: 2, name: 'Sarah Pemberton', prop: '21a', paid_on: d(0), gross: 700, fee: 12.25, settled: 687.75, fenced: 0, movable: 687.75, arrival: d(2), moved_at: 0, by_owner: 0, failed: false },
+            { txn_id: 13, booking_id: 1, name: 'Alexandrina Featherstonehaugh-Smythe', prop: '21a', paid_on: d(-40), gross: 500, fee: 8.75, settled: 491.25, fenced: 0, movable: 491.25, arrival: '', moved_at: 0, by_owner: 0, failed: false },
+        ],
+        books: { year: TY, income: 656.2, kept: 50, fees: 9.8, expenses: 120, profit: 576.4, quarters: [0, 656.2, 50, 0], by_category: [{ category: 'Maintenance', amount: 120 }], undated: { count: 0, total: 0, held: 0 } },
+        years: [TY, TY - 1],
+        activity: [
+            { id: 'p31', at: now - 86400, kind: 'back', what: 'Deposit returned', booking_id: 1, name: 'Alexandrina Featherstonehaugh-Smythe', prop: '21a', amount: 110, deposit: 0, fee: null, method: 'card', status: 'pending', payout: null },
+            { id: 'p30', at: now - 3 * 86400, kind: 'in', what: 'Deposit', booking_id: 2, name: 'Part Paid Plan', prop: 'jollyboat', amount: 350, deposit: 50, fee: 6.13, method: 'card', status: 'done', payout: { payout: 'po_1', arrival: d(-1), landed: true, fee: 6.13 } },
+            { id: 'opo_1', payout: 'po_1', at: now - 86400 - 3600, kind: 'payout', amount: 343.87, arrival: d(-1), state: 'landed' },
+            { id: 'x1', at: now - 40 * 86400, kind: 'expense', what: 'Maintenance', who: 'Boiler service', prop: '', amount: 120 },
+        ],
+    };
+    const STAY_EVENTS = [
+        { id: 'p20', at: now - 41 * 86400, kind: 'in', what: 'Deposit', booking_id: 1, name: 'Alexandrina Featherstonehaugh-Smythe', prop: '21a', amount: 300, deposit: 0, fee: 5.25, method: 'card', status: 'done', payout: { payout: 'po_0', arrival: d(-39), landed: true, fee: 5.25 } },
+        { id: 'p31', at: now - 86400, kind: 'back', what: 'Deposit returned', booking_id: 1, name: 'Alexandrina Featherstonehaugh-Smythe', prop: '21a', amount: 110, status: 'pending' },
+    ];
     const SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, forStay: 'b:1', history: [], name: '21A Westgate Street' };
     const SAFE_JB = { code: '', setAt: '', forBooking: 0, forStay: '', history: [], name: 'Jollyboat' };
 
@@ -141,6 +177,10 @@ const READ_SELS = [
             by_property: { '21a': 656.2 }, payments: [], undated: { count: 0, total: 0, held: 0 },
             deposit_liability: LIAB,
         });
+        if (url.includes('money.php')) {
+            if (b.action === 'stay') return json({ ok: true, events: STAY_EVENTS });
+            return json(MONEY);
+        }
         if (url.includes('expenses.php')) return json({ ok: true, expenses: [{ id: 1, date: d(-40), category: 'Maintenance', note: 'Boiler service', amount: 120 }] });
         if (url.includes('bookings.php')) {
             if (b.action === 'recent_payments') return json({ ok: true, payments: [{ name: 'Alexandrina Featherstonehaugh-Smythe', prop_key: '21a', kind: 'damages_return', amount: '110.00', created_at: d(-1) + ' 10:00:00', status: 'FAILED' }] });
