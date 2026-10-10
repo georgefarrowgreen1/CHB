@@ -22,6 +22,10 @@
 //      CHB_IT_DB_HOST  default 127.0.0.1      CHB_IT_DB_PORT  default 3306
 //      CHB_IT_DB_USER  default root           CHB_IT_DB_PASS  default root
 //      CHB_IT_HTTP_PORT default 8189
+//      CHB_IT_DB_NAME  default chb_it_test. A second name runs a second copy against
+//                      the same server, for break-testing one section; the lock checks
+//                      (§32: GET_LOCK names are server-wide) and the statement budget
+//                      (a global counter) then fail from the cross-talk, not the code.
 //  GitHub Actions: ubuntu-latest's preinstalled MySQL (root/root) works as-is
 //  after `sudo systemctl start mysql`. Locally: any MySQL/MariaDB you can
 //  reach over TCP. Excluded from deploy like every test-*.php.
@@ -44,7 +48,7 @@ if (!$HTTP_PORT) {
 $sock = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
 $MONZO_PORT = (int) explode(':', stream_socket_get_name($sock, false))[1];
 fclose($sock);
-$DB_NAME = 'chb_it_test';
+$DB_NAME = preg_match('/^[a-z0-9_]{1,40}$/', (string) getenv('CHB_IT_DB_NAME')) ? (string) getenv('CHB_IT_DB_NAME') : 'chb_it_test';
 $SECRET = 'chb-integration-secret-0123456789abcdef';
 $BASE = "http://127.0.0.1:$HTTP_PORT";
 
@@ -3476,9 +3480,13 @@ $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out,
 $bId = (int) $rootDb->lastInsertId();
 http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.record', 'on' => false]);
 http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.ask', 'on' => false]);
-$r = http($soph, 'POST', '/bookings.php', ['action' => 'update', 'id' => $bId, 'notes' => 'Late arrival', 'price_override' => 1, 'payment' => 'paid', 'deposit' => 999, 'op_id' => 'it51-edit-0001']);
-$bRow = $rootDb->query("SELECT notes, price_override, payment, deposit_paid FROM bookings WHERE id = $bId")->fetch();
+// The reason goes with the price: a sheet that left it blank must not wipe the
+// owner's reason while the price it explains stays put.
+$rootDb->exec("UPDATE bookings SET price_reason = 'Returning guest' WHERE id = $bId");
+$r = http($soph, 'POST', '/bookings.php', ['action' => 'update', 'id' => $bId, 'notes' => 'Late arrival', 'price_override' => 1, 'price_reason' => '', 'payment' => 'paid', 'deposit' => 999, 'op_id' => 'it51-edit-0001']);
+$bRow = $rootDb->query("SELECT notes, price_override, price_reason, payment, deposit_paid FROM bookings WHERE id = $bId")->fetch();
 it_check('§51 without Record payments or Ask for money, an edit changes the booking and never its money', $r['code'] === 200 && $bRow['notes'] === 'Late arrival' && abs((float) $bRow['price_override'] - 250) < 0.005 && $bRow['payment'] === 'unpaid' && abs((float) $bRow['deposit_paid']) < 0.005, $r['raw'] . json_encode($bRow));
+it_check('§51 …nor the reason for its price', ($bRow['price_reason'] ?? '') === 'Returning guest', json_encode($bRow));
 $r = http($soph, 'POST', '/bookings.php', ['action' => 'request_payment', 'id' => $bId]);
 it_check('§51 …and asking for money is refused', $refused($r), $r['raw']);
 $r = http($soph, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => 1, 'price_override' => 99]);
@@ -4054,6 +4062,69 @@ foreach ([
     $have = $keys57($sql, $args);
     it_check("§57 $what can use $want", strpos($have, $want) !== false, $have);
 }
+
+// ── §58 the booking sheet's money (the add/edit audit) ──
+// Each of these was reproduced on a full stack: the sheet promised one thing and the
+// save stored another. Driven through the real endpoint; the browser half is
+// ui-test-bookingsheet.js.
+echo "\n== §58 the booking sheet's money ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec('DELETE FROM login_attempts');
+$row58 = function ($id) use ($rootDb) {
+    $q = $rootDb->prepare('SELECT * FROM bookings WHERE id = ?');
+    $q->execute([(int) $id]);
+    return $q->fetch(PDO::FETCH_ASSOC) ?: [];
+};
+$add58 = function ($ci, $co, $name, $extra = []) use (&$admin, $propKey) {
+    return http($admin, 'POST', '/bookings.php', array_merge(['action' => 'add', 'prop_key' => $propKey, 'name' => $name, 'email' => '', 'phone' => '', 'check_in' => $ci, 'check_out' => $co, 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'override_clash' => true, 'send_confirmation' => false], $extra));
+};
+$upd58 = function ($id, $extra = []) use (&$admin) {
+    return http($admin, 'POST', '/bookings.php', array_merge(['action' => 'update', 'id' => (int) $id], $extra));
+};
+// (a) "All of it" on Add records the refundable deposit when the sheet says it came too.
+$r = $add58($dd(700), $dd(703), 'All Of It', ['payment' => 'paid', 'payment_date' => $dd(0), 'payment_method' => 'Cash', 'deposit_collected' => true]);
+$b58a = $row58($r['json']['id'] ?? 0);
+$dep58 = round((float) ($b58a['agreed_booking_fee'] ?? 0), 2);
+it_check('§58 "All of it" with the deposit records the rental AND the refundable deposit', $r['code'] === 200 && $dep58 > 0 && abs((float) $b58a['deposit_paid'] - ((float) $b58a['agreed_total'] + $dep58)) < 0.005 && $b58a['payment'] === 'paid', json_encode($b58a));
+$r = $add58($dd(704), $dd(707), 'Rental Only', ['payment' => 'paid', 'payment_date' => $dd(0), 'payment_method' => 'Cash']);
+$b58a2 = $row58($r['json']['id'] ?? 0);
+it_check('§58 …without the flag it is the rental alone, as before', abs((float) $b58a2['deposit_paid'] - (float) $b58a2['agreed_total']) < 0.005, json_encode($b58a2));
+// (b) Clearing a custom price set when the booking was added restores the standard one.
+$r = $add58($dd(710), $dd(713), 'Custom Then Standard', ['price_override' => 250, 'price_reason' => 'Friends & family']);
+$id58b = (int) ($r['json']['id'] ?? 0);
+$b58b = $row58($id58b);
+it_check('§58 a custom price on Add is stored as the override and the total', abs((float) $b58b['price_override'] - 250) < 0.005 && abs((float) $b58b['agreed_total'] - 250) < 0.005, json_encode($b58b));
+$r = $upd58($id58b, ['price_override' => '', 'price_reason' => '']);
+$b58b = $row58($id58b);
+$std58 = round((float) $b58b['agreed_nightly'] + (float) $b58b['agreed_txn_fee'], 2);
+it_check('§58 clearing it restores the standard total, not the old custom one', $r['code'] === 200 && $b58b['price_override'] === null && abs((float) $b58b['agreed_total'] - $std58) < 0.005 && abs($std58 - 250) > 0.5, json_encode($b58b));
+// (c) A new refundable deposit keeps the agreed nights at their agreed price.
+$r = $add58($dd(720), $dd(723), 'Deposit Only');
+$id58c = (int) ($r['json']['id'] ?? 0);
+$b58c0 = $row58($id58c);
+$rate58 = (float) $rootDb->query("SELECT couple_rate FROM properties WHERE prop_key = " . $rootDb->quote($propKey))->fetchColumn();
+$rootDb->prepare('UPDATE properties SET couple_rate = ? WHERE prop_key = ?')->execute([$rate58 + 40, $propKey]);
+$newDep58 = max(0.0, round((float) $b58c0['agreed_booking_fee'] - 25, 2));
+$r = $upd58($id58c, ['damages_deposit' => $newDep58]);
+$b58c = $row58($id58c);
+$rootDb->prepare('UPDATE properties SET couple_rate = ? WHERE prop_key = ?')->execute([$rate58, $propKey]);
+it_check('§58 a deposit-only change keeps the agreed rental (rates have risen since)', $r['code'] === 200 && abs((float) $b58c['agreed_total'] - (float) $b58c0['agreed_total']) < 0.005 && abs((float) $b58c['agreed_nightly'] - (float) $b58c0['agreed_nightly']) < 0.005, json_encode([$b58c0['agreed_total'], $b58c['agreed_total'], $b58c['agreed_nightly']]));
+it_check('§58 …moves the deposit, and counts as a change the confirmation states', abs((float) $b58c['agreed_booking_fee'] - $newDep58) < 0.005 && ($r['json']['material'] ?? null) === true, $r['raw']);
+// (d) Money recorded without a date (record_square_payment's old write) no longer
+// blocks every later edit.
+$r = $add58($dd(730), $dd(733), 'No Date Money');
+$id58d = (int) ($r['json']['id'] ?? 0);
+$rootDb->exec("UPDATE bookings SET deposit_paid = 100, payment = 'deposit', payment_date = NULL WHERE id = $id58d");
+$r = $upd58($id58d, ['phone' => '07700 900058']);
+$b58d = $row58($id58d);
+it_check('§58 an edit that sends no payment fields saves without a payment date', $r['code'] === 200 && $b58d['phone'] === '07700 900058' && abs((float) $b58d['deposit_paid'] - 100) < 0.005, $r['raw']);
+$r = $upd58($id58d, ['payment' => 'deposit', 'deposit' => 150]);
+it_check('§58 …while an edit that records money still needs one', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'payment date') !== false, $r['raw']);
+// (e) The owner editing an enquiry agrees exceptions; the refusals left are theirs.
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'One Night Owner Edit', 'email' => 'one58@example.com', 'check_in' => $dd(740), 'check_out' => $dd(741), 'adults' => 2, 'children' => 0, 'message' => '']);
+it_check('§58 an owner can move an enquiry to a stay under the minimum (an exception is theirs)', $r['code'] === 200 && !empty($r['json']['id']), $r['raw']);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Clash Owner Edit', 'email' => 'clash58@example.com', 'check_in' => $dd(720), 'check_out' => $dd(722), 'adults' => 2, 'children' => 0, 'message' => '']);
+it_check('§58 …and a clash is refused in the owner\'s words, not "Sorry, those dates are no longer available"', $r['code'] === 409 && strpos((string) ($r['json']['error'] ?? ''), 'enquiry can’t move onto them') !== false, $r['raw']);
 
 echo "\n== Summary ==\n";
 if ($fail) {

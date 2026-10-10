@@ -304,12 +304,16 @@ if ($action === 'submit') {
     }
     $L = $limits[$propKey];
     if ($adultsN > $L['maxAdults'] || $childrenN > $L['maxChildren'] || $adultsN + $childrenN > $L['maxTotal']) {
-        json_out(['error' => 'That party size is over the limit for this property.'], 400);
+        json_out(['error' => $isAdminEdit
+            ? 'That party is over this cottage’s limit of ' . (int) $L['maxTotal'] . ' guests, so the enquiry can’t take it. Add it as a booking instead, which asks first.'
+            : 'That party size is over the limit for this property.'], 400);
     }
 
     // Booking rules (min/max nights, arrival days) — mirror of the front end,
     // enforced here so the public form can't be bypassed. Rules are stored in the
-    // content table under 'rules-<propKey>' as JSON; fall back to defaults.
+    // content table under 'rules-<propKey>' as JSON; fall back to defaults. The
+    // owner editing an enquiry is not bound by them (adding a booking never was):
+    // agreeing an exception is theirs, and these refusals are worded for guests.
     $nights = (int) round((strtotime($checkOut) - strtotime($checkIn)) / 86400);
     $defaultRules = ['minNights' => 2, 'maxNights' => 0, 'arrivalDays' => [], 'minByDate' => [], 'gapFitDays' => 0];
     $rules = $defaultRules;
@@ -328,21 +332,21 @@ if ($action === 'submit') {
     $gapFit =
         $nights < $minN &&
         rule_gap_fit($rules, $checkIn, $checkOut, date('Y-m-d'), fn($d) => dates_clash($propKey, $d, date('Y-m-d', strtotime($d . ' 12:00:00 +1 day'))));
-    if ($nights < $minN && !$gapFit) {
+    if ($nights < $minN && !$gapFit && !$isAdminEdit) {
         json_out(
             ['error' => 'This property has a minimum stay of ' . $minN . ' night' . ($minN === 1 ? '' : 's') . '.'],
             400,
         );
     }
     $maxN = max(0, (int) $rules['maxNights']);
-    if ($maxN > 0 && $nights > $maxN) {
+    if ($maxN > 0 && $nights > $maxN && !$isAdminEdit) {
         json_out(
             ['error' => 'This property has a maximum stay of ' . $maxN . ' night' . ($maxN === 1 ? '' : 's') . '.'],
             400,
         );
     }
     $arrivalDays = is_array($rules['arrivalDays'] ?? null) ? $rules['arrivalDays'] : [];
-    if (count($arrivalDays) > 0) {
+    if (count($arrivalDays) > 0 && !$isAdminEdit) {
         $arrivalDow = (int) date('w', strtotime($checkIn)); // 0=Sun .. 6=Sat
         if (!in_array($arrivalDow, array_map('intval', $arrivalDays), true)) {
             $dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -355,7 +359,9 @@ if ($action === 'submit') {
     // Availability: reject if these dates clash with a confirmed booking or an
     // imported iCal block (Airbnb/Vrbo). Shared helper in db.php.
     if (dates_clash($propKey, $checkIn, $checkOut)) {
-        json_out(['error' => 'Sorry, those dates are no longer available. Please choose different dates.'], 409);
+        json_out(['error' => $isAdminEdit
+            ? 'Those dates overlap a booking or a platform stay at this cottage, so the enquiry can’t move onto them.'
+            : 'Sorry, those dates are no longer available. Please choose different dates.'], 409);
     }
 
     // Record terms acceptance (server timestamp is authoritative). The client

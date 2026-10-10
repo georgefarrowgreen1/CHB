@@ -814,6 +814,48 @@ EDIT A BOOKING" block in admin.css.
   every state above, no page errors, nothing wider than the sheet, and the save payload (override, reason, the
   confirmation flag). Budgets raised: admin.js +12.8KB, admin.css +2.5KB gz (owner-only, immutable-cached).
 
+## The booking sheet saves what it shows (the add/edit audit)
+
+Nine money defects in the sheet, each reproduced on a full stack (real endpoints, MariaDB, Chromium), plus four
+smaller ones. The rule they share: what the sheet states is what the save stores.
+- **An enquiry's agreed price** shows on the sheet (Total: "Agreed price + the £75 deposit") and travels only
+  with the stay it was agreed for: saveModal carries it through `set_terms` only when cottage, dates and party
+  are unchanged, a balance date only while it is today or later and ≤ the new check-in, and the toast names what
+  did not travel. Moved, the sheet says "Today's rates · replaces the agreed £X".
+- **Clearing a custom price restores the standard.** Add stores the override in `agreed_total` too, so clearing
+  `price_override` alone left the 'lost' shape and the old figure in every email. The update path resets
+  `agreed_total = agreed_nightly + agreed_txn_fee` when the row, read without its override, is 'lost'; a folded
+  legacy row is left alone.
+- **A refundable-deposit change is not a new stay**: it writes `agreed_booking_fee` only (it re-snapshotted every
+  night at today's rates), and the client's `stayChanged` no longer counts it. It IS material: the confirmation
+  states the deposit (server `material`, client `bksMaterial` → the email switch).
+- **"Some" prefills only a part payment the server accepts** (`modalSomePrefill`: the first payment while it is
+  below the rental). Inside the balance window it prefills nothing and says the whole stay is "All of it"; a typed
+  sum that covers the rental is refused before posting; `showErr` scrolls the box into view (it sits at the top
+  of a scrolled sheet, so a refusal used to land where nobody could see it).
+- **"All of it" on Add posts `deposit_collected`** when the refundable deposit is above £0, and the add action
+  takes it (set_payment's flag): the deposit used to read as still owed in the confirmation Add sends.
+- **A paid booking's custom price returns once its stay changes** (`canCustom`): hidden, an extension kept the
+  old custom total and the new nights were free.
+- **"A discount" never re-prices a custom price above the standard** (`__bks.offHold` holds it until a
+  discount is chosen); it used to clamp to 0% off and drop £500 to £339.90.
+- **Money boxes read through `payPartNum`**: parseFloat read "1,250.00" as £1.
+- **An edit that sends no payment fields never needs a payment date**; `record_square_payment` now fills
+  `payment_method` ('Square card') and `payment_date` (the Square day) when they are empty.
+- Smaller: "A new cottage" is offered on Add only; a party brought down by a smaller cottage comes back when a
+  cottage fits it again (`__bks.clamped.from`); without 'mo.ask' the sheet shows no custom price or deposit
+  stepper (`#modal-deposit-group` follows 'mo.ask' in CHB_PART_CAP, as the server's strip always did) and the
+  server strips `price_reason` with the price; an owner's enquiry edit skips the guest-only stay rules (minimum
+  and maximum nights, arrival days) and gets owner wording for occupancy and clashes, and the enquiry calendar no
+  longer promises "Add asks first".
+- Gates: **ui-test-bookingsheet.js** (31 checks; 16 fixes break-tested one at a time), test-integration **§58**
+  and §51's reason check (8 server fixes break-tested), ui-test-people re-aimed to the deposit stepper's
+  permission.
+- NB a successful save closes the sheet only after its reload, so a suite that opens the next sheet straight
+  away must wait for that close (`closedBySave`), or the late close lands on the new sheet.
+- NB `CHB_IT_DB_NAME` lets a second copy of test-integration run against the same server for break-testing one
+  section; the §32 lock checks and the statement budget then fail from the cross-talk, not the code.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
@@ -9115,6 +9157,9 @@ on a Needs-you row dismisses it, with an Undo toast.
   bookings refetch from the moment its page is quiet: `autoSyncIcalBlocks` calls app.js's `loadData` directly, so
   the window stub never saw it. Measured under six concurrent copies: the old suite failed 3 of 6, the new one
   0 of 18.
+  **A swipe test must let DISTANCE decide, never speed**: §8 dragged a fixed 330px on a ~1100px row at 1280, short
+  of the 35% rule, so the dismissal rested on the drag also counting as a flick; under load it doesn't (main failed
+  4 runs in 4 at eight concurrent copies). It drags past half the row now (47 of 48 under the same load).
 - **Gates.** `search-test` §40 A6 (identity per kind, hidden/escalation both ways, no entry
   can hide the cron row, malformed and lapsed entries, the write + Undo, refusals, the cap,
   adoption mid-save), `test-integration` §37 (private, on the boot payload as `{}`,

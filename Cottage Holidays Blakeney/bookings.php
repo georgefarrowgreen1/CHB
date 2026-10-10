@@ -650,7 +650,14 @@ if ($action === 'add') {
     if ($priceOverride !== null) {
         $snap['agreed_total'] = $priceOverride;
     }
-    $dep = reconcile_deposit($status, $snap['agreed_total'], 0, $in['deposit'] ?? null);
+    // "All of it" on the sheet is the Total it shows, which includes the refundable
+    // deposit; without it the deposit read as still owed and the confirmation asked
+    // the guest for money already in the drawer. The same flag set_payment takes (a
+    // new booking is on the cash rail until a card charge says otherwise).
+    $withDep = $status === 'paid' && !empty($in['deposit_collected'])
+        ? round(max(0.0, (float) $snap['agreed_booking_fee']), 2)
+        : 0.0;
+    $dep = reconcile_deposit($status, $snap['agreed_total'], 0, $in['deposit'] ?? null, $withDep);
     if ($dep === null) {
         json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
     }
@@ -842,18 +849,21 @@ if ($action === 'update') {
         }
     }
 
-    // Re-snapshot price if the stay changed OR a new damages deposit was supplied
-    $damagesOverride = array_key_exists('damages_deposit', $in) ? $in['damages_deposit'] : null;
+    // Re-snapshot the price when the STAY changed. A new refundable deposit on its
+    // own is not a new stay: it used to re-snapshot too, so stepping the deposit
+    // from £75 to £50 re-priced every night at today's rates while the sheet said
+    // nothing the guest would notice had changed. It now moves only the deposit.
+    $damagesOverride = array_key_exists('damages_deposit', $in) && $in['damages_deposit'] !== '' ? $in['damages_deposit'] : null;
     $currentDeposit = $b['agreed_booking_fee'] !== null ? (float) $b['agreed_booking_fee'] : null;
-    $depositChanged = $damagesOverride !== null && (float) $damagesOverride !== $currentDeposit;
+    $depositChanged = $damagesOverride !== null && ($currentDeposit === null || abs(round(max(0.0, (float) $damagesOverride), 2) - $currentDeposit) > 0.004);
     $stayChanged =
         $propKey !== $b['prop_key'] ||
         $checkIn !== $b['check_in'] ||
         $checkOut !== $b['check_out'] ||
         $adults != $b['adults'] ||
         $children != $b['children'] ||
-        $b['agreed_total'] === null ||
-        $depositChanged;
+        $b['agreed_total'] === null;
+    $newDeposit = $depositChanged && !$stayChanged ? round(max(0.0, (float) $damagesOverride), 2) : null;
     // When re-snapshotting, use the supplied deposit if given, else preserve the existing one
     $depForSnap = $damagesOverride !== null ? $damagesOverride : $currentDeposit;
     $snap = $stayChanged
@@ -875,8 +885,19 @@ if ($action === 'update') {
     } else {
         $priceOverride = $b['price_override'] !== null ? (float) $b['price_override'] : null;
     }
+    // CLEARING A CUSTOM PRICE RESTORES THE STANDARD ONE. A booking added with a custom
+    // price (or approved from an enquiry with one) stores it in agreed_total as well,
+    // so clearing only price_override left the custom figure in force under no
+    // override (the 'lost' shape): the email kept saying £250 while the sheet said
+    // Standard £414.90. Restored from the stay's own snapshot lines, which is the
+    // figure the sheet shows as Standard; a folded legacy row is left as it is.
+    $restoreStd = null;
+    if (!$snap && $priceOverride === null && ($b['price_override'] ?? null) !== null && $b['price_override'] !== ''
+        && booking_total_shape(array_merge($b, ['price_override' => null])) === 'lost') {
+        $restoreStd = round((float) $b['agreed_nightly'] + (float) $b['agreed_txn_fee'], 2);
+    }
     // The effective total: override wins; else the (re)snapshot; else existing.
-    $calcTotal = $snap ? $snap['agreed_total'] : (float) $b['agreed_total'];
+    $calcTotal = $snap ? $snap['agreed_total'] : ($restoreStd !== null ? $restoreStd : (float) $b['agreed_total']);
     $total = $priceOverride !== null ? $priceOverride : $calcTotal;
 
     // Money ACTUALLY received is a fact — it must never change just because the
@@ -920,17 +941,22 @@ if ($action === 'update') {
         $status = derive_payment_status($total, $dep);
     }
 
+    // A date is asked for only when this save records money. The edit sheet sends no
+    // payment fields, and money recorded without a date (record_square_payment, older
+    // rows) made EVERY later edit fail with "A valid payment date is required", shown
+    // on a sheet that has no date field to fix it with.
     $method = $b['payment_method'];
     $date = $b['payment_date'];
-    if ($dep > 0.001) {
+    $payFieldsSent = $explicitPay || array_key_exists('payment_date', $in) || array_key_exists('payment_method', $in);
+    if ($dep <= 0.001) {
+        $method = '';
+        $date = null;
+    } elseif ($payFieldsSent) {
         $date = clean($in['payment_date'] ?? ($b['payment_date'] ?? ''));
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
             json_out(['error' => 'A valid payment date is required'], 400);
         }
         $method = clean($in['payment_method'] ?? ($b['payment_method'] ?? ''));
-    } else {
-        $method = '';
-        $date = null;
     }
 
     // THE PLAN TRAVELS WITH THE STAY. This action writes check_in, and used to
@@ -995,6 +1021,15 @@ if ($action === 'update') {
             $snap['agreed_txn_fee'],
             $snap['agreed_on'],
         );
+    } else {
+        if ($newDeposit !== null) {
+            $sql .= ',agreed_booking_fee=?';
+            $args[] = $newDeposit;
+        }
+        if ($restoreStd !== null) {
+            $sql .= ',agreed_total=?';
+            $args[] = $restoreStd;
+        }
     }
     if ($replan['changed']) {
         $sql .= ',balance_due_date=?';
@@ -1037,6 +1072,9 @@ if ($action === 'update') {
     if ($priceOverride !== $oldOverride) {
         $changes[] = $priceOverride !== null ? 'price set to £' . number_format($priceOverride, 2) : 'custom price removed';
     }
+    if ($depositChanged) {
+        $changes[] = 'refundable deposit now £' . number_format(round(max(0.0, (float) $damagesOverride), 2), 2);
+    }
     if (trim((string) ($in['email'] ?? $b['email'])) !== trim((string) $b['email'])) {
         $changes[] = 'email updated';
     }
@@ -1058,12 +1096,14 @@ if ($action === 'update') {
     // payment-method label are not — the guest already knows their own phone number.
     // Derived here rather than in the client because the client does not hold the
     // OLD row; it has already overwritten its copy.
+    // The refundable deposit counts: the confirmation states it beside the total.
     $material = $checkIn !== ($b['check_in'] ?? '')
         || $checkOut !== ($b['check_out'] ?? '')
         || $propKey !== ($b['prop_key'] ?? '')
         || (int) $adults !== (int) ($b['adults'] ?? 0)
         || (int) $children !== (int) ($b['children'] ?? 0)
-        || $priceOverride !== $oldOverride;
+        || $priceOverride !== $oldOverride
+        || $depositChanged;
     booking_price_reason_store($id, $in);
     json_out(op_finish($opTok, ['ok' => true, 'material' => $material]));
 }
@@ -1944,9 +1984,19 @@ if ($action === 'record_square_payment') {
         $cap = $total > 0 ? round($total + ($bundled ? $depDue : 0), 2) : 0;
         $paid = round(booking_paid_so_far(['id' => $id, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
         $paid = $cap > 0 ? min($cap, $paid) : $paid;
+        // Money with no method or date reads as a card payment on the day Square took
+        // it (what pay.php stamps), never left blank: a blank date on recorded money
+        // is what the edit path used to refuse every later save over.
+        $payDay = date('Y-m-d');
+        try {
+            if (!empty($payment['created_at'])) {
+                $payDay = (new DateTime((string) $payment['created_at']))->setTimezone(new DateTimeZone('Europe/London'))->format('Y-m-d');
+            }
+        } catch (\Throwable $e) {
+        }
         db()
-            ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ? WHERE id = ?')
-            ->execute([$paid, $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid'), $id]);
+            ->prepare("UPDATE bookings SET deposit_paid = ?, payment = ?, payment_method = CASE WHEN payment_method IS NULL OR payment_method = '' THEN 'Square card' ELSE payment_method END, payment_date = COALESCE(payment_date, ?) WHERE id = ?")
+            ->execute([$paid, $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid'), $payDay, $id]);
     } catch (\Throwable $e) {
         book_unlock($b['prop_key']);
         json_out(['error' => "Couldn't record that just now."], 500);

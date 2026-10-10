@@ -733,7 +733,9 @@ function people_strip_money(array &$in): void
         }
     }
     if (!admin_can('mo.ask')) {
-        foreach (['price_override', 'damages_deposit', 'deposit_pct', 'deposit_amount', 'balance_due_date', 'autopay_offer'] as $k) {
+        // The reason goes with the price it explains: kept from a Host who cannot set
+        // the price, a reason the sheet left blank wiped the owner's while the price stayed.
+        foreach (['price_override', 'price_reason', 'damages_deposit', 'deposit_pct', 'deposit_amount', 'balance_due_date', 'autopay_offer'] as $k) {
             unset($in[$k]);
         }
     }

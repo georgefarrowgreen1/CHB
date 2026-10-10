@@ -35688,7 +35688,7 @@ const BKS_IC = {
     right: BKS_SVG('<path d="m9 6 6 6-6 6"/>'),
 };
 const __bks = {
-    pmode: 'std', cmode: 'total', cTotal: null, cNight: null, cOff: null, why: '',
+    pmode: 'std', cmode: 'total', cTotal: null, cNight: null, cOff: null, offHold: /** @type {number|null} */ (null), why: '',
     nightsOpen: false, picking: '', view: [2026, 0], pick: { rcv: null, due: null },
     returning: null, conf: true, confTouched: false, orig: null, clamped: /** @type {any} */ (null), wave: false, pop: '',
 };
@@ -35791,15 +35791,17 @@ function bksReset(f) {
         pmode: mode !== 'enquiry' && f.priceOverride != null ? 'custom' : 'std',
         cmode: 'total',
         cTotal: f.priceOverride != null ? Number(f.priceOverride) : null,
-        cNight: null, cOff: null,
+        cNight: null, cOff: null, offHold: null,
         why: f.priceReason || '',
         nightsOpen: false, picking: '', pick: { rcv: null, due: null },
         returning: null, conf: mode === 'add', confTouched: false, clamped: /** @type {any} */ (null), wave: false, pop: '',
     });
     const ref = /^\d{4}-\d{2}-\d{2}$/.test(f.checkIn || '') ? f.checkIn : todayDashed();
     __bks.view = [+ref.slice(0, 4), +ref.slice(5, 7) - 1];
+    // The deposit counts as a change: the confirmation states it.
+    const dep0 = f.agreedPrice && f.agreedPrice.damagesDeposit != null ? f.agreedPrice.damagesDeposit : f.damagesDeposit;
     __bks.orig = mode === 'booking'
-        ? { pk: f.propKey || '', ci: f.checkIn || '', co: f.checkOut || '', ad: Number(f.adults) || 0, ch: Number(f.children) || 0, ov: f.priceOverride != null ? Number(f.priceOverride) : null }
+        ? { pk: f.propKey || '', ci: f.checkIn || '', co: f.checkOut || '', ad: Number(f.adults) || 0, ch: Number(f.children) || 0, ov: f.priceOverride != null ? Number(f.priceOverride) : null, dep: dep0 != null && dep0 !== '' ? bksR2(Number(dep0) || 0) : null }
         : null;
     ['bks-cot-fold', 'bks-cal-fold', 'bks-addr-fold', 'bks-nights-fold', 'bks-plan-fold', 'bks-due-fold', 'bks-rcv-fold'].forEach((id) => bksFold(id, false));
     ['bks-cot-row', 'bks-addr-row', 'bks-nights-row', 'bks-plan-row', 'bks-due-btn', 'bks-rcv-btn'].forEach((id) => bksExpanded(id, false));
@@ -35888,12 +35890,18 @@ function bksClick(e) {
             if (v === 'custom' && __bks.cmode !== 'off') setTimeout(() => { const a = bksEl('bks-c-amt'); if (a) a.focus({ preventScroll: true }); }, 380);
             return;
         case 'cmode': {
-            // Carry the price across: the same stay, said the new way.
+            // Carry the price across, said the new way. A price above the standard is no
+            // discount, so the discount view holds it until one is chosen.
             const m = __modalMoney;
+            __bks.offHold = null;
             if (m && m.override != null && m.nights) {
                 if (v === 'total') __bks.cTotal = m.override;
                 if (v === 'night') __bks.cNight = m.override / m.nights;
-                if (v === 'off') __bks.cOff = m.stdTotal ? Math.max(0, (1 - m.override / m.stdTotal) * 100) : null;
+                if (v === 'off') {
+                    const above = !m.stdTotal || m.override > m.stdTotal + 0.005;
+                    __bks.cOff = above ? null : (1 - m.override / m.stdTotal) * 100;
+                    __bks.offHold = above ? m.override : null;
+                }
             }
             __bks.cmode = v;
             updateModalPrice();
@@ -35903,6 +35911,7 @@ function bksClick(e) {
         case 'off': {
             const p = Number(v);
             __bks.cOff = __bks.cOff === p ? null : p;
+            __bks.offHold = null;
             const a = /** @type {HTMLInputElement|null} */ (bksEl('bks-c-amt'));
             if (a) a.value = '';
             updateModalPrice();
@@ -35971,11 +35980,12 @@ function bksInput(e) {
     const t = /** @type {HTMLInputElement} */ (e.target);
     if (!t) return;
     if (t.id === 'bks-c-amt') {
-        const n = parseFloat(t.value);
+        // payPartNum: "1,250.00" is £1,250 (parseFloat read £1).
+        const n = String(t.value).trim() === '' ? NaN : payPartNum(t.value);
         const val = isNaN(n) ? null : Math.max(0, n);
         if (__bks.cmode === 'total') __bks.cTotal = val;
         if (__bks.cmode === 'night') __bks.cNight = val;
-        if (__bks.cmode === 'off') __bks.cOff = val != null ? Math.min(90, val) : null;
+        if (__bks.cmode === 'off') { __bks.cOff = val != null ? Math.min(90, val) : null; __bks.offHold = null; }
         updateModalPrice();
         return;
     }
@@ -35994,22 +36004,32 @@ function bksChooseCot(k) {
     const sel = /** @type {HTMLSelectElement|null} */ (bksEl('modal-property'));
     if (!sel) return;
     if (k === '__new__') {
+        // A new cottage starts a new booking; an edit cannot move into one.
+        if (bksMode() !== 'add') return;
         sel.value = '__new__';
         onModalPropertyChange();
         setTimeout(() => { const nu = bksEl('modal-property-new'); if (nu) nu.focus({ preventScroll: true }); }, 60);
         return;
     }
     // A cottage that sleeps fewer brings the party down WITH it, and says so —
-    // typing past the cap stays possible (the server's occupancy confirm).
+    // typing past the cap stays possible (the server's occupancy confirm). A cottage
+    // that fits the party it came down from again puts it back.
     const lim = occupancyLimits[k];
-    if (lim) {
-        const a = /** @type {HTMLInputElement} */ (bksEl('modal-adults')), c = /** @type {HTMLInputElement} */ (bksEl('modal-children'));
-        const ad = Math.max(1, parseInt(a.value, 10) || 1), ch = Math.max(0, parseInt(c.value, 10) || 0);
+    const a = /** @type {HTMLInputElement} */ (bksEl('modal-adults')), c = /** @type {HTMLInputElement} */ (bksEl('modal-children'));
+    const ad = Math.max(1, parseInt(a.value, 10) || 1), ch = Math.max(0, parseInt(c.value, 10) || 0);
+    const cl = __bks.clamped;
+    const was = cl && cl.from && ad === cl.a && ch === cl.c ? cl.from : null;
+    const fits = (l, pa, pc) => !l || (pa <= l.maxAdults && pc <= l.maxChildren && pa + pc <= (l.maxTotal || 99));
+    if (was && fits(lim, was.a, was.c)) {
+        a.value = String(was.a);
+        c.value = String(was.c);
+        __bks.clamped = null;
+    } else if (lim) {
         const nad = Math.min(ad, lim.maxAdults), nch = Math.min(ch, lim.maxChildren, Math.max(0, (lim.maxTotal || 99) - nad));
         if (nad !== ad || nch !== ch) {
             a.value = String(nad);
             c.value = String(nch);
-            __bks.clamped = { name: bksCotName(k), pk: k, a: nad, c: nch };
+            __bks.clamped = { name: bksCotName(k), pk: k, a: nad, c: nch, from: was || { a: ad, c: ch } };
         }
     }
     sel.value = k;
@@ -36086,7 +36106,7 @@ function bksDerive() {
     if (__bks.pmode !== 'custom') want = '';
     else if (__bks.cmode === 'total') want = __bks.cTotal != null ? String(bksR2(__bks.cTotal)) : '';
     else if (m && __bks.cmode === 'night') want = __bks.cNight != null ? String(bksR2(__bks.cNight * m.nights)) : '';
-    else if (m && __bks.cmode === 'off') want = __bks.cOff != null ? String(bksR2(m.stdTotal * (1 - __bks.cOff / 100))) : '';
+    else if (m && __bks.cmode === 'off') want = __bks.cOff != null ? String(bksR2(m.stdTotal * (1 - __bks.cOff / 100))) : __bks.offHold != null ? String(bksR2(__bks.offHold)) : '';
     if (want !== ov.value) {
         ov.value = want;
         updateModalPriceCore();
@@ -36111,7 +36131,7 @@ function bksPaintCot(isNew) {
         let cap = '';
         if (dated) cap = !bksFits(key) ? '<span class="bks-sc warn">Too small</span>' : bksClashFor(key, ci, co) ? '<span class="bks-sc warn">Booked</span>' : '<span class="bks-sc ok">Free</span>';
         return `<button type="button" class="bks-opt" role="radio" aria-checked="${key === k}" data-bks="opt" data-v="${escapeHtml(key)}"><span class="bks-dot" style="background:${escapeHtml(bksAccent(key))}"></span><span class="bks-rt"><span class="bks-rl">${escapeHtml(o.textContent || key)}${cap}</span>${sub ? `<span class="bks-rs">${escapeHtml(sub)}</span>` : ''}</span><span class="bks-tick">${BKS_IC.tick}</span></button>`;
-    }).join('') + `<button type="button" class="bks-opt" role="radio" aria-checked="${isNew}" data-bks="opt" data-v="__new__"><span class="bks-plus">${BKS_IC.plus}</span><span class="bks-rt"><span class="bks-rl">A new cottage</span><span class="bks-rs">Name it, then set its prices next</span></span><span class="bks-tick">${BKS_IC.tick}</span></button>`;
+    }).join('') + (bksMode() === 'add' ? `<button type="button" class="bks-opt" role="radio" aria-checked="${isNew}" data-bks="opt" data-v="__new__"><span class="bks-plus">${BKS_IC.plus}</span><span class="bks-rt"><span class="bks-rl">A new cottage</span><span class="bks-rs">Name it, then set its prices next</span></span><span class="bks-tick">${BKS_IC.tick}</span></button>` : '');
     bksSetHtml(bksEl('bks-cot-list'), html);
     const nr = bksEl('bks-newcot');
     if (nr) nr.hidden = !isNew;
@@ -36173,7 +36193,7 @@ function bksPaintCal(turn) {
     }
     host.innerHTML = `<div class="bks-calhd"><button type="button" class="bks-calnav" data-bks="nav" data-v="-1" aria-label="Previous month">${BKS_IC.left}</button><b>${MONTHS[m]} ${y}</b><button type="button" class="bks-calnav" data-bks="nav" data-v="1" aria-label="Next month">${BKS_IC.right}</button></div>
         <div class="bks-calg${turn ? ' turn' : ''}">${cells}</div>
-        <p class="bks-calk">${__bks.picking === 'out' ? 'Now the day they leave.' : 'The day they arrive.'} Crossed out: already booked. You can still pick them; Add asks first.</p>`;
+        <p class="bks-calk">${__bks.picking === 'out' ? 'Now the day they leave.' : 'The day they arrive.'} Crossed out: already booked. ${bksMode() === 'enquiry' ? 'An enquiry can’t move onto those.' : `You can still pick them; ${bksMode() === 'add' ? 'Add' : 'Save'} asks first.`}</p>`;
     __bks.wave = false;
     __bks.pop = '';
 }
@@ -36249,7 +36269,9 @@ function bksNightRows(m) {
 }
 function bksPaintPrice(m, mode, isNew) {
     const paidLock = bksLocked('bks-paidlock');
-    const canCustom = mode !== 'enquiry' && !isNew && !paidLock;
+    // A paid booking's price is a record until its stay changes (hidden, an extension
+    // kept the old custom total). Only for 'mo.ask': the server drops it otherwise.
+    const canCustom = mode !== 'enquiry' && !isNew && (!paidLock || !!(m && m.stayChanged)) && chbMayUse('mo.ask');
     const custom = canCustom && __bks.pmode === 'custom';
     const segRow = bksEl('modal-override-group');
     if (segRow) segRow.hidden = !canCustom;
@@ -36323,8 +36345,9 @@ function bksPaintPrice(m, mode, isNew) {
         : 'Back to them after the stay');
     // The total.
     bksSetText(bksEl('bks-tot'), m ? gbp(m.grand) : '—', 'bks-settle');
+    const ovWord = mode === 'enquiry' ? 'Agreed price' : 'Custom price';
     bksSetText(bksEl('bks-tot-s'), !m ? (isNew ? 'Priced once its rates are set' : 'Pick the dates to price the stay')
-        : m.override != null ? (m.dep > 0 ? `Custom price + the ${bksGbp0(m.dep)} deposit` : 'Custom price')
+        : m.override != null ? (m.dep > 0 ? `${ovWord} + the ${bksGbp0(m.dep)} deposit` : ovWord)
         : m.dep > 0 ? `Includes the ${bksGbp0(m.dep)} deposit` : '');
     // The plan: a NEW booking's first payment, the fold holding its terms.
     const planG = bksEl('modal-plan-group');
@@ -36409,7 +36432,8 @@ function bksPaintPaid(m, mode, isNew) {
     // the enquiry and the new-cottage flows record payment elsewhere.
     if (g && mode !== 'enquiry') g.hidden = mode !== 'add' || isNew;
     const f = m && mode === 'add' ? modalPlanFacts() : null;
-    bksSetText(bksEl('bks-amt-s'), f ? `The first payment is ${gbp(f.first)}` : '');
+    // Inside the balance window the first payment is the whole stay: "All of it".
+    bksSetText(bksEl('bks-amt-s'), !f ? '' : modalSomePrefill(f) ? `The first payment is ${gbp(f.first)}` : `The first payment is the whole stay, ${gbp(f.first)}: choose “All of it”`);
     const rcv = dpVal('modal-payment-date');
     bksSetText(bksEl('bks-rcv-v'), !rcv || rcv === todayDashed() ? 'Today' : dpSpoken(rcv));
     if (bksEl('bks-rcv-fold') && bksEl('bks-rcv-fold').classList.contains('on')) bksMiniCal('rcv');
@@ -36424,9 +36448,12 @@ function bksMaterial() {
     if (!o) return false;
     const ovRaw = dpVal('modal-price-override');
     const ov = ovRaw !== '' ? bksR2(parseFloat(ovRaw) || 0) : null;
+    const depRaw = dpVal('modal-damages-deposit');
+    const dep = depRaw !== '' ? bksR2(parseFloat(depRaw) || 0) : null;
     return currentModalProperty().key !== o.pk || dpVal('modal-checkin') !== o.ci || dpVal('modal-checkout') !== o.co
         || (parseInt(dpVal('modal-adults'), 10) || 0) !== o.ad || (parseInt(dpVal('modal-children'), 10) || 0) !== o.ch
-        || ov !== (o.ov != null ? bksR2(o.ov) : null);
+        || ov !== (o.ov != null ? bksR2(o.ov) : null)
+        || (dep !== null && o.dep !== null && dep !== o.dep);
 }
 function bksPaintConf(mode) {
     const wrap = bksEl('bks-conf-wrap');

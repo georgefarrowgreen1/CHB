@@ -669,10 +669,12 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         ok(PARTS.every((id) => pAll[id] === false), `with both, the booking form keeps its payment, deposit, price and plan fields (${JSON.stringify(pAll)})`);
         await setMe(sophiaWith({ 'mo.record': false }));
         const pRec = await capHidden();
-        ok(pRec['modal-payment-group'] === true && pRec['modal-deposit-group'] === true && pRec['modal-override-group'] === false && pRec['modal-plan-group'] === false, `without "Record payments" the payment and deposit fields go, the price and plan stay (${JSON.stringify(pRec)})`);
+        // The refundable deposit is part of what the guest is ASKED for: the server drops
+        // it with the price (people_strip_money), so the form follows that, not this.
+        ok(pRec['modal-payment-group'] === true && pRec['modal-deposit-group'] === false && pRec['modal-override-group'] === false && pRec['modal-plan-group'] === false, `without "Record payments" the payment fields go, the deposit, price and plan stay (${JSON.stringify(pRec)})`);
         await setMe(sophiaWith({ 'mo.ask': false }));
         const pAsk = await capHidden();
-        ok(pAsk['modal-payment-group'] === false && pAsk['modal-deposit-group'] === false && pAsk['modal-override-group'] === true && pAsk['modal-plan-group'] === true, `without "Ask guests to pay" the price and plan go, the payment fields stay (${JSON.stringify(pAsk)})`);
+        ok(pAsk['modal-payment-group'] === false && pAsk['modal-deposit-group'] === true && pAsk['modal-override-group'] === true && pAsk['modal-plan-group'] === true, `without "Ask guests to pay" the deposit, price and plan go, the payment fields stay (${JSON.stringify(pAsk)})`);
         ok(await page.evaluate(() => getComputedStyle(document.getElementById('t-requestPayment')).display === 'none' && getComputedStyle(document.getElementById('t-recordPayment')).display !== 'none'), '…and so does asking for money, while recording it stays');
         // Her alerts: never a kind she cannot get.
         await setMe(SOPHIA);
