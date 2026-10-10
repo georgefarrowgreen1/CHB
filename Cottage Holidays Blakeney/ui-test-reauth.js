@@ -8,6 +8,8 @@
 //      never read as "done"
 //   3. a wrong password does not retry the refund
 //   4. keeping a deposit is never gated — no money leaves, so no prompt
+// A step-up refusal is also never taken for a signed-out session: a session the
+// server ended now restarts the page, which mid-refund would lose the tap.
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -59,6 +61,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   console.log('1. a refund prompts, then retries');
   await answerPassword('it-pass-123');
+  const beforeS1 = posts.length;
   const r1 = await page.evaluate(async () => {
     const out = await chbWithReauth('returning £60.00', () =>
       apiPost('bookings.php', { action: 'return_deposit', id: 7, amount: 60 }));
@@ -70,6 +73,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(posts.some((p) => p.action === 'admin_reauth_password'), 'the confirmation was posted between the two');
   ok(tries[1] && tries[1].amount === 60 && tries[1].id === 7,
     'the RETRY carries the same money and booking — the tap is not lost');
+  ok(!posts.slice(beforeS1).some((p) => p.action === 'admin_status'),
+    'the refusal is not taken for a signed-out session (nothing asks whether the owner is still signed in)');
 
   console.log('2. a fresh window costs nothing');
   const before = posts.length;

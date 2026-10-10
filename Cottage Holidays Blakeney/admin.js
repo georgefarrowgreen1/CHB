@@ -14247,7 +14247,7 @@ function loadContentEditor() {
         if (seen.has(k)) return;
         seen.add(k);
         imgRows +=
-            `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(contentBgUrl(el))}');"></div>` +
+            `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(chbCssUrl(contentBgUrl(el)))}');"></div>` +
             `<div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">${escapeHtml(label(k))}</div>` +
             `<button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(k))}>Replace image</button></div></div>`;
     });
@@ -14301,10 +14301,10 @@ function contentEditImage(key) {
         await saveContent(key, url);
         siteContent[key] = url;
         document.querySelectorAll('[data-edit-img="' + key + '"]').forEach((t) => {
-            t.style.backgroundImage = `url('${url}')`;
+            t.style.backgroundImage = `url('${chbCssUrl(url)}')`;
         });
         const th = document.getElementById('ce-thumb-' + key);
-        if (th) th.style.backgroundImage = `url('${url}')`;
+        if (th) th.style.backgroundImage = `url('${chbCssUrl(url)}')`;
     });
 }
 // ---- Manage → Text messages (Twilio) ---------------------------------------
@@ -26836,13 +26836,13 @@ function accomSectionHtml(k, sec) {
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
             return `<div class="acr-cap">Home-page tile</div>
                     <div class="acr-well">
-                        <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
+                        <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(chbCssUrl(imgUrl))}');"></div>
                             <span class="acr-lbl" style="flex:1;">Home-page photo</span><button class="btn-sm btn-edit acw-linkbtn" ${chbAttrs('contentEditImage', String(ck.img))}>Replace…</button></div>
                         <div class="acw-frow"><label for="ce-${ck.title}">Title</label><input type="text" class="input-glass" id="ce-${ck.title}" value="${escapeHtml(curText(ck.title))}" ${chbInput('acwCardSync', String(k))}></div>
                         <div class="acw-frow"><label for="ce-${ck.meta}">Subtitle</label><input type="text" class="input-glass" id="ce-${ck.meta}" value="${escapeHtml(curText(ck.meta))}" ${chbInput('acwCardSync', String(k))}></div>
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('acwCardSave', String(k))}>Save card</button></div>
                         <div class="acr-preview"><div class="acr-pvcap">On the home page, guests see:</div>
-                            <div class="acw-homecard"><div class="acw-hc-img" style="background-image:url('${escapeHtml(imgUrl)}');"></div><div class="acw-hc-t" id="acw-hc-t-${k}">${escapeHtml(curText(ck.title))}</div><div class="acw-hc-m" id="acw-hc-m-${k}">${escapeHtml(curText(ck.meta))}</div></div>
+                            <div class="acw-homecard"><div class="acw-hc-img" style="background-image:url('${escapeHtml(chbCssUrl(imgUrl))}');"></div><div class="acw-hc-t" id="acw-hc-t-${k}">${escapeHtml(curText(ck.title))}</div><div class="acw-hc-m" id="acw-hc-m-${k}">${escapeHtml(curText(ck.meta))}</div></div>
                         </div>
                     </div>`;
         }
@@ -36830,7 +36830,7 @@ async function loadExperiencesAdmin() {
 }
 function expPendingHtml(r) {
     const thumb = r.image_url
-        ? `<div class="exp-edit-thumb" style="background-image:url('${escapeHtml(r.image_url)}');margin-bottom:10px;"></div>`
+        ? `<div class="exp-edit-thumb" style="background-image:url('${escapeHtml(chbCssUrl(r.image_url))}');margin-bottom:10px;"></div>`
         : '';
     return `<div class="glass-panel" style="padding:14px 16px;margin-bottom:10px;border:1px solid var(--accent-soft, var(--glass-border));">
                 ${thumb}
@@ -36859,7 +36859,7 @@ function expEditHtml(r) {
     const txt = (fid, val, ph, type) => `<input type="${type || 'text'}" class="input-glass" id="${fid}" value="${escapeHtml(val || '')}"${ph ? ` placeholder="${ph}"` : ''}>`;
     return `<div class="glass-panel exp-edit" data-id="${id}">
                 <input type="hidden" id="exp-img-${id}" value="${escapeHtml(r.image_url || '')}">
-                <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(r.image_url || '')}');"></div>
+                <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(chbCssUrl(r.image_url || ''))}');"></div>
                 ${fld('exp-t-' + id, 'Title', txt('exp-t-' + id, r.title))}
                 ${fld('exp-c-' + id, 'Category', `<select class="input-glass" id="exp-c-${id}">${catOpts}</select>`)}
                 ${fld('exp-b-' + id, 'Description', `<textarea class="input-glass" id="exp-b-${id}" rows="3" style="resize:vertical;">${escapeHtml(r.body || '')}</textarea>`)}
@@ -36900,7 +36900,7 @@ function expUpload(id) {
         const h = document.getElementById('exp-img-' + id);
         if (h) h.value = url;
         const t = document.getElementById('exp-thumb-' + id);
-        if (t) t.style.backgroundImage = `url('${url}')`;
+        if (t) t.style.backgroundImage = `url('${chbCssUrl(url)}')`;
     });
 }
 async function expSave(id) {

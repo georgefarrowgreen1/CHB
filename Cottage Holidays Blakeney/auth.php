@@ -1533,6 +1533,17 @@ switch ($action) {
             }
         };
         if ($email !== '') {
+            // A STAY STILL TO COME IS A CONTRACT IN PROGRESS. Anonymising it left the
+            // owner a "Former guest" with no email or phone two weeks before arrival,
+            // no arrival email or balance chase (both need the address), and the guest
+            // no way back to their own booking or door code — while a card plan would
+            // still have collected, with no notice. The account can go once it has ended.
+            $nx = db()->prepare('SELECT MIN(check_in) FROM bookings WHERE email = ? AND check_out >= ?');
+            $nx->execute([$email, date('Y-m-d')]);
+            $next = (string) ($nx->fetchColumn() ?: '');
+            if ($next !== '') {
+                json_out(['error' => 'You have a stay booked from ' . uk_date($next) . '. Your account can be deleted once it has ended. To cancel the stay, message us.', 'code' => 'stay_ahead'], 409);
+            }
             // Anonymise the financial trail (kept for accounting), then purge non-financial PII.
             $try('UPDATE payments p JOIN bookings b ON b.id = p.booking_id SET p.guest_name = ? WHERE b.email = ?', [
                 'Former guest',

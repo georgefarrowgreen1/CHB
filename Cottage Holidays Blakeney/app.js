@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 768;
+const ADMIN_BUNDLE_V = 769;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1688,7 +1688,7 @@ async function apiPostCore(endpoint, payload) {
         );
     }
     if (!res.ok) {
-        if (res.status === 401) maybeHandleStaleAdmin();
+        if (res.status === 401) maybeHandleStaleAdmin(data.code);
         // `code` where the endpoint gives one, so a caller can tell apart outcomes that
         // both arrive as "not done": `already_sent` means the guest HAS the email.
         throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
@@ -1746,7 +1746,7 @@ async function apiGetCore(endpoint) {
         );
     }
     if (!res.ok) {
-        if (res.status === 401) maybeHandleStaleAdmin();
+        if (res.status === 401) maybeHandleStaleAdmin(data.code);
         throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
     }
     chbClockSync(data.srv);
@@ -1760,8 +1760,12 @@ async function apiGetCore(endpoint) {
 // reality. Guest/anonymous 401s are expected and ignored.
 let __staleAdminChecking = false;
 let __sessionExpiredNotified = false;
-async function maybeHandleStaleAdmin() {
+async function maybeHandleStaleAdmin(code) {
     if (!isAuthenticated) return; // not posing as admin → a normal 401
+    // A step-up refusal comes from a session the server has just accepted (it
+    // checks the sign-in before the step-up), so it is not asked about: the
+    // question is answered, and a wrong answer would restart the page mid-refund.
+    if (code === 'reauth_required') return;
     if (__staleAdminChecking) return; // one check at a time
     __staleAdminChecking = true;
     try {
@@ -1796,8 +1800,9 @@ function forceAdminLogout() {
     isAuthenticated = false;
     // The session is over, so the device stops being "the owner's phone".
     chbOwnerDeviceForget();
+    let forgot = null;
     try {
-        chbSecForget(); // the at-rest key goes with the ciphertext it guarded
+        forgot = chbSecForget(); // the at-rest key goes with the ciphertext it guarded
     } catch (e) {}
     try {
         setAuthUI();
@@ -1818,14 +1823,21 @@ function forceAdminLogout() {
     try {
         chbNavForget();
     } catch (e) {}
+    // THE PAGE STILL HOLDS THE BACK OFFICE: every booking and guest in memory, the
+    // decrypted day sheet, the private settings, the rendered screens. A session the
+    // server ended follows logoutStaff's rule — once read, the page starts again from
+    // nothing, so whoever signs in next on it inherits none of it. The at-rest key's
+    // removal is awaited first: a reload would cut that transaction off.
     if (!__sessionExpiredNotified) {
         __sessionExpiredNotified = true;
-        try {
-            toast('Your admin session expired — please sign in again.');
-        } catch (e) {}
-        setTimeout(() => {
-            __sessionExpiredNotified = false;
-        }, 8000);
+        Promise.resolve(forgot)
+            .then(() => glassAlert('Your sign-in has ended. Please sign in again.'))
+            .catch(() => {})
+            .then(() => {
+                try {
+                    location.replace(location.pathname);
+                } catch (e) {}
+            });
     }
 }
 
@@ -3208,7 +3220,7 @@ function renderGalleryGrid(list) {
     let html = imgs
         .map(
             (src, i) =>
-                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(chbCssUrl(resizedUrl(src, i === 0 ? 1000 : 560)))}')" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
         )
         .join('');
     const total = Array.isArray(list) ? list.filter(Boolean).length : 0;
@@ -3243,7 +3255,7 @@ function loadGallerySlides(trackId) {
             // Load a size that fits this slide (× device pixel ratio) instead of the
             // full 2000px original — big data/LCP win on phones.
             const px = (s.clientWidth || 800) * (window.devicePixelRatio || 1);
-            s.style.backgroundImage = `url('${resizedUrl(bg, px)}')`;
+            s.style.backgroundImage = `url('${chbCssUrl(resizedUrl(bg, px))}')`;
         }
     }
 }
@@ -3666,8 +3678,10 @@ async function loadWelcomeBack() {
         return;
     }
     if (__wbStays === null) {
+        const who = chbGuestWho();
         try {
             const res = await apiGet('my-bookings.php');
+            if (who !== chbGuestWho()) return; // someone else's stays now
             __wbStays = (res.bookings || []).map((r) => ({
                 propKey: r.prop_key,
                 checkIn: r.check_in,
@@ -3937,12 +3951,31 @@ function renderGuestAccount(dir) {
 // (displayGrand + guestPayCta), so the two pages cannot quote different money.
 let __gaStays = null; // null = not asked; {rows, unproven} once loaded; 'err'
 let __gaStaysBusy = false;
+let __gaStaysAsk = 0;
+// Whose page this is. A guest's own answer can land after they signed out, or after
+// someone else signed in on the same tab; it belongs to the guest who asked for it.
+function chbGuestWho() {
+    return currentGuest && currentGuest.email ? String(currentGuest.email).toLowerCase() : '';
+}
 async function gaStaysLoad(force) {
     if (!currentGuest || isAuthenticated || ACCT_PREVIEW) return;
     if (__gaStaysBusy || (__gaStays && __gaStays !== 'err' && !force)) return;
+    const who = chbGuestWho();
+    const ask = ++__gaStaysAsk;
     __gaStaysBusy = true;
+    let res = null;
     try {
-        const res = await apiGet('my-bookings.php');
+        res = await apiGet('my-bookings.php');
+    } catch (e) {}
+    if (ask !== __gaStaysAsk) return; // a newer ask (or a sign-out) owns the flag now
+    __gaStaysBusy = false;
+    if (who !== chbGuestWho()) {
+        // The stays of whoever asked, not of whoever is signed in now: dropped, and
+        // asked for again for them.
+        if (chbGuestWho()) gaStaysLoad();
+        return;
+    }
+    if (res) {
         __gaStays = {
             unproven: !!res.unproven,
             rows: (res.bookings || []).map((row) => ({
@@ -3952,10 +3985,7 @@ async function gaStaysLoad(force) {
                 propName: row.property_name || '',
             })),
         };
-    } catch (e) {
-        if (!__gaStays) __gaStays = 'err';
-    }
-    __gaStaysBusy = false;
+    } else if (!__gaStays) __gaStays = 'err';
     const host = document.getElementById('ga-stays');
     if (host) host.innerHTML = gaStaysHtml();
     const hs = document.getElementById('ga-hello-s');
@@ -4713,7 +4743,8 @@ async function deleteGuestAccount() {
         nav('view-main');
         toast('Your account and personal data have been deleted.');
     } catch (e) {
-        glassAlert("Couldn't delete your account: " + e.message);
+        // A stay still to come is a sentence of its own, not a failure.
+        glassAlert(e && e.code === 'stay_ahead' ? e.message : "Couldn't delete your account: " + e.message);
     }
 }
 
@@ -5658,10 +5689,13 @@ async function passkeyFinish(assertion) {
 }
 
 async function loadPasskeys() {
+    const who = chbGuestWho();
     try {
         const res = await apiPost('passkeys.php', { action: 'list' });
+        if (who !== chbGuestWho()) return;
         __gaPasskeys = res.passkeys || [];
     } catch (e) {
+        if (who !== chbGuestWho()) return;
         __gaPasskeys = __gaPasskeys || [];
     }
     if (__gaSub === 'security') renderGuestAccount();
@@ -5703,6 +5737,19 @@ async function guestLogout() {
     __gaPasskeys = null;
     __gaAvaAsked = false;
     __gaStays = null;
+    __gaStaysAsk++; // a request still on its way is theirs, and is dropped when it lands
+    __gaStaysBusy = false;
+    // What they typed is theirs too: the enquiry form autofills from the account and
+    // its draft saves to the server under the email in it, so the next person at this
+    // device met their name, address and phone — and filed a draft as them.
+    try {
+        resetEnquiryForm();
+    } catch (e) {}
+    const chatIn = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('chat-input'));
+    if (chatIn) chatIn.value = '';
+    try {
+        chatClearAttach();
+    } catch (e) {}
     const ga = document.getElementById('guest-account-body');
     if (ga) ga.innerHTML = '';
     const gl = document.getElementById('guest-bookings-list');
@@ -5851,7 +5898,7 @@ function gbSeg(v) {
 // colour stands in when there is no photo.
 function gbPhotoHtml(propKey) {
     const img = (propertyContent[propKey] && propertyContent[propKey].images && propertyContent[propKey].images[0]) || '';
-    const safe = String(img).replace(/["'()\\\s<>]/g, (c) => encodeURIComponent(c));
+    const safe = chbCssUrl(img);
     return `<div class="gb2-photo" style="--gbp:var(--prop-${escapeHtml(propKey)}, var(--accent));${img ? `background-image:url('${escapeHtml(safe)}'), var(--gbp-grad);` : ''}" aria-hidden="true"></div>`;
 }
 function gbCottagePicksHtml() {
@@ -5887,17 +5934,22 @@ async function renderGuestBookings() {
         enqRows = [],
         completedStays = 0,
         unproven = false;
+    const who = chbGuestWho();
     try {
         // Account preview reuses the payload already fetched at boot (admin-authed,
         // action-tokens stripped); the signed-in guest fetches their own.
         const res = ACCT_PREVIEW && __acctPreviewData
             ? __acctPreviewData
             : await apiGet('my-bookings.php' + (ACCT_PREVIEW ? '?acctpreview=' + encodeURIComponent(ACCT_PREVIEW_ID) : ''));
+        // Signed out, or someone else signed in, while it was on its way: these are
+        // not the stays of whoever is looking now.
+        if (who !== chbGuestWho()) return;
         rows = res.bookings || [];
         enqRows = res.enquiries || [];
         completedStays = res.completed_stays || 0;
         unproven = !!res.unproven;
     } catch (e) {
+        if (who !== chbGuestWho()) return;
         // "Please try again" named no way to try: this screen is reached from a
         // signed-in guest's own account and its only recovery was a page reload
         // they had to think of. Say what happened and offer the retry.
@@ -6020,7 +6072,7 @@ async function renderGuestBookings() {
                 return `
                 <div class="glass-panel guest-booking">
                     <div class="guest-booking-head">
-                        <div class="guest-booking-img" style="background-image:url('${img}');"></div>
+                        <div class="guest-booking-img" style="background-image:url('${escapeHtml(chbCssUrl(img))}');"></div>
                         <div class="guest-booking-body">
                             <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} <span class="guest-status-badge" style="background:rgba(255,167,38,0.22);color:var(--warn-text);border:1px solid rgba(255,167,38,0.5);">Pending</span></h3>
                             <div class="guest-ref">Awaiting confirmation</div>
@@ -9707,7 +9759,7 @@ function applyContentOverrides(root) {
             // (uploads/ only; other values pass through). The hero stays full-res:
             // it's the LCP image.
             const url = el.classList.contains('card-img') ? resizedUrl(clean, 800) : clean;
-            el.style.backgroundImage = `url('${url}')`;
+            el.style.backgroundImage = `url('${chbCssUrl(url)}')`;
         }
     });
     // Expose the live hero to CSS (the auth modals' coastal brand panel uses
@@ -9841,7 +9893,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
         document.querySelectorAll('[data-edit-img]').forEach((el) => {
             const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-            if (saved) el.style.backgroundImage = `url('${el.classList.contains('card-img') ? resizedUrl(saved, 800) : saved}')`;
+            if (saved) el.style.backgroundImage = `url('${chbCssUrl(el.classList.contains('card-img') ? resizedUrl(saved, 800) : saved)}')`;
         });
         // Load live data from the backend — ONE bootstrap round-trip covers all
         // four parts (rates/content/reviews/Square config). Each loader is still
@@ -10517,7 +10569,7 @@ function renderHost() {
     const photo = document.getElementById('host-photo');
     if (photo)
         photo.style.backgroundImage = hostVal('host-photo')
-            ? `url('${hostVal('host-photo')}')`
+            ? `url('${chbCssUrl(hostVal('host-photo'))}')`
             : '';
 }
 
@@ -12156,7 +12208,7 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                         : p.kind === 'damages_return'
                           ? 'Deposit return'
                           : p.kind === 'manual'
-                            ? 'Received' + (p.note ? ' — ' + String(p.note).toLowerCase() : ' by hand')
+                            ? 'Received' + (p.note ? ' — ' + escapeHtml(String(p.note).toLowerCase()) : ' by hand')
                             : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
                 const sign = isReturn ? '−' : '';
                 // The figure the guest's CARD STATEMENT shows. payments.amount is
@@ -13965,7 +14017,7 @@ function accomPhotoRow(k, url, i, n) {
     // accomSavePhotos re-renders through this composer, so reorder / replace /
     // remove keep working on every repaint.
     return `<div class="content-edit-row accom-photo-row acp-cell">
-                <div class="exp-edit-thumb acp-thumb" style="background-image:url('${escapeHtml(url)}');">${i === 0 ? '<span class="acp-main">MAIN</span>' : ''}<span class="acp-n">${i + 1}</span></div>
+                <div class="exp-edit-thumb acp-thumb" style="background-image:url('${escapeHtml(chbCssUrl(url))}');">${i === 0 ? '<span class="acp-main">MAIN</span>' : ''}<span class="acp-n">${i + 1}</span></div>
                 <div class="accom-photo-label sr-only">Photo ${i + 1}${i === 0 ? ' · main' : ''}</div>
                 <div class="accom-photo-actions acp-acts">
                     <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Photo ${i + 1} options" title="Move, replace or remove">⋯</button>
@@ -14610,7 +14662,7 @@ function openEnquireModal() {
         (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) ||
         '';
     const imgEl = document.getElementById('enq-sum-img');
-    if (imgEl) imgEl.style.backgroundImage = img ? `url('${img}')` : '';
+    if (imgEl) imgEl.style.backgroundImage = img ? `url('${chbCssUrl(img)}')` : '';
     const nameEl = document.getElementById('enq-sum-name');
     if (nameEl) nameEl.innerText = (propertyMeta[key] && propertyMeta[key].name) || key;
     const rateEl = document.getElementById('enq-sum-rating');
@@ -15218,7 +15270,7 @@ function cottageCardHtml(k, idPrefix, withFav) {
         : '';
     return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${k}">
                     <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(resizedUrl(img, 800))}');"></div>
+                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(chbCssUrl(resizedUrl(img, 800)))}');"></div>
                         ${fav}
                     </div>
                     <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
@@ -17688,8 +17740,7 @@ function renderFlexResults(results, tooSmall, nights, ym) {
     const title = document.getElementById('hs-results-title');
     if (!grid) return;
     const propImg = (key) =>
-        (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) ||
-        '';
+        escapeHtml(chbCssUrl((propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || ''));
     const party = heroSearch.adults + heroSearch.children;
     const [y, m] = ym.split('-').map(Number);
     const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-GB', {
@@ -17822,8 +17873,7 @@ function renderHeroResults(results, tooSmall) {
     const title = document.getElementById('hs-results-title');
     if (!grid) return;
     const propImg = (key) =>
-        (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) ||
-        '';
+        escapeHtml(chbCssUrl((propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || ''));
     const party = heroSearch.adults + heroSearch.children;
     const flexNote = heroSearch.flex
         ? ` (±${heroSearch.flex} day${heroSearch.flex === 1 ? '' : 's'})`
@@ -18717,7 +18767,7 @@ function applySavedEdits() {
     });
     document.querySelectorAll('#view-21a [data-edit-img]').forEach((el) => {
         const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-        if (saved) el.style.backgroundImage = `url('${saved}')`;
+        if (saved) el.style.backgroundImage = `url('${chbCssUrl(saved)}')`;
     });
 }
 
@@ -19749,6 +19799,14 @@ function escapeHtml(str) {
         /[&<>"']/g,
         (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
     );
+}
+
+// A link inside url('…'). In a style ATTRIBUTE the HTML parser turns &#39; back into '
+// before CSS reads it, so escapeHtml alone cannot keep a stored photo link inside its
+// quotes, and encodeURIComponent leaves ' ( ) alone. Percent-encode whatever CSS could
+// read as the end of the string or the call: a real link means the same encoded.
+function chbCssUrl(u) {
+    return String(u == null ? '' : u).replace(/["'()\\\s<>]/g, (c) => (c === "'" ? '%27' : c === '(' ? '%28' : c === ')' ? '%29' : encodeURIComponent(c)));
 }
 
 // Decode HTML entities in a saved string (self-heals values that were
@@ -21505,7 +21563,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r5perfd';
+    const BUILD = 'r6privacy';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

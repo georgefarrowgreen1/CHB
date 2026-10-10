@@ -1162,6 +1162,47 @@ function prop_accent_ok($v): bool
     return is_string($v) && preg_match('/^#[0-9A-Fa-f]{6}$/', $v) === 1;
 }
 
+// The content keys that hold a photo the site prints into its pages: the cottage
+// galleries, the home cards, the hero and the host's photo (NB `site-logo` is the
+// site's NAME, a text key). The pages
+// put them inside url('…') in style attributes, so a stored quote or bracket
+// broke out of the attribute; app.js encodes at every sink (chbCssUrl), and this
+// refuses one at the write. An upload is always `uploads/<name>`.
+function content_image_key($key): bool
+{
+    $k = (string) $key;
+    return in_array($k, ['hero-bg', 'host-photo'], true)
+        || preg_match('/^(images-[a-z0-9_]+|card\d+-img|card-img-[a-z0-9_]+)$/', $k) === 1;
+}
+function content_image_url_ok($u): bool
+{
+    if (!is_string($u) || strlen($u) > 600) {
+        return false;
+    }
+    return $u === ''
+        || preg_match('#^[A-Za-z0-9_][A-Za-z0-9/_.-]*\.(?:jpe?g|png|webp|gif|avif|svg)$#i', $u) === 1
+        || preg_match('#^https://[A-Za-z0-9._~:/?\#\[\]@!$&*+,;=%-]+$#', $u) === 1;
+}
+// A whole value for a photo key: one link, or (a gallery) a list of them.
+function content_image_value_ok($key, $v): bool
+{
+    if ($v === null) {
+        return true;
+    }
+    if (preg_match('/^images-/', (string) $key)) {
+        if (!is_array($v) || count($v) > 60 || !array_is_list($v)) {
+            return false;
+        }
+        foreach ($v as $u) {
+            if (!is_string($u) || $u === '' || !content_image_url_ok($u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return content_image_url_ok($v);
+}
+
 // Per-cottage display info (name, accent colour, URL slug) for emails/crons, so
 // they label/colour/link correctly for ANY cottage the owner has added — not just
 // the original three. Reads the property row; falls back to a fixed map (and finally

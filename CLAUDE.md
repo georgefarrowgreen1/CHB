@@ -1109,6 +1109,48 @@ One Today refresh went from 214 ms to 67 ms of JavaScript. A search keystroke we
 - Budgets: admin.js +900 bytes gz (owner-only, immutable-cached) and app.js +500 as measured. The deploy strips
   app.js's comments, so the shipped growth is +185.
 
+## One device, two people (round 6)
+
+Found by the round-6 XSS, client-lifecycle and data-lifecycle reviews; each was reproduced first (the XSS ones by
+running the real renderers on a hostile value).
+- **A PHOTO LINK STAYS INSIDE ITS url('…').** The cottage galleries, the home cards, the hero and the host's photo are
+  owner-editable links printed into style attributes, and five sinks printed them raw (the hero search results, the
+  flexible-date results, the pending-enquiry card): a stored link could close the url() and the attribute and put an
+  `<iframe>` over the public cottage pages (CSP's `frame-src https:` lets it load). `escapeHtml` alone does not hold
+  one either: the HTML parser turns `&#39;` back into `'` before CSS reads the attribute. And `gbPhotoHtml`'s own
+  guard did nothing, because **`encodeURIComponent` leaves `'`, `(` and `)` alone**. `chbCssUrl(u)` (app.js, beside
+  `escapeHtml`) percent-encodes what could end the string or the call, and every `url('${…}')` in the three scripts
+  reads its link through it (sinks in an attribute: `escapeHtml(chbCssUrl(x))`). The server refuses one at the write
+  too: `content_image_key` / `content_image_value_ok` (db.php) in content.php's `set` — an upload path, a bare static
+  filename or a clean https link (`site-logo` is the site's NAME, a text key, and is not one). A hand-recorded
+  payment's method (free text) is escaped in the ledger row's label. Gated by smoke-test 12j (the encoder, the two
+  renderers with a hostile value, a source sweep of all 24 sites, the ledger row) and test-integration §63.
+- **A GUEST SIGNING OUT LEAVES NOTHING FOR THE NEXT PERSON.** The enquiry form autofilled from the account and kept
+  their name, email, phone and address after sign-out — and its draft saves to the server under the email in it, so
+  the next visitor's date pick filed a draft as them. `guestLogout` now runs `resetEnquiryForm()` and empties the
+  chat box and its attachment.
+- **A LATE ANSWER BELONGS TO WHOEVER ASKED.** A stays request still on its way at sign-out painted that guest's stays,
+  pay button and door code for the next guest to sign in (whose own request was never sent: the busy flag was still
+  up). `chbGuestWho()` is captured before each guest fetch and compared after (`gaStaysLoad`, `renderGuestBookings`,
+  `loadWelcomeBack`, `loadPasskeys`); `gaStaysLoad` also numbers its asks (`__gaStaysAsk`), which `guestLogout` bumps,
+  so a stale answer never owns the flag and a changed guest is asked for again.
+- **A SESSION THE SERVER ENDED STARTS THE PAGE AGAIN FROM NOTHING.** `forceAdminLogout` (a reset elsewhere, a person
+  removed, the boot's provisional entry refused) showed a toast and left the whole back office in memory — the
+  decrypted day sheet, the private settings, every booking — for whoever signed in next on that page. It now says so
+  in a dialog and reloads once read, `logoutStaff`'s rule; the at-rest key's removal is awaited first, because a
+  reload cuts an IndexedDB transaction off. NB a step-up refusal (`reauth_required`) is never sent to the
+  stale-session check (`maybeHandleStaleAdmin(code)`): the server accepted the session before refusing the step-up,
+  and with the reload a wrong answer there would restart the page in the middle of a refund (ui-test-reauth §1).
+- **DELETING AN ACCOUNT NEVER TAKES AN UPCOMING STAY WITH IT.** It anonymised every booking under the address, next
+  month's included: the owner was left a "Former guest" with no email or phone, the arrival email and balance chase
+  (both need the address) stopped, the guest lost their way back to their own stay and door code, and a card plan
+  would still have collected. `guest_delete_account` answers 409 `stay_ahead` with the stay's date while any stay
+  has not ended; the client shows the sentence as it is.
+- Gates: **`ui-test-handover.js`** (the form and chat box after sign-out, a held stays answer landing after the next
+  guest signed in — on You and on the stays page — the forced sign-out's dialog and reload, the deletion refusal) and
+  test-integration §64. Fifteen declarations break-tested, each failing its named check; the stale-stays one has two
+  independent layers (the ask number, the who-check) and only removing both reproduces the original bug.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

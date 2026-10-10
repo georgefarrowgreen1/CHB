@@ -2387,6 +2387,52 @@ console.log('\n== 12i. Signing out leaves no unsent message to a guest on the de
     check('both ways out call it', /function forceAdminLogout\(\) \{[\s\S]{0,200}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
 }
 
+// ---- 12j. A photo link stays inside its url('…') ------------------------------
+// The cottage galleries, the home cards and the hero are owner-editable links printed
+// into style attributes. escapeHtml alone does not hold one there: the HTML parser turns
+// &#39; back into ' before CSS reads the attribute, and several sinks did not escape at
+// all — a stored link could close the url() and the attribute and put an <iframe> on the
+// public cottage pages. chbCssUrl percent-encodes what could end the string or the call.
+console.log("\n== 12j. A photo link stays inside its url('…') ==");
+{
+    const css = (v) => vm.runInContext('chbCssUrl(' + JSON.stringify(v) + ')', ctx);
+    const evil = "x');\"><iframe src=\"https://evil.example/pay\"></iframe><i x=\"),url(data:x);position:fixed;inset:0;\\27 ";
+    const enc = css(evil);
+    check("a hostile link keeps nothing that could end the string or the call", !/["'()\\\s<>]/.test(enc), enc);
+    check('…while an upload path and a resized link pass through unchanged', css('uploads/jollyboat-1a2b3c.jpg') === 'uploads/jollyboat-1a2b3c.jpg' && css('img.php?src=uploads%2Fa.jpg&w=800') === 'img.php?src=uploads%2Fa.jpg&w=800');
+    check('…and a real link with a space or a bracket means the same, encoded', css('uploads/a b(1).jpg') === 'uploads/a%20b%281%29.jpg' && css(null) === '');
+    // The style attribute as the CSS parser will read it: entities decoded first.
+    const styleOf = (html) => { const m = /style="([^"]*)"/.exec(html); return m ? m[1].replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : null; };
+    const held = (html) => { const s = styleOf(html); return !!s && (s.match(/'/g) || []).length === 2 && !/position|iframe/.test(s.replace(/url\('[^']*'\)/g, '')); };
+    vm.runInContext(`__smokeImgWas = propertyContent.jollyboat && propertyContent.jollyboat.images; if (propertyContent.jollyboat) propertyContent.jollyboat.images = [${JSON.stringify(evil)}]; siteContent[cardKeys('jollyboat').img] = ${JSON.stringify(evil)};`, ctx);
+    try {
+        const gb = vm.runInContext("gbPhotoHtml('jollyboat')", ctx);
+        check('the guest\'s stay card keeps a hostile gallery photo inside its url() (encodeURIComponent left \' ( ) alone there)', held(gb), styleOf(gb));
+        const card = vm.runInContext("cottageCardHtml('jollyboat', 'cott', true)", ctx);
+        const cardStyle = (/<div class="card-img"[^>]*>/.exec(card) || [''])[0];
+        check('…and so does the cottage card\'s home-page photo', held(cardStyle), styleOf(cardStyle));
+        check('…and no element came out of it', !/<iframe/.test(gb + card));
+    } finally {
+        vm.runInContext("if (propertyContent.jollyboat) propertyContent.jollyboat.images = __smokeImgWas; delete siteContent[cardKeys('jollyboat').img];", ctx);
+    }
+    // THE WIRING: every url('${…}') in the three scripts reads its link through chbCssUrl
+    // (propImg is defined through it; gbPhotoHtml's `safe` is its value; the hero's custom
+    // property strips quotes and brackets instead, being no attribute).
+    const sites = [];
+    for (const [name, src] of [['app.js', appScript], ['admin.js', adminScript], ['guest-app.js', fs.readFileSync(path.join(__dirname, 'guest-app.js'), 'utf8')]]) {
+        const re = /url\('\$\{([^}]*(?:\}[^'`]*?)?)\}'\)/g;
+        let m;
+        while ((m = re.exec(src))) sites.push([name, m[1]]);
+    }
+    const okSite = ([, x]) => /chbCssUrl\(/.test(x) || /^propImg\(/.test(x) || x === 'escapeHtml(safe)' || /^h\.replace\(\/\['"\\\\\)\]\/g, ''\)$/.test(x);
+    const bad = sites.filter((s) => !okSite(s));
+    check(`every photo link printed into a url() goes through chbCssUrl (${sites.length} sites)`, sites.length >= 20 && bad.length === 0, bad.map((b) => b.join(': ')).join(' | '));
+    check('…propImg and the stay card\'s photo are defined through it', /const propImg = \(key\) =>\s*escapeHtml\(chbCssUrl\(/.test(appScript) && appScript.includes('const safe = chbCssUrl(img);'));
+    // The one free-text field in a ledger row: the payment method the owner typed.
+    const row = vm.runInContext(`hubLedgerRowHtml({ kind: 'manual', note: '<b class="x">Cash</b>', amount: '50', status: 'MANUAL', created_at: '2026-10-01 10:00:00' }, 1, true)`, ctx);
+    check("a hand-recorded payment's method is shown as text, not markup", !/<b class="x">/.test(row) && /&lt;b class=&quot;x&quot;&gt;cash/.test(row), row.slice(0, 200));
+}
+
 // ============================================================
 //  §13 — NO SILENT CAPS, and the number is stated ONCE.
 //  The activity log asks for 250 rows and rendered them with nothing saying so,
