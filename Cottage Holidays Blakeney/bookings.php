@@ -20,6 +20,7 @@ const BOOKING_FIELD_FITS = [
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/payments-reconcile.php'; // reconcile_pending_refunds / reconcile_missing_fees
 require_once __DIR__ . '/booking-confirm-lib.php'; // booking_by_id / send_booking_confirmation
+require_once __DIR__ . '/ical-lib.php'; // ical_block_is_reservation / ical_block_phrase for the clash message
 
 // ---- helpers ----
 // booking_by_id() lives in booking-confirm-lib.php (shared with enquiry approval).
@@ -57,35 +58,36 @@ function clash_message($propKey, $checkIn, $checkOut, $ignoreId = null)
     // changes no dates) false-clashed against its own mirror — training reflexive
     // override, which then skips every check. The mirror sits at the ignored
     // booking's dates, so a block exactly matching them is skipped.
+    // The mirror lives on the cottage the booking is ON: moving it to another cottage
+    // compared the new cottage's blocks with the old dates, so a real Airbnb stay there
+    // at exactly those dates read as our own echo and the move saved with no question.
     try {
         $mirrorFrom = '';
         $mirrorTo = '';
         if ($ignoreId) {
-            $mq = db()->prepare('SELECT check_in, check_out FROM bookings WHERE id = ?');
+            $mq = db()->prepare('SELECT check_in, check_out, prop_key FROM bookings WHERE id = ?');
             $mq->execute([$ignoreId]);
-            if ($mrow = $mq->fetch()) {
+            if (($mrow = $mq->fetch()) && (string) $mrow['prop_key'] === (string) $propKey) {
                 $mirrorFrom = (string) $mrow['check_in'];
                 $mirrorTo = (string) $mrow['check_out'];
             }
         }
-        $s2 = db()->prepare(
-            'SELECT source, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?',
-        );
+        // SELECT * so `kind`/`label` come along where migration-124 has run.
+        $s2 = db()->prepare('SELECT * FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?');
         $s2->execute([$propKey, $checkOut, $checkIn]);
         foreach ($s2->fetchAll() as $b) {
-            if ((string) $b['check_in'] === $mirrorFrom && (string) $b['check_out'] === $mirrorTo && $mirrorFrom !== '') {
+            $echo = $mirrorFrom !== '' && (string) $b['check_in'] === $mirrorFrom && (string) $b['check_out'] === $mirrorTo;
+            if ($echo && !ical_block_is_reservation($b)) {
                 continue; // this block is a mirror of the booking being edited
             }
-            return 'These dates are blocked by a ' .
-                ucfirst($b['source']) .
-                ' booking (' .
-                $b['check_in'] .
-                ' to ' .
-                $b['check_out'] .
-                ').';
+            return 'These dates are blocked by ' . ical_block_phrase((string) $b['source']) . ' (' . $b['check_in'] . ' to ' . $b['check_out'] . ').';
         }
     } catch (\Throwable $e) {
-        /* table not migrated yet */
+        // Only a missing table reads as free. Any other failure is a check that did
+        // not run, and a booking saved past it could be the double booking it exists for.
+        if (!db_schema_missing($e)) {
+            throw $e;
+        }
     }
     return '';
 }

@@ -4284,6 +4284,100 @@ it_check('§60 the due query runs on the real schema and leaves a plan already c
 it_check('§60 …and its fallback (no spent clause) runs too', in_array($spent60, $ids60(autopay_due_sql(false)), true), '');
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($spent60, $live60)");
 
+// §61 THE CALENDAR SYNC CAN'T LOSE A BOOKING. Through the real endpoints and tables:
+// saving one platform's link keeps the others (the list used to be replaced whole
+// from the page's copy, dropping any link it didn't know about with its stays);
+// unlinking is one platform, its blocks with it; a booking moved onto another
+// cottage meets that cottage's platform stay even at exactly its own dates (the
+// echo skip compared the new cottage's blocks with the old cottage's dates); a
+// proven platform guest is never our echo; the nightly audit reports one; and a
+// removed cottage's calendar is not published.
+echo "\n== §61 the calendar sync can't lose a booking ==\n";
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Move Sixtyone', 'couple_rate' => 100]);
+$p61 = $r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? '');
+it_check('§61 a second cottage to sync and move onto', $p61 !== '', $r['raw']);
+$feeds61 = function () use (&$admin, $p61) {
+    $r = http($admin, 'POST', '/ical-import.php', ['action' => 'list', 'prop' => $p61]);
+    $m = [];
+    foreach ($r['json']['feeds'] ?? [] as $f) {
+        $m[$f['source']] = $f['url'];
+    }
+    ksort($m);
+    return $m;
+};
+$A1 = 'https://www.airbnb.com/calendar/ical/61.ics';
+$A2 = 'https://www.airbnb.com/calendar/ical/61b.ics';
+$V1 = 'http://www.vrbo.com/icalendar/61.ics';
+http($admin, 'POST', '/ical-import.php', ['action' => 'save_feeds', 'prop' => $p61, 'feeds' => [['source' => 'airbnb', 'url' => $A1]]]);
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'save_feeds', 'prop' => $p61, 'feeds' => [['source' => 'vrbo', 'url' => $V1]]]);
+it_check('§61 saving a second platform\'s link keeps the first', $r['code'] === 200 && $feeds61() === ['airbnb' => $A1, 'vrbo' => $V1], json_encode($feeds61()));
+http($admin, 'POST', '/ical-import.php', ['action' => 'save_feeds', 'prop' => $p61, 'feeds' => [['source' => 'airbnb', 'url' => $A2]]]);
+it_check('§61 replacing one link leaves the other as it was', $feeds61() === ['airbnb' => $A2, 'vrbo' => $V1], json_encode($feeds61()));
+$ib61 = $rootDb->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out, kind, label) VALUES (?,?,?,?,?,?,?)');
+$ib61->execute([$p61, 'vrbo', 'it61-v', $dd(970), $dd(973), 'booking', 'Reserved - Vic']);
+$ib61->execute([$p61, 'airbnb', 'it61-a', $dd(975), $dd(978), 'booking', 'Reserved']);
+$ib61->execute([$p61, 'owner', 'it61-o', $dd(980), $dd(982), 'unknown', null]);
+$srcs61 = function () use ($rootDb, $p61) {
+    $q = $rootDb->prepare('SELECT source FROM ical_blocks WHERE prop_key = ? ORDER BY source');
+    $q->execute([$p61]);
+    return implode(',', $q->fetchAll(PDO::FETCH_COLUMN));
+};
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'unlink_feed', 'prop' => $p61, 'source' => 'vrbo']);
+it_check('§61 unlinking one platform removes only its link', $r['code'] === 200 && $feeds61() === ['airbnb' => $A2], json_encode($feeds61()));
+it_check('§61 …and only its stays (Airbnb and the owner\'s own block stay)', $srcs61() === 'airbnb,owner', $srcs61());
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'unlink_feed', 'prop' => $p61, 'source' => 'owner']);
+it_check('§61 the owner\'s own blocks cannot be "unlinked" (400, nothing removed)', $r['code'] === 400 && $srcs61() === 'airbnb,owner', $r['raw']);
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'unlink_feed', 'prop' => $p61, 'source' => '']);
+it_check('§61 an unlink that names no platform is refused', $r['code'] === 400, $r['raw']);
+$q = $rootDb->prepare("SELECT COUNT(*) FROM activity_log WHERE action = 'ical.unlink' AND prop_key = ?");
+$q->execute([$p61]);
+it_check('§61 the unlink is in the activity log', (int) $q->fetchColumn() === 1);
+it_check('§61 a guest cannot save or unlink links', http($guest, 'POST', '/ical-import.php', ['action' => 'unlink_feed', 'prop' => $p61, 'source' => 'airbnb'])['code'] === 401 && $feeds61() === ['airbnb' => $A2]);
+
+// The move. A booking on the first cottage, an Airbnb stay on the second at
+// EXACTLY its dates (kind 'unknown', so only the cottage check can catch it).
+$r = $addBooking($dd(1260), $dd(1264), 'Moving Mo');
+$mv61 = (int) ($r['json']['id'] ?? 0);
+it_check('§61 the booking to move is created', $mv61 > 0, $r['raw']);
+$ib61->execute([$p61, 'airbnb', 'it61-same', $dd(1260), $dd(1264), 'unknown', 'Airbnb']);
+$mv = fn($pk, $extra = []) => http($admin, 'POST', '/bookings.php', array_merge([
+    'action' => 'update', 'id' => $mv61, 'prop_key' => $pk, 'name' => 'Moving Mo', 'email' => '', 'phone' => '',
+    'check_in' => $dd(1260), 'check_out' => $dd(1264), 'adults' => 2, 'children' => 0,
+], $extra));
+$r = $mv($p61);
+it_check('§61 moving it onto another cottage\'s platform stay at the same dates asks first', $r['code'] === 200 && !empty($r['json']['clash']), $r['raw']);
+it_check('§61 …naming what holds the dates', stripos((string) ($r['json']['message'] ?? ''), 'an Airbnb stay') !== false, (string) ($r['json']['message'] ?? ''));
+$q = $rootDb->prepare('SELECT prop_key FROM bookings WHERE id = ?');
+$q->execute([$mv61]);
+it_check('§61 …and nothing moved', (string) $q->fetchColumn() === (string) $propKey);
+
+// The echo on its OWN cottage: our "Booked" coming back is skipped; a proven guest is
+// not. An edit that changes no dates runs no clash check at all, so each case extends
+// the stay by a night — the check then compares the block with the STORED dates.
+$ib61->execute([$propKey, 'vrbo', 'it61-echo', $dd(1260), $dd(1264), 'booking', 'Booked']);
+$r = $mv($propKey, ['check_out' => $dd(1265)]);
+it_check('§61 our own booking coming back as "Booked" is still the echo (no question)', $r['code'] === 200 && empty($r['json']['clash']), $r['raw']);
+$rootDb->prepare('UPDATE bookings SET check_out = ? WHERE id = ?')->execute([$dd(1264), $mv61]);
+$rootDb->exec("UPDATE ical_blocks SET label = 'Reserved', uid = 'it61-real' WHERE uid = 'it61-echo'");
+$r = $mv($propKey, ['check_out' => $dd(1265)]);
+it_check('§61 a proven platform guest at exactly its dates is never the echo — it asks', $r['code'] === 200 && !empty($r['json']['clash']), $r['raw']);
+$r = http($guest, 'GET', '/conflict-audit.php?cron=' . $SECRET);
+$q = $rootDb->prepare("SELECT summary FROM activity_log WHERE action = 'booking.conflict' AND prop_key = ? AND summary LIKE ? ORDER BY id DESC LIMIT 1");
+$q->execute([$propKey, '%Moving Mo%']);
+$sum61 = (string) $q->fetchColumn();
+it_check('§61 the nightly audit reports it as a double booking', $r['code'] === 200 && stripos($sum61, 'Double booking') !== false && stripos($sum61, 'a Vrbo stay') !== false, $sum61 . ' ' . $r['raw']);
+$rootDb->exec("DELETE FROM ical_blocks WHERE uid IN ('it61-real', 'it61-same')");
+
+// A removed cottage's calendar is not public.
+$r = http($admin, 'POST', '/rates.php', ['action' => 'archive', 'prop_key' => $p61]);
+it_check('§61 the second cottage is removed', $r['code'] === 200, $r['raw']);
+$pubA = http($guest, 'GET', '/availability.php?prop=' . urlencode($p61));
+$admA = http($admin, 'GET', '/availability.php?prop=' . urlencode($p61));
+it_check('§61 a removed cottage\'s calendar is not published to a visitor', ($pubA['json']['ranges'] ?? null) === [], $pubA['raw']);
+it_check('§61 …while the owner still sees it', count($admA['json']['ranges'] ?? []) >= 1, $admA['raw']);
+$rootDb->prepare('DELETE FROM ical_blocks WHERE prop_key = ?')->execute([$p61]);
+$rootDb->prepare('DELETE FROM bookings WHERE id = ?')->execute([$mv61]);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

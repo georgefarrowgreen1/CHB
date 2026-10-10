@@ -98,6 +98,16 @@ function db()
 function dates_clash($prop, $from, $to, $ignoreId = null) // arity mirrors db.php's
 {
     global $WL_CLASH;
+    // A bool answers every range alike; a list of [from, to] busy ranges answers
+    // each range by the house's end-exclusive overlap.
+    if (is_array($WL_CLASH)) {
+        foreach ($WL_CLASH as [$a, $b]) {
+            if ($a < $to && $b > $from) {
+                return true;
+            }
+        }
+        return false;
+    }
     return $WL_CLASH;
 }
 // MIRRORS THE REAL SIGNATURE, all nine parameters. PHPStan analyses this file
@@ -301,6 +311,26 @@ waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 $open = (string) wl_sent(0)['text'];
 chk('an open-dated guest is told about the cottage, without dangling dates',
     strpos($open, 'Jollyboat.') !== false && strpos($open, ' for  ') === false);
+
+// ============================================================
+//  7. THE GUEST'S OWN DATES, NOT JUST THE FREED ONES. A short cancellation
+//     inside a longer stay someone waits for leaves their stay still booked, and
+//     an entry whose dates have passed has nothing to book.
+// ============================================================
+echo "\n-- their own dates must be free --\n";
+$mid = date('Y-m-d', strtotime($WL_FROM . ' 12:00:00 +2 days'));
+wl_reset(['rows' => $WAITING, 'clash' => [[$mid, $WL_TO]]]);
+$n = waitlist_notify_freed('jollyboat', $WL_FROM, $mid);
+chk('a freeing that covers only part of their stay does not email them', $n === 1 && count($WL_SENT) === 1 && wl_sent(0)['to'] === 'ben@example.test');
+chk('...and leaves them waiting (not marked), for when the rest frees', wl_marked() === [2]);
+$past = ['id' => 4, 'prop_key' => 'jollyboat', 'name' => 'Pat Gone', 'email' => 'pat@example.test', 'check_in' => date('Y-m-d', strtotime('-9 days')), 'check_out' => date('Y-m-d', strtotime('-4 days'))];
+wl_reset(['rows' => [$past]]);
+chk('an entry whose dates have passed is not told about them', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 0 && !$WL_SENT && wl_marked() === []);
+$tmr = date('Y-m-d', strtotime(date('Y-m-d') . ' 12:00:00 +1 day'));
+$late = ['id' => 5, 'prop_key' => 'jollyboat', 'name' => 'Lou Late', 'email' => 'lou@example.test', 'check_in' => date('Y-m-d', strtotime('-2 days')), 'check_out' => date('Y-m-d', strtotime('+5 days'))];
+wl_reset(['rows' => [$late]]);
+waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
+chk('an entry that has started is told about what is LEFT, from tomorrow', count($WL_SENT) === 1 && strpos(wl_sent(0)['text'], email_date($tmr)) !== false && strpos(wl_sent(0)['text'], email_date($late['check_in'])) === false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

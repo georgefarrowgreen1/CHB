@@ -3001,7 +3001,12 @@ function dates_clash($propKey, $checkIn, $checkOut, $ignoreId = null)
         $s2->execute([$propKey, $checkOut, $checkIn]);
         return (int) $s2->fetch()['c'] > 0;
     } catch (\Throwable $e) {
-        return false;
+        // A missing table (an install before the sync existed) has no blocks. Any
+        // other failure is a check that did not run, never "free".
+        if (db_schema_missing($e)) {
+            return false;
+        }
+        throw $e;
     }
 }
 

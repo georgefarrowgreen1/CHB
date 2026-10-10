@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 765;
+const ADMIN_BUNDLE_V = 766;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 396;
+const ADMIN_CSS_V = 397;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -11909,12 +11909,22 @@ function rangesOverlap(aIn, aOut, bIn, bOut) {
 // dbBlocks, which is what the timeline, the tl-ext bars and conflict-audit read —
 // so booked nights showed FREE on the screen the owner scans to avoid that. A true
 // mirror is fully covered, yields no remainder, and still disappears.
+// ical_block_is_reservation's twin: a proven platform guest, never our own echo.
+function blockIsReservation(bl) {
+    return !!bl && bl.kind === 'booking' && String(bl.label || '').trim().toLowerCase() !== 'booked';
+}
 function suppressBlocksUnderLocalBookings() {
     Object.keys(dbBlocks).forEach((k) => {
         const locals = dbBookings[k] || [];
         if (!locals.length) return;
         const out = [];
         (dbBlocks[k] || []).forEach((bl) => {
+            // A proven platform guest stays whole: on our nights it is a double booking.
+            if (blockIsReservation(bl)) {
+                const hit = locals.find((bk) => bk.checkIn && bk.checkOut && bl.checkIn < bk.checkOut && bk.checkIn < bl.checkOut);
+                out.push(hit ? Object.assign({}, bl, { clashWith: hit.name || 'a guest' }) : bl);
+                return;
+            }
             // Remaining segments of [checkIn, checkOut) after removing every local
             // booking's range. Checkout-exclusive throughout, like rangesOverlap.
             let parts = [{ a: bl.checkIn, b: bl.checkOut }];
@@ -21469,7 +21479,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pnd1010a';
+    const BUILD = 'calsync61';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -98,8 +98,12 @@ $partial = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:no-dates\r\nEND:VEVENT\r\n"
     . "BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260501\r\nUID:start-only\r\nEND:VEVENT\r\n"
     . "BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260601\r\nDTEND;VALUE=DATE:20260604\r\nUID:good\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 $p = parse_ical($partial);
-ick('an event with no dates is dropped', count($p) === 1 && ($p[0]['uid'] ?? '') === 'good', json_encode($p));
-ick('…and one with only a start is dropped too', !array_filter($p, fn($e) => ($e['uid'] ?? '') === 'start-only'));
+ick('an event with no dates is dropped', !array_filter($p, fn($e) => ($e['uid'] ?? '') === 'no-dates'), json_encode($p));
+// A date with no end is the ONE day RFC 5545 says it is (it used to be dropped,
+// freeing a night the platform holds).
+$so = array_values(array_filter($p, fn($e) => ($e['uid'] ?? '') === 'start-only'));
+ick('…a date-only start with no end is one night, as the RFC says', $so && $so[0]['start'] === '2026-05-01' && $so[0]['end'] === '2026-05-02', json_encode($so));
+ick('…and the event with no dates is COUNTED as unreadable, so the sync refuses rather than drops it', ical_parse_feed($partial)['unreadable'] === 1);
 ick('text outside any VEVENT is ignored', count(parse_ical("BEGIN:VCALENDAR\r\nDTSTART;VALUE=DATE:20260101\r\nEND:VCALENDAR")) === 0);
 
 echo "\n== 3. Which URLs may be fetched at all ==\n";
@@ -134,7 +138,7 @@ echo "\n== 4. The block rebuild is atomic ==\n";
 {
     $src = (string) file_get_contents(__DIR__ . '/ical-import.php');
     $i = strpos($src, 'function sync_property');
-    $body = $i === false ? '' : substr($src, $i, 6000);
+    $body = $i === false ? '' : substr($src, $i, 9000);
     // Strip comments before asserting an absence — the notes here describe the very
     // shapes being forbidden (this repo's own negative-scan rule).
     $code = (string) preg_replace('~^\s*//.*$~m', '', $body);
@@ -192,7 +196,10 @@ $AB_RES = "Reservation URL: https://www.airbnb.com/hosting/reservations/details/
 ick('Airbnb reservation (link + last 4 digits) is a booking', ical_classify('Reserved', ical_unescape($AB_RES)) === 'booking');
 ick('…even if its label looked like a block', ical_classify('Not available', ical_unescape($AB_RES)) === 'booking');
 ick('Airbnb (Not available) is a block', ical_classify('Airbnb (Not available)', '') === 'blocked');
-ick('Vrbo "Blocked" / "Unavailable" / "Closed" are blocks', ical_classify('Blocked', '') === 'blocked' && ical_classify('Unavailable', '') === 'blocked' && ical_classify('Closed - Not available', '') === 'blocked');
+ick('Vrbo "Blocked" / "Unavailable" / "Closed" are blocks', ical_classify('Blocked', '') === 'blocked' && ical_classify('Unavailable', '') === 'blocked' && ical_classify('Closed', '') === 'blocked');
+// Booking.com titles every unavailable period this way, its own guests included, so
+// the label cannot say which: unknown, i.e. a stay (changeovers, the key safe).
+ick('Booking.com\'s "CLOSED - Not available" is UNKNOWN — it labels its guests that way too', ical_classify('CLOSED - Not available', '') === 'unknown' && ical_classify('Closed - Not available', '') === 'unknown');
 ick('a plain "Reserved" label is a booking', ical_classify('Reserved', '') === 'booking');
 ick('a guest\'s name is UNKNOWN, never guessed', ical_classify('Jane Smith', '') === 'unknown');
 ick('a guest whose name merely starts like a word is not a block', ical_classify('Blocksidge family', '') === 'unknown');
@@ -239,6 +246,122 @@ ick('the sync compares before it deletes', $cmpAt !== false && $delAt !== false 
 ick('…an unreadable snapshot is never taken as "unchanged"', strpos($imp, '$oldRows !== null && ical_block_sig(') !== false);
 ick('…and every source says whether it changed', strpos($imp, "'changed' => false]") !== false && strpos($imp, "'changed' => true]") !== false);
 ick('…the rows written are the rows compared', strpos($imp, 'foreach ($newRows as $nr)') !== false);
+
+// ---- 7. EVERY EVENT READ, OR THE CALENDAR LEFT ALONE ------------------------
+// parse_ical used to drop what it could not read and the sync rebuilt from what
+// survived — measured end to end, two Airbnb blocks became none and the waitlist was
+// told the nights were free. Each standard form below was one of those drops.
+echo "\n7. every event read, or the calendar left alone\n";
+$wrap = fn($events) => "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" . $events . "END:VCALENDAR\r\n";
+$one = function ($vevent) use ($wrap) {
+    $f = ical_parse_feed($wrap("BEGIN:VEVENT\r\n" . $vevent . "END:VEVENT\r\n"));
+    return ['n' => count($f['events']), 'e' => $f['events'][0] ?? null, 'bad' => $f['unreadable'], 'skip' => $f['skipped']];
+};
+$r = $one("UID:d1\r\nDTSTART;VALUE=DATE:20261101\r\nDURATION:P3D\r\n");
+ick('DURATION:P3D on a date is three nights', $r['e'] && $r['e']['end'] === '2026-11-04' && $r['bad'] === 0, json_encode($r));
+$r = $one("UID:d2\r\nDTSTART:20261101T150000Z\r\nDURATION:P1W\r\n");
+ick('DURATION on a date-time runs from the instant (one week)', $r['e'] && $r['e']['start'] === '2026-11-01' && $r['e']['end'] === '2026-11-08', json_encode($r));
+$r = $one("UID:d3\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261101\r\n");
+ick('DTEND equal to DTSTART still blocks its night', $r['e'] && $r['e']['end'] === '2026-11-02', json_encode($r));
+$r = $one("uid:d4\r\ndtstart;value=date:20261101\r\ndtend;value=date:20261105\r\nsummary:Reserved\r\n");
+ick('property names are case-insensitive', $r['e'] && $r['e']['end'] === '2026-11-05' && $r['e']['summary'] === 'Reserved' && $r['e']['uid'] === 'd4', json_encode($r));
+$r = $one("UID:d5\r\nDTSTART;VALUE=DATE:2026-11-01\r\nDTEND;VALUE=DATE:2026-11-03\r\n");
+ick('a dashed date is read', $r['e'] && $r['e']['start'] === '2026-11-01' && $r['e']['end'] === '2026-11-03', json_encode($r));
+$r = $one("UID:d6\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261103\r\nSUMMARY:Reserved\r\nDESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/details/HM9\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nSUMMARY:Alarm\r\nEND:VALARM\r\n");
+ick('an alarm inside the event does not overwrite its description or label', $r['e'] && $r['e']['summary'] === 'Reserved' && stripos($r['e']['description'], 'reservation url') !== false, json_encode($r));
+ick('…so the reservation is still classified as one', $r['e'] && ical_classify($r['e']['summary'], $r['e']['description']) === 'booking');
+$r = $one("UID:d7\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261103\r\nSTATUS:CANCELLED\r\n");
+ick('a CANCELLED event is skipped — its nights are free again — and is not "unreadable"', $r['n'] === 0 && $r['skip'] === 1 && $r['bad'] === 0, json_encode($r));
+$r = $one("UID:d8\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261102\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\n");
+ick('a repeating event is UNREADABLE (only its first night would block)', $r['n'] === 0 && $r['bad'] === 1, json_encode($r));
+$r = $one("UID:d9\r\nDTSTART;VALUE=DATE:20261105\r\nDTEND;VALUE=DATE:20261101\r\n");
+ick('an end before its start is unreadable, never a guess', $r['n'] === 0 && $r['bad'] === 1, json_encode($r));
+$r = $one("UID:d10\r\nDTSTART;TZID=\"(UTC+00:00) Dublin, Edinburgh, Lisbon, London\":20261101T150000\r\nDTEND;TZID=\"(UTC+00:00) Dublin, Edinburgh, Lisbon, London\":20261104T100000\r\n");
+ick('an Outlook TZID with colons in quotes is read', $r['e'] && $r['e']['start'] === '2026-11-01' && $r['e']['end'] === '2026-11-04', json_encode($r));
+$r = $one("UID:d11\r\nDTSTART;TZID=America/New_York:20261101T220000\r\nDTEND;TZID=America/New_York:20261104T220000\r\n");
+ick('a known TZID converts to the quay\'s clock (22:00 New York is the next day here)', $r['e'] && $r['e']['start'] === '2026-11-02' && $r['e']['end'] === '2026-11-05', json_encode($r));
+$r = $one("UID:d12\r\nDTSTART;VALUE=DATE:20261340\r\nDTEND;VALUE=DATE:20261342\r\n");
+ick('a date that does not exist is unreadable', $r['n'] === 0 && $r['bad'] === 1, json_encode($r));
+$ind = ical_parse_feed("BEGIN:VCALENDAR\r\n  BEGIN:VEVENT\r\n  DTSTART;VALUE=DATE:20261101\r\n  DTEND;VALUE=DATE:20261103\r\n  END:VEVENT\r\nEND:VCALENDAR\r\n");
+ick('an event the line reader never saw (indented lines) is still COUNTED, so the sync refuses', $ind['unreadable'] >= 1 && count($ind['events']) === 0, json_encode($ind));
+$open = ical_parse_feed("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261103\r\n");
+ick('an event the body ended inside is unreadable', $open['unreadable'] === 1, json_encode($open));
+$two = ical_parse_feed($wrap("BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261103\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:x\r\nEND:VEVENT\r\n"));
+ick('one good event and one with no dates: one read, one unreadable', count($two['events']) === 1 && $two['unreadable'] === 1, json_encode($two));
+ick('a calendar cut off before END:VCALENDAR is not usable', !ical_feed_usable(['ok' => true, 'body' => "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261101\r\n"])['ok']);
+ick('…and says so in the owner\'s terms', stripos(ical_feed_usable(['ok' => true, 'body' => "BEGIN:VCALENDAR\r\n"])['error'], 'incomplete') !== false);
+ick('the real Airbnb shape still reads in full with nothing unreadable', ical_parse_feed($feed)['unreadable'] === 0 && count(ical_parse_feed($feed)['events']) === 2);
+$imp = file_get_contents(__DIR__ . '/ical-import.php');
+$impCode = (string) preg_replace('~^\s*//.*$~m', '', $imp);
+$pAt = strpos($impCode, 'ical_parse_feed($res[\'body\'])');
+$refuseAt = strpos($impCode, "\$parsed['unreadable'] > 0");
+$delAt = strpos($impCode, 'DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?');
+ick('THE WIRING: the sync parses the whole feed and refuses before it deletes anything', $pAt !== false && $refuseAt !== false && $refuseAt < $delAt, "parse=$pAt refuse=$refuseAt delete=$delAt");
+
+// ---- 8. OUR OWN BOOKING COMING BACK, OR SOMEBODY ELSE'S GUEST? ----------------
+echo "\n8. an echo of our booking, or a platform guest\n";
+ick('a feed\'s reservation (kind booking, "Reserved") is a platform guest', ical_block_is_reservation(['kind' => 'booking', 'label' => 'Reserved']));
+ick('…our own "Booked" coming back through a feed is NOT proof', !ical_block_is_reservation(['kind' => 'booking', 'label' => 'Booked']) && !ical_block_is_reservation(['kind' => 'booking', 'label' => ' booked ']));
+ick('…nor is a block or an unknown event', !ical_block_is_reservation(['kind' => 'blocked', 'label' => 'Airbnb (Not available)']) && !ical_block_is_reservation(['kind' => 'unknown', 'label' => 'CLOSED - Not available']));
+ick('…nor a row from before kinds were stored', !ical_block_is_reservation(['source' => 'airbnb']));
+ick('the clash dialog names what blocks the dates', ical_block_phrase('airbnb') === 'an Airbnb stay' && ical_block_phrase('owner') === 'your own block' && ical_block_phrase('bookingcom') === 'a Booking.com stay');
+$bk = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/bookings.php'));
+$cm = substr($bk, (int) strpos($bk, 'function clash_message'), 4000);
+ick('clash_message skips an echo only on the booking\'s OWN cottage', strpos($cm, "(string) \$mrow['prop_key'] === (string) \$propKey") !== false);
+ick('…and never when the feed proves a platform guest', strpos($cm, '!ical_block_is_reservation($b)') !== false);
+ick('…and a database error is not read as free', strpos($cm, 'db_schema_missing($e)') !== false);
+$dbs = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/db.php'));
+$dc = substr($dbs, (int) strpos($dbs, 'function dates_clash'), 1400);
+ick('dates_clash too: only a missing table reads as free, any other failure is thrown', strpos($dc, 'db_schema_missing($e)') !== false && strpos($dc, 'throw $e;') !== false);
+$ca = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/conflict-audit.php'));
+ick('the nightly audit reports a proven guest even at the exact dates', (bool) preg_match('~\$a\[\'check_out\'\] === \$bk\[\'check_out\'\] && !\$real~', $ca));
+
+// ---- 9. THE FETCH REACHES ONLY THE PUBLIC INTERNET --------------------------
+echo "\n9. the fetch reaches only the public internet\n";
+foreach ([
+    ['carrier-grade NAT (a cloud metadata service lives there)', 'http://100.100.100.200/latest/meta-data/'],
+    ['the start of 100.64/10', 'http://100.64.0.1/cal.ics'],
+    ['the benchmark range', 'http://198.18.0.1/cal.ics'],
+    ['NAT64 to 10.0.0.1', 'http://[64:ff9b::a00:1]/cal.ics'],
+    ['6to4 wrapping 10.0.0.1', 'http://[2002:a00:1::1]/cal.ics'],
+    ['Teredo', 'http://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/cal.ics'],
+    ['IPv4-mapped loopback', 'http://[::ffff:127.0.0.1]/cal.ics'],
+    ['multicast', 'http://224.0.0.1/cal.ics'],
+] as [$label, $url]) {
+    ick("$label is blocked", !ical_url_public($url), $url);
+}
+ick('a public IPv6 address is allowed', ical_url_public('https://[2606:4700:4700::1111]/cal.ics'));
+ick('the range test reads partial bytes: 100.127.255.255 is in 100.64/10, 100.128.0.0 is not',
+    ical_cidr_match('100.127.255.255', '100.64.0.0/10') && !ical_cidr_match('100.128.0.0', '100.64.0.0/10'));
+ick('an IPv4 address is never matched against an IPv6 range', !ical_cidr_match('10.0.0.1', '64:ff9b::/96'));
+$res = ical_url_resolve('https://93.184.216.34:8443/cal.ics');
+ick('a resolved URL carries the host, port and addresses the fetch pins to', $res['ok'] && $res['port'] === 8443 && $res['ips'] === ['93.184.216.34'], json_encode($res));
+$imp = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/ical-import.php'));
+$fu = substr($imp, (int) strpos($imp, 'function fetch_url'), 3500);
+ick('THE WIRING: every hop is resolved and the connection pinned to that address', strpos($fu, 'ical_url_resolve($current)') !== false && strpos($fu, 'CURLOPT_RESOLVE') !== false);
+ick('…the body is capped as it arrives', strpos($fu, 'CURLOPT_WRITEFUNCTION') !== false && strpos($fu, 'ICAL_MAX_BYTES') !== false);
+ick('…and there is no unchecked fallback fetch', strpos($fu, 'file_get_contents') === false);
+
+// ---- 10. A FAILING FEED INTERRUPTS THE OWNER BY TIME, NOT BY SYNC COUNT -------
+echo "\n10. a failing feed interrupts by time, not by how many syncs ran\n";
+$t0 = '2026-11-01 08:00:00';
+$at = fn($h) => date('Y-m-d H:i:s', strtotime($t0) + (int) round($h * 3600));
+$a = ical_feed_alert([], true, $t0);
+ick('a working feed carries no failure stamps', $a['fail_since'] === '' && !$a['due']);
+$a = ical_feed_alert(['ok' => true], false, $t0);
+ick('the first failure starts the clock and says nothing', $a['fail_since'] === $t0 && !$a['due']);
+$st = ['ok' => false, 'fails' => 40, 'fail_since' => $t0, 'alerted_at' => ''];
+ick('forty quick syncs in an hour are still one failing hour — no alert', !ical_feed_alert($st, false, $at(1))['due']);
+$a = ical_feed_alert($st, false, $at(7));
+ick('…a failure that has lasted past six hours alerts once', $a['due'] && $a['alerted_at'] === $at(7));
+ick('…then not again two days later', !ical_feed_alert(['alerted_at' => $at(7)] + $st, false, $at(7 + 48))['due']);
+ick('…but again after a week', ical_feed_alert(['alerted_at' => $at(7)] + $st, false, $at(7 + 24 * 7))['due']);
+ick('a recovery clears both stamps', ical_feed_alert(['alerted_at' => $at(7)] + $st, true, $at(9)) === ['fail_since' => '', 'alerted_at' => '', 'due' => false]);
+$old = ['ok' => false, 'fails' => 1, 'at' => $at(-1), 'ok_at' => $at(-10)];
+ick('a status stored before the stamps dates the failure from its last good sync', ical_feed_alert($old, false, $t0)['due'] && ical_feed_alert($old, false, $t0)['fail_since'] === $at(-10));
+ick('…and counts the old rule\'s alert (fails ≥ 2) as already sent', !ical_feed_alert(['fails' => 3] + $old, false, $t0)['due']);
+$rs = substr($imp, (int) strpos($imp, 'function ical_record_status'), 3000);
+ick('THE WIRING: the status decides through ical_feed_alert, under one lock', strpos($rs, 'ical_feed_alert(') !== false && strpos($rs, 'content_locked($key') !== false && strpos($rs, '% 7 === 0') === false);
 
 echo "\n== Summary ==\n";
 if ($fails) {
