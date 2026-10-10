@@ -145,6 +145,16 @@ if ($action === 'mine') {
 require_admin();
 
 if ($action === 'list_admin') {
+    // A COUNT FOR A BADGE IS A COUNT: Today and Manage asked for every review there has
+    // ever been to count the ones waiting, on every visit.
+    if (($in['count'] ?? '') === 'pending') {
+        try {
+            // Joined as the list below is, so the badge counts what the list will show.
+            json_out(['pending' => (int) db()->query("SELECT COUNT(*) FROM guest_reviews r JOIN guests g ON g.id = r.guest_id WHERE r.status = 'pending'")->fetchColumn()]);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'Could not count the reviews waiting.'], 500);
+        }
+    }
     try {
         $rows = db()
             ->query(

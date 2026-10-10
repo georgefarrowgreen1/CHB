@@ -77,37 +77,38 @@ function inb_addr($s)
     return strtolower(trim((string) $s));
 }
 
-// ---- Find the thread token: plus-address, In-Reply-To, or subject ----
-$token = '';
-foreach ([$recipient, $inReplyTo, $headersRaw, $subject] as $hay) {
-    if ($hay === '') {
-        continue;
-    }
-    // reply+<tid>x<sig>@…  |  <msg.<tid>x<sig>@…>  |  anywhere the pattern appears
-    if (preg_match('/\+(\d+[xy][0-9a-f]{16})@/', $hay, $m)) {
-        $token = $m[1];
-        break;
-    }
-    if (preg_match('/(\d+[xy][0-9a-f]{16})/', $hay, $m)) {
-        $token = $m[1];
-        break;
-    }
-}
-$threadId = $token !== '' ? msg_reply_verify($token) : 0;
+// ---- Find the thread token: plus-address, In-Reply-To, headers or subject ----
+// reply+<tid>x<sig>@…  |  <msg.<tid>x<sig>@…>  |  anywhere the pattern appears
+$token = msg_reply_token_in([$recipient, $inReplyTo, $headersRaw, $subject]);
+[$threadId, $tokAud] = $token !== '' ? msg_reply_parse($token) : [0, ''];
 if ($threadId <= 0) {
     echo 'no thread';
     exit();
 } // 200 — nothing to do
+// A thread since deleted takes no reply: posting one would leave a message no
+// conversation shows, and the sender would believe it delivered.
+$live = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
+$live->execute([$threadId]);
+if (!$live->fetchColumn()) {
+    echo 'thread gone';
+    exit();
+}
 
-// ---- Only the owner / co-hosts may post an admin reply ----
+// ---- Who is replying: the owner / co-hosts, or the thread's own guest ----
 // The From header is trivially spoofable, so it is NOT the security boundary on
-// its own: the HMAC thread token (msg_reply_verify, above) is the real gate. As
+// its own: the HMAC thread token is the real gate, and only an OWNER token (the one
+// in the owner's notification) may post as the owner — the guest's copy carries a
+// GUEST token. The guest was invited to "just reply to this email", so their reply
+// lands as theirs, as it does by the POP3 route (mailbox-read.php); before, a guest
+// token here was refused as "no thread" and their reply went nowhere. As
 // defence-in-depth, when the inbound provider posts an email-authentication
 // verdict (SPF/DKIM/spam), REJECT a hard failure — a spoofed From from a
 // third party who obtained a reply token can't then pass a DKIM-aligned check.
 $fromAddr = inb_addr($from);
 $allowed = function_exists('people_mail_senders') ? people_mail_senders() : [];
-if ($fromAddr === '' || !in_array($fromAddr, $allowed, true)) {
+$asOwner = $tokAud === 'owner' && $fromAddr !== '' && in_array($fromAddr, $allowed, true);
+$asGuest = !$asOwner && mailbox_reply_is_guest($threadId, $fromAddr);
+if (!$asOwner && !$asGuest) {
     echo 'sender not allowed';
     exit();
 }
@@ -139,7 +140,11 @@ if ($body === '') {
 // Idempotency: a provider retry (or a double-fire) re-POSTs the same reply, so
 // skip it if it's already the newest message in the thread.
 if (!chat_last_message_is($threadId, $body)) {
-    $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
-    chat_admin_reply($threadId, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
+    if ($asOwner) {
+        $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
+        chat_admin_reply($threadId, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
+    } else {
+        chat_guest_reply($threadId, $body);
+    }
 }
 echo 'ok';

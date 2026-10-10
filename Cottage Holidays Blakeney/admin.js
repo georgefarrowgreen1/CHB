@@ -15110,7 +15110,7 @@ function renderCalendarList() {
         const ae = document.activeElement;
         if (ae && ae.id === 'cal-link-in' && list.contains(ae) && !(__calLink && __calLink.busy)) { /* keep typing */ }
         else list.innerHTML = calListHtml();
-        if (!__calOv) calLoadOverview();
+        if (!__calOv && Date.now() - __calOvAt > CAL_OV_RETRY_MS) calLoadOverview();
     }
     if (!settingsShowing('calendar')) return;
     settingsSetBack(() => settingsShowIndex(), 'Manage');
@@ -15175,8 +15175,17 @@ function calListHtml() {
         calSubHtml(k, v), calCapHtml(k, v), calFoldHtml(k))).join('');
     return summary + probHtml + `<div class="bhub-grpcap">Cottages</div>` + rows;
 }
+// AN ANSWER THAT SAYS NOTHING IS NOT ASKED AGAIN AT ONCE: it looped about fifty times a
+// second on any screen. Wait CAL_OV_RETRY_MS; repaint only a painted list.
+const CAL_OV_RETRY_MS = 15000;
+let __calOvAt = 0;
+function calOvForget() {
+    __calOv = null; // the list asks again, at once
+    __calOvAt = 0;
+}
 async function calLoadOverview() {
     const stamp = ++__calOvStamp;
+    __calOvAt = Date.now();
     try {
         const res = await apiPost('ical-import.php', { action: 'overview' });
         if (stamp !== __calOvStamp) return;
@@ -15188,7 +15197,7 @@ async function calLoadOverview() {
 }
 function calRepaint() {
     const list = document.getElementById('calendar-list');
-    if (list && list.style.display !== 'none' && list.isConnected) renderCalendarList();
+    if (list && list.isConnected && list.style.display !== 'none' && list.getClientRects().length) renderCalendarList();
 }
 // Sync every linked cottage in turn, each row showing its own spinner then tick.
 async function calSyncAll() {
@@ -15506,7 +15515,7 @@ async function calRemoveFeed(key, src) {
     try {
         await apiPost('ical-import.php', { action: 'unlink_feed', prop: key, source: src });
         if (inp) inp.defaultValue = '';
-        __calOv = null; // the list asks again
+        calOvForget();
         toast(`${P.name} unlinked.`);
     } catch (e) {
         glassAlert('Couldn’t unlink: ' + e.message);
@@ -15539,13 +15548,17 @@ async function loadCalendarSyncProp(key) {
     const box = document.getElementById('calendar-detail');
     if (!box) return;
     const label = (propertyMeta[key] || {}).name || key;
+    // A SLOW ANSWER PAINTS ONLY THE COTTAGE IT WAS ASKED FOR: under another's name, a link
+    // pasted there saved onto the wrong cottage and freed its stays.
+    const mine = () => !!__settingsPath && __settingsPath.section === 'calendar' && __settingsPath.prop === key && box.style.display !== 'none';
     let data;
     try {
         data = await apiPost('ical-import.php', { action: 'list', prop: key });
     } catch (e) {
-        box.innerHTML = `<p style="color:var(--danger-text);">${escapeHtml(e.message)}</p>`;
+        if (mine()) box.innerHTML = `<p style="color:var(--danger-text);">${escapeHtml(e.message)}</p>`;
         return;
     }
+    if (!mine()) return;
     box.innerHTML = calendarPropBoxHtml(key, label, data);
     if (settingsShowing('calendar') && box.style.display !== 'none') headPillSet('settings-panel-cap', __calPropPill);
 }
@@ -15591,7 +15604,7 @@ async function saveSyncFeeds(key, quiet) {
             const el = /** @type {HTMLInputElement|null} */ (document.getElementById('sync-' + f.source + '-' + key));
             if (el) el.defaultValue = f.url;
         }
-        __calOv = null; // the list asks again
+        calOvForget();
         if (!quiet) toast('Calendar links saved.');
     } catch (e) {
         if (!quiet) glassAlert("Couldn't save: " + e.message);
@@ -18072,7 +18085,16 @@ function pmSheet(html, onSave) {
     if (scrim) scrim.classList.add('show');
     s.classList.add('show');
     document.body.classList.add('pm-sheet-open');
-    setTimeout(() => { const f = /** @type {HTMLElement|null} */ (s && s.querySelector('input')); if (f) f.focus({ preventScroll: true }); }, 360);
+    // ONE focus timer, never taking a field the owner is in: a save's two redraws left one
+    // to fire mid-typing, and the secret went into the client ID.
+    const sh = /** @type {any} */ (s);
+    clearTimeout(sh.__focusT);
+    sh.__focusT = setTimeout(() => {
+        const a = document.activeElement;
+        if (!s || !s.classList.contains('show') || (a && s.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+        const f = /** @type {HTMLElement|null} */ (s.querySelector('input'));
+        if (f) f.focus({ preventScroll: true });
+    }, 360);
     return s;
 }
 function pmSheetClose() {
@@ -36902,9 +36924,11 @@ async function refreshModerationCounts() {
     // count it had: zero claimed nothing was waiting (the badge and the Needs-you
     // row went with it) when nothing had been asked.
     const was = __nyMod || { rev: 0, ph: 0, exp: 0 };
+    // The count alone (`count: 'pending'`), not every row there has ever been. A list
+    // from an older server is still counted the old way.
     const pending = (file, key, last) =>
-        apiPost(file, { action: 'list_admin' }).then(
-            (r) => ((r && r[key]) || []).filter((x) => x.status === 'pending').length,
+        apiPost(file, { action: 'list_admin', count: 'pending' }).then(
+            (r) => (r && typeof r.pending === 'number' ? r.pending : ((r && r[key]) || []).filter((x) => x.status === 'pending').length),
             () => last || 0,
         );
     const [rev, ph, exp] = await Promise.all([pending('reviews.php', 'reviews', was.rev), pending('photos.php', 'photos', was.ph), pending('experiences.php', 'experiences', was.exp)]);

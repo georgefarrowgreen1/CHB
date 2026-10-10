@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 771;
+const ADMIN_BUNDLE_V = 772;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -8472,10 +8472,7 @@ async function registerServiceWorker() {
         window.__chbReloadWired = true;
         navigator.serviceWorker.addEventListener('message', (e) => {
             if (e.data && e.data.type === 'chb-reload') {
-                try {
-                    toast('Updating to the new version…');
-                } catch (_) {}
-                setTimeout(reloadForUpdate, 1200);
+                reloadWhenIdle();
             } else if (e.data && e.data.type === 'chb-synced') {
                 // The SW replayed queued offline writes in the background — refresh.
                 try {
@@ -8568,6 +8565,31 @@ function reloadForUpdate() {
         location.reload();
     } catch (_) {}
 }
+// A NEW BUILD WAITS FOR THE OWNER TO FINISH. The reload puts back the screen, not an
+// open form: a release landing with Add booking half filled threw the typing away.
+// While a window, sheet or dialog is open, or a field has focus, it asks again in a
+// few seconds.
+function chbMidTask() {
+    try {
+        if (document.querySelector('.modal-overlay.open, .reviews-modal.open, #glass-dialog.open, #date-picker.open, #lightbox.open, .pm-sheet.show')) return true;
+        const a = /** @type {HTMLElement|null} */ (document.activeElement);
+        return !!(a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)));
+    } catch (_) {
+        return false;
+    }
+}
+let __verWaitT = 0;
+function reloadWhenIdle() {
+    clearTimeout(__verWaitT);
+    if (chbMidTask()) {
+        __verWaitT = setTimeout(reloadWhenIdle, 5000);
+        return;
+    }
+    try {
+        toast('Updating to the new version…');
+    } catch (_) {}
+    __verWaitT = setTimeout(() => (chbMidTask() ? reloadWhenIdle() : reloadForUpdate()), 1200);
+}
 // Reliable auto-update: while signed in as admin, poll the deployed build id
 // and silently reload the open page when a new release lands — no click, no
 // re-login (the session cookie survives a reload). Independent of web-push,
@@ -8587,10 +8609,7 @@ function startVersionWatch() {
             const d = await r.json();
             if (d && d.build && window.__BUILD && d.build !== window.__BUILD) {
                 __verReloading = true;
-                try {
-                    toast('Updating to the new version…');
-                } catch (_) {}
-                setTimeout(reloadForUpdate, 1200);
+                reloadWhenIdle();
             }
         } catch (e) {
             /* transient — try again next tick */
@@ -8665,7 +8684,12 @@ function guestPhotoButton(propKey) {
 function guestWelcomeButton(propKey) {
     return `<button class="btn-sm btn-edit" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> Welcome book</button>`;
 }
+// Each opening of the book is numbered, and closing it counts too: a slow answer for one
+// cottage's book landed in the next one opened (a family staying in two cottages read
+// the other cottage's Wi-Fi under this one's name).
+let __wbAsk = 0;
 async function openWelcomeBook(propKey) {
+    const ask = ++__wbAsk;
     const meta = propertyMeta[propKey] || { name: propKey };
     const titleEl = document.getElementById('welcome-modal-title');
     const bodyEl = document.getElementById('welcome-modal-body');
@@ -8678,8 +8702,10 @@ async function openWelcomeBook(propKey) {
     let sections = [];
     try {
         const r = await apiPost('welcome.php', { action: 'get', prop: propKey });
+        if (ask !== __wbAsk) return;
         sections = (r && r.sections) || [];
     } catch (e) {
+        if (ask !== __wbAsk) return;
         // Show the server's message directly (e.g. the payment-gate notice
         // "Your welcome book unlocks once your holiday balance is paid.") — and
         // OFFER THE WAY THROUGH. The lock is deliberate, but stating it and stopping
@@ -8715,6 +8741,7 @@ async function openWelcomeBook(propKey) {
         .join('');
 }
 function closeWelcomeModal() {
+    __wbAsk++; // an answer still on its way belongs to a book no longer open
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     chbCloseOverlay(document.getElementById('welcome-modal'));
 }
@@ -10663,6 +10690,9 @@ async function renderGuestPhotos(propKey) {
     };
     try {
         const r = await apiGet('photos.php?prop=' + encodeURIComponent(propKey));
+        // A slow answer for the cottage the guest has left is not this page's
+        // (loadAvailability's rule): it put one cottage's photos on another's page.
+        if (propKey !== activeFrontProperty) return;
         const photos = (r && r.photos) || [];
         if (!photos.length) {
             hide();
@@ -10681,7 +10711,7 @@ async function renderGuestPhotos(propKey) {
         section.style.display = '';
         if (divider) divider.style.display = '';
     } catch (e) {
-        hide();
+        if (propKey === activeFrontProperty) hide();
     }
 }
 function openPhotoLightbox(data) {
@@ -14087,51 +14117,58 @@ async function loadPublicReviews(pre) {
     } catch (e) {}
 }
 // ---- Homepage guest-words band: one real review at a time ----
+// The rotation reads the list as it is NOW: the interval outlives the render that
+// started it, and it used to keep that first list, so a withdrawn review went on
+// showing on a page left open while new ones appeared only at each refresh.
 let __gwTimer = null,
-    __gwIdx = 0;
+    __gwIdx = 0,
+    __gwList = [];
 function renderGuestWords() {
     const sec = document.getElementById('home-guestwords');
     const q = document.getElementById('guestwords-quote');
     const meta = document.getElementById('guestwords-meta');
     if (!sec || !q || !meta) return;
-    const list = allReviews().filter((r) => ((r.text || '') + '').trim().length > 20);
-    if (!list.length) {
+    __gwList = allReviews().filter((r) => ((r.text || '') + '').trim().length > 20);
+    if (__gwList.length < 2 && __gwTimer) {
+        clearInterval(__gwTimer);
+        __gwTimer = null;
+    }
+    if (!__gwList.length) {
         sec.style.display = 'none';
-        if (__gwTimer) {
-            clearInterval(__gwTimer);
-            __gwTimer = null;
-        }
         return;
     }
     sec.style.display = '';
-    const show = () => {
-        const r = list[__gwIdx % list.length];
-        const text = String(r.text || '').trim();
-        // Clamp long quotes at a WORD boundary — "…and the qu…" reads broken.
-        let clipped = text;
-        if (text.length > 220) {
-            clipped = text.slice(0, 218);
-            const cut = clipped.lastIndexOf(' ');
-            clipped = (cut > 160 ? clipped.slice(0, cut) : clipped).replace(/[\s,;:.!?—-]+$/, '') + '…';
-        }
-        q.textContent = clipped;
-        const stars = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
-        const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
-        meta.innerHTML = `<span class="gw-stars">${'★'.repeat(stars)}</span>&nbsp;&nbsp;${escapeHtml(r.name || 'A guest')}${propName ? ' · ' + escapeHtml(propName) : ''}`;
-    };
-    show();
-    if (!__gwTimer && list.length > 1) {
+    gwShow();
+    if (!__gwTimer && __gwList.length > 1) {
         __gwTimer = setInterval(() => {
             q.classList.add('fading');
             meta.classList.add('fading');
             setTimeout(() => {
                 __gwIdx++;
-                show();
+                gwShow();
                 q.classList.remove('fading');
                 meta.classList.remove('fading');
             }, 620);
         }, 8500);
     }
+}
+function gwShow() {
+    const q = document.getElementById('guestwords-quote');
+    const meta = document.getElementById('guestwords-meta');
+    if (!q || !meta || !__gwList.length) return;
+    const r = __gwList[__gwIdx % __gwList.length];
+    const text = String(r.text || '').trim();
+    // Clamp long quotes at a WORD boundary — "…and the qu…" reads broken.
+    let clipped = text;
+    if (text.length > 220) {
+        clipped = text.slice(0, 218);
+        const cut = clipped.lastIndexOf(' ');
+        clipped = (cut > 160 ? clipped.slice(0, cut) : clipped).replace(/[\s,;:.!?—-]+$/, '') + '…';
+    }
+    q.textContent = clipped;
+    const stars = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
+    const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+    meta.innerHTML = `<span class="gw-stars">${'★'.repeat(stars)}</span>&nbsp;&nbsp;${escapeHtml(r.name || 'A guest')}${propName ? ' · ' + escapeHtml(propName) : ''}`;
 }
 // ---- Heritage band: live cottage count + genuine average rating ----
 function updateHeritageStats() {
@@ -21578,7 +21615,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r7files1';
+    const BUILD = 'r7reply1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
