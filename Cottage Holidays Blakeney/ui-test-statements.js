@@ -354,12 +354,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     ok(/Create a client in Monzo/.test(sh) && /chb\.example\/monzo-callback\.php/.test(sh) && /Confidential/.test(sh), 'step 1 shows the redirect address to paste and asks for a confidential client');
     await shot('14-mz-create');
     await clickText('#pm-sheet', 'I’ve made it');
-    await page.waitForTimeout(300);
+    // A FORM IS TYPED INTO ONLY AFTER IT HAS FOCUSED ITSELF: the sheet focuses its first
+    // field on a timer, and under load that timer can fire mid-fill and pull the secret
+    // into the client ID (the glassDialog lesson). Wait for the sheet's own focus.
+    const sheetFocused = () => page.waitForFunction(() => document.activeElement && document.activeElement.id === 'pm-mz-id', null, { timeout: 6000 }).catch(() => {});
+    await sheetFocused();
     await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
     await page.fill('#pm-mz-secret', 'mnzpub.notconfidential');
     await clickText('#pm-sheet', 'Save');
     await page.waitForFunction(() => /isn’t confidential/.test(document.getElementById('pm-sheet').textContent), null, { timeout: 6000 }).catch(() => {});
     ok(/isn’t confidential/.test(await sheet()), 'a non-confidential client is refused in the server’s words');
+    await sheetFocused(); // the refusal redraws the sheet, which focuses itself again
     await page.fill('#pm-mz-id', 'oauth2client_0000Abc');
     await page.fill('#pm-mz-secret', 'mnzconf.secret-value-123');
     await clickText('#pm-sheet', 'Save');

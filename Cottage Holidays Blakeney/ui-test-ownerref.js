@@ -154,6 +154,8 @@ const READ_SELS = [
             { id: 'p31', at: now - 86400, kind: 'back', what: 'Deposit returned', booking_id: 1, name: 'Alexandrina Featherstonehaugh-Smythe', prop: '21a', amount: 110, deposit: 0, fee: null, method: 'card', status: 'pending', payout: null },
             { id: 'p30', at: now - 3 * 86400, kind: 'in', what: 'Deposit', booking_id: 2, name: 'Part Paid Plan', prop: 'jollyboat', amount: 350, deposit: 50, fee: 6.13, method: 'card', status: 'done', payout: { payout: 'po_1', arrival: d(-1), landed: true, fee: 6.13 } },
             { id: 'opo_1', payout: 'po_1', at: now - 86400 - 3600, kind: 'payout', amount: 343.87, arrival: d(-1), state: 'landed' },
+            // A payment the owner recorded by hand: its sub says how it came, on every such row.
+            { id: 'p29', at: now - 5 * 86400, kind: 'in', what: 'Balance', booking_id: 3, name: 'Paid Up Guest', prop: 'pimpernel', amount: 440, deposit: 0, fee: null, method: 'Bank transfer', status: 'done', payout: null },
             { id: 'x1', at: now - 40 * 86400, kind: 'expense', what: 'Maintenance', who: 'Boiler service', prop: '', amount: 120 },
         ],
     };
