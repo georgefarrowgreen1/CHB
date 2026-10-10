@@ -3042,6 +3042,11 @@ $r = http($noJar, 'GET', '/guest-details.php?b=' . $g42 . '&token=' . $g42Tok);
 it_check('§42 reopening the link shows the document number MASKED', strpos($r['raw'], 'FR12345678') === false && strpos($r['raw'], '5678') !== false, '');
 $r = $formPost('/guest-details.php', ['b' => $g42, 'token' => $g42Tok, 'name' => ['Reg Guest Fixed'], 'nationality' => ['French'], 'doc' => ['••••5678'], 'docplace' => ['Paris'], 'onward' => ['Paris']]);
 it_check('§42 …and posting the mask back unchanged KEEPS the stored number (a name fix needs no retyped passport)', $r['code'] === 200 && strpos($r['raw'], 'Please add a passport') === false, substr($r['raw'], 0, 200));
+it_check('§42 …and the page a save answers with shows it masked, never in full (§79: Save read every passport)', strpos($r['raw'], 'FR12345678') === false && strpos($r['raw'], '5678') !== false, '');
+$r = $formPost('/guest-details.php', ['b' => $g42, 'token' => $g42Tok, 'name' => ['Reg Guest Fixed'], 'nationality' => [''], 'doc' => ['••••5678'], 'docplace' => ['Paris'], 'onward' => ['Paris']]);
+it_check('§42 …nor does a save the form refuses', $r['code'] === 200 && strpos($r['raw'], 'FR12345678') === false && strpos($r['raw'], '5678') !== false, substr($r['raw'], 0, 120));
+$r = $formPost('/guest-details.php', ['b' => $g42, 'token' => $g42Tok, 'name' => ['Reg Guest Fixed'], 'nationality' => [''], 'doc' => ['DE99887766'], 'docplace' => ['Paris'], 'onward' => ['Paris']]);
+it_check('§42 …while a number just typed comes back as typed, so a refused save can be fixed', strpos($r['raw'], 'DE99887766') !== false, '');
 $rootDb->exec("UPDATE bookings SET check_in = '" . $ukPlus(-20) . "', check_out = '" . $ukPlus(-18) . "' WHERE id = $g42");
 $r = http($noJar, 'GET', '/guest-details.php?b=' . $g42 . '&token=' . $g42Tok);
 it_check('§42 a week after the stay the link is CLOSED (410), the party unshown', $r['code'] === 410 && strpos($r['raw'], 'Reg Guest Fixed') === false, (string) $r['code']);
@@ -5373,6 +5378,44 @@ $rootDb->exec("DELETE FROM guest_reviews WHERE review_text LIKE 'IT78%'");
 $rootDb->exec("DELETE FROM guest_photos WHERE url = 'uploads/it78.jpg'");
 $rootDb->exec("DELETE FROM experiences WHERE title = 'IT78 idea'");
 $rootDb->exec('DELETE FROM guests WHERE id IN (' . implode(', ', $g78s) . ')');
+
+// §79 THE GUEST JOURNEY (round 7). (a) A CARD PAYMENT AFTER THE FIRST: the write-back
+// compared the DATE payment_date with '' (NULLIF), which a strict-mode database refuses
+// once a date is set, so a balance paid by card failed after Square had taken it and
+// the booking still read "deposit". The harness cannot run the charge (Square is off),
+// so it drives the webhook's write through its real route, and pay.php's own SQL text
+// against the real schema (the §60 technique).
+echo "\n== §79 the guest journey ==\n";
+$in79 = date('Y-m-d', strtotime('+40 days'));
+$out79 = date('Y-m-d', strtotime('+43 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Dated Deposit','dd79@example.com','$in79','$out79',2,0,'deposit',100,'Square card','2026-09-01',400,400,0,3)");
+$dd79 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($dd79,'deposit',100,'COMPLETED','sq79_dep'), ($dd79,'balance',300,'PENDING','sq79_bal')");
+$r79 = $post(['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq79_bal', 'status' => 'COMPLETED', 'reference_id' => 'CHB-' . $dd79]]]]);
+$row79 = $rootDb->query("SELECT payment, deposit_paid, payment_date FROM bookings WHERE id = $dd79")->fetch(PDO::FETCH_ASSOC);
+it_check('§79 a balance settling on a booking that already has a payment date is recorded (it was a 500 after the charge)',
+    $r79['code'] === 200 && $row79 && $row79['payment'] === 'paid' && abs((float) $row79['deposit_paid'] - 400) < 0.005,
+    json_encode([$r79, $row79]));
+it_check('§79 …and the first payment\'s date is kept', $row79 && $row79['payment_date'] === '2026-09-01', json_encode($row79));
+$paySrc79 = (string) file_get_contents(__DIR__ . '/pay.php');
+$paySql79 = preg_match('/->prepare\("(UPDATE bookings SET payment=\?, deposit_paid=\?, payment_method=\?, payment_date=[^"]*)"\)/', $paySrc79, $pm79) ? $pm79[1] : '';
+$err79 = '';
+try {
+    if ($paySql79 === '') {
+        throw new RuntimeException('pay.php write-back not found');
+    }
+    $rootDb->prepare("UPDATE bookings SET payment = 'deposit', deposit_paid = 100 WHERE id = ?")->execute([$dd79]);
+    $rootDb->prepare($paySql79)->execute(['paid', 400, 'Square card', date('Y-m-d'), $dd79]);
+} catch (\Throwable $e) {
+    $err79 = $e->getMessage();
+}
+$row79b = $rootDb->query("SELECT payment, payment_date FROM bookings WHERE id = $dd79")->fetch(PDO::FETCH_ASSOC);
+it_check('§79 pay.php\'s own write-back runs on a dated booking and keeps its date', $err79 === '' && $row79b && $row79b['payment'] === 'paid' && $row79b['payment_date'] === '2026-09-01', $err79 . ' ' . json_encode($row79b));
+$rootDb->exec("UPDATE bookings SET payment_date = NULL WHERE id = $dd79");
+$rootDb->prepare($paySql79 ?: 'SELECT 1')->execute($paySql79 ? ['paid', 400, 'Square card', '2026-10-05', $dd79] : []);
+it_check('§79 …and dates an undated one', (string) $rootDb->query("SELECT payment_date FROM bookings WHERE id = $dd79")->fetchColumn() === '2026-10-05');
+$rootDb->exec("DELETE FROM payments WHERE booking_id = $dd79");
+$rootDb->exec("DELETE FROM bookings WHERE id = $dd79");
 
 echo "\n== Summary ==\n";
 if ($fail) {

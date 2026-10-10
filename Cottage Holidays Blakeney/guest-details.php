@@ -349,6 +349,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
+// A STORED NUMBER NEVER GOES BACK IN FULL, whatever the request did with it. The POST
+// above swaps an unchanged mask for the stored number before validating, and both the
+// save and the bounce re-rendered that number: anyone holding the link could press Save
+// and read every passport. A save that worked shows them masked, as a GET does; a bounce
+// masks the ones that came from the record and keeps what was typed, so it can be fixed.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && is_array($party)) {
+    $storedDocs = [];
+    foreach ($stored as $g) {
+        if (is_array($g) && (string) ($g['doc'] ?? '') !== '') {
+            $storedDocs[] = (string) $g['doc'];
+        }
+    }
+    foreach ($party as $i => $g) {
+        if (is_array($g) && (string) ($g['doc'] ?? '') !== '' && ($saved || in_array((string) $g['doc'], $storedDocs, true))) {
+            $party[$i]['doc'] = $maskDoc($g['doc']);
+        }
+    }
+}
+
 echo render_guest_form_html([
     'ref' => 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $id), -6), 6, '0', STR_PAD_LEFT),
     'prop_name' => $rate['name'] ?? $b['prop_key'],

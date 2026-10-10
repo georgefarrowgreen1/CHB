@@ -21138,8 +21138,8 @@ async function requestPayment(bookingId, kind, via) {
 // is defined in — the damages deposit rides the first charge separately.
 function bookingPlanDeposit(b, total) {
     if (b.depositAmountOverride > 0) return Math.round(Math.min(b.depositAmountOverride, total) * 100) / 100;
-    if (b.depositPctOverride > 0 && b.depositPctOverride <= 100) return Math.round(total * b.depositPctOverride) / 100;
-    return Math.round(total * (paymentTerms.depositPct || 25)) / 100;
+    if (b.depositPctOverride > 0 && b.depositPctOverride <= 100) return chbMoneyPct(total, b.depositPctOverride);
+    return chbMoneyPct(total, paymentTerms.depositPct || 25);
 }
 function bookingPlanDueDate(b) {
     if (b.balanceDueDate) return b.balanceDueDate;

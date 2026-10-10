@@ -1,0 +1,559 @@
+{
+    "_note": "A percentage of a rental total, as pricing.php money_pct and app.js chbMoneyPct round it: whole pence times whole basis points, half up. Generated from money_pct; test-pricing.php and smoke-test.js both loop it. oldJs: cases the enquiry form's Math.round(total * pct) \/ 100 got wrong. php84: cases where round(total * pct \/ 100, 2) depends on the PHP version.",
+    "oldJs": [
+        {
+            "total": 64.1,
+            "pct": 25,
+            "deposit": 16.03
+        },
+        {
+            "total": 130.7,
+            "pct": 25,
+            "deposit": 32.68
+        },
+        {
+            "total": 151.14,
+            "pct": 25,
+            "deposit": 37.79
+        },
+        {
+            "total": 263.9,
+            "pct": 25,
+            "deposit": 65.98
+        },
+        {
+            "total": 284.46,
+            "pct": 25,
+            "deposit": 71.12
+        },
+        {
+            "total": 304.9,
+            "pct": 25,
+            "deposit": 76.23
+        },
+        {
+            "total": 325.46,
+            "pct": 25,
+            "deposit": 81.37
+        },
+        {
+            "total": 530.18,
+            "pct": 25,
+            "deposit": 132.55
+        },
+        {
+            "total": 550.42,
+            "pct": 25,
+            "deposit": 137.61
+        },
+        {
+            "total": 571.18,
+            "pct": 25,
+            "deposit": 142.8
+        },
+        {
+            "total": 591.42,
+            "pct": 25,
+            "deposit": 147.86
+        },
+        {
+            "total": 612.18,
+            "pct": 25,
+            "deposit": 153.05
+        },
+        {
+            "total": 632.42,
+            "pct": 25,
+            "deposit": 158.11
+        },
+        {
+            "total": 653.18,
+            "pct": 25,
+            "deposit": 163.3
+        },
+        {
+            "total": 1042.1,
+            "pct": 25,
+            "deposit": 260.53
+        },
+        {
+            "total": 1062.62,
+            "pct": 25,
+            "deposit": 265.66
+        },
+        {
+            "total": 1083.1,
+            "pct": 25,
+            "deposit": 270.78
+        },
+        {
+            "total": 1103.62,
+            "pct": 25,
+            "deposit": 275.91
+        },
+        {
+            "total": 1124.1,
+            "pct": 25,
+            "deposit": 281.03
+        },
+        {
+            "total": 1144.62,
+            "pct": 25,
+            "deposit": 286.16
+        },
+        {
+            "total": 1165.1,
+            "pct": 25,
+            "deposit": 291.28
+        },
+        {
+            "total": 1185.62,
+            "pct": 25,
+            "deposit": 296.41
+        },
+        {
+            "total": 1206.1,
+            "pct": 25,
+            "deposit": 301.53
+        },
+        {
+            "total": 1226.62,
+            "pct": 25,
+            "deposit": 306.66
+        },
+        {
+            "total": 1247.1,
+            "pct": 25,
+            "deposit": 311.78
+        },
+        {
+            "total": 1267.62,
+            "pct": 25,
+            "deposit": 316.91
+        },
+        {
+            "total": 1288.1,
+            "pct": 25,
+            "deposit": 322.03
+        },
+        {
+            "total": 1308.62,
+            "pct": 25,
+            "deposit": 327.16
+        },
+        {
+            "total": 519.05,
+            "pct": 30,
+            "deposit": 155.72
+        },
+        {
+            "total": 1037.85,
+            "pct": 30,
+            "deposit": 311.36
+        }
+    ],
+    "php84": [
+        {
+            "total": 50.05,
+            "pct": 30,
+            "deposit": 15.02
+        },
+        {
+            "total": 153.35,
+            "pct": 30,
+            "deposit": 46.01
+        },
+        {
+            "total": 244.25,
+            "pct": 30,
+            "deposit": 73.28
+        },
+        {
+            "total": 354.25,
+            "pct": 30,
+            "deposit": 106.28
+        },
+        {
+            "total": 426.45,
+            "pct": 30,
+            "deposit": 127.94
+        },
+        {
+            "total": 557.05,
+            "pct": 30,
+            "deposit": 167.12
+        },
+        {
+            "total": 657.05,
+            "pct": 30,
+            "deposit": 197.12
+        },
+        {
+            "total": 757.05,
+            "pct": 30,
+            "deposit": 227.12
+        },
+        {
+            "total": 821.55,
+            "pct": 30,
+            "deposit": 246.47
+        },
+        {
+            "total": 910.15,
+            "pct": 30,
+            "deposit": 273.05
+        },
+        {
+            "total": 1033.25,
+            "pct": 30,
+            "deposit": 309.98
+        },
+        {
+            "total": 1163.05,
+            "pct": 30,
+            "deposit": 348.92
+        },
+        {
+            "total": 1263.05,
+            "pct": 30,
+            "deposit": 378.92
+        },
+        {
+            "total": 1363.05,
+            "pct": 30,
+            "deposit": 408.92
+        },
+        {
+            "total": 1463.05,
+            "pct": 30,
+            "deposit": 438.92
+        },
+        {
+            "total": 1552.25,
+            "pct": 30,
+            "deposit": 465.68
+        },
+        {
+            "total": 1612.25,
+            "pct": 30,
+            "deposit": 483.68
+        },
+        {
+            "total": 1672.25,
+            "pct": 30,
+            "deposit": 501.68
+        },
+        {
+            "total": 1757.85,
+            "pct": 30,
+            "deposit": 527.36
+        },
+        {
+            "total": 1877.85,
+            "pct": 30,
+            "deposit": 563.36
+        }
+    ],
+    "normal": [
+        {
+            "total": 99.73,
+            "pct": 25,
+            "deposit": 24.93
+        },
+        {
+            "total": 199.46,
+            "pct": 25,
+            "deposit": 49.87
+        },
+        {
+            "total": 299.19,
+            "pct": 25,
+            "deposit": 74.8
+        },
+        {
+            "total": 398.92,
+            "pct": 25,
+            "deposit": 99.73
+        },
+        {
+            "total": 498.65,
+            "pct": 25,
+            "deposit": 124.66
+        },
+        {
+            "total": 598.38,
+            "pct": 25,
+            "deposit": 149.6
+        },
+        {
+            "total": 698.11,
+            "pct": 25,
+            "deposit": 174.53
+        },
+        {
+            "total": 797.84,
+            "pct": 25,
+            "deposit": 199.46
+        },
+        {
+            "total": 897.57,
+            "pct": 25,
+            "deposit": 224.39
+        },
+        {
+            "total": 997.3,
+            "pct": 25,
+            "deposit": 249.33
+        },
+        {
+            "total": 1097.03,
+            "pct": 25,
+            "deposit": 274.26
+        },
+        {
+            "total": 1196.76,
+            "pct": 25,
+            "deposit": 299.19
+        },
+        {
+            "total": 1296.49,
+            "pct": 25,
+            "deposit": 324.12
+        },
+        {
+            "total": 1396.22,
+            "pct": 25,
+            "deposit": 349.06
+        },
+        {
+            "total": 1495.95,
+            "pct": 25,
+            "deposit": 373.99
+        },
+        {
+            "total": 1595.68,
+            "pct": 25,
+            "deposit": 398.92
+        },
+        {
+            "total": 1695.41,
+            "pct": 25,
+            "deposit": 423.85
+        },
+        {
+            "total": 1795.14,
+            "pct": 25,
+            "deposit": 448.79
+        },
+        {
+            "total": 1894.87,
+            "pct": 25,
+            "deposit": 473.72
+        },
+        {
+            "total": 1994.6,
+            "pct": 25,
+            "deposit": 498.65
+        },
+        {
+            "total": 99.73,
+            "pct": 30,
+            "deposit": 29.92
+        },
+        {
+            "total": 199.46,
+            "pct": 30,
+            "deposit": 59.84
+        },
+        {
+            "total": 299.19,
+            "pct": 30,
+            "deposit": 89.76
+        },
+        {
+            "total": 398.92,
+            "pct": 30,
+            "deposit": 119.68
+        },
+        {
+            "total": 498.65,
+            "pct": 30,
+            "deposit": 149.6
+        },
+        {
+            "total": 598.38,
+            "pct": 30,
+            "deposit": 179.51
+        },
+        {
+            "total": 698.11,
+            "pct": 30,
+            "deposit": 209.43
+        },
+        {
+            "total": 797.84,
+            "pct": 30,
+            "deposit": 239.35
+        },
+        {
+            "total": 897.57,
+            "pct": 30,
+            "deposit": 269.27
+        },
+        {
+            "total": 997.3,
+            "pct": 30,
+            "deposit": 299.19
+        },
+        {
+            "total": 1097.03,
+            "pct": 30,
+            "deposit": 329.11
+        },
+        {
+            "total": 1196.76,
+            "pct": 30,
+            "deposit": 359.03
+        },
+        {
+            "total": 1296.49,
+            "pct": 30,
+            "deposit": 388.95
+        },
+        {
+            "total": 1396.22,
+            "pct": 30,
+            "deposit": 418.87
+        },
+        {
+            "total": 1495.95,
+            "pct": 30,
+            "deposit": 448.79
+        },
+        {
+            "total": 1595.68,
+            "pct": 30,
+            "deposit": 478.7
+        },
+        {
+            "total": 1695.41,
+            "pct": 30,
+            "deposit": 508.62
+        },
+        {
+            "total": 1795.14,
+            "pct": 30,
+            "deposit": 538.54
+        },
+        {
+            "total": 1894.87,
+            "pct": 30,
+            "deposit": 568.46
+        },
+        {
+            "total": 1994.6,
+            "pct": 30,
+            "deposit": 598.38
+        },
+        {
+            "total": 99.73,
+            "pct": 20,
+            "deposit": 19.95
+        },
+        {
+            "total": 199.46,
+            "pct": 20,
+            "deposit": 39.89
+        },
+        {
+            "total": 299.19,
+            "pct": 20,
+            "deposit": 59.84
+        },
+        {
+            "total": 398.92,
+            "pct": 20,
+            "deposit": 79.78
+        },
+        {
+            "total": 498.65,
+            "pct": 20,
+            "deposit": 99.73
+        },
+        {
+            "total": 598.38,
+            "pct": 20,
+            "deposit": 119.68
+        },
+        {
+            "total": 698.11,
+            "pct": 20,
+            "deposit": 139.62
+        },
+        {
+            "total": 797.84,
+            "pct": 20,
+            "deposit": 159.57
+        },
+        {
+            "total": 897.57,
+            "pct": 20,
+            "deposit": 179.51
+        },
+        {
+            "total": 997.3,
+            "pct": 20,
+            "deposit": 199.46
+        },
+        {
+            "total": 1097.03,
+            "pct": 20,
+            "deposit": 219.41
+        },
+        {
+            "total": 1196.76,
+            "pct": 20,
+            "deposit": 239.35
+        },
+        {
+            "total": 1296.49,
+            "pct": 20,
+            "deposit": 259.3
+        },
+        {
+            "total": 1396.22,
+            "pct": 20,
+            "deposit": 279.24
+        },
+        {
+            "total": 1495.95,
+            "pct": 20,
+            "deposit": 299.19
+        },
+        {
+            "total": 1595.68,
+            "pct": 20,
+            "deposit": 319.14
+        },
+        {
+            "total": 1695.41,
+            "pct": 20,
+            "deposit": 339.08
+        },
+        {
+            "total": 1795.14,
+            "pct": 20,
+            "deposit": 359.03
+        },
+        {
+            "total": 1894.87,
+            "pct": 20,
+            "deposit": 378.97
+        },
+        {
+            "total": 1994.6,
+            "pct": 20,
+            "deposit": 398.92
+        }
+    ]
+}

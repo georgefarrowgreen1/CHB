@@ -194,6 +194,31 @@ else {
     const pbSrc = String(get('priceBreakdown'));
     check('priceBreakdown adds the short-stay charge AFTER the last-minute factor', /lastMinuteFactor\([^)]*\)\s*\+\s*shortStayCharge\(r, nights\)/.test(pbSrc));
 }
+// A DEPOSIT IS A PERCENTAGE OF MONEY ROUNDED ONE WAY: whole pence times whole basis
+// points, half up (pricing.php money_pct). deposit-fixtures.json is generated from the
+// PHP and test-pricing.php loops it against booking_deposit_amount; here the enquiry
+// form, the plan panel (both of its paths) and the booking sheet must quote the same.
+{
+    const dfx = JSON.parse(fs.readFileSync(path.join(path.dirname(HTML_PATH), 'deposit-fixtures.json'), 'utf8'));
+    const mpct = get('chbMoneyPct'), edd = get('enqDepositDue'), bpd = get('bookingPlanDeposit');
+    const dCases = [].concat(dfx.oldJs || [], dfx.php84 || [], dfx.normal || []);
+    const oldWrong = (dfx.oldJs || []).filter((c) => Math.abs(Math.round(c.total * c.pct) / 100 - c.deposit) > 0.001).length;
+    check(`deposit fixtures hold cases the old formula got wrong (vacuity guard: ${dCases.length} cases, ${oldWrong} of them)`, dCases.length >= 50 && oldWrong >= 10);
+    if (typeof mpct !== 'function' || typeof edd !== 'function' || typeof bpd !== 'function') {
+        fail('chbMoneyPct / enqDepositDue / bookingPlanDeposit are not defined');
+    } else {
+        const keep = vm.runInContext('JSON.stringify(paymentTerms)', ctx);
+        const bad = [];
+        dCases.forEach((c) => {
+            vm.runInContext(`paymentTerms.depositPct = ${Number(c.pct)}; paymentTerms.balanceDays = 30;`, ctx);
+            const got = [mpct(c.total, c.pct), edd({ rentalTotal: c.total, damagesDeposit: 0 }, '2099-06-01').dep, bpd({ depositPctOverride: c.pct }, c.total), bpd({}, c.total)];
+            if (got.some((x) => Math.abs(x - c.deposit) > 0.001)) bad.push(`${c.pct}% of £${c.total}: ${got.join('/')} not ${c.deposit}`);
+        });
+        vm.runInContext(`paymentTerms = ${keep};`, ctx);
+        check(`the enquiry form and the plan panel quote the deposit PHP charges (${bad.slice(0, 2).join('; ') || 'all ' + dCases.length})`, bad.length === 0);
+    }
+    check('the booking sheet\'s plan takes its deposit the same way', /planDep = full \? m\.total : chbMoneyPct\(m\.total, pct\)/.test(String(get('modalPlanFacts'))));
+}
 // Minimum stay by date + gap fit — MUST match booking-rules-lib.php (test-pricing.php).
 const rmn = get('ruleMinNights'), rgf = get('ruleGapFit');
 if (typeof rmn !== 'function' || typeof rgf !== 'function') { fail('ruleMinNights / ruleGapFit are not defined'); }
@@ -440,6 +465,29 @@ else {
     check('…and the waitlist refuses a dated same-day join, same sentence, wired',
         !!wlNotice && wlNotice === cliNotice &&
         /if \(\$ci && \$ci <= date\('Y-m-d'\)\) \{\s*json_out\(\['error' => 'Online bookings need at least a day’s notice/.test(wlSrc));
+    // ---- THE SERVER'S OUTER LIMITS ----------------------------------------
+    // enquiries.php refuses a stay over ENQ_MAX_NIGHTS and a check-in past
+    // ENQ_MAX_AHEAD_DAYS; unknown to the client, the picker offered both and the
+    // refusal came after the whole form. The numbers are held equal, the sentences
+    // word for word, and each boundary from both sides.
+    const srvMaxNights = Number((enqSrc.match(/const ENQ_MAX_NIGHTS = (\d+);/) || [])[1]);
+    const srvAheadDays = Number((enqSrc.match(/const ENQ_MAX_AHEAD_DAYS = (\d+);/) || [])[1]);
+    const cliMaxNights = evalIn('CHB_ENQ_MAX_NIGHTS'), cliAheadDays = evalIn('CHB_ENQ_MAX_AHEAD_DAYS');
+    check(`the client knows the server's longest stay and furthest check-in (${cliMaxNights}/${srvMaxNights}, ${cliAheadDays}/${srvAheadDays})`,
+        srvMaxNights > 0 && cliMaxNights === srvMaxNights && srvAheadDays > 0 && cliAheadDays === srvAheadDays);
+    const longSay = `That stay is longer than we take online (${srvMaxNights} nights) — please get in touch.`;
+    const farSay = 'We only take bookings up to two years ahead — please get in touch.';
+    check('the server words both refusals as the client does',
+        enqSrc.includes("'That stay is longer than we take online (' . $enqMax . ' nights) — please get in touch.'") && enqSrc.includes(`'${farSay}'`));
+    check('a stay one night over the longest is refused, in the server\'s words',
+        evalIn(`checkBookingRules('jollyboat', ukShiftDays(todayDashed(), 10), ukShiftDays(todayDashed(), 11 + CHB_ENQ_MAX_NIGHTS))`) === longSay);
+    check('…and the longest itself is not',
+        evalIn(`checkBookingRules('jollyboat', ukShiftDays(todayDashed(), 10), ukShiftDays(todayDashed(), 10 + CHB_ENQ_MAX_NIGHTS))`) === null);
+    check('a check-in a day past the furthest is refused, in the server\'s words',
+        evalIn(`checkBookingRules('jollyboat', ukShiftDays(todayDashed(), CHB_ENQ_MAX_AHEAD_DAYS + 1), ukShiftDays(todayDashed(), CHB_ENQ_MAX_AHEAD_DAYS + 4))`) === farSay);
+    check('…and the furthest itself is not',
+        evalIn(`checkBookingRules('jollyboat', ukShiftDays(todayDashed(), CHB_ENQ_MAX_AHEAD_DAYS), ukShiftDays(todayDashed(), CHB_ENQ_MAX_AHEAD_DAYS + 3))`) === null);
+    check('the picker holds the same two limits', /Math\.min\(cotMax, CHB_ENQ_MAX_NIGHTS\)/.test(String(get('renderDatePicker'))) && /const tooFar = guestPick && arrivalBranch && ds > aheadMax/.test(String(get('renderDatePicker'))));
     // Both pickers the guest decides at — the hero search and the enquiry form.
     // The hero search form, the hero booking bar's guests popover and the enquiry form.
     check(`all three guest pickers band their children (${kidBands.length} found)`, kidBands.length === 3);

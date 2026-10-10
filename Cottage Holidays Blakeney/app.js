@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 772;
+const ADMIN_BUNDLE_V = 773;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1639,16 +1639,22 @@ function chbBusy(d, endpoint) {
         }
     } catch (e) {}
 }
-/** @returns {Promise<any>} */
-async function apiPost(endpoint, payload) {
+/**
+ * @param {string} endpoint
+ * @param {any} [payload]
+ * @param {{timeoutMs?: number}} [opts] timeoutMs: this request's own patience (a charge)
+ * @returns {Promise<any>}
+ */
+async function apiPost(endpoint, payload, opts) {
     chbBusy(1, endpoint);
     try {
-        return await apiPostCore(endpoint, payload);
+        return await apiPostCore(endpoint, payload, opts);
     } finally {
         chbBusy(-1, endpoint);
     }
 }
-async function apiPostCore(endpoint, payload) {
+/** @param {string} endpoint @param {any} [payload] @param {{timeoutMs?: number}} [opts] */
+async function apiPostCore(endpoint, payload, opts) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
     // whole preview safe (no payments, chats, reviews, profile edits, etc.).
@@ -1660,13 +1666,15 @@ async function apiPostCore(endpoint, payload) {
     try {
         // Known-off gets a SHORT timeout: on a link the probe already judged
         // dead, a tap should fail in seconds, not hang the full window — and the
-        // first success flips the verdict back anyway.
+        // first success flips the verdict back anyway. A request that names its own
+        // patience keeps it either way: a charge that lands after the page gave up
+        // is money taken while the screen says it is still due.
         res = await fetchWithTimeout(API_BASE + endpoint, {
             method: 'POST',
             headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeader()),
             credentials: 'include',
             body: JSON.stringify(payload || {}),
-        }, __chbNetOff ? 5000 : undefined);
+        }, opts && opts.timeoutMs ? opts.timeoutMs : __chbNetOff ? 5000 : undefined);
     } catch (netErr) {
         chbNetFail(); // evidence: the transport failed (a status is a different case) — confirmed by a probe before it counts
         throw new Error(
@@ -7562,6 +7570,10 @@ async function openPayView(token, bookingId, kind) {
 // wallet SHEET showed — which is what the wallet was mounted for, not the
 // (possibly un-settled) value in the part field. undefined = the card path,
 // which charges payState.partAmount (the "Pay £X" button's own figure).
+// THE CHARGE WAITS LONGER THAN THE SERVER CAN TAKE. pay.php waits up to 30s for the
+// booking lock and 20s for Square; the page gave up at 15s and told the guest the full
+// amount was still due over a payment recorded two seconds later.
+const PAY_CHARGE_WAIT_MS = 75000;
 async function payWithToken(sourceId, partOverride) {
     // A damages deposit is an AUTHORISATION (hold), not a charge.
     if (payState.kind === 'hold') {
@@ -7571,7 +7583,7 @@ async function payWithToken(sourceId, partOverride) {
             token: payState.token,
             kind: 'hold',
             source_id: sourceId,
-        });
+        }, { timeoutMs: PAY_CHARGE_WAIT_MS });
         await payBeat('✓ Hold placed');
         document.getElementById('pay-body').style.display = 'none';
         // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
@@ -7612,7 +7624,7 @@ async function payWithToken(sourceId, partOverride) {
             // re-validates it against its own derivation.
             autopay: payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly',
             autopay_instalments: payState.autopayChoice === 'monthly' && payState.apMonthly ? Number(payState.apMonthly.n) : 0,
-        });
+        }, { timeoutMs: PAY_CHARGE_WAIT_MS });
     } catch (e) {
         // THE AMOUNT MOVED WHILE THEY READ IT. Nothing was charged, and a bare
         // error would leave them looking at a figure the server has just refused;
@@ -10264,6 +10276,11 @@ function nightTakenAt(propKey, iso) {
     const ranges = (typeof propertyAvailability !== 'undefined' && propertyAvailability[propKey]) || (typeof publicAllAvailability !== 'undefined' && publicAllAvailability && publicAllAvailability[propKey]) || [];
     return ranges.some((x) => iso >= x.start && iso < x.end);
 }
+// THE SERVER'S OUTER LIMITS on a guest's stay (enquiries.php ENQ_MAX_NIGHTS and
+// ENQ_MAX_AHEAD_DAYS; smoke-test holds them equal). Unknown here, the picker offered a
+// 61-night stay and a check-in three years out, refused only after the whole form.
+const CHB_ENQ_MAX_NIGHTS = 60;
+const CHB_ENQ_MAX_AHEAD_DAYS = 730;
 function checkBookingRules(propKey, checkIn, checkOut) {
     // Book by the night before, as a minimum: the earliest guest check-in is
     // TOMORROW. Checked first (it holds regardless of the per-cottage rules);
@@ -10271,6 +10288,12 @@ function checkBookingRules(propKey, checkIn, checkOut) {
     // Server twin: enquiries.php's guard — smoke-test holds the two in step.
     if (checkIn <= todayDashed()) {
         return 'Online bookings need at least a day’s notice — the earliest check-in is tomorrow. For a same-day stay, please get in touch.';
+    }
+    if (nightsBetween(checkIn, checkOut) > CHB_ENQ_MAX_NIGHTS) {
+        return 'That stay is longer than we take online (' + CHB_ENQ_MAX_NIGHTS + ' nights) — please get in touch.';
+    }
+    if (checkIn > ukShiftDays(todayDashed(), CHB_ENQ_MAX_AHEAD_DAYS)) {
+        return 'We only take bookings up to two years ahead — please get in touch.';
     }
     const r = propertyRates[propKey] || defaultRates[propKey] || {};
     const nights = nightsBetween(checkIn, checkOut);
@@ -13701,6 +13724,15 @@ async function chbOpenTarget(target) {
     // A plain view id — the guest side has just pages.
     if (/^view-[a-z0-9-]+$/.test(target)) {
         if (!document.getElementById(target)) return false;
+        // A guest page drawn from data opens through its own opener: a bare nav() showed
+        // You and My stays empty, and the pay screen (its token lives in memory only) a
+        // skeleton that never filled. The pay screen comes back as the stays, where Pay is.
+        if (target === 'view-guest-account' || target === 'view-guest-bookings' || target === 'view-pay') {
+            if (!currentGuest) return false;
+            if (target === 'view-guest-account') openGuestAccount();
+            else await gaOpenStays();
+            return true;
+        }
         nav(target);
         return true;
     }
@@ -16847,9 +16879,12 @@ function renderDatePicker() {
     // offered, accepted, then rejected by checkBookingRules on the review step —
     // after the guest had chosen; same for a check-in on a no-arrivals day. The
     // picker is the friendly layer over those three rules, so it must know them.
-    const maxNights = guestPick ? Math.max(0, parseInt(gRules.maxNights, 10) || 0) : 0;
+    // The site's own ceiling (CHB_ENQ_MAX_NIGHTS) sits under any cottage's maximum.
+    const cotMax = guestPick ? Math.max(0, parseInt(gRules.maxNights, 10) || 0) : 0;
+    const maxNights = guestPick ? (cotMax > 0 ? Math.min(cotMax, CHB_ENQ_MAX_NIGHTS) : CHB_ENQ_MAX_NIGHTS) : 0;
     const arrivalDays = guestPick && Array.isArray(gRules.arrivalDays) ? gRules.arrivalDays : [];
     const todayDs = formatDashed(today);
+    const aheadMax = ukShiftDays(todayDs, CHB_ENQ_MAX_AHEAD_DAYS);
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
         const ds = formatDashed(date);
@@ -16895,6 +16930,8 @@ function renderDatePicker() {
         const arrivalBranch = !pickingEnd || ds <= dpState.start;
         const badArrival =
             arrivalBranch && arrivalDays.length > 0 && !arrivalDays.includes(date.getDay());
+        // A check-in further ahead than bookings are taken online (the server refuses it).
+        const tooFar = guestPick && arrivalBranch && ds > aheadMax;
         const startMin = pickingEnd && dpState.start ? ruleMinNights(gRules, dpState.start) : minNights;
         const tooFew = stayN > 0 && stayN < startMin && !ruleGapFit(gRules, dpState.start, ds, isBookedNight);
         const tooMany = stayN > 0 && maxNights > 0 && stayN > maxNights;
@@ -16903,9 +16940,9 @@ function renderDatePicker() {
         else if (isPast || tooSoon) clickable = false;
         else if (dpMode === 'search' || dpMode === 'fields')
             clickable = true; // hero search / waitlist / chat check: any future date
-        else if (!pickingEnd) clickable = !booked && !tooShort && !badArrival;
+        else if (!pickingEnd) clickable = !booked && !tooShort && !badArrival && !tooFar;
         else if (ds <= dpState.start)
-            clickable = !booked && !tooShort && !badArrival; // restart selection — a NEW check-in
+            clickable = !booked && !tooShort && !badArrival && !tooFar; // restart selection — a NEW check-in
         else clickable = !rangeCrossesBooked(dpState.start, ds) && !tooFew && !tooMany; // valid checkout
         const classes = ['dp-day'];
         if ((isPast || tooSoon) && dpMode !== 'admin') classes.push('dp-disabled');
@@ -16971,7 +17008,9 @@ function renderDatePicker() {
                     ? ` — minimum stay ${cellMin} nights, unavailable`
                     : badArrival
                       ? ' — this cottage does not take arrivals on this day'
-                      : outOfReach
+                      : tooFar
+                        ? ' — further ahead than we take bookings online'
+                        : outOfReach
                         ? ' — too late, a booking falls before this date'
                         : '';
         // THE ANNOUNCED STATE MUST MATCH THE PICKABILITY. A crossed cell is REFUSED on
@@ -17019,7 +17058,9 @@ function renderDatePicker() {
                       ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
                       : badArrival && !clickable
                         ? ' title="No arrivals on this day"'
-                        : outOfReach
+                        : tooFar && !clickable
+                          ? ' title="We take bookings up to two years ahead"'
+                          : outOfReach
                           ? ' title="There\'s a booking before this date"'
                           : '';
         // THE PRICE IS ON THE NIGHTS THAT ARE FOR SALE, AND NOWHERE ELSE. A cell the picker
@@ -18947,12 +18988,18 @@ function enqWaitlist() {
 // the FULL amount inside the balance window (pricing.php's standard path,
 // strict boundary) — plus the refundable deposit pay.php bundles with it.
 // Reads paymentTerms, the same published schedule the terms clauses render.
+// A PERCENTAGE OF MONEY, rounded as pricing.php's money_pct does: whole pence times
+// whole basis points, half up. Math.round(total * pct) / 100 quoted 1p off the deposit
+// the card was charged on totals such as £1,205.10 (deposit-fixtures.json).
+function chbMoneyPct(total, pct) {
+    return Math.floor(Math.round(Number(total) * 100) * Math.round(Number(pct) * 100) / 10000 + 0.5) / 100;
+}
 function enqDepositDue(p, checkIn) {
     const days = parseInt(paymentTerms.balanceDays, 10) || 30;
     const pctN = Number(paymentTerms.depositPct);
     const pct = pctN > 0 && pctN <= 100 ? pctN : 25;
     const inWindow = nightsBetween(todayDashed(), checkIn) < days;
-    const dep = inWindow ? p.rentalTotal : Math.round(p.rentalTotal * pct) / 100;
+    const dep = inWindow ? p.rentalTotal : chbMoneyPct(p.rentalTotal, pct);
     return { days, pct, inWindow, dep, first: dep + (Number(p.damagesDeposit) || 0) };
 }
 // The payment plan as three quiet timeline rows: what's taken on booking, the
@@ -19439,7 +19486,7 @@ async function submitEnquiry(propKey) {
     let enqResp = null;
     try {
         const rr = propertyRates[propKey] || defaultRates[propKey] || {};
-        enqResp = await apiPost('enquiries.php', {
+        const enqPayload = {
             action: 'submit',
             prop_key: propKey,
             name,
@@ -19461,7 +19508,13 @@ async function submitEnquiry(propKey) {
             terms_version: TERMS_VERSION,
             sms_opt_in:
                 document.getElementById('enq-sms-optin') && document.getElementById('enq-sms-optin').checked ? 1 : 0,
-        });
+        };
+        // A RETRY OF A SEND WHOSE ANSWER WAS LOST IS THE SAME ENQUIRY: enquiries.php
+        // answers a repeated id from its ledger. Without one, tapping Send again after
+        // "couldn't be sent" made a second enquiry, each with its own emails.
+        enqPayload.op_id = chbOpFor(['enquiry', enqPayload]);
+        enqResp = await apiPost('enquiries.php', enqPayload);
+        chbOpBump();
     } catch (e) {
         enqStepsEnd(false);
         // Server said the dates were taken while this tab held stale data —
@@ -20369,7 +20422,7 @@ function modalPlanFacts() {
     const due = customDue || ukShiftDays(m.checkIn, -(paymentTerms.balanceDays || 30));
     const t = todayDashed();
     const full = customDue ? t >= customDue : t > due;
-    const planDep = full ? m.total : Math.round(m.total * pct) / 100;
+    const planDep = full ? m.total : chbMoneyPct(m.total, pct);
     return {
         full,
         pct,
@@ -21615,7 +21668,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r7reply1';
+    const BUILD = 'r7guest1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -48,6 +48,21 @@ if (!is_array($fx) || empty($fx['cases'])) {
     }
 }
 
+// A deposit is a percentage of money rounded one way (money_pct): deposit-fixtures.json,
+// generated from it and looped by smoke-test.js against the JS quoting it, holds the
+// cases the old JS got wrong and the ones where round() depends on the PHP version.
+$dfx = json_decode((string) file_get_contents(__DIR__ . '/deposit-fixtures.json'), true);
+$dCases = array_merge($dfx['oldJs'] ?? [], $dfx['php84'] ?? [], $dfx['normal'] ?? []);
+chk('deposit-fixtures.json loads with its cases (' . count($dCases) . ')', count($dCases) >= 50 && count($dfx['php84'] ?? []) >= 10);
+$dBad = [];
+foreach ($dCases as $c) {
+    $got = booking_deposit_amount(['deposit_pct_override' => $c['pct']], $c['total']);
+    if (abs($got - $c['deposit']) > 0.001) {
+        $dBad[] = "{$c['pct']}% of {$c['total']}: $got not {$c['deposit']}";
+    }
+}
+chk('the deposit charged is the one the form quotes, on any PHP (' . (implode('; ', array_slice($dBad, 0, 2)) ?: 'all ' . count($dCases)) . ')', !$dBad);
+
 // Short-stay charge (migration-130) — same cases as smoke-test's shortStayCharge.
 chk('short stay: 2 nights at £50 → £100', approxEq(short_stay_charge(['short_fee' => 50, 'short_max' => 2], 2), 100));
 chk('short stay: 3 nights not short at max 2 → 0', approxEq(short_stay_charge(['short_fee' => 50, 'short_max' => 2], 3), 0));
