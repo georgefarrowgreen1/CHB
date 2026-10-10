@@ -274,9 +274,11 @@ async function open(browser, base, width) {
     const menu = document.getElementById('pm-menu');
     PM_ACT.menu();
     const items = menu ? [...menu.querySelectorAll(':scope > button')] : [];
-    const mw = menu ? menu.getBoundingClientRect().width : 0;
+    // Layout sizes, not getBoundingClientRect: the menu grows out of the + (a scale
+    // transition), so its rects read 90% of the rows' size while it opens.
+    const mw = menu ? menu.offsetWidth : 0;
     const tools = items.map((b) => b.textContent.trim());
-    const rowsOk = items.length > 0 && items.every((b) => { const r = b.getBoundingClientRect(); return r.height >= 44 && Math.abs(r.width - (mw - 10)) <= 2 && getComputedStyle(b).textAlign === 'left'; });
+    const rowsOk = items.length > 0 && items.every((b) => b.offsetHeight >= 44 && Math.abs(b.offsetWidth - (mw - 10)) <= 2 && getComputedStyle(b).textAlign === 'left');
     pmMenuShow(false);
     // Captions: every one on the landing is the one tier — sentence case, one size, one weight.
     const caps = [...document.querySelectorAll('#pm-list .pm-capline')].filter((c) => c.getClientRects().length).map((c) => { const s = getComputedStyle(c); return { tt: s.textTransform, f: s.fontSize + ' ' + s.fontWeight, t: c.textContent.trim() }; });

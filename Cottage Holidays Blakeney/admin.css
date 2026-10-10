@@ -9314,7 +9314,7 @@ body.owner-mode :is(#pm, .pm-sheet, .pm-head-r) {
   --pm-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
 }
 body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px 40px rgba(60, 48, 30, 0.16); }
-#pm [hidden], .pm-head-r [hidden] { display: none !important; }
+#pm [hidden], .pm-head-r [hidden]:not(.pm-menu) { display: none !important; }
 #pm { container: pm / inline-size; position: relative; color: var(--text-light); }
 :where(#pm, .pm-sheet, .pm-head-r) button { font: inherit; color: inherit; cursor: pointer; }
 #pm .pm-list { min-width: 0; padding: 0 0 40px; }
@@ -9322,10 +9322,18 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 /* the head: the status pill and the + beside it */
 .pm-head-r { display: flex; align-items: center; gap: 8px; }
 .pm-addwrap { position: relative; }
-.pm-add { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--pm-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; transition: transform 0.32s var(--settle); }
-.pm-add svg { width: 20px; height: 20px; }
-.pm-add[aria-expanded="true"] svg { rotate: 45deg; transition: rotate 0.28s var(--out); }
-.pm-menu { position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 236px; width: max-content; background: var(--sheet-surface); border: 1px solid var(--pm-edge); border-radius: var(--r-sm); padding: 4px; box-shadow: var(--pm-shadow); }
+.pm-add { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--pm-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; transition: transform 0.32s var(--settle), background-color 0.24s var(--out), border-color 0.24s var(--out), color 0.24s var(--out); }
+.pm-add svg { width: 20px; height: 20px; transition: rotate 0.32s var(--sheet); }
+/* Open: a filled ×. The timing is on the resting rules, so it closes the same way. */
+.pm-add[aria-expanded="true"] { background-color: var(--text-light); border-color: var(--text-light); color: var(--dark-grey); }
+.pm-add[aria-expanded="true"] svg { rotate: 45deg; }
+.pm-menu { position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 236px; width: max-content; background: var(--sheet-surface); border: 1px solid var(--pm-edge); border-radius: var(--r-sm); padding: 4px; box-shadow: var(--pm-shadow); transform-origin: calc(100% - 22px) -8px; transition: opacity 0.18s var(--out), scale 0.3s var(--sheet), translate 0.3s var(--sheet); }
+/* [hidden] stays the switch: here it is the folded state, gone once folded. */
+.pm-menu[hidden] { display: block; opacity: 0; scale: 0.9; translate: 0 -6px; visibility: hidden; pointer-events: none; transition: opacity 0.14s var(--in), scale 0.14s var(--in), translate 0.14s var(--in), visibility 0s linear 0.14s; }
+@media (prefers-reduced-motion: reduce) {
+  .pm-add, .pm-add svg, .pm-menu, .pm-menu[hidden] { transition: none; }
+  .pm-menu[hidden] { display: none; }
+}
 .pm-menu > button { display: flex; align-items: center; width: 100%; text-align: left; border: 0; background: none; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm); font-size: var(--fs-body); color: var(--text-light); }
 .pm-menu > button:focus-visible { outline-offset: -2px; }
 
