@@ -2255,6 +2255,20 @@ console.log('\n== 12c. A partial overlap subtracts nights, it does not delete th
         [{ id: 'x1', source: 'airbnb', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
     );
     check(`an unrelated block is untouched (${nights(clear)})`, clear.length === 1 && clear[0].checkIn === '2026-09-01');
+    // A PROVEN platform guest (the feed's reservation evidence) is never our echo: at the
+    // same nights as one of ours it is a double booking, kept whole and named.
+    const real = vm.runInContext('(function(){' +
+        'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]); Object.keys(dbBlocks).forEach(k=>delete dbBlocks[k]);' +
+        'dbBookings.t=[{id:1,name:"Ada",checkIn:"2026-09-01",checkOut:"2026-09-04"}];' +
+        'dbBlocks.t=[{id:"x1",source:"airbnb",kind:"booking",label:"Reserved",checkIn:"2026-09-01",checkOut:"2026-09-04"}];' +
+        'suppressBlocksUnderLocalBookings(); return dbBlocks.t.map(b=>({ci:b.checkIn,co:b.checkOut,w:b.clashWith||""})); })()', ctx);
+    check(`a proven Airbnb guest at the same nights stays whole, marked a double booking (${JSON.stringify(real)})`,
+        real.length === 1 && real[0].ci === '2026-09-01' && real[0].co === '2026-09-04' && real[0].w === 'Ada');
+    const echoBooked = run(
+        [{ id: 1, checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+        [{ id: 'x1', source: 'vrbo', kind: 'booking', label: 'Booked', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+    );
+    check(`…but our own "Booked" coming back through a feed is still the echo (${nights(echoBooked) || 'none'})`, echoBooked.length === 0);
     vm.runInContext(
         'var __s = ' + savedStores + ';' +
         'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]); Object.assign(dbBookings, __s.bk);' +

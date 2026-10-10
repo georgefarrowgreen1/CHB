@@ -15045,7 +15045,8 @@ function calFoldHtml(k) {
             <span class="cal-pmain"><b>${escapeHtml(p.name)}</b><small class="${s && s.ok === false ? 'is-bad' : ''}">${escapeHtml(line)}</small></span>
             <button type="button" class="cal-txt" aria-label="Replace the ${escapeHtml(p.name)} link" ${chbAttrs('calLinkOpen', String(k), String(x.source), 'fix')}>Replace</button></div>`;
     }).join('');
-    const canAdd = !srcs || Object.keys(CAL_PLAT).some((s2) => !(srcs || []).some((x) => x.source === s2));
+    // Not until the server has said what is linked (offered blind, it replaced a working link).
+    const canAdd = !!srcs && Object.keys(CAL_PLAT).some((s2) => !srcs.some((x) => x.source === s2));
     const formOpen = __calLink && __calLink.pk === k && __calLink.mode === 'add';
     const fixOpen = __calLink && __calLink.pk === k && __calLink.mode === 'fix';
     // Linking another platform is a row at the foot of the platform list.
@@ -15227,8 +15228,8 @@ async function calLinkSave() {
     const L = __calLink;
     if (!L || L.busy || !calLinkOk(L.url)) return;
     const k = L.pk;
-    const cur = (calSources(k) || []).map((x) => ({ source: x.source, url: x.url }));
-    const feeds = cur.filter((f) => f.source !== L.source).concat([{ source: L.source, url: L.url.trim() }]);
+    // Only this link; the server keeps the others.
+    const feeds = [{ source: L.source, url: L.url.trim() }];
     L.busy = true;
     calRepaint();
     let worked = false;
@@ -15468,10 +15469,9 @@ async function calRemoveFeed(key, src) {
     const inp = /** @type {HTMLInputElement|null} */ (document.getElementById(`sync-${src}-${key}`));
     if (inp) inp.value = '';
     try {
-        await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds: SYNC_SOURCES.map((p) => {
-            const el = /** @type {HTMLInputElement|null} */ (document.getElementById(`sync-${p.source}-${key}`));
-            return { source: p.source, url: el ? el.value.trim() : '' };
-        }) });
+        await apiPost('ical-import.php', { action: 'unlink_feed', prop: key, source: src });
+        if (inp) inp.defaultValue = '';
+        __calOv = null; // the list asks again
         toast(`${P.name} unlinked.`);
     } catch (e) {
         glassAlert('Couldn’t unlink: ' + e.message);
@@ -15541,14 +15541,22 @@ async function loadCalendarSync() {
 // by the explicit "Save links" button (with a confirmation). quiet=true
 // suppresses the popup so auto-save isn't intrusive.
 async function saveSyncFeeds(key, quiet) {
+    // Only boxes the owner changed: an untouched one may be out of date.
     const feeds = [];
     for (const p of SYNC_SOURCES) {
-        const el = document.getElementById('sync-' + p.source + '-' + key);
+        const el = /** @type {HTMLInputElement|null} */ (document.getElementById('sync-' + p.source + '-' + key));
         if (!el) return; // box not rendered — nothing to save
-        feeds.push({ source: p.source, url: (el.value || '').trim() });
+        const v = (el.value || '').trim();
+        if (v && v !== (el.defaultValue || '').trim()) feeds.push({ source: p.source, url: v });
     }
+    if (!feeds.length) return;
     try {
         await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds });
+        for (const f of feeds) {
+            const el = /** @type {HTMLInputElement|null} */ (document.getElementById('sync-' + f.source + '-' + key));
+            if (el) el.defaultValue = f.url;
+        }
+        __calOv = null; // the list asks again
         if (!quiet) toast('Calendar links saved.');
     } catch (e) {
         if (!quiet) glassAlert("Couldn't save: " + e.message);
@@ -31272,14 +31280,11 @@ async function tlBlockTap(id) {
     );
     if (!ok) return;
     try {
-        // A split segment carries the real server id on `realId` and its own span
-        // on segFrom/segTo; free just that span (the server re-inserts the rest).
-        // An unsplit block posts no range and is freed whole. Number(bl.id) would
-        // be NaN for a synthetic '55-1' id, which the server rejected — so always
-        // send the numeric realId.
+        // A piece of a block a booking partly covers (even ONE piece) frees just its
+        // span segFrom/segTo under the real id; an untouched block is freed whole.
         const realId = Number(bl.realId != null ? bl.realId : bl.id);
         const payload = { action: 'delete_block', id: realId };
-        if (bl.split && bl.segFrom && bl.segTo) {
+        if (bl.segFrom && bl.segTo) {
             payload.from = bl.segFrom;
             payload.to = bl.segTo;
         }
@@ -31624,8 +31629,10 @@ function renderCalendar() {
                 // keeps the plain platform bar; and an event it could not tell stays as it
                 // always was, with the tooltip saying so — never a guess.
                 const isBlk = bl.kind === 'blocked';
-                const what = isBlk ? 'blocked by you on ' + src : bl.kind === 'booking' ? src + ' booking' : src + ' (booking or block — the calendar does not say)';
-                bars += `<span class="tl-bar tl-ext${isBlk ? ' tl-blocked' : ''}${sp.clip}${dm.c}" data-search="${escapeHtml(((isBlk ? 'blocked unavailable ' : 'ota external booking ') + src + ' ' + meta.name).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(what)} · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${isBlk ? 'Blocked' : escapeHtml(src)}</span>`;
+                // A platform guest on one of our bookings' nights is a double booking.
+                const what = bl.clashWith ? `${src} booking on the same nights as ${bl.clashWith} — a double booking`
+                    : isBlk ? 'blocked by you on ' + src : bl.kind === 'booking' ? src + ' booking' : src + ' (booking or block — the calendar does not say)';
+                bars += `<span class="tl-bar tl-ext${isBlk ? ' tl-blocked' : ''}${bl.clashWith ? ' tl-clash' : ''}${sp.clip}${dm.c}" data-search="${escapeHtml(((isBlk ? 'blocked unavailable ' : 'ota external booking ') + src + ' ' + meta.name).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(what)} · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${isBlk ? 'Blocked' : escapeHtml(src)}</span>`;
             });
             // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);
             // tap → the priced offer via tlGapTap, the strip's own plumbing.

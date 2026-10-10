@@ -47,7 +47,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (url.includes('ical-import.php')) {
       calPosts.push(b);
       if (b.action === 'list' && calListFix) return json(calListFix);
-      if (b.action === 'save_feeds' && calListFix) { calListFix.feeds = (b.feeds || []).filter((f) => f.url); return json({ ok: true }); }
+      // The server's rule: a save adds or replaces the links it names and keeps the rest;
+      // unlinking one is its own action.
+      if (b.action === 'save_feeds' && calListFix) {
+        for (const f of (b.feeds || []).filter((x) => x.url)) calListFix.feeds = calListFix.feeds.filter((x) => x.source !== f.source).concat([f]);
+        return json({ ok: true });
+      }
+      if (b.action === 'unlink_feed' && calListFix) { calListFix.feeds = calListFix.feeds.filter((x) => x.source !== b.source); return json({ ok: true }); }
       if (b.action === 'overview' && calOvFix) return json({ ok: true, props: calOvFix });
       if (b.action === 'sync') {
         if (calOvFix && calSyncHold) return new Promise((res) => setTimeout(res, 500)).then(() => json({ ok: true, result: [{ source: 'airbnb', ok: true, events: 5 }] }));
@@ -376,7 +382,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.click('#cal-link-go');
   await page.waitForFunction(() => !document.querySelector('#calendar-list .cal-prob'), null, { timeout: 4000 }).catch(() => {});
   const saved = calPosts.find((x) => x.action === 'save_feeds');
-  ok(!!saved && saved.feeds.length === 2 && saved.feeds.some((f) => f.source === 'bookingcom') && saved.feeds.some((f) => f.source === 'airbnb' && /new\.ics/.test(f.url)), 'saving replaces ONLY that platform’s link');
+  ok(!!saved && saved.feeds.length === 1 && saved.feeds[0].source === 'airbnb' && /new\.ics/.test(saved.feeds[0].url), 'saving sends ONLY that platform’s link (the server keeps the others)');
   ok(calPosts.some((x) => x.action === 'sync' && x.prop === '21a'), '…then syncs it at once');
   const c2 = await page.evaluate(() => ({ probs: document.querySelectorAll('#calendar-list .cal-prob').length, t: ((document.querySelector('#settings-panel-cap .head-pill') || {}).textContent || '').trim(), tone: (document.querySelector('#settings-panel-cap .head-pill') || { dataset: {} }).dataset.tone }));
   ok(c2.probs === 0 && c2.t === 'Up to date' && c2.tone === 'ok', `fixed → the problem card leaves and the pill goes green (${c2.t})`);
@@ -390,6 +396,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   calSyncHold = false;
   const props = calPosts.filter((x) => x.action === 'sync').map((x) => x.prop).sort().join(',');
   ok(props === '21a,jollyboat', `…and syncs every linked cottage (${props})`);
+  // Nothing is offered to link while the page doesn't know what is linked: offered
+  // blind it picked Airbnb first and replaced a working Airbnb link.
+  const blind = await page.evaluate(() => { const keep = __calOv; __calOv = null; __bhubOpenFolds.add('cal-jollyboat'); const h = calListHtml(); __calOv = keep; return /Link a platform/.test(h); });
+  ok(!blind, 'Link a platform waits until the server has said what is linked');
   // Link a platform: only the platforms not already linked are offered.
   await page.evaluate(() => { __bhubOpenFolds.add('cal-jollyboat'); calLinkOpen('jollyboat', '', 'add'); });
   await page.waitForSelector('#cal-link-in');
@@ -439,15 +449,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForFunction(() => true);
   await page.waitForTimeout(600);
   const sv = calPosts.find((x) => x.action === 'save_feeds');
-  ok(!!sv && sv.feeds.filter((f) => f.url).length === 3, 'a new valid link saves beside the others…');
+  // Only the box that changed is sent: the others hold what this page loaded, which may be
+  // out of date, and sending them put an old link back over a newer one.
+  ok(!!sv && sv.feeds.length === 1 && sv.feeds[0].source === 'bookingcom', 'a new valid link is saved on its own, the others left as they are…');
+  ok(calPosts.filter((x) => x.action === 'save_feeds').length === 1, '…once (the sync that follows does not post the links again)');
   ok(calPosts.some((x) => x.action === 'sync' && x.prop === '21a'), '…and syncs at once');
   calPosts.length = 0;
   await page.evaluate(() => { calRemoveFeed('21a', 'vrbo'); });
   await page.waitForSelector('#glass-dialog-ok');
   await page.click('#glass-dialog-ok');
   await page.waitForTimeout(500);
-  const un = calPosts.find((x) => x.action === 'save_feeds');
-  ok(!!un && !un.feeds.some((f) => f.source === 'vrbo' && f.url) && un.feeds.some((f) => f.source === 'airbnb' && f.url), 'Unlink asks, then drops only that platform');
+  const un = calPosts.find((x) => x.action === 'unlink_feed');
+  ok(!!un && un.source === 'vrbo' && un.prop === '21a' && !calPosts.some((x) => x.action === 'save_feeds'), 'Unlink asks, then unlinks only that platform');
   calListFix = null;
   await page.setViewportSize({ width: 1280, height: 950 });
 

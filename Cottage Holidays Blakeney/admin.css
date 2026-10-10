@@ -7292,6 +7292,8 @@ body.light-mode .tl-cell:active {
 .tl-bar { padding-left: 16px; }
 /* A platform block is not a guest: faint hatching, no outline, still reads busy. */
 .tl-bar.tl-ext.tl-blocked { border: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--text-muted) 28%, transparent) 6px 7px); }
+/* A platform guest on the same nights as one of ours: a double booking, drawn over it. */
+.tl-bar.tl-ext.tl-clash { border: 2px solid var(--danger); color: var(--danger-text); line-height: 26px; z-index: 1; }
 /* Bookings: a serif caption with Upcoming | Past beside it, then who owes, said once. */
 .bk-caprow { flex-wrap: wrap; gap: 4px 8px; }
 .bk-caprow .bo-sec-title { font-family: var(--font-serif); font-size: var(--fs-title); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-light); }

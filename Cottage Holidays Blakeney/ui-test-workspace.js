@@ -499,6 +499,29 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   });
   ok(del.dlgUp, 'freeing dates asks first — they go back on sale everywhere');
   ok(del.posts.length === 1 && Number(del.posts[0].id) === 9001, `…then posts delete_block for that block (${JSON.stringify(del.posts)})`);
+  // 5d. A block a booking partly covers shows as the piece left over, and freeing it
+  // frees THAT piece. Cut down to one piece it used to post no range, so the server
+  // freed the whole block, the nights under the booking too.
+  const piece = await page.evaluate(async () => {
+    window.__delPosts = [];
+    const k = Object.keys(dbBlocks)[0] || '21a';
+    const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const saveB = dbBookings[k], saveL = dbBlocks[k];
+    dbBookings[k] = [{ id: 'b77', name: 'Piece Guest', checkIn: iso(6), checkOut: iso(10) }];
+    dbBlocks[k] = [{ id: 9201, source: 'owner', checkIn: iso(3), checkOut: iso(10) }];
+    suppressBlocksUnderLocalBookings();
+    const shown = dbBlocks[k].map((b) => b.checkIn + '→' + b.checkOut).join(',');
+    const run = tlBlockTap(9201);
+    await new Promise((r) => setTimeout(r, 350));
+    const okBtn = document.getElementById('glass-dialog-ok');
+    if (okBtn) okBtn.click();
+    await Promise.resolve(run).catch(() => {});
+    dbBookings[k] = saveB; dbBlocks[k] = saveL;
+    return { posts: window.__delPosts, from: iso(3), to: iso(6), shown };
+  });
+  ok(piece.shown === piece.from + '→' + piece.to, `a block a booking partly covers shows the piece left over (${piece.shown})`);
+  ok(piece.posts.length === 1 && piece.posts[0].from === piece.from && piece.posts[0].to === piece.to,
+    `…and freeing it frees only that piece, not the nights under the booking (${JSON.stringify(piece.posts)})`);
 
   console.log(fails ? `MERGED WORKSPACE TEST FAILED ❌ (${fails})` : 'MERGED WORKSPACE TEST PASSED ✅');
   await done(fails);

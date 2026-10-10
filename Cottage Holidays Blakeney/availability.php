@@ -65,16 +65,28 @@ if ($prop === '') {
 // Admin-aware, so every owner-side caller keeps seeing everything, and tolerant
 // of a pre-migration install with no `unlisted` column (fail open there, as the
 // ?all=1 fallback does).
+// A REMOVED cottage is gone from the public site too (?all=1 leaves it out), so
+// naming its key gets the same empty answer.
 if (empty($_SESSION['admin_id'])) {
     try {
-        $chk = db()->prepare('SELECT unlisted FROM properties WHERE prop_key = ?');
+        $chk = db()->prepare('SELECT unlisted, archived_at FROM properties WHERE prop_key = ?');
         $chk->execute([$prop]);
         $row = $chk->fetch();
-        if ($row && !empty($row['unlisted'])) {
+        if ($row && (!empty($row['unlisted']) || !empty($row['archived_at']))) {
             json_out(['ranges' => []]);
         }
     } catch (\Throwable $e) {
-        /* no `unlisted` column on this install — behave exactly as before */
+        // A pre-migration install (no `unlisted`): still keep a removed cottage off.
+        try {
+            $chk = db()->prepare('SELECT archived_at FROM properties WHERE prop_key = ?');
+            $chk->execute([$prop]);
+            $row = $chk->fetch();
+            if ($row && !empty($row['archived_at'])) {
+                json_out(['ranges' => []]);
+            }
+        } catch (\Throwable $e2) {
+            /* no properties columns to judge by — behave exactly as before */
+        }
     }
 }
 

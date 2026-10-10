@@ -117,7 +117,28 @@ function waitlist_notify_freed($prop, $from, $to)
             require_once __DIR__ . '/mailer.php';
         }
         $n = 0;
+        // The earliest night a guest can book online (enquiries.php: a day's notice).
+        $tomorrow = date('Y-m-d', strtotime(date('Y-m-d') . ' 12:00:00 +1 day'));
         foreach ($rows as $w) {
+            // THE GUEST'S OWN DATES MUST BE FREE, not just the freed range. A
+            // three-night cancellation inside a week they asked about used to tell
+            // them "a space has opened for 7 to 14 Nov" while 10–14 stayed booked,
+            // and an entry whose dates had passed was told about those. What is
+            // left of their stay from tomorrow is checked, and the email names it.
+            if (!empty($w['check_in']) && !empty($w['check_out'])) {
+                $wFrom = max((string) $w['check_in'], $tomorrow);
+                if ((string) $w['check_out'] <= $wFrom) {
+                    continue; // nothing left of their dates to book
+                }
+                try {
+                    if (function_exists('dates_clash') && dates_clash($prop, $wFrom, (string) $w['check_out'])) {
+                        continue; // part of what they asked for is still taken
+                    }
+                } catch (\Throwable $e) {
+                    continue; // unchecked is not free
+                }
+                $w['check_in'] = $wFrom;
+            }
             // CLAIM BEFORE SENDING. This runs from three concurrent triggers (the
             // iCal sync — fired from every back-office load on every device — plus
             // cancel/delete and the daily cron), and two overlapping runs both

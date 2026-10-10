@@ -943,6 +943,58 @@ Found by the scheduled-jobs review and each reproduced against the real collecto
   replayed payment, the uncertain notice), test-payrail (the hold link, the charge refusal, the poller guard),
   integration §60. Twelve fixes break-tested one at a time, and §60 against a broken clause.
 
+## The calendar sync can't lose a booking (round 5)
+
+Found by the calendar-sync review; four of the nine could lead to a double booking. Each was reproduced first.
+- **SAVING ONE LINK NEVER DROPS ANOTHER.** `save_feeds` replaced the whole list from the page's copy (often
+  stale: a second device, or a link added on the detail page since the list loaded) and deleted every block whose
+  source was missing from it, so linking Booking.com could silently unlink Vrbo and free all its stays. It now
+  adds or replaces only the links it is sent, under `content_locked`, and `unlink_feed` is the one way to remove a
+  platform (its link and its blocks, never `owner`, logged `ical.unlink`). The client sends only that link
+  (`calLinkSave`) or only the boxes that changed (`saveSyncFeeds`, against each box's `defaultValue`), offers
+  "Link a platform" only once the overview has answered (`calSources` null = unknown), and clears `__calOv` after
+  a save on the detail page.
+- **THE ECHO OF OUR BOOKING IS JUDGED ON ITS OWN COTTAGE.** `clash_message` skips a block exactly at the edited
+  booking's stored dates (our export re-imported). It never checked the cottage, so moving a booking onto another
+  cottage's Airbnb stay at the same dates saved with no question.
+- **A PROVEN PLATFORM GUEST IS NEVER THE ECHO** (`ical_block_is_reservation` in ical-lib.php, JS twin
+  `blockIsReservation`): kind `booking` with any label but `Booked`, which is our export's own title and what a
+  feed that passes titles through hands back. The clash check asks first, the nightly conflict audit reports it as
+  a double booking ("overlaps an Airbnb stay"), and the timeline keeps the bar whole, drawn over ours in red
+  (`tl-clash`, `clashWith`) instead of subtracting it.
+- **A FEED IS READ IN FULL OR NOT USED** (`ical_parse_feed`: events, skipped, unreadable). Property names are
+  case-insensitive, `DURATION` is read, a date with no end is the RFC's one day, a zero-length event still blocks
+  its night, a TZID PHP knows converts to London, dashed dates read, an alarm's DESCRIPTION no longer overwrites
+  the event's, `STATUS:CANCELLED` is skipped (its nights are free), and a repeating event (`RRULE`/`RDATE`), an
+  end before its start, a nonexistent date or an event the line reader never saw (counted from the raw
+  `BEGIN:VEVENT` markers) is UNREADABLE. The sync refuses to rebuild while anything is unreadable ("couldn't read N
+  events — nothing was changed") and keeps the old blocks; a body without `END:VCALENDAR` is not usable.
+  Simulated end to end before the fix, a DURATION feed turned two Airbnb blocks into none and told the waitlist
+  the nights were free. `TRANSP:TRANSPARENT` still blocks, deliberately (an over-blocked night costs less).
+  `ical_split_line` is regex, not a character loop (the CI JIT rule).
+- **Booking.com's "CLOSED - Not available" is `unknown`** (a stay): Booking.com titles every unavailable period
+  that way, its guests included, so they had dropped out of changeovers, the day sheet and the key-safe rotation.
+  Stored rows re-classify on the next sync (the block signature includes `kind`).
+- **The waitlist checks the guest's OWN dates** (from tomorrow, the earliest online check-in), not just the freed
+  range: a three-night cancellation inside a week someone waits for no longer tells them the week opened, an
+  entry whose dates have passed is not told about them, and one that has started is told about what is left.
+- **The fetch** (`fetch_url`, `ical_url_resolve`): every hop is resolved, checked and the connection PINNED to that
+  address with `CURLOPT_RESOLVE` (DNS rebinding); more ranges are refused (`ICAL_DENY_CIDRS`: carrier-grade NAT,
+  the benchmark range, NAT64/6to4/Teredo, multicast); the body is capped at `ICAL_MAX_BYTES` (5 MB) as it arrives;
+  the unchecked `file_get_contents` fallback is gone (cURL is already required by square_api and cron).
+- **A failing feed alerts by TIME** (`ical_feed_alert`, stamps `fail_since` / `alerted_at` in `ical-status-<k>`):
+  once it has failed for six hours, then weekly. It counted sync runs, which happen on every device every few
+  minutes, so one broken link sent several urgent pushes a day through quiet hours. Decided and stored under
+  `content_locked`, so two syncs finishing together alert once.
+- Smaller: freeing a block a booking partly covers frees only the piece on screen (`tlBlockTap` sends the piece
+  whenever it has one; the server's delete + re-insert is one transaction); `availability.php?prop=` answers a
+  removed cottage with no ranges, as `?all=1` already did; the clash wording names what blocks the dates
+  (`ical_block_phrase`: "an Airbnb stay", "your own block", never "a Owner booking"); `dates_clash` and
+  `clash_message` read only a missing table as free and throw on any other database error.
+- Gates: test-ical (sections 7–10), test-waitlist (section 7), test-integration **§61** (the merge, the unlink, the
+  move, the echo both ways, the audit, the removed cottage), smoke-test 12c (the timeline), ui-test-manage (§3b/§3c
+  re-aimed to one link per save and `unlink_feed`) and ui-test-workspace 5d. Thirty fixes break-tested one at a time.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

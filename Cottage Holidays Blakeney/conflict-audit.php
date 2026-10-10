@@ -17,6 +17,7 @@
 //    https://YOURDOMAIN/conflict-audit.php?cron=APP_SECRET
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/ical-lib.php'; // ical_block_is_reservation: a real guest is never our echo
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
 if (!$isCron) {
@@ -65,8 +66,9 @@ foreach ($props as $p) {
         $bookings = [];
     }
     try {
+        // SELECT * so `kind`/`label` come along where migration-124 has run.
         $bl = db()->prepare(
-            'SELECT id, source, check_in, check_out FROM ical_blocks
+            'SELECT * FROM ical_blocks
              WHERE prop_key = ? AND check_out >= ? ORDER BY check_in',
         );
         $bl->execute([$prop, $today]);
@@ -109,18 +111,22 @@ foreach ($props as $p) {
             // booking. This file already skips OTA↔OTA overlaps as mirrors for the
             // same reason (see the header); an EXACT range match is that same test.
             // Anything else — a partial overlap, a different range — is a real clash
-            // and still reported.
-            if ($a['check_in'] === $bk['check_in'] && $a['check_out'] === $bk['check_out']) {
+            // and still reported. So is an exact match the feed PROVES is a platform
+            // guest (ical_block_is_reservation): that one cannot be our echo.
+            $real = ical_block_is_reservation($bk);
+            if ($a['check_in'] === $bk['check_in'] && $a['check_out'] === $bk['check_out'] && !$real) {
                 continue;
             }
             if (ca_overlap($a['check_in'], $a['check_out'], $bk['check_in'], $bk['check_out'])) {
                 $conflicts[] = [
                     'sig' => "bo|$prop|" . (int) $a['id'] . '|' . (int) $bk['id'],
                     'prop_key' => $prop,
-                    'summary' =>
-                        'Booking clashes with an ' . ($bk['source'] ?: 'external') . ' block at ' . $propName .
-                        ' — ' . ($a['name'] ?: 'guest') . ' (' . $a['check_in'] . '→' . $a['check_out'] . ') overlaps a blocked range (' .
-                        $bk['check_in'] . '→' . $bk['check_out'] . ')',
+                    'summary' => $real
+                        ? 'Double booking at ' . $propName . ' — ' . ($a['name'] ?: 'guest') . ' (' . $a['check_in'] . '→' . $a['check_out'] .
+                            ') overlaps ' . ical_block_phrase((string) $bk['source']) . ' (' . $bk['check_in'] . '→' . $bk['check_out'] . ')'
+                        : 'Booking clashes with an ' . ($bk['source'] ?: 'external') . ' block at ' . $propName .
+                            ' — ' . ($a['name'] ?: 'guest') . ' (' . $a['check_in'] . '→' . $a['check_out'] . ') overlaps a blocked range (' .
+                            $bk['check_in'] . '→' . $bk['check_out'] . ')',
                 ];
             }
         }

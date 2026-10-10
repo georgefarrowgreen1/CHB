@@ -374,7 +374,7 @@ const PEOPLE_POLICY = [
         'set_terms' => 'mo.ask',
     ],
     // Bookings.
-    'ical-import.php' => ['sync' => 'all', 'blocks' => 'all', 'list' => 'all', 'overview' => 'all', 'add_block' => 'bk.block', 'delete_block' => 'bk.block', 'save_feeds' => 'co.sync'],
+    'ical-import.php' => ['sync' => 'all', 'blocks' => 'all', 'list' => 'all', 'overview' => 'all', 'add_block' => 'bk.block', 'delete_block' => 'bk.block', 'save_feeds' => 'co.sync', 'unlink_feed' => 'co.sync'],
     'bookings.php' => [
         '' => 'all', 'email_logs' => 'all', 'hub_bundle' => 'all', 'history' => 'all', 'email_render' => 'all', 'deposit_card' => 'all',
         'deposit_returns' => 'all', 'payments' => 'all', 'rate_guest' => 'all',
