@@ -8303,10 +8303,6 @@ body.owner-mode .cal-tools .mo-tool {
   /* The page slides in from 16px; clipped so the slide never widens the page. */
   overflow-x: clip;
 }
-/* That clip sits on the page's right edge, and the hello row's photo sat flush on it:
-   the camera badge hangs 5px past the photo (2px offset + its 3px ring), so the badge
-   and the photo's own rim were cut off. The photo keeps clear of the clip instead. */
-#settings-panel .oa-sec .ga-hello > .ga-avabtn { margin-right: 8px; }
 /* In a search sheet the sheet's own "Back to results" is the way out. */
 .cmdk-sheet-host #sec-acct .oa-back { display: none; }
 /* A switch row is not a button; the switch inside it needs a box of its own. */

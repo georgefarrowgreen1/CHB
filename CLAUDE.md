@@ -4924,6 +4924,10 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
   optional destination. With one, `gaCropSave` hands it the 512px canvas and stays open if it returns false. The
   owner's `oaPhotoUse` uploads the square through `apiUpload(…, 'host-photo')` and saves the URL. The guest path
   is unchanged (gated: no `guest_avatar_set` on the owner's flow).
+- **Your own photo is changed on Your details** (owner's ask, as for a guest): the account page's "Hi, <name>"
+  shows it as a plain picture (`oaAva`), and Your details carries the circle and "Add a photo" / "Change photo"
+  (`oaPhotoSheet('me')`). ui-test-owneraccount §1b checks both; it finds the link by `data-act`, because the
+  one-look pass strips `.ga-photolink`.
 - **Notifications asks the device**: `oaPushState` checks for a push SUBSCRIPTION, not just permission (granted
   with no subscription receives nothing). `oaPushRefresh` patches `#notify-device` and the account row in place,
   so a render never waits on the service worker. **`enableOwnerPush` asks the iPhone-not-installed question

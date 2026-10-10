@@ -12777,7 +12777,8 @@ function oaAvaOf(name, url, big, cls) {
     return `<span class="ga-ava${big ? ' is-big' : ''}${cls ? ' ' + cls : ''}" aria-hidden="true">${url ? `<img src="${escapeHtml(url)}" alt="">` : escapeHtml(ini)}</span>`;
 }
 const oaAva = (big) => oaAvaOf(oaName() || (chbMe() && chbMe().username) || '', oaMyPhotoUrl(), big);
-// Your photo on your account page; the host photo on the host profile.
+// Your photo on Your details; the host photo on the host profile. The account
+// page shows yours as a plain picture (owner's ask: it is changed in one place).
 function oaAvaBtn(big, which) {
     const host = which === 'host';
     const url = host ? oaHostPhotoUrl() : oaMyPhotoUrl();
@@ -12849,7 +12850,7 @@ function renderOwnerAccount() {
     box.innerHTML = oaPage(
         'acct',
         oaBack('', 'Manage') +
-            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(oaRoleWords(me))}</p></div>${oaAvaBtn(false, 'me')}</div>` +
+            `<div class="ga-hello"><div class="ga-hello-t"><h1 class="section-title ga-h1">Hi${first ? ', ' + escapeHtml(first) : ''}</h1><p class="ga-lead">${escapeHtml(oaRoleWords(me))}</p></div>${oaAva(false)}</div>` +
             gaGroup(
                 [
                     gaRow({ ic: 'user', t: 'Your details', act: chbAttrs('oaGo', 'details'), chev: true, cls: 'oa-r-details' }),
@@ -13116,7 +13117,7 @@ async function oaPhotoRemove() {
 }
 function oaPhotoLanded(msg) {
     oaRepaint();
-    document.querySelectorAll('#acct-body .ga-ava, #host-body .ga-ava').forEach((a) => a.classList.add('ga-land'));
+    document.querySelectorAll('#acct-body .ga-ava, #host-body .ga-ava, #details-body .ga-ava').forEach((a) => a.classList.add('ga-land'));
     toast(msg);
 }
 
@@ -13344,6 +13345,7 @@ function renderYourDetails() {
         'details',
         oaBack('acct', 'Account') +
             `<h1 class="section-title ga-h1">Your details</h1>` +
+            `<div class="ga-group ga-hero">${oaAvaBtn(true, 'me')}<button type="button" class="ga-link ga-photolink" ${chbAttrs('oaPhotoSheet', 'me')}>${oaMyPhotoUrl() ? 'Change photo' : 'Add a photo'}</button></div>` +
             gaGroup([
                 gaRow({ t: 'Name', s: oaName() || 'Add your name', act: chbAttrs('oaMeEdit', 'name'), chev: true }),
                 gaRow({ t: 'Email', s: me.contact || 'Add your email', act: chbAttrs('oaMeEdit', 'email'), chev: true }),

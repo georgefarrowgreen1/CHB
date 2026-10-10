@@ -213,6 +213,34 @@ const ok = (b, m) => {
     ok(acct.slide, 'the page slides in, the way the guest account does');
     ok(acct.isOa && acct.panelBack === 0 && acct.panelTitle === 0, "the panel's own back link and title stand down (the page carries its own)");
 
+    // Your photo is shown on the account page and changed on Your details (owner's
+    // ask), the way a guest's is.
+    console.log('§1b your photo lives on Your details');
+    const hello = await page.evaluate(() => ({
+        ava: !!document.querySelector('#acct-body .ga-hello .ga-ava'),
+        tap: !!document.querySelector('#acct-body .ga-hello button, #acct-body .ga-hello .ga-cam, #acct-body [data-act="oaPhotoSheet"]'),
+    }));
+    ok(hello.ava && !hello.tap, 'the account page shows your photo, with nothing there to change it');
+    await page.evaluate(() => oaGo('details'));
+    await page.waitForTimeout(500);
+    // The link is found by its data-act: the one-look pass strips .ga-photolink.
+    const det = await page.evaluate(() => ({
+        btn: !!document.querySelector('#details-body .ga-hero .ga-avabtn[data-act="oaPhotoSheet"]'),
+        link: (document.querySelector('#details-body .ga-hero button[data-act="oaPhotoSheet"]:not(.ga-avabtn)') || {}).textContent,
+    }));
+    ok(det.btn && det.link === 'Add a photo', `Your details carries the photo and its link (${det.link})`);
+    await page.click('#details-body .ga-hero button[data-act="oaPhotoSheet"]:not(.ga-avabtn)');
+    await page.waitForSelector('#ga-photo-sheet.open');
+    const meSheet = await page.evaluate(() => ({
+        t: (document.getElementById('ga-photo-title') || {}).textContent,
+        rows: [...document.querySelectorAll('#ga-photo-sheet .ga-t')].map((e) => e.textContent).join(),
+    }));
+    ok(meSheet.t === 'Your photo' && meSheet.rows === 'Take a photo,Choose from library', `…which opens the sheet for YOUR photo (${meSheet.t}: ${meSheet.rows})`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    await page.evaluate(() => oaGo('acct'));
+    await page.waitForTimeout(500);
+
     console.log('§2 the account page');
     await page.waitForTimeout(400);
     const rows = await page.evaluate(() => {
