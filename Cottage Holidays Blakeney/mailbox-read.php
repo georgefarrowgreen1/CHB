@@ -314,11 +314,16 @@ function poll_mailbox_replies($force = false, $preview = false)
     if (!mailbox_auto_enabled()) {
         return ['ok' => false, 'skipped' => 'not-enabled'];
     }
-    $state = content_json('mailbox-poll', []); // array-valued key — NOT content_value()
-    $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
     // Throttle: at most one POP3 fetch per 25s. Low enough that a guest actively
     // waiting in the chat (their poll nudges this) sees an emailed reply within ~half
-    // a minute, high enough not to hammer the mailbox.
+    // a minute, high enough not to hammer the mailbox. Asked FIRST, of the row's own
+    // timestamp: a guest in the chat nudges this every few seconds, and the state
+    // holds the whole inbox's handled list.
+    if (!$preview && !$force && mailbox_poll_recent()) {
+        return ['ok' => true, 'skipped' => 'throttled'];
+    }
+    $state = content_json('mailbox-poll', []); // array-valued key — NOT content_value()
+    $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
     if (!$preview && !$force && !empty($state['at']) && time() - (int) $state['at'] < 25) {
         return ['ok' => true, 'skipped' => 'throttled'];
     }
@@ -687,6 +692,19 @@ function mailbox_handled_keep(array $processed, array $listing): array
 {
     $live = array_fill_keys(array_map('strval', array_values($listing)), true);
     return array_values(array_filter($processed, fn($u) => isset($live[(string) $u])));
+}
+// Did a poll save in the last 25 seconds? mailbox_poll_save writes the row's
+// updated_at every time, so this answers without reading the handled list. Only a
+// clear yes counts: no row, an error or a clock that went back (the autumn hour)
+// answer no, and the state's own stamp decides as before.
+function mailbox_poll_recent(): bool
+{
+    try {
+        $ago = db()->query("SELECT TIMESTAMPDIFF(SECOND, updated_at, CURRENT_TIMESTAMP) FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn();
+    } catch (\Throwable $e) {
+        return false;
+    }
+    return $ago !== false && $ago !== null && (int) $ago >= 0 && (int) $ago < 25;
 }
 function mailbox_poll_save($processed, $error, $last)
 {

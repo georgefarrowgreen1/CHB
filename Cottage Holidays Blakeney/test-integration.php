@@ -4891,6 +4891,41 @@ it_check('§73 a stay that changed sends the feed again, with a new tag', $m73['
 it_check('§73 a wrong token still gets nothing', $shellGet('/ical-export.php?prop=' . rawurlencode($propKey) . '&token=nope')['code'] === 403);
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($old73, $recent73, $ahead73)");
 
+echo "\n== §74 a guest's chat poll asks the mailbox throttle without reading the handled list ==\n";
+// A guest in the chat nudges the mailbox read every few seconds, and the poll's
+// state holds the whole inbox's handled list. The throttle is asked first, of the
+// row's own timestamp (mailbox_poll_recent). Driven in the app copy (CLI), with
+// the mailbox switched on and no host to reach, so a poll that is not throttled
+// stops at "no mailbox configured" without touching the network.
+$pollProbe = function () use ($work) {
+    $f = $work . '/it-poll-probe.php';
+    file_put_contents($f, "<?php\nfunction mailbox_auto_enabled() { return true; }\nfunction mailbox_pop_host() { return ''; }\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailbox-read.php';\necho \"\\n\" . json_encode(['recent' => mailbox_poll_recent(), 'poll' => poll_mailbox_replies()]);\n");
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    return json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+};
+// The app writes updated_at on the London clock (db.php sets the session's zone),
+// so the fixture does too. The state's own stamp is OLD in every case: only the
+// row's timestamp can throttle.
+$set74 = function ($agoSeconds) use ($rootDb) {
+    $when = (new DateTime('now', new DateTimeZone('Europe/London')))->modify('-' . (int) $agoSeconds . ' seconds')->format('Y-m-d H:i:s');
+    $val = json_encode(['at' => time() - 3600, 'uids' => array_map(fn($i) => 'uid-' . $i, range(1, 3000)), 'error' => null]);
+    $rootDb->prepare("INSERT INTO content (item_key, item_value, updated_at) VALUES ('mailbox-poll', ?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = VALUES(updated_at)")->execute([$val, $when]);
+    return $when;
+};
+$when74 = $set74(3);
+$R74 = $pollProbe();
+it_check('§74 a poll saved seconds ago is recent', ($R74['recent'] ?? null) === true, json_encode($R74));
+it_check('§74 …so the next poll is throttled before the handled list is read', ($R74['poll']['skipped'] ?? '') === 'throttled', json_encode($R74));
+it_check('§74 …and leaves the row as it was', (string) $rootDb->query("SELECT updated_at FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn() === $when74);
+$set74(60);
+$R74 = $pollProbe();
+it_check('§74 a poll a minute ago is not recent, and the next one goes ahead', ($R74['recent'] ?? null) === false && ($R74['poll']['skipped'] ?? '') !== 'throttled', json_encode($R74));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
+$R74 = $pollProbe();
+it_check('§74 no row at all is not recent', ($R74['recent'] ?? null) === false, json_encode($R74));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

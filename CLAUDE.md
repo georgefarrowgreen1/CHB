@@ -1234,9 +1234,13 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
 - Gates: test-integration §72 and §73, and §24's statement count, still 8. Six changes break-tested, each failing
   its own named check: the visitor query, the memo, the list check, the window, the DTSTAMP-free tag and the
   deflate-tolerant comparison.
-- **Not done, said plainly**: each guest chat poll still reads the whole handled-mail list (`mailbox-poll`) to
-  check a 25-second throttle. The clean fix moves the stamp to its own key, a change to the mailbox's state that
-  wants testing against a real POP3 box.
+- **A guest's chat poll asks the mailbox throttle of the row's own timestamp** (`mailbox_poll_recent`), before it
+  reads the state that holds the inbox's whole handled list. `mailbox_poll_save` writes the row's `updated_at` every
+  time, and the age is worked out on the database's own clock (`TIMESTAMPDIFF` against `CURRENT_TIMESTAMP`), so a
+  recent poll answers with one small query. Only a clear "saved in the last 25 seconds" stops the poll: no row, an
+  error, or the autumn hour the clock goes back fall through to the state's own stamp, as before. test-integration
+  §74 drives the real poll in the app copy with the mailbox switched on and no host to reach; removing the cheap
+  check fails it.
 
 ## Answers that land late, and changes that meet (round 6)
 
