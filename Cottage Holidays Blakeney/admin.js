@@ -24409,11 +24409,13 @@ function keysafeOpen(pk) {
     const e = escapeHtml;
     const n = v.next;
     const code = v.rec.code || '';
+    // A guest staying on a code never recorded for them sees NOTHING (the
+    // server reveals only a code set for their booking), not "now".
     const see = !n
         ? 'Nobody — no one is booked'
         : n.ota
           ? 'Share it in your ' + n.name.replace(' guest', '') + ' message thread — platform guests don’t see this site'
-          : v.needs
+          : !keysafeSetFor(v.rec, n)
             ? 'Nothing yet — the code appears only after you confirm the safe is set'
             : v.seesNow ? 'Now, on their booking page' : 'From ' + v.revealFrom + ', on their booking page';
     const facts = (code && v.rec.setAt ? '<dt>Set</dt><dd>' + e(fmtDate(String(v.rec.setAt).slice(0, 10)) + (v.forGuest ? ' for ' + v.forGuest : '')) + '</dd>' : '')

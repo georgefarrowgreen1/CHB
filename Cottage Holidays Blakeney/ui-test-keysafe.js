@@ -246,6 +246,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(t1.state === 'inres' && t1.duty === 0, `a guest in residence mints NO rotation duty — never rotate under a mid-stay guest (${t1.state}, ${t1.duty})`);
   ok(t1.capWarn, 'the page schedules it instead — an amber row line, no to-do card');
   ok(t1.sub.includes('staying until ' + t1.until) && /change it after/.test(t1.sub), `and the row names the day the rotation becomes possible (${t1.sub.slice(0, 70)})`);
+  // The sheet must not claim they can see a code that was never set for
+  // their stay (it said "Now, on their booking page").
+  const t1s = await page.evaluate(() => {
+    keysafeOpen('scratch');
+    const t = (document.getElementById('ks-sheet') || {}).textContent || '';
+    keysafeSheetClose();
+    return t;
+  });
+  ok(/Nothing yet/.test(t1s) && !/Now, on their booking page/.test(t1s), `the sheet says they see nothing yet (${t1s.slice(0, 120)})`);
   // CHANGEOVER MORNING: the leaver drops out at checkout, so the ask fires
   // exactly when it can be done — named for the INCOMING guest, red because
   // their reveal window is open.
