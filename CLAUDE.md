@@ -869,8 +869,8 @@ admin.css. Markup uses `data-pm` and `pm-` classes (the Inbox's rule), wired onc
   the page's repaint plus a debounced summary refetch; anything that changes money still calls it.
 - **A reset rule inside `:is(#pm, …)` takes the id's weight**: `:is(#pm, .pm-sheet) button { color: inherit }` beat
   the pressed chip's own colour and painted white on white. Resets go in `:where()`.
-- NOT re-aimed (merge without CI, the owner's ask): ui-test-money, ui-test-backoffice-motion (moLand), the onelook
-  and layout scenes that read `#money-overview`. Follow-ups: Today, the dock badge and search still compute owed
+- Re-aimed since (the overnight CI pass): ui-test-money, ui-test-backoffice-motion, onelook §8/§16 and new layout
+  scenes all read the `#pm` page now. Follow-ups: Today, the dock badge and search still compute owed
   their own way; the CSV/PDF keep their own profit arithmetic.
 
 **"With Square" kept money that was already in the bank** (reported live: £1,291.97 "in the next payout", all of it
@@ -975,8 +975,8 @@ is no new endpoint and no migration.
   - the edge only when not live, and where it sits;
   - no sideways scroll, no page errors.
 
-  That drive is not committed. NOT re-aimed (merge without CI): ui-test-statements (the bank page's lists, the way-in
-  card) and ui-test-money.
+  That drive is not committed. ui-test-statements and ui-test-money were re-aimed to the one list
+  afterwards (the overnight CI pass).
 
 ## The business bank, from its statements (Monzo Business; built without CI at the owner's ask)
 
@@ -1069,8 +1069,8 @@ account, which the app can't see. The approved demo was v10 of the "who earned w
   views, the pay sheet, the five suggestions carried out, the payout raising what is owed) — not committed.
 - **Not done, said plainly**: money owed from before `since` isn't included; the guest "money story" page in the
   demo was not built (the booking page's ledger serves); the weekly digest, search and the CSV/PDF don't follow
-  the split; the books page is still the whole business's. NOT re-aimed (merge without CI): ui-test-money and the
-  layout/onelook scenes that read `.pm-flow`/`.pm-stop`.
+  the split; the books page is still the whole business's. ui-test-money and the layout/onelook scenes were re-aimed
+  to the page without the flow card afterwards.
 
 ## Move money out is GONE (owner's ask: "no longer needed")
 
@@ -1454,6 +1454,54 @@ a hairline between, the card corners only on the run's ends — and a caption na
 - NB the probes that found these live in the scratch stack, not the repo: "squared corners but apart" and
   "title→first caption gap" are the two measurements worth re-running after any layout pass.
 
+## The second unified-design pass (overnight, owner-asked: "you may have missed things from previous tasks")
+
+Every admin page was driven on a seeded real stack (staging seat + "Set the stage") at 390 in both themes and at
+1280, screenshotted, and measured for the vocabulary (button/caption/window/field signatures) and for cut text.
+What it set, so later pages follow it:
+- **A CHOSEN CHIP IS THE ACCENT, everywhere.** Payments' filters, the record sheet's chips and the Inbox's
+  Chat|Email and stay tabs were white-on-ink while every other chip and switcher used the accent; the one-look rule
+  (`.u-btn1` fill, section 8) wins. A count inside a chosen chip inverts (`--accent-ink` ground, accent ink).
+- **A ROW'S TITLE IS 500.** Measured across every list: Inbox, Payments, Manage, fold rows and account rows were
+  15/500 while Today's booking rows (700), Needs-you (600), key safes (600), the guest list (600), the activity log
+  (600) and the composer's rows (600) were heavier. Bold is kept for exactly one meaning: unread mail.
+- **`stCap` makes every capsule sentence case** at the one composer ("Not linked", "None yet", "Synced"), since a
+  dozen callers wrote lowercase. Suites reading capsule text use case-insensitive matches.
+- **The search window's captions are the one caption tier** (sentence case, 600, no tracking) — they were the
+  last tracked capitals in the back office, and the HIG note that kept them was written before the dashboard's own
+  captions went sentence case. A brief row's duty action reads as Today's does (accent words + the drawn chevron),
+  never a filled pill per row (four filled accents in one list is four primaries). Uppercase ratchet 15 → 13.
+- **A caption row (`.pay-caprow`) takes its air as PADDING**: a top margin on the caption inside a centred flex
+  row sat the caption 8px below the capsule beside it.
+- **Small honesty rules**: nothing deducted is `£0.00`, never `−£0.00` (`pmMinus`); a calendar vital with nothing
+  linked is grey, not green; "None coming up", not "0 coming up"; money figures are ink (Changeovers had them green
+  and amber); a list names the whole cottage ("Pimp" is the timeline lane's short name, not a row's); a stay is the
+  house range ("20–24 Oct 2026"), never `→` between two dates; a text arrow on a button is the drawn chevron or a
+  label naming the destination ("Open Seasonal rates").
+- **Said once**: the booking page's quiet "Record a payment" stands down when the ask above is already Record; the
+  Newsletter stops repeating the zero its tile states; Price ideas' two read-only folds are one joined window (each
+  had its own `rv-sec`).
+- **Permissions**: the people list has a caption (the card sat 8px under the title); your own role is a static row,
+  not a one-off box; every back link names the page it returns to ("‹ George", "‹ Permissions"); with one person,
+  Cottages & money says the money is yours instead of a one-option switcher and a row of one face per cottage.
+- **Layout traps found by looking**: the field rule's `width: 100%` reached a cottage's check-in TIME input and
+  squeezed "Check-in from" to a word a line under it (a time keeps its own width beside its label now); the week of
+  arrival days wrapped six and a lonely Saturday (one row of seven); the offline pill sat at top 70px right, over
+  each page's own right-hand control — below 480px it now sits in the header bar beside the crown (z above the
+  header, which is opaque at the top), where the screen name stands down.
+- **Empty states**: Guest photos uses the back office's `emptyState` (app.js reaches it through `window`, never a
+  bare admin name).
+- Inbox and Payments fixes from the re-aimed suites (agents A/B): an email's attachments are links again
+  (`mailbox.php?action=attachment`); an empty search says when older mail on the server wasn't searched; the Inbox
+  | Done switch reaches 44 through the track's padding (`::before`, inside every clipping ancestor); the reply box
+  and Send are 44; a row's context line may take two lines so the dates survive; a sent email found by search opens
+  that person's conversation; Payments rows have their hairline back (the row rule reset the border at the same
+  weight AFTER the separator rule — order matters at equal specificity); a guest's name wraps whole and a sub takes
+  two lines; the detail title wraps rather than ellipsising.
+- **layout-test covers the one-list Inbox and the Payments page** (`admin-inbox`, `admin-inbox-person`,
+  `admin-inbox-done`, `admin-money`, `admin-money-books`), its money summary generated from money-lib's own
+  composers so the fixture cannot drift from the shape the page reads.
+
 ## Manage's status is ONE pill (owner-asked: "remove duplication of status", approved demo)
 
 **Supersedes the summary row below.** The status is said once, by `#health-pill` beside the Manage title, its dot
@@ -1744,10 +1792,11 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   the emails about them — with a booking left the person is marked done. Nothing is sent to the
   guest. Hidden when only a booking is left (nothing to delete) and during an approval's Undo
   window. The three new actions are `'all'` in PEOPLE_POLICY. Gated by ui-test-inbox §7.
-- **NOT re-aimed, by the owner's "merge without CI"**: ui-test-mailbox, ui-test-onelook (§9 crashes on
-  the missing folders), ui-test-needs-you (the enquiry row now opens the conversation; the pip counts
-  waiting), ui-test-resume (folder places), ui-test-hub (no auto-dock in the Inbox),
-  ui-test-ownerday. They test the folder Inbox and need moving to the one list.
+- **Re-aimed to the one list since** (the overnight CI pass): ui-test-mailbox (rewritten — rows, reading,
+  reply routes, the decline ask, attachments as links), ui-test-emailreader (reading inside the conversation),
+  onelook §9, needs-you (the enquiry duty lands on the conversation; the Inbox pip counts people waiting),
+  resume (`inbox:done` is the folder place; the Sent tab memory is gone), hub, ownerday, reach (the Inbox | Done
+  switch) and round8 (the context line).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched (SUPERSEDED by the one list above)
 
@@ -4087,9 +4136,9 @@ simplified over six demo rounds.
   from Host (Undo on the toast), a tick for always-on and for every row of a Super User, a lock for set-up. Cottages &
   money = the account holder as the one switcher, a face picker per cottage, one sentence per paid-out host, and the
   linked bank names kept only so one linked by mistake can be unlinked. The emails matrix page stays (from Notifications).
-- **Not run, at the owner's ask**: every gate. test-people.php, test-integration §51/§52, ui-test-people and
-  ui-test-owneraccount still assert the five switches and "People & access" and need re-aiming. Checked by hand: php -l,
-  the JS parse, and the pages rendered headless at 390px in both themes with no page errors or overflow.
+- **Gates re-aimed afterwards** (the overnight CI pass): test-people.php, test-integration §51/§52, ui-test-people
+  (rebuilt from PEOPLE_PERMS / PEOPLE_MAILS, 141 checks) and ui-test-owneraccount assert the roles, the switches and
+  "Permissions" now.
 
 ## People: separate sign-ins, and what each person can do (approved demo, built — its five switches SUPERSEDED by Permissions above)
 
