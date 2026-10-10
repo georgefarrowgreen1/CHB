@@ -5916,6 +5916,12 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 body.offline-snap .ods-mark {
   padding-right: 52px;
 }
+/* On a phone the pill sits IN the header bar, beside the crown, where nothing else
+   is (the screen name stands down below 480): at top 70 it covered each page's
+   own right-hand control — Payments' +, the Inbox's refresh, a title's pill. */
+@media (max-width: 479px) {
+  body.owner-mode .offline-pill { top: calc(var(--safe-t) + 10px); right: auto; left: 72px; z-index: 1510; }
+}
 .ods-mark .ods-probe {
   font-style: italic;
   opacity: 0.85;

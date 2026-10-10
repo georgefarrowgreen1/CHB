@@ -123,7 +123,7 @@ function stmt_plan(array $in): array
     if (!$p['ok']) {
         // What was read, beside the refusal: the rows, how many could not be read
         // and why, so a file that "has no payments" can be told from one we misread.
-        json_out(['error' => $p['error'], 'read' => ['bytes' => strlen($csv), 'rows' => $p['rows_in'] ?? null, 'unreadable' => $p['unreadable'] ?? 0, 'other_currency' => $p['other_currency'] ?? 0]], 400);
+        json_out(['error' => $p['error'], 'read' => ['bytes' => strlen($csv), 'rows' => $p['rows_in'] ?? null, 'unreadable' => $p['unreadable'] ?? 0, 'other_currency' => $p['other_currency'] ?? 0, 'cols' => $p['cols'] ?? null]], 400);
     }
     $since = stmt_since($in);
     $known = stmt_known(array_column($p['lines'], 'ext_key'));

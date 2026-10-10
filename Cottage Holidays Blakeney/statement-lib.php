@@ -271,6 +271,7 @@ function statement_parse(string $csv, string $filename = ''): array
             $out['error'] = 'There are no payments in that file.';
         }
         $out['rows_in'] = $rowsIn;
+        $out['cols'] = $col; // which column was read as what: tells a misread from a foreign file
         return $out;
     }
     $out['ok'] = true;
