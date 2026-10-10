@@ -12,6 +12,11 @@
 //  TLS with a certificate made here, so the app's own ssl:// connection is the one
 //  exercised (it does not verify the peer). Excluded from deploy like every test-*.php.
 // ============================================================
+if (PHP_SAPI !== 'cli') {
+    // Never over the web: with register_argc_argv on, a query string becomes $argv.
+    http_response_code(404);
+    exit();
+}
 error_reporting(E_ALL & ~E_DEPRECATED);
 [, $port, $dir, $log] = $argv + [null, '0', '', ''];
 $port = (int) $port;

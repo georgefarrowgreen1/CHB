@@ -94,6 +94,19 @@ function price_round2($x)
     return floor((float) $x * 100 + 0.5) / 100;
 }
 
+// A PERCENTAGE OF MONEY: whole pence times whole basis points, half up. round($total
+// * $pct / 100, 2) answered by the PHP version (8.3 pre-rounds, 8.4 does not) and the
+// enquiry form's JS by neither, so the form quoted a deposit 1p off what the card took.
+// Both products are exact integers and a half is exact in binary, so this is exact
+// decimal rounding on any PHP and in JS (chbMoneyPct, app.js). Equal to 8.3's answer on
+// every penny from £50 to £2,000 at seven percentages (deposit-fixtures.json holds cases).
+function money_pct($total, $pct)
+{
+    $pence = round((float) $total * 100);
+    $bp = round((float) $pct * 100);
+    return floor($pence * $bp / 10000 + 0.5) / 100;
+}
+
 // The short-stay charge for a stay of $nights: short_fee a night when the stay
 // is short_max nights or fewer, else 0. JS mirror: shortStayCharge (app.js).
 function short_stay_charge($rate, $nights)
@@ -420,9 +433,9 @@ function booking_deposit_amount($b, $total)
     }
     $pct = isset($b['deposit_pct_override']) && $b['deposit_pct_override'] !== null && $b['deposit_pct_override'] !== '' ? (float) $b['deposit_pct_override'] : 0.0;
     if ($pct > 0 && $pct <= 100) {
-        return round((float) $total * ($pct / 100), 2);
+        return money_pct($total, $pct);
     }
-    return round((float) $total * (square_deposit_pct() / 100), 2);
+    return money_pct($total, square_deposit_pct());
 }
 
 // ============================================================
@@ -609,6 +622,13 @@ function booking_autopay_terms($b, $instalments = 1, $kindHint = null)
         }
         return ['amount' => $offer['per'], 'due' => $offer['due'], 'instalments' => $offer['n'], 'next' => $offer['dates'][0]];
     }
+    // THE NOTICE MUST FIT. The screen promises an email three days before a single
+    // collection, and the notice is only sent before the day: a due date closer than
+    // that (a stay exactly 30 days out puts it on today) was collected that night with
+    // no email at all. Not offered, so never consented to.
+    if ($due < date('Y-m-d', strtotime(date('Y-m-d') . ' +' . AUTOPAY_SINGLE_GAP_DAYS . ' days'))) {
+        return null;
+    }
     $amt = booking_amount_due($b, 'deposit');
     // What is left AFTER the payment being made right now — plus nothing else:
     // the refundable deposit rides this first payment, so it is not owed later.
@@ -624,6 +644,9 @@ function booking_autopay_terms($b, $instalments = 1, $kindHint = null)
 const AUTOPAY_INSTALMENT_MIN = 50.0;
 const AUTOPAY_INSTALMENTS_MAX = 4;
 const AUTOPAY_FIRST_GAP_DAYS = 7;
+// A single collection needs its advance notice's room (AUTOPAY_NOTICE_DAYS in
+// autopay-lib, which pricing.php does not load; test-autopay holds the two equal).
+const AUTOPAY_SINGLE_GAP_DAYS = 3;
 
 // A calendar-month step with the day CLAMPED into the target month (31 Jan + 1
 // month = 28/29 Feb, never 2/3 Mar). Pure date-part arithmetic — no time

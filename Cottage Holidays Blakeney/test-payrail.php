@@ -2251,6 +2251,35 @@ foreach ($opSends as [$f, $start]) {
     chk("$f: the send claims its retry id first and stores its answer", $body !== '' && $claim !== false && ($send === false || $claim < $send) && strpos($body, 'json_out(op_finish($opTok, [') !== false);
 }
 
+// A DATE COLUMN IS NEVER COMPARED WITH ''. On a strict-mode database that is an error
+// once the date is set (pay.php's NULLIF(payment_date, '') failed every card payment
+// after the first, after Square had taken the money). The date columns are read from
+// the schema and the migrations, so a new one is covered the day it is added.
+echo "\n== A date column is never compared with '' ==\n";
+$schemaTxt = (string) file_get_contents(__DIR__ . '/schema.sql');
+foreach (glob(__DIR__ . '/migration-*.sql') ?: [] as $mf) {
+    $schemaTxt .= "\n" . (string) file_get_contents($mf);
+}
+preg_match_all('/`?([a-z_]+)`?\s+(?:DATE|DATETIME|TIMESTAMP)\b/i', $schemaTxt, $dm);
+$dateCols = array_values(array_unique(array_filter($dm[1], fn($c) => !in_array(strtolower($c), ['add', 'column', 'modify', 'exists'], true))));
+chk('the schema names its date columns (vacuity guard: ' . count($dateCols) . ')', count($dateCols) >= 30 && in_array('payment_date', $dateCols, true));
+$colRe = implode('|', array_map('preg_quote', $dateCols));
+$dateHits = [];
+foreach (glob(__DIR__ . '/*.php') ?: [] as $pf) {
+    if (strpos(basename($pf), 'test-') === 0) {
+        continue;
+    }
+    foreach (preg_split('/\R/', (string) file_get_contents($pf)) as $ln => $line) {
+        if (preg_match('/^\s*(\/\/|\*|#)/', $line)) {
+            continue; // a comment may name the rule it states
+        }
+        if (preg_match("/NULLIF\\(\\s*(?:[a-z]+\\.)?(?:$colRe)\\s*,\\s*''\\s*\\)|\\b(?:[a-z]+\\.)?(?:$colRe)\\s*(?:=|<>|!=)\\s*''/i", $line)) {
+            $dateHits[] = basename($pf) . ':' . ($ln + 1);
+        }
+    }
+}
+chk('no SQL compares a date column with an empty string (' . (implode(', ', $dateHits) ?: 'none') . ')', !$dateHits);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

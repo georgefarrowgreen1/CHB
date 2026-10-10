@@ -1805,6 +1805,35 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     await page.waitForTimeout(150);
   }
 
+  console.log('\n§23 The server\'s outer limits: the longest stay and the furthest check-in');
+  // enquiries.php refuses a stay over 60 nights and a check-in more than two years out
+  // (730 days). The picker offered both, and the refusal came after the whole form.
+  // Each boundary from both sides, read off the real cells: pickable or not, and why.
+  {
+    const cellAt = (iso) => page.evaluate((d) => {
+      const c = document.querySelector(`#date-picker .dp-day[data-day="${d}"]`);
+      return c ? { pick: c.getAttribute('data-act') === 'dpPick', title: c.getAttribute('title') || '' } : null;
+    }, iso);
+    await openAt();
+    await page.evaluate(() => { dpPick('2026-09-01'); dpState.view = new Date(2026, 9, 1); renderDatePicker(); });
+    await page.waitForTimeout(150);
+    const sixty = await cellAt('2026-10-31');
+    await page.evaluate(() => { dpState.view = new Date(2026, 10, 1); renderDatePicker(); });
+    await page.waitForTimeout(150);
+    const sixtyOne = await cellAt('2026-11-01');
+    ok(!!sixty && sixty.pick, `a 60-night stay can still be chosen (${JSON.stringify(sixty)})`);
+    ok(!!sixtyOne && !sixtyOne.pick && /Maximum stay is 60 nights/.test(sixtyOne.title), `a 61st night is refused, saying why (${JSON.stringify(sixtyOne)})`);
+    // Clock pinned to 15 Jul 2026, so the furthest check-in is 14 Jul 2028.
+    await page.evaluate(() => { dpState.start = null; dpState.end = null; dpState.view = new Date(2028, 6, 1); renderDatePicker(); });
+    await page.waitForTimeout(150);
+    const lastIn = await cellAt('2028-07-14');
+    const tooFarIn = await cellAt('2028-07-15');
+    ok(!!lastIn && lastIn.pick, `a check-in exactly two years out can still be chosen (${JSON.stringify(lastIn)})`);
+    ok(!!tooFarIn && !tooFarIn.pick && /two years ahead/.test(tooFarIn.title), `a day further is refused, saying why (${JSON.stringify(tooFarIn)})`);
+    await page.evaluate(() => closeDatePicker());
+    await page.waitForTimeout(150);
+  }
+
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
 })();

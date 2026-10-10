@@ -35,6 +35,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
 
   const posts = [];
+  let slowChargeMs = 0; // the slow-charge section holds the charge's answer this long
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -121,6 +122,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         return json({ ok: true, say: 'Card updated — the plan carries on, and nothing was charged today.', autopayState: 'armed' });
       }
       if (b.__url === 'pay.php' && b.action === 'charge') {
+        const reply = (o) => (slowChargeMs ? new Promise((r) => setTimeout(r, slowChargeMs)).then(() => json(o)) : json(o));
         // Echo the slice AND the arrangement like the real endpoint: a part
         // request comes back partial with the server-derived `remaining`; a
         // consent comes back with its outcome (booking 8 is the stub's
@@ -133,8 +135,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
             : b.autopay_instalments > 0
               ? { ok: true, monthly: true, n: b.autopay_instalments, per: 175, next: '2026-08-28', due: '2026-10-28' }
               : { ok: true, monthly: false, n: 1, per: 525, next: null, due: '2026-10-28' };
-        if (slice > 0) return json({ ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100, autopay });
-        return json(b.kind === 'deposit'
+        if (slice > 0) return reply({ ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100, autopay });
+        return reply(b.kind === 'deposit'
           ? { ok: true, fullyPaid: false, charged: 225, remaining: 0, autopay }
           : { ok: true, fullyPaid: true, charged: 340, remaining: 0, autopay });
       }
@@ -1323,6 +1325,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(pfErr.fieldBanner === '', `PLAN-FIRST: a field-validation failure prints NO second banner (got "${pfErr.fieldBanner}")`);
   ok(/Something broke in the SDK/.test(pfErr.sdkBanner), 'PLAN-FIRST: …while a non-field failure still reaches the banner');
+
+  // THE CHARGE OUTWAITS THE SERVER. pay.php may hold a charge up to 30s for the booking
+  // lock and 20s for Square; the page gave up at 15s and told the guest the full amount
+  // was still due over a payment recorded two seconds later. Answered at 17s, a charge
+  // must land as a payment.
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  slowChargeMs = 17000;
+  const slowT0 = Date.now();
+  await page.evaluate(() => submitPayment());
+  slowChargeMs = 0;
+  const slowPay = await page.evaluate(() => ({
+    done: document.getElementById('pay-done').style.display !== 'none',
+    err: (document.getElementById('pay-msg') || {}).textContent || '',
+  }));
+  ok(slowPay.done && !/couldn.t confirm/i.test(slowPay.err),
+    `a charge the server answers after 17s lands as a payment, not "couldn't confirm" (${Math.round((Date.now() - slowT0) / 1000)}s${slowPay.err ? ', ' + slowPay.err.slice(0, 50) : ''})`);
 
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);

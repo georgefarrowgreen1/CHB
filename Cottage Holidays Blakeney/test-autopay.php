@@ -827,6 +827,20 @@ chk('...and a consent posted from inside it vaults NOTHING — refused where rec
     booking_autopay_terms(ofbk(['balance_due_date' => $inside]), 2) === null);
 chk('the single-collection terms are untouched by the floor',
     is_array(booking_autopay_terms(ofbk(['balance_due_date' => $inside]))));
+// THE NOTICE MUST FIT (§79 of the guest-journey audit): a single collection due
+// sooner than the 3-day notice was offered, consented to and collected that night with
+// no email. Both sides of the line, and the two constants held equal.
+chk('a single collection due in 2 days is not offered (the 3-day notice cannot be sent)',
+    booking_autopay_terms(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+2 days'))])) === null);
+// The audit's own case: the STANDARD schedule with a stay exactly 30 days out puts the
+// balance due today while the stage is still 'deposit' (that boundary is strict). A
+// custom date due today is inside its window already, so it would prove nothing here.
+$std30 = ['balance_due_date' => null, 'check_in' => date('Y-m-d', strtotime('+30 days')), 'check_out' => date('Y-m-d', strtotime('+34 days'))];
+chk('...nor one due today on the standard schedule (a stay exactly 30 days out)',
+    booking_payment_kind(ofbk($std30)) === 'deposit' && booking_autopay_terms(ofbk($std30)) === null);
+chk('...while one due in 3 days still is',
+    is_array(booking_autopay_terms(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+3 days'))]))));
+chk('the offer\'s gap is the notice\'s own length', AUTOPAY_SINGLE_GAP_DAYS === AUTOPAY_NOTICE_DAYS);
 $CONTENT = ['instalment-floor-months' => 3];
 chk('a taller floor cuts deeper', booking_instalment_offer(ofbk(['balance_due_date' => ukShiftMonthsPhp($NOW, 2)]), $NOW) === null
     && is_array(booking_instalment_offer(ofbk(['balance_due_date' => ukShiftMonthsPhp($NOW, 3)]), $NOW)));

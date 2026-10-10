@@ -1459,6 +1459,51 @@ what happens on a page that has been open a while, when a release lands or an an
 - **Not verified**: Google Pay instances are created afresh on each wallet re-price without `destroy()`; Square's SDK
   cannot load here, so any growth is unproven.
 
+## The guest's own journey, driven end to end (round 7)
+
+Found by the round-7 guest-journey audit on a full stack (MariaDB in strict mode, `php -S`, a fake Square, Chromium);
+each was reproduced before it was fixed.
+- **A CARD PAYMENT AFTER THE FIRST FAILED AFTER SQUARE HAD TAKEN THE MONEY.** pay.php and the webhook wrote
+  `payment_date = COALESCE(NULLIF(payment_date, ''), ?)`, and on a strict-mode database comparing a set DATE with
+  `''` is an error. So every balance, "pay the rest" and part payment: Square charged, the ledger row landed, and the
+  booking stayed "deposit" with no receipt and no owner alert, while the guest read "Something went wrong" and My
+  stays still asked for the money. Both are `COALESCE(payment_date, ?)` now (record_square_payment's form).
+  **test-payrail ratchets the shape**: no PHP may compare a date column with `''`, the columns read from schema.sql
+  and the migrations (78), so a new one is covered the day it is added. Gated by integration **§79**: the webhook's
+  real route on a dated booking, and pay.php's own SQL text run against the real schema (Square is off there).
+- **A RELOAD BROUGHT THE GUEST'S PAGES BACK BLANK** (`chbOpenTarget`): You, My stays and the pay screen were restored
+  with a bare `nav()`, which draws none of them, and the app reloads itself when a build ships. They open through
+  their own openers now; the pay screen (its token lives in memory) comes back as My stays, where Pay is. Gated by
+  ui-test-resume §6, which holds the stays request open for the You case and gives the guest an `avatar`: either a
+  landing stays answer or `guestAvatarEnsure` redraws You by itself, and both hid the defect from the first draft.
+- **A SAVE ON THE GUEST-DETAILS FORM SHOWED EVERY PASSPORT IN FULL.** The POST swaps an unchanged mask for the stored
+  number before validating, and both the save and a refused save rendered it. After any POST a stored number is
+  masked again; a refused save keeps what was just typed so it can be fixed. §42.
+- **A SINGLE AUTOMATIC COLLECTION IS ONLY OFFERED WHEN ITS NOTICE FITS** (`AUTOPAY_SINGLE_GAP_DAYS`, equal to
+  `AUTOPAY_NOTICE_DAYS`): a stay exactly 30 days out put the balance due today, and the collector took it that night
+  with no email, against the screen's "we'll email you 3 days before". test-autopay, both sides of the line.
+- **A RETRIED ENQUIRY IS THE SAME ENQUIRY**: `submitEnquiry` sends `op_id` (`chbOpFor`, bumped after a send).
+  Without it, tapping Send again after a lost answer made a second enquiry with its own emails. ui-test-enquiry §6.
+- **THE CHARGE WAITS LONGER THAN THE SERVER CAN TAKE** (`PAY_CHARGE_WAIT_MS` 75s through `apiPost`'s new
+  `timeoutMs`, which known-off never shortens): the page gave up at 15s, under pay.php's 30s lock wait plus 20s for
+  Square, and said the full amount was still due over a payment recorded two seconds later. ui-test-pay.
+- **ONE ROUNDING FOR A PERCENTAGE OF MONEY** (`money_pct` / `chbMoneyPct`: whole pence times whole basis points,
+  half up). The enquiry form's `Math.round(total * pct) / 100` quoted a deposit 1p off the charge, and PHP's own
+  `round()` answers by version: 8.3 pre-rounds and 8.4 does not (this container runs 8.4, CI and the host 8.3).
+  The exact rule equals 8.3's answer on every penny from £50 to £2,000 at seven percentages (1,365,007 cases), so
+  no live amount moves. **`deposit-fixtures.json`** is generated from it and looped by test-pricing and smoke-test.
+- **THE PICKER KNOWS THE SERVER'S OUTER LIMITS** (`CHB_ENQ_MAX_NIGHTS` 60 and `CHB_ENQ_MAX_AHEAD_DAYS` 730, held
+  equal to enquiries.php's by smoke-test, which also checks the sentences word for word): `checkBookingRules`
+  refuses both, and the picker puts the 60-night ceiling under any cottage maximum and refuses a check-in past two
+  years with its own reason. ui-test-datepicker §23.
+- Break-tested: every fix above fails its own named check with the change reverted.
+- **AND #1395 SHIPPED A TEST SERVER TO THE HOST.** `test-pop3-server.php` was missing from deploy.yml's strip lists;
+  test-emails-render §0 says so, and it was not run locally because #1395 merged on local checks that did not
+  include it. Fixed three ways: both strip lists name it, the script refuses anything but the command line (with
+  `register_argc_argv` on, a query string becomes `$argv`), and **htaccess denies every `test-*.php`**, which is what
+  reaches the copy already on the host, since the deploy never deletes a remote file. A local check before a merge
+  without CI is every command ci.yml's checks job runs, not a chosen few.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

@@ -315,6 +315,44 @@ const FILL = {
         await page.waitForTimeout(300);
     }
 
+    // ─── §6 A SEND WHOSE ANSWER WAS LOST GOES AGAIN AS THE SAME ENQUIRY ────────
+    // The request can reach the server and lose only its reply; the guest is told it
+    // couldn't be sent and taps Send again. Without an id that was a second enquiry,
+    // each with its own acknowledgement email and owner alert. The server answers a
+    // repeated id from its ledger (integration §17), so what the client owes is the
+    // SAME id on the retry, and a new one for an enquiry made after this one went.
+    console.log('\n§6 Sending again after a lost answer is the same enquiry');
+    const fillAll = async () => {
+        await openStep2();
+        for (const [id, v] of Object.entries(FILL)) await set(id, v);
+        await page.evaluate(() => {
+            document.getElementById('enq-nodogs').checked = true;
+            document.getElementById('enq-terms').checked = true;
+            enqLiveSync();
+        });
+    };
+    await fillAll();
+    const sentIds = [];
+    let dropNext = true;
+    holdSend = async (route) => {
+        let b = {};
+        try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+        if (b.action === 'submit') {
+            sentIds.push(String(b.op_id || ''));
+            if (dropNext) { dropNext = false; return route.abort('failed'); }
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id: 8 }) });
+    };
+    await page.evaluate(() => submitEnquiry('jollyboat'));
+    const lost = await page.evaluate(() => document.getElementById('enq-msg-details').textContent || '');
+    check(/couldn.t be sent/.test(lost), `(fixture) the first send's answer was lost (${lost.slice(0, 60)})`);
+    await page.evaluate(() => submitEnquiry('jollyboat'));
+    check(sentIds.length === 2 && /^op-/.test(sentIds[0]) && sentIds[0] === sentIds[1], `the retry carries the same id, so the server answers it once (${JSON.stringify(sentIds)})`);
+    await fillAll();
+    await page.evaluate(() => submitEnquiry('jollyboat'));
+    check(sentIds.length === 3 && sentIds[2] !== sentIds[0], 'an enquiry made after one went is a new one, even in the same words');
+    holdSend = null;
+
     console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
     await t.done(fails);
 })();

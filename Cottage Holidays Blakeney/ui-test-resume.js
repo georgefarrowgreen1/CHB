@@ -19,7 +19,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 (async () => {
-  const { page, base, done } = await boot({ viewport: { width: 1280, height: 950 } });
+  const { page, base, done, browser } = await boot({ viewport: { width: 1280, height: 950 } });
 
   // How many times each write action reached the server, and a switch to make one of
   // them slow so a double-tap has a window to land in.
@@ -392,6 +392,60 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     }
   });
   ok(onlineRestore === true, '…while online the very same target still restores');
+
+  // §6 A GUEST'S PAGE COMES BACK DRAWN. The plain-view branch restored You, My stays
+  // and the pay screen with a bare nav(), which renders none of them: You came back with
+  // nothing on it, My stays with a heading over an empty list, the pay screen a skeleton
+  // that never filled (its token lives in memory only). And the app reloads itself when
+  // a new build ships, so a guest idle on You found it blank with nothing touched.
+  console.log('§6 a guest page comes back drawn, not empty');
+  const gPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  gPage.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  await gPage.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  // avatar as the real guest_status sends it: without one, guestAvatarEnsure asks again
+  // and redraws You on its answer, which hid the defect from this check.
+  const gst = { name: 'Gwen Rowe', email: 'gwen@example.com', phone: '07700 900123', address: '1 Quay Street', postcode: 'NR25 7ND', avatar: '' };
+  const stay = { id: 77, prop_key: '21a', check_in: d(12), check_out: d(15), adults: 2, children: 0, payment: 'deposit', deposit_paid: 100, agreed_total: 400, agreed_per_night: 133.33, agreed_nights: 3, agreed_nightly: 400, agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0, pay_token: 'tok77' };
+  // The stays request is held for the You case: a landing stays answer redraws You by
+  // itself, so with it answering the check passed even with the restore broken. Held,
+  // only the restore can have drawn the page.
+  let holdStays = false;
+  await gPage.route(/\.php/, (route) => {
+    const url = route.request().url();
+    if (holdStays && url.includes('my-bookings.php')) return new Promise(() => {});
+    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    let b = {};
+    try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+    if (url.includes('auth.php')) return json(b.action === 'guest_status' ? { ok: true, guest: gst } : { ok: true, admin: false, guest: null });
+    if (url.includes('my-bookings.php')) return json({ ok: true, bookings: [stay], enquiries: [], completed_stays: 0 });
+    if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
+    return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], experiences: [], reviews: [], photos: [] });
+  });
+  await gPage.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await gPage.waitForTimeout(1500);
+  const comeBack = async (target) => {
+    await gPage.evaluate((t) => sessionStorage.setItem('chb-nav', JSON.stringify({ t, at: Date.now() })), target);
+    await gPage.reload({ waitUntil: 'domcontentloaded' });
+    await gPage.waitForFunction(() => {
+      const v = document.querySelector('.page-view.active');
+      return v && v.id !== 'view-main';
+    }, null, { timeout: 8000 }).catch(() => {});
+    await gPage.waitForTimeout(900);
+    return gPage.evaluate(() => ({
+      view: (document.querySelector('.page-view.active') || {}).id,
+      you: ((document.getElementById('guest-account-body') || {}).textContent || '').trim().length,
+      stays: document.querySelectorAll('#guest-bookings-list .guest-booking').length,
+    }));
+  };
+  holdStays = true;
+  const you = await comeBack('view-guest-account');
+  holdStays = false;
+  ok(you.view === 'view-guest-account' && you.you > 40, `You comes back drawn, not empty (${you.view}, ${you.you} chars)`);
+  const mine = await comeBack('view-guest-bookings');
+  ok(mine.view === 'view-guest-bookings' && mine.stays >= 1, `My stays comes back with the stay on it (${mine.view}, ${mine.stays} card)`);
+  const pay = await comeBack('view-pay');
+  ok(pay.view === 'view-guest-bookings' && pay.stays >= 1, `the pay screen, whose token went with the reload, comes back as the stays where Pay is (${pay.view})`);
+  await gPage.close();
 
   console.log(fails ? `RESUME TEST FAILED ❌ (${fails})` : 'RESUME TEST PASSED ✅');
   await done(fails);

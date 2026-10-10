@@ -623,9 +623,12 @@ if ($action === 'charge') {
     // those dates); payment_date is the ONLY date the manual cash/bank remainder
     // carries, so overwriting it here moved earlier manual income into this
     // charge's tax year and MTD quarter (a March bank transfer reported in a May
-    // charge's year). COALESCE preserves the earliest recorded date.
+    // charge's year). COALESCE preserves the earliest recorded date. NEVER
+    // NULLIF(payment_date, ''): the column is a DATE, and on a strict-mode database
+    // comparing a set date with '' is an error, so every card payment after the
+    // first failed here after Square had taken the money.
     db()
-        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=COALESCE(NULLIF(payment_date,''), ?) WHERE id=?")
+        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=COALESCE(payment_date, ?) WHERE id=?")
         ->execute([$newStatus, $newPaid, 'Square card', date('Y-m-d'), $bookingId]);
 
     book_unlock($b['prop_key']);
