@@ -44,6 +44,19 @@ $asc = implode("\r\n", array_merge([explode("\r\n", $BIZ)[0]], array_reverse(arr
 $pa = statement_parse($asc, 'x.csv');
 stc('…and the same when the file is oldest first', $pa['balance'] === 3284.12, var_export($pa['balance'], true));
 stc('a byte-order mark is ignored', statement_parse("\xEF\xBB\xBF" . $BIZ, 'x.csv')['ok']);
+// Two payments at the same moment (no time column here): the closing balance is the one
+// no other payment follows, by the balances (A's 1000 + B's −50 = B's 950), whichever
+// order the file lists them. The last row of the tie was the OPENING one newest-first.
+$TIE = "Date,Name,Amount,Balance\n06/10/2026,B,-50.00,950.00\n06/10/2026,A,200.00,1000.00\n05/10/2026,C,-10.00,800.00\n";
+stc('a tie on the last day: the balance after the payment that came last, newest first', statement_parse($TIE, 't.csv')['balance'] === 950.0, var_export(statement_parse($TIE, 't.csv')['balance'], true));
+$TIEUP = "Date,Name,Amount,Balance\n05/10/2026,C,-10.00,800.00\n06/10/2026,A,200.00,1000.00\n06/10/2026,B,-50.00,950.00\n";
+stc('…and oldest first', statement_parse($TIEUP, 't.csv')['balance'] === 950.0, var_export(statement_parse($TIEUP, 't.csv')['balance'], true));
+$TIE1 = "Date,Name,Amount,Balance\n06/10/2026,B,-50.00,950.00\n06/10/2026,A,200.00,1000.00\n";
+stc('…and in a one-day statement, where the file\'s order cannot say which way it runs', statement_parse($TIE1, 't.csv')['balance'] === 950.0, var_export(statement_parse($TIE1, 't.csv')['balance'], true));
+$TIEGAP = "Date,Name,Amount,Balance\n06/10/2026,B,-50.00,700.00\n06/10/2026,A,200.00,1000.00\n05/10/2026,C,-10.00,800.00\n";
+$TIEGAPUP = "Date,Name,Amount,Balance\n05/10/2026,C,-10.00,800.00\n06/10/2026,A,200.00,1000.00\n06/10/2026,B,-50.00,700.00\n";
+stc('balances that cannot say: the file\'s own order decides, the same either way round', statement_parse($TIEGAP, 't.csv')['balance'] === 700.0 && statement_parse($TIEGAPUP, 't.csv')['balance'] === 700.0,
+    var_export([statement_parse($TIEGAP, 't.csv')['balance'], statement_parse($TIEGAPUP, 't.csv')['balance']], true));
 
 echo "\n§2 Other shapes of statement\n";
 $PERSONAL = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split\n"
@@ -88,6 +101,9 @@ stc('a pot transfer is the owner’s own money moving', ($auto('Pot transfer', '
 stc('a guest’s transfer needs the owner', $auto('Faster payment', 'M HILL', 377.5, 'CHB-000041') === null);
 stc('an Airbnb payout needs the owner (it is income to sort, not card money)', $auto('Faster payment', 'AIRBNB PAYMENTS UK', 612.4) === null);
 stc('"deposit" is not a pot', $auto('Faster payment', 'DEPOSIT', 50) === null);
+$autoP = fn($type, $name, $amt) => statement_auto(['type' => $type, 'name' => $name, 'amount' => $amt, 'description' => ''], ['george' => 7]);
+stc('a payment to a linked name is theirs', ($autoP('Faster payment', 'GEORGE', -100)[0] ?? '') === 'person');
+stc('…but a pot NAMED like them is still the owner\'s own money moving', ($autoP('Pot transfer', 'George', -100)[0] ?? '') === 'pot');
 
 echo "\n§5 When a statement is due\n";
 $d = statement_due('2026-10-08', '2026-11-01');

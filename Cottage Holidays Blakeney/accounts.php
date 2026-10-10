@@ -31,7 +31,8 @@ $bookings = db()
             b.agreed_total, b.agreed_booking_fee, b.agreed_nightly, b.agreed_txn_fee, b.price_override,
             p.name AS property_name
      FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
-     WHERE b.deposit_paid > 0',
+     WHERE b.deposit_paid > 0
+        OR EXISTS (SELECT 1 FROM payments r WHERE r.booking_id = b.id AND r.kind = \'refund\')',
     )
     ->fetchAll();
 
@@ -57,14 +58,33 @@ try {
 } catch (\Throwable $e) {
     // payments table not migrated — every booking falls back to payment_date below.
 }
+// Rental refunds per booking, on the day each went back. On a cash basis a refund
+// reduces the period it is PAID in: netted into the arrival dates instead, a refund
+// in May took £300 off a closed March year and left May's quarter untouched.
+$refundsByBooking = [];
+try {
+    $rq = db()->query(
+        "SELECT booking_id, DATE(created_at) d, ROUND(SUM(amount),2) a
+           FROM payments
+          WHERE kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))
+          GROUP BY booking_id, DATE(created_at)
+          ORDER BY booking_id, d",
+    );
+    foreach ($rq->fetchAll() as $rr) {
+        $refundsByBooking[(int) $rr['booking_id']][] = [$rr['d'], (float) $rr['a']];
+    }
+} catch (\Throwable $e) {
+}
 
 // Split $income across the card-payment dates oldest-first (each date absorbs up
 // to its own amount); any remainder (manual bank/cash money that has no ledger
 // row) is attributed to the booking's payment_date. Returns [taxYear => portion].
-function allocate_income_by_year($income, $cardDates, $paymentDate)
+// $refunds: [[date, amount]] given back. What arrived BEFORE them (income + refunds)
+// is allocated to the days it arrived, and each refund comes off on its own day.
+function allocate_income_by_year($income, $cardDates, $paymentDate, $refunds = [])
 {
     $byYear = [];
-    $remaining = $income;
+    $remaining = $income + array_sum(array_map(fn($r) => (float) $r[1], $refunds));
     foreach ($cardDates as [$d, $amt]) {
         if ($remaining <= 0.005) {
             break;
@@ -80,6 +100,14 @@ function allocate_income_by_year($income, $cardDates, $paymentDate)
         $ty = tax_year_start($paymentDate);
         $byYear[$ty === null ? 'null' : $ty] = ($byYear[$ty === null ? 'null' : $ty] ?? 0) + $remaining;
     }
+    foreach ($refunds as [$d, $amt]) {
+        $ty = tax_year_start($d);
+        $byYear[$ty === null ? 'null' : $ty] = ($byYear[$ty === null ? 'null' : $ty] ?? 0) - (float) $amt;
+    }
+    // A year a refund cancelled out exactly has nothing to report.
+    if (count($byYear) > 1) {
+        $byYear = array_filter($byYear, fn($v) => abs($v) > 0.005);
+    }
     return $byYear;
 }
 
@@ -91,10 +119,10 @@ function allocate_income_by_year($income, $cardDates, $paymentDate)
 // dated inside the next fell outside all four quarter bounds and vanished from the
 // table entirely. Shipping the days lets the quarters be summed from what actually
 // happened, exactly as fee_days and kept_days already are.
-function allocate_income_by_day($income, $cardDates, $paymentDate)
+function allocate_income_by_day($income, $cardDates, $paymentDate, $refunds = [])
 {
     $out = [];
-    $remaining = $income;
+    $remaining = $income + array_sum(array_map(fn($r) => (float) $r[1], $refunds));
     foreach ($cardDates as [$d, $amt]) {
         if ($remaining <= 0.005) {
             break;
@@ -109,6 +137,11 @@ function allocate_income_by_day($income, $cardDates, $paymentDate)
     // the booking's own — the same fallback allocate_income_by_year() uses.
     if ($remaining > 0.005 && $paymentDate) {
         $out[] = ['d' => substr((string) $paymentDate, 0, 10), 'a' => round($remaining, 2)];
+    }
+    foreach ($refunds as [$d, $amt]) {
+        if ((float) $amt > 0.005) {
+            $out[] = ['d' => (string) $d, 'a' => -round((float) $amt, 2)];
+        }
     }
     return $out;
 }
@@ -139,9 +172,17 @@ foreach ($bookings as $b) {
     $heldPart = max(0.0, $received - $rentalPrice);
     $paymentYear = tax_year_start($b['payment_date']); // where the held deposit + display date sit
 
-    $byYear = allocate_income_by_year($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date']);
-    foreach (allocate_income_by_day($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date']) as $dayRow) {
+    $byYear = allocate_income_by_year($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date'], $refundsByBooking[(int) $b['id']] ?? []);
+    foreach (allocate_income_by_day($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date'], $refundsByBooking[(int) $b['id']] ?? []) as $dayRow) {
         $incomeDays[] = $dayRow;
+    }
+    // A stay refunded in full is listed only in a year it still moves: one whose refund
+    // went back in a later year than the money came in.
+    if ($received <= 0.005) {
+        $byYear = array_filter($byYear, fn($v) => abs($v) > 0.005);
+        if (!$byYear) {
+            continue;
+        }
     }
     if (!$byYear) {
         $byYear = [$paymentYear === null ? 'null' : $paymentYear => 0.0]; // no income (edge) — still surface held
@@ -194,14 +235,27 @@ try {
     // landing, the statement PDF and the CSV. Net the whole booking first, floor at
     // zero, then allocate whatever survives across its own charge dates oldest-first
     // — the same shape the kept-damages block below already uses.
+    // EACH DAY AS IT HAPPENED, and the cottage the money belongs to. Charges count on
+    // the day they arrived and refunds come off on the day they went back (cash basis),
+    // so a year a refund cancels out reports nothing while a refund in a later year
+    // reduces THAT year, never a closed one. The ledger rows carry the cottage key;
+    // reading it here keeps a cancelled stay's kept money with its cottage, where it
+    // used to land on no cottage and so on the account holder's side of the split.
     $orphanRows = db()->query(
-        "SELECT booking_id, DATE(created_at) d,
+        "SELECT booking_id, DATE(created_at) d, MAX(prop_key) pk,
               ROUND(COALESCE(SUM(CASE WHEN (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')) OR (kind = 'manual' AND UPPER(status) = 'MANUAL') THEN amount ELSE 0 END),0),2) charged,
               ROUND(COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) refunded
            FROM payments
           GROUP BY booking_id, DATE(created_at)
           ORDER BY booking_id, d",
     )->fetchAll();
+    $propNames = [];
+    try {
+        foreach (db()->query('SELECT prop_key, name FROM properties')->fetchAll() as $pr) {
+            $propNames[(string) $pr['prop_key']] = (string) $pr['name'];
+        }
+    } catch (\Throwable $e) {
+    }
     $orphanBk = [];
     foreach ($orphanRows as $o) {
         $bid = (int) $o['booking_id'];
@@ -209,44 +263,52 @@ try {
             continue; // live booking — already counted above
         }
         if (!isset($orphanBk[$bid])) {
-            $orphanBk[$bid] = ['charges' => [], 'refunded' => 0.0];
+            $orphanBk[$bid] = ['days' => [], 'pk' => ''];
         }
-        if ((float) $o['charged'] > 0.005) {
-            $orphanBk[$bid]['charges'][] = ['d' => $o['d'], 'amt' => (float) $o['charged']];
+        $net = round((float) $o['charged'] - (float) $o['refunded'], 2);
+        if (abs($net) > 0.005) {
+            $orphanBk[$bid]['days'][] = ['d' => (string) $o['d'], 'a' => $net];
         }
-        $orphanBk[$bid]['refunded'] += (float) $o['refunded'];
+        if ($orphanBk[$bid]['pk'] === '' && (string) ($o['pk'] ?? '') !== '') {
+            $orphanBk[$bid]['pk'] = (string) $o['pk'];
+        }
     }
     foreach ($orphanBk as $bid => $info) {
-        $gross = 0.0;
-        foreach ($info['charges'] as $c) {
-            $gross += $c['amt'];
+        // Refunds beyond what the ledger shows came in (money taken before it kept cash
+        // rows) cannot be placed, so that booking reports nothing, as it always did.
+        if (array_sum(array_column($info['days'], 'a')) < -0.005) {
+            continue;
         }
-        $left = round($gross - $info['refunded'], 2);
-        if ($left <= 0.005) {
-            continue; // fully refunded — the owner kept nothing, so there is no income
-        }
-        foreach ($info['charges'] as $c) {
-            if ($left <= 0.005) {
-                break;
+        $byYear = [];
+        foreach ($info['days'] as $day) {
+            $incomeDays[] = $day;
+            $ty = tax_year_start($day['d']);
+            $key = $ty === null ? 'null' : $ty;
+            if (!isset($byYear[$key])) {
+                $byYear[$key] = ['a' => 0.0, 'd' => $day['d']];
             }
-            $take = round(min($left, $c['amt']), 2);
-            $left = round($left - $take, 2);
-            $incomeDays[] = ['d' => $c['d'], 'a' => $take];
-            $ty = tax_year_start($c['d']);
+            $byYear[$key]['a'] += $day['a'];
+        }
+        foreach ($byYear as $key => $yr) {
+            $amt = round($yr['a'], 2);
+            if (abs($amt) <= 0.005) {
+                continue; // refunded within the year: the owner kept nothing from it then
+            }
+            $ty = $key === 'null' ? null : (int) $key;
             $rows[] = [
                 'id' => $bid,
                 'name' => '(cancelled booking)',
-                'prop_key' => '',
-                'property_name' => '',
+                'prop_key' => $info['pk'],
+                'property_name' => $propNames[$info['pk']] ?? '',
                 'payment_method' => 'Cancelled — kept',
-                'payment_date' => $c['d'],
-                'received' => $take,
-                'income_part' => $take,
+                'payment_date' => $yr['d'],
+                'received' => $amt,
+                'income_part' => $amt,
                 'held_part' => 0.0,
                 'tax_year' => $ty,
             ];
             if ($ty === null) {
-                $undatedIncome += $take;
+                $undatedIncome += $amt;
                 $undatedCount++;
             } else {
                 $years[$ty] = true;
@@ -286,6 +348,7 @@ try {
 // DATE (created_at) so they allocate to the right UK tax year like the fees.
 // Guarded for a not-yet-migrated DB (the 'damages' enum value arrives in zz8).
 $keptDays = [];
+$keptByBooking = [];
 try {
     // Captured damages MINUS any damages_return refunded against them (net kept).
     // hold_capture's flow directs the owner to refund the excess via the normal
@@ -313,7 +376,7 @@ try {
     // row is therefore counted at face value and its booking's returns ignored.
     $keptRows = db()
         ->query(
-            "SELECT booking_id, DATE(created_at) d, kind, amount, square_payment_id sid FROM payments
+            "SELECT booking_id, DATE(created_at) d, kind, amount, square_payment_id sid, prop_key FROM payments
               WHERE (kind = 'damages' AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED'))
                  OR (kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')))
               ORDER BY created_at",
@@ -323,7 +386,10 @@ try {
     foreach ($keptRows as $kr) {
         $bid = (int) $kr['booking_id'];
         if (!isset($perBooking[$bid])) {
-            $perBooking[$bid] = ['captures' => [], 'returned' => 0.0, 'net' => false];
+            $perBooking[$bid] = ['captures' => [], 'returned' => 0.0, 'net' => false, 'pk' => ''];
+        }
+        if ($perBooking[$bid]['pk'] === '' && (string) ($kr['prop_key'] ?? '') !== '') {
+            $perBooking[$bid]['pk'] = (string) $kr['prop_key'];
         }
         if ($kr['kind'] === 'damages') {
             $perBooking[$bid]['captures'][] = [$kr['d'], (float) $kr['amount']];
@@ -335,7 +401,7 @@ try {
         }
     }
     $keptByDay = [];
-    foreach ($perBooking as $p) {
+    foreach ($perBooking as $kbid => $p) {
         $captured = array_sum(array_map(fn($c) => $c[1], $p['captures']));
         $kept = $p['net']
             ? round(max(0.0, $captured), 2)
@@ -352,6 +418,9 @@ try {
             }
             $take = min($left, $camt);
             $keptByDay[$cd] = ($keptByDay[$cd] ?? 0) + $take;
+            // …and per booking, with its cottage, for the split (whose money it is).
+            $keptByBooking[$kbid]['prop'] = $p['pk'];
+            $keptByBooking[$kbid]['days'][] = [$cd, round($take, 2)];
             $left -= $take;
         }
     }
@@ -635,6 +704,8 @@ $accountsOut = [
 // money.php includes this file for the SAME report (the books and where the money
 // is), so the arithmetic above exists once: included, it hands the array back.
 if (defined('CHB_ACCOUNTS_AS_LIB')) {
+    // Kept deposits per booking, every year, with the cottage they came from.
+    $accountsOut['kept_by_booking'] = $keptByBooking;
     return $accountsOut;
 }
 json_out($accountsOut);

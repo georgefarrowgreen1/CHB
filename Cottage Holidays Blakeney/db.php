@@ -2310,6 +2310,22 @@ function square_location_id()
         return '';
     }
 }
+// When Square took a payment, on the UK clock (the books date income by it). Square
+// sends UTC, so a payment at 23:30 UTC in summer is the next day here. A missing or
+// unreadable time is now, the moment it was recorded.
+function square_taken_at(array $payment, ?string $now = null): string
+{
+    $fallback = $now ?? date('Y-m-d H:i:s');
+    $at = trim((string) ($payment['created_at'] ?? ''));
+    if ($at === '') {
+        return $fallback;
+    }
+    try {
+        return (new DateTime($at))->setTimezone(new DateTimeZone('Europe/London'))->format('Y-m-d H:i:s');
+    } catch (\Throwable $e) {
+        return $fallback;
+    }
+}
 // The webhook signing key. A config.php constant wins; otherwise the key the app
 // captured when it created the subscription, stored encrypted at rest under the
 // private 'apikey-' content key. Empty string when the webhook isn't wired up yet.

@@ -44,11 +44,14 @@ function split_people(): array
     }
     return $out;
 }
-function split_cottage_list(): array
+// $all: archived cottages too. The FIGURES need them — an archived cottage still
+// earned this year's money, and leaving it out dropped its income from the holder's
+// profit while its costs stayed — but nobody is asked to host one.
+function split_cottage_list(bool $all = false): array
 {
     $out = [];
     try {
-        foreach (db()->query('SELECT prop_key, name FROM properties WHERE archived_at IS NULL ORDER BY sort_order, prop_key')->fetchAll() as $r) {
+        foreach (db()->query('SELECT prop_key, name FROM properties' . ($all ? '' : ' WHERE archived_at IS NULL') . ' ORDER BY sort_order, prop_key')->fetchAll() as $r) {
             $out[(string) $r['prop_key']] = (string) $r['name'];
         }
     } catch (\Throwable $e) {
@@ -70,10 +73,12 @@ function split_fees_by_prop(string $from, string $to): array
 {
     $out = [];
     try {
-        $q = db()->prepare("SELECT b.prop_key k, ROUND(SUM(p.fee),2) f FROM payments p JOIN bookings b ON b.id = p.booking_id
+        // LEFT JOIN: a cancelled stay's booking is gone but its fee was still taken,
+        // and the ledger row carries the cottage.
+        $q = db()->prepare("SELECT COALESCE(b.prop_key, p.prop_key) k, ROUND(SUM(p.fee),2) f FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id
             WHERE p.fee IS NOT NULL AND p.fee > 0 AND p.kind NOT IN ('refund','damages_return')
               AND UPPER(p.status) IN ('COMPLETED','APPROVED','CAPTURED') AND p.created_at >= ? AND p.created_at < ?
-            GROUP BY b.prop_key");
+            GROUP BY COALESCE(b.prop_key, p.prop_key)");
         $q->execute([$from, $to]);
         foreach ($q->fetchAll() as $r) {
             $out[(string) $r['k']] = (float) $r['f'];
@@ -115,14 +120,16 @@ function split_sent_lines(int $id, string $since): array
 // The money a person's cottages brought in since a date, as it was counted: each
 // booking's income on the days it arrived (accounts.php's own allocation), less
 // the card fee taken that day, plus each platform payout matched to the cottages.
-function split_items(array $props, string $since, string $until): array
+// $kept: accounts.php's kept deposits per booking (kept_by_booking), every year.
+function split_items(array $props, string $since, string $until, array $kept = []): array
 {
     $items = [];
     if (!$props || !function_exists('allocate_income_by_day')) {
         return $items;
     }
     try {
-        $q = db()->prepare('SELECT * FROM bookings WHERE deposit_paid > 0 AND prop_key IN (' . split_in($props) . ')');
+        // A stay refunded in full reads £0 paid but still has money in and money out.
+        $q = db()->prepare("SELECT * FROM bookings b WHERE (b.deposit_paid > 0 OR EXISTS (SELECT 1 FROM payments r WHERE r.booking_id = b.id AND r.kind = 'refund')) AND b.prop_key IN (" . split_in($props) . ')');
         $q->execute($props);
         $bookings = $q->fetchAll();
     } catch (\Throwable $e) {
@@ -131,6 +138,7 @@ function split_items(array $props, string $since, string $until): array
     $ids = array_map(fn($b) => (int) $b['id'], $bookings);
     $card = [];
     $fees = [];
+    $refunds = [];
     if ($ids) {
         try {
             $c = db()->prepare("SELECT booking_id, DATE(created_at) d, ROUND(SUM(amount),2) a FROM payments
@@ -147,6 +155,13 @@ function split_items(array $props, string $since, string $until): array
             foreach ($f->fetchAll() as $r) {
                 $fees[(int) $r['booking_id']][(string) $r['d']] = (float) $r['f'];
             }
+            $rf = db()->prepare("SELECT booking_id, DATE(created_at) d, ROUND(SUM(amount),2) a FROM payments
+                WHERE kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))
+                  AND booking_id IN (" . split_in($ids) . ') GROUP BY booking_id, DATE(created_at) ORDER BY booking_id, d');
+            $rf->execute($ids);
+            foreach ($rf->fetchAll() as $r) {
+                $refunds[(int) $r['booking_id']][] = [$r['d'], (float) $r['a']];
+            }
         } catch (\Throwable $e) {
         }
     }
@@ -155,14 +170,23 @@ function split_items(array $props, string $since, string $until): array
         $received = (float) $b['deposit_paid'];
         $rental = booking_rental_price($b);
         $income = $rental > 0 ? min($received, $rental) : $received;
-        $days = allocate_income_by_day($income, $card[$bid] ?? [], $b['payment_date']);
+        // Refunds come off on the day they went back (the books' rule), so money handed
+        // back reduces what the host is owed rather than vanishing from the figures.
+        $days = allocate_income_by_day($income, $card[$bid] ?? [], $b['payment_date'], $refunds[$bid] ?? []);
         $bf = $fees[$bid] ?? [];
+        $lastIn = -1;
+        foreach ($days as $i => $row) {
+            if ((float) $row['a'] > 0) {
+                $lastIn = $i;
+            }
+        }
         foreach ($days as $i => $row) {
             $d = (string) $row['d'];
             $amt = (float) $row['a'] - ($bf[$d] ?? 0);
             unset($bf[$d]);
-            if ($i === count($days) - 1) {
+            if ($i === ($lastIn >= 0 ? $lastIn : count($days) - 1)) {
                 $amt -= array_sum($bf); // a fee on a day the income didn't land: the stay's cost all the same
+                $bf = [];
             }
             if ($d < $since || $d >= $until) {
                 continue;
@@ -171,6 +195,61 @@ function split_items(array $props, string $since, string $until): array
                 'key' => 'b' . $bid, 'booking_id' => $bid, 'name' => (string) $b['name'], 'prop' => (string) $b['prop_key'],
                 'stay' => split_stay((string) $b['check_in'], (string) $b['check_out']),
                 'date' => $d, 'counted' => $d . ' 12:00:00', 'amount' => round($amt, 2),
+            ];
+        }
+    }
+    // CANCELLED STAYS on these cottages. Cancelling deletes the booking, but its ledger
+    // rows keep the cottage, and what was kept (less its card fee) is still this
+    // cottage's money: it used to land on the account holder, fee dropped. Each day as
+    // it happened, refunds included (the books' rule), so a stay refunded in full nets
+    // to its fee. Refunds beyond what the ledger shows came in leave only the fees.
+    try {
+        $oq = db()->prepare("SELECT booking_id, MAX(guest_name) nm, MAX(prop_key) pk, DATE(created_at) d,
+              ROUND(COALESCE(SUM(CASE WHEN (kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')) OR (kind = 'manual' AND UPPER(status) = 'MANUAL') THEN amount ELSE 0 END),0),2) charged,
+              ROUND(COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) refunded,
+              ROUND(COALESCE(SUM(CASE WHEN fee IS NOT NULL AND fee > 0 AND kind NOT IN ('refund','damages_return') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN fee ELSE 0 END),0),2) fee
+            FROM payments WHERE prop_key IN (" . split_in($props) . ') AND booking_id NOT IN (SELECT id FROM bookings)
+            GROUP BY booking_id, DATE(created_at) ORDER BY booking_id, d');
+        $oq->execute($props);
+        $orph = [];
+        foreach ($oq->fetchAll() as $r) {
+            $orph[(int) $r['booking_id']][] = $r;
+        }
+        foreach ($orph as $obid => $orows) {
+            $kept0 = array_sum(array_map(fn($r) => (float) $r['charged'] - (float) $r['refunded'], $orows)) >= -0.005;
+            foreach ($orows as $r) {
+                $d = (string) $r['d'];
+                $amt = round(($kept0 ? (float) $r['charged'] - (float) $r['refunded'] : 0.0) - (float) $r['fee'], 2);
+                if (abs($amt) <= 0.005 || $d < $since || $d >= $until) {
+                    continue;
+                }
+                $items[] = [
+                    'key' => 'c' . $obid, 'booking_id' => $obid, 'name' => trim((string) $r['nm']) . ' (cancelled)', 'prop' => (string) $r['pk'],
+                    'stay' => '', 'date' => $d, 'counted' => $d . ' 12:00:00', 'amount' => $amt,
+                ];
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    // KEPT DEPOSITS are income (the books count them), so a deposit kept for damage at
+    // a host's cottage is that host's money; it used to count for nobody.
+    $live = [];
+    foreach ($bookings as $b) {
+        $live[(int) $b['id']] = (string) $b['name'];
+    }
+    foreach ($kept as $kbid => $k) {
+        if (!in_array((string) ($k['prop'] ?? ''), $props, true)) {
+            continue;
+        }
+        foreach ((array) ($k['days'] ?? []) as $kd) {
+            $d = (string) ($kd[0] ?? '');
+            if ($d < $since || $d >= $until) {
+                continue;
+            }
+            $kbid = (int) $kbid;
+            $items[] = [
+                'key' => (isset($live[$kbid]) ? 'b' : 'c') . $kbid, 'booking_id' => $kbid, 'name' => ($live[$kbid] ?? 'A guest') . ' · deposit kept', 'prop' => (string) $k['prop'],
+                'stay' => '', 'date' => $d, 'counted' => $d . ' 12:00:00', 'amount' => round((float) ($kd[1] ?? 0), 2),
             ];
         }
     }
@@ -186,10 +265,10 @@ function split_items(array $props, string $since, string $until): array
     return $items;
 }
 // One paid-out person's figures.
-function split_person(array $cfg, array $person, array $names, string $since, string $yearFrom, string $until): array
+function split_person(array $cfg, array $person, array $names, string $since, string $yearFrom, string $until, array $kept = []): array
 {
     $props = split_cottages_of($cfg, $person['id']);
-    $items = split_items($props, $since, $until);
+    $items = split_items($props, $since, $until, $kept);
     $share = round(array_sum(array_column($items, 'amount')), 2);
     $lines = split_sent_lines($person['id'], $since);
     $sent = round(-array_sum(array_map(fn($l) => (float) $l['amount'], $lines)), 2);
@@ -265,9 +344,13 @@ route_actions([
             json_out($out);
         }
         $report = split_report($year);
+        $kept = (array) ($report['kept_by_booking'] ?? []);
+        // The figures include archived cottages (their money and costs are still this
+        // year's); the cottage list above, for choosing hosts, does not.
+        $allNames = split_cottage_list(true) ?: $names;
         if ($role === 'paid') {
             $person = $people[$me] ?? ['id' => $me, 'name' => 'You', 'first' => 'You'];
-            $out['me'] = split_person($cfg, $person, $names, $since, $yearFrom, $until);
+            $out['me'] = split_person($cfg, $person, $allNames, $since, $yearFrom, $until, $kept);
             if (!$out['me']['payees']) {
                 $out['me']['candidates'] = split_candidates($person);
             }
@@ -291,18 +374,29 @@ route_actions([
         foreach (split_platform_lines($yearFrom, $until) as $l) {
             $plat[(string) $l['prop_key']] = ($plat[(string) $l['prop_key']] ?? 0) + (float) $l['amount'];
         }
-        $mine = split_holder_cottages($cfg, array_keys($names));
+        // Deposits kept for damage this tax year, by cottage: income, as the books say.
+        $keptBy = [];
+        foreach ($kept as $kk) {
+            foreach ((array) ($kk['days'] ?? []) as $kd) {
+                $d = (string) ($kd[0] ?? '');
+                if ($d >= $yearFrom && $d < $until) {
+                    $keptBy[(string) ($kk['prop'] ?? '')] = ($keptBy[(string) ($kk['prop'] ?? '')] ?? 0) + (float) ($kd[1] ?? 0);
+                }
+            }
+        }
+        $other += $keptBy[''] ?? 0;
+        $mine = split_holder_cottages($cfg, array_keys($allNames));
         $rows = [];
         $sum = 0.0;
         foreach ($mine as $k) {
-            $net = round(($income[$k] ?? 0) + ($plat[$k] ?? 0) - ($fees[$k] ?? 0), 2);
-            $rows[] = ['k' => $k, 'name' => $names[$k] ?? $k, 'net' => $net, 'host' => $cfg['hosts'][$k] ?? 0];
+            $net = round(($income[$k] ?? 0) + ($plat[$k] ?? 0) + ($keptBy[$k] ?? 0) - ($fees[$k] ?? 0), 2);
+            $rows[] = ['k' => $k, 'name' => $allNames[$k] ?? $k, 'net' => $net, 'host' => $cfg['hosts'][$k] ?? 0];
             $sum += $net;
         }
         // The account's costs: every expense recorded, except one tagged to a cottage
         // somebody else is paid out for (that host pays its costs from their own money).
         $costs = 0.0;
-        $theirs = array_values(array_diff(array_keys($names), $mine));
+        $theirs = array_values(array_diff(array_keys($allNames), $mine));
         try {
             $q = db()->prepare('SELECT COALESCE(SUM(amount),0) FROM expenses WHERE expense_date >= ? AND expense_date < ?'
                 . ($theirs ? ' AND (prop_key IS NULL OR prop_key NOT IN (' . split_in($theirs) . '))' : ''));
@@ -315,7 +409,7 @@ route_actions([
         $out['costs'] = round($costs, 2);
         $out['profit'] = round($sum + $other - $costs, 2);
         $out['paid_out'] = array_map(
-            fn($id) => split_person($cfg, $people[$id] ?? ['id' => $id, 'name' => 'Someone', 'first' => 'Someone'], $names, $since, $yearFrom, $until),
+            fn($id) => split_person($cfg, $people[$id] ?? ['id' => $id, 'name' => 'Someone', 'first' => 'Someone'], $allNames, $since, $yearFrom, $until, $kept),
             split_paid_out($cfg),
         );
         json_out($out);
@@ -381,6 +475,7 @@ route_actions([
         // Payments already here to exactly that name are theirs too.
         $n = 0;
         $total = 0.0;
+        $ids = [];
         $up = db()->prepare("UPDATE bank_lines SET sorted_as = 'person', admin_id = ?, sorted_label = ?, sorted_at = NOW() WHERE id = ? AND sorted_as IS NULL");
         foreach (db()->query('SELECT id, name, amount FROM bank_lines WHERE sorted_as IS NULL AND amount < 0')->fetchAll() as $l) {
             if (split_norm((string) $l['name']) === split_norm($name)) {
@@ -388,11 +483,13 @@ route_actions([
                 if ($up->rowCount() > 0) {
                     $n++;
                     $total += -(float) $l['amount'];
+                    $ids[] = (int) $l['id'];
                 }
             }
         }
         log_activity('payment', 'split.link', 'Payments to ' . $name . ' now count as paid to ' . (split_people()[$id]['name'] ?? 'them'), ['entity' => 'split']);
-        json_out(['ok' => true, 'count' => $n, 'total' => round($total, 2)]);
+        // Which lines THIS link sorted, so its Undo puts back only those.
+        json_out(['ok' => true, 'count' => $n, 'total' => round($total, 2), 'ids' => $ids]);
     },
 
     'unlink' => function ($in) {
@@ -408,11 +505,18 @@ route_actions([
         }
         split_cfg_save($cfg);
         $n = 0;
+        // An UNDO of a link names the lines that link sorted: only those go back to sort,
+        // never one sorted to this person by hand before the name was linked (that used
+        // to drop it too, and "sent to George" fell from £400 to £0 instead of back to £400).
+        $only = isset($in['ids']) && is_array($in['ids']) ? array_map('intval', $in['ids']) : null;
         if (split_cols_ready()) {
             $up = db()->prepare('UPDATE bank_lines SET sorted_as = NULL, admin_id = NULL, sorted_label = NULL, sorted_at = NULL WHERE id = ?');
             $q = db()->prepare("SELECT id, name FROM bank_lines WHERE sorted_as = 'person' AND admin_id = ?");
             $q->execute([$id]);
             foreach ($q->fetchAll() as $l) {
+                if ($only !== null && !in_array((int) $l['id'], $only, true)) {
+                    continue;
+                }
                 if (split_norm((string) $l['name']) === split_norm($name)) {
                     $up->execute([(int) $l['id']]);
                     $n++;

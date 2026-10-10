@@ -17367,26 +17367,62 @@ function pmLineAt(l) {
     return Math.round(pmIso(l.date) / 1000) + (m ? Number(m[1]) * 3600 + Number(m[2]) * 60 : 43200);
 }
 const pmIsoOf = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-// Which record each bank payment is the same money as: event id → bank line.
+// Which record each bank payment is the same money as: event id → { l, v } (the first
+// payment joined; the figure shown, null for its own). Payments linked to a booking are
+// matched booking by booking, one to one within four days, then the rest nearest in
+// date within a month, and show the bank's total when larger (a deposit rode with it).
 function pmJoin() {
     const out = new Map();
     const used = new Set();
     const day = 864e5;
-    pmBankLines().forEach((l) => {
+    const lines = pmBankLines();
+    lines.forEach((l) => {
         let ev = null;
         if (l.as === 'expense' && l.expense_id) {
             ev = __pmAct.find((e) => e.id === 'x' + l.expense_id && !used.has(e.id)) || null;
         } else if (l.as === 'square' && l.amount > 0) {
             ev = __pmAct.find((e) => e.kind === 'payout' && !used.has(e.id) && Math.abs(e.amount - l.amount) < 0.01
                 && !!e.arrival && Math.abs(pmIso(e.arrival) - pmIso(l.date)) <= 4 * day) || null;
-        } else if (l.as === 'payment' && l.booking_id && l.amount > 0) {
-            // A transfer recorded on its booking: the manual row is the rental part,
-            // so it can be smaller than the bank's figure when a deposit rode with it.
-            ev = __pmAct.filter((e) => e.kind === 'in' && e.method !== 'card' && !used.has(e.id) && Number(e.booking_id) === Number(l.booking_id)
-                && e.amount <= l.amount + 0.01 && Math.abs(pmDayStart(e.at * 1000) - pmIso(l.date)) <= 4 * day)
-                .sort((a, z) => Math.abs(a.amount - l.amount) - Math.abs(z.amount - l.amount))[0] || null;
         }
-        if (ev) { used.add(ev.id); out.set(ev.id, l); }
+        if (ev) { used.add(ev.id); out.set(ev.id, { l, v: null }); }
+    });
+    const gap = (e, l) => Math.abs(pmDayStart(e.at * 1000) - pmIso(l.date));
+    /** @type {Map<number, any[]>} */
+    const byB = new Map();
+    lines.forEach((l) => {
+        if (l.as !== 'payment' || !l.booking_id || !(l.amount > 0)) return;
+        const k = Number(l.booking_id);
+        if (!byB.has(k)) byB.set(k, []);
+        byB.get(k).push(l);
+    });
+    byB.forEach((L, bid) => {
+        const E = __pmAct.filter((e) => e.kind === 'in' && e.method !== 'card' && Number(e.booking_id) === bid)
+            .sort((a, z) => a.at - z.at);
+        const taken = new Set();
+        /** @type {Map<string, any[]>} */
+        const got = new Map();
+        L.forEach((l) => {
+            const ev = E.filter((e) => !got.has(e.id) && e.amount <= l.amount + 0.01 && gap(e, l) <= 4 * day)
+                .sort((a, z) => Math.abs(a.amount - l.amount) - Math.abs(z.amount - l.amount))[0];
+            if (ev) { got.set(ev.id, [l]); taken.add(l.id); }
+        });
+        E.forEach((e) => {
+            if (got.has(e.id)) return;
+            const near = L.filter((l) => !taken.has(l.id) && gap(e, l) <= 31 * day).sort((a, z) => gap(e, a) - gap(e, z));
+            const pick = [];
+            let sum = 0;
+            for (const l of near) {
+                if (sum >= e.amount - 0.01) break;
+                pick.push(l);
+                sum += l.amount;
+            }
+            if (pick.length) { got.set(e.id, pick); pick.forEach((l) => taken.add(l.id)); }
+        });
+        got.forEach((ls, id) => {
+            const e = E.find((x) => x.id === id);
+            const bank = ls.reduce((s, l) => s + l.amount, 0);
+            out.set(id, { l: ls[0], lines: ls, v: Math.round(Math.max(e.amount, bank) * 100) / 100 });
+        });
     });
     return out;
 }
@@ -17405,9 +17441,10 @@ function pmBankSeenTo() {
 const pmBankToSort = () => (__pmBank && (pmBankOn() || pmLiveOn() || pmBankLines().length) ? Number(__pmBank.unsorted) || 0 : 0);
 function pmMoneyItems() {
     const join = pmJoin();
-    const hide = new Set([...join.values()].map((l) => l.id));
-    /** @type {Array<{at: number, e: any, l: any}>} */
-    const items = __pmAct.map((e) => ({ at: e.at, e, l: join.get(e.id) || null }));
+    const hide = new Set();
+    join.forEach((j) => (j.lines || [j.l]).forEach((l) => hide.add(l.id)));
+    /** @type {Array<{at: number, e: any, l: any, v?: number|null}>} */
+    const items = __pmAct.map((e) => { const j = join.get(e.id); return { at: e.at, e, l: j ? j.l : null, v: j ? j.v : null }; });
     // Older bank payments wait for "Show older" with the activity, so the two stay in
     // step; one still to sort is always in the To sort filter.
     const oldest = __pmActEnd || !__pmAct.length ? -Infinity : __pmAct[__pmAct.length - 1].at;
@@ -17433,7 +17470,7 @@ function pmKeepItem(it) {
 }
 // One record as a row. `l` is the bank payment it joined, when there is one: the
 // bank then says what reached the account.
-function pmEvRowHtml(e, l) {
+function pmEvRowHtml(e, l, jv) {
     const k = pmKind(e);
     if (!k) return '';
     let sub = k.sub;
@@ -17441,7 +17478,7 @@ function pmEvRowHtml(e, l) {
     if (l && e.kind === 'payout' && e.state !== 'failed') sub = 'In your bank';
     if (l && e.kind === 'in' && e.method !== 'card') {
         sub = `${e.what} · ${String(e.method || 'payment').toLowerCase()}`;
-        v = '+' + gbp(Math.max(e.amount, l.amount));
+        v = '+' + gbp(jv != null ? jv : Math.max(e.amount, l.amount));
     }
     const tag = k.act ? `button type="button" data-pm="${k.act}" data-arg="${escapeHtml(String(k.arg || ''))}"` : 'div';
     return `<${tag} class="pm-mrow${__pmFresh.has(e.id) ? ' is-new' : ''}" aria-label="${escapeHtml(k.t)}, ${escapeHtml(sub)}, ${escapeHtml(v)}">
@@ -17480,7 +17517,7 @@ function pmActivityHtml() {
         if (edge && pmIsoOf(t) <= seen) { html += pmEdgeHtml(seen); edge = false; }
         const d = pmDayStart(t);
         if (d !== day) { day = d; html += `<div class="pm-daycap">${pmDayLabel(t)}</div>`; }
-        html += it.e ? pmEvRowHtml(it.e, it.l) : pmBankRow(it.l, false);
+        html += it.e ? pmEvRowHtml(it.e, it.l, it.v) : pmBankRow(it.l, false);
     });
     if (edge && items.length && !more) html += pmEdgeHtml(seen);
     if (!items.length) {
@@ -18017,11 +18054,33 @@ function pmPaymentPlan(r, v, how, date) {
     const extra = cum > rental + 0.005 && !withDep ? Math.round((cum - rental) * 100) / 100 : 0;
     if (cum > rental) cum = rental;
     const status = cum >= rental - 0.001 ? 'paid' : cum > 0.001 ? 'deposit' : 'unpaid';
-    const body = { action: 'set_payment', id: b.dbId, payment: status, payment_date: date || todayDashed(), payment_method: how };
+    // expect_paid: the figure this started from (refused if a payment landed since).
+    const body = { action: 'set_payment', id: b.dbId, payment: status, payment_date: date || todayDashed(), payment_method: how, expect_paid: Number(b.depositPaid) || 0 };
     if (status === 'deposit') body.deposit = Math.round(cum * 100) / 100;
     if (withDep && status === 'paid') body.deposit_collected = true;
     const prev = { payment: b.payment || 'unpaid', depositPaid: Number(b.depositPaid) || 0, date: b.paymentDate || '', method: b.paymentMethod || '' };
     return { body, extra, prev };
+}
+// Adds one sum; refused as stale, it re-reads and adds to the fresh figure once.
+async function pmAddPayment(r, v, how, date) {
+    for (let tries = 0; ; tries++) {
+        const plan = pmPaymentPlan(r, v, how, date);
+        const send = Object.assign({}, plan.body);
+        send.op_id = chbOpFor(['set_payment', send]);
+        try {
+            await apiPost('bookings.php', send);
+            chbOpBump();
+            return plan;
+        } catch (e) {
+            if (tries || !e || /** @type {any} */ (e).code !== 'stale') throw e;
+            await loadData();
+            const fresh = findBookingById(r.b.id);
+            const loc = fresh ? findBookingLocation(fresh.id) : null;
+            const nr = loc ? pmOwedRow(loc.propKey, fresh) : null;
+            if (!nr) throw e;
+            r = nr;
+        }
+    }
 }
 async function pmRecordSave(r, how) {
     const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('pm-rec-amt'));
@@ -18029,16 +18088,13 @@ async function pmRecordSave(r, how) {
     if (!r) return;
     if (!(v > 0)) { if (inp) inp.focus(); return; }
     const b = r.b;
-    const { body, extra, prev } = pmPaymentPlan(r, v, how);
     pmSheetClose();
     try {
-        const send = Object.assign({}, body);
-        send.op_id = chbOpFor(['set_payment', send]);
-        await apiPost('bookings.php', send);
-        chbOpBump();
+        const { extra, prev } = await pmAddPayment(r, v, how);
         await loadData();
         const said = `Recorded ${gbp(v - extra)} from ${b.name || 'the guest'}${how === 'Cash' ? ' in cash' : ''}.${extra ? ` The extra ${gbp(extra)} isn’t recorded: a deposit is recorded in full or not at all.` : ''}`;
-        toast(said, 'success', { label: 'Undo', fn: () => pmRecordUndo(b, prev) });
+        const after = Number((findBookingById(b.id) || {}).depositPaid) || 0;
+        toast(said, 'success', { label: 'Undo', fn: () => pmRecordUndo(b, prev, after) });
         pmRender();
         pmLoad(true);
         offerUpdatedConfirmationEmail(b.id);
@@ -18046,8 +18102,10 @@ async function pmRecordSave(r, how) {
         glassAlert('Couldn’t record the payment. ' + chbActErrSay(e));
     }
 }
-async function pmRecordUndo(b, prev) {
+// Undo, only while nothing has moved since this recording (`after`).
+async function pmRecordUndo(b, prev, after) {
     const body = { action: 'set_payment', id: b.dbId, payment: prev.payment };
+    if (after != null) body.expect_paid = after;
     if (prev.payment === 'deposit') body.deposit = prev.depositPaid;
     if (prev.depositPaid > 0.001) { body.payment_date = prev.date || todayDashed(); body.payment_method = prev.method; }
     try {
@@ -18604,18 +18662,15 @@ async function pmBankPay(l, bookingId) {
     const loc = b ? findBookingLocation(bookingId) : null;
     const r = loc ? pmOwedRow(loc.propKey, b) : null;
     if (!r) { toast('Nothing is owed on that booking.'); return; }
-    const plan = pmPaymentPlan(r, l.amount, 'Bank transfer', l.date);
-    const send = Object.assign({}, plan.body);
-    send.op_id = chbOpFor(['set_payment', send]);
     try {
-        await apiPost('bookings.php', send);
-        chbOpBump();
+        const plan = await pmAddPayment(r, l.amount, 'Bank transfer', l.date);
         await pmBankMark(l, 'payment', `${b.name || 'Guest'} · payment`, { booking_id: b.dbId }, true);
         await loadData();
         pmRender();
+        const after = Number((findBookingById(b.id) || {}).depositPaid) || 0;
         toast(`Recorded ${gbp(l.amount - plan.extra)} from ${b.name || 'the guest'}.${plan.extra ? ` The extra ${gbp(plan.extra)} isn’t recorded: a deposit is recorded in full or not at all.` : ''}`, 'success', {
             label: 'Undo',
-            fn: async () => { await pmRecordUndo(b, plan.prev); try { await pmBankUnmark(l); } catch (e) {} },
+            fn: async () => { await pmRecordUndo(b, plan.prev, after); try { await pmBankUnmark(l); } catch (e) {} },
         });
         pmLoad(true);
         offerUpdatedConfirmationEmail(b.id);
@@ -18627,6 +18682,8 @@ async function pmBankExpense(l, cat, quiet) {
     const body = { action: 'add', date: l.date, category: cat, amount: Math.abs(l.amount), prop: '', description: l.name || l.description || '', recurring: 0 };
     body.op_id = chbOpFor(['bank-expense', l.id, body]);
     const res = await apiPost('expenses.php', body);
+    // A new op id after each save: sorting it again after an Undo is a new expense.
+    chbOpBump();
     const eid = Number(res && res.id) || 0;
     await pmBankMark(l, 'expense', cat, { expense_id: eid }, true);
     return eid;
@@ -18664,6 +18721,11 @@ async function pmBankDoSplit(l, k) {
         if (!b) return false;
         await pmBankMark(l, 'payment', `${b.name || 'Guest'} · already recorded`, { booking_id: b.dbId });
         toast('The same money. Counted once.', 'success', undo);
+        return true;
+    }
+    if (k.indexOf('refundback:') === 0) {
+        await pmBankMark(l, 'ignore', 'Refund to ' + k.slice(11) + ' · already in the books');
+        toast('A refund going back. Not counted as a cost.', 'success', undo);
         return true;
     }
     if (k === 'own') {
@@ -19146,7 +19208,7 @@ async function pmSplitLink(name, id) {
         const mineNow = S && S.role === 'paid' && S.me && S.me.id === who;
         toast(r.count ? `${r.count} payment${r.count === 1 ? '' : 's'} to ${nm} counted as ${mineNow ? 'yours' : 'theirs'}.` : `Payments to ${nm} count from now on.`, 'success', {
             label: 'Undo',
-            fn: async () => { try { await apiPost('split.php', { action: 'unlink', admin_id: who, name: nm }); } catch (e) {} splitLoad(); pmBankLoad(); },
+            fn: async () => { try { await apiPost('split.php', { action: 'unlink', admin_id: who, name: nm, ids: Array.isArray(r.ids) ? r.ids : [] }); } catch (e) {} splitLoad(); pmBankLoad(); },
         });
     } catch (e) {
         glassAlert('Couldn’t link that name. ' + chbActErrSay(e));
@@ -19230,18 +19292,25 @@ function pmSplitSuggest(l) {
             const b = back[0].b;
             return { say: `${b.name || 'A guest'}’s damage deposit going back. It isn’t a cost.`, acts: [{ k: 'depback:' + b.id, label: 'That’s it', primary: true }, { k: 'cat', label: 'Something else' }] };
         }
+        // A refund the books already took off, going back by transfer: not a cost.
+        const rf = (__pmAct || []).filter((e) => e.kind === 'refund' && Math.abs(e.amount - amt) < 0.01 && pmNameWords(e.name).some((w) => words.includes(w)));
+        if (rf.length === 1) {
+            return { say: `${rf[0].name || 'A guest'}’s refund going back. The books already took it off, so it isn’t a cost.`, acts: [{ k: 'refundback:' + (rf[0].name || 'a guest'), label: 'That’s it', primary: true }, { k: 'cat', label: 'Something else' }] };
+        }
         return null;
     }
     const text = `${l.name} ${l.description} ${l.notes}`;
     // Money already recorded on a booking (a transfer the owner put on it by hand):
     // the same money, so it is linked and counted once.
     const ref = /CHB[-\s]?0*(\d{1,6})\b/i.exec(text);
-    const near = (d) => !!pmIso(d) && Math.abs(pmIso(d) - pmIso(l.date)) <= 4 * 864e5;
+    // The SAME money is the same amount: a hand-recorded payment at this figure, or the
+    // booking's whole recorded figure (nearness alone offered a second payment as the first).
+    const typed = (b) => (__pmAct || []).some((e) => e.kind === 'in' && e.method !== 'card' && Number(e.booking_id) === Number(b.dbId) && Math.abs(e.amount - l.amount) < 0.01);
     const same = pmAllStays().filter(({ b }) => {
         if (!(b.depositPaid > 0.005) || (ref ? Number(b.dbId) !== Number(ref[1]) : !named(b))) return false;
         if (pmBankLines().some((x) => x.as === 'payment' && Number(x.booking_id) === Number(b.dbId) && Math.abs(x.amount - l.amount) < 0.01)) return false;
         const byBank = /bank|transfer|bacs/i.test(String(b.paymentMethod || ''));
-        return byBank && (near(b.paymentDate) || Math.abs(b.depositPaid - l.amount) < 0.01) && b.depositPaid >= l.amount - 0.005;
+        return byBank && (typed(b) || Math.abs(b.depositPaid - l.amount) < 0.01);
     });
     if (same.length === 1) {
         const b = same[0].b;
@@ -19249,7 +19318,9 @@ function pmSplitSuggest(l) {
         try { owes = pmOwedRow(same[0].pk, b); } catch (e) {}
         return { say: `${b.name || 'A guest'}’s payment is already recorded on their booking. The same money?`, acts: [{ k: 'same:' + b.id, label: 'Yes, the same money', primary: true }, owes ? { k: 'pay:' + b.id, label: 'It’s a new payment' } : { k: 'income', label: 'Something else' }] };
     }
-    if (/\bcash\b|paid in|counter|post office/i.test(`${l.name} ${l.description} ${l.type || ''}`)) {
+    // Cash paid in: never with a booking reference ("balance paid in full" is a guest),
+    // and "paid in" as whole words ("unpaid invoice" contains them).
+    if (!ref && /\bcash\b|\bpaid in\b(?!\s+full)|\bcounter\b|post office/i.test(`${l.name} ${l.description} ${l.type || ''}`)) {
         return { say: 'Cash paid in. The guests’ payments it came from are already recorded, so it isn’t counted again.', acts: [{ k: 'cashin', label: 'That’s it', primary: true }, { k: 'income', label: 'Other income' }] };
     }
     const plat = PM_BANK_PLATFORMS.find(([re]) => re.test(text));
@@ -20525,7 +20596,8 @@ async function recordPayment(bookingId) {
         );
         if (!go) return; // back to the dialog to change the figure
     }
-    const payload = { id: booking.dbId, payment: status };
+    // Typed against the figure the dialog opened with: refused if a payment landed since.
+    const payload = { id: booking.dbId, payment: status, expect_paid: Number(booking.depositPaid) || 0 };
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {
@@ -20555,6 +20627,12 @@ async function recordPayment(bookingId) {
         );
         if (dep > 0.001) await offerUpdatedConfirmationEmail(bookingId);
     } catch (e) {
+        if (e && /** @type {any} */ (e).code === 'stale') {
+            await loadData();
+            afterPaymentChange(bookingId);
+            glassAlert('Another payment was recorded on this booking since it was opened, so nothing was changed. It shows the latest figures now: record it again if it’s still needed.');
+            return;
+        }
         glassAlert("Couldn't record the payment: " + e.message);
         afterPaymentChange(bookingId);
     }
@@ -24069,7 +24147,7 @@ function chbSnapRowsFromStores() {
                 party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
                 due: Math.round(due * 100) / 100,
                 dep: (b.holdStatus === 'charged' || b.holdStatus === 'captured') ? Math.round((Number(b.holdAmount) || 0) * 100) / 100 : 0,
-                rtot, rpaid,
+                rtot, rpaid, paid: Math.round((Number(b.depositPaid) || 0) * 100) / 100,
                 dmg: Math.round((Number(b.damagesDeposit) || 0) * 100) / 100,
                 holdNone: (b.holdStatus || 'none') === 'none',
                 notes: String(b.notes || '').slice(0, 300),
@@ -25079,6 +25157,8 @@ async function odsPay(i) {
         if (!go) return;
     }
     const payload = { action: 'set_payment', id: r.dbId, payment: status };
+    // A replay after another payment is refused (a "did NOT apply" duty), never written over it.
+    if (r.paid != null) payload.expect_paid = r.paid;
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {

@@ -856,6 +856,58 @@ smaller ones. The rule they share: what the sheet states is what the save stores
 - NB `CHB_IT_DB_NAME` lets a second copy of test-integration run against the same server for break-testing one
   section; the §32 lock checks and the statement budget then fail from the cross-talk, not the code.
 
+## Each pound once, on the day it moved (the money split and bank audit)
+
+Defects in how the books, the split between hosts and the bank page count money, each reproduced on a full stack.
+The rule they share: money is counted once, on the day it moved, with the cottage it belongs to.
+- **set_payment takes `expect_paid`**, the figure the page worked from, and answers 409 `code: 'stale'` when
+  `deposit_paid` has moved by the time the lock is held. It writes an ABSOLUTE figure, so two quick taps on the
+  bank page (£300, then £200 worked out from the same load) stored £200. Every client caller sends it: the
+  Record dialog, the Payments sheet and the bank page through `pmAddPayment` (which re-reads and adds once on
+  'stale'), Undo with the figure it recorded, and the day sheet's capture from the snapshot's `paid`. A caller
+  that sends none is served as before, because writes queued by an older page carry none.
+- **Hand-recorded money is dated on its own ledger row.** Add writes a manual row for its rental part (set_payment's
+  rule; never for a card), and set_payment first gives money with no row (from before migration-129, or recorded
+  with the booking) a row on its OLD `payment_date`, before moving that date. A March deposit used to move into
+  October's tax year with the next payment. Money recorded as a card is left to its own card row.
+- **A refund comes off on the day it went back** (`allocate_income_by_year/day` take the refunds): what arrived is
+  allocated to the days it arrived, and each refund is negative on its own day. A refund in May used to restate a
+  closed March year. A stay refunded in full within one year is still not listed; refunded in a later year, it is
+  +£X in the first and −£X in the second.
+- **A cancelled stay keeps its cottage**: accounts.php's cancelled-stay rows read the ledger's `prop_key` and run
+  day by day. They had no cottage, so their money fell to the account holder. Refunds beyond what the ledger shows
+  came in (old cash money) still report nothing.
+- **The split counts what the books count**: a host's cancelled stays (less their card fees; a full refund leaves
+  only the fee), kept deposits (accounts' `kept_by_booking`, lib mode only) on their booking's line, refunds on
+  their days, archived cottages in the holder's figures (`split_cottage_list(true)`; nobody is offered one to
+  host), and the fees of cancelled stays (a LEFT JOIN on the ledger's `prop_key`).
+- **A link's Undo puts back only what that link sorted**: `link` returns the `ids`, `unlink` honours them, so a
+  payment sorted to the host by hand before the name was linked stays theirs. An unlink from Settings (no ids)
+  still puts back every payment to that name.
+- **`record_square_payment` dates its ledger row when Square took the money** (`square_taken_at`: the UK day of
+  Square's UTC time), not the day the owner recovered it.
+- **Statements**: when several payments share the last moment (no time column, or the same second), the closing
+  balance is the one no other payment follows by the balances, else by the file's own order. It used to take the
+  last row of the file, which in a newest-first file is the OPENING balance. A pot named after a host is the
+  owner's money moving, not a payment to the host.
+- **The Money list shows each pound once** (`pmJoin`): bank payments linked to a booking are matched booking by
+  booking, one to one within four days, then the rest nearest in date within a month. £500 recorded once and
+  banked as £300 + £200 is one row (it showed £950 as three rows), and a payment recorded a week after it reached
+  the bank still joins it. The row shows the bank's total when larger.
+- **The bank's suggestions**: "the same money" only at a recorded figure (a hand-recorded payment of that amount,
+  or the booking's whole figure; nearness alone offered a second payment as the first); "cash paid in" never with
+  a booking reference, and "paid in" only as whole words ("Balance paid in full CHB-000007" and "UNPAID INVOICE"
+  both read as cash); money out to a guest the books already refunded is offered as that refund, not a cost; and
+  sorting a line as an expense bumps the op id, so sorting it again after an Undo makes a new expense.
+- Gates: test-integration **§59** (16 server fixes break-tested one at a time), test-statements (the closing
+  balance three ways, the pot), test-payrail (`square_taken_at` and its wiring), ui-test-statements (the join, the
+  suggestions, the stale retry, both Undos; 9 client fixes break-tested).
+- NOT changed: a statement with no transaction ids keys a line by a fingerprint and its count within that file, so
+  identical payments split across two overlapping exports could still be miscounted. Monzo's exports carry ids;
+  this only reaches other banks' CSVs, and it was not reproduced. And a host's share is charged the whole card fee
+  of a charge that carried a refundable deposit, though Square credits back the deposit's share of it when the
+  deposit is returned (about £1.30 on £75); the books count the whole fee too, so the two still agree.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

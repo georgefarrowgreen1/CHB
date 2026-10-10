@@ -2196,6 +2196,17 @@ chk('the scan found the booking locks (vacuity: ' . $bkChecked . ' checked)', $b
 chk('no booking lock ignores a timeout' . ($bkUnchecked ? ' — ' . implode(', ', $bkUnchecked) : ''), !$bkUnchecked);
 chk('the cancellation takes its lock before any money moves', (bool) preg_match('/if \(!book_lock\(\$b\[\'prop_key\'\] \?\? \'\'\)\) \{[^}]*\}\s*\$refundedByCard = 0\.0;/', (string) file_get_contents(__DIR__ . '/bookings.php')));
 
+echo "\n== A recovered Square payment is dated when Square took it ==\n";
+// record_square_payment is a recovery, often days after the charge, and the books
+// date income by the ledger row. Square sends UTC; the books keep the UK day.
+chk('a summer payment at 23:30 UTC is the next day in the UK', square_taken_at(['created_at' => '2026-07-31T23:30:00Z']) === '2026-08-01 00:30:00');
+chk('a winter one keeps its day (GMT)', square_taken_at(['created_at' => '2026-01-15T09:05:00.123Z']) === '2026-01-15 09:05:00');
+chk('no time, or one that will not read, is the moment it was recorded', square_taken_at([], '2026-10-10 12:00:00') === '2026-10-10 12:00:00' && square_taken_at(['created_at' => 'not a date'], '2026-10-10 12:00:00') === '2026-10-10 12:00:00');
+$rsp = (string) file_get_contents(__DIR__ . '/bookings.php');
+$rspAt = strpos($rsp, "if (\$action === 'record_square_payment')");
+$rspBody = $rspAt === false ? '' : substr($rsp, $rspAt, 9000);
+chk('record_square_payment writes the ledger row with that date, not NOW()', strpos($rspBody, 'square_taken_at(') !== false && (bool) preg_match('/INSERT IGNORE INTO payments \([^)]*created_at\)\s*VALUES \(\?,\?,\?,\?,\?,\?,\?,\?,\?\)/', $rspBody));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
