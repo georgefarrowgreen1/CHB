@@ -100,18 +100,6 @@ function analytics_summary($days)
     $prevTotal = (int) $qDays2("SELECT COUNT(*) $prevWindow")->fetchColumn();
     $prevUniq = (int) $qDays2("SELECT COUNT(DISTINCT ip_hash) $prevWindow")->fetchColumn();
 
-    // New vs returning: a visitor is "new" if their first-ever page view falls in the
-    // window. Guarded so a query hiccup can never break the whole summary.
-    $visitorMix = ['new' => 0, 'returning' => 0];
-    try {
-        $newN = (int) $qDays("SELECT COUNT(*) FROM (SELECT ip_hash, MIN(created_at) m FROM pageviews
-                                  WHERE event IS NULL AND ip_hash IS NOT NULL GROUP BY ip_hash
-                                  HAVING m >= $sinceSql) t")->fetchColumn();
-        $visitorMix = ['new' => $newN, 'returning' => max(0, $uniq - $newN)];
-    } catch (\Throwable $e) {
-        /* leave the zero default */
-    }
-
     // Engagement depth — derived from existing rows, no extra tracking:
     //   bounce = visitors with exactly one page view in the window.
     //   exit pages = each visitor's LAST page view path ("where people leave").
@@ -306,7 +294,6 @@ function analytics_summary($days)
         'uniqueVisitors' => $uniq,
         'prevTotalViews' => $prevTotal,
         'prevUniqueVisitors' => $prevUniq,
-        'visitorMix' => $visitorMix,
         'bounceRate' => $bounceRate,
         'exitPages' => $exitPages,
         'weekViews' => $weekViews,

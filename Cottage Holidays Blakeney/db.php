@@ -324,6 +324,84 @@ function deposit_evidence_store($bookingId, $dataUri)
     }
 }
 
+// ---- UPLOADED IMAGES: staged privately, published deliberately, deleted with
+// the record that owns them.
+// THE STAGING FOLDER IS PRIVATE (deny-all). Every upload waits there while its
+// metadata is stripped, so a request that dies half-way leaves the original, phone
+// location and all, where nobody can fetch it; a chat photo waits there until a
+// message carries it, so a photo nobody sent is nobody's to see. Self-repair
+// empties what is left.
+const UPLOAD_PENDING_DIR = 'uploads/pending';
+function upload_pending_dir(): string
+{
+    $dir = __DIR__ . '/' . UPLOAD_PENDING_DIR;
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        return '';
+    }
+    if (!is_file($dir . '/.htaccess')) {
+        @file_put_contents($dir . '/.htaccess', "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nOrder allow,deny\nDeny from all\n</IfModule>\n");
+    }
+    return $dir;
+}
+// A staged image goes public: the file and its WebP companion move into uploads/.
+// Returns the public path, or '' when there is nothing staged under that name.
+function upload_publish($rel): string
+{
+    if (!preg_match('#^uploads/pending/([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', (string) $rel, $m)) {
+        return '';
+    }
+    $from = __DIR__ . '/' . UPLOAD_PENDING_DIR . '/' . $m[1];
+    $to = __DIR__ . '/uploads/' . $m[1];
+    if (!is_file($from) || !@rename($from, $to)) {
+        return '';
+    }
+    if (is_file($from . '.webp')) {
+        @rename($from . '.webp', $to . '.webp');
+    }
+    return 'uploads/' . $m[1];
+}
+// ONE WAY TO DELETE AN UPLOADED IMAGE: the file, its WebP companion and every size
+// img.php cached of it. The path is rebuilt from its basename, so it can never
+// reach outside uploads/. Returns whether a file was removed.
+function upload_delete($rel): bool
+{
+    if (!preg_match('#^uploads/(pending/)?([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', trim((string) $rel), $m)) {
+        return false;
+    }
+    $p = __DIR__ . '/uploads/' . $m[1] . $m[2];
+    $gone = false;
+    foreach ([$p, $p . '.webp'] as $f) {
+        if (is_file($f) && @unlink($f)) {
+            $gone = true;
+        }
+    }
+    foreach (glob(__DIR__ . '/uploads/cache/' . preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/' . $m[2]) . '.w*.webp') ?: [] as $c) {
+        @unlink($c);
+    }
+    return $gone;
+}
+
+// A picture a guest's suggestion brought with it (uploads/experience-…) goes when
+// the suggestion does, unless another card shows it too. The owner's own uploads
+// are never touched here: one may be in use somewhere this cannot see.
+function experience_image_drop($url, $exceptId = 0): void
+{
+    $url = (string) $url;
+    if (!preg_match('#^uploads/experience-[A-Za-z0-9._-]+$#', $url)) {
+        return;
+    }
+    try {
+        $q = db()->prepare('SELECT COUNT(*) FROM experiences WHERE image_url = ? AND id <> ?');
+        $q->execute([$url, (int) $exceptId]);
+        if ((int) $q->fetchColumn() > 0) {
+            return;
+        }
+    } catch (\Throwable $e) {
+        return;
+    }
+    upload_delete($url);
+}
+
 // ---- A GUEST'S PROFILE PHOTO. Seen only by that guest and by the owner, so it is
 // served through avatar.php (auth-checked), never by its path: the directory carries
 // its own deny-all .htaccess and every file a random name. The client crops to a
@@ -920,6 +998,26 @@ function route_actions(array $map, $in = null)
     json_out(['error' => 'Handler for "' . $action . '" returned without replying'], 500);
 }
 
+// A CLIENT'S ADDRESS AS A LIMIT COUNTS IT. An IPv6 subscriber holds a whole /64,
+// and a phone moves through it every few minutes (RFC 4941 privacy addresses), so
+// counting the exact address gave every few requests a fresh allowance. IPv6 is
+// counted by its /64; IPv4 (and IPv4 written as IPv6) as it is.
+function client_ip_key(): string
+{
+    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    if (strpos($ip, ':') === false) {
+        return $ip;
+    }
+    $bin = @inet_pton($ip);
+    if ($bin === false || strlen($bin) !== 16) {
+        return $ip;
+    }
+    if (substr($bin, 0, 12) === str_repeat("\0", 10) . "\xff\xff") {
+        return (string) inet_ntop(substr($bin, 12));
+    }
+    return inet_ntop(substr($bin, 0, 8) . str_repeat("\0", 8)) . '/64';
+}
+
 // ---- Generic per-IP rate limiter for public POSTs (anti-spam / anti-flood) ----
 // Reuses the login_attempts ledger (ip, identifier, success, attempted_at). Records
 // one row per call under $key; once $max rows exist for this IP+key within the
@@ -928,7 +1026,7 @@ function route_actions(array $map, $in = null)
 function rate_limit($key, $max = 8, $windowMin = 10)
 {
     try {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = client_ip_key();
         $win = (int) $windowMin; // not user-controlled; safe to inline in INTERVAL
         $s = db()->prepare("SELECT COUNT(*) c FROM login_attempts
                             WHERE ip = ? AND identifier = ?
@@ -953,7 +1051,7 @@ function rate_limit($key, $max = 8, $windowMin = 10)
 function rate_allow($key, $max = 8, $windowMin = 10): bool
 {
     try {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = client_ip_key();
         $win = (int) $windowMin;
         $s = db()->prepare("SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND identifier = ? AND attempted_at > (NOW() - INTERVAL $win MINUTE)");
         $s->execute([$ip, $key]);
@@ -980,7 +1078,7 @@ function rate_limit_key($key, $max = 8, $windowMin = 10)
         }
         db()
             ->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')
-            ->execute([$_SERVER['REMOTE_ADDR'] ?? '', $key]);
+            ->execute([client_ip_key(), $key]);
     } catch (\Throwable $e) {
         /* table missing — don't block */
     }
@@ -2461,15 +2559,33 @@ function payment_rail($b)
 // rounded to 2dp. Throws on a DB error so a caller with a fallback can catch it —
 // matching the original inline behaviour (reconcile ran it bare; pay.php wrapped
 // it and fell back to the bookings figure).
+const BOOKING_LEDGER_NET_SQL = "COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)";
 function booking_ledger_net($bookingId)
 {
-    $s = db()->prepare(
-        "SELECT COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
-           FROM payments WHERE booking_id = ?",
-    );
+    if (isset($GLOBALS['__chb_ledger_net'])) {
+        return $GLOBALS['__chb_ledger_net'][(int) $bookingId] ?? 0.0;
+    }
+    $s = db()->prepare('SELECT ' . BOOKING_LEDGER_NET_SQL . ' AS net FROM payments WHERE booking_id = ?');
     $s->execute([(int) $bookingId]);
     return round(max(0, (float) $s->fetchColumn()), 2);
+}
+// THE LEDGER, READ ONCE FOR A LIST. The owner's booking list asks each card plan what
+// its booking still owes, and each asked the payments table on its own: on five years
+// of bookings, 216 of the boot's 262 statements. A list reads every booking's figure in
+// one grouped query between warm and forget; outside that window booking_ledger_net
+// asks the table as before, so nothing that writes a payment can read a stale figure.
+function booking_ledger_warm(): void
+{
+    $map = [];
+    foreach (db()->query('SELECT booking_id, ' . BOOKING_LEDGER_NET_SQL . ' AS net FROM payments GROUP BY booking_id') as $r) {
+        $map[(int) $r['booking_id']] = round(max(0, (float) $r['net']), 2);
+    }
+    $GLOBALS['__chb_ledger_net'] = $map;
+}
+function booking_ledger_forget(): void
+{
+    unset($GLOBALS['__chb_ledger_net']);
 }
 
 // HAS THIS ALREADY BEEN SENT? — the server half of the don't-send-twice guard.

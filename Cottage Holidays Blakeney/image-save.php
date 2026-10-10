@@ -14,7 +14,7 @@
 // picture) is refused rather than stored with its metadata when this server cannot
 // re-encode it — a phone photo carries where it was taken. The owner's own uploads
 // stay best-effort.
-function save_uploaded_image($file, $slot = '', $maxBytes = null, $mustStrip = false)
+function save_uploaded_image($file, $slot = '', $maxBytes = null, $mustStrip = false, $publish = true)
 {
     if ($maxBytes === null) {
         $maxBytes = 8 * 1024 * 1024;
@@ -64,31 +64,62 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null, $mustStrip = f
             return ['error' => 'Could not create the uploads folder on the server.', 'code' => 500];
         }
     }
+    // NOTHING IS PUBLIC UNTIL IT IS CLEAN. The file is prepared in the private
+    // staging folder and moved into uploads/ only once its metadata is gone: moved
+    // there first, a request that died mid re-encode (a timeout, the memory limit on
+    // a large phone photo) left the original in public, location and all.
+    $stage = upload_pending_dir();
+    if ($stage === '') {
+        return ['error' => 'Could not prepare the upload on the server.', 'code' => 500];
+    }
 
     $slot = is_string($slot) ? preg_replace('/[^a-z0-9_-]/i', '', $slot) : '';
     $base = $slot !== '' ? $slot . '-' : '';
     $fname = $base . bin2hex(random_bytes(6)) . '.' . $ext;
-    $dest = $dir . '/' . $fname;
+    $tmp = $stage . '/' . $fname;
 
-    if (!@move_uploaded_file($file['tmp_name'], $dest)) {
+    if (!@move_uploaded_file($file['tmp_name'], $tmp)) {
         return ['error' => 'Could not save the uploaded image (check folder permissions).', 'code' => 500];
     }
+    // A request that dies from here on leaves nothing staged behind it.
+    $cleanup = function () use ($tmp, $publish) {
+        if ($publish && is_file($tmp)) {
+            @unlink($tmp);
+        }
+    };
+    register_shutdown_function($cleanup);
 
     // Privacy: strip metadata (EXIF and friends — GPS location, device, timestamps)
     // by re-encoding. A GUEST's upload is re-encoded in EVERY format: only JPEG used
     // to be, so a PNG, WebP or GIF reached the public photo wall byte for byte. The
     // owner's own PNG/WebP/GIF stay as uploaded (a logo keeps its palette, a GIF its
     // frames). JPEG applies its EXIF orientation first so it still shows the right
-    // way up. Done BEFORE the WebP copy so that companion is built from the clean image.
-    $clean = $type === IMAGETYPE_JPEG ? strip_jpeg_metadata($dest, $mustStrip) : ($mustStrip ? strip_image_metadata($dest, $type) : false);
+    // way up. A guest's image is also brought down to 2000px on its long side: it is
+    // shown no bigger, and a 40-megapixel phone photo kept whole cost 27MB of disk.
+    // Done BEFORE the WebP copy so that companion is built from the clean image.
+    $maxDim = $mustStrip ? 2000 : 0;
+    $clean = $type === IMAGETYPE_JPEG ? strip_jpeg_metadata($tmp, $mustStrip, $maxDim) : ($mustStrip ? strip_image_metadata($tmp, $type, $maxDim) : false);
     if (!$clean && $mustStrip) {
-        @unlink($dest);
+        @unlink($tmp);
         return ['error' => 'This photo could not be prepared for sharing here. Please try a JPEG or PNG photo.', 'code' => 400];
     }
 
     // Optimised WebP companion (served automatically via .htaccess where supported).
-    make_webp_copy($dest, $type, $dest . '.webp');
+    make_webp_copy($tmp, $type, $tmp . '.webp');
 
+    // A chat photo stays staged until a message carries it (upload_publish).
+    if (!$publish) {
+        return ['ok' => true, 'url' => UPLOAD_PENDING_DIR . '/' . $fname];
+    }
+    $dest = $dir . '/' . $fname;
+    if (!@rename($tmp, $dest)) {
+        @unlink($tmp);
+        @unlink($tmp . '.webp');
+        return ['error' => 'Could not save the uploaded image (check folder permissions).', 'code' => 500];
+    }
+    if (is_file($tmp . '.webp')) {
+        @rename($tmp . '.webp', $dest . '.webp');
+    }
     return ['ok' => true, 'url' => 'uploads/' . $fname];
 }
 
@@ -102,7 +133,7 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null, $mustStrip = f
 // $force: re-encode even without the exif extension (the orientation then cannot be
 // read, so a sideways phone photo may stay sideways) — for a guest's upload, where
 // the location must go.
-function strip_jpeg_metadata($path, $force = false)
+function strip_jpeg_metadata($path, $force = false, $maxDim = 0)
 {
     if (!function_exists('imagecreatefromjpeg') || (!function_exists('exif_read_data') && !$force)) {
         return false;
@@ -131,6 +162,7 @@ function strip_jpeg_metadata($path, $force = false)
         $img = imagerotate($img, 90, 0);
     }
     if ($img) {
+        $img = image_fit_within($img, (int) $maxDim, false);
         $ok = @imagejpeg($img, $path, 90); // re-encode drops ALL metadata (incl. orientation)
         imagedestroy($img);
         return (bool) $ok;
@@ -143,7 +175,7 @@ function strip_jpeg_metadata($path, $force = false)
  * (transparency kept). Returns whether the file on disk is now the re-encoded one.
  * An animated GIF or WebP keeps only its first frame — these are photos.
  */
-function strip_image_metadata($path, $type)
+function strip_image_metadata($path, $type, $maxDim = 0)
 {
     $read = [IMAGETYPE_PNG => 'imagecreatefrompng', IMAGETYPE_WEBP => 'imagecreatefromwebp', IMAGETYPE_GIF => 'imagecreatefromgif'];
     $write = [IMAGETYPE_PNG => 'imagepng', IMAGETYPE_WEBP => 'imagewebp', IMAGETYPE_GIF => 'imagegif'];
@@ -159,9 +191,36 @@ function strip_image_metadata($path, $type)
         imagealphablending($img, false);
         imagesavealpha($img, true);
     }
+    $img = image_fit_within($img, (int) $maxDim, $type !== IMAGETYPE_JPEG);
     $ok = $type === IMAGETYPE_WEBP ? @imagewebp($img, $path, 90) : @$write[$type]($img, $path);
     imagedestroy($img);
     return (bool) $ok;
+}
+
+// Bring a GD image down so its long side is at most $maxDim (0 = leave it be),
+// keeping transparency where asked. Returns the image to use (the original when
+// nothing needed doing, or when the smaller canvas could not be made).
+function image_fit_within($img, $maxDim, $alpha)
+{
+    $w = imagesx($img);
+    $h = imagesy($img);
+    if ($maxDim <= 0 || ($w <= $maxDim && $h <= $maxDim)) {
+        return $img;
+    }
+    $r = $maxDim / max($w, $h);
+    $nw = max(1, (int) round($w * $r));
+    $nh = max(1, (int) round($h * $r));
+    $out = @imagecreatetruecolor($nw, $nh);
+    if (!$out) {
+        return $img;
+    }
+    if ($alpha) {
+        imagealphablending($out, false);
+        imagesavealpha($out, true);
+    }
+    imagecopyresampled($out, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+    imagedestroy($img);
+    return $out;
 }
 
 /**

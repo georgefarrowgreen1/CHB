@@ -21,8 +21,33 @@ const CONTENT_VISITOR_SKIP = [
     'mac-chat', 'mac-chat-memory', 'mac-chat-imports', 'mac-chat-sum', 'night-shift',
     'chat-handoff', 'email-templates', 'sweep-moved', 'sweep-landed', 'duty-dismissed',
     'testcentre-staged', 'bank-statements', 'money-split', 'conflict-audit-state', 'self-repair-state',
+    'anniv-sent',
 ];
-const CONTENT_VISITOR_SKIP_PREFIX = ['welcome-', 'arrival-', 'ops-', 'keysafe-', 'ical-feeds-'];
+const CONTENT_VISITOR_SKIP_PREFIX = ['welcome-', 'arrival-', 'ops-', 'keysafe-', 'ical-feeds-', 'guest-ping-'];
+// THE SERVER'S OWN CACHES never reach a browser, the owner's included: no client file
+// reads them (test-integration §76 checks that), and on a few years' data they were most
+// of the owner's content payload (the mailbox's handled list alone ran to 149KB). Every
+// one is internal, so the visitor's read leaves them out already.
+const CONTENT_SERVER_ONLY = [
+    'mailbox-poll', 'mailbox-seen', 'mailbox-new', 'square-payouts', 'square-bank', 'email-optout',
+    'uptime-history', 'anniv-sent', 'weather-cache', 'mail-sent-days', 'self-repair-state',
+    'conflict-audit-state', 'testcentre-staged', 'activity-seen', 'owner-ping',
+    'mac-chat', 'mac-chat-memory', 'mac-chat-imports', 'mac-chat-sum', 'night-shift', 'chat-handoff',
+];
+const CONTENT_SERVER_ONLY_PREFIX = ['guest-ping-'];
+
+function content_server_only($key): bool
+{
+    if (in_array($key, CONTENT_SERVER_ONLY, true)) {
+        return true;
+    }
+    foreach (CONTENT_SERVER_ONLY_PREFIX as $p) {
+        if (strpos((string) $key, $p) === 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // The GET payload, as a function so bootstrap.php can serve the SAME data in
 // its combined first-paint response without duplicating this logic.
@@ -44,14 +69,12 @@ function content_public_payload()
     // public bootstrap's statement count is a ratchet, test-integration §24), with those
     // keys left out by name; the memo is told, so a later read of one in this request
     // asks for itself rather than reading "not set".
-    if ($isAdmin) {
-        $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
-    } else {
-        $q = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key NOT IN (' . implode(',', array_fill(0, count(CONTENT_VISITOR_SKIP), '?')) . ')'
-            . str_repeat(' AND item_key NOT LIKE ?', count(CONTENT_VISITOR_SKIP_PREFIX)));
-        $q->execute(array_merge(CONTENT_VISITOR_SKIP, array_map(fn($p) => $p . '%', CONTENT_VISITOR_SKIP_PREFIX)));
-        $rows = $q->fetchAll();
-    }
+    $skip = $isAdmin ? CONTENT_SERVER_ONLY : CONTENT_VISITOR_SKIP;
+    $skipPrefix = $isAdmin ? CONTENT_SERVER_ONLY_PREFIX : CONTENT_VISITOR_SKIP_PREFIX;
+    $q = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key NOT IN (' . implode(',', array_fill(0, count($skip), '?')) . ')'
+        . str_repeat(' AND item_key NOT LIKE ?', count($skipPrefix)));
+    $q->execute(array_merge($skip, array_map(fn($p) => $p . '%', $skipPrefix)));
+    $rows = $q->fetchAll();
     // Every other content read in this request can now be answered from memory —
     // this is the ONLY caller that warms the memo, which is what keeps it safe:
     // no write path ever populates it, so there is nothing to invalidate.
@@ -59,7 +82,7 @@ function content_public_payload()
     foreach ($rows as $r) {
         $raw[$r['item_key']] = $r['item_value'];
     }
-    content_memo_warm($raw, $isAdmin ? [] : CONTENT_VISITOR_SKIP, $isAdmin ? [] : CONTENT_VISITOR_SKIP_PREFIX);
+    content_memo_warm($raw, $skip, $skipPrefix);
     $out = [];
     foreach ($rows as $r) {
         $key = $r['item_key'];
@@ -112,6 +135,7 @@ if ($action === 'get_all') {
     // Admin-only: full content including private keys (ical-feeds-*, arrival-*),
     // used by the Settings page editors. Private values are decrypted here.
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    $rows = array_values(array_filter($rows, fn($r) => !content_server_only($r['item_key'])));
     $me = admin_me();
     $out = [];
     foreach ($rows as $r) {

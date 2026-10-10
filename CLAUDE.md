@@ -1325,6 +1325,73 @@ why nothing caught it.
 
   Twenty-three changes break-tested, each failing its own named check.
 
+## Uploaded files: private until shown, deleted with what shows them (round 7)
+
+Found by the round-7 uploads review; each was reproduced before it was fixed.
+- **A CHAT PHOTO IS STAGED, NOT PUBLISHED.** Anyone with a made-up 16-character chat token could upload an image that
+  no conversation showed and nobody could delete, kept on the site's own address and cached publicly for 30 days. The
+  limit was per exact address, which an IPv6 phone renews every few minutes.
+  - Every upload is now prepared in `uploads/pending/` (`upload_pending_dir`, deny-all, created on demand).
+  - A chat photo stays there until a message carries it: `chat_valid_attachment` publishes it (`upload_publish`). A
+    send retried after a lost answer finds it already published.
+  - The client previews the photo from the device (a blob URL), since the server's copy is private until sent.
+  - Self-repair empties the staging folder after two days and deletes a public `chat-<12 hex>` file no message
+    carries after one. That sweep only runs when the messages table was read.
+- **NOTHING IS PUBLIC UNTIL IT IS CLEAN.** `save_uploaded_image` moved the original into `uploads/` before stripping
+  its metadata, so a request that died mid re-encode left the photo, GPS and all, in public. It is cleaned in the
+  staging folder and renamed into `uploads/` only on success; a shutdown function removes what a dying request left.
+  A guest's image is also brought down to 2000px on its long side (`image_fit_within`): a 40-megapixel phone photo
+  was kept whole at 27MB.
+- **ONE WAY TO DELETE AN UPLOAD** (`upload_delete`): the file, its WebP companion and every size img.php cached,
+  rebuilt from the basename. Used by:
+  - **Delete conversation** (the chat's photos);
+  - **account deletion** (their chat photos; photos never approved, row and file; suggestions never published,
+    picture and all; a published card keeps no name or address; their stashed notification text);
+  - **rejecting a guest photo** (rejected rows are hidden, so the owner had no way to remove the file; approving one
+    whose file has gone answers 409);
+  - **rejecting or deleting a suggestion** (`experience_image_drop`, only a guest's `experience-` upload, and only
+    when no other card shows it).
+- **A /64 IS ONE ADDRESS TO A LIMIT** (`client_ip_key`): `rate_limit`, `rate_allow`, `rate_limit_key` and the sign-in
+  throttles count IPv6 by its /64; IPv4 (and IPv4 written as IPv6) as it is. The activity log keeps the full address.
+- Gates: test-integration **§75** (staging, cleaning, the size cap, publishing, a retried send, every deletion, the
+  two sweeps, the /64 limiter), fourteen changes break-tested, each failing its own named check.
+- **Not done, said plainly**: chat photos and wall photos are still served from `uploads/` to anyone with the address
+  (only a profile photo goes through a login check), and the service worker's image cache is not cleared at sign-out.
+
+## What years of data cost the owner's boot (round 7, server performance)
+
+Measured by the round-7 data-volume review on a five-year business (1,387 bookings, 3,218 payments, 40,000 activity
+rows); each change is gated by a count or a plan, not a timing.
+- **ONE READ OF THE LEDGER FOR THE BOOKING LIST** (`booking_ledger_warm` / `booking_ledger_forget`, db.php). Each card
+  plan's state asks what its booking still owes, and each asked the payments table on its own: 216 of the boot's 262
+  statements. The list reads every figure in one grouped query between warm and forget, and `booking_ledger_net` asks
+  the table as before outside that window, so nothing that writes a payment reads a stale figure. The SQL is one
+  constant (`BOOKING_LEDGER_NET_SQL`) for both.
+- **THE LIST LEAVES ON THE SERVER WHAT THE BACK OFFICE NEVER READS** (`BOOKINGS_ADMIN_OMIT`): thirteen columns no
+  client file names, three of them the card-on-file handles Square issued (`autopay_card_id`, `autopay_customer_id`,
+  `hold_payment_id`). A register link rides only a stay whose link still opens (guest-details.php closes it a week
+  after the stay).
+- **THE SERVER'S OWN CACHES NEVER REACH A BROWSER** (`CONTENT_SERVER_ONLY`, content.php): the mailbox's handled list
+  (149KB), the payout cache, the opt-out list, the guests' stashed notifications and the retired chat's rows were in
+  the owner's content payload and `get_all`. Both leave them out; the memo is told, so the server still reads them
+  later in the request. A visitor's read also skips `guest-ping-` and `anniv-sent` now. NB this re-aimed §72's owner
+  check: the owner's read is no longer "the whole table".
+- **A guest's notification text is deleted after a day** (self-repair): it waits five minutes for their phone, and
+  the row stayed for good, one per guest ever notified.
+- **migration-141**: `bookings (prop_key, check_out, check_in)` for the availability read and the clash check (461
+  rows examined for 33), and `enquiries (declined_at, created_at)` for the owner's enquiry list.
+- **Analytics stopped working out `visitorMix`**, which nothing has read since the "returning" figure was removed:
+  a grouping of every page view kept.
+- **The daily orphan-upload scan** looks each file up in a set of the names the content holds, keeping the substring
+  search only as the fallback.
+- Gates: test-integration **§76** (ten more card plans cost no more statements on the probe's own connection, the
+  same states booking by booking, the omitted columns and that no client file names them, the register links, both
+  content outputs, the ping prune, the two plans, the analytics field) and §72 re-aimed.
+- **Not done, said plainly** (the rest of that review): every approved review still rides the visitor's boot, the chat
+  thread list is unbounded and fetched on Today only to count, Today downloads every review to count the pending ones,
+  the email log has hit its 3,000-row cap, the money reports read the whole ledger, and search scans each table with
+  `LIKE '%q%'`. Each needs a client change with the server one.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

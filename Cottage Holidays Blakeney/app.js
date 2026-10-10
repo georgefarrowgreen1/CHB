@@ -12850,11 +12850,15 @@ async function chatUploadImage(file, forGuest) {
         data = text ? JSON.parse(text) : {};
     } catch (e) {}
     if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed (' + res.status + ')');
-    return data.url;
+    // The server keeps the upload private until the message is sent, so the preview
+    // is the photo on this device.
+    return { url: data.url, local: URL.createObjectURL(file) };
 }
 function renderChatAttachPreview(hostId, url, onClear) {
     const host = document.getElementById(hostId);
     if (!host) return;
+    if (host.dataset.blob) URL.revokeObjectURL(host.dataset.blob);
+    host.dataset.blob = url && url.startsWith('blob:') ? url : '';
     if (!url) {
         host.style.display = 'none';
         host.innerHTML = '';
@@ -12871,8 +12875,9 @@ async function chatAttachPhoto() {
     const btn = document.getElementById('chat-attach-btn');
     if (btn) btn.classList.add('busy');
     try {
-        __chatPendingAttach = await chatUploadImage(file, true);
-        renderChatAttachPreview('chat-attach-preview', __chatPendingAttach, chatClearAttach);
+        const up = await chatUploadImage(file, true);
+        __chatPendingAttach = up.url;
+        renderChatAttachPreview('chat-attach-preview', up.local, chatClearAttach);
     } catch (e) {
         glassAlert("Couldn't attach that photo: " + e.message);
     } finally {
@@ -12890,8 +12895,9 @@ async function adminAttachPhoto() {
     const btn = document.getElementById('msg-attach-btn');
     if (btn) btn.classList.add('busy');
     try {
-        __adminPendingAttach = await chatUploadImage(file, false);
-        renderChatAttachPreview('msg-attach-preview', __adminPendingAttach, adminClearAttach);
+        const up = await chatUploadImage(file, false);
+        __adminPendingAttach = up.url;
+        renderChatAttachPreview('msg-attach-preview', up.local, adminClearAttach);
     } catch (e) {
         glassAlert("Couldn't attach that photo: " + e.message);
     } finally {
@@ -21572,7 +21578,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r6latework';
+    const BUILD = 'r7files1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

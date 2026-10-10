@@ -366,6 +366,49 @@ try {
         $fixed[] = "pruned $chatPruned chat photo(s) older than a week";
     }
 
+    // THE STAGING FOLDER EMPTIES ITSELF. A chat photo waits there until a message
+    // carries it, and an upload while it is cleaned; whatever is still there two
+    // days on was never sent, or belonged to a request that died.
+    $stDir = __DIR__ . '/' . UPLOAD_PENDING_DIR;
+    $stPruned = 0;
+    if (is_dir($stDir)) {
+        foreach (scandir($stDir) ?: [] as $sf) {
+            if ($sf === '.' || $sf === '..' || $sf[0] === '.' || !is_file($stDir . '/' . $sf)) {
+                continue;
+            }
+            $mt = @filemtime($stDir . '/' . $sf);
+            if ($mt !== false && $mt < time() - 2 * 86400 && @unlink($stDir . '/' . $sf)) {
+                $stPruned++;
+            }
+        }
+    }
+    if ($stPruned > 0) {
+        $fixed[] = "removed $stPruned staged upload(s) nobody sent";
+    }
+
+    // A CHAT PHOTO NO MESSAGE CARRIES is deleted after a day (a conversation deleted
+    // before its photos were, or one published by a send that then failed). Only the
+    // chat uploader's own names, and only when the messages could be read: an
+    // unreadable table judges nothing.
+    try {
+        $refd = array_flip(db()->query("SELECT attachment FROM messages WHERE attachment LIKE 'uploads/chat-%'")->fetchAll(PDO::FETCH_COLUMN));
+        $chatOrph = 0;
+        foreach (is_dir($upDir) ? scandir($upDir) ?: [] : [] as $cf) {
+            if (!preg_match('/^chat-[0-9a-f]{12}\.(jpg|png|gif|webp)$/', $cf) || isset($refd['uploads/' . $cf])) {
+                continue;
+            }
+            $mt = @filemtime($upDir . '/' . $cf);
+            if ($mt !== false && $mt < time() - 86400 && upload_delete('uploads/' . $cf)) {
+                $chatOrph++;
+            }
+        }
+        if ($chatOrph > 0) {
+            $fixed[] = "removed $chatOrph chat photo(s) no message carries";
+        }
+    } catch (\Throwable $e) {
+        // messages not readable — leave every photo where it is
+    }
+
     // Profile photos nobody points at any more (a replace that raced, a write
     // that failed after the file landed) — the folder holds only what a guest
     // row names. A day's grace so an upload mid-flight is never caught.
@@ -408,6 +451,12 @@ try {
                 // table not migrated yet — fine
             }
         }
+        // Every filename-shaped word in the haystack, once: looking each file up in
+        // this set is what costs nothing. The substring search stays as the fallback
+        // for a name the set misses (one written inside a longer word), so the verdict
+        // is the same as before; it used to run for every file over the whole haystack.
+        preg_match_all('/[A-Za-z0-9._-]+/', $hay, $hm);
+        $named = array_flip($hm[0]);
         $orphanFiles = 0;
         foreach (scandir($upDir) ?: [] as $uf) {
             if ($uf === '.' || $uf === '..' || $uf === 'cache' || $uf[0] === '.' || is_dir($upDir . '/' . $uf)) {
@@ -420,7 +469,7 @@ try {
             // its parent — the parent is what content references.
             $isCompanion = substr($uf, -5) === '.webp' && is_file($upDir . '/' . substr($uf, 0, -5));
             $probe = $isCompanion ? substr($uf, 0, -5) : $uf;
-            if (strpos($hay, $probe) === false) {
+            if (!isset($named[$probe]) && strpos($hay, $probe) === false) {
                 $orphanFiles++;
             }
         }
@@ -464,6 +513,12 @@ try {
 // cap counts login_attempts, not these rows).
 try {
     db()->exec('DELETE FROM guest_codes WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)');
+} catch (\Throwable $e) {
+}
+// A guest's notification text waits for their phone for five minutes (guest_ping_read
+// ignores anything older); the row stayed for good, one per guest ever notified.
+try {
+    db()->exec("DELETE FROM content WHERE item_key LIKE 'guest-ping-%' AND updated_at < DATE_SUB(NOW(), INTERVAL 1 DAY)");
 } catch (\Throwable $e) {
 }
 
