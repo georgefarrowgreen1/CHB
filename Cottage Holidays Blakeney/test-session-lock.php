@@ -60,6 +60,7 @@ function slk_tokens(string $src): array
 const SLK_WRITER_CALLS = [
     'session_start', 'session_regenerate_id', 'session_destroy', 'session_unset', 'session_reset', 'session_decode',
     'admin_session_begin', 'guest_session_begin', 'reauth_stamp', 'csrf_token', 'csrf_issue_cookie',
+    'devices_record',
 ];
 // Built-ins that write through a by-reference argument.
 const SLK_BYREF_CALLS = [
@@ -198,7 +199,9 @@ $late = [];
 $scanned = 0;
 foreach (glob(__DIR__ . '/*.php') as $path) {
     $f = basename($path);
-    if (strpos($f, 'test-') === 0 || $f === 'db.php' || $f === 'session-lib.php') {
+    // devices-lib.php is db.php's own: its writes run inside admin_session_check (before
+    // the release) and admin_session_begin (whose callers declare, being writers above).
+    if (strpos($f, 'test-') === 0 || $f === 'db.php' || $f === 'session-lib.php' || $f === 'devices-lib.php') {
         continue;
     }
     $src = (string) file_get_contents($path);

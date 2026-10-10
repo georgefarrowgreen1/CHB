@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 776;
+const ADMIN_BUNDLE_V = 777;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 401;
+const ADMIN_CSS_V = 402;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -141,7 +141,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","oaDevOpenTarget","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -163,6 +163,17 @@ function loadAdminBundle() {
     stub.__adminStub = true;
     window[n] = stub;
 });
+// For the back office's Devices list: an installed app, and an iPad whose Safari
+// calls itself a Mac, only the page can tell. The server reads it for the label.
+(function chbDeviceHint() {
+    try {
+        const f = [];
+        const nav = /** @type {any} */ (navigator);
+        if (nav.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) f.push('app');
+        if (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) f.push('ipad');
+        document.cookie = 'chb_dh=' + (f.join('.') || 'web') + '; path=/; max-age=31536000; samesite=lax' + (location.protocol === 'https:' ? '; secure' : '');
+    } catch (e) {}
+})();
 /* --- 0. BACKEND API CLIENT --- */
 // Flat layout: the PHP files sit in the SAME folder as this page.
 // Build an absolute path to that folder from the page location, so it
@@ -1778,7 +1789,7 @@ async function maybeHandleStaleAdmin(code) {
     __staleAdminChecking = true;
     try {
         const s = await apiPost('auth.php', { action: 'admin_status' });
-        if (!s || !s.admin) forceAdminLogout();
+        if (!s || !s.admin) forceAdminLogout(s && s.ended);
     } catch (e) {
         /* network hiccup — don't log out on uncertainty */
     } finally {
@@ -1804,7 +1815,11 @@ function chbOwnerDeviceForget() {
         drop.forEach((k) => localStorage.removeItem(k));
     } catch (e) {}
 }
-function forceAdminLogout() {
+// `why`: the server's word when it knows ('device': signed out from a Devices list).
+let __chbAdminEnded = '';
+const CHB_DEVICE_ENDED = 'This device was signed out of the back office. Sign in again to carry on.';
+function forceAdminLogout(why) {
+    const ended = typeof why === 'string' && why ? why : __chbAdminEnded;
     isAuthenticated = false;
     // The session is over, so the device stops being "the owner's phone".
     chbOwnerDeviceForget();
@@ -1839,7 +1854,7 @@ function forceAdminLogout() {
     if (!__sessionExpiredNotified) {
         __sessionExpiredNotified = true;
         Promise.resolve(forgot)
-            .then(() => glassAlert('Your sign-in has ended. Please sign in again.'))
+            .then(() => glassAlert(ended === 'device' ? CHB_DEVICE_ENDED : 'Your sign-in has ended. Please sign in again.'))
             .catch(() => {})
             .then(() => {
                 try {
@@ -11828,6 +11843,7 @@ function restoreSessions() {
                     try {
                         const s = await apiPost('auth.php', { action: 'admin_status' });
                         chbSetMe(s && s.admin ? s.me : null, s && s.ownerFirst);
+                        if (s && !s.admin && s.ended) __chbAdminEnded = String(s.ended);
                         // Remember the VERDICT (not the session): an offline reload must
                         // tell the owner's phone with no signal from "not signed in".
                         try {
@@ -11859,6 +11875,14 @@ function restoreSessions() {
                 } catch (_) {}
                 if (!hinted) {
                     isAuthenticated = await verdict;
+                    // Signed out from a Devices list while the app was closed: say so.
+                    if (!isAuthenticated && __chbAdminEnded === 'device') {
+                        setTimeout(() => {
+                            try {
+                                toast(CHB_DEVICE_ENDED);
+                            } catch (_) {}
+                        }, 1200);
+                    }
                     return;
                 }
                 isAuthenticated = await Promise.race([
@@ -14078,6 +14102,8 @@ async function chbOpenTarget(target) {
     else if (kind === 'calendar') await settingsOpenCalendar();
     else if (kind === 'diagnostics') { await openArea(); settingsOpen('diagnostics'); }
     else if (kind === 'moderation') { await openArea(); settingsOpen('reviews'); }
+    // A new-sign-in alert or email: the device in your Devices list, ready to sign out.
+    else if (kind === 'device' && id) await window.oaDevOpenTarget(id);
     else return false;
     return true;
 }
@@ -16433,6 +16459,7 @@ const MODAL_CLOSERS = {
     'exp-detail-modal': closeExpDetail,
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
+    'oa-dev-sheet': () => window.oaDevClose(), // open only once admin.js is in
 };
 function topOpenDialog() {
     const lb = document.getElementById('lightbox');
@@ -18922,6 +18949,7 @@ function closeTopOverlay() {
     // The owner's sheets — same rule. NB edit-modal can sit over the composer and
     // the thread, so it is asked first.
     if (open('edit-modal')) { closeModal(); return true; }
+    if (open('oa-dev-sheet') && typeof window.oaDevClose === 'function') { window.oaDevClose(); return true; }
     if (open('enq-email-modal') && typeof window.closeEnquiryEmailModal === 'function') { window.closeEnquiryEmailModal(); return true; }
     const mm = document.getElementById('messages-modal');
     if (mm && mm.classList.contains('open') && mm.parentElement === document.body) { closeMessagesModal(); return true; }
@@ -21997,7 +22025,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mephoto1';
+    const BUILD = 'devices1010';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

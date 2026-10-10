@@ -5856,6 +5856,182 @@ $rootDb->exec("DELETE FROM chat_threads WHERE id IN ($t81, $tB81)");
 $rootDb->exec("DELETE FROM admins WHERE id IN ($mar81, $gid81, $het81, $ned81)");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'host-name'");
 
+// ---- 82. Devices ----------------------------------------------------------------
+// Every device a person is signed in on is a row, and every request asks its row,
+// so one device can be signed out while the rest carry on. Driven through the real
+// sign-in, the real endpoint and the session files themselves: a session from
+// before the list began is made by taking its row id out of its file.
+echo "\n== 82. Devices: where each person is signed in, and signing one out ==\n";
+it_check('§82 admin_sessions exists after schema + migrations', count($rootDb->query("SHOW TABLES LIKE 'admin_sessions'")->fetchAll()) === 1);
+it_check('§82 push_subscriptions.admin_session_id exists', count($rootDb->query("SHOW COLUMNS FROM push_subscriptions LIKE 'admin_session_id'")->fetchAll()) === 1);
+$UA82 = [
+    'app' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+    'mac' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+    'pc' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.2792.65',
+    'safari' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+];
+// One browser: its cookie jar and the user agent it sends.
+$h82 = function (&$jar, $ua, $method, $path, $body = null) {
+    $was = (string) ini_get('user_agent');
+    ini_set('user_agent', $ua);
+    try {
+        return http($jar, $method, $path, $body);
+    } finally {
+        ini_set('user_agent', $was);
+    }
+};
+$mk82 = function ($user, $name, $full) use ($rootDb) {
+    $rootDb->prepare('INSERT INTO admins (username, password_hash, name, email, full_access, perms, twofa, created_at) VALUES (?,?,?,?,?,?,0,NOW())')
+        ->execute([$user, password_hash('pw-' . $user, PASSWORD_DEFAULT), $name, $user . '@example.com', $full, $full ? null : '{}']);
+    return (int) $rootDb->lastInsertId();
+};
+$wren82 = $mk82('wren82', 'Wren Lark', 1);
+$ivy82 = $mk82('ivy82', 'Ivy Holt', 0);
+$in82 = function (&$jar, $ua, $user, $pw = '') use ($h82) {
+    return $h82($jar, $ua, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => $user, 'password' => $pw !== '' ? $pw : 'pw-' . $user]);
+};
+$list82 = function (&$jar, $ua, $id = 0) use ($h82) {
+    return $h82($jar, $ua, 'POST', '/devices.php', ['action' => 'list'] + ($id ? ['id' => $id] : []));
+};
+$newWren82 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'admin.login_new' AND summary LIKE 'Wren Lark signed in%'")->fetchColumn();
+$wP = [];
+$r = $in82($wP, $UA82['app'], 'wren82');
+it_check('§82 Wren signs in on her phone', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('§82 …her first sign-in anywhere is not news', $newWren82() === 0);
+$wM = [];
+$in82($wM, $UA82['mac'], 'wren82');
+$lastNew82 = (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'admin.login_new' AND summary LIKE 'Wren Lark%' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§82 a second device signing in is news, and the log names the device', $newWren82() === 1 && strpos($lastNew82, 'Wren Lark signed in with a password on a new device: Mac · Chrome') === 0, $lastNew82);
+$r = $list82($wP, $UA82['app']);
+$d82 = $r['json']['devices'] ?? [];
+it_check('§82 her list has both: this phone first, marked, then the Mac', $r['code'] === 200 && count($d82) === 2 && ($d82[0]['here'] ?? false) === true && ($d82[0]['label'] ?? '') === 'iPhone · App' && ($d82[1]['label'] ?? '') === 'Mac · Chrome' && ($d82[1]['here'] ?? true) === false, $r['raw']);
+it_check('§82 …each says how it signed in', ($d82[1]['how'] ?? '') === 'Password' && ($d82[1]['earlier'] ?? true) === false, json_encode($d82[1] ?? null));
+$phone82 = (int) ($d82[0]['id'] ?? 0);
+$mac82 = (int) ($d82[1]['id'] ?? 0);
+// The same browser signing in again is not a new device; logging out ends its row.
+$h82($wM, $UA82['mac'], 'POST', '/auth.php', ['action' => 'admin_logout']);
+it_check('§82 logging out ends that device\'s row', $rootDb->query("SELECT ended_why FROM admin_sessions WHERE id = $mac82")->fetchColumn() === 'logout');
+// With two-step trust this time, so signing it out has something to forget.
+$tok82 = bin2hex(random_bytes(20));
+$rootDb->prepare("INSERT INTO admin_devices (token_hash, user_agent, last_seen, admin_id) VALUES (?, 'it82', NOW(), ?)")->execute([hash('sha256', $tok82), $wren82]);
+$wM['chb_admin_device'] = $tok82;
+$in82($wM, $UA82['mac'], 'wren82');
+it_check('§82 the same browser signing in again is not news', $newWren82() === 1);
+$r = $list82($wP, $UA82['app']);
+$d82 = $r['json']['devices'] ?? [];
+$mac82 = (int) (array_values(array_filter($d82, fn($d) => ($d['label'] ?? '') === 'Mac · Chrome'))[0]['id'] ?? 0);
+it_check('§82 …and the list still has two devices, not three', count($d82) === 2 && $mac82 > 0, $r['raw']);
+$ep82 = 'https://fcm.googleapis.com/fcm/send/it82-mac';
+$h82($wM, $UA82['mac'], 'POST', '/push.php', ['action' => 'subscribe_admin', 'subscription' => ['endpoint' => $ep82, 'keys' => ['p256dh' => 'p', 'auth' => 'a']]]);
+it_check('§82 a device\'s alerts are tied to it', (int) $rootDb->query("SELECT admin_session_id FROM push_subscriptions WHERE endpoint = '$ep82'")->fetchColumn() === $mac82);
+$macRow82 = array_values(array_filter($list82($wP, $UA82['app'])['json']['devices'] ?? [], fn($d) => (int) ($d['id'] ?? 0) === $mac82))[0] ?? [];
+it_check('§82 …and the list says so, and that two-step trusts it', ($macRow82['alerts'] ?? false) === true && ($macRow82['trusted'] ?? false) === true, json_encode($macRow82));
+// The page tells what the browser doesn't: an iPad's Safari says it is a Mac.
+$wT = ['chb_dh' => 'ipad.app'];
+$in82($wT, $UA82['safari'], 'wren82');
+$labels82 = array_column($list82($wP, $UA82['app'])['json']['devices'] ?? [], 'label');
+it_check('§82 an iPad whose Safari calls itself a Mac is listed as the iPad app the page knows it is', in_array('iPad · App', $labels82, true), json_encode($labels82));
+// SIGNING ONE DEVICE OUT.
+$r = $h82($wP, $UA82['app'], 'POST', '/devices.php', ['action' => 'sign_out', 'sid' => $mac82]);
+it_check('§82 signing the Mac out from the phone', $r['code'] === 200 && ($r['json']['label'] ?? '') === 'Mac · Chrome' && !in_array('Mac · Chrome', array_column($r['json']['devices'] ?? [], 'label'), true), $r['raw']);
+$r = $h82($wM, $UA82['mac'], 'GET', '/bookings.php');
+it_check('§82 …the Mac is signed out the next time it is used', $r['code'] === 401, $r['code'] . ' ' . substr($r['raw'], 0, 120));
+$r = $h82($wM, $UA82['mac'], 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§82 …and is told why', ($r['json']['admin'] ?? true) === false && ($r['json']['ended'] ?? '') === 'device', $r['raw']);
+$r = $h82($wM, $UA82['mac'], 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§82 …once', !isset($r['json']['ended']), $r['raw']);
+it_check('§82 …its alerts stop', (int) $rootDb->query("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = '$ep82'")->fetchColumn() === 0);
+it_check('§82 …and two-step forgets it', (int) $rootDb->query("SELECT COUNT(*) FROM admin_devices WHERE token_hash = '" . hash('sha256', $tok82) . "'")->fetchColumn() === 0);
+it_check('§82 …while the phone carries on', $h82($wP, $UA82['app'], 'GET', '/bookings.php')['code'] === 200);
+it_check('§82 …and the log says who signed out what', (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'admin.device_signout' ORDER BY id DESC LIMIT 1")->fetchColumn() === 'Wren Lark signed out Mac · Chrome');
+$r = $h82($wP, $UA82['app'], 'POST', '/devices.php', ['action' => 'sign_out', 'sid' => $mac82]);
+it_check('§82 a device already signed out is answered with the list, nothing done twice', $r['code'] === 200 && ($r['json']['already'] ?? false) === true, $r['raw']);
+$r = $h82($wP, $UA82['app'], 'POST', '/devices.php', ['action' => 'sign_out', 'sid' => $phone82]);
+it_check('§82 the device you are using is never signed out from here', $r['code'] === 400 && ($r['json']['code'] ?? '') === 'this_device', $r['raw']);
+// SOMEONE ELSE'S DEVICES are a Super User's.
+$iA = [];
+$in82($iA, $UA82['pc'], 'ivy82');
+$r = $list82($iA, $UA82['pc'], $wren82);
+it_check('§82 a Host cannot see someone else\'s devices', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'not_allowed', $r['raw']);
+$r = $h82($iA, $UA82['pc'], 'POST', '/devices.php', ['action' => 'sign_out', 'id' => $wren82, 'sid' => $phone82]);
+it_check('§82 …nor sign one out', $r['code'] === 403, $r['raw']);
+$r = $h82($iA, $UA82['pc'], 'POST', '/devices.php', ['action' => 'sign_out', 'sid' => $phone82]);
+it_check('§82 …not even by naming its number on her own list', $r['code'] === 404 && ($r['json']['code'] ?? '') === 'gone' && $h82($wP, $UA82['app'], 'GET', '/bookings.php')['code'] === 200, $r['raw']);
+// A SESSION FROM BEFORE THE LIST BEGAN: no row id in its file, and no row.
+$iB = [];
+$iC = [];
+$in82($iB, $UA82['mac'], 'ivy82');
+$in82($iC, $UA82['pc'], 'ivy82');
+$legacy82 = function ($jar) use ($work, $rootDb) {
+    $f = $work . '/sessions/sess_' . ($jar['PHPSESSID'] ?? '');
+    $raw = (string) @file_get_contents($f);
+    if (!preg_match('/admin_sess\|i:(\d+);/', $raw, $m)) {
+        return false;
+    }
+    $rootDb->exec('DELETE FROM admin_sessions WHERE id = ' . (int) $m[1]);
+    return file_put_contents($f, str_replace($m[0], '', $raw)) !== false;
+};
+it_check('§82 (fixture) two of Ivy\'s sessions made as if from before the list began', $legacy82($iB) && $legacy82($iC));
+$r = $h82($iC, $UA82['pc'], 'GET', '/bookings.php');
+$late82 = $rootDb->query("SELECT how FROM admin_sessions WHERE admin_id = $ivy82 AND ended_at IS NULL ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§82 such a session is recorded the next time it is used, and is not news', $r['code'] === 200 && $late82 === 'earlier' && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'admin.login_new' AND summary LIKE 'Ivy Holt%' AND summary LIKE '%Not recorded%'")->fetchColumn() === 0, (string) $late82);
+$r = $list82($wP, $UA82['app'], $ivy82);
+$ivyList82 = $r['json']['devices'] ?? [];
+it_check('§82 a Super User sees Ivy\'s devices: the two used since the list began', $r['code'] === 200 && count($ivyList82) === 2 && in_array(true, array_column($ivyList82, 'earlier'), true) && !in_array(true, array_column($ivyList82, 'here'), true), $r['raw']);
+it_check('§82 …and is told the list may not be complete yet, and since when', ($r['json']['partial'] ?? null) === true && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($r['json']['began'] ?? '')) === 1, $r['raw']);
+$r = $h82($wP, $UA82['app'], 'POST', '/devices.php', ['action' => 'sign_out_all', 'id' => $ivy82]);
+it_check('§82 a Super User signs Ivy out everywhere', $r['code'] === 200 && ($r['json']['devices'] ?? null) === [] && (int) ($r['json']['count'] ?? -1) === 2, $r['raw']);
+it_check('§82 …every one of her sessions is out, the one never recorded included',
+    $h82($iA, $UA82['pc'], 'GET', '/bookings.php')['code'] === 401 && $h82($iB, $UA82['mac'], 'GET', '/bookings.php')['code'] === 401 && $h82($iC, $UA82['pc'], 'GET', '/bookings.php')['code'] === 401);
+it_check('§82 …and the log names who did it', (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'admin.device_signout_all' ORDER BY id DESC LIMIT 1")->fetchColumn() === 'Wren Lark signed Ivy Holt out everywhere');
+// SIGNING YOURSELF OUT OF EVERY OTHER DEVICE.
+$wC = [];
+$in82($wC, $UA82['pc'], 'wren82');
+$ep82b = 'https://fcm.googleapis.com/fcm/send/it82-pc';
+$h82($wC, $UA82['pc'], 'POST', '/push.php', ['action' => 'subscribe_admin', 'subscription' => ['endpoint' => $ep82b, 'keys' => ['p256dh' => 'p', 'auth' => 'a']]]);
+$ep82c = 'https://fcm.googleapis.com/fcm/send/it82-phone';
+$h82($wP, $UA82['app'], 'POST', '/push.php', ['action' => 'subscribe_admin', 'subscription' => ['endpoint' => $ep82c, 'keys' => ['p256dh' => 'p', 'auth' => 'a']]]);
+$r = $h82($wP, $UA82['app'], 'POST', '/devices.php', ['action' => 'sign_out_all', 'push_endpoint' => $ep82c]);
+$left82 = $r['json']['devices'] ?? [];
+it_check('§82 signing out of all your other devices leaves only this one', $r['code'] === 200 && count($left82) === 1 && ($left82[0]['here'] ?? false) === true && (int) ($r['json']['count'] ?? 0) === 2, $r['raw']);
+it_check('§82 …the others are out', $h82($wC, $UA82['pc'], 'GET', '/bookings.php')['code'] === 401 && $h82($wT, $UA82['safari'], 'GET', '/bookings.php')['code'] === 401);
+it_check('§82 …this one carries on (its session re-stamped with the new epoch)', $h82($wP, $UA82['app'], 'GET', '/bookings.php')['code'] === 200);
+it_check('§82 …the others\' alerts stop and this one\'s stay', (int) $rootDb->query("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = '$ep82b'")->fetchColumn() === 0 && (int) $rootDb->query("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = '$ep82c'")->fetchColumn() === 1);
+// A PASSWORD CHANGE and A REMOVAL take devices off the list too.
+$wD = [];
+$in82($wD, $UA82['mac'], 'wren82');
+$dSid82 = (int) $rootDb->query("SELECT MAX(id) FROM admin_sessions WHERE admin_id = $wren82")->fetchColumn();
+$r = $h82($wP, $UA82['app'], 'POST', '/auth.php', ['action' => 'admin_change_password', 'current' => 'pw-wren82', 'next' => 'pw-wren82-changed']);
+it_check('§82 a password change takes the other devices off the list', $r['code'] === 200 && $rootDb->query("SELECT ended_why FROM admin_sessions WHERE id = $dSid82")->fetchColumn() === 'password' && count($list82($wP, $UA82['app'])['json']['devices'] ?? []) === 1, $r['raw']);
+$iE = [];
+$in82($iE, $UA82['pc'], 'ivy82');
+$eSid82 = (int) $rootDb->query("SELECT MAX(id) FROM admin_sessions WHERE admin_id = $ivy82")->fetchColumn();
+$r = $h82($wP, $UA82['app'], 'POST', '/people.php', ['action' => 'remove', 'id' => $ivy82]);
+it_check('§82 removing someone takes their devices off too', $r['code'] === 200 && $rootDb->query("SELECT ended_why FROM admin_sessions WHERE id = $eSid82")->fetchColumn() === 'removed', $r['raw']);
+// THE NIGHTLY JOB: a device unused for longer than a session lives is over (and is
+// not listed even before then), and an old sign-out is forgotten.
+$wF = [];
+$in82($wF, $UA82['pc'], 'wren82', 'pw-wren82-changed');
+$fSid82 = (int) $rootDb->query("SELECT MAX(id) FROM admin_sessions WHERE admin_id = $wren82")->fetchColumn();
+$rootDb->exec("UPDATE admin_sessions SET created_at = DATE_SUB(NOW(), INTERVAL 70 DAY), last_seen = DATE_SUB(NOW(), INTERVAL 70 DAY) WHERE id = $fSid82");
+it_check('§82 a device unused for longer than a session lives is not listed', !in_array($fSid82, array_column($list82($wP, $UA82['app'])['json']['devices'] ?? [], 'id'), true));
+$rootDb->exec("UPDATE admin_sessions SET ended_at = DATE_SUB(NOW(), INTERVAL 100 DAY) WHERE id = $mac82");
+$probe82 = function ($code) use ($work) {
+    $f = $work . '/it-devices-probe82.php';
+    file_put_contents($f, "<?php\nrequire __DIR__ . '/db.php';\n" . $code);
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    return json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+};
+$p82 = $probe82('echo "\n" . json_encode(["n" => devices_prune()]);');
+it_check('§82 the nightly job ends it, and deletes a sign-out older than 90 days',
+    (int) ($p82['n'] ?? 0) >= 2 && $rootDb->query("SELECT ended_why FROM admin_sessions WHERE id = $fSid82")->fetchColumn() === 'expired' && (int) $rootDb->query("SELECT COUNT(*) FROM admin_sessions WHERE id = $mac82")->fetchColumn() === 0, json_encode($p82));
+// Clean up.
+$rootDb->exec("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/it82-%'");
+$rootDb->exec("DELETE FROM admin_devices WHERE admin_id IN ($wren82, $ivy82)");
+$rootDb->exec("DELETE FROM admin_sessions WHERE admin_id IN ($wren82, $ivy82)");
+$rootDb->exec("DELETE FROM admins WHERE id IN ($wren82, $ivy82)");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

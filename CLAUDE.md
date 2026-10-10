@@ -5147,6 +5147,83 @@ usually open too.
   three ways, a wrong password, the reset from a username, the link signing in), test-emails-render §14 (no password
   promised and 10 minutes, each half read on its own).
 
+## Devices: where each person is signed in, and signing one out (approved demo, built and merged without CI)
+
+**Asked for as "a Devices list for each admin, with revoke", demoed, then "Build it and merge without CI".** The
+three decisions the demo put to the owner were taken as suggested: new sign-in alerts on for everyone, a person
+signed out by a Super User is emailed, and signing out asks for no password. Code: `devices-lib.php` (required by
+db.php), `devices.php`, migration-143 (`admin_sessions`, `push_subscriptions.admin_session_id`), the "Devices"
+block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
+- **EVERY SIGN-IN IS A ROW, AND EVERY REQUEST ASKS ITS ROW.** The session carries the row id
+  (`$_SESSION['admin_sess']`); `admin_session_check` calls `devices_session_check`, and a row that is ended, belongs
+  to someone else or is gone signs that device out on its next request (`admin_ended = 'device'`, said once by
+  `admin_status` so the page can say "This device was signed out…" rather than a bare "your sign-in has ended").
+  **Unknown is not signed out**: a database that can't be read, or no table yet, leaves the session alone.
+  `admin_session_begin($id, $how)` records the sign-in (`devices_record`) and returns the row, its label and whether
+  it is NEW; every sign-in path passes how (`admin_complete_login(…, $via)`: password, password_code, code, invite,
+  reset, staging; passkeys.php: passkey).
+- **A SESSION FROM BEFORE THE LIST BEGAN** has no row; it is recorded (`how` = 'earlier', "Not recorded") the next
+  time it is used. One never used again has no row at all, so for a session lifetime (60 days) after migration-143
+  the list can be incomplete: `devices_partial` (the migration's `applied_at`), and the page then keeps "Sign out of
+  all other devices" on offer with a note saying so. **Signing out everywhere moves the epoch** as well as ending
+  rows, which is what reaches a session with no row (integration §82 makes one by taking its row id out of its
+  session file — break-tested).
+- **WHAT A DEVICE IS CALLED** is `devices_label($ua, $hint)` (pure): "iPhone · App", "Mac · Chrome". An iPad's
+  Safari says it is a Mac and an installed app's window says nothing, so app.js sets the `chb_dh` cookie
+  (`chbDeviceHint`: app / ipad / web, a closed vocabulary) and the label is refreshed with "last active" (written at
+  most every five minutes).
+- **NEW IS THIS BROWSER'S OWN KEY** (`chb_dk`, 400 days, HttpOnly): a device is new when the person has never signed
+  in with that key, two-step does not already trust it, they have signed in somewhere before, it is not a late
+  'earlier' row and not the staging host (the constant AND the staging Host header, the other staging guards'
+  rule — the integration harness defines the constant). It replaced the IP-and-browser fingerprint, which called a
+  phone "new" whenever its address changed; the fingerprint stays only as the answer before the table exists. A new
+  device logs `admin.login_new` ("… on a new device: Mac · Chrome") and `devices_alert_new` sends, after the
+  response, an `urgent` push to that person only (it is about their own account, so it ignores mutes and quiet
+  hours) that opens `?open=device-<id>`, and an email (`admin_new_device_body`, "Review your devices").
+- **SIGNING A DEVICE OUT FORGETS IT** (`devices_end(…, $forget)`): its alerts (push rows linked by
+  `admin_session_id`, which subscribe_admin now records) and its two-step trust (`trust_hash`, the trust cookie it
+  signed in with; `admin_trust_this_device` sets `$_COOKIE` in-process so a sign-in that just trusted the device
+  records it). Logging out yourself ends your row and keeps the trust, as it always did. A password change ends the
+  others ('password'), a reset all of them ('reset'), removal theirs ('removed').
+- **THE RULES IN devices.php**: your own devices are yours; anyone else's are a Super User's (403 `not_allowed`), and
+  a sid that is not that person's is 404 `gone`. The device you are using is never signed out here (400
+  `this_device`: that is Log out). Signing out an already-ended row answers the list with `already`, nothing done
+  twice. `sign_out_all` re-stamps the caller's own epoch (the file keeps the session for that) and keeps this
+  device's trust and its alerts (`push_endpoint`). A Super User's sign-out emails the person
+  (`admin_signed_out_body`). Both actions are logged by name.
+- **THE PAGES**: Sign-in & security ends with a Devices group (`oaDevHtml(0)`, this device first with a green dot,
+  "Active now" / "Last active 2 hours ago"), then "Sign out of all other devices"; a person's page (Super Users) has
+  the same group with "Sign <name> out everywhere", or "Not signed in anywhere". A row opens a bottom sheet
+  (`#oa-dev-sheet`, the photo sheet's pattern: own history entry, Escape and Back close it): Signed in
+  (DD/MM/YYYY at HH:MM, or "Before <date>"), How, Two-step, Alerts, then the sign-out — an outlined pill in danger
+  ink with its icon at text size — and Close, which takes focus. This device's sheet offers Log out instead. Every
+  sign-out asks first, naming the device. A failed list read keeps the last answer; only the latest ask paints.
+  `revalidateOwnerPush` now also runs when the admin bundle loads, so a device's alerts are tied to its sign-in.
+- **The nightly job** (self-repair 4d-iii, `devices_prune`) ends a row unused for longer than a session lives and
+  deletes signed-out rows after 90 days.
+- Gates: **test-devices.php** (pure: labels from real user agents, the hint vocabulary, how, news, the partial
+  window, the wiring), test-integration **§82** (41 checks through the real sign-in, endpoint and session files),
+  **ui-test-devices.js** (the page, the sheet and its sizes, Back, both sign-outs, a person's page, the `?open=`
+  route, failures, the signed-out message), test-emails-render (three renders) and the two samples. Server
+  break-tests (ended rows ignored, no epoch move, the first sign-in as news, Hosts let in) and client break-tests
+  (no history entry, the last list dropped, the danger ink, the route) each failed their named checks — the history
+  one only after the check was made to read `history.state`: Back closed the sheet without its entry too, by
+  spending the previous screen's.
+- **AN ANSWER WITH NO LIST IS NOT AN EMPTY LIST**: `oaDevLoad` treats a reply without a `devices` array as
+  "Couldn't load the devices", because "Not signed in anywhere" from `{ok: true}` is a claim about nothing (the
+  Permissions suite's generic stub showed exactly that until its fixture served a real list).
+- **A DAY COUNT IS ROUNDED, NOT FLOORED** (`oaDevSeen`, and `oaSeenWords` beside it): midnight to midnight is 23 hours
+  on the day the clocks go forward, so a floored count read yesterday as "today". ui-test-devices §10 pins the clock
+  to the morning after 28/03/2027.
+- **The confirm says exactly what getting back in takes**: with two-step, "your password and an emailed code, or a
+  passkey" (a passkey saved on the device still signs in), and on your own list, when you have passkeys, "If it's
+  lost, remove its passkey too."
+- NB test-session-lock exempts devices-lib.php as part of db.php (its writes run inside admin_session_check before
+  the release) and lists `devices_record` as a session writer. The recorder is not called devices_session_start
+  because that gate counts `session_start(` in db.php by substring.
+- NB a person's page now has a second red row ("Sign <name> out everywhere") before "Remove <name>": ui-test-people
+  clicks Remove by its name.
+
 ## Signing in to the back office with an email (reported: "you can only get in with a password reset")
 
 **Partly superseded by "Three ways into the back office" above**: the code now signs in on its own, so the

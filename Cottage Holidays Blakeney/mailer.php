@@ -5050,6 +5050,71 @@ function admin_reset_body($first, $username, $url, $byFirst = '')
     ];
 }
 
+/**
+ * A device the person hasn't signed in on before just did (devices_alert_new).
+ * The button opens that device in their Devices list, ready to sign it out.
+ * $at is 'Y-m-d H:i'; $how is already in words ("Emailed code"). PURE.
+ */
+function admin_new_device_body($first, $label, $at, $how, $url)
+{
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $first = trim((string) $first) !== '' ? trim((string) $first) : 'there';
+    $at = (string) $at;
+    $when = email_date(substr($at, 0, 10)) . ', ' . email_time(substr($at, 11, 5));
+    return [
+        'subject' => 'A new device signed in — Cottage Holidays Blakeney',
+        'text' =>
+            "Hello {$first},\n\n" .
+            "Your back office account was just signed in on a device it hasn't seen before.\n\n" .
+            "Device: {$label}\nWhen: {$when}\nHow: {$how}\n\n" .
+            "Review your devices:\n" . $url . "\n\n" .
+            "If this was you, there's nothing to do. If it wasn't, sign that device out from the link above, then change your password.\n\n" .
+            'Cottage Holidays Blakeney',
+        'html' => email_shell(
+            $label . ' signed in to your account. If it wasn’t you, sign it out.',
+            email_h('A new device signed in') .
+                email_p('Hello ' . $esc($first) . ',') .
+                email_lead('Your back office account was just signed in on a device it hasn&rsquo;t seen before.') .
+                email_rows([['Device', $esc($label)], ['When', $esc($when)], ['How', $esc($how)]]) .
+                email_btn($url, 'Review your devices') .
+                email_footnote('If this was you, there&rsquo;s nothing to do. If it wasn&rsquo;t, sign that device out, then change your password.'),
+        ),
+    ];
+}
+
+/**
+ * A Super User signed this person out of one device ($label) or of every device
+ * ($label ''), so a sign-out they didn't expect is noticed and nobody wonders
+ * why the app asked them to sign in again. PURE.
+ */
+function admin_signed_out_body($first, $byFirst, $label)
+{
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $first = trim((string) $first) !== '' ? trim((string) $first) : 'there';
+    $by = trim((string) $byFirst) !== '' ? trim((string) $byFirst) : 'The owner';
+    $label = trim((string) $label);
+    $what = $label !== '' ? 'your back office sign-in on ' . $label : 'the back office on every device';
+    $title = $label !== '' ? 'You were signed out of ' . $label : 'You were signed out everywhere';
+    $again = 'You can sign in again any time with your password, a passkey or an emailed code.';
+    return [
+        'subject' => $title . ' — Cottage Holidays Blakeney',
+        'text' =>
+            "Hello {$first},\n\n" .
+            "{$by} signed you out of {$what}.\n\n" .
+            $again . "\n\n" .
+            "If you didn't expect this, ask {$by}.\n\n" .
+            'Cottage Holidays Blakeney',
+        'html' => email_shell(
+            $by . ' signed you out. ' . $again,
+            email_h($title) .
+                email_p('Hello ' . $esc($first) . ',') .
+                email_lead($esc($by) . ' signed you out of ' . $esc($what) . '.') .
+                email_p($esc($again)) .
+                email_footnote('If you didn&rsquo;t expect this, ask ' . $esc($by) . '.'),
+        ),
+    ];
+}
+
 /** The weekly database backup, whose .sql.gz rides as an attachment. */
 function backup_report_body($sizeLabel, $filesNote = '')
 {
