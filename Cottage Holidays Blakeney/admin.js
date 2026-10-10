@@ -30193,10 +30193,10 @@ function sgSyncExtras(cards, changes) {
         mo.innerHTML = Array.from({ length: 12 }, (_, k) => `<span>${SG_MON[(m0 + k) % 12].charAt(0)}</span>`).join('');
     }
     const count = document.getElementById('sg-count');
-    if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
+    if (count) count.textContent = cards.length ? `${cards.length} season${cards.length === 1 ? '' : 's'}` : 'Seasons';
     const cap = document.getElementById('settings-panel-cap');
     const sec = document.getElementById('sec-seasongrid');
-    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', cards.length ? `${cards.length} coming up` : 'None coming up'));
+    if (cap && sec && sec.style.display !== 'none') headPillSet(cap, headPill('unk', cards.length ? `${cards.length} coming up` : 'No seasons'));
     const bar = document.getElementById('sg-savebar');
     if (bar) bar.hidden = !changes;
 }
