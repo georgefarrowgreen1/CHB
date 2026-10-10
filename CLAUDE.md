@@ -2110,6 +2110,12 @@ guard removed, the window scope removed — each fails its own checks).
   are `.xp-row` now: a caption per tax year with its total, one list card, a line per expense (what, then date ·
   cottage, the amount, its tools as 32px glyphs whose reach is 44 and never overlaps), and "Add an expense" is the
   row at the foot that opens the form in place.
+- **A RULE KEYED ON A CLASS THE BUTTON PASS STRIPS IS DEAD.** Reviews' "Ask for a review" rows were one line (the
+  cottage, then QR / Share / Copy), and on a phone with a share sheet the three pills squeezed the name into breaking
+  mid-word ("Jollybo/at") while each icon shrank to a dot: `.rv-act svg { flex: none }` had pinned them, and
+  `rv-act` is on `ONE_LOOK_OLD`, so that rule never applied once the pass ran (reported from a phone). Below 641px
+  the pills now take a line of their own as three equal columns, and the icons are pinned by a rule on the one-look
+  selector. Before relying on an old class inside a Manage view, check the list.
 - **THE INBOX JOINS NEXT** (section 16). The sentence under the title went (the answers carry every count); the
   folder chevrons are the drawn one; inside an open fold a list is the card's own INSET panel (inset ground, no edge,
   the cell radius on the run's ends), while at ≥1200 the same lists are list cards on the card radius. The guest
