@@ -5224,6 +5224,10 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
   because that gate counts `session_start(` in db.php by substring.
 - NB a person's page now has a second red row ("Sign <name> out everywhere") before "Remove <name>": ui-test-people
   clicks Remove by its name.
+- **The card after the Devices card takes 24px** (`:is(#oa-dev-host, #oa-pdev-host) + .ga-group`, owner-asked from
+  a screenshot): the Devices card sits inside its host, so `.ga-group + .ga-group` never sees it and the person
+  page's reset-and-remove card touched it. A section's gap, not 12px, because that card is about something else.
+  ui-test-devices §7 measures it in both states, by layout offsets (the page may still be sliding in).
 
 ## Signing in to the back office with an email (reported: "you can only get in with a password reset")
 
