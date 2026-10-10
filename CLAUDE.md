@@ -5399,10 +5399,12 @@ Anonymous visitors, crawlers, and signed-in guests with no booking get no Things
 
 ## A guest's profile photo (approved demo, built)
 
-Tap the circle on the Account page (or "Add a photo" on Your details) → a sheet (Take a photo /
+On Your details, tap the circle or "Add a photo" → a sheet (Take a photo /
 Choose from library / Remove) → a cropper (drag, slider/wheel/pinch zoom, a 280px circle — what is
-inside is what is saved). Shown on the Account page, on the guest dock's Account button
-(`guestDockAvatarSync`) and beside the guest's name on the owner's booking page (`.bhub-ava`).
+inside is what is saved). Shown on the You page (beside "Hi, <name>", a plain picture: the photo is
+changed only on Your details, owner's ask; ui-test-guestaccount §8 asserts there is no button there),
+on the guest dock's Account button (`guestDockAvatarSync`) and beside the guest's name on the owner's
+booking page (`.bhub-ava`).
 - **Private to the guest and the owner.** Files live in `uploads/avatars/` (deny-all `.htaccess`,
   random 32-hex names) and are served ONLY by **`avatar.php`**: `require_guest` → your own,
   `require_admin` + `?email=` → the owner's read. The client is told a 10-char VERSION
