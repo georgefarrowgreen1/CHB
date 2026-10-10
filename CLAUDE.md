@@ -1191,6 +1191,21 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
   carry no guest_id, so they outlived the account and stayed searchable), plus the anonymous threads under its
   email. It also takes the enquiry draft, the direct lead, the owner's emails to them, unsent queued copies and
   sign-in codes. Self-repair prunes sign-in codes older than a day.
+- **"DOWNLOAD MY DATA" CARRIES WHAT DELETION TAKES** (`guest_export_data`). The export had the guest's own chat
+  lines only, and nothing filed under their address before the account existed. Under the proven-address rule (as
+  for the stays) it now carries:
+  - the whole conversation, the owner's replies included;
+  - a chat started on the website before signing in;
+  - the enquiry draft and a review left from a review link;
+  - the owner's emails to them, from the Inbox's sent log and from a booking's page;
+  - the names of their passkeys.
+
+  Left out on purpose: a chat's token (it opens that chat), the owner's archive flag, and the owner's private
+  rating and note on a review-link lead. Deleting the account now also clears the activity log's copies of the
+  words: the first line of every chat message, which the Activity log page shows and searches, and a booking
+  page's emails in full. A guest's "New chat message from <name>" loses the name. The rows stay as the record.
+  **Not done, said plainly**: other audit lines still name the guest ("Emailed guest — <name>"), and every row
+  keeps the IP it came from. Gated in test-integration §19b and §70.
 - **A DELETED EXPENSE PUTS ITS BANK PAYMENT BACK TO SORT.** This is statements.php's own unmark, the split columns
   included. The payment used to read "Counted, as a cost" for a cost the books no longer held.
 - **A removed or private cottage tells its waitlist nothing** (`prop_is_marketable`, as the three nudges already did).
@@ -1234,9 +1249,81 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
 - Gates: test-integration §72 and §73, and §24's statement count, still 8. Six changes break-tested, each failing
   its own named check: the visitor query, the memo, the list check, the window, the DTSTAMP-free tag and the
   deflate-tolerant comparison.
-- **Not done, said plainly**: each guest chat poll still reads the whole handled-mail list (`mailbox-poll`) to
-  check a 25-second throttle. The clean fix moves the stamp to its own key, a change to the mailbox's state that
-  wants testing against a real POP3 box.
+- **A guest's chat poll asks the mailbox throttle of the row's own timestamp** (`mailbox_poll_recent`), before it
+  reads the state that holds the inbox's whole handled list. `mailbox_poll_save` writes the row's `updated_at` every
+  time, and the age is worked out on the database's own clock (`TIMESTAMPDIFF` against `CURRENT_TIMESTAMP`), so a
+  recent poll answers with one small query. Only a clear "saved in the last 25 seconds" stops the poll: no row, an
+  error, or the autumn hour the clock goes back fall through to the state's own stamp, as before. test-integration
+  §74 drives the real poll in the app copy with the mailbox switched on and no host to reach; removing the cheap
+  check fails it.
+
+## Answers that land late, and changes that meet (round 6)
+
+Found by the round-6 lifecycle reviews. The back office reuses one node for many records (the email sheet, the
+booking page's guest-book card) and saves several settings as one whole object; on the server, several requests
+can change the Monzo link at once. All of it goes wrong only when a request is slow or two changes overlap, which is
+why nothing caught it.
+- **A SHARED SHEET OR CARD CHECKS WHOSE IT IS BEFORE A LATE ANSWER TOUCHES IT.**
+  - The arrival review's failure path cleared the email sheet's message box even after the owner had opened
+    another guest's email in it. The success path already checked `__composeTarget`; the catch did not.
+  - The guest book's save and remove repainted `#gb-card-host`, whichever booking's page held it when the answer
+    landed, and cleared the half-written rating, whoever's it was. `gbHost` now paints only onto its own booking's
+    page, compared as bookings because the page may have been opened by either id form. Only that booking's
+    draft is cleared.
+- **AN EDIT TO A WHOLE-OBJECT SETTING IS MADE TO THE OBJECT AS THE LAST SAVE LEFT IT.** Three settings are saved
+  whole: the chat's answers (`chat-chips`), the alert preferences and the "in my bank" marks. Each edit copied an
+  object whose mirror updates only once a save lands, so two quick edits copied the same object and the second
+  save wiped out the first.
+  - `gcChipsEdit(change)`, `saveNotifyPrefs` and `pmLandedEdit(change)` queue their saves and read the latest
+    object at their turn.
+  - `gcSave` also queues per key, so two saves of one switch cannot land in the wrong order.
+  - A refused value still never reaches a mirror.
+- **AN UNDO PUTS BACK ONLY WHAT ITS OWN TAP CHANGED** (`pmLanded`). Restoring the whole earlier map also undid
+  every mark made after it.
+- **AN UNDO THAT FAILED SAYS SO** (`toast`). Most Undos are async, and a rejection went nowhere: the toast left
+  and the owner believed it undone.
+- **A FAILED READ KEEPS THE LAST ANSWER, NEVER ZERO OR EMPTY.**
+  - The approvals count: zero claimed nothing was waiting, and the badge and the Needs-you row went with it.
+  - A stay's money history on Payments: an empty list said the stay had no payments. With nothing kept, it now
+    says it couldn't read it, and an explicit reopen asks again. A retry from the render would loop while
+    offline.
+- **A REPAINT OF THE BOOKING PAGE KEEPS ITS ACTIVITY** (`__hubBundle`, `hubBundlePaint`). `renderBookingHub`
+  rebuilt the Activity card as "Loading…" after a plan change, a reminder or a re-dock, and only opening the
+  booking fetched it.
+- **A HOST WHOSE SPLIT DID NOT LOAD IS SHOWN NONE OF THE BUSINESS'S MONEY** (`pmSplitUnsure`). A failed answer
+  fell through to the whole business: every cottage's guests, the bank and the books, and a title pill reading
+  "1 overdue" about another host's guest. Now:
+  - the list says it couldn't check and offers a retry;
+  - the pill claims nothing;
+  - the side pane stays empty.
+  
+  Full access sees the business, which is theirs to see.
+- **AN EMAIL SENT AGAIN AFTER ITS ANSWER WAS LOST GOES ONCE.** The composer's and the Inbox's email sends carry a
+  retry id, computed over what the email says (each file by name and size). bookings.php and enquiries.php
+  `email_guest` and mailbox.php `send` answer a retry from the op ledger. A deliberate resend after one has gone
+  is a new send (`chbOpBump`). This is not queueing: the manual composer still never queues.
+- **AN ARRIVAL EMAIL IS RE-SENT WHEN WHAT IT STATES CHANGES.** `update` cleared `pre_arrival_sent` for a new
+  check-in date or cottage only, while the email also states the leaving date and both times. Those clear it now too.
+  A stored time is compared as `clean_time` reads it, so a blank time from an older row is the default, not a change,
+  and a notes edit does not re-send.
+- **ONE LOCK FOR EVERY CHANGE TO THE MONZO LINK** (`monzo_locked`, the sync's own `chb_monzo_sync`). A disconnect
+  made while a refresh or a sync was in flight was undone by its save: the link came back and went on importing
+  payments. Two refreshes at once spent one refresh token twice, and the loser told the owner to connect again over
+  the winner's good token.
+  - The sync, the approval check, connect, disconnect and the callback all take the lock. It is re-entrant, so a
+    check inside a sync is one holder.
+  - Disconnect and connect wait up to `CHB_MONZO_LOCK_WAIT` (20s), then answer 409 `busy` and change nothing.
+  - A check reports the link as it stands, without calling Monzo.
+  - The callback asks the owner to reload: nothing is used up before the lock is held.
+- Gates:
+  - test-integration §20(e) (a new leaving date, a new time, the same time again, a blank stored time) and §54 (a
+    disconnect and a check while the lock is held);
+  - new **`ui-test-latework.js`** (eleven sections, each holding a request open or dropping it, then doing the
+    next thing);
+  - test-payrail (the three endpoints' ledger wiring). Mail is off in the integration harness, so a send cannot
+    succeed there to be replayed.
+
+  Twenty-three changes break-tested, each failing its own named check.
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 

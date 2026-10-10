@@ -2231,6 +2231,26 @@ $rspAt = strpos($rsp, "if (\$action === 'record_square_payment')");
 $rspBody = $rspAt === false ? '' : substr($rsp, $rspAt, 9000);
 chk('record_square_payment writes the ledger row with that date, not NOW()', strpos($rspBody, 'square_taken_at(') !== false && (bool) preg_match('/INSERT IGNORE INTO payments \([^)]*created_at\)\s*VALUES \(\?,\?,\?,\?,\?,\?,\?,\?,\?\)/', $rspBody));
 
+echo "\n== An email the owner sends again after a lost answer goes once ==\n";
+// The composer and the Inbox send with a retry id; the endpoint must hand the retry the
+// stored answer (op_claim … op_finish) or the guest gets the email twice. Mail is off in
+// the integration harness, so a send cannot succeed there to be replayed: the wiring is
+// checked here, the ledger itself in integration §17.
+$opSends = [
+    ['bookings.php', "if (\$action === 'email_guest')"],
+    ['enquiries.php', "if (\$action === 'email_guest')"],
+    ['mailbox.php', "if (\$action === 'send')"],
+];
+foreach ($opSends as [$f, $start]) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    $at = strpos($src, $start);
+    $end = $at === false ? false : strpos($src, "\n}\n", $at);
+    $body = $at === false || $end === false ? '' : substr($src, $at, $end - $at);
+    $claim = strpos($body, '$opTok = op_claim($in);');
+    $send = strpos($body, 'smtp_send');
+    chk("$f: the send claims its retry id first and stores its answer", $body !== '' && $claim !== false && ($send === false || $claim < $send) && strpos($body, 'json_out(op_finish($opTok, [') !== false);
+}
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

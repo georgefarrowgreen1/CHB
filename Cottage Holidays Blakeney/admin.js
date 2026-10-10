@@ -11020,18 +11020,9 @@ async function openBookingHub(bookingId, quiet) {
     {
         apiPost('bookings.php', { action: 'hub_bundle', id: dbId })
             .then((r) => {
-                const el2 = document.getElementById('hub-history');
-                if (!el2 || __hubBookingId !== bookingId) return;
-                el2.innerHTML = hubActivityHtml(r || {}, bookingId);
-                // The disclosure groups' summary rows state their conclusion
-                // from the same bundle: Activity's latest line, and the
-                // Emails group's last send when nothing synchronous (the
-                // pre-arrival stamp) already answered it.
-                const act = document.getElementById('bhub-activity-sum');
-                if (act) act.textContent = hubActivitySum(r || {});
-                const em = document.getElementById('bhub-emails-sum');
-                // A capsule (markup), so innerHTML — the slot is empty until filled.
-                if (em && !em.textContent) em.innerHTML = hubEmailsSum(r || {});
+                if (__hubBookingId !== bookingId) return;
+                __hubBundle = { id: bookingId, r: r || {} };
+                hubBundlePaint(bookingId);
             })
             .catch(() => {
                 const el2 = document.getElementById('hub-history');
@@ -11585,7 +11576,11 @@ function gbHost(id) {
     const b = findBookingById(id);
     const loc = b && findBookingLocation(id);
     const host = document.getElementById('gb-card-host');
-    if (b && loc && host) {
+    // Only onto this booking's own page: a save that lands after the owner opened
+    // another booking painted this rating card into theirs. Compared as bookings,
+    // because the page may have been opened by either id form.
+    const onScreen = !!b && __hubBookingId != null && findBookingById(__hubBookingId) === b;
+    if (b && loc && host && onScreen) {
         __bhubOpenFolds.add('rating');
         host.innerHTML = hubGuestBookCard(loc.propKey, b);
     }
@@ -11634,7 +11629,7 @@ async function gbSave(id) {
             overall: d.overall, clean: d.clean, rules: d.rules, comms: d.comms, note: d.note.trim(),
         });
         b.guestRating = { overall: d.overall, clean: d.clean, rules: d.rules, comms: d.comms, note: d.note.trim(), at: (r && r.at) || '' };
-        __gbDraft = null;
+        if (__gbDraft && __gbDraft.id === b.id) __gbDraft = null; // never another booking's half-written one
         toast('In the guest book — private, and attached to this guest wherever they book next.');
     } catch (e) {
         glassAlert((e && e.message) || 'Could not save the rating just now.');
@@ -11648,7 +11643,7 @@ async function gbRemove(id) {
     try {
         await apiPost('bookings.php', { action: 'rate_guest', id: b.dbId, overall: 0 });
         b.guestRating = null;
-        __gbDraft = null;
+        if (__gbDraft && __gbDraft.id === b.id) __gbDraft = null;
         toast('Removed from the guest book.');
     } catch (e) {
         glassAlert((e && e.message) || 'Could not remove the rating just now.');
@@ -11707,6 +11702,25 @@ function hubStateCap(b, past) {
         tone = ' is-soon';
     }
     return ` <span class="bhub-state${tone}">${t}</span>`;
+}
+// The last activity bundle, kept for its booking: renderBookingHub rebuilds the
+// Activity card as "Loading…" (after a plan change, a reminder, a re-dock) and only
+// opening the booking fetched it, so a repaint left it saying Loading for good.
+let __hubBundle = null;
+function hubBundlePaint(bookingId) {
+    if (!__hubBundle || __hubBundle.id !== bookingId || __hubBookingId !== bookingId) return;
+    const r = __hubBundle.r;
+    const el2 = document.getElementById('hub-history');
+    if (!el2) return;
+    el2.innerHTML = hubActivityHtml(r, bookingId);
+    // The disclosure groups' summary rows state their conclusion from the same
+    // bundle: Activity's latest line, and the Emails group's last send when nothing
+    // synchronous (the pre-arrival stamp) already answered it.
+    const act = document.getElementById('bhub-activity-sum');
+    if (act) act.textContent = hubActivitySum(r);
+    const em = document.getElementById('bhub-emails-sum');
+    // A capsule (markup), so innerHTML — the slot is empty until filled.
+    if (em && !em.textContent) em.innerHTML = hubEmailsSum(r);
 }
 function renderBookingHub() {
     const el = document.getElementById('booking-hub-content');
@@ -12169,6 +12183,7 @@ function renderBookingHub() {
     }
     hubWatchSticky(el);
     composeDraftDots(el);
+    hubBundlePaint(__hubBookingId); // what this booking's activity already says, not "Loading…"
 }
 let __hubDrewId = null;
 // The sticky bar repeats the decision card's button, so it only exists while that card is OFF screen.
@@ -17302,6 +17317,11 @@ const pmCap = (tone, text) => `<span class="pm-cap ${tone}">${escapeHtml(text)}<
 
 /* ── The page ── */
 function pmPill(rows) {
+    // Nothing is claimed while it is unknown which guests are this person's.
+    if (pmSplitUnsure()) {
+        headPillSet('mo-pill', '');
+        return;
+    }
     const od = rows.filter((r) => r.overdue).length;
     const dueNow = rows.filter((r) => !r.overdue && r.dueNow && !r.auto && !r.declined).reduce((s, r) => s + r.dg.balance, 0);
     headPillSet('mo-pill', od
@@ -17612,6 +17632,8 @@ function pmRenderList() {
     if (__split === null && __splitBusy) {
         // Whose money is whose is still being asked: nothing is shown that might be someone else's.
         html = '<div class="pm-empty">Loading…</div>';
+    } else if (pmSplitUnsure()) {
+        html = '<div class="pm-empty">Couldn’t check which cottages are yours, so nothing is shown yet. <button type="button" class="pm-linkbtn" data-pm="split-retry">Try again</button></div>';
     } else if (view === 'paid') {
         html = pmPaidHtml(rows);
     } else {
@@ -17657,9 +17679,11 @@ function pmStayPage(id) {
     try { h = damageHeld(pk, b); } catch (e) {}
     const dep = Number(dg.dep) || 0;
     const left = hasCheckedOut(b) || !!b.guestCheckedOutAt;
-    const evs = __pmStay[b.dbId];
+    const got = __pmStay[b.dbId];
+    const evs = Array.isArray(got) ? got : null;
     const tl = [];
-    if (!evs) tl.push('<li class="future"><span class="pm-tl-dot">' + PM_IC.clock + '</span><span><span class="pm-tl-t">Loading what has happened…</span></span><span></span></li>');
+    if (got && !evs) tl.push('<li class="bad"><span class="pm-tl-dot">' + PM_IC.alert + '</span><span><span class="pm-tl-t">Couldn’t load what has happened</span><br><span class="pm-tl-s">Check your connection — the payments are still on the booking</span></span><span></span></li>');
+    else if (!evs) tl.push('<li class="future"><span class="pm-tl-dot">' + PM_IC.clock + '</span><span><span class="pm-tl-t">Loading what has happened…</span></span><span></span></li>');
     (evs || []).forEach((e) => {
         const when = pmDm(e.at * 1000);
         if (e.kind === 'in') {
@@ -17794,16 +17818,49 @@ function pmWayPage() {
 }
 // Save the owner's "it's in my bank" record. The WHOLE stored map is amended (the
 // moved-out rule), the figures move at once and the refetch confirms them.
+// The "it's in my bank" marks are one stored map. A change is made to the map as the
+// last save left it (one at a time): two quick taps each copied the same map, and the
+// second save wiped out the first. And an Undo puts back only what ITS tap changed —
+// restoring the whole earlier map also undid every mark made after it.
+let __pmLandedQ = Promise.resolve();
+function pmLandedEdit(change) {
+    const run = async () => {
+        const map = Object.assign({}, (__pm && __pm.landed_map) || {});
+        change(map);
+        await saveContent('sweep-landed', JSON.stringify(map));
+        if (__pm) __pm.landed_map = map;
+    };
+    const p = __pmLandedQ.then(run, run);
+    __pmLandedQ = p.catch(() => {});
+    return p;
+}
 async function pmLanded(ids, on) {
-    const prev = Object.assign({}, (__pm && __pm.landed_map) || {});
-    const map = Object.assign({}, prev);
+    const keys = ids.filter(Boolean).map(String);
     const now = Math.floor(Date.now() / 1000);
-    ids.forEach((id) => { if (!id) return; if (on) map[String(id)] = now; else delete map[String(id)]; });
-    try { await saveContent('sweep-landed', JSON.stringify(map)); } catch (e) { return; }
-    if (__pm) __pm.landed_map = map;
+    /** @type {Record<string, any>} */
+    const before = {};
+    try {
+        await pmLandedEdit((map) => keys.forEach((k) => {
+            before[k] = map[k];
+            if (on) map[k] = now;
+            else delete map[k];
+        }));
+    } catch (e) {
+        return;
+    }
     toast(on ? (ids.length === 1 ? 'Counted as in your bank.' : `${ids.length} payments counted as in your bank.`) : 'Counted as with Square again.', 'success', {
         label: 'Undo',
-        fn: async () => { try { await saveContent('sweep-landed', JSON.stringify(prev)); } catch (e) { return; } if (__pm) __pm.landed_map = prev; pmLoad(true); },
+        fn: async () => {
+            try {
+                await pmLandedEdit((map) => keys.forEach((k) => {
+                    if (before[k] === undefined) delete map[k];
+                    else map[k] = before[k];
+                }));
+            } catch (e) {
+                return;
+            }
+            pmLoad(true);
+        },
     });
     await pmLoad(true);
 }
@@ -17838,7 +17895,8 @@ function pmRenderDetail() {
     if (!pane) return;
     // A paid-out host's computer opens on what is still to come, never the business's books.
     const key = __pmOpen || (pmWide() ? (pmView() === 'paid' ? 'due' : 'books') : null);
-    if (!key) { pane.innerHTML = ''; return; }
+    // …and nothing at all until it is known whose money is whose (pmSplitUnsure).
+    if (!key || pmSplitUnsure()) { pane.innerHTML = ''; return; }
     const i = key.indexOf(':');
     const k = i < 0 ? key : key.slice(0, i);
     const arg = i < 0 ? '' : key.slice(i + 1);
@@ -17893,10 +17951,12 @@ async function pmLoad(expectNew) {
             if (!__pmYear) __pmYear = r.books.year;
         }
         if (expectNew) __pmAct.forEach((e) => { if (!before.has(e.id)) __pmFresh.add(e.id); });
-        // The stay and payout pages re-read what they show.
-        Object.keys(__pmStay).forEach((k) => delete __pmStay[k]);
+        // The stay and payout pages re-read what they show — the open one keeps
+        // what it shows until its re-read lands.
         const open = __pmOpen || '';
-        if (open.indexOf('stay:') === 0) pmLoadStay(open.slice(5));
+        const openB = open.indexOf('stay:') === 0 ? findBookingById(open.slice(5)) : null;
+        Object.keys(__pmStay).forEach((k) => { if (!openB || String(openB.dbId) !== k) delete __pmStay[k]; });
+        if (openB) pmLoadStay(open.slice(5));
     } catch (e) {
         if (stamp !== __pmStamp) return;
         __pmErr = true; // the last good figures stay on screen
@@ -17910,7 +17970,9 @@ async function pmLoadStay(id) {
         const r = await apiPost('money.php', { action: 'stay', id: b.dbId });
         __pmStay[b.dbId] = (r && r.events) || [];
     } catch (e) {
-        __pmStay[b.dbId] = [];
+        // What it showed stays; with nothing to show it says it couldn't read it. An
+        // empty list said this stay had no payments at all.
+        if (!Array.isArray(__pmStay[b.dbId])) __pmStay[b.dbId] = { error: true };
     }
     if (__pmOpen === 'stay:' + id) pmRenderDetail();
 }
@@ -17940,7 +18002,7 @@ function pmOpen(key) {
     if (!r) return;
     if (key.indexOf('stay:') === 0) {
         const b = findBookingById(key.slice(5));
-        if (b && !__pmStay[b.dbId]) pmLoadStay(key.slice(5));
+        if (b && !Array.isArray(__pmStay[b.dbId])) pmLoadStay(key.slice(5)); // not read yet, or it failed
     }
     if (key.indexOf('payout:') === 0 && !__pmPayout[key.slice(7)]) pmLoadPayout(key.slice(7));
     if (key === 'books' && __pmYear && __pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear);
@@ -19051,6 +19113,12 @@ async function splitLoad() {
     } catch (e) {}
 }
 const pmSplitOn = () => !!(__split && __split.on);
+// WHOSE MONEY IS WHOSE IS NOT KNOWN YET, for someone without full access. The page
+// holds the whole business's money and narrows it by the split, so while the split's
+// answer is missing (still on its way, or it failed) it shows none of it rather than
+// all of it. A failed answer fell through to the whole business: every cottage's
+// guests, the bank and the books, on a host's own phone. Full access sees it anyway.
+const pmSplitUnsure = () => __split === null && (chbMe() || {}).full === false;
 // 'paid' (only what has been sent to them), 'holder' (the account's side) or 'all'.
 function pmView() {
     const S = __split;
@@ -19414,6 +19482,7 @@ const PM_ACT = {
     },
     yr(arg) { __pmYear = Number(arg); if (__pmBooks[__pmYear] === undefined) pmLoadBooks(__pmYear); pmRenderDetail(); },
     retry() { pmLoad(); },
+    'split-retry'() { splitLoad(); },
     record(id) { pmMenuShow(false); pmRecordSheet(id || ''); },
     expense() { pmMenuShow(false); pmExpenseSheet(); },
     ask() { pmMenuShow(false); pmAskSheet(); },
@@ -20202,19 +20271,28 @@ function renderNotifyPrefs() {
         gaRow({ ic: 'clock', t: 'Quiet hours', s: p.quietFrom && p.quietTo ? `Nothing buzzes from ${p.quietFrom} to ${p.quietTo}` : 'Off', act: 'data-act="oaQuiet"', chev: true }) +
         `</div>`;
 }
-// Saves your whole set with one change merged in; says whether it landed.
-async function saveNotifyPrefs(patch) {
-    const p = Object.assign(notifyPrefs(), patch);
-    let res;
-    try {
-        res = await apiPost('auth.php', { action: 'admin_notify_set', prefs: p });
-    } catch (e) {
-        glassAlert("Couldn't save your alerts: " + (e.message || e));
-        return false;
-    }
-    chbSetMe(res.me);
-    toast('Your alerts are saved.');
-    return true;
+// Saves your whole set with one change merged in; says whether it landed. One at a
+// time, each merged into the set as the last one left it: two switches tapped in
+// quick succession each copied the same set, and the second save undid the first.
+/** @type {Promise<any>} */
+let __notifyQ = Promise.resolve();
+function saveNotifyPrefs(patch) {
+    const run = async () => {
+        const p = Object.assign(notifyPrefs(), patch);
+        let res;
+        try {
+            res = await apiPost('auth.php', { action: 'admin_notify_set', prefs: p });
+        } catch (e) {
+            glassAlert("Couldn't save your alerts: " + (e.message || e));
+            return false;
+        }
+        chbSetMe(res.me);
+        toast('Your alerts are saved.');
+        return true;
+    };
+    const q = __notifyQ.then(run, run);
+    __notifyQ = q.catch(() => {});
+    return q;
 }
 async function saveNotifyPref(key, value) {
     const v = key === 'quietFrom' || key === 'quietTo' ? String(value || '') : !!value;
@@ -26088,11 +26166,19 @@ function gcVal(k) {
 }
 // Saves, then mirrors into BOTH stores (the chat reads siteContent, this page
 // reads adminPrivateContent first). saveContent alerts and rethrows on a refusal,
-// so a rejected value never reaches either mirror.
-async function gcSave(k, v) {
-    await saveContent(k, v);
-    siteContent[k] = v;
-    if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent[k] = v;
+// so a rejected value never reaches either mirror. One key's saves go one at a
+// time: two in flight (the switch tapped on, then off) could land in the other
+// order and leave the server holding the first while the page shows the second.
+const __gcSaveQ = {};
+function gcSave(k, v) {
+    const run = async () => {
+        await saveContent(k, v);
+        siteContent[k] = v;
+        if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent[k] = v;
+    };
+    const p = (__gcSaveQ[k] || Promise.resolve()).then(run, run);
+    __gcSaveQ[k] = p.catch(() => {});
+    return p;
 }
 const gcHm = (h) => (+h % 12 || 12) + (+h < 12 ? 'am' : 'pm');
 function gcHours() {
@@ -26115,6 +26201,25 @@ function gcChips() {
 }
 async function gcChipsSave(c) {
     await gcSave('chat-chips', { hide: c.hide, extra: c.extra.map((x) => ({ id: x.id, q: x.q, chip: x.chip, a: x.a, btn: x.btn, prop: x.prop })) });
+}
+// ONE CHANGE TO THE LIST, MADE TO THE LIST AS IT IS SAVED. Every edit used to copy
+// the list, change the copy and save it whole — and the mirror moves only once a
+// save has landed, so two quick edits (two switches, an answer then a button) each
+// copied the same list and the second save wiped out the first. Edits now queue,
+// and each one reads the list after the one before it has landed. `change(c)`
+// returns false to make no change; the result says whether one was saved.
+/** @type {Promise<any>} */
+let __gcChipsQ = Promise.resolve();
+function gcChipsEdit(change) {
+    const run = async () => {
+        const c = gcChips();
+        if (change(c) === false) return false;
+        await gcChipsSave(c);
+        return true;
+    };
+    const p = __gcChipsQ.then(run, run);
+    __gcChipsQ = p.catch(() => {});
+    return p;
 }
 function gcStd(id) {
     const f = CHAT_FAQ[id];
@@ -26372,12 +26477,13 @@ async function gcAnswer(id, v) {
             renderGuestChat();
             return;
         }
-        const c = gcChips();
-        const x = c.extra.find((r) => r.id === id);
-        if (!x) return;
-        x.a = t.slice(0, 1500);
         try {
-            await gcChipsSave(c);
+            const saved = await gcChipsEdit((c) => {
+                const x = c.extra.find((r) => r.id === id);
+                if (!x) return false;
+                x.a = t.slice(0, 1500);
+            });
+            if (!saved) return;
         } catch (e) {
             return;
         }
@@ -26391,20 +26497,20 @@ async function gcAnsStd(id) {
     await gcAnswer(id, '');
 }
 async function gcExtraField(id, field, v) {
-    const c = gcChips();
-    const x = c.extra.find((r) => r.id === id);
-    if (!x) return;
     const t = String(v || '').trim();
-    if (field === 'q') {
-        if (!t) {
-            toast('The question needs some words.');
-            renderGuestChat();
-            return;
-        }
-        x.q = t.slice(0, 200);
-    } else x.chip = t.slice(0, 28);
+    if (field === 'q' && !t) {
+        toast('The question needs some words.');
+        renderGuestChat();
+        return;
+    }
     try {
-        await gcChipsSave(c);
+        const saved = await gcChipsEdit((c) => {
+            const x = c.extra.find((r) => r.id === id);
+            if (!x) return false;
+            if (field === 'q') x.q = t.slice(0, 200);
+            else x.chip = t.slice(0, 28);
+        });
+        if (!saved) return;
     } catch (e) {
         return;
     }
@@ -26439,17 +26545,18 @@ function gcRowSync(id) {
     }
 }
 async function gcBtn(id, on) {
-    const c = gcChips();
-    if (CHAT_FAQ[id]) {
-        c.hide = c.hide.filter((k) => k !== id);
-        if (!on) c.hide.push(id);
-    } else {
-        const x = c.extra.find((r) => r.id === id);
-        if (!x) return;
-        x.btn = !!on;
-    }
     try {
-        await gcChipsSave(c);
+        const saved = await gcChipsEdit((c) => {
+            if (CHAT_FAQ[id]) {
+                c.hide = c.hide.filter((k) => k !== id);
+                if (!on) c.hide.push(id);
+                return;
+            }
+            const x = c.extra.find((r) => r.id === id);
+            if (!x) return false;
+            x.btn = !!on;
+        });
+        if (!saved) return;
     } catch (e) {
         renderGuestChat();
         return;
@@ -26475,16 +26582,18 @@ async function gcAddQ() {
             msg = chip ? 'Write the answer the chat should give.' : 'Give the button a few words.';
             continue;
         }
-        const c = gcChips();
-        if (c.extra.length >= 40) {
-            glassAlert('That’s the most the chat can hold — remove one first.');
-            return;
-        }
-        c.extra.push({ id: gcNewId(), q: chip, chip: chip.slice(0, 28), a: a.slice(0, 1500), btn: true, prop: '' });
+        let saved;
         try {
-            await gcChipsSave(c);
+            saved = await gcChipsEdit((c) => {
+                if (c.extra.length >= 40) return false;
+                c.extra.push({ id: gcNewId(), q: chip, chip: chip.slice(0, 28), a: a.slice(0, 1500), btn: true, prop: '' });
+            });
         } catch (e) {
             continue;
+        }
+        if (!saved) {
+            glassAlert('That’s the most the chat can hold — remove one first.');
+            return;
         }
         toast('Added — “' + chip + '” is a button on the chat now');
         renderGuestChat();
@@ -26492,13 +26601,13 @@ async function gcAddQ() {
     }
 }
 async function gcExtraRemove(id) {
-    const c = gcChips();
-    const x = c.extra.find((r) => r.id === id);
+    const x = gcChips().extra.find((r) => r.id === id);
     if (!x) return;
     if (!(await glassConfirm('Remove “' + chatChipLabel(x) + '”? The chat stops answering it.', 'Remove'))) return;
-    c.extra = c.extra.filter((r) => r.id !== id);
     try {
-        await gcChipsSave(c);
+        await gcChipsEdit((c) => {
+            c.extra = c.extra.filter((r) => r.id !== id);
+        });
     } catch (e) {
         return;
     }
@@ -26521,15 +26630,17 @@ async function gcAskedSave(i) {
         return;
     }
     const prop = sel ? sel.value : '';
-    const c = gcChips();
-    if (c.extra.length >= 40) {
-        glassAlert('That’s the most the chat can hold — remove one first.');
+    let saved;
+    try {
+        saved = await gcChipsEdit((c) => {
+            if (c.extra.length >= 40) return false;
+            c.extra.push({ id: gcNewId(), q: String(r.q).slice(0, 200), chip: '', a: a.slice(0, 1500), btn: false, prop });
+        });
+    } catch (e) {
         return;
     }
-    c.extra.push({ id: gcNewId(), q: String(r.q).slice(0, 200), chip: '', a: a.slice(0, 1500), btn: false, prop });
-    try {
-        await gcChipsSave(c);
-    } catch (e) {
+    if (!saved) {
+        glassAlert('That’s the most the chat can hold — remove one first.');
         return;
     }
     slGuestQuestionsSave(slGuestQuestions().filter((x) => x.q !== r.q));
@@ -33545,13 +33656,16 @@ async function ibDeliver(p, ch, text, subj) {
     }
     const s = ibCurrentStay(p);
     const q = p.enq || p.declined[0];
+    // Each carries the composer's own retry id: a send whose answer was lost and is
+    // sent again unchanged reaches the guest once (op_claim on all three endpoints).
     if (s && s.b.email) {
-        await apiPost('bookings.php', { action: 'email_guest', id: s.b.dbId, subject: subj, message: text });
+        await apiPost('bookings.php', { action: 'email_guest', id: s.b.dbId, subject: subj, message: text, op_id: chbOpFor({ ib: 'b', id: s.b.dbId, subj, text }) });
     } else if (q && q.email) {
-        await apiPost('enquiries.php', { action: 'email_guest', id: q.dbId, subject: subj, message: text });
+        await apiPost('enquiries.php', { action: 'email_guest', id: q.dbId, subject: subj, message: text, op_id: chbOpFor({ ib: 'e', id: q.dbId, subj, text }) });
     } else {
-        await apiPost('mailbox.php', { action: 'send', to: p.emails[0], subject: subj, body: text });
+        await apiPost('mailbox.php', { action: 'send', to: p.emails[0], subject: subj, body: text, op_id: chbOpFor({ ib: 'm', to: p.emails[0], subj, text }) });
     }
+    chbOpBump();
 }
 function ibSend() {
     const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
@@ -35180,7 +35294,7 @@ async function cmpDeliver(snap) {
         if (t.arrival) {
             await apiPost('bookings.php', { action: 'send_arrival', id: rec.dbId, note: snap.msg.trim() });
         } else {
-            await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
+            const send = {
                 action: 'email_guest',
                 id: rec.dbId,
                 subject: snap.subj.trim(),
@@ -35188,7 +35302,12 @@ async function cmpDeliver(snap) {
                 include_stay: snap.stay ? 1 : 0,
                 include_money: snap.money ? 1 : 0,
                 attachments: snap.atts.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
-            });
+            };
+            // The same send retried after a lost answer reaches the guest once: the id
+            // is over what the email says (the files by name and size, not content).
+            send.op_id = chbOpFor({ k: t.kind, id: rec.dbId, s: send.subject, m: send.message, st: send.include_stay, mo: send.include_money, f: snap.atts.map((a) => a.filename + ':' + String(a.content || '').length) });
+            await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', send);
+            chbOpBump();
         }
     } catch (e) {
         // Not sent: the sheet comes back with the words in it, and says why.
@@ -35427,6 +35546,10 @@ async function openArrivalReview(bookingId) {
     try {
         pv = await apiPost('bookings.php', { action: 'arrival_preview', id: b.dbId });
     } catch (e) {
+        // Only while the sheet is still this review: one closed meanwhile (or another
+        // guest's email opened in it) holds someone else's words, and a late failure
+        // used to empty them.
+        if (__composeTarget !== t) return;
         if (bodyEl) bodyEl.value = '';
         glassAlert("Couldn't load the arrival email just now: " + e.message);
         return;
@@ -36775,13 +36898,16 @@ async function refreshModerationCounts() {
             b.style.display = n > 0 ? '' : 'none';
         }
     };
-    // All three at once — they are independent.
-    const pending = (file, key) =>
+    // All three at once — they are independent. A request that fails keeps the
+    // count it had: zero claimed nothing was waiting (the badge and the Needs-you
+    // row went with it) when nothing had been asked.
+    const was = __nyMod || { rev: 0, ph: 0, exp: 0 };
+    const pending = (file, key, last) =>
         apiPost(file, { action: 'list_admin' }).then(
             (r) => ((r && r[key]) || []).filter((x) => x.status === 'pending').length,
-            () => 0,
+            () => last || 0,
         );
-    const [rev, ph, exp] = await Promise.all([pending('reviews.php', 'reviews'), pending('photos.php', 'photos'), pending('experiences.php', 'experiences')]);
+    const [rev, ph, exp] = await Promise.all([pending('reviews.php', 'reviews', was.rev), pending('photos.php', 'photos', was.ph), pending('experiences.php', 'experiences', was.exp)]);
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
     setBadge('exp-pending-badge', exp);

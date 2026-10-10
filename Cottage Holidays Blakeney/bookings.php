@@ -1025,8 +1025,13 @@ if ($action === 'update') {
     // editing a finished booking is a record correction, and un-stamping
     // history would flip a past stay's pipeline. empty() also stands the whole
     // thing down on a pre-migration DB, where $b carries no such key.
+    // The email also states the leaving date and both times, so a change to any of
+    // those makes it untrue too (compared as clean_time reads them, both sides).
+    $ciTime = clean_time($in['check_in_time'] ?? $b['check_in_time'], '15:00');
+    $coTime = clean_time($in['check_out_time'] ?? $b['check_out_time'], '10:00');
     $reArrival = !empty($b['pre_arrival_sent'])
-        && ($checkIn !== ($b['check_in'] ?? '') || $propKey !== ($b['prop_key'] ?? ''))
+        && ($checkIn !== ($b['check_in'] ?? '') || $checkOut !== ($b['check_out'] ?? '') || $propKey !== ($b['prop_key'] ?? '')
+            || $ciTime !== clean_time($b['check_in_time'] ?? '', '15:00') || $coTime !== clean_time($b['check_out_time'] ?? '', '10:00'))
         && $checkIn >= date('Y-m-d');
     // …AND A MOVED STAY IS CHASED ON ITS NEW SCHEDULE. payments-due asks for the
     // balance once (balance_requested_at) and reminds from that stamp; left from the
@@ -1047,8 +1052,8 @@ if ($action === 'update') {
         clean($in['postcode'] ?? $b['postcode']),
         $checkIn,
         $checkOut,
-        clean_time($in['check_in_time'] ?? $b['check_in_time'], '15:00'),
-        clean_time($in['check_out_time'] ?? $b['check_out_time'], '10:00'),
+        $ciTime,
+        $coTime,
         $adults,
         $children,
         clean($in['notes'] ?? $b['notes']),
@@ -1524,6 +1529,9 @@ if ($action === 'email_preview') {
 // underneath (mirrors enquiries.php 'email_guest'; the composer is shared).
 if ($action === 'email_guest') {
     require_admin();
+    // A send whose answer was lost (a timeout on a slow link) is retried by hand with
+    // the same words: the ledger answers the retry, and the guest gets one email.
+    $opTok = op_claim($in);
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -1567,7 +1575,7 @@ if ($action === 'email_guest') {
         // Keep the message so the Bookings page email log can show what was sent.
         'meta' => ['subject' => $subject !== '' ? $subject : 'Your stay at ' . (prop_display($b['prop_key'] ?? '')['name'] ?? ''), 'body' => mb_substr($message, 0, 3000)],
     ]);
-    json_out(['ok' => true]);
+    json_out(op_finish($opTok, ['ok' => true]));
 }
 
 // ---- Square online payments (admin side) ----------------------------------

@@ -1486,21 +1486,59 @@ switch ($action) {
                 $ids,
             );
         }
+        // What deleting the account treats as theirs, the export carries too.
+        $mine = $email !== '' && $proven;
+        // THE WHOLE CONVERSATION, the owner's replies included (they carry no
+        // guest_id), and a chat started before signing in under the proven address.
+        // A thread's token opens that chat, so it never goes into a file; nor do the
+        // owner's archive flag and the typing stamps.
+        $threads = $mine
+            ? $grab('SELECT * FROM chat_threads WHERE guest_id = ? OR (guest_id IS NULL AND email = ?) ORDER BY id', [$gid, $email])
+            : $grab('SELECT * FROM chat_threads WHERE guest_id = ? ORDER BY id', [$gid]);
+        foreach ($threads as &$th) {
+            unset($th['token'], $th['archived'], $th['guest_typing_at'], $th['admin_typing_at']);
+        }
+        unset($th);
+        $tids = array_values(array_filter(array_map(fn($t) => (int) $t['id'], $threads)));
+        $messages = $tids
+            ? $grab('SELECT * FROM messages WHERE guest_id = ? OR thread_id IN (' . implode(',', array_fill(0, count($tids), '?')) . ') ORDER BY id', array_merge([$gid], $tids))
+            : $grab('SELECT * FROM messages WHERE guest_id = ? ORDER BY id', [$gid]);
+        // The emails the owner wrote them: from the Inbox (the sent log) and from a
+        // booking's page (kept with the booking's activity).
+        $emailsToYou = $mine ? $grab('SELECT subject, body, sent_at FROM mail_sent WHERE to_email = ? ORDER BY id', [$email]) : [];
+        if ($ids) {
+            foreach ($grab("SELECT meta, created_at FROM activity_log WHERE action = 'booking.email' AND entity = 'booking' AND entity_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY id', array_map('strval', $ids)) as $lg) {
+                $m = json_decode((string) ($lg['meta'] ?? ''), true);
+                if (is_array($m) && (($m['subject'] ?? '') !== '' || ($m['body'] ?? '') !== '')) {
+                    $emailsToYou[] = ['subject' => (string) ($m['subject'] ?? ''), 'body' => (string) ($m['body'] ?? ''), 'sent_at' => $lg['created_at']];
+                }
+            }
+        }
+        // A review left from a review link, without the owner's private rating and note.
+        $leads = $mine ? $grab('SELECT * FROM direct_leads WHERE email = ? ORDER BY id', [$email]) : [];
+        foreach ($leads as &$ld) {
+            unset($ld['admin_rating'], $ld['admin_note']);
+        }
+        unset($ld);
         $data = [
             'exported_at' => date('c'),
             'account' => $account,
             'bookings' => $bookings,
             'payments' => $payments,
-            'enquiries' => ($email !== '' && $proven) ? $grab('SELECT * FROM enquiries WHERE email = ?', [$email]) : [],
-            'chat_threads' => $grab('SELECT * FROM chat_threads WHERE guest_id = ?', [$gid]),
-            'messages' => $grab('SELECT * FROM messages WHERE guest_id = ?', [$gid]),
+            'enquiries' => $mine ? $grab('SELECT * FROM enquiries WHERE email = ?', [$email]) : [],
+            'enquiry_draft' => $mine ? $grab('SELECT prop_key, name, check_in, check_out, adults, children, created_at, updated_at FROM enquiry_drafts WHERE email = ?', [$email]) : [],
+            'chat_threads' => $threads,
+            'messages' => $messages,
+            'emails_to_you' => $emailsToYou,
             'reviews' => $grab('SELECT * FROM guest_reviews WHERE guest_id = ?', [$gid]),
+            'reviews_from_a_link' => $leads,
             'photos' => $grab('SELECT * FROM guest_photos WHERE guest_id = ?', [$gid]),
+            'passkeys' => $grab('SELECT label, created_at, last_used_at FROM guest_passkeys WHERE guest_id = ?', [$gid]),
             'newsletter' =>
                 $email !== ''
                     ? $grab('SELECT email, name, created_at FROM newsletter_subscribers WHERE email = ?', [$email])
                     : [],
-            'waitlist' => ($email !== '' && $proven) ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
+            'waitlist' => $mine ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
         ];
         // The profile photo is theirs too — included as the JPEG itself.
         $avN = guest_avatar_name($gid);
@@ -1544,6 +1582,14 @@ switch ($action) {
             if ($next !== '') {
                 json_out(['error' => 'You have a stay booked from ' . uk_date($next) . '. Your account can be deleted once it has ended. To cancel the stay, message us.', 'code' => 'stay_ahead'], 409);
             }
+            // The owner's emails written from a booking's page are kept with that
+            // booking's activity, in full; the booking stays, the words go.
+            $bq = db()->prepare('SELECT id FROM bookings WHERE email = ?');
+            $bq->execute([$email]);
+            $bids = array_map('strval', $bq->fetchAll(\PDO::FETCH_COLUMN));
+            if ($bids) {
+                $try("UPDATE activity_log SET meta = NULL WHERE action = 'booking.email' AND entity = 'booking' AND entity_id IN (" . implode(',', array_fill(0, count($bids), '?')) . ')', $bids);
+            }
             // Anonymise the financial trail (kept for accounting), then purge non-financial PII.
             $try('UPDATE payments p JOIN bookings b ON b.id = p.booking_id SET p.guest_name = ? WHERE b.email = ?', [
                 'Former guest',
@@ -1564,6 +1610,18 @@ switch ($action) {
             $try('DELETE FROM mail_sent WHERE to_email = ?', [$email]);
             $try('DELETE FROM email_outbox WHERE to_email = ? AND sent_at IS NULL', [$email]);
             $try('DELETE FROM guest_codes WHERE email = ?', [$email]);
+        }
+        // The activity log keeps the first line of every chat message, theirs and the
+        // owner's, and its search reads it: those lines go with the conversation, and
+        // a guest's message stops being named. Before the threads go, while they can
+        // still be found.
+        $tq = db()->prepare('SELECT id FROM chat_threads WHERE guest_id = ?' . ($email !== '' ? ' OR (guest_id IS NULL AND email = ?)' : ''));
+        $tq->execute($email !== '' ? [$gid, $email] : [$gid]);
+        $tids = array_map('strval', $tq->fetchAll(\PDO::FETCH_COLUMN));
+        if ($tids) {
+            $try("UPDATE activity_log SET meta = NULL, summary = IF(action = 'message.guest' AND summary LIKE 'New chat message from %', 'New chat message', summary) WHERE entity = 'thread' AND entity_id IN (" . implode(',', array_fill(0, count($tids), '?')) . ')', $tids);
+        }
+        if ($email !== '') {
             // A chat started on the website before signing in carries the address,
             // not the account: theirs too, the owner's replies in it included.
             $try('DELETE m FROM messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.guest_id IS NULL AND t.email = ?', [$email]);

@@ -40,6 +40,30 @@ function monzo_auth_save(array $a): void
 {
     content_set_secret('monzo-auth', $a);
 }
+// Every change to the link and its tokens happens under ONE lock, the sync's. A
+// sync, an approval check, a connection and a disconnect can meet: a disconnect
+// made while a refresh was in flight was undone by the refresh's save (the link
+// came back and went on importing payments), and two refreshes at once spent one
+// refresh token twice, so the loser told the owner to connect again over the
+// winner's good token. [true, result], or [false, null] when another holder kept
+// it past $wait seconds. Re-entrant: a check inside a sync is one holder.
+function monzo_locked(callable $fn, int $wait): array
+{
+    $s = db()->prepare("SELECT GET_LOCK('chb_monzo_sync', ?)");
+    $s->execute([$wait]);
+    if ((int) $s->fetchColumn() !== 1) {
+        return [false, null];
+    }
+    try {
+        return [true, $fn()];
+    } finally {
+        db()->query("SELECT RELEASE_LOCK('chb_monzo_sync')");
+    }
+}
+function monzo_lock_wait(): int
+{
+    return defined('CHB_MONZO_LOCK_WAIT') ? (int) constant('CHB_MONZO_LOCK_WAIT') : 20;
+}
 // The address Monzo sends the owner back to. It is pasted into the client at
 // developers.monzo.com, so it must be exactly this.
 function monzo_redirect_url(): string
@@ -147,8 +171,14 @@ function monzo_status(): array
 }
 
 // Has the owner approved access yet, and is there a business account? Settles the
-// link's account. Returns the state monzo_health would now report.
+// link's account. Returns the state monzo_health would now report. While a sync
+// holds the link it reports the link as it stands rather than calling Monzo.
 function monzo_check(): string
+{
+    [$got, $state] = monzo_locked('monzo_check_now', min(3, monzo_lock_wait()));
+    return $got ? (string) $state : monzo_status()['state'];
+}
+function monzo_check_now(): string
 {
     $token = monzo_token();
     if ($token === '') {
@@ -196,15 +226,16 @@ function monzo_check(): string
 function monzo_sync(): array
 {
     $out = ['ok' => false, 'added' => 0, 'auto' => 0, 'fetched' => 0, 'error' => ''];
-    $lock = db()->query("SELECT GET_LOCK('chb_monzo_sync', 20)")->fetchColumn();
-    if ((int) $lock !== 1) {
+    $lock = db()->prepare("SELECT GET_LOCK('chb_monzo_sync', ?)");
+    $lock->execute([monzo_lock_wait()]);
+    if ((int) $lock->fetchColumn() !== 1) {
         $out['error'] = 'A sync is already running.';
         return $out;
     }
     try {
         $l = monzo_link();
         if (empty($l['account_id'])) {
-            monzo_check();
+            monzo_check_now();
             $l = monzo_link();
             if (empty($l['account_id'])) {
                 $out['error'] = monzo_status()['say'];

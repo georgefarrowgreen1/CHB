@@ -23,6 +23,11 @@ function monzo_out(array $extra = []): void
 {
     json_out(array_merge(['ok' => true], $extra, ['live' => monzo_status()]));
 }
+// A sync kept the link past the wait: say so, and change nothing.
+function monzo_busy(): void
+{
+    json_out(['error' => 'Monzo Business is syncing right now. Try again in a minute.', 'code' => 'busy'], 409);
+}
 function monzo_need_tables(): void
 {
     try {
@@ -62,10 +67,16 @@ route_actions([
         // server rather than in the session: Monzo's email link often opens in a
         // different browser from the one that asked (an installed app on a phone).
         $state = bin2hex(random_bytes(16));
-        $l = monzo_link();
-        $l['pending'] = hash('sha256', $state);
-        $l['pending_at'] = time();
-        monzo_link_save($l);
+        [$got] = monzo_locked(function () use ($state) {
+            $l = monzo_link();
+            $l['pending'] = hash('sha256', $state);
+            $l['pending_at'] = time();
+            monzo_link_save($l);
+            return true;
+        }, monzo_lock_wait());
+        if (!$got) {
+            monzo_busy();
+        }
         monzo_out(['url' => monzo_auth_url($c['id'], monzo_redirect_url(), $state)]);
     },
 
@@ -91,13 +102,21 @@ route_actions([
     },
 
     'disconnect' => function ($in) {
-        $a = monzo_auth();
-        if (!empty($a['access'])) {
-            // Best effort: tell Monzo the token is finished with.
-            monzo_http('POST', '/oauth2/logout', (string) $a['access'], []);
+        // Under the sync's lock: a sync or a refresh in flight finishes first, so
+        // nothing it saves afterwards can bring the link back.
+        [$got] = monzo_locked(function () {
+            $a = monzo_auth();
+            if (!empty($a['access'])) {
+                // Best effort: tell Monzo the token is finished with.
+                monzo_http('POST', '/oauth2/logout', (string) $a['access'], []);
+            }
+            monzo_auth_save([]);
+            monzo_link_save([]);
+            return true;
+        }, monzo_lock_wait());
+        if (!$got) {
+            monzo_busy();
         }
-        monzo_auth_save([]);
-        monzo_link_save([]);
         log_activity('payment', 'monzo.disconnect', 'Monzo Business link disconnected — the payments already added are kept', ['entity' => 'monzo']);
         monzo_out();
     },

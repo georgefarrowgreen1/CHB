@@ -142,6 +142,8 @@ $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUA
 $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MONZO_AUTH_BASE', 'http://127.0.0.1:$MONZO_PORT/auth/');\n";
 // §17(k) holds an op's lock to prove a repeat is refused; a short wait keeps it quick.
 $cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
+// …and the Monzo link's: §54 holds the sync's lock to show a disconnect waits for it.
+$cfg .= "\ndefine('CHB_MONZO_LOCK_WAIT', 2);\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
@@ -1444,6 +1446,23 @@ $arrProp2 = $r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? '')
 it_check('(fixture) a second cottage exists to move to', $arrProp2 !== '', $r['raw']);
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'prop_key' => $arrProp2, 'override_occupancy' => true, 'override_clash' => true]);
 it_check('moving to another cottage clears the stamp', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+// (e) The email also states when they leave and the times: a new leaving date or a
+// new check-in time makes it untrue as surely as a move.
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_out' => date('Y-m-d', strtotime('+34 days')), 'override_clash' => true, 'override_occupancy' => true]);
+it_check('a new leaving date clears the stamp', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_in_time' => '16:00']);
+it_check('a new check-in time clears it too', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_in_time' => '16:00', 'notes' => 'gate: same time again']);
+it_check('…while the same time sent again changes nothing', ($r['json']['ok'] ?? false) && $stamp() !== null, $r['raw']);
+// An older row can hold a blank time, which every reader takes as the default:
+// it is not a change, so a notes edit must not re-send the email over it.
+$rootDb->exec("UPDATE bookings SET check_out_time = '' WHERE id = $arrId");
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'notes' => 'gate: a blank stored time']);
+it_check('…and a blank stored time read as the default is not a change', ($r['json']['ok'] ?? false) && $stamp() !== null, $r['raw']);
 
 // (d) A PAST stay is a record, not a plan: correcting its dates keeps the
 // stamp, or every historic tidy-up would flip a finished booking's pipeline
@@ -1758,8 +1777,13 @@ it_check('…and a booking made later against that address is NOT shown to it', 
     && empty($r['json']['bookings']) && strpos($r['raw'], 'Real Owner') === false, $r['raw']);
 $r = http($sqA, 'POST', '/welcome.php', ['action' => 'get', 'prop' => $propKey]);
 it_check('…nor any stay-scoped endpoint (welcome book refuses it in words)', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
+// A chat someone started on the website under that address, before any account.
+$rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Real Owner', ?)")->execute(['sq19-' . bin2hex(random_bytes(6)), $squatEmail]);
+$sqTid = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body) VALUES (NULL, ?, 'guest', 'SQUAT-ANON-CHAT')")->execute([$sqTid]);
 $r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_export_data']);
 it_check('…and its data export carries no bookings', ($r['json']['ok'] ?? false) === true && empty($r['json']['data']['bookings']), $r['raw']);
+it_check('…nor a chat filed under the address it has not proven', strpos($r['raw'], 'SQUAT-ANON-CHAT') === false, '');
 // The rightful owner proves the address from THEIR browser: the squatter's password
 // is cleared, its session revoked, and the stay is theirs alone.
 $sqGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = " . $rootDb->quote($squatEmail))->fetchColumn();
@@ -1780,6 +1804,9 @@ it_check('…while the owner now sees their stay', $r['code'] === 200 && empty($
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_export_data']);
 it_check('§19b the export carries the stay but never the owner\'s private note', ($r['json']['ok'] ?? false) === true
     && count($r['json']['data']['bookings'] ?? []) >= 1 && strpos($r['raw'], 'OWNER-PRIVATE-NOTE') === false, '');
+it_check('§19b …and the chat filed under the address it has now proven', strpos($r['raw'], 'SQUAT-ANON-CHAT') !== false, '');
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $sqTid");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $sqTid");
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'ownerpass2']);
 it_check('§19b with no password left, a new one is set without a current one', ($r['json']['ok'] ?? false) === true, $r['raw']);
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => 'wrongpass', 'next' => 'ownerpass3']);
@@ -3861,6 +3888,22 @@ it_check('§54 the balance is Monzo\'s, dated', abs((float) ($r['json']['live'][
 it_check('§54 no token or secret ever reaches the page', strpos($r['raw'], 'acc-') === false && strpos($r['raw'], 'ref-') === false && strpos($r['raw'], 'it-secret') === false, $r['raw']);
 $r = http($admin, 'POST', '/monzo.php', ['action' => 'sync']);
 it_check('§54 syncing again adds nothing already here', ($r['json']['sync']['ok'] ?? false) === true && ($r['json']['sync']['added'] ?? -1) === 0 && $mzLines() === 4, $r['raw']);
+// ONE lock for every change to the link (monzo_locked). Held here as a sync in
+// flight would hold it: a disconnect waits for it rather than racing it (a refresh
+// saved after the disconnect brought the link back), says so when it cannot, and
+// changes nothing; an approval check meanwhile reports the link without calling Monzo.
+$rootDb->query("SELECT GET_LOCK('chb_monzo_sync', 0)")->fetchColumn();
+$authBefore = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn();
+$before = count($mzLog());
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'disconnect']);
+$linkNow = json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-link'")->fetchColumn(), true);
+it_check('§54 a disconnect while a sync holds the link waits, says so, and changes nothing',
+    $r['code'] === 409 && ($r['json']['code'] ?? '') === 'busy'
+    && (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn() === $authBefore
+    && ($linkNow['account_id'] ?? '') === 'acc_biz' && count($mzLog()) === $before, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'check']);
+it_check('§54 …and an approval check meanwhile reports the link without calling Monzo', ($r['json']['live']['state'] ?? '') === 'live' && count($mzLog()) === $before, $r['raw']);
+$rootDb->query("SELECT RELEASE_LOCK('chb_monzo_sync')")->fetchColumn();
 $csv = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Balance,Balance currency\n"
     . 'tx_it54_in,' . gmdate('d/m/Y', strtotime($iso(5))) . ",12:00:00,Faster payment,M HILL,,General,377.50,GBP,377.50,GBP,,,,CHB-000006,,1950.00,GBP\n";
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $csv, 'filename' => 'monzo.csv']);
@@ -4772,13 +4815,34 @@ $r = http($admin, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $
 $rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Zara Seventy', ?)")->execute(['it70-' . bin2hex(random_bytes(6)), $z70]);
 $aTid70 = (int) $rootDb->lastInsertId();
 $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body) VALUES (NULL, ?, 'guest', 'before I signed in')")->execute([$aTid70]);
-$rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key) VALUES (?, ?)")->execute([$z70, $propKey]);
-$rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, review_text) VALUES (?, 'Zara Seventy', ?, 'lovely')")->execute([$propKey, $z70]);
-$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES (?, 'Your stay', 'hello')")->execute([$z70]);
+$rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key, name) VALUES (?, ?, 'DRAFT-NAME-70')")->execute([$z70, $propKey]);
+$rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, review_text, admin_note) VALUES (?, 'Zara Seventy', ?, 'LEAD-REVIEW-70', 'OWNER-NOTE-70')")->execute([$propKey, $z70]);
+$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES (?, 'Your stay', 'INBOX-EMAIL-70')")->execute([$z70]);
 $rootDb->prepare("INSERT INTO email_outbox (next_try_at, context, to_email, subject, body_text) VALUES (DATE_ADD(NOW(), INTERVAL 1 HOUR), 'confirmation', ?, 'S', 'b')")->execute([$z70]);
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, entity, entity_id, meta) VALUES ('comms', 'booking.email', 'Emailed guest', 'booking', ?, ?)")->execute([(string) $zBid70, json_encode(['subject' => 'About your stay', 'body' => 'BOOKING-PAGE-EMAIL-70'])]);
 $msgs70 = (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn();
 it_check('§70 (fixture) a signed-in chat with the owner\'s reply, and one from before signing in', $zTid70 > 0 && $msgs70 >= 3, (string) $msgs70 . ' ' . $r['raw']);
+// "Download my data" carries what deletion takes: the conversation's other half, the
+// chat from before signing in, the draft, the review from a link and the owner's
+// emails to them. Never a chat's key, nor the owner's private note on the lead.
+$r = http($zj70, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+$x70 = $r['json']['data'] ?? [];
+$xBodies70 = array_map(fn($m) => (string) ($m['body'] ?? ''), $x70['messages'] ?? []);
+$tok70 = (string) $rootDb->query("SELECT token FROM chat_threads WHERE id = $aTid70")->fetchColumn();
+it_check('§70 the export carries the owner\'s replies and the chat from before signing in', in_array('Yes — it is on the fridge', $xBodies70, true) && in_array('before I signed in', $xBodies70, true), json_encode($xBodies70));
+it_check('§70 …and the draft, the review from a link and the owner\'s emails (Inbox and booking page)', strpos($r['raw'], 'DRAFT-NAME-70') !== false && strpos($r['raw'], 'LEAD-REVIEW-70') !== false
+    && strpos($r['raw'], 'INBOX-EMAIL-70') !== false && strpos($r['raw'], 'BOOKING-PAGE-EMAIL-70') !== false, substr($r['raw'], 0, 300));
+it_check('§70 …but never a chat\'s key, nor the owner\'s private note', $tok70 !== '' && strpos($r['raw'], $tok70) === false && strpos($r['raw'], 'OWNER-NOTE-70') === false, '');
+// The activity log's copies of those words: the first line of each chat message (the
+// Activity log page shows and searches it) and the booking page's email in full.
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, entity, entity_id, meta) VALUES ('comms', 'message.guest', 'New chat message from Zara Seventy', 'thread', ?, ?)")->execute([(string) $aTid70, json_encode(['detail' => 'ANON-LINE-70'])]);
+$keepLog70 = (int) $rootDb->query("SELECT MAX(id) FROM activity_log WHERE entity = 'thread' AND entity_id = '$zTid70'")->fetchColumn();
 $r = http($zj70, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
+$log70 = $rootDb->query("SELECT GROUP_CONCAT(CONCAT_WS('|', summary, IFNULL(meta, '')) SEPARATOR ' ## ') FROM activity_log WHERE (entity = 'thread' AND entity_id IN ('$zTid70', '$aTid70')) OR (entity = 'booking' AND entity_id = '$zBid70')")->fetchColumn();
+it_check('§70 the activity log keeps no line of the conversation nor the booking page\'s email', $keepLog70 > 0 && (string) $log70 !== ''
+    && strpos((string) $log70, 'wifi password') === false && strpos((string) $log70, 'on the fridge') === false
+    && strpos((string) $log70, 'ANON-LINE-70') === false && strpos((string) $log70, 'BOOKING-PAGE-EMAIL-70') === false, (string) $log70);
+it_check('§70 …and a guest\'s chat message no longer names them, while the rows stay as the record', strpos((string) $log70, 'from Zara Seventy') === false && strpos((string) $log70, 'New chat message') !== false, (string) $log70);
 $left70 = [
     'messages' => (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id IN ($zTid70, $aTid70)")->fetchColumn(),
     'threads' => (int) $rootDb->query("SELECT COUNT(*) FROM chat_threads WHERE id IN ($zTid70, $aTid70)")->fetchColumn(),
@@ -4855,6 +4919,41 @@ $m73 = $shellGet($url73, $f73['etag']);
 it_check('§73 a stay that changed sends the feed again, with a new tag', $m73['code'] === 200 && $m73['etag'] !== '' && $m73['etag'] !== $f73['etag'] && $has73($ahead73, $m73['raw']), "code {$m73['code']} etag {$m73['etag']}");
 it_check('§73 a wrong token still gets nothing', $shellGet('/ical-export.php?prop=' . rawurlencode($propKey) . '&token=nope')['code'] === 403);
 $rootDb->exec("DELETE FROM bookings WHERE id IN ($old73, $recent73, $ahead73)");
+
+echo "\n== §74 a guest's chat poll asks the mailbox throttle without reading the handled list ==\n";
+// A guest in the chat nudges the mailbox read every few seconds, and the poll's
+// state holds the whole inbox's handled list. The throttle is asked first, of the
+// row's own timestamp (mailbox_poll_recent). Driven in the app copy (CLI), with
+// the mailbox switched on and no host to reach, so a poll that is not throttled
+// stops at "no mailbox configured" without touching the network.
+$pollProbe = function () use ($work) {
+    $f = $work . '/it-poll-probe.php';
+    file_put_contents($f, "<?php\nfunction mailbox_auto_enabled() { return true; }\nfunction mailbox_pop_host() { return ''; }\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailbox-read.php';\necho \"\\n\" . json_encode(['recent' => mailbox_poll_recent(), 'poll' => poll_mailbox_replies()]);\n");
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    return json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+};
+// The app writes updated_at on the London clock (db.php sets the session's zone),
+// so the fixture does too. The state's own stamp is OLD in every case: only the
+// row's timestamp can throttle.
+$set74 = function ($agoSeconds) use ($rootDb) {
+    $when = (new DateTime('now', new DateTimeZone('Europe/London')))->modify('-' . (int) $agoSeconds . ' seconds')->format('Y-m-d H:i:s');
+    $val = json_encode(['at' => time() - 3600, 'uids' => array_map(fn($i) => 'uid-' . $i, range(1, 3000)), 'error' => null]);
+    $rootDb->prepare("INSERT INTO content (item_key, item_value, updated_at) VALUES ('mailbox-poll', ?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = VALUES(updated_at)")->execute([$val, $when]);
+    return $when;
+};
+$when74 = $set74(3);
+$R74 = $pollProbe();
+it_check('§74 a poll saved seconds ago is recent', ($R74['recent'] ?? null) === true, json_encode($R74));
+it_check('§74 …so the next poll is throttled before the handled list is read', ($R74['poll']['skipped'] ?? '') === 'throttled', json_encode($R74));
+it_check('§74 …and leaves the row as it was', (string) $rootDb->query("SELECT updated_at FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn() === $when74);
+$set74(60);
+$R74 = $pollProbe();
+it_check('§74 a poll a minute ago is not recent, and the next one goes ahead', ($R74['recent'] ?? null) === false && ($R74['poll']['skipped'] ?? '') !== 'throttled', json_encode($R74));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
+$R74 = $pollProbe();
+it_check('§74 no row at all is not recent', ($R74['recent'] ?? null) === false, json_encode($R74));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'mailbox-poll'");
 
 echo "\n== Summary ==\n";
 if ($fail) {

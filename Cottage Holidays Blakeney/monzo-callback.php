@@ -36,32 +36,41 @@ function monzo_page(string $title, string $say, bool $ok): void
 
 $state = (string) ($_GET['state'] ?? '');
 $code = (string) ($_GET['code'] ?? '');
-$l = monzo_link();
-$pending = (string) ($l['pending'] ?? '');
-$fresh = (int) ($l['pending_at'] ?? 0) > time() - 900;
-if ($state === '' || $pending === '' || !$fresh || !hash_equals($pending, hash('sha256', $state))) {
-    monzo_page('That link has expired', 'Start again from Payments → Monzo Business → Connect. Nothing was changed.', false);
+// Under the sync's lock (monzo_locked): a sync finishing just after the new tokens
+// were saved would otherwise write the old link back over them. Nothing is used up
+// before the lock is held, so a busy answer can simply be reloaded.
+[$got, $page] = monzo_locked(function () use ($state, $code) {
+    $l = monzo_link();
+    $pending = (string) ($l['pending'] ?? '');
+    $fresh = (int) ($l['pending_at'] ?? 0) > time() - 900;
+    if ($state === '' || $pending === '' || !$fresh || !hash_equals($pending, hash('sha256', $state))) {
+        return ['That link has expired', 'Start again from Payments → Monzo Business → Connect. Nothing was changed.', false];
+    }
+    // Single use, whatever happens next.
+    unset($l['pending'], $l['pending_at']);
+    monzo_link_save($l);
+    if (!empty($_GET['error']) || $code === '') {
+        return ['Monzo wasn’t connected', 'Monzo didn’t give permission. You can try again from the Payments page.', false];
+    }
+    $c = monzo_client();
+    $r = monzo_http('POST', '/oauth2/token', '', [
+        'grant_type' => 'authorization_code', 'client_id' => $c['id'], 'client_secret' => $c['secret'],
+        'redirect_uri' => monzo_redirect_url(), 'code' => $code,
+    ]);
+    $t = $r['status'] === 200 ? monzo_token_read($r['body'], time()) : null;
+    if ($t === null) {
+        return ['Monzo wasn’t connected', $r['status'] === 0 ? 'Monzo couldn’t be reached. Try again in a minute.' : 'Monzo refused the link. Check the client ID and secret, then try again.', false];
+    }
+    monzo_auth_save($t);
+    $l = monzo_link();
+    // A fresh connection: forget how the last one ended.
+    $l = array_diff_key($l, array_flip(['reconnect', 'no_business', 'shared', 'last_error', 'account_id', 'account', 'last_ok']));
+    $l['connected_at'] = time();
+    monzo_link_save($l);
+    log_activity('payment', 'monzo.connect', 'Monzo Business link connected — waiting for approval in the Monzo app', ['entity' => 'monzo', 'actor' => 'owner']);
+    return ['Now approve it in the Monzo app', 'Monzo has sent a notification asking you to allow access. Approve it, then go back to Payments: your payments arrive by themselves from then on.', true];
+}, monzo_lock_wait());
+if (!$got) {
+    monzo_page('Monzo Business is busy', 'A sync is running. Reload this page in a minute to finish connecting.', false);
 }
-// Single use, whatever happens next.
-unset($l['pending'], $l['pending_at']);
-monzo_link_save($l);
-if (!empty($_GET['error']) || $code === '') {
-    monzo_page('Monzo wasn’t connected', 'Monzo didn’t give permission. You can try again from the Payments page.', false);
-}
-$c = monzo_client();
-$r = monzo_http('POST', '/oauth2/token', '', [
-    'grant_type' => 'authorization_code', 'client_id' => $c['id'], 'client_secret' => $c['secret'],
-    'redirect_uri' => monzo_redirect_url(), 'code' => $code,
-]);
-$t = $r['status'] === 200 ? monzo_token_read($r['body'], time()) : null;
-if ($t === null) {
-    monzo_page('Monzo wasn’t connected', $r['status'] === 0 ? 'Monzo couldn’t be reached. Try again in a minute.' : 'Monzo refused the link. Check the client ID and secret, then try again.', false);
-}
-monzo_auth_save($t);
-$l = monzo_link();
-// A fresh connection: forget how the last one ended.
-$l = array_diff_key($l, array_flip(['reconnect', 'no_business', 'shared', 'last_error', 'account_id', 'account', 'last_ok']));
-$l['connected_at'] = time();
-monzo_link_save($l);
-log_activity('payment', 'monzo.connect', 'Monzo Business link connected — waiting for approval in the Monzo app', ['entity' => 'monzo', 'actor' => 'owner']);
-monzo_page('Now approve it in the Monzo app', 'Monzo has sent a notification asking you to allow access. Approve it, then go back to Payments: your payments arrive by themselves from then on.', true);
+monzo_page((string) $page[0], (string) $page[1], (bool) $page[2]);

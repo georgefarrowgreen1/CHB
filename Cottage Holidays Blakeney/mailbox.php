@@ -403,6 +403,7 @@ if ($action === 'sent') {
 }
 
 if ($action === 'send') {
+    $opTok = op_claim($in); // one email for a retried send (bookings.php's email_guest)
     $to = clean($in['to'] ?? '');
     $subject = trim((string) ($in['subject'] ?? ''));
     $bodyText = trim((string) ($in['body'] ?? ''));
@@ -441,7 +442,7 @@ if ($action === 'send') {
         'entity' => 'mailbox',
         'entity_id' => $to,
     ]);
-    json_out(['ok' => true]);
+    json_out(op_finish($opTok, ['ok' => true]));
 }
 
 // Several at once (the Inbox deleting a whole conversation): one session, so the
