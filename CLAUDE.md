@@ -1636,6 +1636,13 @@ admin.css. Markup uses `data-pm` and `pm-` classes (the Inbox's rule), wired onc
   the page's repaint plus a debounced summary refetch; anything that changes money still calls it.
 - **A reset rule inside `:is(#pm, …)` takes the id's weight**: `:is(#pm, .pm-sheet) button { color: inherit }` beat
   the pressed chip's own colour and painted white on white. Resets go in `:where()`.
+- **The + animates both ways** (owner-asked): open, it turns into a × and fills like the dock's selected button, and
+  `#pm-menu` grows out of it; closing plays the same motion backwards (the rotate used to be declared on the open
+  state only, so it snapped back). `[hidden]` is still the one switch `pmMenuShow` sets and every check reads: for
+  the menu it is the folded state (kept on screen 140ms, then `visibility: hidden`), which is why the page's
+  `[hidden] { display: none !important }` rule excludes `.pm-menu`. Reduced motion puts `display: none` back. A
+  check that measures the open menu reads layout sizes (`offsetWidth`), not rects, which are 90% while it grows
+  (ui-test-onelook §8, re-aimed and not run, at the owner's ask).
 - Re-aimed since (the overnight CI pass): ui-test-money, ui-test-backoffice-motion, onelook §8/§16 and new layout
   scenes all read the `#pm` page now. Follow-ups: Today, the dock badge and search still compute owed
   their own way; the CSV/PDF keep their own profit arithmetic.
