@@ -17,6 +17,8 @@
 
 $SQ_CALLS = []; // [method.' '.path, payload] per request, in order
 $SQ_REPLY = []; // path fragment => ['status'=>int,'body'=>array]
+$SQ_SEQ = []; // 'METHOD fragment' => [reply, reply, …], consumed in order before SQ_REPLY
+$RECORDED = []; // Square payment ids already on the ledger
 $CONTENT = []; // content-table rows (item_key => value) for ApContentStmt
 $SQ_ENABLED = true;
 $DB_WRITES = []; // [sql, args]
@@ -31,8 +33,14 @@ function square_enabled()
 }
 function square_api($method, $path, $payload = null)
 {
-    global $SQ_CALLS, $SQ_REPLY;
+    global $SQ_CALLS, $SQ_REPLY, $SQ_SEQ;
     $SQ_CALLS[] = [$method . ' ' . $path, $payload];
+    foreach ($SQ_SEQ as $key => $list) {
+        [$m, $frag] = explode(' ', $key, 2);
+        if ($m === $method && strpos($path, $frag) !== false && $list) {
+            return array_shift($SQ_SEQ[$key]);
+        }
+    }
     foreach ($SQ_REPLY as $frag => $res) {
         if (strpos($path, $frag) !== false) {
             return $res;
@@ -118,6 +126,24 @@ class ApContentStmt extends ApStmt
         return isset($CONTENT[$this->key]) ? ['item_value' => json_encode($CONTENT[$this->key])] : false;
     }
 }
+class ApRecordedStmt extends ApStmt
+{
+    private $id = '';
+    public function __construct()
+    {
+        parent::__construct([]);
+    }
+    public function execute($args = null)
+    {
+        $this->id = is_array($args) ? (string) ($args[0] ?? '') : '';
+        return true;
+    }
+    public function fetchColumn($i = 0)
+    {
+        global $RECORDED;
+        return in_array($this->id, $RECORDED, true) ? 1 : 0;
+    }
+}
 class ApDb
 {
     public function prepare($sql)
@@ -125,6 +151,9 @@ class ApDb
         global $DB_ROW, $DB_LIST;
         if (stripos($sql, 'FROM content') !== false) {
             return new ApContentStmt();
+        }
+        if (stripos($sql, 'FROM payments WHERE square_payment_id') !== false) {
+            return new ApRecordedStmt();
         }
         if (stripos($sql, 'SELECT * FROM bookings WHERE id') !== false) {
             return new ApStmt($DB_ROW ? [$DB_ROW] : []);
@@ -188,11 +217,12 @@ function send_payment_receipt($b)
     $MAIL[] = ['receipt', $b];
     return ['ok' => $MAIL_OK];
 }
+$MAIL_UNCERTAIN = false;
 function send_autopay_notice($b, $payUrl = null)
 {
-    global $MAIL, $MAIL_OK;
+    global $MAIL, $MAIL_OK, $MAIL_UNCERTAIN;
     $MAIL[] = ['notice', $b];
-    return ['ok' => $MAIL_OK];
+    return ['ok' => $MAIL_OK, 'sent_uncertain' => $MAIL_UNCERTAIN];
 }
 function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null, $restNow = null)
 {
@@ -298,7 +328,9 @@ function apbk($over = [])
 }
 function reset_env($row = null)
 {
-    global $SQ_CALLS, $DB_WRITES, $DB_ROW, $SQ_REPLY, $LOCKED, $SQ_ENABLED;
+    global $SQ_CALLS, $DB_WRITES, $DB_ROW, $SQ_REPLY, $LOCKED, $SQ_ENABLED, $SQ_SEQ, $RECORDED;
+    $SQ_SEQ = [];
+    $RECORDED = [];
     $SQ_CALLS = [];
     $DB_WRITES = [];
     $LOCKED = true;
@@ -369,9 +401,10 @@ chk('...scoped to the trading location', $call && $call[1]['location_id'] === 'L
 // telling the issuer otherwise is both untrue and what gets a card-on-file
 // charge declined.
 chk('...and declaring that the guest did NOT initiate it', $call && $call[1]['customer_details']['customer_initiated'] === false);
-// Deterministic and keyed on booking + day + sum: a retry of the same attempt
-// collapses at Square, a genuinely different collection does not.
-chk('the idempotency key names the booking, the day and the sum', $call && $call[1]['idempotency_key'] === 'chb-auto-42-2026-08-03-30000');
+// Deterministic and keyed on the booking, the date the collection is FOR, the sum and
+// the attempt — not today's date, so a try Square never answered repeats tomorrow with
+// the same key (Square will not charge it twice) while a recorded decline moves on.
+chk('the idempotency key names the booking, the date it is for, the sum and the attempt', $call && $call[1]['idempotency_key'] === 'chb-auto-42-2026-08-03-30000-0');
 $led = wrote('INSERT IGNORE INTO payments');
 chk('the ledger gets the same row shape a manual payment writes', $led && in_array('balance', $led[1], true) && in_array(300.0, $led[1], true));
 chk('the booking is moved to paid', wrote('SET deposit_paid') && in_array('paid', wrote('SET deposit_paid')[1], true));
@@ -430,7 +463,7 @@ chk('...through the house voice rather than raw Square detail', (function () {
 $w = wrote('autopay_attempts = ?');
 chk('a HARD decline stops it dead rather than re-presenting the card', $w && (int) $w[1][0] === AUTOPAY_MAX_TRIES);
 reset_env();
-$SQ_REPLY = ['/v2/payments' => ['status' => 500, 'body' => ['errors' => [['code' => 'TEMPORARY_ERROR']]]]];
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'PAYMENT_LIMIT_EXCEEDED']]]]];
 [$v] = autopay_collect_one(apbk(), $TODAY);
 chk('a SOFT failure costs one attempt, not all three', $v === 'fail' && wrote('autopay_attempts = autopay_attempts + 1') !== null);
 chk('...and it is dated, so the retry is tomorrow', wrote('autopay_attempts = autopay_attempts + 1')[1][0] === $TODAY);
@@ -954,7 +987,7 @@ echo "\n=== 17. The guest hears first — failure emails from the collector ===\
 // Sent on the FIRST soft failure ("we'll try again") and on the failure that
 // STOPS the plan (a hard decline, or the soft one reaching the cap); the middle
 // attempt is silence — they already know. The silences carry checks too.
-$FAIL_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'TEMPORARY_ERROR', 'detail' => 'x']]]]];
+$FAIL_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'PAYMENT_LIMIT_EXCEEDED', 'detail' => 'x']]]]];
 $failMails = function () {
     global $MAIL;
     return array_values(array_filter($MAIL, fn($m) => $m[0] === 'failure'));
@@ -1059,6 +1092,109 @@ $runSrc = file_get_contents(__DIR__ . '/autopay-run.php');
 chk('the collected alert reads the OK bucket, the failed alert the FAIL bucket',
     strpos($runSrc, "\$res['okLines'][0]") !== false && strpos($runSrc, "\$res['failLines'][0]") !== false
     && strpos($runSrc, "\$res['lines'][count(\$res['lines']) - 1]") === false);
+
+echo "\n=== 20. Square didn't answer: never a decline, never taken twice ===\n";
+// A timeout, a dropped connection or Square's own server error may have taken the
+// money. It was read as a hard decline: the plan stopped, the guest was told nothing
+// had been taken, and the same night's chase asked for the whole balance again.
+$posts = function () {
+    global $SQ_CALLS;
+    return array_values(array_filter($SQ_CALLS, fn($c) => $c[0] === 'POST /v2/payments'));
+};
+reset_env();
+$MAIL = [];
+$SQ_SEQ = ['POST /v2/payments' => [['status' => 0, 'body' => null], ['status' => 0, 'body' => null]]];
+[$v, $line] = autopay_collect_one(apbk(), $TODAY);
+$p2 = $posts();
+chk('no answer is not a decline: the outcome is unknown', $v === 'unknown' && strpos($line, 'check Square') !== false);
+chk('...the same request is sent once more at once, with the same key', count($p2) === 2 && $p2[0][1]['idempotency_key'] === $p2[1][1]['idempotency_key']);
+chk('...no attempt is counted, so the plan stays armed and nothing chases it', wrote('autopay_attempts') === null);
+chk('...the try is dated and marked, so the next pass asks Square first', ($w = wrote('autopay_last_code = ?')) && in_array('UNKNOWN', $w[1], true) && in_array($TODAY, $w[1], true));
+chk('...and the guest is told nothing', $MAIL === []);
+reset_env();
+$SQ_SEQ = ['POST /v2/payments' => [['status' => 0, 'body' => null], ['status' => 200, 'body' => ['payment' => ['id' => 'sq_late', 'status' => 'COMPLETED']]]]];
+[$v] = autopay_collect_one(apbk(), $TODAY);
+chk('an answer to the second send is the collection', $v === 'ok' && ($l = wrote('INSERT IGNORE INTO payments')) && in_array('sq_late', $l[1], true));
+reset_env();
+$SQ_REPLY = ['/v2/payments' => ['status' => 503, 'body' => ['errors' => [['code' => 'SERVICE_UNAVAILABLE']]]]];
+[$v] = autopay_collect_one(apbk(), $TODAY);
+chk("Square's own server error is unknown too, never a decline", $v === 'unknown' && wrote('autopay_attempts') === null);
+reset_env();
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'CARD_DECLINED']]]]];
+[$v] = autopay_collect_one(apbk(), $TODAY);
+chk('...while a card that says no is still a decline', $v === 'fail');
+// The next pass, after a try Square never answered.
+$NEXT = '2026-08-04';
+$unk = apbk(['autopay_last_code' => 'UNKNOWN', 'autopay_last_try' => $TODAY]);
+$taken = ['id' => 'sq_was', 'status' => 'COMPLETED', 'reference_id' => 'CHB-000042', 'amount_money' => ['amount' => 30000, 'currency' => 'GBP']];
+reset_env($unk);
+$SQ_SEQ = ['GET /v2/payments?' => [['status' => 200, 'body' => ['payments' => [$taken]]]]];
+[$v] = autopay_collect_one($unk, $NEXT);
+chk('the next pass asks Square first and records what the silent try took', $v === 'ok' && ($l = wrote('INSERT IGNORE INTO payments')) && in_array('sq_was', $l[1], true));
+chk('...without charging the card again', $posts() === []);
+reset_env($unk);
+$SQ_SEQ = ['GET /v2/payments?' => [['status' => 200, 'body' => ['payments' => []]]]];
+$SQ_REPLY = ['/v2/payments' => ['status' => 200, 'body' => ['payment' => ['id' => 'sq_now', 'status' => 'COMPLETED']]]];
+[$v] = autopay_collect_one($unk, $NEXT);
+$p3 = $posts();
+chk('nothing was taken: it charges, with the SAME key the silent try used', $v === 'ok' && count($p3) === 1 && $p3[0][1]['idempotency_key'] === 'chb-auto-42-2026-08-03-30000-0');
+reset_env($unk);
+$SQ_SEQ = ['GET /v2/payments?' => [['status' => 0, 'body' => null]]];
+[$v] = autopay_collect_one($unk, $NEXT);
+chk('Square still unreachable: unknown again, and nothing charged', $v === 'unknown' && $posts() === []);
+reset_env($unk);
+$SQ_SEQ = ['GET /v2/payments?' => [['status' => 200, 'body' => ['payments' => [array_merge($taken, ['amount_money' => ['amount' => 12000, 'currency' => 'GBP']])]]]]];
+[$v] = autopay_collect_one($unk, $NEXT);
+chk('a different sum taken is left for the owner, untouched', $v === 'unknown' && $posts() === [] && wrote('INSERT IGNORE INTO payments') === null);
+reset_env($unk);
+$RECORDED = ['sq_was'];
+$SQ_SEQ = ['GET /v2/payments?' => [['status' => 200, 'body' => ['payments' => [$taken]]]]];
+chk("a payment already on the ledger (the guest's own link) is not the silent try's", autopay_find_taken($unk, $TODAY) === null);
+
+echo "\n=== 21. A finished plan never crowds out a live one; two passes never collect twice ===\n";
+// The due query matched every finished plan for ever (its date stays past, and a
+// success resets the try count), so twenty of them filled the cap and the plan
+// due today was never reached — nor chased, being armed.
+reset_env();
+$DB_LIST = array_merge(
+    array_map(fn($i) => apbk(['id' => 100 + $i, 'autopay_due' => '2026-07-15', 'balance_due_date' => '2026-07-15', 'autopay_collected_for' => '2026-07-15']), range(1, 20)),
+    [apbk()],
+);
+$out = autopay_run($TODAY);
+chk('twenty finished plans do not crowd out the one due today', $out['collected'] === 1 && $out['truncated'] === false && $out['skipped'] === 20);
+$apSrc3 = (string) file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('…and spent plans are left out in the query too', strpos($apSrc3, 'autopay_collected_for IS NULL OR autopay_collected_for < COALESCE(autopay_next_at, autopay_due)') !== false);
+reset_env();
+$SQ_SEQ = ['POST /v2/payments' => [['status' => 0, 'body' => null], ['status' => 0, 'body' => null]]];
+$DB_LIST = [apbk()];
+$out = autopay_run($TODAY);
+chk('the pass reports an unanswered try as unknown, not failed', $out['unknown'] === 1 && $out['failed'] === 0 && count($out['unknownLines']) === 1);
+$DB_LIST = [];
+$runSrc2 = (string) file_get_contents(__DIR__ . '/autopay-run.php');
+chk('…and the owner is told to check Square', strpos($runSrc2, "\$res['unknownLines'][0]") !== false && strpos($runSrc2, "'autopay-unknown-'") !== false);
+// Two passes at once (the manual cron URL during the nightly run): the second read
+// the row before the first wrote, waited for the lock, and found a monthly plan still
+// armed for its NEXT instalment — and charged again. The day is re-asked under the lock.
+$mDue = mpbk(['autopay_next_at' => '2026-09-28']);
+reset_env(mpbk(['autopay_next_at' => '2026-10-28', 'autopay_last_try' => '2026-09-28', 'deposit_paid' => 525.0]));
+[$v] = autopay_collect_one($mDue, '2026-09-28');
+chk('a second pass finds the instalment already taken and charges nothing', $v === 'skip' && $posts() === []);
+reset_env();
+$RECORDED = ['sq_dup'];
+autopay_record_success(apbk(), ['id' => 'sq_dup', 'status' => 'COMPLETED'], 300.0, 0.0, $TODAY);
+chk('a payment already on the ledger is never counted again', wrote('SET deposit_paid') === null && wrote('INSERT IGNORE INTO payments') === null);
+
+echo "\n=== 22. A notice that may have gone is not sent again ===\n";
+$MAIL = [];
+$DB_WRITES = [];
+$MAIL_OK = false;
+$MAIL_UNCERTAIN = true;
+$DB_LIST = [apbk(['autopay_due' => '2026-08-20', 'balance_due_date' => '2026-08-20', 'autopay_amount' => 300.0])];
+$n = autopay_notice_run('2026-08-18');
+chk('an uncertain send is stamped, so the next two days do not send it again', $n['sent'] === 1 && wrote('autopay_notified_at') !== null);
+$MAIL_OK = true;
+$MAIL_UNCERTAIN = false;
+$DB_LIST = [];
 
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);

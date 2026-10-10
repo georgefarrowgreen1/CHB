@@ -47,10 +47,17 @@ function reconcile_pending_refunds($limit = 12)
             // Only a recognised Square status overwrites the row — a 404/error
             // (e.g. a manually recorded refund with no Square id) leaves it as-is.
             // Never downgrade a decided row. The query above already skips them, but a
-            // row can settle between the SELECT and this write, and Square's own events
-            // arrive out of order — so the guard belongs at the write too.
-            if (payment_status_known($status) && !payment_status_terminal((string) ($r['status'] ?? ''))) {
-                db()->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute([payment_status_norm($status), (int) $r['id']]);
+            // row can settle between the SELECT and this write (the webhook, or the
+            // owner's confirm, during the Square call), so the guard is IN the write:
+            // the row read above was never decided, so testing it guarded nothing.
+            // The webhook's rule: a terminal answer may still correct a terminal row.
+            if (payment_status_known($status)) {
+                db()
+                    ->prepare(
+                        "UPDATE payments SET status = ? WHERE id = ?"
+                        . " AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED') OR ? = 1)",
+                    )
+                    ->execute([payment_status_norm($status), (int) $r['id'], payment_status_terminal($status) ? 1 : 0]);
             }
         } catch (\Throwable $e) {
             // best-effort per row — never let one bad lookup break the rest

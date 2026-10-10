@@ -908,6 +908,41 @@ The rule they share: money is counted once, on the day it moved, with the cottag
   of a charge that carried a refundable deposit, though Square credits back the deposit's share of it when the
   deposit is returned (about £1.30 on £75); the books count the whole fee too, so the two still agree.
 
+## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
+
+Found by the scheduled-jobs review and each reproduced against the real collector code.
+- **A finished plan never leaves the due query by itself**: its date stays past and a success resets the try
+  count. The run took the oldest 21 and tried 20, so once twenty finished plans existed the plan due today was
+  always the one cut, and being armed it was never chased either. `autopay_due_sql(true)` leaves out plans
+  already collected for their date (`autopay_collected_for`), and `autopay_run` judges every candidate with
+  `autopay_try_due` BEFORE the cap, so only a plan it would try takes a place. The cap is a warning now.
+  test-integration **§60** runs the query's own text on the real schema (the unit harness accepts any SQL, and a
+  broken clause would fall back to the old query in silence).
+- **No answer from Square is not a decline** (`autopay_outcome_unknown`: status 0, a 5xx, or GATEWAY_TIMEOUT /
+  INTERNAL_SERVER_ERROR / SERVICE_UNAVAILABLE / TEMPORARY_ERROR). It was read as a hard decline: the plan
+  stopped, the guest was emailed that nothing had been taken, and payments-due chased the full balance in the
+  same run. Now the same request is sent once more at once; still unknown, the try is dated and marked
+  `autopay_last_code = 'UNKNOWN'`, no attempt is counted (the plan stays armed, so nothing chases it), the guest
+  hears nothing, and the owner gets an urgent alert to check Square. The next pass asks Square first
+  (`autopay_find_taken`: a COMPLETED payment with the booking's reference that is not on our ledger) and records
+  it rather than charging; Square unreachable or a different sum leaves it for the owner.
+- **The idempotency key is the booking, the date the collection is FOR, the sum and the attempt**, not today's
+  date, so the repeat of an unanswered try collapses at Square while a recorded decline moves the attempt on.
+- **Two passes at once** (the manual cron URL during the nightly run): the second read the row before the
+  first wrote, waited for the lock, and found a monthly plan still armed for its next instalment, so it charged
+  again; Square replayed the payment and the instalment was counted twice. `autopay_try_due` is re-asked under
+  the lock, and `autopay_record_success` ignores a payment already on the ledger.
+- **An uncertain advance notice is stamped** (the house rule: no layer retries a `sent_uncertain` send); it was
+  sent again on each of the three days before the charge.
+- **A `?hold=` link only works where a hold was requested** (`hold_requested_at`). The same token opens `?pay=`,
+  so any guest could swap links, place an authorisation that lapses in a week, and pay the rental with the
+  refundable deposit never taken. `pay.php` also refuses `charge` in hold mode.
+- **The refund poller's guard is in the write**: it tested the row it had selected, which was never decided, so
+  a refund the webhook or the owner settled during the Square call could be written back to PENDING.
+- Gates: test-autopay (sections 20–22: unknown outcomes, the lookup, the same key, the cap, the overlap, the
+  replayed payment, the uncertain notice), test-payrail (the hold link, the charge refusal, the poller guard),
+  integration §60. Twelve fixes break-tested one at a time, and §60 against a broken clause.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
