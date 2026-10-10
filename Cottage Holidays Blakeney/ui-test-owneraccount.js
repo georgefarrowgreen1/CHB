@@ -8,7 +8,8 @@
 //     goes through the guest's sheet and cropper
 //  §4 notifications: this device, what interrupts you (switches + a quiet-hours
 //     form that refuses half a window), who gets emailed
-//  §5 sign-in & security: one password form, named passkey removal, the
+//  §5 sign-in & security: the password sheet opens and a change goes through
+//     (ui-test-password owns the sheet), named passkey removal, the
 //     two-step switch on the real toggle (and back to the truth on a failure)
 //  §6 navigation: the pages slide the right way, the panel's own back link and
 //     title stand down only for these pages, and Back replays
@@ -512,34 +513,31 @@ const ok = (b, m) => {
     }));
     ok(sec.keys.join() === 'iPhone,MacBook Air,Add another passkey', `each passkey is a row, then add another (${sec.keys.join(' · ')})`);
     ok(sec.twofa === true, 'two-step is the switch on the real toggle, ON from your own setting');
+    // The password is its own sheet now (ui-test-password owns it); here, that the row
+    // opens it and that a change still goes through from the account pages.
     await page.click(rowByTitle('#security-body', 'Change password'));
-    await waitDlg();
-    f = await dlg();
-    ok(f.title === 'Change password' && f.fields.length === 3 && f.fields.every((x) => x.type === 'password'), 'changing the password is ONE form of three password fields');
-    await page.fill('#gdf-current', 'old-password-here');
-    await page.fill('#gdf-next', 'short');
-    await page.fill('#gdf-confirm', 'short');
-    await page.click('#glass-dialog-ok');
-    await waitDlg(/at least 12/);
-    await page.fill('#gdf-next', 'a-much-longer-password');
-    await page.fill('#gdf-confirm', 'a-different-password!');
-    await page.click('#glass-dialog-ok');
-    await waitDlg(/don.t match/);
-    ok(!posts.some((p) => p.b.action === 'admin_change_password'), 'too short and mismatched are refused before anything is sent');
-    f = await dlg();
-    ok(f.fields[0].value === 'old-password-here', '…keeping what was typed, so one box gets fixed, not three');
+    await page.waitForFunction(() => { const o = document.getElementById('oa-pw-sheet'); return o && o.classList.contains('open') && document.activeElement && document.activeElement.id === 'oa-pw-cur'; }, null, { timeout: 15000 }).catch(() => {});
+    const pwf = await page.evaluate(() => ({ t: (document.getElementById('oa-pw-title') || {}).textContent, n: document.querySelectorAll('#oa-pw-sheet input[type="password"]').length, glass: document.getElementById('glass-dialog').classList.contains('open') }));
+    ok(pwf.t === 'Change password' && pwf.n === 2 && !pwf.glass, `changing the password is one sheet of two boxes, not a pop-up form (${pwf.n})`);
+    await page.fill('#oa-pw-cur', 'old-password-here');
+    await page.fill('#oa-pw-new', 'short');
+    await page.click('#oa-pw-ok', { force: true }); // aria-disabled: Playwright won't click it unforced, a finger does
+    await page.waitForTimeout(150);
+    ok(!posts.some((p) => p.b.action === 'admin_change_password'), 'too short is refused before anything is sent');
     st.pwRefuse = true;
-    await page.fill('#gdf-confirm', 'a-much-longer-password');
-    await page.click('#glass-dialog-ok');
-    await waitDlg(/Current password is incorrect/);
-    f = await dlg();
-    ok(f.fields[1].value === 'a-much-longer-password' && f.fields[2].value === 'a-much-longer-password', "the server's refusal keeps the form open, in its own words");
+    await page.fill('#oa-pw-new', 'a-much-longer-password');
+    await page.click('#oa-pw-ok');
+    await page.waitForFunction(() => !document.getElementById('oa-pw-e-cur').hidden, null, { timeout: 15000 }).catch(() => {});
+    const pwr = await page.evaluate(() => ({ e: document.getElementById('oa-pw-e-cur').textContent, nx: document.getElementById('oa-pw-new').value }));
+    ok(pwr.e === 'That isn’t your current password.' && pwr.nx === 'a-much-longer-password', "the server's refusal is said under the current box, keeping what was typed");
     st.pwRefuse = false;
-    await page.click('#glass-dialog-ok');
-    await waitShut();
-    await page.waitForTimeout(300);
+    await page.fill('#oa-pw-cur', 'old-password-here');
+    await page.click('#oa-pw-ok');
+    await page.waitForFunction(() => !document.getElementById('oa-pw-done').hidden, null, { timeout: 15000 }).catch(() => {});
     const pw = posts.filter((p) => p.b.action === 'admin_change_password');
     ok(pw.length === 2 && pw[1].b.current === 'old-password-here' && pw[1].b.next === 'a-much-longer-password', 'the accepted change posts the current and the new password');
+    await page.click('#oa-pw-done .oa-pw-ok');
+    await page.waitForTimeout(450);
     await page.click('#admin-passkey-list .ga-row:has(.ga-t:text-is("MacBook Air"))');
     await waitDlg();
     const pk = await dlg();

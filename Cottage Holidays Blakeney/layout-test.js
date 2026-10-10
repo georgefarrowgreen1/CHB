@@ -359,6 +359,10 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-host', open: "(async () => { settingsOpen('host'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#host-body .ga-hero', '#host-body .oa-preview .host-card'] },
       { key: 'admin-notify', open: "(async () => { settingsOpen('notify'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#notify-device', '#notify-prefs-body .chb-switch'] },
       { key: 'admin-security', open: "(async () => { settingsOpen('security'); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#admin-passkey-list', '#admin-2fa-toggle'] },
+      // The change-password sheet over it, with a mistake showing, so the error line, the
+      // count under the new box and the devices sentence all have to wrap inside it.
+      { key: 'admin-password', open: "(async () => { changeAdminPassword(); await new Promise(r => setTimeout(r, 550)); oaPwErr('cur', 'That isn\u2019t your current password.'); })()", mustSee: ['#oa-pw-sheet .ga-sheetbox', '#oa-pw-cur', '#oa-pw-new', '#oa-pw-ok'] },
+      { key: 'admin-password-closed', open: "(async () => { oaPwClose(); await new Promise(r => setTimeout(r, 450)); })()", mustSee: ['#admin-passkey-list'] },
       // The Done folder (the Inbox's one switch), so the folder's own layout is measured.
       { key: 'admin-inbox-done', open: "(async () => { await openInbox(); if (window.ibSetFolder) ibSetFolder('done'); await new Promise(r => setTimeout(r, 600)); })()", mustSee: ['#ib-list'] },
     ];

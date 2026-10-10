@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 778;
+const ADMIN_BUNDLE_V = 779;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 403;
+const ADMIN_CSS_V = 404;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -16460,6 +16460,7 @@ const MODAL_CLOSERS = {
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
     'oa-dev-sheet': () => window.oaDevClose(), // open only once admin.js is in
+    'oa-pw-sheet': () => window.oaPwClose(),
 };
 function topOpenDialog() {
     const lb = document.getElementById('lightbox');
@@ -16511,7 +16512,10 @@ document.addEventListener('keydown', (e) => {
         const focusable = m.querySelectorAll(
             'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
-        const items = Array.from(focusable).filter((el) => el.offsetParent !== null);
+        // Only what Tab can reach: a control kept out of the tab order (tabindex="-1", like
+        // the read-only sign-in line a password form carries for password managers) is
+        // never a boundary, or Shift+Tab from the real first field walks out of the dialog.
+        const items = /** @type {HTMLElement[]} */ (Array.from(focusable)).filter((el) => el.offsetParent !== null && el.tabIndex >= 0);
         if (!items.length) return;
         const first = items[0],
             last = items[items.length - 1];
@@ -18950,6 +18954,7 @@ function closeTopOverlay() {
     // the thread, so it is asked first.
     if (open('edit-modal')) { closeModal(); return true; }
     if (open('oa-dev-sheet') && typeof window.oaDevClose === 'function') { window.oaDevClose(); return true; }
+    if (open('oa-pw-sheet') && typeof window.oaPwClose === 'function') { window.oaPwClose(); return true; }
     if (open('enq-email-modal') && typeof window.closeEnquiryEmailModal === 'function') { window.closeEnquiryEmailModal(); return true; }
     const mm = document.getElementById('messages-modal');
     if (mm && mm.classList.contains('open') && mm.parentElement === document.body) { closeMessagesModal(); return true; }
@@ -22025,7 +22030,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'devgap1010';
+    const BUILD = 'pwsheet1010';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

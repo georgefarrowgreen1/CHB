@@ -12694,6 +12694,7 @@ Object.assign(GA_IC, {
     dtablet: '<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>',
     dlaptop: '<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>',
     ddesktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>',
+    devices: '<rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1.5"/>',
 });
 // "Sophia", "Sophia and Ellie", "Sophia, Ellie and Sam".
 function listAnd(a) {
@@ -13485,6 +13486,328 @@ async function oaDevOpenTarget(id) {
     await (__oaDevAsk[0] ? __oaDevAsk[0][1] : oaDevLoad(0));
     if (oaDevFind(0, id)) oaDevOpen(0, id);
     else toast('That device isn’t signed in any more.');
+}
+
+// ---- Change password (approved demo): one sheet, a real <form> a password manager
+// can read. NO confirm box: a typo cannot lock you out (a code or a passkey still signs
+// you in). See CLAUDE.md.
+const OA_PW_MIN = 12; // auth.php's floor
+const OA_PW_RING = 50.27; // the hint ring's circumference (r = 8)
+// run: bumped per open, so a late answer belongs to the sheet that asked; said: the
+// hint's state as last announced (a screen reader hears it change, not count).
+const __oaPw = { run: 0, busy: false, said: '' };
+const OA_PW_EYE =
+    '<svg class="oa-pw-eo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>' +
+    '<svg class="oa-pw-es" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.5 10.5 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+// Characters, not UTF-16 units: an emoji is one.
+const oaPwLen = (s) => Array.from(String(s || '')).length;
+const oaPwInp = (k) => /** @type {HTMLInputElement|null} */ (document.getElementById('oa-pw-' + k));
+function changeAdminPassword() {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
+    oaPwOpen();
+}
+function oaPwSheetEl() {
+    let o = document.getElementById('oa-pw-sheet');
+    if (o) return o;
+    o = document.createElement('div');
+    o.id = 'oa-pw-sheet';
+    o.className = 'modal-overlay pop-modal chb-sheet';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.dataset.act = 'backdropClose';
+    o.dataset.close = 'oaPwClose';
+    o.dataset.focus = '#oa-pw-cur'; // never the read-only sign-in line above it
+    o.innerHTML = '<div class="modal-box glass-panel ga-sheetbox oa-pw-box"></div>';
+    document.body.appendChild(o);
+    return o;
+}
+function oaPwField(k, label, ac, enter, below) {
+    const id = 'oa-pw-' + k;
+    return (
+        `<div class="oa-pw-fg" id="${id}-g"><label for="${id}">${label}</label><div class="oa-pw-fbox">` +
+        `<input class="oa-pw-fld" id="${id}" type="password" autocomplete="${ac}" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="${enter}" aria-describedby="${k === 'new' ? 'oa-pw-h-new oa-pw-e-new' : 'oa-pw-e-cur'}" data-act-input="oaPwInput" data-act-keydown="oaPwKey" data-pass="event">` +
+        `<button type="button" class="oa-pw-eye" ${chbAttrs('oaPwEye', id)} data-act-pointerdown="oaPwHold" aria-controls="${id}" aria-label="Show password" aria-pressed="false">${OA_PW_EYE}</button>` +
+        `</div>${below}</div>`
+    );
+}
+function oaPwHtml() {
+    const me = chbMe() || {};
+    const who = String(me.contact || me.email || me.username || ''); // the password manager's username
+    const forgot = me.contact ? '<p class="oa-pw-hint" id="oa-pw-forgot"><button type="button" class="oa-pw-lnk" data-act="oaPwForgot">Forgotten it? <span>Email me a reset link</span></button></p>' : '';
+    const ring = '<svg class="oa-pw-ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="oa-pw-rbg" cx="10" cy="10" r="8"/><circle class="oa-pw-rfg" cx="10" cy="10" r="8"/><path class="oa-pw-rtk" d="M6.3 10.4l2.5 2.5 4.9-5.3"/></svg>';
+    return (
+        '<form class="oa-pw-form" id="oa-pw-form" data-act-submit="oaPwSubmit" data-pass="event" novalidate>' +
+        '<h2 class="ga-sheet-t" id="oa-pw-title">Change password</h2>' +
+        (who ? `<p class="oa-pw-for"><span>For</span>${authIdField('oa-pw-user', who, 'Your sign-in')}</p>` : '') +
+        '<div class="oa-pw-fgs">' +
+        oaPwField('cur', 'Current password', 'current-password', 'next', '<p class="oa-pw-err" id="oa-pw-e-cur" role="alert" hidden></p>' + forgot) +
+        oaPwField('new', 'New password', 'new-password', 'done', `<p class="oa-pw-hint" id="oa-pw-h-new">${ring}<span id="oa-pw-h-t">12 characters or more</span></p><p class="oa-pw-err" id="oa-pw-e-new" role="alert" hidden></p>`) +
+        '</div>' +
+        `<p class="oa-pw-cons">${gaSvg('devices')}<span id="oa-pw-cons-t"></span></p>` +
+        '<p class="oa-pw-err" id="oa-pw-e-gen" role="alert" hidden></p>' +
+        '<div class="oa-pw-btns"><button type="button" class="btn-glass ga-sheet-cancel" data-act="oaPwClose">Cancel</button>' +
+        '<button type="submit" class="btn-glass oa-pw-ok" id="oa-pw-ok" aria-disabled="true">Change password</button></div>' +
+        '</form>' +
+        '<div class="oa-pw-done" id="oa-pw-done" hidden><svg class="oa-pw-tick" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30"/><path d="M20 33l8 8 16-17"/></svg>' +
+        '<h2 class="oa-pw-dt" id="oa-pw-dt" tabindex="-1">Password changed</h2><p class="oa-pw-dp" id="oa-pw-dp"></p>' +
+        '<button type="button" class="btn-glass oa-pw-ok" data-act="oaPwClose">Done</button></div>' +
+        '<span class="sr-only" role="status" id="oa-pw-say"></span>'
+    );
+}
+function oaPwOpen() {
+    const o = oaPwSheetEl();
+    const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
+    __oaPw.run++;
+    __oaPw.busy = false;
+    __oaPw.said = '';
+    box.innerHTML = oaPwHtml();
+    o.setAttribute('aria-labelledby', 'oa-pw-title');
+    oaPwPaint();
+    oaPwConsPaint();
+    o.classList.remove('closing');
+    o.classList.add('open');
+    overlayHistPush();
+    // Asked afresh, so the devices it names are true when pressed.
+    const run = __oaPw.run;
+    const ask = __oaDevAsk[0] && !__oaDevAsk[0][2] ? __oaDevAsk[0][1] : oaDevLoad(0);
+    Promise.resolve(ask).then(() => {
+        if (run === __oaPw.run) oaPwConsPaint();
+    });
+}
+function oaPwClose() {
+    const o = document.getElementById('oa-pw-sheet');
+    if (!o || !o.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(o);
+    // The passwords leave the page once the exit has played.
+    const run = __oaPw.run;
+    setTimeout(() => {
+        if (run !== __oaPw.run || o.classList.contains('open')) return;
+        const b = o.querySelector('.ga-sheetbox');
+        if (b) b.innerHTML = '';
+    }, 400);
+}
+// The devices it signs out: named (up to three, none sharing a name), else counted;
+// without names while the list is unread or not yet complete (partial).
+function oaPwOuts(done) {
+    const st = __oaDevs[0];
+    const devs = st && !st.err && Array.isArray(st.devices) ? st.devices : null;
+    const here = devs ? devs.find((d) => d.here) : null;
+    const stay = (done ? ' You’re still signed in on this ' : ' You stay signed in on this ') + (here ? oaDevName(here) : 'device') + '.';
+    const others = devs ? devs.filter((d) => !d.here) : [];
+    const labels = others.map((d) => String(d.label || 'Unknown device'));
+    const named = others.length && others.length <= 3 && new Set(labels).size === labels.length ? listAnd(labels) : '';
+    const whole = !!devs && !st.partial;
+    let out;
+    if (!devs || (!whole && !named)) out = done ? 'Every other device is signed out.' : 'Every other device you’re signed in on will be signed out.';
+    else if (named && !whole) out = named + (done ? ' and any other device are signed out.' : ' and any other device you’re signed in on will be signed out.');
+    else if (named) out = named + (done ? (others.length === 1 ? ' is' : ' are') : ' will be') + ' signed out.';
+    else if (others.length) out = 'Your ' + others.length + ' other devices ' + (done ? 'are' : 'will be') + ' signed out.';
+    else out = done ? '' : 'No other device is signed in.';
+    return (out + stay).trim();
+}
+function oaPwConsPaint() {
+    const t = document.getElementById('oa-pw-cons-t');
+    if (t) t.textContent = oaPwOuts(false);
+}
+function oaPwReady() {
+    const cur = oaPwInp('cur');
+    const nx = oaPwInp('new');
+    return !!(cur && nx && cur.value && oaPwLen(nx.value) >= OA_PW_MIN && nx.value !== cur.value);
+}
+// The count to 12, its tick, the current password typed again; the button's readiness.
+function oaPwPaint() {
+    const cur = oaPwInp('cur');
+    const nx = oaPwInp('new');
+    const h = document.getElementById('oa-pw-h-new');
+    const t = document.getElementById('oa-pw-h-t');
+    const ok = document.getElementById('oa-pw-ok');
+    if (!cur || !nx || !h || !t || !ok) return;
+    const n = oaPwLen(nx.value);
+    const st = n >= OA_PW_MIN ? (nx.value === cur.value ? 'warn' : 'ok') : '';
+    h.classList.toggle('is-ok', st === 'ok');
+    h.classList.toggle('is-warn', st === 'warn');
+    const ring = /** @type {SVGElement|null} */ (h.querySelector('.oa-pw-rfg'));
+    if (ring) ring.style.strokeDashoffset = String(OA_PW_RING * (1 - Math.min(n, OA_PW_MIN) / OA_PW_MIN));
+    t.textContent = st === 'warn' ? 'That’s your current password' : n && n < OA_PW_MIN ? n + ' of 12 characters' : '12 characters or more';
+    ok.setAttribute('aria-disabled', String(!oaPwReady()));
+    if (st !== __oaPw.said) {
+        __oaPw.said = st;
+        const say = document.getElementById('oa-pw-say');
+        if (say) say.textContent = st === 'ok' ? 'New password is long enough' : st === 'warn' ? 'That’s your current password' : '';
+    }
+}
+// A mistake under the box it is about; `point` focuses the box, what was typed selected.
+// Revealed BEFORE the words are written, or the alert is not reliably announced.
+function oaPwErr(k, text, point) {
+    const p = document.getElementById('oa-pw-e-' + k);
+    if (!p) return;
+    const g = k === 'gen' ? null : document.getElementById('oa-pw-' + k + '-g');
+    const inp = k === 'gen' ? null : oaPwInp(k);
+    if (!text) {
+        if (!p.hidden) {
+            p.hidden = true;
+            p.textContent = '';
+        }
+        if (g) g.classList.remove('is-bad');
+        if (inp) inp.removeAttribute('aria-invalid');
+        return;
+    }
+    p.hidden = false;
+    p.textContent = text;
+    if (g) g.classList.add('is-bad');
+    if (inp) inp.setAttribute('aria-invalid', 'true');
+    if (point && inp) {
+        oaPwNudge(g && g.querySelector('.oa-pw-fbox'));
+        inp.focus();
+        inp.select();
+    }
+}
+function oaPwNudge(el, cls) {
+    const e = /** @type {HTMLElement|null} */ (el);
+    if (!e) return;
+    const c = cls || 'is-nudge';
+    e.classList.remove(c);
+    void e.offsetWidth;
+    e.classList.add(c);
+    e.addEventListener('animationend', () => e.classList.remove(c), { once: true });
+}
+function oaPwInput(ev) {
+    const id = ev && ev.target ? ev.target.id : '';
+    if (id === 'oa-pw-cur') oaPwErr('cur', '');
+    if (id === 'oa-pw-new') oaPwErr('new', '');
+    oaPwErr('gen', '');
+    oaPwPaint();
+}
+// Return in the current box moves on; in the new box it submits.
+function oaPwKey(ev) {
+    if (!ev || ev.key !== 'Enter' || ev.isComposing || !ev.target || ev.target.id !== 'oa-pw-cur') return;
+    ev.preventDefault();
+    const nx = oaPwInp('new');
+    if (nx) nx.focus();
+}
+// Show / Hide keeps the keyboard up: the eye never takes the focus (its pointerdown is
+// cancelled), and the box gets it back, caret kept, if it lost it.
+function oaPwHold() {
+    return false;
+}
+function oaPwEyeSet(id, show) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    const b = document.querySelector('#oa-pw-sheet .oa-pw-eye[aria-controls="' + id + '"]');
+    if (!inp || !b) return;
+    inp.type = show ? 'text' : 'password';
+    b.setAttribute('aria-pressed', String(show));
+    b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+}
+function oaPwEye(id) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (!inp) return;
+    const a = inp.selectionStart;
+    const z = inp.selectionEnd;
+    oaPwEyeSet(id, inp.type === 'password');
+    if (document.activeElement !== inp) inp.focus({ preventScroll: true });
+    try {
+        if (a !== null && z !== null) inp.setSelectionRange(a, z);
+    } catch (e) {}
+}
+function oaPwSubmit(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    if (__oaPw.busy) return;
+    if (oaPwReady()) return oaPwGo();
+    // Too early: go to what is missing, sending nothing.
+    const cur = oaPwInp('cur');
+    const k = cur && !cur.value ? 'cur' : 'new';
+    const inp = oaPwInp(k);
+    if (inp) inp.focus();
+    oaPwNudge(document.querySelector('#oa-pw-' + k + '-g .oa-pw-fbox'));
+    if (k === 'new') oaPwNudge(document.getElementById('oa-pw-h-new'), 'is-pulse');
+}
+// Busy: the spinner is a real element in the button's row (beside the words, on their
+// line); the boxes hold still.
+function oaPwBusy(on) {
+    __oaPw.busy = on;
+    ['cur', 'new'].forEach((k) => {
+        const i = oaPwInp(k);
+        if (i) i.readOnly = on;
+    });
+    const ok = document.getElementById('oa-pw-ok');
+    if (!ok) return;
+    ok.setAttribute('aria-busy', String(on));
+    ok.innerHTML = on ? '<span class="oa-pw-spin" aria-hidden="true"></span><span>Changing…</span>' : 'Change password';
+}
+async function oaPwGo() {
+    const cur = oaPwInp('cur');
+    const nx = oaPwInp('new');
+    if (!cur || !nx) return;
+    const run = __oaPw.run;
+    const done = oaPwOuts(true); // the list as it stood when pressed: those devices then leave it
+    ['cur', 'new', 'gen'].forEach((k) => oaPwErr(k, ''));
+    oaPwEyeSet('oa-pw-cur', false); // back to dots before the answer
+    oaPwEyeSet('oa-pw-new', false);
+    oaPwBusy(true);
+    let err = null;
+    try {
+        await apiPost('auth.php', { action: 'admin_change_password', current: cur.value, next: nx.value, push_endpoint: await chbPushEndpoint() });
+    } catch (e) {
+        err = e;
+    }
+    const o = document.getElementById('oa-pw-sheet');
+    const here = run === __oaPw.run && !!o && o.classList.contains('open');
+    if (here) oaPwBusy(false);
+    if (!err) oaDevLoad(0); // the list under the sheet drops the devices just signed out
+    const why = err ? chbActErrSay(err, { label: 'change your password' }) : '';
+    // Closed while it worked: the answer still reaches you.
+    if (!here) return toast(err ? 'Your password wasn’t changed: ' + why : 'Your password was changed.');
+    if (!err) return oaPwDone(done);
+    const code = Number(err.status) || 0;
+    if (code === 403) oaPwErr('cur', 'That isn’t your current password.', true);
+    else if (code === 429) oaPwErr('cur', why, true);
+    else if (code === 400) oaPwErr('new', why, true);
+    else oaPwErr('gen', why);
+}
+// The form leaves with its answer: also how a password manager knows the change went
+// through and offers to update what it saved.
+function oaPwDone(say) {
+    const o = document.getElementById('oa-pw-sheet');
+    const f = document.getElementById('oa-pw-form');
+    const d = document.getElementById('oa-pw-done');
+    const p = document.getElementById('oa-pw-dp');
+    const t = document.getElementById('oa-pw-dt');
+    if (!o || !f || !d) return;
+    if (p) p.textContent = say;
+    f.hidden = true;
+    d.hidden = false;
+    o.setAttribute('aria-labelledby', 'oa-pw-dt');
+    if (t) t.focus({ preventScroll: true });
+}
+// The same 30-minute link the sign-in page sends, to your own inbox.
+async function oaPwForgot() {
+    const me = chbMe() || {};
+    const to = String(me.contact || '');
+    const host = document.getElementById('oa-pw-forgot');
+    if (!host || !to) return;
+    const run = __oaPw.run;
+    host.innerHTML = '<span class="oa-pw-sending">Sending…</span>';
+    let err = '';
+    try {
+        await apiPost('auth.php', { action: 'admin_reset_request', id: to });
+    } catch (e) {
+        err = chbActErrSay(e, { label: 'send the link' });
+    }
+    const h = document.getElementById('oa-pw-forgot');
+    if (run !== __oaPw.run || !h) return;
+    h.innerHTML = err
+        ? `<span class="oa-pw-ferr" role="alert" tabindex="-1">${escapeHtml(err)}</span><button type="button" class="oa-pw-lnk" data-act="oaPwForgot"><span>Try again</span></button>`
+        : `<span class="oa-pw-sent" role="status" tabindex="-1">✓ Reset link sent to ${escapeHtml(to)}. It works for 30 minutes.</span>`;
+    // The link that had the focus has gone: keep it in the sheet, on the answer.
+    const ae = document.activeElement;
+    if (!ae || ae === document.body || !document.body.contains(ae)) {
+        const s = /** @type {HTMLElement|null} */ (h.querySelector('[tabindex="-1"]'));
+        if (s) s.focus({ preventScroll: true });
+    }
 }
 
 
@@ -16146,40 +16469,6 @@ async function gstInvite(email) {
     gstRender();
 }
 
-// ONE form, like the guest's (it was three pop-ups in a row, and a mistake in
-// the third threw away the first two). A refusal — the server's included —
-// keeps the form open with what was typed.
-async function changeAdminPassword() {
-    if (!isAuthenticated) {
-        tryAccessBackOffice();
-        return;
-    }
-    const fields = [
-        { id: 'current', label: 'Current password', type: 'password', autocomplete: 'current-password' },
-        { id: 'next', label: 'New password', type: 'password', autocomplete: 'new-password', placeholder: 'At least 12 characters' },
-        { id: 'confirm', label: 'Confirm new password', type: 'password', autocomplete: 'new-password' },
-    ];
-    let msg = '';
-    for (;;) {
-        const v = await glassForm(msg, fields, { title: 'Change password', okLabel: 'Update password' });
-        if (!v) return;
-        fields.forEach((f) => {
-            f.value = v[f.id] || '';
-        });
-        if (!v.current) msg = 'Enter your current password.';
-        else if (!v.next || v.next.trim().length < 12) msg = 'Your new password must be at least 12 characters.';
-        else if (v.next !== v.confirm) msg = 'The new passwords don’t match.';
-        else {
-            try {
-                await apiPost('auth.php', { action: 'admin_change_password', current: v.current, next: v.next, push_endpoint: await chbPushEndpoint() });
-                toast('Password updated.');
-                return;
-            } catch (e) {
-                msg = String(e.message || e);
-            }
-        }
-    }
-}
 function taxYearLabel(startYear) {
     return `6 Apr ${startYear} – 5 Apr ${startYear + 1}`;
 }
@@ -38363,7 +38652,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, oaDevOpenTarget, oaDevClose].forEach((f) => {
+[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, oaDevOpenTarget, oaDevClose, oaPwClose].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
