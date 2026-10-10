@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 773;
+const ADMIN_BUNDLE_V = 774;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -2276,7 +2276,7 @@ async function stagingSeatSwitch(btn) {
     }
     try {
         if (document.body.classList.contains('owner-mode')) {
-            await apiPost('auth.php', { action: 'admin_logout' }).catch(() => {});
+            await apiPost('auth.php', { action: 'admin_logout', push_endpoint: await chbPushEndpoint() }).catch(() => {});
             // A fresh guest-seat visit should auto-sign the test guest back in.
             try { sessionStorage.removeItem('chb-staging-noauto'); } catch (e) {}
         } else {
@@ -4663,7 +4663,7 @@ async function gaPassword() {
         else if (v.next !== v.confirm) msg = 'The new passwords do not match.';
         else {
             try {
-                await apiPost('auth.php', { action: 'guest_change_password', current: v.current || '', next: v.next });
+                await apiPost('auth.php', { action: 'guest_change_password', current: v.current || '', next: v.next, push_endpoint: await chbPushEndpoint() });
                 toast('Password updated — your other devices have been signed out');
                 return;
             } catch (e) {
@@ -5525,7 +5525,7 @@ async function guestChooseNewPassword(note) {
     if ((v.pw || '').length < 8) return guestChooseNewPassword('Your new password needs at least 8 characters.');
     if (v.pw !== v.pw2) return guestChooseNewPassword('Those two passwords didn’t match — try again.');
     try {
-        await apiPost('auth.php', { action: 'guest_change_password', current: '', next: v.pw });
+        await apiPost('auth.php', { action: 'guest_change_password', current: '', next: v.pw, push_endpoint: await chbPushEndpoint() });
         toast('Password saved — you’re signed in.');
     } catch (e) {
         glassAlert(e.message || 'That password couldn’t be saved — please try again.');
@@ -5720,7 +5720,7 @@ async function deletePasskey(id) {
 
 async function guestLogout() {
     try {
-        await apiPost('auth.php', { action: 'guest_logout' });
+        await apiPost('auth.php', { action: 'guest_logout', push_endpoint: await chbPushEndpoint() });
     } catch (e) {}
     // On staging, remember the explicit logout so we don't auto-sign-in again
     // (lets the real sign-in / sign-up flow be tested). Cleared on a new tab.
@@ -8467,6 +8467,20 @@ async function getVapidKey() {
         __vapidKey = '';
     }
     return __vapidKey;
+}
+// THIS DEVICE'S PUSH ADDRESS, for a sign-out or a password change to name
+// (push_subs_drop, db.php). Never waits long and never throws: signing out must not
+// depend on the service worker answering.
+async function chbPushEndpoint() {
+    try {
+        if (!('serviceWorker' in navigator)) return '';
+        const late = (v) => new Promise((r) => setTimeout(() => r(v), 1500));
+        const reg = await Promise.race([navigator.serviceWorker.getRegistration(), late(null)]);
+        const sub = reg && reg.pushManager ? await Promise.race([reg.pushManager.getSubscription(), late(null)]) : null;
+        return sub && sub.endpoint ? String(sub.endpoint) : '';
+    } catch (e) {
+        return '';
+    }
 }
 function urlB64ToUint8(b64) {
     const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -13843,7 +13857,9 @@ async function chatSendArrival(bid) {
         toast('Arrival info emailed.');
         openMessageThread(__msgThreadId); // refresh so the chat note shows
     } catch (e) {
-        glassAlert("Couldn't send: " + e.message);
+        // Sent a moment ago (here or from the booking page): a fact, not a failure.
+        if (e && e.code === 'already_sent') toast(e.message);
+        else glassAlert("Couldn't send: " + e.message);
     }
 }
 async function chatSendBalance(bid) {
@@ -13858,7 +13874,8 @@ async function chatSendBalance(bid) {
         toast('Balance link emailed.');
         openMessageThread(__msgThreadId);
     } catch (e) {
-        glassAlert("Couldn't send: " + e.message);
+        if (e && e.code === 'already_sent') toast(e.message);
+        else glassAlert("Couldn't send: " + e.message);
     }
 }
 async function openMessageThread(threadId) {
@@ -21668,7 +21685,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r7guest1';
+    const BUILD = 'r7notif1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

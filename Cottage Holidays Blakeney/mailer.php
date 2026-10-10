@@ -291,7 +291,9 @@ function smtp_transmit(
     $rcptReply = smtp_read($fp);
     $rc = smtp_code($rcptReply);
     if ($rc !== 250 && $rc !== 251) {
-        return $reject('RCPT TO rejected', $rcptReply);
+        // A 5xx here refuses THIS RECIPIENT ("no such mailbox"): it will be refused on
+        // every retry, so it is permanent for this email (email_queueable).
+        return $reject('RCPT TO rejected', $rcptReply) + ['permanent' => $rc >= 500];
     }
 
     // Data
@@ -463,6 +465,7 @@ function smtp_send(
         'ok' => false,
         'error' => $last['error'] ?? 'send failed',
         'sent_uncertain' => !empty($last['sent_uncertain']),
+        'permanent' => !empty($last['permanent']),
     ];
 }
 
@@ -531,7 +534,7 @@ function smtp_send_batch($messages)
             $m['message_id'] ?? null,
             $m['headers'] ?? [],
         );
-        $results[$i] = ['ok' => $res['ok'], 'error' => $res['error'], 'sent_uncertain' => !empty($res['sent_uncertain'])];
+        $results[$i] = ['ok' => $res['ok'], 'error' => $res['error'], 'sent_uncertain' => !empty($res['sent_uncertain']), 'permanent' => !empty($res['permanent'])];
         if (!$res['ok']) {
             smtp_fail_log($m['name'] ?? '', $res['error']);
         }
@@ -608,14 +611,20 @@ function people_mail_recipients($kind)
             }
         }
         if (!$out && ($kind === '' || (PEOPLE_MAILS[$kind]['must'] ?? '') !== '')) {
-            $first = null;
-            foreach ($people as $row) {
-                if ((int) $row['id'] === admin_original_owner_id()) {
-                    $first = $row;
+            // Nobody has chosen it: a CURRENT Super User gets it, the first owner if they
+            // still are one. It used to fall back to the config owner address — which is
+            // the first owner's, removed or not — so with George removed, the next
+            // enquiry (the guest's phone and address) went to George.
+            $supers = array_values(array_filter($people, fn($r) => people_is_full($r) && empty($r['invited_at'])));
+            $pick = $supers[0] ?? null;
+            foreach ($supers as $r) {
+                if ((int) $r['id'] === admin_original_owner_id()) {
+                    $pick = $r;
                 }
             }
-            $add($first ? admin_contact_email($first) : (defined('OWNER_NOTIFY_EMAIL') ? OWNER_NOTIFY_EMAIL : ''), $first);
-            if (!$out && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+            if ($pick) {
+                $add(admin_contact_email($pick), $pick);
+            } elseif (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && !isset(people_mail_removed_addresses()[strtolower((string) OWNER_NOTIFY_EMAIL)])) {
                 $add(OWNER_NOTIFY_EMAIL, null);
             }
         }
@@ -669,24 +678,66 @@ function people_mail_only($addr = null)
     }
     return $only;
 }
-// Who may reply to a guest by email (inbound-mail.php, mailbox-read.php): anyone
-// with a sign-in, the config owner address and the extras. The thread token is
-// the real gate; this list is defence in depth.
+// Who may reply to a guest by email (inbound-mail.php, mailbox-read.php): someone who
+// may answer guests in the app (gu.reply), at their sign-in address, and the extra
+// addresses on Notifications. The thread token is the real gate; this list must agree
+// with the app all the same. It let anyone with a sign-in answer by email, a Host whose
+// reply switch was off included, and it always let the config owner address in — which
+// is the first owner's, so a removed first owner could still post to a guest as the
+// business. An address that was a removed person's answers nothing, whatever list it is
+// still on. Before people (or with the table unreadable) it is what it always was.
 function people_mail_senders()
 {
+    $rows = people_mail_rows();
     $out = [];
-    foreach (people_mail_rows() ?? [] as $row) {
-        if (empty($row['invited_at'])) {
-            $out[] = strtolower(admin_contact_email($row));
+    if ($rows === null) {
+        if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+            $out[] = strtolower((string) OWNER_NOTIFY_EMAIL);
+        }
+        foreach (people_mail_extras() as $e) {
+            $out[] = strtolower($e);
+        }
+        return array_values(array_unique(array_filter($out)));
+    }
+    // A person's address follows that person's permission, whatever list it is also on.
+    $known = [];
+    foreach ($rows as $row) {
+        $a = strtolower(admin_contact_email($row));
+        if ($a !== '') {
+            $known[$a] = ($known[$a] ?? false) || (empty($row['invited_at']) && people_can($row, 'gu.reply'));
         }
     }
-    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
-        $out[] = strtolower((string) OWNER_NOTIFY_EMAIL);
+    foreach ($known as $a => $ok) {
+        if ($ok) {
+            $out[] = $a;
+        }
     }
+    $removed = people_mail_removed_addresses();
     foreach (people_mail_extras() as $e) {
-        $out[] = strtolower($e);
+        $e = strtolower($e);
+        if (!isset($removed[$e]) && !isset($known[$e])) {
+            $out[] = $e;
+        }
     }
     return array_values(array_unique(array_filter($out)));
+}
+// The sign-in addresses of people who were removed, as a set (lower case).
+function people_mail_removed_addresses()
+{
+    $out = [];
+    if (!function_exists('db') || !function_exists('admin_contact_email')) {
+        return $out;
+    }
+    try {
+        foreach (db()->query('SELECT * FROM admins WHERE removed_at IS NOT NULL')->fetchAll() as $row) {
+            $a = strtolower(trim((string) admin_contact_email($row)));
+            if ($a !== '') {
+                $out[$a] = true;
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    return $out;
 }
 // The person a reply-by-email came from (their row), or null for an address that
 // isn't anyone's sign-in (the config owner address, an extra): that reply is the
@@ -813,10 +864,13 @@ function email_queueable($res)
     if (!empty($res['sent_uncertain'])) {
         return false;
     }
-    // A PERMANENT refusal (a 5xx: "no such mailbox", a malformed address) will be
-    // refused again on every retry. Queued, each one retried for 48 hours and sat in
-    // the outbox's pending cap, ahead of the next booking confirmation.
-    if (array_key_exists('retryable', $res) && $res['retryable'] === false) {
+    // A PERMANENT refusal of the recipient (a 5xx to RCPT TO: "no such mailbox") will
+    // be refused again on every retry. Queued, each one retried for 48 hours and sat
+    // in the outbox's pending cap, ahead of the next booking confirmation. Only the
+    // RECIPIENT's refusal counts: a 5xx to the sign-in or the sender is the relay's
+    // set-up, and those emails should still go once it is put right. (This rule used
+    // to read a `retryable` flag neither send function passed on, so it never fired.)
+    if (!empty($res['permanent'])) {
         return false;
     }
     return ($res['error'] ?? '') !== 'Mail disabled';
@@ -828,6 +882,19 @@ function email_queueable($res)
 function email_outbox_backoff($tries)
 {
     return (int) min(360, 10 * pow(2, max(0, (int) $tries)));
+}
+
+// What the drain does with a row after one retry, from the retry's own result — pure.
+// A retry that itself ends sent_uncertain is TERMINAL (the payload went out, so the
+// row may never be tried again either way), and so is a permanent refusal of the
+// recipient: it would be refused on every retry, and the drain stopping on it left a
+// real confirmation behind it unsent that pass.
+function email_outbox_after($row, $res, $nowTs)
+{
+    if (empty($res['ok']) && (!empty($res['sent_uncertain']) || !empty($res['permanent']))) {
+        return ['outcome' => 'gaveup', 'tries' => (int) ($row['tries'] ?? 0) + 1];
+    }
+    return email_outbox_step($row, !empty($res['ok']), $nowTs);
 }
 
 // The row transition after one drain attempt — pure, so the give-up boundary
@@ -1009,12 +1076,7 @@ function email_outbox_drain($max = 10)
                 $row['message_id'] !== null && $row['message_id'] !== '' ? (string) $row['message_id'] : null,
                 $hdrs,
             );
-            // A retry that itself ends sent_uncertain is TERMINAL: the payload
-            // went out, so this row may never be tried again either way.
-            $step = email_outbox_step($row, !empty($res['ok']), time());
-            if (!empty($res['sent_uncertain'])) {
-                $step = ['outcome' => 'gaveup', 'tries' => (int) $row['tries'] + 1];
-            }
+            $step = email_outbox_after($row, $res, time());
             if ($step['outcome'] === 'sent') {
                 db()->prepare('UPDATE email_outbox SET sent_at = NOW(), tries = tries + 1 WHERE id = ?')->execute([(int) $row['id']]);
                 $out['sent']++;
@@ -1033,7 +1095,8 @@ function email_outbox_drain($max = 10)
                 db()->prepare('UPDATE email_outbox SET tries = ?, next_try_at = ?, last_error = ? WHERE id = ?')
                     ->execute([$step['tries'], $step['next_try_at'], mb_substr((string) ($res['error'] ?? ''), 0, 220), (int) $row['id']]);
                 $out['retried']++;
-                // The relay is still refusing — stop burning the batch on it.
+                // The relay is still refusing — stop burning the batch on it. (A refusal
+                // of one recipient gave that row up above and carried on: the relay works.)
                 break;
             }
         }
@@ -1051,7 +1114,12 @@ function email_booking_ref($b)
     if (!is_array($b) || empty($b['id'])) {
         return '';
     }
-    $facts = [$b['check_in'] ?? '', $b['check_out'] ?? '', $b['prop_key'] ?? '', (int) ($b['adults'] ?? 0), (int) ($b['children'] ?? 0), (string) ($b['price_override'] ?? ''), (string) ($b['agreed_total'] ?? '')];
+    // …and what it says about the MONEY: a confirmation queued in an outage, then the
+    // stay paid in full, went out after the fresh "Paid in full" one still saying
+    // "Unpaid · balance of £414.90 due by Thu 19 Nov".
+    $facts = [$b['check_in'] ?? '', $b['check_out'] ?? '', $b['prop_key'] ?? '', (int) ($b['adults'] ?? 0), (int) ($b['children'] ?? 0), (string) ($b['price_override'] ?? ''), (string) ($b['agreed_total'] ?? ''),
+        (string) ($b['payment'] ?? ''), (string) ($b['deposit_paid'] ?? ''), (string) ($b['hold_status'] ?? ''), (string) ($b['agreed_booking_fee'] ?? ''), (string) ($b['balance_due_date'] ?? ''),
+        (string) ($b['deposit_pct_override'] ?? ''), (string) ($b['deposit_amount_override'] ?? '')];
     return 'booking:' . (int) $b['id'] . ':' . substr(sha1(implode('|', $facts)), 0, 16);
 }
 
@@ -1099,6 +1167,13 @@ function email_outbox_kick()
 {
     static $kicked = false;
     if ($kicked || !function_exists('db')) {
+        return;
+    }
+    // NOT IN A REQUEST THAT IS SENDING SAMPLES. Their [SAMPLE]/[TEST] prefix is applied
+    // to every subject smtp_transmit sends in the request, so the first sample to go
+    // out drained real queued mail under it: a guest got "[SAMPLE] We've got your
+    // enquiry…". The daily drain, or the next ordinary send, takes the queue instead.
+    if (!empty($GLOBALS['__chb_test_prefix']) || people_mail_only() !== '') {
         return;
     }
     $kicked = true; // once per request — the daily drain covers the rest
@@ -2564,13 +2639,36 @@ function sanitize_email_attachments($raw)
 }
 
 // New-enquiry alert for the owner, with signed one-tap action links. $e carries
-// the enquiry fields + prebuilt approve_url / decline_url (enquiry-action.php).
+// the enquiry fields, its id, and action_link(personId, 'approve'|'decline') →
+// the signed URL for one person (enquiry-action.php).
+//
+// THE LINKS ARE PER PERSON. Every copy used to carry the same Approve link, and
+// the copies go to everyone who answers enquiries plus the extra addresses — so a
+// Host whose approve switch was off, refused in the app, could approve from the
+// email and the guest was booked and asked for money. Now each copy is composed
+// for its recipient (owner_enquiry_copy): someone who may approve gets links made
+// for them, and enquiry-action.php checks that person again when one is used;
+// anyone else, an extra address included, gets the back office's own page.
 function send_owner_enquiry_email($e)
 {
     // The extra addresses count too (see send_owner_payment_notice above).
     if (!owner_recipients('enquiry')) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
+    $c = owner_enquiry_copy($e, null);
+    return send_people('enquiry', $c['subject'], $c['text'], $c['html'], [
+        'compose' => function ($row) use ($e) {
+            $c = owner_enquiry_copy($e, $row);
+            return [$c['subject'], $c['text'], $c['html']];
+        },
+    ]);
+}
+
+// One copy of the new-enquiry email for one recipient: their person row, or null
+// for an address that isn't anyone's sign-in. PURE (the links come from the
+// caller's action_link), so the render gate and the integration suite drive it.
+function owner_enquiry_copy(array $e, $row)
+{
     $prop = function_exists('prop_display')
         ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
         : $e['prop_key'] ?? '';
@@ -2604,7 +2702,15 @@ function send_owner_enquiry_email($e)
     $addr = trim(implode(', ', array_filter([trim((string) ($e['address'] ?? '')), trim((string) ($e['postcode'] ?? ''))])));
     $prior = (int) ($e['prior_stays'] ?? 0);
 
-    $text =
+    // Approve and Decline only for someone who may approve, and made for them.
+    $links = null;
+    $pid = is_array($row) ? (int) ($row['id'] ?? 0) : 0;
+    if ($pid > 0 && empty($row['invited_at']) && is_callable($e['action_link'] ?? null) && function_exists('people_can') && people_can($row, 'gu.approve')) {
+        $links = ['approve' => (string) ($e['action_link'])($pid, 'approve'), 'decline' => (string) ($e['action_link'])($pid, 'decline')];
+    }
+    $openUrl = function_exists('site_base_url') && (int) ($e['id'] ?? 0) > 0 ? site_base_url() . '?open=enquiry-' . (int) $e['id'] : '';
+
+    $textHead =
         "A new enquiry just arrived.\n\n" .
         'Guest: ' . ($e['name'] ?? '—') . ($prior > 0 ? ' — RETURNING GUEST (' . $prior . ' past stay' . ($prior === 1 ? '' : 's') . ')' : '') . "\n" .
         'Email: ' . ($e['email'] ?? '—') . "\n" .
@@ -2615,14 +2721,7 @@ function send_owner_enquiry_email($e)
         ($times !== '' ? $times . "\n" : '') .
         "Party: {$party}\n" .
         ($priceLine !== '' ? 'Estimated price: ' . $priceLine . "\n" : '') .
-        (!empty($e['message']) ? 'Message: ' . $e['message'] . "\n" : '') .
-        "\nApprove (creates the booking + confirmation & payment emails):\n" .
-        $e['approve_url'] .
-        "\n\n" .
-        "Decline (deletes the enquiry):\n" .
-        $e['decline_url'] .
-        "\n\n" .
-        'Each link opens a confirmation page first — nothing happens until you press the button there.';
+        (!empty($e['message']) ? 'Message: ' . $e['message'] . "\n" : '');
 
     // Detail rows in the HOUSE block (email_rows), like every other summary in
     // this file — this composer had its own 13px/14px table, the twin of the one in
@@ -2657,7 +2756,7 @@ function send_owner_enquiry_email($e)
         $dRows[] = ['Est. price', email_esc($priceLine)];
     }
 
-    $inner =
+    $innerHead =
         email_h('New enquiry') .
         email_p(
             '<strong style="color:#1B2A34;">' .
@@ -2674,17 +2773,27 @@ function send_owner_enquiry_email($e)
             true,
         ) .
         ($dRows ? email_rows($dRows) : '') .
-        (!empty($e['message']) ? email_note(email_esc($e['message'])) : '') .
+        (!empty($e['message']) ? email_note(email_esc($e['message'])) : '');
+    $pre = 'You promised a reply by the end of the next day. ' . $party . ' · ' . $prop . '.';
+    if ($links) {
+        $text = $textHead .
+            "\nApprove (creates the booking + confirmation & payment emails):\n" . $links['approve'] .
+            "\n\nDecline (deletes the enquiry):\n" . $links['decline'] .
+            "\n\nEach link opens a confirmation page first — nothing happens until you press the button there.";
         // A DECISION IS TWO BUTTONS. Approve was a 44px button and Decline a bare
         // grey inline link inside a muted paragraph — so of the two outcomes this
         // email exists to offer, one was an affordance and the other was a footnote
         // the size of the small print, on a phone. They are a pair now: the same tap
         // target, the primary weight still on the one that makes money.
-        email_btn($e['approve_url'], 'Review & approve') .
-        email_btn2($e['decline_url'], 'Decline this enquiry') .
-        email_footnote('Each link opens a confirmation page first &mdash; nothing happens until you press the button there.');
-    $html = email_shell('You promised a reply by the end of the next day. ' . $party . ' · ' . $prop . '.', $inner);
-    return send_people('enquiry', $subject, $text, $html);
+        $inner = $innerHead .
+            email_btn($links['approve'], 'Review & approve') .
+            email_btn2($links['decline'], 'Decline this enquiry') .
+            email_footnote('Each link opens a confirmation page first &mdash; nothing happens until you press the button there.');
+    } else {
+        $text = $textHead . ($openUrl !== '' ? "\nOpen it in the back office: " . $openUrl : '');
+        $inner = $innerHead . ($openUrl !== '' ? email_btn($openUrl, 'Open the enquiry') : '');
+    }
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell($pre, $inner)];
 }
 
 // One-line summary of a cottage's cancellation policy (mirrors the JS
@@ -5054,9 +5163,11 @@ function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = fal
 
 /**
  * The follow-up to an enquiry that went quiet. `$datesGone` is the honest half: the
- * email may only claim a hold while the dates really are free.
+ * email may only claim a hold while the dates really are free. `$unsub` is the signed
+ * one-tap unsubscribe (email-optout.php): this is a note asking them back, so it
+ * carries one, in the shell's footer and the text half.
  */
-function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesGone = false)
+function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesGone = false, $unsub = '')
 {
     $holdLine = $datesGone
         ? "Those exact dates have since been booked, but we'd love to help you find another stay that suits."
@@ -5078,7 +5189,7 @@ function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesG
                 ? ($datesGone ? "You can see what's free here:\n" : "You can pick up where you left off here:\n") .
                     $link . "\n\n"
                 : '') .
-            $close . "\n\nWarm wishes,\nCottage Holidays Blakeney",
+            $close . "\n\nWarm wishes,\nCottage Holidays Blakeney" . email_unsub_line($unsub),
         'html' => email_shell(
             $datesGone ? 'See what’s free instead — it takes a minute.' : 'Pick up where you left off — your details are saved.',
             email_h('Still thinking it over?') .
@@ -5097,12 +5208,13 @@ function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesG
                 ($link ? email_btn($link, $cta) : '') .
                 email_p(email_esc($close), true),
             $accent,
+            $unsub !== '' ? ['unsubscribe' => $unsub] : [],
         ),
     ];
 }
 
 /** The rescue for an enquiry FORM abandoned part-way — a draft, not a sent enquiry. */
-function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
+function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent, $unsub = '')
 {
     $span = $dateSpan !== '' ? ' for ' . $dateSpan : '';
     return [
@@ -5114,7 +5226,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             ($link ? $link . "\n\n" : "\n") .
             'If you open it on the same device you started on, we\'ll have kept what you typed. ' .
             "Or just reply to this email and we'll happily sort it out for you.\n\n" .
-            "Warm wishes,\nCottage Holidays Blakeney",
+            "Warm wishes,\nCottage Holidays Blakeney" . email_unsub_line($unsub),
         'html' => email_shell(
             'One tap picks it up where you left off.',
             email_h('Finish your enquiry?') .
@@ -5130,8 +5242,16 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
                 ($link ? email_btn($link, 'Pick up where you left off') : '') .
                 email_p("Or just reply to this email and we'll happily sort it out for you.", true),
             $accent,
+            $unsub !== '' ? ['unsubscribe' => $unsub] : [],
         ),
     ];
+}
+
+// The text half's one-tap unsubscribe line ('' with no link). The HTML half carries
+// the same link in email_shell's footer slot.
+function email_unsub_line($unsub)
+{
+    return $unsub !== '' ? "\n\nPrefer not to get emails like this? Unsubscribe in one tap: " . $unsub : '';
 }
 
 /**

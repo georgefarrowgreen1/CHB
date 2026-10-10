@@ -254,7 +254,9 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
     // Wake the owner's devices (best-effort).
     try {
         require_once __DIR__ . '/webpush.php';
-        alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80), ['category' => 'messages', 'tag' => 'messages', 'url' => './?open=messages']);
+        // One tag PER CONVERSATION: with one shared tag, a second guest's message
+        // replaced the first's notification, so one of them was never seen.
+        alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80), ['category' => 'messages', 'tag' => 'messages-' . (int) $threadId, 'url' => './?open=messages']);
     } catch (\Throwable $e) {
     }
 }
@@ -354,7 +356,13 @@ if ($isAdmin && empty($in['token'])) {
             if (empty($b['email'])) {
                 json_out(['error' => 'This booking has no guest email on file.'], 400);
             }
+            // ONE GUARD PER EMAIL, WHICHEVER SCREEN SENDS IT. These two sends had none, and
+            // the balance logged under a name of its own, so two taps here, or one here and
+            // one on the booking page, sent the guest the same email two or three times.
+            // The booking page's own guard and log names now (resend_guard, a 409 the chat
+            // reads as "they already have it").
             if ($action === 'send_arrival') {
+                resend_guard($bid, 'email.arrival', (string) ($b['name'] ?? ''), 'arrival email');
                 $res = send_arrival_for_booking($b);
                 if (empty($res['ok'])) {
                     json_out(['error' => $res['error'] ?? 'The arrival email failed to send.'], 500);
@@ -368,6 +376,7 @@ if ($isAdmin && empty($in['token'])) {
                     'entity_id' => (string) $bid,
                 ]);
             } else {
+                resend_guard($bid, 'payment.request', (string) ($b['name'] ?? ''), 'payment request');
                 $res = request_booking_payment($b, 'balance');
                 if (empty($res['ok'])) {
                     json_out(['error' => $res['error'] ?? 'Could not send the payment link.'], 400);
@@ -380,7 +389,7 @@ if ($isAdmin && empty($in['token'])) {
                 }
                 $amt = isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '';
                 $note = "💳 I've sent a secure link to pay your balance" . $amt . ' by email.';
-                log_activity('payment', 'email.balance', 'Balance link sent from chat — ' . ($b['name'] ?? ''), [
+                log_activity('payment', 'payment.request', 'Balance payment request emailed from chat — ' . ($b['name'] ?? ''), [
                     'prop_key' => $b['prop_key'] ?? '',
                     'entity' => 'booking',
                     'entity_id' => (string) $bid,

@@ -123,14 +123,32 @@ with_server('rcpt2-550', function ($log) {
     $rs = smtp_send_batch($msgs);
     ok('msg1 ok', !empty($rs[0]['ok']));
     ok('msg2 failed with RCPT error', empty($rs[1]['ok']) && strpos($rs[1]['error'], 'RCPT TO rejected') !== false);
-    // Rejected BEFORE the payload: this one IS safely retryable by the outbox.
+    // Rejected BEFORE the payload: no double-send risk — and the 550 is the recipient's,
+    // so it is permanent: retrying it would only be refused again.
     ok('pre-payload rejection is not sent_uncertain', empty($rs[1]['sent_uncertain']));
+    ok('…and a 550 to the recipient is permanent, so it is not queued', !empty($rs[1]['permanent']) && !email_queueable($rs[1]));
+    ok('…while the delivered ones are not marked', empty($rs[0]['permanent']) && empty($rs[2]['permanent']));
     ok('msg3 ok', !empty($rs[2]['ok']));
     $ev = file_get_contents($log);
     ok('still exactly 1 connection', substr_count($ev, 'CONNECT') === 1);
     ok('RSET after the rejection', strpos($ev, 'RSET') !== false);
     ok('2 payloads delivered', substr_count($ev, 'DATA-OK') === 2);
     array_map('unlink', glob(dirname($log) . '/smtp-fake.log.msg*'));
+});
+
+echo "== 6b. a mailbox that does not exist: permanent, so never queued ==\n";
+with_server('rcpt-550', function ($log) {
+    $r = smtp_send('dead@x.org', 'Dead', 'S', 'b');
+    ok('the send fails, and says the recipient was refused', empty($r['ok']) && strpos((string) $r['error'], 'RCPT TO rejected') !== false);
+    ok('…permanent (smtp_send carries the flag)', !empty($r['permanent']));
+    ok('…so the outbox does not take it', !email_queueable($r));
+});
+
+echo "== 6c. a refused sign-in is the relay's set-up: it still queues ==\n";
+with_server('auth-535', function ($log) {
+    $r = smtp_send('a@x.org', 'A', 'S', 'b');
+    ok('the send fails at the sign-in', empty($r['ok']) && strpos((string) $r['error'], 'Login failed') !== false);
+    ok('…not marked permanent, so it waits in the outbox for the password to be put right', empty($r['permanent']) && email_queueable($r));
 });
 
 echo "== 7. preview mode still captures (no SMTP at all) ==\n";

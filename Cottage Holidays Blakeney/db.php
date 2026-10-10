@@ -713,6 +713,41 @@ function admin_session_begin($id): void
     } catch (\Throwable $e) {
     }
 }
+// A DEVICE'S ALERTS END WITH ITS SIGN-IN. Signing out kept the device's push
+// subscription, so the next guest message (a door code among them) still reached a
+// phone nobody was signed in on, and a password change that signs the other devices
+// out left every one of them receiving alerts. $only drops one device, the one
+// signing out (its endpoint is an unguessable push URL only that browser holds);
+// $keep spares one, the device changing the password. The original owner's devices
+// from before people existed carry no admin_id, so they count as theirs. Best effort:
+// a sign-out must never fail on its alerts. The device re-registers at its next
+// sign-in (revalidateOwnerPush).
+function push_subs_drop(string $role, int $id, string $only = '', string $keep = ''): void
+{
+    if ($id <= 0) {
+        return;
+    }
+    try {
+        if ($role === 'guest') {
+            $sql = 'DELETE FROM push_subscriptions WHERE guest_id = ?';
+            $args = [$id];
+        } else {
+            $legacy = $id === (int) admin_original_owner_id();
+            $sql = "DELETE FROM push_subscriptions WHERE role = 'admin' AND (admin_id = ?" . ($legacy ? ' OR admin_id IS NULL' : '') . ')';
+            $args = [$id];
+        }
+        if ($only !== '') {
+            $sql .= ' AND endpoint = ?';
+            $args[] = $only;
+        }
+        if ($keep !== '') {
+            $sql .= ' AND endpoint <> ?';
+            $args[] = $keep;
+        }
+        db()->prepare($sql)->execute($args);
+    } catch (\Throwable $e) {
+    }
+}
 // The person setup.php made: the first owner. Rows from before people existed
 // (trusted devices, push subscriptions, activity 'owner') belonged to them.
 function admin_original_owner_id()

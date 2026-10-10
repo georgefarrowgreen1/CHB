@@ -133,6 +133,7 @@ $tmp = tempnam(sys_get_temp_dir(), 'chb_mailer_') . '.php';
 file_put_contents($tmp, $src);
 
 require_once $APP . '/pricing.php';
+require_once $APP . '/people-lib.php'; // pure: who may approve decides a new-enquiry copy's links (§17)
 require_once $tmp;
 @unlink($tmp);
 
@@ -169,8 +170,6 @@ $B = [
     // fixture) the button never rendered and a white-on-accent 3.30:1 label could
     // ship unseen. The reg button needs only this key.
     'guest_reg_url' => site_base_url() . 'index.html?reg=REGTOK',
-    'approve_url' => site_base_url() . 'enquiry-action.php?a=approve&id=7&t=tok',
-    'decline_url' => site_base_url() . 'enquiry-action.php?a=decline&id=7&t=tok',
     'status' => 'COMPLETED', 'notes' => '', 'created_at' => date('Y-m-d H:i:s'),
     'terms_accepted_at' => date('Y-m-d H:i:s'), 'no_dogs_at' => date('Y-m-d H:i:s'),
     // the automatic-collection fields those two composers read
@@ -182,8 +181,7 @@ $ENQ = [
     'prop_key' => 'jollyboat', 'check_in' => '2026-09-05', 'check_out' => '2026-09-09',
     'adults' => 2, 'children' => 0, 'message' => 'Is parking available, and can we arrive late?',
     'created_at' => '2026-06-01 09:00:00', 'agreed_price' => null,
-    'approve_url' => site_base_url() . 'enquiry-action.php?a=approve&id=7&t=tok',
-    'decline_url' => site_base_url() . 'enquiry-action.php?a=decline&id=7&t=tok',
+    'action_link' => fn($pid, $a) => site_base_url() . 'enquiry-action.php?a=' . $a . '&id=7&p=' . (int) $pid . '&t=tok',
     'prop_name' => 'Jollyboat', 'nights' => 4,
 ];
 $PAYURL = site_base_url() . 'index.html?pay=paytok&b=42&k=balance';
@@ -215,9 +213,9 @@ $JOBS = [
   ['backup-report', 'owner', function () { $m = backup_report_body('412 KB', 'Photos are archived separately (18.4 MB).'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   ['guest-chat', 'guest', function () { $m = guest_chat_body('Wren', 'The key safe code is 1066.', 'https://example.test/p/1.jpg', true); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],
   ['guest-message', 'guest', function () { $m = guest_message_body('Wren', 'Your welcome book is ready.'); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],
-  ['enquiry-nudge', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', false); return send_owner($m['subject'], $m['text'], $m['html']); }],
-  ['enquiry-nudge-gone', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', true); return send_owner($m['subject'], $m['text'], $m['html']); }],
-  ['enquiry-rescue', 'guest', function () { $m = enquiry_rescue_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-nudge', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', false, site_base_url() . 'email-optout.php?e=sam%40example.com&t=tok'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-nudge-gone', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', true, site_base_url() . 'email-optout.php?e=sam%40example.com&t=tok'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-rescue', 'guest', function () { $m = enquiry_rescue_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', site_base_url() . 'email-optout.php?e=sam%40example.com&t=tok'); return send_owner($m['subject'], $m['text'], $m['html']); }],
   // The plain-text owner notes carry no 'html' of their own: send_owner() supplies the
   // house shell via owner_alert_text_html(), so driving them through send_owner is what
   // renders the document §2 then measures.
@@ -284,6 +282,11 @@ $JOBS = [
   ['hold-request', 'guest', fn() => send_hold_request($B, $PAYURL)],
   ['hold-released', 'guest', fn() => send_hold_released($B)],
   ['owner-new-enquiry', 'owner', fn() => send_owner_enquiry_email($ENQ)],
+  // The copy made for someone who may approve: the one carrying the Approve/Decline pair.
+  ['owner-new-enquiry-decide', 'owner', function () use ($ENQ) {
+      $c = owner_enquiry_copy($ENQ, ['id' => 3, 'full_access' => 1, 'name' => 'George']);
+      return smtp_send('owner@example.test', 'George', $c['subject'], $c['text'], $c['html']);
+  }],
   ['owner-payment', 'owner', fn() => send_owner_payment_notice(array_merge($B, ['id' => 42, 'kind' => 'balance', 'amount' => 452.12, 'status' => 'COMPLETED', 'prop_name' => 'Jollyboat']))],
 ];
 
@@ -1285,6 +1288,44 @@ chk('§16 a name smuggling an address is quoted, so it stays a name', mb_encode_
 chk('§16 a quote inside is escaped', mb_encode_safe('Jo "JJ" Smith') === '"Jo \\"JJ\\" Smith"');
 chk('§16 an ordinary name is untouched', mb_encode_safe('Anne Betts') === 'Anne Betts');
 chk('§16 a non-ASCII name is an encoded word', mb_encode_safe('Siân') === '=?UTF-8?B?' . base64_encode('Siân') . '?=');
+
+// §17 THE ONE-TAP APPROVE LINK IS ONLY IN THE COPY OF SOMEONE WHO MAY APPROVE, and made
+// for them. Every copy carried the same link, and enquiry-action.php trusted the link
+// alone — so a Host whose approve switch was off, refused in the app, approved from
+// the email and the guest was booked and asked for money. Each half is read on its own.
+echo "\n§17 the new-enquiry email's Approve link is per person\n";
+$cp17 = fn($row) => owner_enquiry_copy($ENQ, $row);
+$none17 = fn($c) => strpos($c['html'], 'enquiry-action.php') === false && strpos($c['text'], 'enquiry-action.php') === false;
+$su17 = $cp17(['id' => 3, 'full_access' => 1, 'name' => 'George']);
+chk('§17 a Super User\'s copy carries Approve and Decline made for them, in both halves',
+    strpos($su17['text'], 'a=approve&id=7&p=3&t=tok') !== false && strpos($su17['text'], 'a=decline&id=7&p=3&t=tok') !== false
+    && strpos($su17['html'], 'a=approve&amp;id=7&amp;p=3&amp;t=tok') !== false
+    && strpos($su17['html'], 'a=decline&amp;id=7&amp;p=3&amp;t=tok') !== false && strpos($su17['html'], 'Review &amp; approve') !== false);
+$host17 = $cp17(['id' => 5, 'full_access' => 0, 'perms' => '{}', 'name' => 'Sophia']);
+chk('§17 a Host who may approve gets links with her own id', strpos($host17['text'], 'p=5&t=tok') !== false && strpos($host17['html'], 'p=5&amp;t=tok') !== false && strpos($host17['text'], 'p=3') === false);
+$off17 = $cp17(['id' => 6, 'full_access' => 0, 'perms' => json_encode(['gu.approve' => false]), 'name' => 'Pat']);
+chk('§17 a Host whose approve switch is off gets no Approve or Decline link, in either half', $none17($off17));
+chk('§17 …and the enquiry\'s own page in the back office instead, in both halves',
+    strpos($off17['html'], '?open=enquiry-7') !== false && strpos($off17['text'], 'Open it in the back office: ' . site_base_url() . '?open=enquiry-7') !== false && strpos($off17['html'], 'Open the enquiry') !== false);
+chk('§17 an extra address (nobody\'s sign-in) gets no link to act with', $none17($cp17(null)) && strpos($cp17(null)['html'], '?open=enquiry-7') !== false);
+chk('§17 nor does someone still invited, or removed',
+    $none17($cp17(['id' => 8, 'full_access' => 1, 'invited_at' => '2026-10-01 10:00:00'])) && $none17($cp17(['id' => 9, 'full_access' => 1, 'removed_at' => '2026-10-01 10:00:00'])));
+chk('§17 every copy states the same enquiry', $off17['subject'] === $su17['subject'] && strpos($off17['html'], 'Sarah Pemberton') !== false && strpos($su17['html'], 'Sarah Pemberton') !== false);
+$GLOBALS['CAP'] = [];
+send_owner_enquiry_email($ENQ);
+$sent17 = $GLOBALS['CAP'][0] ?? ['html' => '', 'text' => 'enquiry-action.php'];
+chk('§17 through the sender, the copy to an address that is nobody\'s sign-in carries no link to act with', $none17($sent17) && strpos($sent17['text'], '?open=enquiry-7') !== false);
+
+// §18 THE TWO NOTES ASKING AN ENQUIRER BACK CARRY A ONE-TAP UNSUBSCRIBE, in the shell's
+// footer and in the text half, each read on its own; and without a link, neither says so.
+echo "\n§18 the enquiry nudges carry an unsubscribe\n";
+$u18 = site_base_url() . 'email-optout.php?e=sam%40example.com&t=tok';
+foreach (['nudge' => enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', false, $u18), 'rescue' => enquiry_rescue_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', $u18)] as $k18 => $m18) {
+    chk("§18 the $k18 has the unsubscribe link in its footer", preg_match('~<a\b[^>]*href="' . preg_quote(htmlspecialchars($u18, ENT_QUOTES), '~') . '"[^>]*>[^<]*Unsubscribe~i', $m18['html']) === 1);
+    chk("§18 …and in its text half", strpos($m18['text'], 'Unsubscribe in one tap: ' . $u18) !== false);
+}
+$n18 = enquiry_rescue_body('Sam', 'Jollyboat', '', site_base_url(), '#43a047');
+chk('§18 with no link, neither half mentions one', stripos($n18['text'], 'unsubscribe') === false && stripos($n18['html'], 'email-optout.php') === false);
 
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.

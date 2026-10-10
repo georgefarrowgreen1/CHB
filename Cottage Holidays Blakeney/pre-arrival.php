@@ -85,7 +85,10 @@ foreach ($due as $b) {
                 'Arrival email ready to review',
                 $who . ' arrives ' . uk_date($b['check_in']) . ' — read it, change anything, then send.',
                 [
-                    'category' => 'bookings',
+                    // Its own kind of alert, so it can be switched off, and only for
+                    // someone who can send that email ('bookings' was no category at all:
+                    // nobody could mute it, and it reached people who can't send it).
+                    'category' => 'arrivals',
                     'email' => true,
                     'tag' => 'arrival-' . (int) $b['id'],
                     'url' => './?open=arrival-' . (int) $b['id'],

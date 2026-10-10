@@ -7,6 +7,8 @@
 //   drop-once      — first connection: close socket right after greeting
 //   reject-data    — accept payload then answer 550 (post-DATA failure)
 //   rcpt2-550      — 550 the SECOND RCPT seen across the whole run (batch test)
+//   rcpt-550       — 550 every RCPT (a mailbox that does not exist)
+//   auth-535       — refuse the password (535): the relay's set-up, not one email
 // Log: one line per event (CONNECT / MAIL / RCPT <addr> / DATA-OK <bytes> / RSET / QUIT).
 error_reporting(E_ALL);
 $port = (int) ($argv[1] ?? 2525);
@@ -77,7 +79,7 @@ while (time() < $deadline) {
         } elseif (strpos($u, 'RCPT TO') === 0) {
             $rcptSeen++;
             $log('RCPT ' . $t);
-            if ($mode === 'rcpt2-550' && $rcptSeen === 2) {
+            if (($mode === 'rcpt2-550' && $rcptSeen === 2) || $mode === 'rcpt-550') {
                 $w('550 5.1.1 No such user');
             } else {
                 $w('250 OK');
@@ -97,7 +99,7 @@ while (time() < $deadline) {
             // AUTH username/password lines (base64) — accept both.
             if (preg_match('/^[A-Za-z0-9+\/=]+$/', $t)) {
                 $authStep++;
-                $w($authStep === 1 ? '334 UGFzc3dvcmQ6' : '235 Authenticated');
+                $w($authStep === 1 ? '334 UGFzc3dvcmQ6' : ($mode === 'auth-535' ? '535 5.7.8 Authentication credentials invalid' : '235 Authenticated'));
             } else {
                 $w('500 Unknown command');
             }

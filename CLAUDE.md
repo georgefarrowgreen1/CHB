@@ -1157,8 +1157,8 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
 - **A QUEUED EMAIL IS SENT ONLY WHILE IT IS STILL TRUE** (migration-140 `email_outbox.ref`). The send that succeeds
   after an outage is what drains the outbox, so a confirmation queued during the outage landed just after the
   cancellation, or after the corrected one with the new dates. Each queued copy names what it is about:
-  `booking:<id>:<hash>` (`email_booking_ref`: dates, cottage, party, price, read from the same `SELECT *` row the
-  drain re-reads), `enquiry:<id>`, `newsletter:<address>`, `person:<id>`. `email_outbox_wanted($row)` asks before
+  `booking:<id>:<hash>` (`email_booking_ref`: dates, cottage, party, price and, since round 7, the payment state and
+  plan, read from the same `SELECT *` row the drain re-reads), `enquiry:<id>`, `newsletter:<address>`, `person:<id>`. `email_outbox_wanted($row)` asks before
   sending. A stay moved or cancelled, an enquiry answered, an unsubscribe or a person removed closes the row as
   "no longer current" (`gave_up_at`, an info `email.dropped`, never a give-up warning). Anything it cannot read (no
   ref, an unknown kind, a database hiccup) still sends: delivery is the outbox's job, and only a positive "no
@@ -1504,6 +1504,75 @@ each was reproduced before it was fixed.
   reaches the copy already on the host, since the deploy never deletes a remote file. A local check before a merge
   without CI is every command ci.yml's checks job runs, not a chosen few.
 
+## Notifications reach the right people, once (round 7)
+
+Found by the round-7 notifications audit on a full stack (MariaDB, `php -S`, a fake SMTP server that can accept,
+refuse for now or refuse for good); each was reproduced before it was fixed.
+- **A DEVICE'S ALERTS END WITH ITS SIGN-IN** (`push_subs_drop`, db.php). Signing out kept the device's push
+  subscription, so a phone nobody was signed in on still showed "New message — Hannah: the key safe code you gave
+  me…". Sign-out drops THIS device (the client sends `push_endpoint`, `chbPushEndpoint()`, which never throws and
+  gives up after 1.5s), a password change drops every OTHER device of that person (the legacy no-owner rows too, for
+  the first owner), a reset link drops them all, and a guest's sign-out and password change do the same for theirs.
+  A named endpoint only ever matches the signed-in person's own rows. The next sign-in re-registers an existing
+  subscription (`revalidateOwnerPush` always posts `subscribe_admin`). Integration §80(a), ui-test-owneraccount §8.
+- **THE ONE-TAP APPROVE LINK IS ONE PERSON'S.** Every copy of the new-enquiry email carried the same Approve link and
+  `enquiry-action.php` trusted the link alone, so a Host whose approve switch was off, refused in the app, approved
+  from her email: the guest was booked and asked for money. The token now signs the person (`enquiry_action_token($id,
+  $action, $personId)`, the link carries `p=`), each copy is composed for its recipient (`owner_enquiry_copy($e,
+  $row)`, pure; the sender passes `action_link`), only someone who may approve (`gu.approve`) gets the links, anyone
+  else (an extra address included) gets "Open the enquiry", and `enquiry-action.php` asks that person's permission
+  again when the link is used (a removed or invited person's link reads as not valid). A link from before this reads
+  as not valid too. The one-tap approve and decline are credited to the person (`admin:<id>`). §80(b),
+  test-emails-render §17, test-payrail (the route's wiring).
+- **REPLYING BY EMAIL FOLLOWS THE APP'S RULES** (`people_mail_senders`): only someone who may reply in the app
+  (`gu.reply`), at their sign-in address, plus the extra addresses. A person's address follows that person's
+  permission whatever list it is also on, and an address that was a removed person's posts nothing: the config owner
+  address used to be let in unconditionally, and it is the first owner's, so a removed first owner could still post
+  to a guest as the business. "Also emailed" still RECEIVES what the owner listed there (it is on screen to change);
+  removal takes away posting as the business. Before people (rows unreadable) it is what it always was. §80(c),
+  through the real webhook.
+- **AN EMAIL THAT MUST REACH SOMEONE FALLS BACK TO A CURRENT SUPER USER** (the first owner if they still are one),
+  never the config owner address when that is a removed person's: with George removed and nobody choosing enquiries,
+  the next enquiry (the guest's phone and address) went to George. With no current Super User at all, nobody. §80(c).
+- **THE "NO DEVICE REACHED" EMAIL FOLLOWS EACH PERSON'S SETTINGS** (`alert_fallback_ids`, pure): only someone the
+  push was MEANT for now (their areas, mutes and quiet hours, `notify_should_push_for`) and none of whose devices took
+  it. A mute or a quiet hour is a choice, not an unreachable phone: the muted owner with a phone in hand got the email
+  anyway, and an email at 2am buzzes the phone the push was kept from. And only an alert with NO email of its own asks
+  for it: "New enquiry" and "Payment received" already send one to whoever chose it, so the fallback beside them was a
+  second copy, or one sent to someone who had switched that email off. A fallback copy that fails waits in the outbox
+  like every other owner alert. test-webpush.
+- **A REQUEST SENDING SAMPLES NEVER DRAINS REAL MAIL** (`email_outbox_kick`): the samples' `[SAMPLE]`/`[TEST]` prefix
+  applies to every subject sent in the request, and the first sample kicked the outbox, so a guest got "[SAMPLE]
+  We've got your enquiry". The kick stands down while the prefix or `people_mail_only()` is set. §80(d).
+- **A QUEUED CONFIRMATION IS DROPPED ONCE THE MONEY HAS MOVED** (`email_booking_ref` now fingerprints the payment
+  state, deposit paid, hold state, refundable deposit and plan): a confirmation queued in an outage went out after the
+  fresh "Paid in full" one, still saying "Unpaid · balance of £414.90 due". §65.
+- **A RECIPIENT'S PERMANENT REFUSAL IS NOT RETRIED** (`permanent`, set only on a 5xx to RCPT TO and carried by
+  `smtp_send` and `smtp_send_batch`; `email_queueable` and the drain's `email_outbox_after` read it). The old rule read
+  a `retryable` flag neither send function passed on, so a "no such mailbox" was queued, retried for 48 hours and
+  stopped the drain ahead of a real confirmation. Only the RECIPIENT's refusal counts: a 5xx to the sign-in or the
+  sender is the relay's set-up (a changed password), and those emails still queue. test-smtp (two new server modes,
+  `rcpt-550` and `auth-535`), test-payrail.
+- **THE CHAT'S ONE-TAP SENDS SHARE THE BOOKING PAGE'S GUARD** (`resend_guard` with `email.arrival` and
+  `payment.request`; the chat logged its balance as its own action, so neither guard saw the other): two taps in the
+  chat sent two arrival emails, and chat plus booking page sent three balance requests in seconds. The chat reads the
+  409 as "they have it", not "Couldn't send". §80(e), ui-test-command, test-payrail.
+- **THE NOTES ASKING AN ENQUIRER BACK HONOUR THE UNSUBSCRIBE** (enquiry-nudge.php: the follow-up and the
+  abandoned-enquiry rescue): an opted-out address is set aside and stamped, and both carry a signed one-tap
+  unsubscribe (footer, text half, List-Unsubscribe headers). §80(f), test-emails-render §18.
+- **Smaller**: a declined card is a money alert that opens the booking (it had no category, so it counted as a system
+  notice only a Super User gets); a chat alert is tagged per conversation (a second guest's replaced the first's); every
+  guest alert opens `?open=stay`, not the homepage; the arrival email waiting for review is its own kind of alert,
+  "Arrival emails to review" (`arrivals`, a switch on Notifications, for people with `gu.reply`): its category was one
+  no switch covered.
+- Gates: integration **§80** (a–f), test-emails-render §17–§18, test-webpush, test-smtp, test-payrail, ui-test-command,
+  ui-test-owneraccount §8. Every change break-tested, each failing its own named check; several first drafts of those
+  checks were vacuous (a seeded row on the database's UTC clock read as an hour old, a mutation that landed on the
+  "Damage hold placed" alert's identical text, a scan that read the wrong argument of calls with a trailing comma),
+  and each was fixed until the break fired.
+- **Not done, said plainly**: reply tokens still never expire; and "Also emailed" addresses that are a removed
+  person's still receive (listed on screen for the owner to remove).
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
@@ -1529,7 +1598,8 @@ gave-up 30d).
   failed copies ('owner-alert'); newsletter queues failed recipients. The
   MANUAL composer is deliberately NOT queued — the owner is looking at the
   error and retries; queueing would double-send when they do. 'Mail disabled'
-  never queues. Attachments over 512KB (the weekly backup) never queue.
+  never queues. Attachments over 512KB (the weekly backup) never queue. A recipient's permanent refusal (a 5xx to
+  RCPT TO, `permanent`) never queues and is given up at once by the drain, which carries on (round 7).
 - **Drain triggers**: self-repair daily, plus `email_outbox_kick` after any
   successful smtp_send (a send that just worked is the only real proof the
   relay is back — the op-queue probe rule, server-side; once per request,
@@ -4939,7 +5009,7 @@ Sign-in codes and reset links aren't kinds: they only ever go to the person sign
   back on brings it back. **An invite reaches no one** until the person has chosen a password.
 - **Three kinds must always reach someone**: new enquiries, guest messages and the backup. `set_mail` refuses
   switching off the last person (`people_mail_must_problem`, 409 `must`). Should nobody be left anyway (the last
-  person removed), the resolver falls back to the first owner.
+  person removed), the resolver falls back to a current Super User, the first owner if they still are one (round 7).
 - **Defaults**: full access gets everything, which is how it worked before people existed. Anyone else gets the
   guest-facing six (`PEOPLE_MAIL_LIMITED`): enquiries, bookings, payments, messages, reviews and the digest.
 - **THE DIGEST HAS A COPY WITHOUT THE MONEY** for anyone without Money overview (`owner_digest_body(['noMoney' =>
@@ -4947,12 +5017,12 @@ Sign-in codes and reset links aren't kinds: they only ever go to the person sign
   `send_people`'s `compose` callback picks the copy per recipient. The render gate asserts no £ in either half.
 - **A weekly email asked for from the back office goes only to whoever asked** (`people_mail_only()`, the same
   override the samples use), and it does not stamp the day, so it can't stop Monday's going to everyone else.
-- **Phone alerts stay separate**, and the email fallback is per person now. If an alert reached none of YOUR devices
-  and the category is in your areas, you get the email, whoever else's phone it reached. Muting stops the buzz, not
-  this email. The extras only get it when nobody's phone was reached, as before.
-- **Reply by email**: anyone with a sign-in may answer a guest by replying (`people_mail_senders()`; the thread token
-  is still the real gate), and the reply is credited to them (`people_mail_sender_row` → `chat_admin_reply`'s new
-  `$actor`).
+- **Phone alerts stay separate**, and the email fallback is per person now. If an alert meant for you (your areas,
+  mutes and quiet hours) reached none of YOUR devices, you get the email, whoever else's phone it reached; a mute or a
+  quiet hour stops this email too (round 7). The extras only get it when nobody's phone was reached, as before.
+- **Reply by email**: someone who may reply in the app (`gu.reply`) may answer a guest by replying
+  (`people_mail_senders()`; the thread token is still the real gate), and the reply is credited to them
+  (`people_mail_sender_row` → `chat_admin_reply`'s new `$actor`).
 - **Samples and the test email go to the person who asked**, never to everyone who'd get the real email.
 - The page: People & access → **Who gets which emails** (also from Notifications and each person's page). It shows a
   photo per person per email: lit with a tick = sent, a dashed ring = not sent, a lock = can't be sent (the reason
@@ -8345,12 +8415,13 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
 - **NOBODY LISTENING IS NOT THE SAME AS NOTHING TO SAY.** `alert_owner` always
   returned the device count and only the test button ever read it, so with permission
   revoked or the last subscription pruned "Payment received" went nowhere and nothing
-  said so. `'email' => true` (payments, enquiries, a failing calendar sync) falls back
-  to `send_owner()` when zero devices were reached.
+  said so. `'email' => true` (a failing calendar sync, the check-out tap, the arrival
+  email to review, the statement reminder: alerts with no email of their own) falls back
+  to an email per person whose devices it did not reach (see round 7's notifications).
 - **WHAT INTERRUPTS YOU IS A SETTING.** `notify-prefs` (internal content key,
   classified in db.php) carries per-category mutes + quiet hours; `notify_should_push()`
-  gates the PUSH only — the activity log and the email fallback are untouched, so
-  muting loses nothing, and `'urgent'` (a sync failure that can double-book you)
+  gates the PUSH and, since round 7, its email fallback; the activity log and the duties
+  are untouched, so muting loses nothing from the app, and `'urgent'` (a sync failure that can double-book you)
   ignores both. Quiet hours **wrap midnight**, which the obvious between-test gets
   wrong: 22:00–07:00 is quiet at 02:00. The settings UI reads
   `adminPrivateContent` FIRST (the bacs-details rule — an internal key is absent from
