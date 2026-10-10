@@ -15933,7 +15933,7 @@ async function changeAdminPassword() {
         else if (v.next !== v.confirm) msg = 'The new passwords don’t match.';
         else {
             try {
-                await apiPost('auth.php', { action: 'admin_change_password', current: v.current, next: v.next });
+                await apiPost('auth.php', { action: 'admin_change_password', current: v.current, next: v.next, push_endpoint: await chbPushEndpoint() });
                 toast('Password updated.');
                 return;
             } catch (e) {
@@ -20232,10 +20232,14 @@ async function revalidateOwnerPush() {
         const reg = await navigator.serviceWorker.getRegistration();
         if (!reg || !reg.pushManager) return;
         let sub = await reg.pushManager.getSubscription();
-        if (sub) return; // still good
-        const key = await getVapidKey();
-        if (!key) return;
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
+        if (!sub) {
+            const key = await getVapidKey();
+            if (!key) return;
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
+        }
+        // Registered every time, not only when new: a sign-out or a password change
+        // drops this device's row on the server while the browser keeps its
+        // subscription, and on a shared device it moves to whoever has signed in.
         await apiPost('push.php', { action: 'subscribe_admin', subscription: sub.toJSON() });
     } catch (e) {
         /* best-effort — never blocks the back office booting */
@@ -20251,6 +20255,7 @@ const NOTIFY_CATS = [
     ['enquiries', 'New enquiries'],
     ['messages', 'Guest messages'],
     ['checkout', 'Guest check-outs'],
+    ['arrivals', 'Arrival emails to review'],
     ['system', 'Site and system notices'],
 ];
 // YOUR alert settings (what buzzes, your quiet hours): the server's word for the
@@ -20258,7 +20263,7 @@ const NOTIFY_CATS = [
 // internal key, which is still the fallback when the server hasn't said.
 function notifyPrefs() {
     const m = chbMe();
-    if (m && m.notify && typeof m.notify === 'object') return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, m.notify);
+    if (m && m.notify && typeof m.notify === 'object') return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, arrivals: true, quietFrom: '', quietTo: '' }, m.notify);
     let p = {};
     try {
         // adminPrivateContent FIRST: 'notify-prefs' is an INTERNAL key, so it is
@@ -20268,12 +20273,12 @@ function notifyPrefs() {
     } catch (e) {
         p = {};
     }
-    return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, quietFrom: '', quietTo: '' }, p || {});
+    return Object.assign({ money: true, enquiries: true, messages: true, system: true, checkout: true, arrivals: true, quietFrom: '', quietTo: '' }, p || {});
 }
 // The kinds of alert this person can get at all: payment alerts need Take
 // payments and system notices full access (the server holds the same line).
 function notifyCatsFor() {
-    return NOTIFY_CATS.filter(([k]) => (k === 'money' ? chbCan('mo.record') : k === 'system' ? chbCan('owner') : true));
+    return NOTIFY_CATS.filter(([k]) => (k === 'money' ? chbCan('mo.record') : k === 'system' ? chbCan('owner') : k === 'arrivals' ? chbCan('gu.reply') : true));
 }
 // Each kind of alert is a switch; quiet hours are a row that opens a small form.
 function renderNotifyPrefs() {
@@ -20559,7 +20564,7 @@ async function tryAccessBackOffice() {
 }
 async function logoutStaff() {
     try {
-        await apiPost('auth.php', { action: 'admin_logout' });
+        await apiPost('auth.php', { action: 'admin_logout', push_endpoint: await chbPushEndpoint() });
     } catch (e) {}
     isAuthenticated = false;
     // Same hygiene as forceAdminLogout, from the one list (app.js): the boot hint,

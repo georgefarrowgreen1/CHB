@@ -480,6 +480,9 @@ if ($action === 'charge') {
             'The payment was declined. Please check the card and try again.',
         );
         // Best-effort: alert the owner (push) so they can follow up on a failed card payment.
+        // A MONEY alert, landing on the booking: with no category it counted as a system
+        // notice, which only a Super User gets, so a Host who takes the payments never
+        // heard and an owner who muted system notices didn't either.
         try {
             require_once __DIR__ . '/webpush.php';
             alert_owner(
@@ -492,6 +495,7 @@ if ($action === 'charge') {
                     ' £' .
                     number_format($amountDue, 2) .
                     ' was declined.',
+                ['category' => 'money', 'tag' => 'booking-' . (int) $bookingId, 'url' => './?open=booking-' . (int) $bookingId],
             );
         } catch (\Throwable $e) {
             /* never let an alert break the response */
@@ -717,7 +721,7 @@ if ($action === 'charge') {
         // Wake the owner's devices (best-effort).
         try {
             require_once __DIR__ . '/webpush.php';
-            alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName, ['category' => 'money', 'email' => true, 'tag' => 'booking-' . (int) $bookingId, 'url' => './?open=booking-' . (int) $bookingId]);
+            alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName, ['category' => 'money', 'tag' => 'booking-' . (int) $bookingId, 'url' => './?open=booking-' . (int) $bookingId]);
         } catch (\Throwable $e) {
         }
         // And confirm to the guest on their own device (best-effort, no-op if none).
@@ -726,7 +730,7 @@ if ($action === 'charge') {
                 $newStatus === 'paid'
                     ? 'Paid in full — thank you! We look forward to welcoming you.'
                     : 'We\'ve received £' . number_format($amountDue, 2) . ' — thank you.';
-            notify_guest_email($b['email'], 'Payment received', $msg, './');
+            notify_guest_email($b['email'], 'Payment received', $msg, './?open=stay');
         } catch (\Throwable $e) {
         }
     });

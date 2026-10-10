@@ -104,7 +104,7 @@ foreach ($due as $b) {
                 'Your stay is coming up — tap to pay your balance' .
                     (isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '') .
                     '.',
-                './',
+                './?open=stay', // "tap to pay" lands on the stay and its Pay button, not the homepage
             );
         } catch (\Throwable $e) {
         }
@@ -199,7 +199,7 @@ foreach ($toRemind as $b) {
                 $b['email'],
                 'Balance reminder',
                 'A friendly reminder to pay your remaining balance before your stay.',
-                './',
+                './?open=stay',
             );
         } catch (\Throwable $e) {
         }

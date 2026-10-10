@@ -609,6 +609,13 @@ chk('so does the arrival email — the other send that goes over a whole set',
 chk('the confirmation is deliberately NOT guarded, and says why',
     strpos($bkS2, 'DELIBERATELY NOT resend_guard()ed') !== false
     && preg_match("/resend_guard\(\\\$id, 'email\.confirmation'/", $bkS2) === 0);
+// …and the CHAT's one-tap sends use the same guard under the same names, so a send
+// from either screen is seen by both (the chat logged its balance as its own action).
+$msgS = (string) file_get_contents(__DIR__ . '/messages.php');
+chk('the chat\'s arrival and balance sends are guarded like the booking page\'s',
+    strpos($msgS, "resend_guard(\$bid, 'email.arrival',") !== false && strpos($msgS, "resend_guard(\$bid, 'payment.request',") !== false);
+chk('…and the chat records its balance send under the booking page\'s name',
+    preg_match("/log_activity\('payment', 'payment\.request', 'Balance payment request emailed from chat/", $msgS) === 1 && strpos($msgS, "'email.balance'") === false);
 chk('…and the refusal names the guest and when it went, rather than failing silently',
     preg_match('/has just gone to \' \. \(\$who.*chb_ago\(\$already\)/s', $dbS2) === 1);
 // THE REFUSAL HAS TO REACH THE OWNER. It answered 200 with an `error` key, and apiPost
@@ -2036,8 +2043,15 @@ chk('...with the guest\u{2019}s number and address tappable',
     && preg_match("/mailto:' \\. email_esc\\(\\\$oGuestEmail\\)/", $mlE) === 1);
 chk('...and the record one tap away, in the notification deep-link vocabulary',
     preg_match("/\\\$hubUrl = !empty\\(\\\$b\\['id'\\]\\) \\? site_base_url\\(\\) \\. '\\?open=booking-'/", $mlE) === 1);
+// THE ROUTE HANDS IT A LINK BUILDER PER PERSON (test-integration §80 composes copies
+// with its own builder, so the wiring is asserted here): one shared link in every copy
+// is what let a Host refused in the app approve from her email.
+$enqWire = (string) file_get_contents(__DIR__ . '/enquiries.php');
+chk('the new-enquiry email is given a link builder for each person, never one shared link',
+    preg_match("/'action_link' => fn\\(\\\$personId, \\\$act\\) => enquiry_action_url\\(\\\$base, \\\$newId, \\\$act, \\\$personId\\)/", $enqWire) === 1
+    && strpos($enqWire, "'approve_url'") === false && strpos($enqWire, "'decline_url'") === false);
 chk('the owner enquiry email offers BOTH outcomes at a real tap size',
-    preg_match("/email_btn\\(\\\$e\\['approve_url'\\], 'Review & approve'\\) \\.\\s*\\n\\s*email_btn2\\(\\\$e\\['decline_url'\\], 'Decline this enquiry'\\)/", $mlE) === 1);
+    preg_match("/email_btn\\(\\\$links\\['approve'\\], 'Review & approve'\\) \\.\\s*\\n\\s*email_btn2\\(\\\$links\\['decline'\\], 'Decline this enquiry'\\)/", $mlE) === 1);
 
 // A FAILED AUTOMATIC PAYMENT ANSWERS THE MONEY FEAR FIRST.
 chk('nothing-taken is stated before anything else',
@@ -2085,8 +2099,19 @@ chk('sent_uncertain is NEVER queueable (the payload went out)', !email_queueable
 chk('Mail disabled is not queueable (it can never succeed)', !email_queueable(['ok' => false, 'error' => 'Mail disabled']));
 // A 5xx refusal is permanent: queued, it retried for two days and held a place in
 // the outbox's pending cap ahead of the next confirmation.
-chk('a permanent refusal (5xx) is not queueable', !email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 550 no such user', 'retryable' => false, 'sent_uncertain' => false]));
-chk('…while a temporary one (4xx) still is', email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 451 grey', 'retryable' => true, 'sent_uncertain' => false]));
+chk('a permanent refusal of the recipient (5xx) is not queueable', !email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 550 no such user', 'retryable' => false, 'sent_uncertain' => false, 'permanent' => true]));
+chk('…while a temporary one (4xx) still is', email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 451 grey', 'retryable' => true, 'sent_uncertain' => false, 'permanent' => false]));
+// A 5xx to the SIGN-IN is the relay's set-up (a changed password), not this email:
+// it must queue and go once that is put right.
+chk('…and a refused sign-in (a 5xx, but the relay\'s set-up) still queues', email_queueable(['ok' => false, 'error' => 'AUTH not accepted — 535 bad credentials', 'retryable' => false, 'sent_uncertain' => false, 'permanent' => false]));
+// THE DRAIN: a retry the recipient refuses for good gives that row up and carries on
+// (the relay is answering); a temporary refusal waits; a send that went out is sent.
+$obRow0 = ['tries' => 1, 'created_at' => date('Y-m-d H:i:s', time() - 600)];
+chk('a retry refused for good by the recipient is given up, not retried for two days', email_outbox_after($obRow0, ['ok' => false, 'permanent' => true], time())['outcome'] === 'gaveup');
+chk('…a temporary refusal waits for its next try', email_outbox_after($obRow0, ['ok' => false, 'permanent' => false], time())['outcome'] === 'retry');
+chk('…an uncertain one is never tried again', email_outbox_after($obRow0, ['ok' => false, 'sent_uncertain' => true], time())['outcome'] === 'gaveup');
+chk('…and one that went is sent', email_outbox_after($obRow0, ['ok' => true], time())['outcome'] === 'sent');
+chk('…and the drain decides by the retry\'s own result', strpos((string) file_get_contents(__DIR__ . '/mailer.php'), '$step = email_outbox_after($row, $res, time());') !== false);
 chk('backoff curve: 10, 20, 40, 80 minutes…', email_outbox_backoff(0) === 10 && email_outbox_backoff(1) === 20 && email_outbox_backoff(2) === 40 && email_outbox_backoff(3) === 80);
 chk('…capped at 6 hours', email_outbox_backoff(6) === 360 && email_outbox_backoff(20) === 360);
 $obNow = time();

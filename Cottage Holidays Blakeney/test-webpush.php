@@ -153,9 +153,9 @@ wpchk('…and still keeps the fetch fallback for keyless subscriptions',
     strpos($sw, "push.php?action=sw_notify") !== false);
 
 // ---- QUIET HOURS + PER-EVENT MUTE ------------------------------------------
-// notify_should_push() decides whether a category may BUZZ. Muting never loses
-// anything — the log and the email fallback are untouched — and 'urgent' ignores
-// both, because a failing calendar sync can double-book the owner.
+// notify_should_push() decides whether a category may BUZZ. Muting loses nothing
+// from the app — the log and the duties are untouched — and 'urgent' ignores both,
+// because a failing calendar sync can double-book the owner.
 // Quiet hours normally WRAP midnight, which is the case a naive between-test gets
 // wrong, so both shapes are driven here.
 wpchk('notify_should_push exists', function_exists('notify_should_push'));
@@ -203,18 +203,26 @@ $muted = $hostPays;
 $muted['notify_prefs'] = json_encode(['money' => false] + json_decode($allOn, true));
 wpchk("a person's own mute still applies inside their areas", notify_should_push_for($muted, 'money') === false);
 wpchk('a removed person gets nothing but urgent', notify_should_push_for(['removed_at' => '2026-10-01 10:00:00'] + $owner, 'enquiries') === false);
-// THE EMAIL FALLBACK IS PER PERSON: if an alert can't reach YOUR phone it comes to
-// your email, whoever else's phone it reached; the extra addresses only when it
-// reached nobody (as before); before people existed, exactly the old behaviour.
+// THE EMAIL FALLBACK IS PER PERSON: if an alert meant for YOU reaches none of your
+// devices it comes to your email, whoever else's phone it reached; the extra
+// addresses only when it reached nobody; before people existed, the old behaviour.
 wpchk('the email fallback is decided person by person',
-    strpos($src, "if ((\$reached[\$id] ?? 0) === 0 && notify_area_ok(\$row, \$category)) {") !== false);
+    strpos($src, 'foreach (alert_fallback_ids($people, $reached, $category) as $id) {') !== false);
 wpchk('…the extra addresses only when it reached no one',
     preg_match('/if \(\$sent === 0\) \{\s*foreach \(people_mail_extras\(\)/', $src) === 1);
 wpchk('…and before people existed, the old all-or-nothing fallback',
     preg_match('/if \(\$people === null\) \{\s*if \(\$sent === 0\) \{\s*send_owner\(/', $src) === 1);
-wpchk('the fallback follows areas, not mutes (muting stops the buzz, not the email)',
-    notify_area_ok($host, 'money') === false && notify_area_ok($hostPays, 'money') === true && notify_area_ok($muted, 'money') === true
-        && notify_area_ok($host, 'urgent') === true && notify_area_ok($hostPays, 'system') === false && notify_area_ok($owner, 'system') === true);
+// …AND IT FOLLOWS THE PERSON'S OWN SETTINGS. A mute or a quiet hour is a choice, not
+// an unreachable phone: the muted owner with a phone in hand got the email anyway, and
+// an email in quiet hours buzzes the phone the push was kept from.
+$quiet = $hostPays;
+$quiet['notify_prefs'] = json_encode(['quietFrom' => date('H:i', time() - 3600), 'quietTo' => date('H:i', time() + 3600)] + json_decode($allOn, true));
+$fb = [1 => $owner, 2 => $hostPays, 3 => $muted, 4 => $host, 5 => $quiet];
+wpchk('the fallback goes to each person the push was meant for, and nobody it wasn\'t',
+    alert_fallback_ids($fb, [], 'money') === [1, 2], json_encode(alert_fallback_ids($fb, [], 'money')));
+wpchk('…never to someone who muted it, or is in their quiet hours', !in_array(3, alert_fallback_ids($fb, [], 'money'), true) && !in_array(5, alert_fallback_ids($fb, [], 'money'), true));
+wpchk('…nor to someone a device of theirs reached', alert_fallback_ids($fb, [1 => 1], 'money') === [2]);
+wpchk('…while urgent reaches every one of them, mute or not', alert_fallback_ids($fb, [], 'urgent') === [1, 2, 3, 4, 5]);
 
 $callers = [
     'enquiries.php' => 'open=enquiry-',
@@ -246,7 +254,55 @@ $icalSrc = (string) file_get_contents(__DIR__ . '/ical-import.php');
 wpchk('a failing calendar sync is urgent (ignores mute + quiet hours)',
     strpos($icalSrc, "'category' => 'urgent'") !== false);
 $paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
-wpchk('a received payment asks for the email fallback', strpos($paySrc, "'email' => true") !== false);
+// AN ALERT WITH AN EMAIL OF ITS OWN DOES NOT ASK FOR ANOTHER. The payment notice and
+// the new-enquiry email already reach whoever chose them; the fallback beside them
+// was a second copy, or one sent to someone who had switched that email off.
+wpchk('a received payment and a new enquiry don\'t ask for a second email',
+    preg_match("/alert_owner\('Payment received'[^\n]*'email' => true/", $paySrc) === 0 && preg_match("/alert_owner\('New enquiry'[^\n]*'email' => true/", $enqSrc) === 0
+        && strpos($paySrc, "alert_owner('Payment received'") !== false);
+wpchk('…while a failing calendar sync, which has no email of its own, still does', strpos($icalSrc, "'email' => true") !== false);
+wpchk('a declined card is a money alert that opens the booking',
+    preg_match("/'Card payment declined',[\s\S]{0,400}\['category' => 'money', 'tag' => 'booking-' \. \(int\) \\\$bookingId, 'url' => '\.\/\?open=booking-'/", $paySrc) === 1);
+wpchk('a fallback copy that fails waits in the outbox like every other owner alert',
+    strpos($src, "email_outbox_add('owner-alert', \$msgs[\$i]['to']") !== false);
+// A CHAT ALERT IS TAGGED PER CONVERSATION: one shared tag let a second guest's message
+// replace the first's notification on the lock screen.
+$msgSrc = (string) file_get_contents(__DIR__ . '/messages.php');
+$chatLibSrc = (string) file_get_contents(__DIR__ . '/chat-lib.php');
+wpchk('a chat alert is tagged by its conversation, in both places one is raised',
+    substr_count($msgSrc . $chatLibSrc, "'tag' => 'messages-' . (int) \$threadId") === 2 && strpos($msgSrc . $chatLibSrc, "'tag' => 'messages'") === false);
+// A GUEST'S ALERT OPENS THEIR STAY ("tap to pay your balance" opened the homepage).
+$guestUrls = [];
+foreach (glob(__DIR__ . '/*.php') as $gf) {
+    if (strpos(basename($gf), 'test-') === 0) {
+        continue;
+    }
+    if (preg_match_all('/(?<!function )notify_guest_email\(([^;]*?)\);/s', (string) file_get_contents($gf), $gm)) {
+        foreach ($gm[1] as $args) {
+            // The URL is the call's LAST string literal (comments stripped first). Reading
+            // the text after the last comma was blind to every call written with a
+            // trailing comma, which is most of them.
+            $lits = preg_match_all("/'((?:[^'\\\\]|\\\\.)*)'/", (string) preg_replace('/\/\/[^\n]*/', '', $args), $lm) ? $lm[0] : [];
+            $guestUrls[] = [basename($gf), (string) end($lits)];
+        }
+    }
+}
+$bareGuest = array_values(array_filter($guestUrls, fn($u) => $u[1] === "'./'"));
+wpchk('no guest alert opens the bare homepage (' . count($guestUrls) . ' found)', count($guestUrls) >= 5 && $bareGuest === [], json_encode($bareGuest));
+// THE ARRIVAL EMAIL TO REVIEW IS ITS OWN KIND OF ALERT: it had a category no switch
+// covered, so nobody could mute it, and it reached people who can't send that email.
+$noReply = ['id' => 4, 'full_access' => 0, 'perms' => json_encode(['gu.reply' => false]), 'notify_prefs' => $allOn];
+$canReply = ['id' => 5, 'full_access' => 0, 'perms' => '{}', 'notify_prefs' => $allOn];
+$mutedArr = $canReply;
+$mutedArr['notify_prefs'] = json_encode(['arrivals' => false] + json_decode($allOn, true));
+wpchk('the arrival-review alert reaches someone who can send that email', notify_should_push_for($canReply, 'arrivals') === true);
+wpchk('…never someone who can\'t', notify_should_push_for($noReply, 'arrivals') === false);
+wpchk('…and it can be switched off', notify_should_push_for($mutedArr, 'arrivals') === false);
+$preSrc = (string) file_get_contents(__DIR__ . '/pre-arrival.php');
+$authSrc = (string) file_get_contents(__DIR__ . '/auth.php');
+wpchk('pre-arrival raises it as that kind, the switch exists and the setting is saved',
+    strpos($preSrc, "'category' => 'arrivals',") !== false && strpos((string) file_get_contents(__DIR__ . '/admin.js'), "['arrivals', 'Arrival emails to review']") !== false
+        && strpos($authSrc, "['money', 'enquiries', 'messages', 'checkout', 'arrivals', 'system']") !== false);
 
 // ---- CLIENT: router, focus-silence, badge ----------------------------------
 $appSrc = (string) file_get_contents(__DIR__ . '/app.js');

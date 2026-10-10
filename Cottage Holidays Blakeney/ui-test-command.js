@@ -44,6 +44,13 @@ const stub = (page) => page.route(/\.php/, (r) => {
   if (b && b.action === 'request_payment' && failIds.includes(b.id)) {
     return r.fulfill({ status:500, contentType:'application/json', body: JSON.stringify({ error: 'SMTP connect failed' }) });
   }
+  // The chat's one-tap sends answer with the booking page's own guard (round 7).
+  if (url.includes('messages.php') && b && (b.action === 'send_balance' || b.action === 'send_arrival') && refuseIds.includes(b.booking_id)) {
+    return r.fulfill({ status:409, contentType:'application/json', body: JSON.stringify({
+      error: `That ${b.action === 'send_balance' ? 'payment request' : 'arrival email'} has just gone to ${NAMES[b.booking_id] || 'the guest'} (2 minutes ago) — they have it.`,
+      code: 'already_sent',
+    }) });
+  }
   if (b && b.action === 'request_payment' && refuseIds.includes(b.id)) {
     return r.fulfill({ status:409, contentType:'application/json', body: JSON.stringify({
       error: `That payment request has just gone to ${NAMES[b.id] || 'the guest'} (a minute ago) — they have it.`,
@@ -660,6 +667,24 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(!!phone && phone.row > phone.panel * 0.9, `PHONE: the lone bulk action takes the full width (${phone && phone.row}px of ${phone && phone.panel}px)`);
   ok(!!phone && phone.label <= phone.shown + 1, `PHONE: and its words fit without truncating (${phone && phone.label} <= ${phone && phone.shown})`);
   await page.setViewportSize({ width: 900, height: 900 });
+
+  // THE CHAT'S ONE-TAP SENDS: an email the guest already has, from either screen, is
+  // a fact said in a note — never "Couldn't send", which invites a third tap.
+  refuseIds = [2];
+  const chat = await page.evaluate(async () => {
+    const seen = { toast: [], alert: [] };
+    const t0 = toast, a0 = glassAlert, c0 = glassConfirm;
+    toast = (m) => { seen.toast.push(String(m)); };
+    glassAlert = (m) => { seen.alert.push(String(m)); return Promise.resolve(); };
+    glassConfirm = async () => true;
+    __msgThreadId = 77;
+    try { await chatSendBalance(2); await chatSendArrival(2); }
+    finally { toast = t0; glassAlert = a0; glassConfirm = c0; __msgThreadId = null; }
+    return seen;
+  });
+  refuseIds = [];
+  ok(chat.alert.length === 0, `CHAT: an already-sent email is not reported as a failure (${chat.alert.join(' | ') || 'no alert'})`);
+  ok(chat.toast.length === 2 && chat.toast.every((t) => /they have it/.test(t)), `CHAT: …it says they have it, for both sends (${chat.toast.join(' | ')})`);
 
   console.log(fails ? `\n  ${fails} FAILED` : '\n  INLINE + UNDO + BULK OK');
   await done(fails);

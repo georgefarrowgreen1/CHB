@@ -174,8 +174,8 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
             'nightly' => 390.0,
             'damagesDeposit' => 75.0,
         ],
-        'approve_url' => $base . 'enquiry-action.php?a=approve&id=0&t=SAMPLE',
-        'decline_url' => $base . 'enquiry-action.php?a=decline&id=0&t=SAMPLE',
+        // A sample's links go nowhere: they name the person asking, as a real copy would.
+        'action_link' => fn($pid, $a) => $base . 'enquiry-action.php?a=' . $a . '&id=0&p=' . (int) $pid . '&t=SAMPLE',
     ];
     // A three-instalment plan, so the notice and the failure both show a SCHEDULE
     // rather than their single-collection wording — the schedule is the half an
@@ -305,7 +305,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'enquiry_nudge' => [
             'Enquiry follow-up (dates still free)',
             function () use ($propName, $ci, $co, $accent) {
-                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, false);
+                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, false, site_base_url() . 'email-optout.php?e=SAMPLE&t=SAMPLE');
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],
@@ -313,14 +313,14 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
             'Enquiry follow-up (dates since taken)',
             function () use ($propName, $ci, $co, $accent) {
                 // The honest-status half: this branch must never claim a hold.
-                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, true);
+                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, true, site_base_url() . 'email-optout.php?e=SAMPLE&t=SAMPLE');
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],
         'enquiry_rescue' => [
             'Abandoned-enquiry rescue',
             function () use ($propName, $ci, $co, $accent) {
-                $m = enquiry_rescue_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent);
+                $m = enquiry_rescue_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, site_base_url() . 'email-optout.php?e=SAMPLE&t=SAMPLE');
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],

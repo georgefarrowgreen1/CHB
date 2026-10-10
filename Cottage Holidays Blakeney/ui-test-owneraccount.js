@@ -605,6 +605,21 @@ const ok = (b, m) => {
     await page.waitForTimeout(300);
 
     console.log('§8 Log out, confirmed');
+    // A DEVICE'S ALERTS END WITH ITS SIGN-IN. This device holds a push subscription
+    // (faked: the harness has no push service), so signing out must name it for the
+    // server to drop, and the next sign-in's re-check must register it again rather
+    // than assume the server still has it.
+    const DEV = 'https://fcm.googleapis.com/fcm/send/it-owner-device';
+    await page.evaluate((ep) => {
+        const sub = { endpoint: ep, toJSON: () => ({ endpoint: ep, keys: { p256dh: 'k', auth: 'a' } }) };
+        const reg = { pushManager: { getSubscription: async () => sub, subscribe: async () => sub } };
+        Object.defineProperty(navigator.serviceWorker, 'getRegistration', { value: async () => reg, configurable: true });
+        Object.defineProperty(Notification, 'permission', { get: () => 'granted', configurable: true });
+    }, DEV);
+    const subsBefore = posts.filter((p) => p.b.action === 'subscribe_admin').length;
+    await page.evaluate(() => revalidateOwnerPush());
+    const resub = posts.filter((p) => p.b.action === 'subscribe_admin').slice(subsBefore).pop();
+    ok(!!resub && resub.b.subscription && resub.b.subscription.endpoint === DEV, 'signing in registers the subscription this device already holds, not only a new one');
     await page.evaluate(() => settingsOpen('acct'));
     await page.waitForTimeout(400);
     await page.click(rowByTitle('#acct-body', 'Log out'));
@@ -613,6 +628,7 @@ const ok = (b, m) => {
     await page.click('#glass-dialog-ok');
     await page.waitForTimeout(400);
     ok(posts.some((p) => p.b.action === 'admin_logout'), 'confirming signs out on the server');
+    ok(posts.some((p) => p.b.action === 'admin_logout' && p.b.push_endpoint === DEV), '…naming this device, so its alerts stop with the sign-in');
     if (await dlgOpen()) await page.click('#glass-dialog-ok'); // "You have been securely logged out."
     ok(!!(await nav), '…and the page starts again from nothing');
 

@@ -558,6 +558,10 @@ switch ($action) {
     case 'admin_logout':
         $me = admin_me();
         log_activity('account', 'admin.logout', ($me ? people_display_name($me) : 'Owner') . ' signed out');
+        // This device stops getting the owner's alerts (push_subs_drop).
+        if ($me && is_string($in['push_endpoint'] ?? null) && $in['push_endpoint'] !== '') {
+            push_subs_drop('admin', (int) $me['id'], (string) $in['push_endpoint']);
+        }
         session_end_signed_in();
         json_out(['ok' => true]);
 
@@ -617,6 +621,8 @@ switch ($action) {
         try {
             db()->prepare('UPDATE admins SET password_hash = ?, auth_epoch = auth_epoch + 1, reset_hash = NULL, reset_expires = NULL WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
             $_SESSION['admin_epoch'] = (int) ((admin_row((int) $_SESSION['admin_id'], true) ?: [])['auth_epoch'] ?? 0);
+            // The devices this signs out stop getting alerts too; this one keeps its own.
+            push_subs_drop('admin', (int) $_SESSION['admin_id'], '', is_string($in['push_endpoint'] ?? null) ? (string) $in['push_endpoint'] : '');
         } catch (\Throwable $e) {
             db()->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')->execute([$hash, $_SESSION['admin_id']]);
         }
@@ -690,6 +696,7 @@ switch ($action) {
         db()
             ->prepare('UPDATE admins SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, auth_epoch = auth_epoch + 1 WHERE id = ?')
             ->execute([password_hash(field_text($in['password'] ?? ''), PASSWORD_DEFAULT), (int) $row['id']]);
+        push_subs_drop('admin', (int) $row['id']); // every device it signed out; this one re-registers at sign-in
         log_activity('account', 'admin.reset_done', people_display_name($row) . ' chose a new password from a reset link — every other session was signed out', ['actor' => 'admin:' . (int) $row['id']]);
         admin_trust_this_device((int) $row['id']);
         admin_complete_login((int) $row['id'], [], '', true);
@@ -797,7 +804,7 @@ switch ($action) {
         $me = admin_me();
         $p = is_array($in['prefs'] ?? null) ? $in['prefs'] : [];
         $out = [];
-        foreach (['money', 'enquiries', 'messages', 'checkout', 'system'] as $k) {
+        foreach (['money', 'enquiries', 'messages', 'checkout', 'arrivals', 'system'] as $k) {
             if (array_key_exists($k, $p)) {
                 $out[$k] = (bool) $p[$k];
             }
@@ -1330,6 +1337,9 @@ switch ($action) {
         ]);
 
     case 'guest_logout':
+        if (!empty($_SESSION['guest_id']) && is_string($in['push_endpoint'] ?? null) && $in['push_endpoint'] !== '') {
+            push_subs_drop('guest', (int) $_SESSION['guest_id'], (string) $in['push_endpoint']);
+        }
         session_end_signed_in();
         json_out(['ok' => true]);
 
@@ -1444,6 +1454,7 @@ switch ($action) {
             guest_session_begin((int) $_SESSION['guest_id']);
         } catch (\Throwable $e) {
         }
+        push_subs_drop('guest', (int) $_SESSION['guest_id'], '', is_string($in['push_endpoint'] ?? null) ? (string) $in['push_endpoint'] : '');
         json_out(['ok' => true]);
 
     // GDPR: a logged-in guest downloads everything we hold about them (JSON).

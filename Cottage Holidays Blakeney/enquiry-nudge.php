@@ -34,6 +34,16 @@ if (content_value('enquiry-nudge-off') === '1') {
 
 require_once __DIR__ . '/mailer.php';
 
+// Both emails here ask someone back, so both honour the one-click unsubscribe
+// (email-optout.php) and carry one: an address that had opted out still got "Nearly
+// there: finish your enquiry", with no way to stop the next. The suppressed row is
+// stamped as dealt with, so it is never considered again.
+$nudgeUnsub = function ($email) {
+    $base = function_exists('site_base_url') ? site_base_url() : '';
+    return $base !== '' ? $base . 'email-optout.php?e=' . rawurlencode((string) $email) . '&t=' . email_optout_token((string) $email) : '';
+};
+$nudgeHeaders = fn($unsub) => $unsub !== '' ? ['List-Unsubscribe' => '<' . $unsub . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click'] : [];
+
 try {
     $rows = db()
         ->query(
@@ -56,6 +66,10 @@ foreach ($rows as $e) {
     if (!prop_is_marketable($e['prop_key'])) {
         continue;
     }
+    if (email_optout_has($e['email'])) {
+        db()->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ? AND nudge_sent_at IS NULL')->execute([(int) $e['id']]);
+        continue;
+    }
     $datesGone = function_exists('dates_clash') && dates_clash($e['prop_key'], $e['check_in'], $e['check_out']);
     $rate = get_rate($e['prop_key']);
     $propName = $rate['name'] ?? '' ?: $e['prop_key'];
@@ -64,6 +78,7 @@ foreach ($rows as $e) {
     $base = function_exists('site_base_url') ? site_base_url() : '';
     $slug = prop_display($e['prop_key'])['slug']; // pretty URL for any cottage, owner-added included
     $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
+    $unsub = $nudgeUnsub($e['email']);
     // Composed by enquiry_nudge_body() in mailer.php — previewable, and the render
     // gate proves it builds. datesGone carries the honest-status half.
     $m = enquiry_nudge_body(
@@ -73,6 +88,7 @@ foreach ($rows as $e) {
         $link,
         prop_display($e['prop_key'])['accent'],
         $datesGone,
+        $unsub,
     );
     [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
     try {
@@ -86,7 +102,7 @@ foreach ($rows as $e) {
         }
         // smtp_send returns ok:false on a soft failure (server down / mail off)
         // WITHOUT throwing.
-        $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text, $html) : ['ok' => false];
+        $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text, $html, [], null, null, $nudgeHeaders($unsub)) : ['ok' => false];
         // A send that may have gone keeps the claim, as the rescue below does.
         if (empty($r['ok']) && empty($r['sent_uncertain'])) {
             db()->prepare('UPDATE enquiries SET nudge_sent_at = NULL WHERE id = ?')->execute([(int) $e['id']]);
@@ -150,8 +166,9 @@ foreach ($drafts as $d) {
             }
         }
 
-        // A removed or unlisted cottage: its link 404s, so the rescue is moot.
-        if (!prop_is_marketable($d['prop_key'])) {
+        // A removed or unlisted cottage: its link 404s, so the rescue is moot. Nor to
+        // an address that has asked us to stop.
+        if (!prop_is_marketable($d['prop_key']) || email_optout_has($d['email'])) {
             db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ? AND nudged_at IS NULL')->execute([(int) $d['id']]);
             continue;
         }
@@ -166,7 +183,8 @@ foreach ($drafts as $d) {
         // list, so it eats any leading space/f/o/r and only happened to work here.
         $dates = $d['check_in'] && $d['check_out'] ? email_date($d['check_in']) . ' to ' . email_date($d['check_out']) : '';
         // Composed by enquiry_rescue_body() in mailer.php — previewable, gated.
-        $m = enquiry_rescue_body($name, $propName, $dates, $link, prop_display($d['prop_key'])['accent']);
+        $unsub = $nudgeUnsub($d['email']);
+        $m = enquiry_rescue_body($name, $propName, $dates, $link, prop_display($d['prop_key'])['accent'], $unsub);
         [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
         // Claim-first, like the follow-up above: two overlapping runs must not
         // both email the same draft. A CLEAN failure un-claims so the
@@ -176,7 +194,7 @@ foreach ($drafts as $d) {
         if ($claim->rowCount() !== 1) {
             continue;
         }
-        $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text, $html) : ['ok' => false];
+        $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text, $html, [], null, null, $nudgeHeaders($unsub)) : ['ok' => false];
         if (empty($r['ok']) && empty($r['sent_uncertain'])) {
             db()->prepare('UPDATE enquiry_drafts SET nudged_at = NULL WHERE id = ?')->execute([(int) $d['id']]);
         }

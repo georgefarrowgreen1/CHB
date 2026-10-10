@@ -3065,8 +3065,9 @@ $rootDb->exec("DELETE FROM bookings WHERE id IN ($g42" . ($b42 ? ", $b42" : '') 
 $e43In = $ukPlus(80); $e43Out = $ukPlus(83);
 $rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, agreed_price, plan_pct) VALUES ('$propKey','One Tap','onetap43@gmail.com','$e43In','$e43Out',2,0,'Hello',275,35)");
 $e43 = (int) $rootDb->lastInsertId();
-$e43Tok = hash_hmac('sha256', 'enq-action|' . $e43 . '|approve', $SECRET);
-$r = $formPost('/enquiry-action.php', ['id' => $e43, 'a' => 'approve', 't' => $e43Tok]);
+$own43 = (int) $rootDb->query('SELECT MIN(id) FROM admins')->fetchColumn(); // a link is one person's (§80)
+$e43Tok = hash_hmac('sha256', 'enq-action|' . $e43 . '|approve|' . $own43, $SECRET);
+$r = $formPost('/enquiry-action.php', ['id' => $e43, 'a' => 'approve', 'p' => $own43, 't' => $e43Tok]);
 $b43 = (int) $rootDb->query("SELECT id FROM bookings WHERE email = 'onetap43@gmail.com' ORDER BY id DESC LIMIT 1")->fetchColumn();
 $b43Row = $b43 ? $rootDb->query("SELECT price_override, deposit_pct_override FROM bookings WHERE id = $b43")->fetch(PDO::FETCH_ASSOC) : [];
 it_check('§43 the one-tap email Approve books the STORED agreed price and plan', $b43 > 0
@@ -4644,8 +4645,9 @@ $mk65 = function ($name) use ($rootDb, $propKey, $ci65, $co65) {
 $keep65 = $mk65('Kept Sixtyfive');
 $moved65 = $mk65('Moved Sixtyfive');
 $gone65 = $mk65('Gone Sixtyfive');
-$refs65 = $mailProbe('$s = db()->prepare("SELECT * FROM bookings WHERE id = ?"); $o = []; foreach ([' . $keep65 . ', ' . $moved65 . ', ' . $gone65 . '] as $i) { $s->execute([$i]); $o[] = email_booking_ref($s->fetch()); } echo "\n" . json_encode($o);');
-it_check('§65 (fixture) a reference per stay, from the app itself', is_array($refs65) && count(array_filter($refs65)) === 3 && strpos((string) $refs65[0], 'booking:' . $keep65 . ':') === 0, json_encode($refs65));
+$paid65 = $mk65('Paid Sixtyfive');
+$refs65 = $mailProbe('$s = db()->prepare("SELECT * FROM bookings WHERE id = ?"); $o = []; foreach ([' . $keep65 . ', ' . $moved65 . ', ' . $gone65 . ', ' . $paid65 . '] as $i) { $s->execute([$i]); $o[] = email_booking_ref($s->fetch()); } echo "\n" . json_encode($o);');
+it_check('§65 (fixture) a reference per stay, from the app itself', is_array($refs65) && count(array_filter($refs65)) === 4 && strpos((string) $refs65[0], 'booking:' . $keep65 . ':') === 0, json_encode($refs65));
 // What changes after they were queued: one stay moves, one is cancelled; an enquiry is
 // declined, a subscriber leaves, a person is removed.
 $rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, declined_at) VALUES ('$propKey','Enq Sixtyfive','e65@example.com','$ci65','$co65',2,0,NOW())");
@@ -4656,11 +4658,12 @@ $pid65 = (int) $rootDb->lastInsertId();
 $q65 = $rootDb->prepare("INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, last_error, ref) VALUES (DATE_SUB(NOW(), INTERVAL 1 MINUTE), ?, ?, ?, 'S', 'b', 'seed', ?)");
 // Oldest first, and the drain stops at the first row the relay refuses — so the stale
 // rows go in first (each dropped without a send), then the one it really tries.
-foreach ([['confirmation', 'moved65@example.com', 'Moved', $refs65[1]], ['confirmation', 'gone65@example.com', 'Gone', $refs65[2]], ['enquiry-ack', 'e65@example.com', 'Enq', 'enquiry:' . $enq65], ['newsletter', 'n65@example.com', 'News', 'newsletter:n65@example.com'], ['owner-alert', 'p65@example.com', 'Person', 'person:' . $pid65], ['confirmation', 'keep65@example.com', 'Kept', $refs65[0]], ['owner-alert', 'x65@example.com', 'Extra', '']] as $row65) {
+foreach ([['confirmation', 'moved65@example.com', 'Moved', $refs65[1]], ['confirmation', 'gone65@example.com', 'Gone', $refs65[2]], ['confirmation', 'paid65@example.com', 'Paid', $refs65[3]], ['enquiry-ack', 'e65@example.com', 'Enq', 'enquiry:' . $enq65], ['newsletter', 'n65@example.com', 'News', 'newsletter:n65@example.com'], ['owner-alert', 'p65@example.com', 'Person', 'person:' . $pid65], ['confirmation', 'keep65@example.com', 'Kept', $refs65[0]], ['owner-alert', 'x65@example.com', 'Extra', '']] as $row65) {
     $q65->execute($row65);
 }
 $rootDb->exec("UPDATE bookings SET check_in = DATE_ADD(check_in, INTERVAL 7 DAY), check_out = DATE_ADD(check_out, INTERVAL 7 DAY) WHERE id = $moved65");
 $rootDb->exec("DELETE FROM bookings WHERE id = $gone65");
+$rootDb->exec("UPDATE bookings SET payment = 'paid', deposit_paid = 400 WHERE id = $paid65");
 $warn65 = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.gaveup'")->fetchColumn();
 $r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
 $rows65 = [];
@@ -4676,13 +4679,14 @@ $dropped65 = fn($n) => isset($rows65[$n]) && (int) $rows65[$n]['tries'] === 0 &&
 it_check('§65 a confirmation for a stay that is unchanged is still tried', $r['code'] === 200 && $tried65('Kept'), json_encode($rows65['Kept'] ?? null));
 it_check('§65 …one for a stay that MOVED is not sent', $dropped65('Moved'), json_encode($rows65['Moved'] ?? null));
 it_check('§65 …nor one for a stay that was CANCELLED', $dropped65('Gone'), json_encode($rows65['Gone'] ?? null));
+it_check('§65 …nor one that says "Unpaid" about a stay since PAID in full', $dropped65('Paid'), json_encode($rows65['Paid'] ?? null));
 it_check('§65 …nor an enquiry acknowledgement after the enquiry was answered', $dropped65('Enq'), json_encode($rows65['Enq'] ?? null));
 it_check('§65 …nor a newsletter after an unsubscribe', $dropped65('News'), json_encode($rows65['News'] ?? null));
 it_check('§65 …nor an owner alert to a person since removed', $dropped65('Person'), json_encode($rows65['Person'] ?? null));
 it_check('§65 a row that names nothing is still tried (an extra address)', $tried65('Extra'), json_encode($rows65['Extra'] ?? null));
 it_check('§65 a dropped email is no alarm: no give-up warning, one quiet line each', (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.gaveup'")->fetchColumn() === $warn65 && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.dropped'")->fetchColumn() >= 5, '');
 $rootDb->exec("DELETE FROM email_outbox");
-$rootDb->exec("DELETE FROM bookings WHERE id IN ($keep65, $moved65)");
+$rootDb->exec("DELETE FROM bookings WHERE id IN ($keep65, $moved65, $paid65)");
 $rootDb->exec("DELETE FROM enquiries WHERE id = $enq65");
 $rootDb->exec("DELETE FROM newsletter_subscribers WHERE email = 'n65@example.com'");
 $rootDb->exec("DELETE FROM admins WHERE id = $pid65");
@@ -5416,6 +5420,265 @@ $rootDb->prepare($paySql79 ?: 'SELECT 1')->execute($paySql79 ? ['paid', 400, 'Sq
 it_check('§79 …and dates an undated one', (string) $rootDb->query("SELECT payment_date FROM bookings WHERE id = $dd79")->fetchColumn() === '2026-10-05');
 $rootDb->exec("DELETE FROM payments WHERE booking_id = $dd79");
 $rootDb->exec("DELETE FROM bookings WHERE id = $dd79");
+
+// §80 NOTIFICATIONS (round 7). (a) A DEVICE'S ALERTS END WITH ITS SIGN-IN: signing out
+// kept the device's push subscription, so a phone nobody was signed in on still got
+// "New message — Hannah: the key safe code you gave me…", and a password change that
+// signs out the other devices left every one of them subscribed. Three owner devices,
+// a legacy row with no admin_id (the original owner's), another person's device and a
+// guest's; each step changes exactly the rows it should.
+echo "\n== §80 notifications ==\n";
+$ep80 = fn($k) => 'https://fcm.googleapis.com/fcm/send/it80-' . $k;
+$subs80 = fn() => array_map('strval', $rootDb->query("SELECT endpoint FROM push_subscriptions WHERE endpoint LIKE '%/it80-%' ORDER BY endpoint")->fetchAll(PDO::FETCH_COLUMN));
+$has80 = fn($k) => in_array($ep80($k), $subs80(), true);
+$dev80 = [];
+foreach (['a', 'b', 'c'] as $k) {
+    $dev80[$k] = [];
+    http($dev80[$k], 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-123']);
+    http($dev80[$k], 'POST', '/push.php', ['action' => 'subscribe_admin', 'subscription' => ['endpoint' => $ep80($k), 'keys' => ['p256dh' => 'p', 'auth' => 'a']]]);
+}
+$rootDb->prepare("INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id) VALUES (NULL, 'admin', ?, 'p', 'a', NOW(), NULL)")->execute([$ep80('legacy')]);
+$rootDb->prepare("INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at, admin_id) VALUES (NULL, 'admin', ?, 'p', 'a', NOW(), 999990)")->execute([$ep80('other')]);
+it_check('§80 (fixture) three owner devices, a legacy one and another person\'s are subscribed', count($subs80()) === 5, json_encode($subs80()));
+http($dev80['a'], 'POST', '/auth.php', ['action' => 'admin_logout', 'push_endpoint' => $ep80('a')]);
+it_check('§80 signing out drops this device\'s alerts, and only this device\'s', !$has80('a') && $has80('b') && $has80('c') && $has80('legacy'), json_encode($subs80()));
+http($dev80['b'], 'POST', '/auth.php', ['action' => 'admin_logout', 'push_endpoint' => $ep80('other')]);
+it_check('§80 a sign-out naming someone else\'s device drops nothing of theirs', $has80('other') && $has80('b'), json_encode($subs80()));
+$r = http($dev80['c'], 'POST', '/auth.php', ['action' => 'admin_change_password', 'current' => 'it-pass-123', 'next' => 'it-pass-80-changed', 'push_endpoint' => $ep80('c')]);
+it_check('§80 a password change drops every other device of theirs, the legacy one included, and keeps this one',
+    ($r['json']['ok'] ?? false) === true && $has80('c') && !$has80('b') && !$has80('legacy') && $has80('other'), $r['raw'] . ' ' . json_encode($subs80()));
+$owner80 = (int) $rootDb->query("SELECT id FROM admins WHERE username = 'owner'")->fetchColumn();
+$tok80 = bin2hex(random_bytes(24));
+// The expiry on the APP's clock, as §51 sets it: this connection's NOW() is the server's.
+$exp80 = (new DateTime('+30 minutes', new DateTimeZone('Europe/London')))->format('Y-m-d H:i:s');
+$rootDb->prepare('UPDATE admins SET reset_hash = ?, reset_expires = ? WHERE id = ?')->execute([hash('sha256', $tok80), $exp80, $owner80]);
+$rj80 = [];
+$r = http($rj80, 'POST', '/auth.php', ['action' => 'admin_reset_save', 'link' => $owner80 . '.' . $tok80, 'password' => 'it-pass-80-reset', 'again' => 'it-pass-80-reset']);
+it_check('§80 a reset from a link drops every device it signs out', ($r['json']['ok'] ?? false) === true && !$has80('c') && $has80('other'), $r['raw'] . ' ' . json_encode($subs80()));
+$rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Push Eighty', 'push80@example.com', '', '', '', ?, NOW())")->execute([password_hash('longenough80', PASSWORD_DEFAULT)]);
+$g80 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO push_subscriptions (guest_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, 'p', 'a', NOW())")->execute([$g80, $ep80('guest')]);
+$gj80 = [];
+http($gj80, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'push80@example.com', 'password' => 'longenough80']);
+http($gj80, 'POST', '/auth.php', ['action' => 'guest_logout', 'push_endpoint' => $ep80('guest')]);
+it_check('§80 a guest signing out drops their device\'s alerts too', !$has80('guest'), json_encode($subs80()));
+// …and a guest's new password signs out their other devices, so it drops those devices' alerts too.
+foreach (['g1', 'g2'] as $k) {
+    $rootDb->prepare("INSERT INTO push_subscriptions (guest_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, 'p', 'a', NOW())")->execute([$g80, $ep80($k)]);
+}
+$gk80 = [];
+http($gk80, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'push80@example.com', 'password' => 'longenough80']);
+$r = http($gk80, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => 'longenough80', 'next' => 'longenough80b', 'push_endpoint' => $ep80('g1')]);
+it_check('§80 a guest\'s new password drops their other devices\' alerts and keeps this one',
+    ($r['json']['ok'] ?? false) === true && $has80('g1') && !$has80('g2') && $has80('other'), $r['raw'] . ' ' . json_encode($subs80()));
+$rootDb->exec("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/it80-%'");
+$rootDb->exec('DELETE FROM guests WHERE id = ' . $g80);
+
+// (b) THE ONE-TAP APPROVE LINK IS ONE PERSON'S, and only someone who may approve gets
+// one. Every copy of the new-enquiry email carried the same link and enquiry-action.php
+// trusted the link alone: a Host refused in the app approved from the email, booking the
+// guest and asking them for money. The copies are composed here from the REAL people
+// (CLI in the app copy, as §52 asks who an email would reach), then each person's link
+// is used against the real page.
+$nj80 = [];
+$probe80 = function ($code) use ($work) {
+    $f = $work . '/it-mail-probe80.php';
+    file_put_contents($f, "<?php\nrequire __DIR__ . '/db.php';\nrequire_once __DIR__ . '/mailer.php';\nrequire_once __DIR__ . '/enquiry-actions.php';\n" . $code);
+    $out = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($f) . ' 2>/dev/null');
+    @unlink($f);
+    return json_decode(trim(substr($out, (int) strrpos($out, "\n{"))), true);
+};
+$fp80 = function ($path, array $fields) use ($BASE) {
+    $o = ['http' => ['method' => 'POST', 'header' => 'Content-Type: application/x-www-form-urlencoded', 'content' => http_build_query($fields), 'timeout' => 20, 'ignore_errors' => true]];
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create($o));
+    $code = 0;
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw];
+};
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at) VALUES ('pat80', 'x', 'Pat Noapprove', 'pat80@example.com', 0, '{\"gu.approve\":false}', NOW())");
+$pat80 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at) VALUES ('rho80', 'x', 'Rho Approver', 'rho80@example.com', 0, '{}', NOW())");
+$rho80 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at, removed_at) VALUES ('gone80', 'x', 'Gone Approver', 'gone80@example.com', 1, NULL, NOW(), NOW())");
+$gone80 = (int) $rootDb->lastInsertId();
+$own80 = (int) $rootDb->query('SELECT MIN(id) FROM admins')->fetchColumn();
+$e80In = $ukPlus(120);
+$e80Out = $ukPlus(123);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message) VALUES ('$propKey','Tap Eighty','tap80@gmail.com','$e80In','$e80Out',2,0,'Hello')");
+$e80 = (int) $rootDb->lastInsertId();
+$C80 = $probe80(strtr(<<<'PHP'
+$e = ['id' => EID, 'name' => 'Tap Eighty', 'email' => 'tap80@gmail.com', 'prop_key' => 'PKEY', 'check_in' => 'CIN', 'check_out' => 'COUT',
+    'adults' => 2, 'children' => 0, 'action_link' => fn($pid, $a) => enquiry_action_url(site_base_url(), EID, $a, $pid)];
+$out = [];
+foreach (people_mail_recipients('enquiry') as $r) {
+    $c = owner_enquiry_copy($e, $r['row']);
+    $out[$r['to']] = preg_match('~enquiry-action\.php\?(\S+)~', $c['text'], $m) ? $m[1] : (strpos($c['text'], '?open=enquiry-EID') !== false ? 'open' : '');
+}
+echo "\n" . json_encode($out);
+PHP, ['EID' => (string) $e80, 'PKEY' => $propKey, 'CIN' => $e80In, 'COUT' => $e80Out]));
+$q80 = function ($who) use ($C80) {
+    parse_str((string) ($C80[$who] ?? ''), $q);
+    return $q;
+};
+$ownerCopy80 = array_values(array_filter((array) $C80, fn($v) => strpos((string) $v, 'p=' . $own80 . '&') !== false));
+it_check('§80 the new-enquiry copy of a Host who may approve carries links made for her',
+    ($q80('rho80@example.com')['p'] ?? '') === (string) $rho80 && ($q80('rho80@example.com')['id'] ?? '') === (string) $e80, json_encode($C80));
+it_check('§80 …and the owner\'s copy carries his own', count($ownerCopy80) === 1, json_encode($C80));
+it_check('§80 a Host whose approve switch is off gets the enquiry\'s page, never a link to act with', ($C80['pat80@example.com'] ?? null) === 'open', json_encode($C80));
+it_check('§80 a removed person gets no copy at all', !array_key_exists('gone80@example.com', (array) $C80), json_encode($C80));
+$tok80 = fn($a, $pid) => hash_hmac('sha256', 'enq-action|' . $e80 . '|' . $a . '|' . $pid, $SECRET);
+$pending80 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM enquiries WHERE id = $e80 AND declined_at IS NULL")->fetchColumn() === 1
+    && (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE email = 'tap80@gmail.com'")->fetchColumn() === 0;
+$r = http($nj80, 'GET', '/enquiry-action.php?id=' . $e80 . '&a=approve&p=' . $pat80 . '&t=' . $tok80('approve', $pat80));
+it_check('§80 a link made for someone who may not approve shows no Approve button', $r['code'] === 403 && strpos($r['raw'], 'switched on for you') !== false && strpos($r['raw'], 'Approve booking') === false, $r['code'] . ' ' . substr($r['raw'], 0, 160));
+$r = $fp80('/enquiry-action.php', ['id' => $e80, 'a' => 'approve', 'p' => $pat80, 't' => $tok80('approve', $pat80)]);
+it_check('§80 …and posting it books nothing', $r['code'] === 403 && $pending80(), $r['code'] . ' ' . substr($r['raw'], 0, 160));
+$r = $fp80('/enquiry-action.php', ['id' => $e80, 'a' => 'approve', 'p' => $gone80, 't' => $tok80('approve', $gone80)]);
+it_check('§80 a removed person\'s link does nothing', $r['code'] === 403 && strpos($r['raw'], 'isn&rsquo;t valid') !== false && $pending80(), $r['code'] . ' ' . substr($r['raw'], 0, 160));
+$r = $fp80('/enquiry-action.php', ['id' => $e80, 'a' => 'approve', 't' => hash_hmac('sha256', 'enq-action|' . $e80 . '|approve', $SECRET)]);
+it_check('§80 a link from before links named their person does nothing', $r['code'] === 403 && $pending80(), $r['code'] . ' ' . substr($r['raw'], 0, 160));
+// The token the APP made for her, carried under someone else's id: if the person were
+// not part of what is signed, any link would work for anyone the page asks about.
+$rq80 = $q80('rho80@example.com');
+$r = $fp80('/enquiry-action.php', ['id' => $e80, 'a' => 'approve', 'p' => $own80, 't' => (string) ($rq80['t'] ?? '')]);
+it_check('§80 one person\'s link cannot be passed off as another\'s', $r['code'] === 403 && $pending80(), $r['code'] . ' ' . substr($r['raw'], 0, 160));
+$r = http($nj80, 'GET', '/enquiry-action.php?' . http_build_query($rq80));
+it_check('§80 the link in her copy opens the confirmation, carrying whose it is', $r['code'] === 200 && strpos($r['raw'], 'name="p" value="' . $rho80 . '"') !== false, $r['code'] . ' ' . substr($r['raw'], 0, 160));
+$rqd80 = ['id' => $e80, 'a' => 'decline', 'p' => $rho80, 't' => $tok80('decline', $rho80)];
+$r = $fp80('/enquiry-action.php', $rqd80);
+$log80 = (string) $rootDb->query("SELECT actor FROM activity_log WHERE action = 'enquiry.decline' AND entity_id = '$e80' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('§80 her Decline works, and the log credits her', $r['code'] === 200 && (int) $rootDb->query("SELECT COUNT(*) FROM enquiries WHERE id = $e80 AND declined_at IS NOT NULL")->fetchColumn() === 1 && $log80 === 'admin:' . $rho80, $r['code'] . ' ' . $log80);
+$rootDb->exec("DELETE FROM enquiries WHERE id = $e80");
+$rootDb->exec("DELETE FROM activity_log WHERE entity = 'enquiry' AND entity_id = '$e80'");
+$rootDb->exec("DELETE FROM admins WHERE id IN ($pat80, $rho80, $gone80)");
+
+// (c) REPLYING BY EMAIL FOLLOWS THE APP'S RULES. The sender list let in anyone with a
+// sign-in — a Host whose reply switch was off posted to a guest as the business — and
+// always the config owner address, which is the first owner's: removed, they still
+// could. And an email that must reach someone fell back to that same address, so with
+// the first owner removed the next enquiry went to them. Through the real webhook.
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at) VALUES ('nor80', 'x', 'Nora Noreply', 'nor80@example.com', 0, '{\"gu.reply\":false}', NOW())");
+$nor80 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at) VALUES ('ann80', 'x', 'Ann Answers', 'ann80@example.com', 0, '{}', NOW())");
+$ann80 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, perms, created_at) VALUES ('sue80', 'x', 'Sue Super', 'sue80@example.com', 1, NULL, NOW())");
+$sue80 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('notify-emails', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode(['nor80@example.com', 'extra80@example.com'])]);
+$rootDb->prepare('INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, ?, ?)')->execute(['it80-' . bin2hex(random_bytes(6)), 'Fern Eighty', 'fern80@example.com']);
+$t80 = (int) $rootDb->lastInsertId();
+$who80 = fn() => $probe80('echo "\n" . json_encode(["tok" => msg_reply_token(' . $t80 . ', "owner"), "senders" => people_mail_senders(), "enquiry" => owner_recipients("enquiry"), "owner" => strtolower(admin_contact_email(db()->query("SELECT * FROM admins ORDER BY id LIMIT 1")->fetch()))]);');
+$hook80 = function (array $fields) use ($BASE, $SECRET) {
+    $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => 'Content-Type: application/x-www-form-urlencoded', 'content' => http_build_query($fields), 'timeout' => 30, 'ignore_errors' => true]]);
+    return trim((string) @file_get_contents($BASE . '/inbound-mail.php?key=' . rawurlencode($SECRET), false, $ctx));
+};
+$posted80 = fn($marker) => (int) $rootDb->query('SELECT COUNT(*) FROM messages WHERE thread_id = ' . $t80 . " AND body LIKE '%" . $marker . "%'")->fetchColumn();
+$W80 = $who80();
+$tokO80 = (string) ($W80['tok'] ?? '');
+it_check('§80 a Host whose reply switch is off is not on the reply-by-email list, even listed as an extra address',
+    is_array($W80) && !in_array('nor80@example.com', (array) ($W80['senders'] ?? []), true) && in_array('ann80@example.com', (array) ($W80['senders'] ?? []), true) && in_array('extra80@example.com', (array) ($W80['senders'] ?? []), true), json_encode($W80));
+$h = $hook80(['recipient' => "reply+$tokO80@yourdomain.co.uk", 'sender' => 'nor80@example.com', 'subject' => 'Re: New message', 'stripped-text' => 'IT80-NORA the code is 1234']);
+it_check('§80 …so her emailed reply posts nothing', $h === 'sender not allowed' && $posted80('IT80-NORA') === 0, $h);
+$h = $hook80(['recipient' => "reply+$tokO80@yourdomain.co.uk", 'sender' => 'ann80@example.com', 'subject' => 'Re: New message', 'stripped-text' => 'IT80-ANN see you Friday']);
+it_check('§80 …while a Host who may reply still can', $h === 'ok' && $posted80('IT80-ANN') === 1, $h);
+$owner80 = (string) ($W80['owner'] ?? '');
+$rootDb->exec("UPDATE admins SET mail_prefs = '{\"enquiry\":false}' WHERE id IN ($ann80, $sue80)");
+$rootDb->exec("UPDATE admins SET removed_at = NOW() WHERE id = $own80");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
+$W80 = $who80();
+it_check('§80 a removed first owner\'s address is off the reply-by-email list', $owner80 !== '' && is_array($W80) && !in_array($owner80, (array) ($W80['senders'] ?? []), true) && in_array('sue80@example.com', (array) ($W80['senders'] ?? []), true), json_encode([$owner80, $W80['senders'] ?? null]));
+it_check('§80 an enquiry nobody has chosen goes to a current Super User, never the removed owner', ($W80['enquiry'] ?? null) === ['sue80@example.com'], json_encode($W80['enquiry'] ?? null));
+// With no Super User who can sign in (Sue still only invited), the config owner address
+// is the last resort, and it is the removed owner's: nobody gets it, rather than them.
+$rootDb->exec("UPDATE admins SET invited_at = NOW() WHERE id = $sue80");
+$W80 = $who80();
+it_check('§80 …and with no current Super User at all, still never the removed owner', ($W80['enquiry'] ?? null) === [], json_encode($W80['enquiry'] ?? null));
+$rootDb->exec("UPDATE admins SET invited_at = NULL WHERE id = $sue80");
+// "Also emailed" still RECEIVES what the owner listed there (it is on screen to change);
+// what removal takes away is posting to a guest as the business, whatever list it is on.
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('notify-emails', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode([$owner80])]);
+$W80 = $who80();
+it_check('§80 …even listed as an extra address', is_array($W80) && !in_array($owner80, (array) ($W80['senders'] ?? []), true), json_encode($W80['senders'] ?? null));
+$h = $hook80(['recipient' => "reply+$tokO80@yourdomain.co.uk", 'sender' => $owner80, 'subject' => 'Re: New message', 'stripped-text' => 'IT80-GONE the new key safe code is 9999']);
+it_check('§80 …so their emailed reply posts nothing to the guest', $h === 'sender not allowed' && $posted80('IT80-GONE') === 0, $h);
+$rootDb->exec("UPDATE admins SET removed_at = NULL WHERE id = $own80");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $t80");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $t80");
+$rootDb->exec("DELETE FROM admins WHERE id IN ($nor80, $ann80, $sue80)");
+
+// (d) A REQUEST SENDING SAMPLES NEVER DRAINS REAL MAIL. The samples' [SAMPLE] prefix
+// is applied to every subject sent in the request, and the first sample to go out
+// kicked the outbox: a guest's queued "We've got your enquiry" went out as
+// "[SAMPLE] We've got your enquiry". A real queued row, due now, against the real kick.
+$rootDb->exec("INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text) VALUES (DATE_SUB(NOW(), INTERVAL 1 MINUTE), 'enquiry-ack', 'grace80@example.com', 'Grace Real', 'We have your enquiry', 'IT80-OUTBOX')");
+$ob80 = (int) $rootDb->lastInsertId();
+$touched80 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM email_outbox WHERE id = $ob80 AND (tries > 0 OR next_try_at > NOW() OR sent_at IS NOT NULL OR gave_up_at IS NOT NULL)")->fetchColumn() === 1;
+$probe80('$GLOBALS["__chb_test_prefix"] = "[SAMPLE] "; email_outbox_kick(); echo "\n" . json_encode(["ok" => 1]);');
+it_check('§80 a request sending samples leaves real queued mail alone', !$touched80());
+$probe80('people_mail_only("someone@example.com"); email_outbox_kick(); echo "\n" . json_encode(["ok" => 1]);');
+it_check('§80 …and so does one sending an email only to whoever asked for it', !$touched80());
+$probe80('email_outbox_kick(); echo "\n" . json_encode(["ok" => 1]);');
+it_check('§80 …while an ordinary request still retries it', $touched80());
+$rootDb->exec("DELETE FROM email_outbox WHERE id = $ob80");
+
+// (e) THE CHAT'S ONE-TAP SENDS SHARE THE BOOKING PAGE'S GUARD. They had none, and the
+// balance logged under its own name, so two taps in the chat (or one there and one on
+// the booking page) sent the same email two or three times. Mail is off here, so the
+// booking page's sends are recorded as it records them, and the chat is asked next.
+$aj80 = [];
+http($aj80, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-80-reset']);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Chat Eighty','chat80@example.com','" . $ukPlus(60) . "','" . $ukPlus(63) . "',2,0,'deposit',100,400,400,0,3)");
+$cb80 = (int) $rootDb->lastInsertId();
+$rootDb->prepare('INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, ?, ?)')->execute(['it80c-' . bin2hex(random_bytes(6)), 'Chat Eighty', 'chat80@example.com']);
+$ct80 = (int) $rootDb->lastInsertId();
+// Stamped on the APP's clock (Europe/London, as db.php sets the connection): this
+// connection's NOW() is the server's, an hour behind in summer — "a moment ago" read
+// as an hour ago, and the guard rightly let the send through.
+$now80 = (new DateTime('now', new DateTimeZone('Europe/London')))->format('Y-m-d H:i:s');
+$seed80 = $rootDb->prepare("INSERT INTO activity_log (category, action, summary, actor, entity, entity_id, created_at) VALUES ('comms', ?, 'sent from the booking page', 'owner', 'booking', ?, ?)");
+$seed80->execute(['email.arrival', (string) $cb80, $now80]);
+$r = http($aj80, 'POST', '/messages.php', ['action' => 'send_arrival', 'thread_id' => $ct80, 'booking_id' => $cb80]);
+it_check('§80 the chat will not send an arrival email the booking page sent a moment ago', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'already_sent', $r['code'] . ' ' . $r['raw']);
+$seed80->execute(['payment.request', (string) $cb80, $now80]);
+$r = http($aj80, 'POST', '/messages.php', ['action' => 'send_balance', 'thread_id' => $ct80, 'booking_id' => $cb80]);
+it_check('§80 …nor a payment request', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'already_sent', $r['code'] . ' ' . $r['raw']);
+it_check('§80 …and posts nothing into the conversation for a send that did not happen', (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id = $ct80")->fetchColumn() === 0);
+$rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id = '$cb80'");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $ct80");
+$rootDb->exec("DELETE FROM bookings WHERE id = $cb80");
+
+// (f) THE NOTES ASKING AN ENQUIRER BACK HONOUR THE UNSUBSCRIBE. An address that had
+// opted out got "Nearly there: finish your enquiry", with no link to stop the next.
+// Through the real nightly job: an opted-out enquiry and draft are set aside without a
+// send (stamped as dealt with), while an ordinary pair is still tried (mail is off
+// here, so a tried one fails cleanly and is left to try again: still NULL).
+$out80 = 'optout80@example.com';
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('email-optout', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode([$out80])]);
+$rootDb->exec("DELETE FROM content WHERE item_key = 'enquiry-nudge-off'");
+$eIns80 = $rootDb->prepare("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, created_at) VALUES (?, 'Nudge Eighty', ?, ?, ?, 2, 0, DATE_SUB(NOW(), INTERVAL 3 DAY))");
+$eIns80->execute([$propKey, $out80, $ukPlus(90), $ukPlus(93)]);
+$eOut80 = (int) $rootDb->lastInsertId();
+$eIns80->execute([$propKey, 'stay80@example.com', $ukPlus(95), $ukPlus(98)]);
+$eIn80 = (int) $rootDb->lastInsertId();
+$dIns80 = $rootDb->prepare("INSERT INTO enquiry_drafts (email, prop_key, name, check_in, check_out, created_at, updated_at) VALUES (?, ?, 'Draft Eighty', ?, ?, DATE_SUB(NOW(), INTERVAL 5 HOUR), DATE_SUB(NOW(), INTERVAL 5 HOUR))");
+$dIns80->execute(['optdraft80@example.com', $propKey, $ukPlus(100), $ukPlus(102)]);
+$dOut80 = (int) $rootDb->lastInsertId();
+$dIns80->execute(['draft80@example.com', $propKey, $ukPlus(104), $ukPlus(106)]);
+$dIn80 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'email-optout'")->execute([json_encode([$out80, 'optdraft80@example.com'])]);
+$r = http($guest, 'GET', '/enquiry-nudge.php?cron=' . $SECRET);
+$st80 = fn($sql) => $rootDb->query($sql)->fetchColumn();
+it_check('§80 the follow-up to an enquiry from an opted-out address is set aside, never sent', $r['code'] === 200 && $st80("SELECT nudge_sent_at FROM enquiries WHERE id = $eOut80") !== null, $r['raw']);
+it_check('§80 …and so is the rescue of an opted-out address\'s abandoned enquiry', $st80("SELECT nudged_at FROM enquiry_drafts WHERE id = $dOut80") !== null);
+it_check('§80 …while an ordinary enquiry and draft are not set aside', $st80("SELECT nudge_sent_at FROM enquiries WHERE id = $eIn80") === null && $st80("SELECT nudged_at FROM enquiry_drafts WHERE id = $dIn80") === null);
+$rootDb->exec("DELETE FROM enquiries WHERE id IN ($eOut80, $eIn80)");
+$rootDb->exec("DELETE FROM enquiry_drafts WHERE id IN ($dOut80, $dIn80)");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'email-optout'");
 
 echo "\n== Summary ==\n";
 if ($fail) {

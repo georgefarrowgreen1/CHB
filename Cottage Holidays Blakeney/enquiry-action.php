@@ -3,8 +3,11 @@
 //  enquiry-action.php — one-tap approve / decline from the owner's email.
 //
 //  The new-enquiry email carries links here signed with an HMAC over the
-//  enquiry id + action (enquiry_action_token in enquiry-actions.php), so the
-//  link itself is the authorisation — no login needed on the owner's phone.
+//  enquiry id + action + the person the copy was built for
+//  (enquiry_action_token in enquiry-actions.php), so the link itself is the
+//  authorisation — no login needed on the owner's phone — and it is still
+//  that person's: whoever they are must be someone who may approve enquiries
+//  NOW, or the link does nothing.
 //
 //  Two-step on purpose: GET shows a confirmation page (mail scanners and
 //  link previewers prefetch GETs, so a GET must never act); pressing the
@@ -21,6 +24,7 @@ header('Content-Type: text/html; charset=utf-8');
 $id = (int) ($_GET['id'] ?? ($_POST['id'] ?? 0));
 $action = (string) ($_GET['a'] ?? ($_POST['a'] ?? ''));
 $token = (string) ($_GET['t'] ?? ($_POST['t'] ?? ''));
+$pid = (int) ($_GET['p'] ?? ($_POST['p'] ?? 0));
 $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
 // Minimal branded page (standalone — must work even if the app shell is broken).
@@ -47,12 +51,40 @@ function ea_page($title, $bodyHtml)
 if (
     $id <= 0 ||
     !in_array($action, ['approve', 'decline'], true) ||
-    !hash_equals(enquiry_action_token($id, $action), $token)
+    $pid <= 0 ||
+    !hash_equals(enquiry_action_token($id, $action, $pid), $token)
 ) {
     http_response_code(403);
     ea_page(
         'Link not valid',
-        '<h1>That link isn&rsquo;t valid</h1><p>It may have been altered in transit. Open the enquiry from the Inbox in your back office instead.</p>',
+        '<h1>That link isn&rsquo;t valid</h1><p>It may be from an older email, or have been changed in transit. Open the enquiry from the Inbox in your back office instead.</p>',
+    );
+}
+
+// WHOSE LINK IT IS. Approving creates a booking and asks the guest for money, so the
+// link is only as good as its person's permission at the moment it is used: removed,
+// still invited or no longer allowed to approve, it does nothing (the in-app approve
+// would refuse them too). A link for someone who can't be found reads as not valid.
+$person = null;
+try {
+    $ps = db()->prepare('SELECT * FROM admins WHERE id = ?');
+    $ps->execute([$pid]);
+    $person = $ps->fetch() ?: null;
+} catch (\Throwable $e) {
+    $person = null;
+}
+if (!$person || !empty($person['removed_at']) || !empty($person['invited_at'])) {
+    http_response_code(403);
+    ea_page(
+        'Link not valid',
+        '<h1>That link isn&rsquo;t valid</h1><p>It no longer works. Open the enquiry from the Inbox in your back office instead.</p>',
+    );
+}
+if (!people_can($person, 'gu.approve')) {
+    http_response_code(403);
+    ea_page(
+        'Not switched on for you',
+        '<h1>Approving enquiries isn&rsquo;t switched on for you</h1><p>Ask whoever looks after Permissions to switch it on, or to answer this enquiry themselves.</p>',
     );
 }
 
@@ -122,6 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             '">' .
             '<input type="hidden" name="a" value="' .
             $esc($action) .
+            '"><input type="hidden" name="p" value="' .
+            (int) $pid .
             '"><input type="hidden" name="t" value="' .
             $esc($token) .
             '">' .
@@ -134,6 +168,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // POST: perform the action via the same shared logic the admin inbox uses.
 if ($action === 'decline') {
     enquiry_decline($id);
+    log_activity('enquiry', 'enquiry.decline', 'Enquiry declined (one-tap email) — ' . ($e['name'] ?? ''), [
+        'actor' => 'admin:' . $pid,
+        'prop_key' => $e['prop_key'] ?? '',
+        'entity' => 'enquiry',
+        'entity_id' => (string) $id,
+    ]);
     ea_page(
         'Declined',
         '<h1>Enquiry declined</h1><p>' .
@@ -153,7 +193,7 @@ if (!empty($r['error'])) {
 // previously logged NOTHING — a booking born from an email tap left no
 // approval entry in the audit trail.
 log_activity('enquiry', 'enquiry.approve', 'Enquiry approved (one-tap email) — ' . ($e['name'] ?? ''), [
-    'actor' => 'owner',
+    'actor' => 'admin:' . $pid, // credited to the person the link was built for
     'prop_key' => $e['prop_key'] ?? '',
     'entity' => 'enquiry',
     'entity_id' => (string) $id,

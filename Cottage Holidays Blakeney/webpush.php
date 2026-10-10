@@ -462,9 +462,9 @@ function notify_people()
 // unparseable = everything on, which is the behaviour before any of this existed.
 //   { money:bool, enquiries:bool, messages:bool, checkout:bool, system:bool,
 //     quietFrom:'HH:MM', quietTo:'HH:MM' }
-const NOTIFY_DEFAULTS = ['money' => true, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => ''];
+const NOTIFY_DEFAULTS = ['money' => true, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'arrivals' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => ''];
 // Someone added later starts with the guest-facing alerts on.
-const NOTIFY_DEFAULTS_LIMITED = ['money' => false, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'system' => false, 'quietFrom' => '', 'quietTo' => ''];
+const NOTIFY_DEFAULTS_LIMITED = ['money' => false, 'enquiries' => true, 'messages' => true, 'checkout' => true, 'arrivals' => true, 'system' => false, 'quietFrom' => '', 'quietTo' => ''];
 function notify_prefs()
 {
     static $cache = null;
@@ -542,14 +542,30 @@ function notify_should_push_for($row, $category)
     }
     return notify_prefs_allow(notify_prefs_for($row), $category);
 }
+// Who gets the email instead of a push that reached none of their devices. PURE.
+// The push has to have been MEANT for them now — their areas, their own mutes and
+// quiet hours (notify_should_push_for) — because a mute or a quiet hour is a choice,
+// not an unreachable phone: it was the reason a muted person, phone in hand, got the
+// email anyway, and an email at 2am in quiet hours buzzes the phone it was kept from.
+// $people: id => row (signed-in kind); $reached: id => devices that took it.
+function alert_fallback_ids(array $people, array $reached, $category)
+{
+    $ids = [];
+    foreach ($people as $id => $row) {
+        if (($reached[$id] ?? 0) === 0 && notify_should_push_for($row, (string) $category)) {
+            $ids[] = (int) $id;
+        }
+    }
+    return $ids;
+}
 // May this person be told about this category at all? (Their areas, not their
-// settings: the email fallback follows this.)
+// settings.)
 function notify_area_ok($row, $category)
 {
     if ($category === 'urgent') {
         return true;
     }
-    $cap = ['money' => 'mo.record', 'system' => 'owner'][$category] ?? 'all';
+    $cap = ['money' => 'mo.record', 'system' => 'owner', 'arrivals' => 'gu.reply'][$category] ?? 'all';
     return !isset($row['full_access']) || people_can($row, $cap);
 }
 
@@ -582,11 +598,12 @@ function alert_owner($title, $body, $opts = [])
     }, $reached);
     // NOBODY IS LISTENING. alert_owner has always returned the device count and
     // only the test button ever read it — so with permission revoked, the last
-    // subscription pruned, or a replaced phone, "Payment received" went nowhere
-    // and nothing said so. Anything that asks for the email fallback now gets one —
-    // PER PERSON: if it can't reach your phone, it comes to your email instead.
-    // Muting or quiet hours stop the buzz, not this (nothing is lost by muting);
-    // an area switched off for you takes its alerts, and this, with it.
+    // subscription pruned, or a replaced phone, an alert went nowhere and nothing
+    // said so. One that asks for the email fallback gets one, PER PERSON: if the
+    // push was meant for you and none of your devices took it, it comes to your
+    // email instead (alert_fallback_ids). Only an alert with NO email of its own
+    // asks: the new enquiry and the payment already send one to whoever chose it,
+    // and a fallback beside that was a second copy, or overrode the choice not to.
     if (!empty($opts['email'])) {
         try {
             require_once __DIR__ . '/mailer.php';
@@ -600,28 +617,32 @@ function alert_owner($title, $body, $opts = [])
                 }
             } else {
                 $to = [];
-                foreach ($people as $id => $row) {
-                    if (($reached[$id] ?? 0) === 0 && notify_area_ok($row, $category)) {
-                        $to[] = ['to' => admin_contact_email($row), 'name' => people_display_name($row)];
-                    }
+                foreach (alert_fallback_ids($people, $reached, $category) as $id) {
+                    $to[] = ['to' => admin_contact_email($people[$id]), 'name' => people_display_name($people[$id]), 'id' => $id];
                 }
                 // The extra addresses on Notifications, as before: when it reached no one at all.
                 if ($sent === 0) {
                     foreach (people_mail_extras() as $e) {
-                        $to[] = ['to' => $e, 'name' => 'Owner'];
+                        $to[] = ['to' => $e, 'name' => 'Owner', 'id' => 0];
                     }
                 }
                 $seen = [];
                 $msgs = [];
+                $ids = [];
                 foreach ($to as $t) {
                     $k = strtolower(trim((string) $t['to']));
                     if ($k !== '' && !isset($seen[$k])) {
                         $seen[$k] = true;
                         $msgs[] = ['to' => $k, 'name' => $t['name'], 'subject' => $m['subject'], 'text' => $m['text'], 'html' => owner_alert_text_html($m['subject'], $m['text'])];
+                        $ids[] = (int) $t['id'];
                     }
                 }
-                if ($msgs) {
-                    smtp_send_batch($msgs);
+                // A failed copy waits in the outbox like every other owner alert:
+                // in a mail outage "Calendar sync failing" left nothing behind.
+                foreach ($msgs ? smtp_send_batch($msgs) : [] as $i => $r) {
+                    if (empty($r['ok']) && email_queueable($r) && isset($msgs[$i])) {
+                        email_outbox_add('owner-alert', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], [], null, null, [], $r['error'] ?? '', $ids[$i] > 0 ? 'person:' . $ids[$i] : '');
+                    }
                 }
             }
         } catch (\Throwable $e) {

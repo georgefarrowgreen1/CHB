@@ -515,7 +515,7 @@ if ($action === 'submit') {
         // sends the email fallback, and the guest's form waited on all of it.
         try {
             require_once __DIR__ . '/webpush.php';
-            alert_owner('New enquiry', $alertBody, ['category' => 'enquiries', 'email' => true, 'tag' => 'enquiry-' . (int) $ownerCtx['id'], 'url' => './?open=enquiry-' . (int) $ownerCtx['id']]);
+            alert_owner('New enquiry', $alertBody, ['category' => 'enquiries', 'tag' => 'enquiry-' . (int) $ownerCtx['id'], 'url' => './?open=enquiry-' . (int) $ownerCtx['id']]);
         } catch (\Throwable $e) {
         }
         // Acknowledge the enquiry to the guest (best-effort).
@@ -568,18 +568,9 @@ if ($action === 'submit') {
                     $ownerCtx + [
                         'price' => $priceEst,
                         'prior_stays' => $priorStays,
-                        'approve_url' =>
-                            $base .
-                            'enquiry-action.php?id=' .
-                            $newId .
-                            '&a=approve&t=' .
-                            enquiry_action_token($newId, 'approve'),
-                        'decline_url' =>
-                            $base .
-                            'enquiry-action.php?id=' .
-                            $newId .
-                            '&a=decline&t=' .
-                            enquiry_action_token($newId, 'decline'),
+                        // Each copy's links are built for its own person (and only
+                        // for someone who may approve: the composer decides).
+                        'action_link' => fn($personId, $act) => enquiry_action_url($base, $newId, $act, $personId),
                     ],
                 );
             }

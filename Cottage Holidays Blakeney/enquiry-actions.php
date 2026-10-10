@@ -15,10 +15,19 @@ if (!function_exists('db')) {
     exit();
 } // library, not an endpoint
 
-// The HMAC that authorises an email action link for one enquiry + one action.
-function enquiry_action_token($id, $action)
+// The HMAC that authorises an email action link for one enquiry, one action and ONE
+// PERSON. Each copy of the new-enquiry email is built for the person it goes to, and
+// only someone who may approve gets the links; enquiry-action.php then asks again
+// whether that person still may, because a link outlives a permission. A link from
+// before the person was part of it no longer verifies.
+function enquiry_action_token($id, $action, $personId)
 {
-    return hash_hmac('sha256', 'enq-action|' . (int) $id . '|' . $action, APP_SECRET);
+    return hash_hmac('sha256', 'enq-action|' . (int) $id . '|' . $action . '|' . (int) $personId, APP_SECRET);
+}
+function enquiry_action_url($base, $id, $action, $personId)
+{
+    return $base . 'enquiry-action.php?id=' . (int) $id . '&a=' . rawurlencode((string) $action) . '&p=' . (int) $personId .
+        '&t=' . enquiry_action_token($id, $action, $personId);
 }
 
 function enquiry_decline($id)
@@ -342,7 +351,7 @@ function enquiry_approve($id, $priceOverride = null, $plan = [])
             $e['email'],
             'Booking confirmed 🎉',
             ($rate['name'] ?? 'Your cottage') . ' · ' . $e['check_in'] . ' to ' . $e['check_out'],
-            './',
+            './?open=stay', // their stay, not the homepage (the guest emails' "Open my booking")
         );
     } catch (\Throwable $ex) {
     }

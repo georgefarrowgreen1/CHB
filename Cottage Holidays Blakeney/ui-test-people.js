@@ -685,7 +685,7 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         await until(page, () => document.querySelectorAll('#notify-prefs-body .oa-swrow').length > 0);
         const kinds = () => page.evaluate(() => [...document.querySelectorAll('#notify-prefs-body .oa-swrow .ga-t')].map((e) => e.textContent));
         const nf = await kinds();
-        ok(nf.join() === 'Payments and money,New enquiries,Guest messages,Guest check-outs', `her alerts: money because she records payments, never the system notices (${nf.join(' · ')})`);
+        ok(nf.join() === 'Payments and money,New enquiries,Guest messages,Guest check-outs,Arrival emails to review', `her alerts: money because she records payments, the arrival email to review because she can send it, never the system notices (${nf.join(' · ')})`);
         ok((await page.evaluate(() => (document.querySelector('#notify-body .oa-r-emails .ga-s') || {}).textContent)) === '6 kinds, all to sophia@example.com', 'her Notifications say which emails reach her, and where');
         await page.click('#notify-body .oa-r-emails');
         await until(page, () => ((document.querySelector('#emails-body h1') || {}).textContent || '') === 'Emails you get');
@@ -714,7 +714,7 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         await setMe(sophiaWith({ 'mo.record': false }));
         await page.evaluate(() => renderNotifyPrefs());
         const nf2 = await kinds();
-        ok(nf2.join() === 'New enquiries,Guest messages,Guest check-outs', `without "Record payments" the money alerts go too (${nf2.join(' · ')})`);
+        ok(nf2.join() === 'New enquiries,Guest messages,Guest check-outs,Arrival emails to review', `without "Record payments" the money alerts go too (${nf2.join(' · ')})`);
         await setMe(SOPHIA);
         ok(await page.evaluate(() => /Sophia/.test(chbDaySentence().greet)), 'the greeting is hers');
         // Wide: the rail carries the menu, and follows the same permissions. The
