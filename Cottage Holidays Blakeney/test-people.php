@@ -99,35 +99,36 @@ ppl('an endpoint nobody listed is full access only (fails CLOSED)', $c('brand-ne
 ppl('an action nobody listed is full access only', $c('bookings.php', 'something_new') === 'owner');
 ppl('People & access is full access only', $c('people.php', 'list') === 'owner' && $c('people.php', 'invite') === 'owner');
 ppl('set-up and system are full access only', $c('diagnostics.php', 'run') === 'owner' && $c('backup.php', 'run') === 'owner' && $c('migrate.php', '') === 'owner' && $c('square-setup.php', 'setup') === 'owner' && $c('activity-log.php', 'list') === 'owner');
-ppl('the everyday: bookings, enquiries, messages, email, key safes, guests', $c('bookings.php', '') === 'all' && $c('bookings.php', 'update') === 'all' && $c('enquiries.php', 'decline') === 'all' && $c('messages.php', 'send') === 'all' && $c('mailbox.php', 'send') === 'all' && $c('keysafe.php', 'confirm') === 'all' && $c('auth.php', 'guest_crm') === 'all');
+// Permissions (approved demo v7): each action names the ONE permission it needs.
+ppl('the everyday: bookings, enquiries, messages, email, key safes, guests', $c('bookings.php', '') === 'all' && $c('bookings.php', 'update') === 'bk.edit' && $c('enquiries.php', 'decline') === 'gu.approve' && $c('messages.php', 'send') === 'gu.reply' && $c('mailbox.php', 'send') === 'gu.reply' && $c('keysafe.php', 'confirm') === 'ks.change' && $c('auth.php', 'guest_crm') === 'all');
 ppl('your own sign-in is always yours', $c('auth.php', 'admin_change_password') === 'all' && $c('passkeys.php', 'admin_register_begin') === 'all' && $c('auth.php', 'admin_notify_set') === 'all');
-ppl('asking for money is Take payments', $c('bookings.php', 'request_payment') === 'payments' && $c('bookings.php', 'set_payment') === 'payments' && $c('bookings.php', 'set_payment_plan') === 'payments' && $c('messages.php', 'send_balance') === 'payments');
-ppl('money going back is Refunds and deposits', $c('bookings.php', 'refund') === 'refunds' && $c('bookings.php', 'return_deposit') === 'refunds' && $c('bookings.php', 'keep_deposit') === 'refunds' && $c('bookings.php', 'confirm_return_settled') === 'refunds');
-ppl('the Payments screens are Money overview', $c('accounts.php', '') === 'money' && $c('expenses.php', 'add') === 'money' && $c('bookings.php', 'recent_payments') === 'money');
-ppl('prices and cottages', $c('rates.php', 'save') === 'prices' && $c('rates.php', 'create') === 'prices' && $c('ical-import.php', 'save_feeds') === 'prices' && $c('pricing-suggest.php', '') === 'prices');
-ppl('website and marketing', $c('experiences.php', 'save') === 'website' && $c('newsletter.php', 'broadcast') === 'website' && $c('optimize-hero.php', 'optimize') === 'website');
-ppl('blocking dates on the calendar is everyday; changing the feeds is not', $c('ical-import.php', 'add_block') === 'all' && $c('ical-import.php', 'save_feeds') === 'prices');
+ppl('asking for money is Ask for money; recording it is Record payments', $c('bookings.php', 'request_payment') === 'mo.ask' && $c('bookings.php', 'set_payment') === 'mo.record' && $c('bookings.php', 'set_payment_plan') === 'mo.ask' && $c('messages.php', 'send_balance') === 'mo.ask');
+ppl('money going back is Refunds, deposits are Deposits', $c('bookings.php', 'refund') === 'mo.refund' && $c('bookings.php', 'return_deposit') === 'mo.deposit' && $c('bookings.php', 'keep_deposit') === 'mo.deposit' && $c('bookings.php', 'confirm_return_settled') === 'mo.deposit');
+ppl('the Payments screens are See the money; expenses are their own', $c('accounts.php', '') === 'mo.view' && $c('expenses.php', 'add') === 'mo.exp' && $c('bookings.php', 'recent_payments') === 'mo.view');
+ppl('prices, cottage pages and calendar sync', $c('rates.php', 'save') === 'co.prices' && $c('rates.php', 'create') === 'co.pages' && $c('ical-import.php', 'save_feeds') === 'co.sync' && $c('pricing-suggest.php', '') === 'co.prices');
+ppl('website and marketing', $c('experiences.php', 'save') === 'we.content' && $c('newsletter.php', 'broadcast') === 'we.news' && $c('optimize-hero.php', 'optimize') === 'we.content');
+ppl('blocking dates on the calendar is a bookings permission; changing the feeds is not', $c('ical-import.php', 'add_block') === 'bk.block' && $c('ical-import.php', 'save_feeds') === 'co.sync');
 // The money hidden inside everyday actions.
-ppl('approving an enquiry is everyday…', $c('enquiries.php', 'approve', []) === 'all');
-ppl('…but approving it with an agreed price or plan is Take payments', $c('enquiries.php', 'approve', ['price_override' => '540']) === 'payments' && $c('enquiries.php', 'approve', ['deposit_pct' => 30]) === 'payments');
-ppl('agreeing an enquiry\'s terms is Take payments', $c('enquiries.php', 'set_terms') === 'payments');
-ppl('an email with a pay button is asking for money', $c('bookings.php', 'email_guest', ['buttons' => ['pay']]) === 'payments' && $c('bookings.php', 'email_guest', ['buttons' => ['invoice']]) === 'all');
+ppl('approving an enquiry is Approve enquiries…', $c('enquiries.php', 'approve', []) === 'gu.approve');
+ppl('…but approving it with an agreed price or plan needs Ask for money too', $c('enquiries.php', 'approve', ['price_override' => '540']) === 'gu.approve+mo.ask' && $c('enquiries.php', 'approve', ['deposit_pct' => 30]) === 'gu.approve+mo.ask');
+ppl('agreeing an enquiry\'s terms is Ask for money', $c('enquiries.php', 'set_terms') === 'mo.ask');
+ppl('an email with a pay button is asking for money too', $c('bookings.php', 'email_guest', ['buttons' => ['pay']]) === 'gu.reply+mo.ask' && $c('bookings.php', 'email_guest', ['buttons' => ['invoice']]) === 'gu.reply');
 
 echo "\n== §10 content keys ==\n";
 $k = fn($key) => people_content_cap($key);
 ppl('the host card, saved replies and guest chat are everyday', $k('host-name') === 'all' && $k('host-photo') === 'all' && $k('contact-phone') === 'all' && $k('email-templates') === 'all' && $k('chat-away-msg') === 'all' && $k('chat-ans-wifi') === 'all');
 ppl('what the back office remembers as you work is everyday', $k('duty-dismissed') === 'all' && $k('search-pins') === 'all' && $k('nlu-learned') === 'all');
-ppl('the home page and its menu are the website', $k('hero-title') === 'website' && $k('nav-home') === 'website' && $k('card1-title') === 'website' && $k('card-img-annex') === 'website' && $k('site-logo') === 'website');
-ppl('terms-title is the website, not a cottage text', $k('terms-title') === 'website');
-ppl('cottage pages, rules and rates are prices and cottages', $k('rules-21a') === 'prices' && $k('jollyboat-desc') === 'prices' && $k('images-pimpernel') === 'prices' && $k('21a-cancellation-policy') === 'prices' && $k('pricing-limits') === 'prices' && $k('ops-21a') === 'prices');
-ppl('payment plans are Take payments; moving money out is Money overview', $k('plan-presets') === 'payments' && $k('sweep-moved') === 'money');
+ppl('the home page and its menu are the website', $k('hero-title') === 'we.content' && $k('nav-home') === 'we.content' && $k('card1-title') === 'we.content' && $k('card-img-annex') === 'we.content' && $k('site-logo') === 'we.content');
+ppl('terms-title is the website, not a cottage text', $k('terms-title') === 'we.content');
+ppl('rules and rates are prices; cottage text, photos and notes are pages', $k('rules-21a') === 'co.prices' && $k('jollyboat-desc') === 'co.pages' && $k('images-pimpernel') === 'co.pages' && $k('21a-cancellation-policy') === 'co.prices' && $k('pricing-limits') === 'co.prices' && $k('ops-21a') === 'co.pages');
+ppl('payment plans are Ask for money; the money marks are See the money', $k('plan-presets') === 'mo.ask' && $k('sweep-moved') === 'mo.view');
 ppl('secrets and set-up are full access only', $k('bacs-details') === 'owner' && $k('apikey-tides') === 'owner' && $k('backup-passphrase') === 'owner' && $k('square-deposit-pct') === 'owner' && $k('notify-emails') === 'owner');
 ppl('a key nobody listed is full access only', $k('something-new') === 'owner');
 ppl('a write to content.php is decided by its key', people_cap_for('content.php', 'set', ['key' => 'bacs-details']) === 'owner' && people_cap_for('content.php', 'set', ['key' => 'host-bio']) === 'all');
 ppl('reading: a limited person sees the switches the everyday screens need…', people_content_readable($host, 'arrival-review') && people_content_readable($host, 'mailbox-new'));
 ppl('…and never a secret', !people_content_readable($host, 'bacs-details') && !people_content_readable($host, 'backup-passphrase') && !people_content_readable($host, 'apikey-twilio-sid') && !people_content_readable($host, 'sweep-balance'));
 ppl('full access reads everything', people_content_readable($owner, 'bacs-details'));
-ppl('uploads go by where they land', people_upload_cap('host-photo') === 'all' && people_upload_cap('gallery-21a') === 'prices' && people_upload_cap('content-hero-bg') === 'website' && people_upload_cap('') === 'owner');
+ppl('uploads go by where they land', people_upload_cap('host-photo') === 'all' && people_upload_cap('gallery-21a') === 'co.pages' && people_upload_cap('content-hero-bg') === 'we.content' && people_upload_cap('') === 'owner');
 
 echo "\n== §11 the table stays true to the files ==\n";
 $stale = [];
@@ -160,7 +161,7 @@ ppl('…and leaves full access alone', strpos($pe, 'people_is_full($me)') !== fa
 $bk = (string) file_get_contents(__DIR__ . '/bookings.php');
 ppl('a booking edit drops the money for someone without Take payments', substr_count($bk, 'people_strip_money($in);') === 2);
 $cancel = substr($bk, (int) strpos($bk, "if (\$action === 'cancel') {"), 3200);
-ppl('a cancellation that refunds asks for Refunds and deposits', strpos($cancel, "require_cap('refunds');") !== false);
+ppl('a cancellation that refunds asks for Refunds (the typed sum) and Deposits (the deposit it returns)', strpos($cancel, "require_cap('mo.refund');") !== false && strpos($cancel, "require_cap('mo.deposit');") !== false);
 
 echo "\n== §12 who gets which emails ==\n";
 // Each person chooses which kinds reach them; an area switched off takes its
@@ -180,8 +181,8 @@ $hostAll = ['mail_prefs' => json_encode($allMail)] + $host;
 ppl('a choice for an area switched off does not reach them (and comes back when it is switched on)', people_mail_gets($hostAll, 'ideas') === false && people_mail_gets(['caps' => json_encode(['website' => true])] + $hostAll, 'ideas') === true);
 ppl('an invite reaches no one yet', people_mail_gets(['invited_at' => '2026-10-01 09:00:00'] + $owner, 'enquiry') === false);
 ppl('a removed person gets nothing', people_mail_gets(['removed_at' => '2026-10-01 09:00:00'] + $owner, 'enquiry') === false);
-ppl('the lock says which switch, on whose page', people_mail_lock($host, 'ideas') === 'Sophia can’t get this yet. Switch on Website and marketing on Sophia’s page first.');
-ppl('…and why the backup is locked', people_mail_lock($host, 'backup') === 'Only someone with full access gets the backup. It’s everything on the site.');
+ppl('the lock says which switch, on whose page', people_mail_lock($host, 'ideas') === 'Sophia can’t get this yet. Switch on Home page and things to do in What Sophia can do first.');
+ppl('…and why the backup is locked', people_mail_lock($host, 'backup') === 'Only a Super User gets the backup. It’s everything on the site.');
 ppl('…and nothing is locked that can be had', people_mail_lock($host, 'enquiry') === '');
 // The must rule.
 $ownerOff = ['mail_prefs' => json_encode(['enquiry' => false] + $allMail)] + $owner;
@@ -192,7 +193,7 @@ ppl('guest messages and the backup must reach someone too', people_mail_must_pro
 ppl('an email that need not reach anyone can lose its last person', people_mail_must_problem([$owner], 1, 'analytics') === '' && people_mail_must_problem([$ownerOff], 1, 'booking') === '');
 $pay = people_mail_payload($host);
 ppl('the payload: choices, what may be had, what reaches them', $pay['mail'] === PEOPLE_MAIL_LIMITED && $pay['mailCan']['backup'] === false && $pay['mailCan']['enquiry'] === true && in_array('enquiry', $pay['mailGets'], true) && !in_array('ideas', $pay['mailGets'], true));
-ppl('the kinds travel in page order with their areas', array_column(people_mail_kinds(), 'k') === array_keys(PEOPLE_MAILS) && people_mail_kinds()[0] === ['k' => 'enquiry', 'cap' => 'all', 'must' => true]);
+ppl('the kinds travel in page order with their areas', array_column(people_mail_kinds(), 'k') === array_keys(PEOPLE_MAILS) && people_mail_kinds()[0] === ['k' => 'enquiry', 'cap' => 'gu.reply', 'must' => true]);
 // The WIRING: every sender names its kind (a sender left on send_owner reaches
 // only the people with full access).
 $mailer = (string) file_get_contents(__DIR__ . '/mailer.php');
@@ -218,7 +219,7 @@ foreach (['inbound-mail.php', 'mailbox-read.php'] as $f) {
 }
 ppl('a reply by email may come from anyone with a sign-in, and is credited to them' . ($replyWired ? ' — not in: ' . implode(', ', $replyWired) : ''), !$replyWired);
 $od = (string) file_get_contents(__DIR__ . '/owner-digest.php');
-ppl('the digest is composed without the money for someone without Money overview', strpos($od, "people_can(\$row, 'money')") !== false && strpos($od, "'noMoney' => true") !== false);
+ppl('the digest is composed without the money for someone without Money overview', strpos($od, "people_can(\$row, 'mo.view')") !== false && strpos($od, "'noMoney' => true") !== false);
 ppl('a digest asked for from the back office goes only to whoever asked, and does not stop Monday\'s', strpos($od, 'people_mail_only(admin_contact_email(admin_me()))') !== false && strpos($od, "people_mail_only() === ''") !== false);
 
 echo "\n== Summary ==\n";
