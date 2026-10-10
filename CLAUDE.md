@@ -727,7 +727,9 @@ Code: the "WHO ANSWERS" blocks in app.js (`chatTeam*`, `chatAva`, `chatHeadHtml`
   `chat-reply-time` setting, in its short form so it fits at 390px), or "Away until 7am" with a moon while the away
   reply would answer (`chat_away_state()`; only an away reply WITH hours knows when someone is back). Tapping it
   unfolds the people (`#chat-teamfold`, a 0fr grid fold) and a footnote: "Replies also reach you by email." for a
-  signed-in guest, else "Leave your email below and we can reply there too."
+  signed-in guest, else "Leave your email below and we can reply there too." **The hours are when the owner is
+  AROUND, so "until" is `chat-away-from`, the hour they start.** It read `chat-away-to` and said "Away until 10pm"
+  at 10:28pm (reported from a phone); §81 had pinned the wrong end and was re-aimed.
 - **A signed-in guest's stay is pinned** under the header (`chatPinStay`: the stay in progress, else the soonest
   upcoming, never a finished one): a 44px button that opens it (`chatOpenStay`).
 - **A run reads as one**: the name above its first bubble, the face and time under its last; a run is one author on

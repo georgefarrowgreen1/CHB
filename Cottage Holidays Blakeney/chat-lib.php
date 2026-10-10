@@ -185,7 +185,9 @@ if (!function_exists('chat_away_at')) {
 }
 // What the chat's header says about now. Only an away reply WITH hours knows when
 // someone is back, so only that reads "Away until 7am"; the hour is sent as a number
-// and the page words it.
+// and the page words it. The hours are when the owner is AROUND, so someone is back
+// when they START ('chat-away-from'). Reading the end said "Away until 10pm" at
+// 10:28pm, an hour already past.
 if (!function_exists('chat_away_state')) {
     function chat_away_state()
     {
@@ -195,7 +197,7 @@ if (!function_exists('chat_away_state')) {
             content_value('chat-away-to'),
             (int) date('G'),
         );
-        return ['on' => $s === 'away', 'until' => $s === 'away' ? (int) content_value('chat-away-to') : null];
+        return ['on' => $s === 'away', 'until' => $s === 'away' ? (int) content_value('chat-away-from') : null];
     }
 }
 // Every back-office person, once a request ($fresh after a change).
