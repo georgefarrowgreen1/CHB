@@ -287,7 +287,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   for (let i = 1; i <= 4; i++) { await mid.mouse.move(b.x + b.w - 40 - i * 30, b.y + b.h / 2); await mid.waitForTimeout(12); }
   const held = await mid.evaluate(() => { renderNeedsYou(); const r = document.querySelector('.ny-row[data-nykey="register:91"]'); return !!(r && r.__mark); });
   ok(held, 'a render that lands mid-drag leaves the dragged row in place');
-  for (let i = 5; i <= 12; i++) { await mid.mouse.move(b.x + b.w - 40 - i * 30, b.y + b.h / 2); await mid.waitForTimeout(12); }
+  // Far enough that DISTANCE decides it (past 35% of the row, measured from where the
+  // drag took hold). At 1280 the row is ~1100px, and a fixed 12 steps reached only
+  // 330px, so the dismissal rested on the drag also being fast enough to count as a
+  // flick, which a loaded runner is not (main failed this 4 runs in 4 under load).
+  const last = Math.max(12, Math.ceil((b.w * 0.5) / 30) + 2);
+  for (let i = 5; i <= last; i++) { await mid.mouse.move(b.x + b.w - 40 - i * 30, b.y + b.h / 2); await mid.waitForTimeout(12); }
   await mid.mouse.up();
   ok(await gone(mid, 'register:91') && saves.length === 1, '…and the swipe still ends in its dismissal');
   ok(await mid.evaluate(() => !document.querySelector('.ny-row[data-nykey="register:91"]') && !!document.querySelector('.ny-row[data-nykey="register:92"]')), 'the deferred render ran once the finger lifted');
