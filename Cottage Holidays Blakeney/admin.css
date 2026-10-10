@@ -10054,6 +10054,9 @@ body.light-mode #gc-sheet .gc-chat { --chat-ground: rgb(248, 248, 250); backgrou
 .oa-dev-here { color: var(--ok-text); font-weight: 600; }
 .oa-dev-here i { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--ok); vertical-align: 1px; }
 .oa-dev-note { margin-top: 8px; }
+/* The host hides the Devices card from `.ga-group + .ga-group`, so the card after it (a
+   person's reset and remove, about something else) touched it: it takes a section's gap. */
+:is(#oa-dev-host, #oa-pdev-host) + .ga-group { margin-top: 24px; }
 /* The sheet's facts are reference lines, not controls: the value on the right in ink. */
 .oa-dev-fact { min-height: 44px; padding-top: 12px; padding-bottom: 12px; }
 .oa-dev-fact .ga-v { color: var(--text-light); text-align: right; }

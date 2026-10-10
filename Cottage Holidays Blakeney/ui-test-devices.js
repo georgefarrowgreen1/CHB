@@ -8,7 +8,8 @@
 //  §4 this device's sheet offers Log out, never a sign-out from here
 //  §5 signing out of all other devices: one ask, counted; the note that follows
 //  §6 a list that may not be complete yet keeps the way out on offer, with no note
-//  §7 a Super User on someone's page: their devices, and signing them out everywhere
+//  §7 a Super User on someone's page: their devices, and signing them out everywhere;
+//     the reset-and-remove card below sits a section's gap away, not touching
 //  §8 the new-sign-in alert's link opens the device; one already gone says so
 //  §9 a list that couldn't load says so and tries again; an answer with no list
 //     is never "Not signed in anywhere"; a device signed out from elsewhere is
@@ -239,6 +240,16 @@ const ok = (b, m) => {
     // The fixture was stamped when the run began, so a slow machine can add a minute.
     ok(r.length === 3 && r[0].t === 'iPhone · Safari' && /^Active 1[2-4] minutes ago$/.test(r[0].s) && !r[0].here, `Ivy's devices, none of them "this device" (${r.map((x) => x.t + ' — ' + x.s).join(', ')})`);
     ok(r[2].t === 'Sign Ivy out everywhere' && r[2].danger, 'and "Sign Ivy out everywhere"');
+    // Layout offsets, not rects: the page may still be sliding in.
+    const gapBelow = () =>
+        page.evaluate(() => {
+            const host = document.getElementById('oa-pdev-host');
+            const g = host && host.querySelector('.ga-group');
+            const next = host && host.nextElementSibling;
+            return g && next ? next.offsetTop - (g.offsetTop + g.offsetHeight) : null;
+        });
+    const gap1 = await gapBelow();
+    ok(gap1 === 24, `the reset-and-remove card sits a section's gap below the Devices card (${gap1}px)`);
     ok(devPosts('list').some((p) => p.b.id === 2), 'her list is asked for by her id');
     await page.click('#oa-pdev-host .oa-dev:nth-child(1)');
     await page.waitForTimeout(400);
@@ -263,6 +274,8 @@ const ok = (b, m) => {
     ok(sa2 && sa2.b.id === 2 && !sa2.b.push_endpoint, 'it posts HER id, and never this device\'s alerts');
     ok(r.length === 1 && r[0].t === 'Not signed in anywhere' && r[0].s === 'Ivy can sign in with a password, a passkey or an emailed code', `then: "${r[0] && r[0].t}"`);
     ok(/Signed Ivy out everywhere/.test(await toastText()), 'and the toast says so');
+    const gap2 = await gapBelow();
+    ok(gap2 === 24, `and keeps that gap once she is signed in nowhere (${gap2}px)`);
 
     console.log('§8 the new-sign-in alert\'s link');
     st.devs = fresh();
