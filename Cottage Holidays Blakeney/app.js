@@ -5345,7 +5345,10 @@ function openGuestAuthModal() {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay('account');
     } catch (e) {}
     setTimeout(() => {
-        const el = /** @type {HTMLElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden]), #ga-auth .ga-big'));
+        // Never the read-only sign-in name a password step carries for password
+        // managers: a fast invite/reset link check lets authGo focus the new
+        // password first, and this later timer must not take the caret back.
+        const el = /** @type {HTMLElement|null} */ (document.querySelector('#ga-auth input:not([type=hidden]):not([readonly]), #ga-auth .ga-big'));
         if (el) el.focus();
     }, 120);
 }

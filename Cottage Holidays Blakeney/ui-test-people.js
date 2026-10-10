@@ -88,7 +88,7 @@ function shape(row, viewerId) {
         photo: '',
         state: row.state,
         you: row.id === viewerId,
-        seen: row.seen || '',
+        seen: (typeof row.seen === 'function' ? row.seen() : row.seen) || '',
         invited: row.state === 'invited' ? '2026-10-08 10:00:00' : '',
         removed: row.state === 'removed' ? '2026-10-08 10:00:00' : '',
         passkeys: row.passkeys || 0,
@@ -106,7 +106,7 @@ const NOTIFY = { money: true, enquiries: true, messages: true, checkout: true, s
 // "Host · 4 changes" the live site shows for her.
 const GEORGE_ROW = { id: 1, name: 'George Farrow', email: 'george@example.com', username: 'george', full: true, state: 'active', passkeys: 0 };
 const SOPHIA_OWN = { 'mo.refund': false, 'mo.deposit': false, 'mo.view': false, 'mo.exp': false };
-const SOPHIA_ROW = { id: 2, name: 'Sophia Hart', email: 'sophia@example.com', username: 'sophiahart', full: false, own: Object.assign({}, SOPHIA_OWN), state: 'active', seen: d(-1) + ' 09:41:00', passkeys: 1 };
+const SOPHIA_ROW = { id: 2, name: 'Sophia Hart', email: 'sophia@example.com', username: 'sophiahart', full: false, own: Object.assign({}, SOPHIA_OWN), state: 'active', seen: () => d(-1) + ' 09:41:00', passkeys: 1 }; // "yesterday" as of each answer, so midnight can't move it
 const GEORGE = meOf(GEORGE_ROW, NOTIFY);
 const SOPHIA = meOf(SOPHIA_ROW, Object.assign({}, NOTIFY, { money: false, system: false }));
 // Sophia with one permission changed — for §B's "this one decides that one" checks.
@@ -164,7 +164,6 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
     };
     const shown = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s); return !!e && e.getClientRects().length > 0; }, sel);
     const rowByTitle = (scope, t) => `${scope} .ga-row:has(.ga-t:text-is("${t}"))`;
-    const lastToast = (page) => page.evaluate(() => { const t = [...document.querySelectorAll('#app-toasts .toast:not(.toast-out)')].pop(); return t ? t.textContent.trim() : ''; });
     // Identical toasts are not stacked again, so a refusal check starts from none:
     // otherwise an EARLIER refusal's toast would answer for this one.
     const clearToasts = (page) => page.evaluate(() => document.querySelectorAll('#app-toasts .toast').forEach((t) => t.remove()));
@@ -331,7 +330,8 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         const split2 = (await listOf()).split;
         ok(split2.join() === 'Cottages & money: Money lands in George’s account', `…and Cottages & money says whose account the money lands in (${split2.join(' | ')})`);
 
-        // Who gets which emails: from Notifications, everyone's at once.
+        // Who gets which emails: from Notifications, everyone's at once. (Permissions
+        // has no row for it any more; a person's page carries an Emails fold instead.)
         await page.click('#people-body .oa-back');
         await page.click(rowByTitle('#acct-body', 'Notifications'));
         const sumOk = await until(page, () => ((document.querySelector('#notify-body .oa-r-emails .ga-s') || {}).textContent || '') === '9 kinds to you · 6 to Sophia · 9 to Ellie');
@@ -423,6 +423,7 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         ok(pp.last === 'Remove Sophia (danger)' && pp.pwField === 0, 'removing her is the last, destructive row — and no password is ever asked for');
 
         // Her emails fold open in place: only the ones she may have, a switch each.
+        // (The row used to open the matrix page above; the fold replaced it.)
         await page.click('#person-body .oa-fold > .ga-row:has(.ga-t:text-is("Emails"))');
         await until(page, () => !!document.getElementById('oa-mail-digest'));
         const fold = await page.evaluate(() => [...document.querySelectorAll('#person-body .oa-foldbody .oa-swrow')].map((r) => (r.querySelector('.ga-t') || {}).textContent + '=' + r.querySelector('input').checked));
@@ -432,7 +433,8 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         ok(!!sm2 && sm2.b.id === 2, 'a switch there sends that one email to her again');
         ok(await until(page, () => ((document.querySelector('#person-body .oa-fold > .ga-row .ga-s') || {}).textContent || '') === '6 of 6'), '…and the fold counts it');
 
-        // What Sophia can do: every permission, a switch each.
+        // What Sophia can do: every permission, a switch each (the five area switches
+        // that sat on her page became these 23, on a page of their own).
         await page.click('#person-body .oa-r-perms');
         await until(page, () => document.querySelectorAll('#perms-body .oa-prow').length > 0);
         const permsOf = () =>
@@ -483,7 +485,8 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         await page.click('#perms-body .oa-back');
         ok(await until(page, () => /As a Host/.test((document.querySelector('#person-body .oa-r-perms') || {}).textContent || '')), 'her page then says she is as a Host');
 
-        // The role: Super User asks first; Host does not.
+        // The role: Super User asks first; Host does not. (The old "Full access"
+        // switch became this one switcher.)
         await page.click('#person-body .oa-seg button:text-is("Super User")');
         await waitDlg(page, /Make Sophia a Super User/);
         ok(/do everything you can, including Permissions/.test(await page.evaluate(() => document.getElementById('glass-dialog-msg').innerText)), 'making her a Super User asks first, and says what it means');
@@ -696,6 +699,8 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         const mine = await mineOf();
         ok(mine.h1 === 'Emails you get' && /George chooses who gets which emails\. Yours come to sophia@example\.com\./.test(mine.lead), 'her page says who chooses, and where hers go');
         ok(mine.rows.join() === 'New enquiries,New bookings,Payments received,Guest messages,Reviews to approve,Weekly digest' && mine.togs === 0, `the emails she gets, read-only (${mine.rows.join(' · ')})`);
+        // (Notifications' shared #notify-emails-list is gone; the extra addresses live
+        // at the foot of the Super User's matrix, so that is what must not show here.)
         ok(!mine.extras, 'and the shared extra addresses are a Super User’s to see and change');
         ok(/without the money/.test(mine.digest), 'without "See the Payments page" her digest says it leaves out the money');
         await setMe(sophiaWith({ 'mo.view': true }));
@@ -762,25 +767,49 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         const step = () => page.evaluate(() => (document.querySelector('#ga-auth .ga-ah') || {}).textContent || '');
         const text = () => page.evaluate(() => (document.getElementById('ga-auth') || {}).textContent || '');
         const inBackOffice = () => page.evaluate(() => document.body.classList.contains('owner-mode') && !document.getElementById('guest-auth-modal').classList.contains('open'));
-        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(900);
+        // Every wait here is on the sheet's own state, never a clock.
+        const waitStep = (re) => until(page, (src) => new RegExp(src).test((document.querySelector('#ga-auth .ga-ah') || {}).textContent || ''), re.source);
+        const waitText = (re) => until(page, (src) => new RegExp(src).test((document.getElementById('ga-auth') || {}).textContent || ''), re.source);
+        const waitIn = () => until(page, () => document.body.classList.contains('owner-mode') && !document.getElementById('guest-auth-modal').classList.contains('open'));
+        const waitIdle = () => until(page, () => !document.querySelector('#ga-auth .is-busy'));
+        // A fresh page whose own session check has answered (signed out).
+        const fresh = async (url) => {
+            await page.goto(url || `${base}/index.html`, { waitUntil: 'domcontentloaded' });
+            await until(page, () => window.__me === null, null, 15000);
+        };
+        // The sheet on its email step, once it has focused itself (a form is typed
+        // into only after that — the glassDialog lesson).
+        const openSheet = async () => {
+            await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
+            await until(page, () => { const e = document.getElementById('login-email'); const a = document.getElementById('ga-auth'); return !!e && e.getClientRects().length > 0 && !!a && a.contains(document.activeElement); });
+        };
+        // The invite and reset steps arrive after the link check answers, and two of
+        // the sheet's own focus timers can still be pending then (openGuestAuthModal's
+        // at 120ms, authGo's at 60ms). Typing while one fires puts the keys in the
+        // wrong field. A timer queued now is ordered behind both, so this waits for
+        // them to have run — it is an ordering barrier, not a guess at a duration.
+        const settled = () => page.evaluate(() => new Promise((r) => setTimeout(r, 130)));
+        const toStep = async (id, re) => {
+            await page.fill('#login-email', id);
+            await page.click('#ga-auth [data-act="authContinue"]');
+            await waitStep(re);
+        };
+        await fresh();
         console.log('§C the sign-in page, for the back office');
         // A back-office route while signed out opens THE sign-in (there is one):
         // the old owner dialog never learned who had signed in.
         await page.evaluate(() => window.tryAccessBackOffice());
-        await page.waitForTimeout(900);
-        ok(await page.evaluate(() => document.getElementById('guest-auth-modal').classList.contains('open') && !!document.querySelector('#ga-auth #login-email') && !document.getElementById('admin-login-modal')), 'a back-office route while signed out opens the one sign-in sheet');
+        ok(await until(page, () => document.getElementById('guest-auth-modal').classList.contains('open') && !!document.querySelector('#ga-auth #login-email') && !document.getElementById('admin-login-modal')), 'a back-office route while signed out opens the one sign-in sheet');
         await page.evaluate(() => closeGuestAuthModal());
-        await page.waitForTimeout(300);
-        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
-        await page.waitForTimeout(300);
-        await page.fill('#login-email', 'sophiahart');
-        await page.click('#ga-auth [data-act="authContinue"]');
-        await page.waitForTimeout(300);
+        // Closing hands its history step back; opening again waits for that to land.
+        await until(page, () => !document.getElementById('guest-auth-modal').classList.contains('open') && !__overlayClosing);
+        await openSheet();
+        await toStep('sophiahart', /Your password/);
         ok(/Your password/.test(await step()) && /Forgotten your password\?/.test(await text()), 'a username goes to the password, with a way to reset it');
         // WHAT A PASSWORD MANAGER SEES. The username was a type="hidden" input, which
         // managers skip, so a phone filed the password under no address and offered
         // the wrong one back (a guest account's, on the same address) next time.
+        await until(page, () => document.activeElement === document.getElementById('login-password'));
         const pmf = await page.evaluate(() => {
             const u = /** @type {HTMLInputElement} */ (document.getElementById('login-email'));
             const p = /** @type {HTMLInputElement} */ (document.getElementById('login-password'));
@@ -790,94 +819,96 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         ok(pmf.focus, '…and the caret starts in the password, not the read-only name');
         await page.fill('#login-password', 'sophias own passphrase');
         await page.press('#login-password', 'Enter');
-        await page.waitForTimeout(500);
-        ok(posts.some((p) => p.b.action === 'admin_login' && p.b.username === 'sophiahart'), 'Return signs in (the form submits)');
+        ok(!!(await sent(posts, (p) => p.b.action === 'admin_login' && p.b.username === 'sophiahart')), 'Return signs in (the form submits)');
+        await waitStep(/Check your email/);
         ok(/Check your email/.test(await step()) && /This device is new to your sign-in, so we sent a 6-digit code to s•••••@example\.com/.test(await text()), 'a new device asks for a code, sent to HER inbox (masked)');
         ok(!/Use a password instead/.test(await text()) && !(await page.evaluate(() => !!document.querySelector('.modal-overlay.open:not(#guest-auth-modal)'))), 'in the same sheet, with no detour to another dialog');
         await page.fill('#ga-code', '111111');
-        await page.waitForTimeout(400);
-        ok(/isn’t right/.test(await text()), 'a wrong code says so');
+        ok(await waitText(/isn’t right/), 'a wrong code says so');
         await page.fill('#ga-code', '428913');
-        await page.waitForTimeout(700);
+        const signedIn = await waitIn();
         const twofa = posts.filter((p) => p.b.action === 'admin_2fa').pop();
-        ok(twofa && twofa.b.remember === true && (await inBackOffice()), 'the right code signs her in, and remembers this device');
-        ok(/won’t ask for a code again/.test(await page.evaluate(() => document.body.textContent)), 'and says the device is remembered');
+        ok(signedIn && twofa && twofa.b.remember === true, 'the right code signs her in, and remembers this device');
+        ok(await until(page, () => /won’t ask for a code again/.test(document.body.textContent)), 'and says the device is remembered');
 
         // THREE EQUAL WAYS IN: an emailed code (it alone signs her in), a password,
         // or a passkey. The code used to be followed by the password.
-        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(900);
+        await fresh();
         st.login = 'ok';
-        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
-        await page.waitForTimeout(300);
+        await openSheet();
         ok(await page.evaluate(() => !!document.querySelector('#ga-auth [data-act="passkeyLogin"]')), 'the first step offers a passkey');
-        await page.fill('#login-email', 'sophia@example.com');
-        await page.click('#ga-auth [data-act="authContinue"]');
-        await page.waitForTimeout(400);
+        await toStep('sophia@example.com', /Check your email/);
         ok(/Check your email/.test(await step()) && /Or tap the link in the same email/.test(await text()) && /Use a password instead/.test(await text()), 'her email gets a code, with a password as the other way');
         const beforeCode = posts.length;
         await page.fill('#ga-code', '515151');
-        await page.waitForTimeout(700);
-        ok((await inBackOffice()) && !/Your password/.test(await step()), 'the code alone signs her in: no password step after it');
+        ok((await waitIn()) && !/Your password/.test(await step()), 'the code alone signs her in: no password step after it');
         ok(!posts.slice(beforeCode).some((p) => p.b.action === 'admin_login' || p.b.action === 'guest_login') && (await page.evaluate(() => (window.__me || {}).id === 2)), '…as herself, with nothing more asked of the server');
 
         // A PASSWORD STILL WORKS, from the code step. With an email, a forgotten
         // password needs no reset: the code is the way back in.
-        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(900);
-        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
-        await page.waitForTimeout(300);
-        await page.fill('#login-email', 'sophia@example.com');
-        await page.click('#ga-auth [data-act="authContinue"]');
-        await page.waitForTimeout(400);
+        await fresh();
+        await openSheet();
+        await toStep('sophia@example.com', /Check your email/);
         await page.click('#ga-auth [data-act="authToPassword"]');
-        await page.waitForTimeout(300);
+        await waitStep(/Your password/);
         ok(/Your password/.test(await step()) && /Email me a code instead/.test(await text()) && !/confirmed/.test(await text()), 'the password is one tap from the code, and the code one tap back');
         st.login = 'wrong';
         const beforeWrong = posts.length;
         await page.fill('#login-password', 'not her password');
         await page.click('#ga-auth [data-submit="authPasswordGo"]');
-        await page.waitForTimeout(600);
+        await waitText(/don’t match/);
+        await waitIdle();
         ok(/don’t match/.test(await text()) && !(await inBackOffice()) && (await page.evaluate(() => !currentGuest)), 'a wrong password signs nobody in, and says so');
         ok(posts.slice(beforeWrong).some((p) => p.b.action === 'admin_login' && p.b.username === 'sophia@example.com'), '…having asked the back office first');
         st.login = 'ok';
         await page.fill('#login-password', 'sophias own passphrase');
         await page.click('#ga-auth [data-submit="authPasswordGo"]');
-        await page.waitForTimeout(600);
-        ok(await inBackOffice(), 'and with the right password, she is in');
+        ok(await waitIn(), 'and with the right password, she is in');
 
         // A forgotten password, from her username: a link to her own inbox, and the
         // page never says whether the sign-in exists.
-        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(900);
-        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
-        await page.waitForTimeout(300);
-        await page.fill('#login-email', 'sophiahart');
-        await page.click('#ga-auth [data-act="authContinue"]');
-        await page.waitForTimeout(300);
+        await fresh();
+        await openSheet();
+        await toStep('sophiahart', /Your password/);
         await page.click('#ga-auth [data-act="authForgot"]');
-        await page.waitForTimeout(400);
+        await waitText(/If sophiahart has a back-office sign-in/);
         ok(posts.some((p) => p.b.action === 'admin_reset_request' && p.b.id === 'sophiahart') && /If sophiahart has a back-office sign-in, we’ve sent a link/.test(await text()), 'a forgotten password sends a link — the page never says whether the sign-in exists');
 
         // A switched-off sign-in says so, and is never tried as a guest.
-        await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(900);
+        await fresh();
         st.login = 'removed';
-        await page.evaluate(() => { localStorage.removeItem('chb-last-guest'); openGuestAuthModal(); });
-        await page.waitForTimeout(300);
-        await page.fill('#login-email', 'sophiahart');
-        await page.click('#ga-auth [data-act="authContinue"]');
-        await page.waitForTimeout(300);
+        await openSheet();
+        await toStep('sophiahart', /Your password/);
         await page.fill('#login-password', 'sophias own passphrase');
         const before = posts.length;
         await page.click('#ga-auth [data-submit="authPasswordGo"]');
-        await page.waitForTimeout(500);
+        await waitText(/switched off/);
+        await waitIdle();
         ok(/This sign-in has been switched off\. Ask George if you need it back\./.test(await text()), 'a switched-off sign-in says so, and who to ask');
         ok(!posts.slice(before).some((p) => p.b.action === 'guest_login'), '…and is never tried as a guest sign-in');
 
+        // THE CARET ON A LINK THAT CHECKS OUT AT ONCE. maybeAdminLink opens the sheet,
+        // asks the server about the link, then moves to the invite step; when that
+        // answer lands inside 60ms (a fast connection), the open's own 120ms focus
+        // timer fires AFTER the step's and puts the caret in the read-only sign-in
+        // name (#ga-user) instead of the new password — the field the step's own
+        // focus deliberately skips. Modelled here without the network so the order
+        // of the two timers is the only thing deciding it.
+        await fresh();
+        const caret = await page.evaluate(async () => {
+            openGuestAuthModal();
+            Object.assign(AU, { link: '2.' + 'd4'.repeat(24), first: 'Sophia', username: 'sophiahart', loginId: 'sophia@example.com', by: 'George' });
+            authGo('invite'); // what maybeAdminLink does once admin_link_check has answered
+            await new Promise((r) => setTimeout(r, 150)); // queued behind both focus timers
+            const a = /** @type {HTMLInputElement} */ (document.activeElement);
+            return a ? (a.id || a.tagName) + (a.readOnly ? ' (read-only)' : '') : '';
+        });
+        ok(caret === 'ga-new', `an invite that checks out at once leaves the caret in the new password, not the read-only name (${caret})`);
+
         // The invite link: she chooses her own password, then is offered a passkey.
-        await page.goto(`${base}/index.html?invite=2.${'a1'.repeat(24)}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1200);
+        await fresh(`${base}/index.html?invite=2.${'a1'.repeat(24)}`);
+        await waitStep(/Welcome, Sophia/);
+        await settled();
         ok(/Welcome, Sophia/.test(await step()) && /George has given you a sign-in/.test(await text()), 'the invite greets her by name and says who');
         // The password she chooses (or the phone suggests) is filed under the address
         // she signs in with, so the phone offers it back at the next sign-in.
@@ -891,38 +922,35 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         await page.fill('#ga-new', 'short');
         await page.fill('#ga-new2', 'short');
         await page.click('#ga-auth [data-submit="authNewPassword"]');
-        await page.waitForTimeout(200);
-        ok(/at least 12 characters/.test(await text()) && !posts.some((p) => p.b.action === 'admin_invite_accept'), 'a short password is refused before anything is sent');
+        ok((await waitText(/at least 12 characters/)) && !posts.some((p) => p.b.action === 'admin_invite_accept'), 'a short password is refused before anything is sent');
         await page.fill('#ga-new', 'sophias own passphrase');
         await page.fill('#ga-new2', 'sophias other phrase');
         await page.click('#ga-auth [data-submit="authNewPassword"]');
-        await page.waitForTimeout(200);
-        ok(/don’t match/.test(await text()), 'two that do not match are refused');
+        ok(await waitText(/don’t match/), 'two that do not match are refused');
         await page.fill('#ga-new', 'sophias own passphrase');
         await page.fill('#ga-new2', 'sophias own passphrase');
         await page.click('#ga-auth [data-submit="authNewPassword"]');
-        await page.waitForTimeout(500);
-        const acc = posts.filter((p) => p.b.action === 'admin_invite_accept').pop();
+        const acc = await sent(posts, (p) => p.b.action === 'admin_invite_accept');
         ok(acc && acc.b.link === '2.' + 'a1'.repeat(24) && acc.b.password === 'sophias own passphrase', 'saving sends the link and her password');
-        ok(/Sign in with a passkey next time\?/.test(await step()), 'then a passkey is offered');
+        ok(await waitStep(/Sign in with a passkey next time\?/), 'then a passkey is offered');
         await page.click('#ga-auth [data-act="authOfferSkip"]');
-        await page.waitForTimeout(500);
-        ok((await inBackOffice()) && /add a passkey any time/.test(await page.evaluate(() => document.body.textContent)), '“Not now” lands her in the back office, saying where to add one later');
+        ok((await waitIn()) && (await until(page, () => /add a passkey any time/.test(document.body.textContent))), '“Not now” lands her in the back office, saying where to add one later');
 
         // The reset link.
-        await page.goto(`${base}/index.html?areset=2.${'b2'.repeat(24)}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1200);
+        await fresh(`${base}/index.html?areset=2.${'b2'.repeat(24)}`);
+        await waitStep(/Choose a new password/);
+        await settled();
         ok(/Choose a new password/.test(await step()) && /Saving it signs you out on your other devices/.test(await text()), 'a reset link asks for a new password, saying what saving does');
         await page.fill('#ga-new', 'a brand new passphrase');
         await page.fill('#ga-new2', 'a brand new passphrase');
         await page.click('#ga-auth [data-submit="authNewPassword"]');
-        await page.waitForTimeout(600);
-        ok((await inBackOffice()) && posts.some((p) => p.b.action === 'admin_reset_save'), 'saving it signs her in');
+        const resetIn = await waitIn();
+        ok(resetIn && posts.some((p) => p.b.action === 'admin_reset_save'), `saving it signs her in${resetIn ? '' : ' (the sheet says: ' + (await text()).slice(0, 160) + ')'}`);
 
         // A dead link says so, on the email step.
         st.link = 'dead';
-        await page.goto(`${base}/index.html?invite=2.${'c3'.repeat(24)}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1200);
+        await fresh(`${base}/index.html?invite=2.${'c3'.repeat(24)}`);
+        await waitText(/invite link has been used or has expired/);
         ok(/Sign in or create an account/.test(await step()) && /invite link has been used or has expired\. Ask George/.test(await text()), 'a used or expired link says so, and who to ask');
 
         // THE CODE EMAIL'S ONE-TAP LINK. The code screen says "or tap the link in the
@@ -930,9 +958,9 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         // which signs in the device that opened it.
         const beforeLink = posts.length;
         await page.goto(`${base}/index.html?signin=${encodeURIComponent('sophia@example.com')}&code=515151`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1400);
-        ok(posts.slice(beforeLink).some((p) => p.b.action === 'guest_code_verify' && p.b.email === 'sophia@example.com' && p.b.code === '515151'), 'the code email’s link checks its code, as if typed');
-        ok((await inBackOffice()) && (await page.evaluate(() => !/signin=|code=/.test(location.search))), '…signs her in, and leaves the address bar');
+        const linked = await sent(posts, (p) => posts.indexOf(p) >= beforeLink && p.b.action === 'guest_code_verify', 10000);
+        ok(!!linked && linked.b.email === 'sophia@example.com' && linked.b.code === '515151', 'the code email’s link checks its code, as if typed');
+        ok((await waitIn()) && (await page.evaluate(() => !/signin=|code=/.test(location.search))), '…signs her in, and leaves the address bar');
         await page.close();
     }
 

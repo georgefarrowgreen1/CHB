@@ -18932,6 +18932,13 @@ async function splitLoad() {
     pmRenderList();
     if (!__pmOpen && pmWide()) pmRenderDetail();
     try { if (settingsShowing('split')) renderSplitSettings(); } catch (e) {}
+    // Permissions' "Cottages & money" row states whose account the money lands in;
+    // its words are patched where they stand (the oaPeoplePatch rule) or the row
+    // keeps its placeholder until something else repaints the page.
+    try {
+        const sub = document.querySelector('#people-body .oa-r-split .ga-s');
+        if (sub && sub.textContent !== oaSplitSummary()) sub.textContent = oaSplitSummary();
+    } catch (e) {}
 }
 const pmSplitOn = () => !!(__split && __split.on);
 // 'paid' (only what has been sent to them), 'holder' (the account's side) or 'all'.
@@ -32837,6 +32844,7 @@ function ibCtxHtml(p) {
             <div class="ib-kv"><span>Party</span><span>${ibEsc(enq.guests || '')}</span></div>
             ${f.total != null ? `<div class="ib-kv"><span>Quote</span><span>${gbp(f.total)}</span></div>` : ''}
             ${p.enq && f.deposit != null ? `<div class="ib-kv"><span>${f.inWindow ? 'Asked on approval' : 'Deposit on approval'}</span><span>${gbp(f.deposit)}</span></div>` : ''}</div>`;
+        if (!p.enq) h += '<button type="button" class="ib-btn" data-ib="undecline">Put back in Waiting</button>';
     }
     if (n) {
         const sorted = p.bookings.slice().sort((a, b) => String(b.b.checkIn).localeCompare(String(a.b.checkIn)));
@@ -33418,7 +33426,19 @@ function ibRecord(p) {
     const s = ibCurrentStay(p);
     if (s) { openBookingHub(s.b.id); return; }
     const q = p.enq || p.declined[0];
-    if (q && p.enq) openEnquiryHub(q.id);
+    if (q && p.enq) { openEnquiryHub(q.id); return; }
+    // A declined enquiry has no page of its own: the way back is to put it back in
+    // Waiting. That used to live only in the old drawer, so once the Undo toast had
+    // gone a decline could not be reversed from the Inbox at all.
+    if (q) ibUndecline(p);
+}
+async function ibUndecline(p) {
+    const q = p && p.declined && p.declined[0];
+    if (!q) return;
+    const ok = await glassConfirm(`Put ${ibFirst(p)}’s enquiry back in Waiting? It goes back to being yours to approve or decline.`, 'Put back in Waiting');
+    if (!ok) return;
+    await restoreDeclinedEnquiry(q.dbId, q.name || p.name);
+    ibSoon();
 }
 const IB_ACT = {
     open(arg, el) {
@@ -33663,6 +33683,10 @@ const IB_ACT = {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
         __ibMenuOpen = false;
         if (p) ibRecord(p);
+    },
+    undecline() {
+        const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
+        if (p) ibUndecline(p);
     },
     async delete() {
         const p = __ibOpen ? __ibPeopleMap.get(__ibOpen) : null;
@@ -35591,7 +35615,7 @@ const BKS_IC = {
 const __bks = {
     pmode: 'std', cmode: 'total', cTotal: null, cNight: null, cOff: null, why: '',
     nightsOpen: false, picking: '', view: [2026, 0], pick: { rcv: null, due: null },
-    returning: null, conf: true, confTouched: false, orig: null, clamped: '', wave: false, pop: '',
+    returning: null, conf: true, confTouched: false, orig: null, clamped: /** @type {any} */ (null), wave: false, pop: '',
 };
 const bksEl = (id) => document.getElementById(id);
 const bksR2 = (x) => Math.round(x * 100) / 100;
@@ -35665,7 +35689,9 @@ function bksClashFor(k, ci, co) {
     for (const b of dbBookings[k] || []) if (b.id !== self && b.checkIn < co && b.checkOut > ci) return b.name || 'a booking';
     for (const bl of dbBlocks[k] || []) {
         if (bl.checkIn < co && bl.checkOut > ci) {
-            return bl.source === 'owner' ? 'your own block' : `a ${otaSourceName(bl.source, 'platform')} stay`;
+            if (bl.source === 'owner') return 'your own block';
+            const plat = otaSourceName(bl.source, 'platform');
+            return `${/^[aeiou]/i.test(plat) ? 'an' : 'a'} ${plat} stay`;
         }
     }
     return null;
@@ -35693,7 +35719,7 @@ function bksReset(f) {
         cNight: null, cOff: null,
         why: f.priceReason || '',
         nightsOpen: false, picking: '', pick: { rcv: null, due: null },
-        returning: null, conf: mode === 'add', confTouched: false, clamped: '', wave: false, pop: '',
+        returning: null, conf: mode === 'add', confTouched: false, clamped: /** @type {any} */ (null), wave: false, pop: '',
     });
     const ref = /^\d{4}-\d{2}-\d{2}$/.test(f.checkIn || '') ? f.checkIn : todayDashed();
     __bks.view = [+ref.slice(0, 4), +ref.slice(5, 7) - 1];
@@ -35878,6 +35904,13 @@ function bksInput(e) {
         updateModalPrice();
         return;
     }
+    // The confirmation switch: a tap fires `input` BEFORE `change`, and a repaint
+    // here would write the OLD state back over the tap (bksPaintConf sets
+    // .checked from __bks.conf) — so the switch could never be turned off.
+    if (t.id === 'bks-conf') {
+        __bks.conf = t.checked;
+        __bks.confTouched = true;
+    }
     if (t.hasAttribute('data-bks-in')) bksSync();
 }
 
@@ -35901,7 +35934,7 @@ function bksChooseCot(k) {
         if (nad !== ad || nch !== ch) {
             a.value = String(nad);
             c.value = String(nch);
-            __bks.clamped = bksCotName(k);
+            __bks.clamped = { name: bksCotName(k), pk: k, a: nad, c: nch };
         }
     }
     sel.value = k;
@@ -36102,10 +36135,14 @@ function bksPaintParty() {
     const lim = pk ? occupancyLimits[pk] : null;
     const note = bksEl('modal-occ-note');
     if (!note) return;
-    note.classList.toggle('warn', !!__bks.clamped);
-    if (__bks.clamped && lim) note.textContent = `${__bks.clamped} sleeps ${lim.maxTotal || lim.maxAdults}, so this came down`;
+    // The "came down" note stands while the cottage and party are the ones it was
+    // set for: one pick repaints more than once (onModalPropertyChange runs two
+    // repaints), so clearing it on the first paint meant nobody ever saw it.
+    const cl = __bks.clamped;
+    const showCl = !!(cl && typeof cl === 'object' && lim && cl.pk === pk && (parseInt(dpVal('modal-adults'), 10) || 0) === cl.a && (parseInt(dpVal('modal-children'), 10) || 0) === cl.c);
+    note.classList.toggle('warn', showCl);
+    if (showCl && lim) note.textContent = `${cl.name} sleeps ${lim.maxTotal || lim.maxAdults}, so this came down`;
     else note.textContent = lim ? (lim.maxChildren === 0 || (lim.maxTotal || 0) <= lim.maxAdults ? `Sleeps ${lim.maxAdults} adult${lim.maxAdults === 1 ? '' : 's'}` : `Sleeps ${lim.maxAdults} adults, ${lim.maxTotal} in all`) : '';
-    __bks.clamped = '';
 }
 // What one stay costs, night by night — every line from the price model's own
 // parts, so the lines always add up to the figure on the row above them.
@@ -36179,10 +36216,13 @@ function bksPaintPrice(m, mode, isNew) {
                 sub = `Today’s rates · replaces the agreed ${gbp(m.agreedWas)}`;
                 if (nS) nS.classList.add('warn');
             }
-            if (paidLock) sub = 'Paid in full · money is managed on the booking page';
+            // A paid-in-full booking keeps its own line — unless the stay moved, when
+            // saving re-prices it and the owner must see that before they save.
+            const repriced = m.stayChanged && m.agreedWas != null;
+            if (paidLock && !repriced) sub = 'Paid in full · money is managed on the booking page';
             bksSetText(nS, sub);
         }
-        bksSetText(nV, gbp(paidLock ? m.total : m.stdTotal), 'bks-settle');
+        bksSetText(nV, gbp(paidLock && !(m.stayChanged && m.agreedWas != null) ? m.total : m.stdTotal), 'bks-settle');
         bksSetHtml(bksEl('bks-nights'), rows.map((x) => `<div class="bks-night"><span class="bks-rt"><span class="bks-rl">${escapeHtml(x.l)}</span>${x.s ? `<span class="bks-rs">${escapeHtml(x.s)}</span>` : ''}</span><span class="bks-rv">${gbp(x.v)}</span></div>`).join(''));
     }
     bksExpanded('bks-nights-row', __bks.nightsOpen);

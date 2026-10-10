@@ -8,11 +8,19 @@
 //  G. The booking sheet's calendar + verdict: taken nights crossed, ⚠ Overlaps
 //     on a clash (direct or imported), no self-clash when editing, ✓ Free otherwise.
 //  H. Deleting from the hub exits to the Bookings list.
+//  I. The ≥1200 split: the hub docks beside Today's bookings list.
+//  J. The enquiry hub, opened from the one-list Inbox as its own page.
+//  K2. A declined enquiry can still be put back (soft check — see the section).
+//  L. Payments → a stay's money page → its booking hub → back to Payments.
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
 const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+// A check that must not stop the run: counted, reported, and failing the suite at
+// the END — used where a gap in the product would otherwise hide every later section.
+let softFails = 0;
+const softOk = (cond, label) => { console.log((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) softFails++; };
 
 (async () => {
   // <1200px so sections A–H exercise the STANDALONE hub flow (the ≥1200
@@ -1821,50 +1829,74 @@ let approveWill409 = false;
   ok(i2.active === 'view-backoffice', 'row click keeps the dashboard (no page swap)');
   ok(i2.name === i2.openRow && i2.name !== i1.name, `pane swapped to the clicked booking (${i2.name})`);
 
-  // ---------- J. inbox master–detail (same playbook) ----------
-  console.log('J. inbox workspace');
+  // ---------- J. the enquiry hub, reached from the Inbox ----------
+  // The Inbox is ONE LIST OF PEOPLE now (ui-test-inbox owns it): no enquiry rows,
+  // no reading pane, so the hub is never docked there — it opens as its OWN page
+  // from the person's "Enquiry" record button. The decision-first anatomy below
+  // is read on that page.
+  console.log('J. the enquiry hub, from the Inbox');
   await page.evaluate(() => window.openInbox());
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => document.querySelectorAll('#ib .ib-row').length >= 2);
+  const j0 = await page.evaluate(() => ({
+    active: (document.querySelector('.page-view.active') || {}).id,
+    names: [...document.querySelectorAll('#ib .ib-row .ib-name')].filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()),
+    pane: !!document.getElementById('inbox-detail-pane'),
+    oldCards: [...document.querySelectorAll('.enquiry-card, #inbox-list .bk-row[data-enqid]')].filter((x) => x.getClientRects().length).length,
+  }));
+  ok(j0.active === 'view-inbox' && j0.names.includes('Enq Alpha') && j0.names.includes('Enq Beta') && !j0.pane && j0.oldCards === 0,
+    `each enquirer is a person on the Inbox's one list; no enquiry cards, no reading pane (${j0.names.join(', ')})`);
+  await page.click('#ib .ib-row[aria-label^="Enq Alpha"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib [data-ib="record"]'));
+  // The record button lives in the person's context (its own column on a wide
+  // Inbox, a drop-down otherwise) — open the drop-down if it is closed.
+  for (let i = 0; i < 3; i++) {
+    const tapped = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#ib [data-ib="record"]')].find((x) => x.getClientRects().length && !x.disabled);
+      if (b) { b.click(); return true; }
+      const t = document.querySelector('#ib [data-ib="ctx"]');
+      if (t) t.click();
+      return false;
+    });
+    if (tapped) break;
+    await page.waitForTimeout(200);
+  }
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-enquiry-hub' && !!document.querySelector('#enquiry-hub-content .bhub-head'));
   const j1 = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
-    rows: document.querySelectorAll('#inbox-list .bk-row[data-enqid]').length,
-    oldCards: document.querySelectorAll('#inbox-list .enquiry-card').length,
-    paneHub: !!document.querySelector('#inbox-detail-pane #enquiry-hub-content .bhub-head'),
-    name: (document.querySelector('#inbox-detail-pane .bhub-name') || {}).textContent || '',
-    openRows: document.querySelectorAll('#inbox-list .bk-row.is-open').length,
+    name: (document.querySelector('#enquiry-hub-content .bhub-name') || {}).textContent || '',
     // The decision-first anatomy: Approve is the ONE loud control riding the
     // green state card; Edit/Email/DECLINE live behind the ⋯ (decline is
     // reversible via the drawer, so the page leads with the yes — quiet,
     // last, in danger ink); the contact email is a composer button, never a
     // mailto; the MESSAGE never folds.
-    approveInNext: !!document.querySelector('#inbox-detail-pane .bhub-next [data-act="approveEnquiry"]'),
-    readyCap: ((document.querySelector('#inbox-detail-pane .bhub-next.is-ready .bhub-next-cap') || {}).textContent || '').trim(),
-    eyebrow: ((document.querySelector('#inbox-detail-pane .bhub-eyebrow') || {}).textContent || '').trim(),
+    approveInNext: !!document.querySelector('#enquiry-hub-content .bhub-next [data-act="approveEnquiry"]'),
+    readyCap: ((document.querySelector('#enquiry-hub-content .bhub-next.is-ready .bhub-next-cap') || {}).textContent || '').trim(),
+    eyebrow: ((document.querySelector('#enquiry-hub-content .bhub-eyebrow') || {}).textContent || '').trim(),
     msgOpen: (() => {
-      const m = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      const m = document.querySelector('#enquiry-hub-content .bhub-msg-text');
       return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
     })(),
-    draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'), // must be gone
+    draftRow: !!document.querySelector('#enquiry-hub-content .bhub-msg [data-act="enqReplyDraft"]'), // must be gone
     // A FOURTH MATERIAL: the message card inherited .bhub-card's --r-panel and
     // .glass-panel's drop shadow, so it was the one RAISED, 28/40px-rounded
     // element between a 20px state card and 12px fold groups. It leads by SIZE.
     msgMaterial: (() => {
-      const m = document.querySelector('#inbox-detail-pane .bhub-msg');
-      const t = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      const m = document.querySelector('#enquiry-hub-content .bhub-msg');
+      const t = document.querySelector('#enquiry-hub-content .bhub-msg-text');
       if (!m || !t) return null;
       const c = getComputedStyle(m);
       return { r: c.borderTopLeftRadius, sh: c.boxShadow, fs: Math.round(parseFloat(getComputedStyle(t).fontSize)) };
     })(),
-    menuItems: document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]').length,
+    menuItems: document.querySelectorAll('#enquiry-hub-content .bhub-menu [role="menuitem"]').length,
     dangerLast: (() => {
-      const rows = document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]');
+      const rows = document.querySelectorAll('#enquiry-hub-content .bhub-menu [role="menuitem"]');
       const last = rows[rows.length - 1];
       return !!last && last.classList.contains('bhub-menu-danger') && /decline/i.test(last.textContent);
     })(),
     // The danger ink must actually PAINT — class-only would pass with the
     // CSS rule deleted. Probe var(--danger-text) in the page's own theme.
     dangerInk: (() => {
-      const el = document.querySelector('#inbox-detail-pane .bhub-menu .bhub-menu-danger');
+      const el = document.querySelector('#enquiry-hub-content .bhub-menu .bhub-menu-danger');
       if (!el) return false;
       const probe = document.createElement('span');
       probe.style.color = 'var(--danger-text)';
@@ -1874,14 +1906,13 @@ let approveWill409 = false;
       return getComputedStyle(el).color === want;
     })(),
     mailtos: document.querySelectorAll('#enquiry-hub-content a[href^="mailto:"]').length,
-    emailKvBtn: !!document.querySelector('#inbox-detail-pane .bhub-kv-act[data-act="openEnquiryEmail"]'),
-    priceBtn: !!document.querySelector('#inbox-detail-pane [data-act="setEnquiryPrice"]'),
-    quoteFig: ((document.querySelector('#inbox-detail-pane [data-grp="equote"] .bhub-payline-fig') || {}).textContent || '').trim(),
+    emailKvBtn: !!document.querySelector('#enquiry-hub-content .bhub-kv-act[data-act="openEnquiryEmail"]'),
+    priceBtn: !!document.querySelector('#enquiry-hub-content [data-act="setEnquiryPrice"]'),
+    quoteFig: ((document.querySelector('#enquiry-hub-content [data-grp="equote"] .bhub-payline-fig') || {}).textContent || '').trim(),
     // The No-dog row prints the house DD/MM/YYYY form, never the raw SQL stamp.
-    noDog: (document.querySelector('#inbox-detail-pane #enquiry-hub-content') || {}).textContent || '',
+    noDog: (document.querySelector('#enquiry-hub-content') || {}).textContent || '',
   }));
-  ok(j1.active === 'view-inbox' && j1.rows === 2 && j1.oldCards === 0, `compact enquiry rows (${j1.rows}), old cards gone`);
-  ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
+  ok(j1.active === 'view-enquiry-hub' && j1.name === 'Enq Alpha', `the person's Enquiry button opens the enquiry hub as its own page (${j1.name})`);
   ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
   ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
   ok(j1.msgOpen && !j1.draftRow, 'the MESSAGE never folds, and carries no ✨ draft row');
@@ -1893,7 +1924,7 @@ let approveWill409 = false;
   ok(/^£/.test(j1.quoteFig), `the quote is ONE row with the figure on it (${j1.quoteFig})`);
   ok(/Confirmed 01\/07\/2026/.test(j1.noDog) && !j1.noDog.includes('2026-07-01'), 'No-dog row prints the house date form, not the raw stamp');
   // Approve from the hub → lands on the NEW booking's hub.
-  const apr = page.evaluate(() => approveEnquiry(document.querySelector('#inbox-list .bk-row[data-enqid]').getAttribute('data-enqid')));
+  const apr = page.evaluate(() => approveEnquiry('e6'));
   await page.waitForTimeout(700);
   await page.evaluate(() => { try { glassDialogResolve(true); } catch (e) {} }); // clash/confirm if any
   // Approving now PREVIEWS the confirmation first — hit Send to proceed.
@@ -2059,115 +2090,93 @@ let approveWill409 = false;
   const j4 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(j4 === 'view-inbox', `decline exits the hub to the Inbox (${j4})`);
 
-  // ---------- K. inbox-zero clears the docked pane (hardening audit C1) ----------
-  console.log('K. inbox-zero pane');
+  // ---------- K. inbox-zero clears the docked pane — REMOVED ----------
+  // Its subject is gone: the one-list Inbox has no reading pane (#inbox-detail-pane)
+  // for a stale enquiry hub to linger in. ui-test-inbox owns the empty Inbox.
+
+  // ---------- K2. a declined enquiry can still be put back ----------
+  // enquiry_decline is a SOFT delete precisely so a mistake can be undone, and the
+  // old Inbox kept a Declined drawer with "Put back in Waiting" for exactly that —
+  // because the toast's Undo is gone in seconds. The drawer's markup now sits in the
+  // hidden #inbox-legacy; this asks the SCREEN the owner actually has. Checked
+  // softly (counted, never thrown) so a gap here cannot hide section L.
+  console.log('K2. a declined enquiry can still be put back');
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.evaluate(() => window.openInbox()); // both enquiries handled in J → inbox zero
-  await page.waitForTimeout(800);
-  const k = await page.evaluate(() => ({
-    emptyShown: getComputedStyle(document.getElementById('inbox-detail-empty')).display !== 'none',
-    hubEmpty: !document.querySelector('#enquiry-hub-content .bhub-head'),
-    zeroNote: /Inbox zero/.test((document.getElementById('inbox-list') || {}).textContent || ''),
-  }));
-  ok(k.zeroNote && k.emptyShown && k.hubEmpty, `empty inbox restores the pane placeholder (no stale enquiry hub) ${JSON.stringify(k)}`);
-
-  // ---------- K2. the declined drawer ----------
-  // enquiry_decline is a SOFT delete precisely so a mistake can be undone, but
-  // the only way back was the Undo on a toast — gone in seconds. Decline the
-  // wrong one, look away, and a recoverable row was unreachable.
-  console.log('K2. declined enquiries can be found and restored');
-  const k2switch = await page.evaluate(() => ({
-    hasSwitch: !!document.querySelector('#inbox-list .inbox-sort.seg'),
-    labels: [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].map((b) => b.textContent.trim()),
-  }));
-  ok(k2switch.hasSwitch && /Declined/.test(k2switch.labels.join(' ')),
-    `the switch is there even on inbox zero — which is exactly when you go looking (${k2switch.labels.join(' | ')})`);
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
-  await page.waitForTimeout(700);
-  const k2 = await page.evaluate(() => ({
-    txt: ((document.getElementById('inbox-list') || {}).textContent || '').replace(/\s+/g, ' '),
-    rows: document.querySelectorAll('#inbox-list .enq-declined-row').length,
-    // Count RESTORE, not every button: the row also offers "Email the guest"
-    // when there is an address, and a bare button count made "every row offers
-    // Restore" fail on a row that offers Restore and one more thing.
-    restores: document.querySelectorAll('#inbox-list .enq-declined-restore').length,
-  }));
-  ok(k2.rows >= 1 && /Declined/.test(k2.txt), `the one declined in J is listed (${k2.rows} row/s)`);
-  ok(k2.restores === k2.rows, 'every row offers Restore — the whole point of the drawer');
-  // THE SWITCH IS ONE CONTROL: its pill travels to the chosen tab, each tab carries its count (as a
-  // data attribute, so the button's text stays the bare word), and a switch slides one pane out as
-  // the other comes in rather than swapping them.
-  const k2pill = await page.evaluate(() => {
-    const seg = document.querySelector('#inbox-list .enq-tabs .inbox-sort.seg');
-    const pill = seg && seg.querySelector(':scope > .chb-pill');
-    const on = seg && seg.querySelector('.is-on');
-    if (!seg || !pill || !on) return null;
-    const sb = seg.getBoundingClientRect(), ob = on.getBoundingClientRect();
-    return { dx: Math.round(parseFloat(pill.style.translate) - (ob.left - sb.left)), w: Math.round(parseFloat(pill.style.width) - ob.width),
-      declN: (seg.querySelector('[data-n]:not(.is-on)') || {}).dataset || null, counts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.getAttribute('data-n')),
-      texts: [...seg.querySelectorAll('.inbox-sort-btn')].map((b) => b.textContent.trim()) };
+  await page.evaluate(() => window.openInbox());
+  // The Inbox fetches the declined list with its other slow sources; ask it again
+  // the owner's way (the refresh beside the title) so the decline made in J is in it.
+  await page.click('#ib-refresh');
+  await page.waitForFunction(() => !!document.querySelector('#ib .ib-row[aria-label^="Enq Beta"]'), null, { timeout: 8000 }).catch(() => {});
+  const k2row = await page.evaluate(() => {
+    const r = document.querySelector('#ib .ib-row[aria-label^="Enq Beta"]');
+    return { row: !!r && r.getClientRects().length > 0, label: r ? r.getAttribute('aria-label') : '' };
   });
-  ok(k2pill && Math.abs(k2pill.dx) <= 1 && Math.abs(k2pill.w) <= 1, `the pill sits under the chosen tab (dx ${k2pill && k2pill.dx}, dw ${k2pill && k2pill.w})`);
-  ok(k2pill && k2pill.counts.every((n) => n !== null && /^\d+$/.test(n)) && k2pill.texts.join('|') === 'Waiting|Declined', `each tab carries its count and keeps its bare label (${k2pill && k2pill.counts.join('/')} · ${k2pill && k2pill.texts.join('|')})`);
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Waiting/.test(x.textContent)); b && b.click(); });
-  const k2swap = await page.evaluate(() => new Promise((res) => setTimeout(() => res({ panes: document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length, out: document.querySelectorAll('#inbox-list .enq-pane.enq-out').length, inn: document.querySelectorAll('#inbox-list .enq-pane.enq-in-l').length }), 60)));
-  ok(k2swap.panes === 2 && k2swap.out === 1 && k2swap.inn === 1, `mid-switch one pane leaves as the other arrives (${JSON.stringify(k2swap)})`);
-  await page.waitForTimeout(700);
-  ok(await page.evaluate(() => document.querySelectorAll('#inbox-list .enq-stage > .enq-pane').length === 1), 'and the old pane is gone once it has left');
-  ok(await page.evaluate(() => /^Enquiries/.test((document.querySelector('#inbox-folder-enquiries .bo-sec-title') || { textContent: '' }).textContent.trim())), 'the page title stays "Enquiries" on both tabs');
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
-  await page.waitForTimeout(800);
-  // RESTORING puts it back in the inbox and takes it out of the drawer.
-  await page.evaluate(() => { const b = document.querySelector('#inbox-list .enq-declined-row button'); b && b.click(); });
-  await page.waitForTimeout(1200);
-  const k3 = await page.evaluate(() => ({
-    backOnWaiting: !!document.querySelector('#inbox-list .bk-row[data-enqid]'),
-    stillDeclined: document.querySelectorAll('#inbox-list .enq-declined-row').length,
-  }));
-  ok(k3.backOnWaiting && k3.stillDeclined === 0,
-    `restoring returns it to Waiting and drops it from the drawer (waiting ${k3.backOnWaiting}, drawer ${k3.stillDeclined})`);
+  ok(k2row.row && /Declined/.test(k2row.label), `the declined enquirer stays on the list, marked Declined (${k2row.label})`);
+  await page.click('#ib .ib-row[aria-label^="Enq Beta"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib-conv [data-ib="menu"]'));
+  await page.click('#ib-conv [data-ib="menu"]');
+  await page.waitForFunction(() => !!document.querySelector('#ib-conv .ib-menu'));
+  const k2 = await page.evaluate(() => {
+    // Everything the owner can press for this person: the conversation, its ⋯ menu
+    // (opened above) and the person's context (its own column on a wide Inbox).
+    const vis = [...document.querySelectorAll('#ib-conv button, #ib-conv [role="menuitem"], #ib .ib-ctx button')].filter((x) => x.getClientRects().length && !x.disabled);
+    const say = (x) => (x.textContent || '').replace(/\s+/g, ' ').trim();
+    const put = vis.filter((x) => /put (it )?back|restore|back in waiting|undo the decline/i.test(say(x)));
+    const rec = vis.find((x) => x.getAttribute('data-ib') === 'record');
+    return { put: put.map(say), rec: !!rec, offered: vis.map(say).filter(Boolean).slice(0, 14) };
+  });
+  softOk(k2.put.length > 0,
+    `the declined enquiry can be put back in Waiting from the Inbox, once the toast has gone (visible: ${k2.offered.join(' | ')})`);
+  // The person's "Enquiry" button is OFFERED (enabled) for a declined-only enquirer;
+  // a tap must lead somewhere rather than do nothing.
+  if (k2.rec) {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#ib [data-ib="record"]')].find((x) => x.getClientRects().length && !x.disabled); if (b) b.click(); });
+    // It asks to put the enquiry back in Waiting (a declined enquiry has no page of
+    // its own) — and backing out of that ask leaves everything as it was.
+    await page.waitForFunction(() => !!document.querySelector('#glass-dialog.open'), null, { timeout: 4000 }).catch(() => {});
+    const after = await page.evaluate(() => ({ view: (document.querySelector('.page-view.active') || {}).id, ask: (document.querySelector('#glass-dialog.open #glass-dialog-ok') || {}).textContent || '' }));
+    softOk(/Put back in Waiting/.test(after.ask), `the enabled "Enquiry" button on a declined enquirer asks to put it back in Waiting (view ${before} → ${after.view}, ask "${after.ask}")`);
+    await page.evaluate(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); });
+    await page.waitForFunction(() => !document.querySelector('#glass-dialog.open'), null, { timeout: 4000 }).catch(() => {});
+  }
 
-  // ---------- L. Money workspace: find-rows → booking hub → back to Money ----------
-  console.log('L. money workspace');
+  // ---------- L. Payments → booking hub → back to Payments ----------
+  // The Payments page is the money journey now (#pm — ui-test-money owns it): who
+  // owes is the "Guests still to pay" card, a row opens that stay's money page,
+  // and "Open the booking" opens its hub. What this suite keeps is the hub's half:
+  // the back link names Payments and returns there.
+  console.log('L. payments → hub → back');
+  await page.setViewportSize({ width: 1000, height: 900 });
   await page.evaluate(() => window.openAccounts());
-  await page.waitForTimeout(900);
-  await page.evaluate(() => accountsOpen('payments'));
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-accounts' && document.querySelectorAll('#pm-coming .pm-orow').length > 0, null, { timeout: 10000 });
   const l1 = await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('#money-panel .bk-row'));
+    const rows = [...document.querySelectorAll('#pm-coming .pm-orow')];
     const r = rows[0];
     return {
       count: rows.length,
-      actionCards: document.querySelectorAll('#money-panel .money-row').length,
-      edge: r ? Array.from(r.classList).find((c) => c.startsWith('pay-')) : '',
-      chip: r ? (r.querySelector('.bk-chip') || {}).textContent : '',
-      figures: r ? (r.querySelector('.bk-row-dates') || {}).textContent : '',
-      owed: /owed/.test((document.querySelector('#money-panel .money-owed') || {}).textContent || ''),
+      oldCards: document.querySelectorAll('#money-panel .money-row').length,
+      label: r ? r.getAttribute('aria-label') : '',
+      fig: r ? ((r.querySelector('.pm-v') || {}).textContent || '').trim() : '',
     };
   });
-  ok(l1.count >= 1 && l1.actionCards === 0, `payments section is find-rows, not action cards (${l1.count} rows)`);
-  ok(l1.edge === 'pay-danger' && /Unpaid/.test(l1.chip), `unpaid row: red edge + chip with balance (${l1.chip.trim()})`);
-  // RE-AIMED to the PROPERTY, not the word. The row's sub is a two-line clamp
-  // and the composed line overran it ("5–12 Nov 2026 · £300.00 of £960.00
-  // received · £50.00 deposit held" wanted 420px of 309), so the DEPOSIT — the
-  // last fact, and the one nothing else on this screen states — was what fell
-  // off. The copy dropped "received" (the chip directly above already says
-  // Part-paid) and the pennies; what must hold is that the row still states
-  // what has come in AGAINST the total.
-  ok(/£[\d,.]+ of £[\d,.]+/.test(l1.figures), `row shows received-of-total figures (${l1.figures.trim()})`);
-  ok(l1.owed, 'owed banner still leads the section');
-  await page.click('#money-panel .bk-row');
-  await page.waitForTimeout(800);
+  ok(l1.count >= 1 && l1.oldCards === 0, `who owes is a list of rows, not action cards (${l1.count} rows)`);
+  ok(/^£[\d,]+\.\d{2}$/.test(l1.fig) && l1.label.includes(l1.fig), `each row states the balance it owes (${l1.label})`);
+  await page.click('#pm-coming .pm-orow');
+  await page.waitForFunction(() => !!document.querySelector('#pm [data-pm="hub"]'));
+  await page.click('#pm [data-pm="hub"]');
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-booking-hub' && !!document.querySelector('#booking-hub-content .bhub-name'));
   const l2 = await page.evaluate(() => ({
-    active: (document.querySelector('.page-view.active') || {}).id,
-    recordBtn: /Record a payment/.test(document.getElementById('view-booking-hub').textContent + document.getElementById('bookings-detail-pane').textContent),
+    back: ((document.querySelector('#view-booking-hub > .back-link') || {}).textContent || '').trim(),
+    name: (document.querySelector('#booking-hub-content .bhub-name') || {}).textContent || '',
   }));
-  ok((l2.active === 'view-booking-hub' || l2.active === 'view-backoffice') && l2.recordBtn, `money row opens the booking hub (${l2.active})`);
+  ok(l2.name !== '' && l2.back === 'Payments', `"Open the booking" opens its hub, whose back link names Payments (${l2.name} · ‹ ${l2.back})`);
   await page.evaluate(() => bookingHubBack());
-  await page.waitForTimeout(900);
+  await page.waitForFunction(() => (document.querySelector('.page-view.active') || {}).id === 'view-accounts', null, { timeout: 8000 }).catch(() => {});
   const l3 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
-  ok(l3 === 'view-accounts', `hub back returns to Money (${l3})`);
+  ok(l3 === 'view-accounts', `hub back returns to Payments (${l3})`);
 
-  console.log('HUB TEST PASSED ✅');
-  await done();
+  console.log(softFails ? `HUB TEST FAILED ❌ (${softFails} product check(s) above)` : 'HUB TEST PASSED ✅');
+  await done(softFails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
