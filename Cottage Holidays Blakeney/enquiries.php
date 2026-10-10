@@ -780,6 +780,7 @@ if ($action === 'email_preview') {
 }
 
 if ($action === 'email_guest') {
+    $opTok = op_claim($in); // one email for a retried send (bookings.php's email_guest)
     $id = (int) ($in['id'] ?? 0);
     $s = db()->prepare('SELECT * FROM enquiries WHERE id = ?');
     $s->execute([$id]);
@@ -835,7 +836,7 @@ if ($action === 'email_guest') {
         'entity_id' => (string) $id,
         'prop_key' => $row['prop_key'] ?? '',
     ]);
-    json_out(['ok' => true]);
+    json_out(op_finish($opTok, ['ok' => true]));
 }
 
 json_out(['error' => 'Unknown action'], 400);

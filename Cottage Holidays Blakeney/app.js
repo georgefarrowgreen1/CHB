@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 770;
+const ADMIN_BUNDLE_V = 771;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -15937,9 +15937,15 @@ function toast(message, type, action) {
         el.querySelector('.toast-action').addEventListener('click', (e) => {
             e.stopPropagation();
             remove();
+            // AN UNDO THAT FAILED SAYS SO. Most are async, and a rejection went
+            // nowhere: the owner read the toast leave and believed it undone.
+            const said = (err) => toast(((action.label || 'Undo') === 'Undo' ? 'Couldn’t undo that' : 'That didn’t go through') + (err && err.message ? ': ' + err.message : ' — try again.'), 'error');
             try {
-                action.fn();
-            } catch (_) {}
+                const r = action.fn();
+                if (r && typeof r.then === 'function') r.then(null, said);
+            } catch (err) {
+                said(err);
+            }
         });
         el.querySelector('.toast-body').addEventListener('click', remove);
         // An action toast (e.g. "Undo") carries a real affordance, so its timer
@@ -21566,7 +21572,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r6lifecycle';
+    const BUILD = 'r6latework';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -142,6 +142,8 @@ $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUA
 $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MONZO_AUTH_BASE', 'http://127.0.0.1:$MONZO_PORT/auth/');\n";
 // §17(k) holds an op's lock to prove a repeat is refused; a short wait keeps it quick.
 $cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
+// …and the Monzo link's: §54 holds the sync's lock to show a disconnect waits for it.
+$cfg .= "\ndefine('CHB_MONZO_LOCK_WAIT', 2);\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
@@ -1444,6 +1446,23 @@ $arrProp2 = $r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? '')
 it_check('(fixture) a second cottage exists to move to', $arrProp2 !== '', $r['raw']);
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'prop_key' => $arrProp2, 'override_occupancy' => true, 'override_clash' => true]);
 it_check('moving to another cottage clears the stamp', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+// (e) The email also states when they leave and the times: a new leaving date or a
+// new check-in time makes it untrue as surely as a move.
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_out' => date('Y-m-d', strtotime('+34 days')), 'override_clash' => true, 'override_occupancy' => true]);
+it_check('a new leaving date clears the stamp', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_in_time' => '16:00']);
+it_check('a new check-in time clears it too', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'check_in_time' => '16:00', 'notes' => 'gate: same time again']);
+it_check('…while the same time sent again changes nothing', ($r['json']['ok'] ?? false) && $stamp() !== null, $r['raw']);
+// An older row can hold a blank time, which every reader takes as the default:
+// it is not a change, so a notes edit must not re-send the email over it.
+$rootDb->exec("UPDATE bookings SET check_out_time = '' WHERE id = $arrId");
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'notes' => 'gate: a blank stored time']);
+it_check('…and a blank stored time read as the default is not a change', ($r['json']['ok'] ?? false) && $stamp() !== null, $r['raw']);
 
 // (d) A PAST stay is a record, not a plan: correcting its dates keeps the
 // stamp, or every historic tidy-up would flip a finished booking's pipeline
@@ -3861,6 +3880,22 @@ it_check('§54 the balance is Monzo\'s, dated', abs((float) ($r['json']['live'][
 it_check('§54 no token or secret ever reaches the page', strpos($r['raw'], 'acc-') === false && strpos($r['raw'], 'ref-') === false && strpos($r['raw'], 'it-secret') === false, $r['raw']);
 $r = http($admin, 'POST', '/monzo.php', ['action' => 'sync']);
 it_check('§54 syncing again adds nothing already here', ($r['json']['sync']['ok'] ?? false) === true && ($r['json']['sync']['added'] ?? -1) === 0 && $mzLines() === 4, $r['raw']);
+// ONE lock for every change to the link (monzo_locked). Held here as a sync in
+// flight would hold it: a disconnect waits for it rather than racing it (a refresh
+// saved after the disconnect brought the link back), says so when it cannot, and
+// changes nothing; an approval check meanwhile reports the link without calling Monzo.
+$rootDb->query("SELECT GET_LOCK('chb_monzo_sync', 0)")->fetchColumn();
+$authBefore = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn();
+$before = count($mzLog());
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'disconnect']);
+$linkNow = json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-link'")->fetchColumn(), true);
+it_check('§54 a disconnect while a sync holds the link waits, says so, and changes nothing',
+    $r['code'] === 409 && ($r['json']['code'] ?? '') === 'busy'
+    && (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'monzo-auth'")->fetchColumn() === $authBefore
+    && ($linkNow['account_id'] ?? '') === 'acc_biz' && count($mzLog()) === $before, $r['raw']);
+$r = http($admin, 'POST', '/monzo.php', ['action' => 'check']);
+it_check('§54 …and an approval check meanwhile reports the link without calling Monzo', ($r['json']['live']['state'] ?? '') === 'live' && count($mzLog()) === $before, $r['raw']);
+$rootDb->query("SELECT RELEASE_LOCK('chb_monzo_sync')")->fetchColumn();
 $csv = "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Balance,Balance currency\n"
     . 'tx_it54_in,' . gmdate('d/m/Y', strtotime($iso(5))) . ",12:00:00,Faster payment,M HILL,,General,377.50,GBP,377.50,GBP,,,,CHB-000006,,1950.00,GBP\n";
 $r = http($admin, 'POST', '/statements.php', ['action' => 'preview', 'csv' => $csv, 'filename' => 'monzo.csv']);
