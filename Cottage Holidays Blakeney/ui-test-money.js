@@ -1,12 +1,19 @@
-// Full Money-area verification after the Manage collapse:
-//  1. the dock Money button exists and its handler opens view-accounts
-//  2. the overview (KPIs + owed figure) renders
-//  3. every drill-down section opens with content:
-//     payments / recent / income & tax / expenses / pricing coach
-//  4. the money ACTIONS work end-to-end: payments find-rows → booking hub
-//     Money card → Record payment posts the right payload → row turns paid;
-//     deposits-to-return queue shows a held deposit with Return/Keep
-//  5. back navigation: hub → Money, drill-down → index, index → dashboard
+// Full Payments verification, on the one Payments page (CLAUDE.md "Payments: where
+// the money is, in one look"):
+//  1. the dock Payments button exists and its handler opens view-accounts
+//  2. the landing: "Guests still to pay" (the deposit-folded figure, the overdue
+//     capsule, the status pill), Needs you (each held deposit's own figure, Keep on
+//     both rails), the books card (the server's profit), the Money list, the calm state
+//  3. the detail pages: a guest's page, the Money list's filters, the books (Income &
+//     tax), Expenses, and the pricing coach's move to Manage → Pricing
+//  4. the money ACTIONS work end-to-end: a guest's row → their page → the booking hub;
+//     Record a payment posts the right payload → the guest leaves the list; Return on
+//     a deposit's row posts the return, and a failed guest email is reported
+//  5. back navigation: a detail page slides away; the expenses drill-down returns
+//  6. the books say what the profit figure covers
+//  8. the Square location picker, and "Check Square now" saying what failed
+// (The old landing's verdict folds, moAsyncFill, the bulk chase and Move money out
+// went with that design; their arithmetic is gated by test-sweep / test-payouts.)
 // The site reckons "today" in UK time (todayDashed / ukNowParts), so the
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
@@ -41,11 +48,14 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // Drives the guest-email failure the deposit-return report has to surface.
 let mailWillFail = false;
   const posts = [];
-  // §7 drives the "Move money out" screen off the SAME accounts.php payload the
-  // income screen uses, so the stub carries deposit_liability only when a case
-  // wants it — absent is the failed-query state, which must not read as £0.
-  let sweepStub = null;
-  let acctGets = 0;
+  // money.php: the page's one door. The books are the server's (656.20 rental + 50
+  // kept − 9.80 fees − 120 expenses = 576.40); the movements and where the money is
+  // are set per case below.
+  const TY = d(0) < `${new Date().getFullYear()}-04-06` ? new Date().getFullYear() - 1 : new Date().getFullYear();
+  const MONEY_POS = { with_square: 0, with_square_count: 0, unknown: 0, unreported: 0, unreported_count: 0, next_arrival: '', in_bank: 0, ready: 0, held: 0, last_moved: 0, error: false, checked: Math.floor(Date.now() / 1000), payout_error: null, failed: [], disputes: null, bank: '' };
+  let moneyPos = MONEY_POS;
+  let moneyAct = [];
+  const BOOKS = { year: TY, income: 656.2, kept: 50, fees: 9.8, expenses: 120, profit: 576.4, quarters: [0, 706.2, 0, 0], by_category: [{ category: 'Maintenance', amount: 120 }], undated: { count: 0, total: 0, held: 0 } };
   // What Square says the seller's locations are, and which one is chosen.
   let sqLocations = [];
   let sqLocation = '';
@@ -61,7 +71,8 @@ let mailWillFail = false;
         if (b.action === 'history') return json({ ok: true, events: [] });
         if (b.action === 'email_logs') return json({ logs: {} });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
-        if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
+        // set_payment stores the cumulative rental, plus the cash deposit when it came in full.
+        if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total + (b.deposit_collected ? r.agreed_booking_fee : 0) : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
         if (b.action === 'return_deposit') {
           const r = rows.find((x) => x.id === b.id);
           if (r) r.hold_status = 'returned';
@@ -80,15 +91,19 @@ let mailWillFail = false;
       if (b.__url === 'square-setup.php' && b.action === 'status')
         return json({ square: true, connected: true, enabled: true, events: [], locations: sqLocations, location: sqLocation });
       if (b.__url === 'expenses.php') return json({ ok: true, expenses: [{ id: 1, date: d(-40), category: 'Maintenance', note: 'Boiler service', amount: 120 }] });
+      if (b.__url === 'money.php') {
+        if (b.action === 'stay') return json({ ok: true, events: [] });
+        if (b.action === 'books') return json({ ok: true, books: Object.assign({}, BOOKS, { year: Number(b.year) || TY }) });
+        if (b.action === 'activity') return json({ ok: true, activity: [] });
+        return json({ ok: true, at: Math.floor(Date.now() / 1000), position: moneyPos, bank_items: [], way_items: [], moved_map: {}, landed_map: {}, books: BOOKS, years: [TY, TY - 1], activity: moneyAct.slice() });
+      }
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
     if (url.includes('bookings.php')) return json({ bookings: rows });
     if (url.includes('accounts.php')) {
-      acctGets++;
-      // Year report: £656.20 received, £9.80 of Square fees (kept by the
-      // processor, so deducted from profit), one Q2 card payment.
+      // Year report (the exports read it): £656.20 received, £9.80 of Square fees
+      // (kept by the processor, so deducted from profit), one Q2 card payment.
       if (/[?&]year=\d/.test(url)) return json({
-        ...(sweepStub ? { deposit_liability: sweepStub } : {}),
         year: 2026, years: [2026, 2025], total: 656.20, held_deposits: 0,
         card_fees: 9.80, fee_days: [{ date: '2026-07-15', fee: 9.80 }],
         kept_deposits: 50.00, kept_days: [{ date: '2026-08-15', amount: 50.00 }],
@@ -238,9 +253,9 @@ let mailWillFail = false;
   const unk = async (n) => {
     moneyPos = Object.assign({}, MONEY_POS, { unreported_count: n, unreported: n ? 774.57 : 0 });
     await page.evaluate(() => pmLoad());
-    return page.evaluate(() => [...document.querySelectorAll('#pm-list .pm-needrow')].some((r) => /Card payments? to check/.test(r.textContent) && /Square hasn.t reported/.test(r.textContent)));
+    return page.evaluate(() => [...document.querySelectorAll('#pm-list .pm-needrow')].some((r) => /card payments? to check/i.test(r.textContent) && /Square hasn.t reported 1/.test(r.textContent) && /£774\.57/.test(r.textContent)));
   };
-  ok(await unk(1), 'a card payment Square has not reported raises "Card payments to check"');
+  ok(await unk(1), 'a card payment Square has not reported raises "A card payment to check", with its figure');
   ok(!(await unk(0)), '…and with none, no such row');
 
   // ---- 3. the detail pages ----
@@ -251,11 +266,12 @@ let mailWillFail = false;
   const stay = await page.evaluate(() => {
     const p = document.getElementById('pm-detail');
     const t = (p.textContent || '').replace(/\s+/g, ' ');
-    return { t, record: !!p.querySelector('[data-pm="record"]'), hub: !!p.querySelector('[data-pm="hub"]'), cap: ((p.querySelector('.pm-plan .pm-cap') || {}).textContent || '') };
+    const still = [...p.querySelectorAll('.pm-plan .pm-kv')].find((k) => /Still to pay/.test(k.textContent));
+    return { t, record: !!p.querySelector('[data-pm="record"]'), hub: !!p.querySelector('[data-pm="hub"]'), cap: still ? [...still.querySelectorAll('.pm-cap')].map((c) => c.textContent.trim()).join('|') : '' };
   });
   ok(/Owes Money/.test(stay.t) && /Paid\s*£0\.00 of £490\.00/.test(stay.t), `a guest's page leads with what is paid of the whole (${stay.t.slice(0, 80)})`);
   ok(/The stay[^£]*£440\.00/.test(stay.t) && /Refundable deposit[^£]*£50\.00/.test(stay.t) && /Still to pay[^£]*£490\.00/.test(stay.t), 'the plan adds up: the stay £440 + the refundable deposit £50 = £490 still to pay');
-  ok(stay.cap === 'Overdue', `the plan says its state once, as a capsule (${stay.cap})`);
+  ok(stay.cap === 'Overdue', `what is still to pay says its state once, as one capsule (${stay.cap})`);
   ok(stay.record && stay.hub, 'it offers Record a payment and Open the booking');
   // Recent payments is the Money list now: every movement, newest first, each pound once.
   moneyAct = [
@@ -378,8 +394,8 @@ let mailWillFail = false;
   await page.waitForFunction(() => !!document.querySelector('#pm-detail [data-pm="record"]'), null, { timeout: 8000 }).catch(() => {});
   await page.click('#pm-detail [data-pm="record"]');
   await page.waitForFunction(() => !!document.getElementById('pm-rec-amt'), null, { timeout: 8000 }).catch(() => {});
-  const sheet = await page.evaluate(() => ({ t: (document.getElementById('pm-sheet') || {}).textContent || '', amt: (document.getElementById('pm-rec-amt') || {}).value, choose: !!document.querySelector('#pm-sheet [data-pms="who"]') }));
-  ok(/Record a payment from Owes/.test(sheet.t) && sheet.amt === '490.00' && !sheet.choose, `the sheet is that guest's alone, prefilled with what they owe (${sheet.amt})`);
+  const recSheet = await page.evaluate(() => ({ t: (document.getElementById('pm-sheet') || {}).textContent || '', amt: (document.getElementById('pm-rec-amt') || {}).value, choose: !!document.querySelector('#pm-sheet [data-pms="who"]') }));
+  ok(/Record a payment from Owes/.test(recSheet.t) && recSheet.amt === '490.00' && !recSheet.choose, `the sheet is that guest's alone, prefilled with what they owe (${recSheet.amt})`);
   await page.click('#pm-sheet [data-pms="save"]');
   let paidPost = null;
   for (let i = 0; i < 60 && !paidPost; i++) { await page.waitForTimeout(100); paidPost = posts.find((p) => p.action === 'set_payment'); }
@@ -616,17 +632,26 @@ let mailWillFail = false;
     '…it says what failed and names the control that retries it');
   // The explicit "Check Square now" tap surfaces the server's own sentence —
   // not a generic connection line, and never a false "Payouts up to date".
+  // "Check Square now" lives on the Payments page's With Square page now (Move money
+  // out, where it first sat, is gone): tapped there, it is the control the save names.
   const toastSaid = await page.evaluate(async () => {
+    await openAccounts();
+    pmOpen('way');
+    await new Promise((r) => setTimeout(r, 300));
+    const btn = document.querySelector('#pm-detail [data-pm="check"]');
     let said = '';
     const t = window.toast;
     window.toast = (m, kind) => { said = String(m || ''); return t ? t(m, kind) : undefined; };
-    await sweepRefreshPayouts();
+    if (btn) btn.click();
+    for (let i = 0; i < 40 && !said; i++) await new Promise((r) => setTimeout(r, 100));
     window.toast = t;
-    return said;
+    pmClose();
+    return { said, label: btn ? btn.textContent.trim() : '' };
   });
-  ok(/Square couldn\u2019t be reached/.test(toastSaid) || /Square couldn’t be reached/.test(toastSaid),
-    `the refusal reaches the owner in the server's own words (${toastSaid.slice(0, 60)})`);
-  ok(!/Payouts up to date/.test(toastSaid), '…and a failure is never reported as up to date');
+  ok(toastSaid.label === 'Check Square now', `the With Square page carries "Check Square now", the control the save names (${toastSaid.label})`);
+  ok(/Square couldn\u2019t be reached/.test(toastSaid.said) || /Square couldn’t be reached/.test(toastSaid.said),
+    `the refusal reaches the owner in the server's own words (${toastSaid.said.slice(0, 60)})`);
+  ok(!/Square checked|Payouts up to date/.test(toastSaid.said), '…and a failure is never reported as checked');
   refreshFails = false;
 
   // ONE location is not a choice, so there is no control to get wrong.
