@@ -596,6 +596,7 @@ try {
 try {
     $feedsOut = [];
     $cotSet = [];
+    $lastOk = '';
     $propsList = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
     foreach ($propsList as $pk) {
         $fr = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
@@ -618,11 +619,21 @@ try {
                 'events' => (int) ($s0['events'] ?? 0),
             ];
             $cotSet[$pk] = true;
+            if ($s0 && (string) ($s0['ok_at'] ?? '') > $lastOk) {
+                $lastOk = (string) $s0['ok_at'];
+            }
         }
     }
     if (isset($insights['ical'])) {
         $insights['ical']['list'] = $feedsOut;
         $insights['ical']['cottages'] = count($cotSet);
+        // "Synced" means the last import that WORKED, from each feed's own record.
+        // The newest block's timestamp stood in for it, and the sync no longer
+        // rewrites a calendar that has not changed, so that would age a healthy
+        // feed. It stays the answer only on an install with no record yet.
+        if ($lastOk !== '') {
+            $insights['ical']['lastImport'] = $lastOk;
+        }
     }
 } catch (\Throwable $e) {
 }

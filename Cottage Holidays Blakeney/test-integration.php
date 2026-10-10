@@ -2312,6 +2312,48 @@ $r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'hero-tit
 it_check('(fixture) a content write succeeds', $r['code'] === 200, $r['raw']);
 $b3 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
 it_check('a write is visible to the very next request (no stale memo)', strpos((string) $b3, 'Memo Probe') !== false, substr((string) $b3, 0, 160));
+// THE 304 FIRES BEHIND APACHE'S DEFLATE. htaccess compresses application/json,
+// and Apache then sends the tag as "<md5>-gzip" and gets it back that way, so the
+// byte-exact comparison bootstrap.php used never matched in production: every
+// 30-second poll downloaded the whole payload. php -S compresses nothing, so the
+// forms a browser really sends back are sent here by hand.
+$bootGet = function (array $extra = []) {
+    global $BASE;
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", array_merge(['Accept: application/json'], $extra)), 'timeout' => 30, 'ignore_errors' => true]]));
+    $code = 0;
+    $hdr = [];
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        } elseif (strpos($h, ':') !== false) {
+            [$k, $v] = explode(':', $h, 2);
+            $hdr[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'h' => $hdr];
+};
+$bt = $bootGet();
+$btTag = (string) ($bt['h']['etag'] ?? '');
+$btMd5 = trim($btTag, '"');
+it_check('the public payload carries a strong ETag and varies by encoding',
+    preg_match('/^"[0-9a-f]{32}"$/', $btTag) === 1 && stripos((string) ($bt['h']['vary'] ?? ''), 'accept-encoding') !== false, json_encode($bt['h']));
+foreach ([
+    'the tag as sent' => $btTag,
+    'Apache\'s deflated form ("…-gzip")' => '"' . $btMd5 . '-gzip"',
+    'a weak validator (W/"…")' => 'W/"' . $btMd5 . '"',
+    'a list that holds it' => '"' . str_repeat('0', 32) . '", "' . $btMd5 . '-gzip"',
+] as $what => $inm) {
+    $r = $bootGet(['If-None-Match: ' . $inm]);
+    it_check("…answers 304 to $what", $r['code'] === 304 && $r['raw'] === '', $r['code'] . ' / ' . strlen($r['raw']) . ' bytes');
+}
+$r = $bootGet(['If-None-Match: "' . str_repeat('0', 32) . '-gzip"']);
+it_check('…and a stale tag still gets the payload', $r['code'] === 200 && strlen($r['raw']) > 200, (string) $r['code']);
+// An owner's copy carries internal settings and is asked for only at boot, so it
+// is never stored and never offered a 304.
+$r = $bootGet(['Cookie: ' . implode('; ', array_map(fn($k) => "$k={$admin[$k]}", array_keys($admin)))]);
+it_check('an owner\'s copy is never stored (no-store, no ETag)',
+    $r['code'] === 200 && stripos((string) ($r['h']['cache-control'] ?? ''), 'no-store') !== false && !isset($r['h']['etag']), json_encode($r['h']));
 
 // ---------------------------------------------------------------------------
 //  §22  THE EMAIL OUTBOX — the row lifecycle against the real schema, driven
@@ -3988,6 +4030,30 @@ $r = http($loStale, 'POST', '/auth.php', ['action' => 'admin_status']);
 it_check('§56 …and the old id is signed in as nobody', ($r['json']['admin'] ?? null) === false, $r['raw']);
 $cronSrc56 = preg_replace('#//[^\n]*#', '', (string) file_get_contents(__DIR__ . '/cron.php'));
 it_check('§56 the daily prune keeps history by age, not by a bare row count', strpos($cronSrc56, 'OFFSET 5000') === false && strpos($cronSrc56, 'INTERVAL 3 YEAR') !== false, '');
+
+// ── §57 the reads that run on every booking page, send and limit check can use an index ──
+// activity_log is kept for three years under a 200,000-row ceiling, and a booking
+// page's feed, the send guard and the per-hour caps scanned all of it. The plan is
+// read from EXPLAIN's possible_keys — whether an index is USABLE, which is what
+// was missing, and unlike the optimiser's final choice it does not depend on how
+// few rows this harness holds.
+echo "\n== §57 the hot reads can use an index ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$keys57 = function (string $sql, array $args = []) use ($rootDb) {
+    $st = $rootDb->prepare('EXPLAIN ' . $sql);
+    $st->execute($args);
+    return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? ''), $st->fetchAll(PDO::FETCH_ASSOC)));
+};
+foreach ([
+    ['a booking page\'s feed', "SELECT action, summary, actor, created_at FROM activity_log WHERE entity = 'booking' AND entity_id = ? ORDER BY id DESC LIMIT 80", ['42'], 'idx_activity_entity'],
+    ['the send guard', "SELECT created_at FROM activity_log WHERE entity = 'booking' AND entity_id = ? AND action = ? AND created_at >= (NOW() - INTERVAL 180 SECOND) ORDER BY created_at DESC LIMIT 1", ['42', 'payment.request'], 'idx_activity_entity'],
+    ['the per-hour report caps', "SELECT SUM(ip = ?) AS mine, COUNT(*) AS allr FROM activity_log WHERE action = 'csp.violation' AND created_at > (NOW() - INTERVAL 1 HOUR)", ['1.2.3.4'], 'idx_activity_action'],
+    ['the per-account limits', 'SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)', ['mailto:x'], 'idx_attempt_ident'],
+    ['a guest\'s own enquiries', 'SELECT * FROM enquiries WHERE email = ?', ['g@example.org'], 'idx_enq_email'],
+] as [$what, $sql, $args, $want]) {
+    $have = $keys57($sql, $args);
+    it_check("§57 $what can use $want", strpos($have, $want) !== false, $have);
+}
 
 echo "\n== Summary ==\n";
 if ($fail) {

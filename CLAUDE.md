@@ -9476,6 +9476,71 @@ each fix is gated and break-tested. The rules it set:
   ten emails from twelve code requests with identical answers — `srv` stripped
   before comparing — the dummy hash, a new session id at logout).
 
+## The round-4 performance pass (one load per trip, a 304 that fires, indexes)
+
+Every change here is counted where it happens (requests, statements, plans), not
+timed, and each gate was break-tested against the old code.
+- **THE PUBLIC BOOT PAYLOAD'S 304 NEVER FIRED IN PRODUCTION.** htaccess deflates
+  `application/json`, so Apache sends bootstrap.php's ETag as `"abc-gzip"` and gets
+  that back, and bootstrap.php compared byte-exact: every 30-second poll from every
+  visitor downloaded the whole payload. It uses shell-etag.php's tolerant
+  `shell_etag_matches` now (the shell routes learned this first), with
+  `Vary: Accept-Encoding`. **An owner's copy is `no-store` with no ETag**: it carries
+  the internal settings (bank details among them) and is asked for only at boot.
+  test-integration §24 sends the `-gzip`, `W/` and list forms by hand, because
+  `php -S` compresses nothing and a test against PHP alone passes either way.
+  NB admin-bootstrap.php deliberately has NO ETag: a stored copy would put every
+  guest's name and phone number in the browser's HTTP cache unencrypted, the facts
+  the day sheet goes to the trouble of encrypting.
+- **ONE LOAD PER TRIP TO TODAY.** `nav('view-backoffice')` runs initBackOffice, and
+  tryAccessBackOffice (the Today button), bookingHubBack and the history replay ran
+  it again on the very next line: two admin-bootstrap loads and two full renders
+  per tap. `initBackOffice()` now shares one run between calls made in the SAME TASK
+  (`__boInitTurn`, cleared by a 0ms timer); a refresh asked for later always loads
+  afresh. That is the difference from PERF-8's time window, which skipped the very
+  reloads the refresh callers exist for. ui-test-oneload §1–§2 count both ways.
+- **A SYNC THAT FOUND THE SAME STAYS CHANGES NOTHING.** `sync_property` compares the
+  rows a feed would write with the stored ones (`ical_block_sig`, ical-lib; every
+  stored column, sorted, duplicates kept) and leaves an unchanged source alone —
+  no delete, no inserts. Each source answers `changed`, and `autoSyncIcalBlocks`
+  reloads only when something changed or a feed is in trouble (`icalSyncChanged`:
+  a failure, a missing flag from an older server or a malformed answer all reload).
+  The Status page's "Synced" reads the feeds' own `ok_at` now: it was the newest
+  block's `updated_at`, which stops moving once unchanged rows are not rewritten.
+  test-ical §6, ui-test-oneload §4.
+- **THE GUEST IS NOT KEPT WAITING ON THE OWNER'S PHONE.** The new-enquiry
+  `alert_owner` (an HTTPS request per device, then the email fallback) ran before
+  the response; it rides `mail_after_response` with the emails now. And
+  `mail_after_response` RELEASES THE SESSION LOCK first: enquiries.php keeps the
+  lock (`CHB_KEEPS_SESSION`), so the guest's next request waited behind every send.
+  test-webpush.
+- **INDEXES** (migration-139): activity_log `(entity, entity_id, id)` for a booking
+  page's feed and the send guard, `(action, created_at)` for the per-hour caps and
+  status checks; login_attempts `(identifier, attempted_at)` for the per-account
+  limits (its only index started with `ip`); enquiries `(email)`. §57 reads
+  EXPLAIN's `possible_keys` — whether an index is usable, which does not depend on
+  how few rows the harness holds.
+- **Smaller**: the three approval counts are asked for together (they were three
+  round trips in a row on every visit to Today), and on a phone the hidden rail no
+  longer walks every booking twice per navigation (`chbFrameSync` skips
+  `chbDuties`/`chbDaySentence` unless `rail-on`; `chbRailEnsure` still runs, because
+  it registers the width listeners that sync the rail the moment it appears).
+  And version.php — polled every minute or so by every open tab — reads only the
+  last 16KB of app.js for `const BUILD` (bump.js keeps it the last statement)
+  instead of the whole 1MB bundle, falling back to a full read; test-csp-report
+  asserts the build it reports equals app.js's.
+- **A PINNED ASSET IS SERVED FROM THE CACHE, NEVER REVALIDATED** (sw.js). The
+  generic branch was stale-while-revalidate, so every page load re-fetched each
+  `?v=` bundle and RE-WROTE it into Cache Storage — app.js alone is a megabyte, a
+  phone's write for nothing. A `?v=` URL cannot change under its pin
+  (check-versions), so it is cache-first now; the logo, icons and manifest keep
+  SWR, and a release's new CACHE name still clears the lot. smoke-test §6c-iv
+  loads sw.js into a sandbox with a fake cache and counts fetches and writes.
+- **Considered and left**: the hero at a resized width (home.php preloads the
+  full-size URL, so a resized one would download twice), memoising `chbDuties`
+  (too many inputs to key without serving a stale duty), and replacing the costly
+  `:has()` rules (a CSS refactor with no measurement behind it).
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a

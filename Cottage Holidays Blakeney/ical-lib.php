@@ -186,3 +186,24 @@ function ical_date($v)
     }
     return null;
 }
+
+// A feed's blocks as the comparable thing they are: one string per block, made
+// of every column the sync stores, sorted. Two feeds with the same strings are
+// the same calendar, so the sync can leave the table alone and tell the back
+// office there is nothing to reload. Duplicates are kept (two identical blocks
+// are not one), and `kind`/`label` count, because the owner sees both.
+function ical_block_sig(array $rows)
+{
+    $out = [];
+    foreach ($rows as $r) {
+        $out[] = implode("\x1F", [
+            (string) ($r['check_in'] ?? ''),
+            (string) ($r['check_out'] ?? ''),
+            (string) ($r['uid'] ?? ''),
+            (string) ($r['kind'] ?? ''),
+            (string) ($r['label'] ?? ''),
+        ]);
+    }
+    sort($out, SORT_STRING);
+    return $out;
+}

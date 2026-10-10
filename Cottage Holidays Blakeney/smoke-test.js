@@ -829,6 +829,46 @@ try {
         .some((l) => /admin\\?\.js/.test(l) && /return/.test(l)));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
+// 6c-iv. THE SERVICE WORKER'S OWN FETCH LISTENER, DRIVEN: sw.js runs in a sandbox
+// with a fake cache and a counting fetch. A ?v=-pinned asset cannot change under
+// its URL, so once cached it is served with no network at all; stale-while-
+// revalidate re-fetched and re-wrote the megabyte bundles on every page load.
+pendingChecks.push((async () => {
+    const swSrc = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'sw.js'), 'utf8');
+    const on = {};
+    const store = new Map();
+    let fetches = 0;
+    let puts = 0;
+    const res = (body) => ({ ok: true, body, clone() { return res(body); } });
+    const key = (r) => (typeof r === 'string' ? r : r.url);
+    const cache = { match: async (r) => store.get(key(r)), put: async (r, v) => { puts++; store.set(key(r), v); }, addAll: async () => {}, keys: async () => [], delete: async () => true };
+    const sb = {
+        self: { addEventListener: (t, fn) => { on[t] = fn; }, location: { origin: 'https://chb.test' }, registration: {}, clients: {} },
+        caches: { open: async () => cache, keys: async () => [], delete: async () => true },
+        fetch: async (r) => { fetches++; return res('net ' + key(r)); },
+        Response: { error: () => ({ ok: false }) },
+        URL, console, setTimeout, Promise,
+    };
+    vm.createContext(sb);
+    vm.runInContext(swSrc, sb);
+    const get = async (url) => {
+        let p = null;
+        const waits = [];
+        on.fetch({ request: { method: 'GET', url, mode: 'no-cors', headers: { get: () => '' } }, respondWith: (x) => { p = x; }, waitUntil: (x) => waits.push(x) });
+        const r = await p;
+        await Promise.all(waits);
+        return r;
+    };
+    const a = await get('https://chb.test/app.js?v=9');
+    check('a pinned asset not yet cached is fetched once and kept', fetches === 1 && puts === 1 && a && a.body === 'net https://chb.test/app.js?v=9');
+    const b = await get('https://chb.test/app.js?v=9');
+    check('…and from then on it is served from the cache with NO network request and no rewrite', fetches === 1 && puts === 1 && b && b.body === a.body);
+    store.set('https://chb.test/logo.svg', res('cached logo'));
+    const before = fetches;
+    const c = await get('https://chb.test/logo.svg');
+    check('an unpinned asset still answers from the cache and refreshes behind it', c && c.body === 'cached logo' && fetches === before + 1);
+})().catch((e) => check('the service worker fetch check ran (' + e.message + ')', false)));
+
 // 6c-iii. Migration naming convention: NEW migrations must be
 // migration-NNN-<slug>.sql (NNN ≥ 100, applied after all legacy files by
 // migrate.php's migration_sort — see test-migrate.php). The legacy names below

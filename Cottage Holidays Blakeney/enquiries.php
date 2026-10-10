@@ -434,15 +434,6 @@ if ($action === 'submit') {
         }
     } catch (\Throwable $e) {
     }
-    // Wake the owner's devices (best-effort) — not for the owner's own edit.
-    if (!$isAdminEdit) {
-        try {
-            require_once __DIR__ . '/webpush.php';
-            alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut), ['category' => 'enquiries', 'email' => true, 'tag' => 'enquiry-' . (int) $enqId, 'url' => './?open=enquiry-' . (int) $enqId]);
-        } catch (\Throwable $e) {
-        }
-    }
-
     // Does this email already have a guest account? Used to tailor the follow-up so a
     // returning guest is nudged to sign in rather than create another account.
     $email = clean($in['email'] ?? '');
@@ -487,7 +478,17 @@ if ($action === 'submit') {
         'message' => clean($in['message'] ?? ''),
     ];
     $base = site_base_url(); // built from $_SERVER now, used after flush
-    mail_after_response(function () use ($ackName, $ackEmail, $ackAccountExists, $ownerCtx, $base) {
+    $alertBody = trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut);
+    mail_after_response(function () use ($ackName, $ackEmail, $ackAccountExists, $ownerCtx, $base, $alertBody) {
+        // Wake the owner's devices (best-effort) — not for the owner's own edit,
+        // which returned above. AFTER the response too, like the emails: it makes
+        // an HTTPS request to each device's push service and, when none answers,
+        // sends the email fallback, and the guest's form waited on all of it.
+        try {
+            require_once __DIR__ . '/webpush.php';
+            alert_owner('New enquiry', $alertBody, ['category' => 'enquiries', 'email' => true, 'tag' => 'enquiry-' . (int) $ownerCtx['id'], 'url' => './?open=enquiry-' . (int) $ownerCtx['id']]);
+        } catch (\Throwable $e) {
+        }
         // Acknowledge the enquiry to the guest (best-effort).
         try {
             if ($ackEmail !== '' && function_exists('send_enquiry_ack')) {

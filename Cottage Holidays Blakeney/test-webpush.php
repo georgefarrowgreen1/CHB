@@ -227,6 +227,21 @@ foreach ($callers as $f => $needle) {
     $c = (string) @file_get_contents(__DIR__ . '/' . $f);
     wpchk("$f deep-links its alert ($needle)", strpos($c, $needle) !== false);
 }
+// THE GUEST IS NOT KEPT WAITING ON THE OWNER'S PHONE. alert_owner makes an HTTPS
+// request to each device's push service and, when none answers, sends the email
+// fallback; the new-enquiry alert ran BEFORE the response, so the guest's form
+// waited on all of it. It rides the after-response work with the emails now.
+$enqSrc = (string) file_get_contents(__DIR__ . '/enquiries.php');
+$deferAt = strpos($enqSrc, 'mail_after_response(function');
+$alertAt = strpos($enqSrc, "alert_owner('New enquiry'");
+wpchk('the new-enquiry alert is sent after the guest has their answer',
+    $deferAt !== false && $alertAt !== false && $alertAt > $deferAt && substr_count($enqSrc, "alert_owner('New enquiry'") === 1);
+// …and that work lets go of the session lock first, or an endpoint that keeps
+// the lock (enquiries.php does) holds every later request from that browser
+// behind the sends.
+$mailSrc = (string) file_get_contents(__DIR__ . '/mailer.php');
+wpchk('…and the after-response work releases the session lock before it starts',
+    preg_match('/function mail_after_response\(\$fn\)\s*\{\s*register_shutdown_function\(function \(\) use \(\$fn\) \{(?:\s*\/\/[^\n]*)*\s*if \(session_status\(\) === PHP_SESSION_ACTIVE\) \{\s*@session_write_close\(\);\s*\}\s*if \(function_exists\(\'fastcgi_finish_request\'\)\)/', $mailSrc) === 1);
 $icalSrc = (string) file_get_contents(__DIR__ . '/ical-import.php');
 wpchk('a failing calendar sync is urgent (ignores mute + quiet hours)',
     strpos($icalSrc, "'category' => 'urgent'") !== false);

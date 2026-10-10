@@ -53,6 +53,13 @@ function email_crown_header($bg)
 function mail_after_response($fn)
 {
     register_shutdown_function(function () use ($fn) {
+        // Let go of the session lock FIRST. An endpoint that keeps it
+        // (CHB_KEEPS_SESSION) would otherwise hold it through every send, so the
+        // guest's next tap on the page waited behind the SMTP handshakes this
+        // exists to keep them from waiting on. The session is saved as it is.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            @session_write_close();
+        }
         if (function_exists('fastcgi_finish_request')) {
             @fastcgi_finish_request();
         }

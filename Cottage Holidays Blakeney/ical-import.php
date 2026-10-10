@@ -150,15 +150,46 @@ function sync_property($prop)
             continue;
         }
         $events = parse_ical($res['body']);
-        // Snapshot this source's current blocks (only for feeds we actually refresh,
-        // so a failed fetch above never looks like a cancellation).
-        try {
-            $os = db()->prepare('SELECT check_in, check_out FROM ical_blocks WHERE prop_key = ? AND source = ?');
-            $os->execute([$prop, $source]);
-            foreach ($os->fetchAll() as $ob) {
-                $oldRanges[] = [$ob['check_in'], $ob['check_out']];
+        // `kind`/`label` only where migration-124 has run — a missing column must
+        // never stop the sync (it is what keeps the calendar from reading free).
+        $hasKind = ical_has_kind();
+        // The rows this feed would write. An over-long UID from a non-platform
+        // feed would abort the whole write; the column is the identity, not the
+        // payload.
+        $newRows = [];
+        foreach ($events as $e) {
+            if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
+                continue;
             }
+            $newRows[] = [
+                'uid' => mb_substr((string) ($e['uid'] ?? ''), 0, 190),
+                'check_in' => $e['start'],
+                'check_out' => $e['end'],
+                'kind' => $hasKind ? ical_classify($e['summary'] ?? '', $e['description'] ?? '') : '',
+                'label' => $hasKind ? ical_label($e['summary'] ?? '') : '',
+            ];
+        }
+        // Snapshot this source's current blocks (only for feeds we actually refresh,
+        // so a failed fetch above never looks like a cancellation). Unreadable
+        // reads as "different", so the sync rewrites rather than trusting nothing.
+        $oldRows = null;
+        try {
+            $os = db()->prepare('SELECT check_in, check_out, uid' . ($hasKind ? ', kind, label' : '') . ' FROM ical_blocks WHERE prop_key = ? AND source = ?');
+            $os->execute([$prop, $source]);
+            $oldRows = $os->fetchAll();
         } catch (\Throwable $e) {
+        }
+        // A CALENDAR THAT HAS NOT CHANGED IS LEFT ALONE. The sync runs from the
+        // daily cron, every back-office visit and Sync now, and almost every run
+        // finds the same stays: rewriting them was a delete and an insert per stay
+        // for nothing, and it made the back office reload everything it had just
+        // loaded. `changed` tells it whether to.
+        if ($oldRows !== null && ical_block_sig($oldRows) === ical_block_sig($newRows)) {
+            $summary[] = ['source' => $source, 'ok' => true, 'events' => count($newRows), 'changed' => false];
+            continue;
+        }
+        foreach ((array) $oldRows as $ob) {
+            $oldRanges[] = [$ob['check_in'], $ob['check_out']];
         }
         // Replace this source's blocks for this property — ATOMICALLY. This was a
         // bare DELETE followed by N INSERTs, and it is the one write deciding
@@ -175,23 +206,15 @@ function sync_property($prop)
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')->execute([$prop, $source]);
-            // `kind`/`label` only where migration-124 has run — a missing column must
-            // never stop the sync (it is what keeps the calendar from reading free).
-            $hasKind = ical_has_kind();
             $ins = $hasKind
                 ? $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out, kind, label) VALUES (?,?,?,?,?,?,?)')
                 : $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
             $count = 0;
-            foreach ($events as $e) {
-                if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
-                    continue;
-                }
-                // An over-long UID from a non-platform feed would abort the whole
-                // loop; the column is the identity, not the payload.
-                $row = [$prop, $source, mb_substr((string) ($e['uid'] ?? ''), 0, 190), $e['start'], $e['end']];
+            foreach ($newRows as $nr) {
+                $row = [$prop, $source, $nr['uid'], $nr['check_in'], $nr['check_out']];
                 if ($hasKind) {
-                    $row[] = ical_classify($e['summary'] ?? '', $e['description'] ?? '');
-                    $row[] = ical_label($e['summary'] ?? '');
+                    $row[] = $nr['kind'];
+                    $row[] = $nr['label'];
                 }
                 $ins->execute($row);
                 $count++;
@@ -211,7 +234,7 @@ function sync_property($prop)
             $summary[] = ['source' => $source, 'ok' => false, 'error' => 'could not rebuild blocks'];
             continue;
         }
-        $summary[] = ['source' => $source, 'ok' => true, 'events' => $count];
+        $summary[] = ['source' => $source, 'ok' => true, 'events' => $count, 'changed' => true];
     }
     // After every feed is rebuilt, notify the waitlist for any previously-blocked
     // range that is now genuinely free (dates_clash re-checks bookings + all feeds,

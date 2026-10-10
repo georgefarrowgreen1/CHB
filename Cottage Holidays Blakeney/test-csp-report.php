@@ -148,6 +148,10 @@ $probeRaw = (string) shell_exec(
 );
 $probe = json_decode(trim($probeRaw), true);
 ok(is_array($probe) && isset($probe['csp']), 'version.php?csp=1 returns a csp block');
+// …and it still reports the build the deployed app.js carries, read from the
+// file's tail now rather than the whole 1MB bundle.
+$appBuild = preg_match("/const BUILD = '([^']+)'/", (string) file_get_contents(__DIR__ . '/app.js'), $bm) ? $bm[1] : '';
+ok($appBuild !== '' && is_array($probe) && ($probe['build'] ?? '') === $appBuild, 'version.php reports app.js\'s BUILD (' . $appBuild . ')');
 ok(($probe['csp']['lib'] ?? false) === true, 'it reports csp-lib.php is present');
 ok(($probe['csp']['source'] ?? '') === 'csp-policy.php',
     'it names the policy SOURCE it actually used (' . ($probe['csp']['source'] ?? '?') . ')');

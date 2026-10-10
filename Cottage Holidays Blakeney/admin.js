@@ -23817,17 +23817,21 @@ function chbFrameSync() {
     } catch (e) {}
     // ONE derivation per sync: the day sentence (its tuple walk carries the
     // owed figure the rail's Payments count needs) and the duty list, each
-    // computed once and passed down.
+    // computed once and passed down — and only while the rail is ON SCREEN (not
+    // on a phone). chbRailEnsure still runs: its width listeners re-sync on show.
+    const railShown = owner && document.body.classList.contains('rail-on');
     let duties = [];
     let day = null;
-    if (owner) {
+    if (railShown) {
         try { duties = chbDuties(); } catch (e) {}
         try { day = chbDaySentence(); } catch (e) {}
     }
     try {
         chbRailEnsure();
-        chbRailSync(duties, day ? day.shape.owed : 0);
-        chbRailPlaceInd();
+        if (railShown) {
+            chbRailSync(duties, day ? day.shape.owed : 0);
+            chbRailPlaceInd();
+        }
     } catch (e) {}
     // Today's head follows the rail band (the greeting joins the ops line
     // there) — re-render it when we're on it; its own changed-guard makes
@@ -25421,7 +25425,18 @@ async function odsRetry() {
     }
 }
 let __odsPatienceUsed = false; // the boot's patience window — armed once per page
-async function initBackOffice() {
+// Calls in ONE TASK share a run (nav() inits, then its caller did again on the
+// next line: two loads per trip to Today). A later refresh always loads afresh.
+let __boInit = null;
+let __boInitTurn = false;
+function initBackOffice() {
+    if (__boInit && __boInitTurn) return __boInit;
+    __boInitTurn = true;
+    setTimeout(() => { __boInitTurn = false; }, 0);
+    __boInit = initBackOfficeRun();
+    return __boInit;
+}
+async function initBackOfficeRun() {
     // Unlock the encrypted phone-side stores BEFORE anything reads them — the
     // day sheet and the deposit sweep both render from the decrypted mirrors.
     try {
@@ -25648,12 +25663,16 @@ async function autoSyncIcalBlocks(force = false) {
     if (btn) btn.classList.add('syncing');
     renderCalUpdated();
     try {
-        await apiPost('ical-import.php', { action: 'sync' });
+        const res = await apiPost('ical-import.php', { action: 'sync' });
         try {
             localStorage.setItem(ICAL_LAST_SYNC_KEY, String(Date.now()));
         } catch (e) {}
-        await loadData();
-        renderCalendar();
+        // Reload only for news (or while a feed is in trouble: its warning
+        // lives in what loadData brings).
+        if (icalSyncChanged(res) || chbFeedTrouble().length) {
+            await loadData();
+            renderCalendar();
+        }
     } catch (e) {
         // Non-fatal: a feed being unreachable shouldn't disturb the back office.
     } finally {
@@ -25663,6 +25682,13 @@ async function autoSyncIcalBlocks(force = false) {
     }
 }
 
+// "No change" only when EVERY feed worked and says unchanged; a failure, an
+// older server's answer (no flag) or a malformed one all reload, as before.
+function icalSyncChanged(res) {
+    const all = res && res.result && typeof res.result === 'object' ? Object.values(res.result) : null;
+    if (!all) return true;
+    return !all.every((rows) => Array.isArray(rows) && rows.every((r) => r && r.ok === true && r.changed === false));
+}
 // Human-friendly "x minutes ago" / date for the calendar's last-updated line.
 function formatRelativeTime(ts) {
     const diff = Date.now() - ts;
@@ -36561,21 +36587,13 @@ async function refreshModerationCounts() {
             b.style.display = n > 0 ? '' : 'none';
         }
     };
-    let rev = 0,
-        ph = 0,
-        exp = 0;
-    try {
-        const r = await apiPost('reviews.php', { action: 'list_admin' });
-        rev = (r.reviews || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
-    try {
-        const r = await apiPost('photos.php', { action: 'list_admin' });
-        ph = (r.photos || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
-    try {
-        const r = await apiPost('experiences.php', { action: 'list_admin' });
-        exp = (r.experiences || []).filter((x) => x.status === 'pending').length;
-    } catch (e) {}
+    // All three at once — they are independent.
+    const pending = (file, key) =>
+        apiPost(file, { action: 'list_admin' }).then(
+            (r) => ((r && r[key]) || []).filter((x) => x.status === 'pending').length,
+            () => 0,
+        );
+    const [rev, ph, exp] = await Promise.all([pending('reviews.php', 'reviews'), pending('photos.php', 'photos'), pending('experiences.php', 'experiences')]);
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
     setBadge('exp-pending-badge', exp);

@@ -14,9 +14,14 @@
 //  ETag/304: the response carries a strong ETag with Cache-Control: no-cache
 //  (store, but revalidate). The browser then sends If-None-Match on every
 //  poll and an unchanged site costs a ~0-byte 304 instead of the full payload
-//  — fetch() serves the cached body to the app transparently.
+//  — fetch() serves the cached body to the app transparently. The comparison
+//  is shell-etag.php's TOLERANT one: htaccess deflates application/json, and
+//  Apache then sends the tag as "abc-gzip" and gets it back that way, so the
+//  byte-exact comparison this file used never matched in production and every
+//  30-second poll downloaded the whole payload.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/shell-etag.php';
 require_once __DIR__ . '/rates.php';
 require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/reviews.php';
@@ -72,6 +77,16 @@ if ($body === false) {
     json_out(['error' => 'Response encoding error'], 500);
 }
 
+header('Content-Type: application/json; charset=utf-8');
+// AN OWNER'S COPY IS NEVER STORED. Signed in to the back office, this payload
+// carries the internal settings too (bank details among them), and the boot is
+// the only time an owner asks for it — the live tick is off while signed in —
+// so storing it buys nothing and leaves those values in the browser's cache.
+if (!empty($_SESSION['admin_id'])) {
+    header('Cache-Control: no-store, private');
+    echo $body;
+    exit();
+}
 // Strong ETag over the exact bytes. PHP's session machinery sends no-store
 // headers by default, which would block conditional revalidation — replace
 // them so the browser stores the body and revalidates each time.
@@ -80,10 +95,10 @@ header_remove('Pragma');
 header_remove('Expires');
 header('Cache-Control: no-cache, private');
 header('ETag: ' . $etag);
-header('Content-Type: application/json; charset=utf-8');
-
-$inm = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
-if ($inm !== '' && $inm === $etag) {
+// One URL, served compressed or not: a cache must not hand one encoding to a
+// client that asked for the other (the shell routes and htaccess say the same).
+header('Vary: Accept-Encoding');
+if (shell_etag_matches((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''), $etag)) {
     http_response_code(304);
     exit();
 }
