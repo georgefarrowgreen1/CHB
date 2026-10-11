@@ -850,6 +850,17 @@ in admin.css). The ids the rest of the app reads are unchanged (`enq-email-subje
 - **On a phone it drags down to close** (past 22% or a flick; a finger that stopped before letting go is not a
   flick, which the gate found); from 641px it is a 600px card. The overlay keeps `.reviews-modal` for the
   shared Escape and Tab handling, and its own look is undone in admin.css.
+- **A drag-close's clean-up belongs to that close** (`__cmpDragExit`, `cmpDragExitClear`). It used to run 340ms
+  after the close and cancel every animation on the sheet, so a reopen inside that window had its rise cut off
+  mid-way, and the backdrop's fade held it at 0 until then. Now the next opening stands the exit down at once,
+  and the clean-up cancels only its own two animations. ui-test-composer §10 reopens in the same breath as the
+  close (a MutationObserver, so no clock decides it): the rise finishes and nothing of the exit is left.
+  Break-tested on the opening's call and on the backdrop's fade.
+- **The suite's rest check prints the sheet's state when it fails.** CI has several times seen the sheet held
+  105% down (the drag exit's end point) after a reopen; it has never happened on this machine, under load, on
+  the headless shell or with CPU throttling. CI runs Playwright's Chromium 149 headless shell, and this machine
+  has only 141. The clean-up race above was found while looking but does not explain a hold that outlasts
+  15 seconds, so the next CI failure names its cause instead of only its symptom.
 - **Light mode's `textarea { background-color … !important }`** reaches the letter's boxes; the sheet restates
   `transparent` at id specificity.
 - **The email** (`build_enquiry_reply_email($e, $subject, $message, $ctx, $opts)`, mailer.php): the stay's
