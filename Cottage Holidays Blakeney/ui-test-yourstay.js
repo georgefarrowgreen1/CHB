@@ -15,7 +15,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
   const { browser, base, done } = await bootBrowser();
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
   // The house DD/MM/YYYY form, for asserting a rendered date without
   // re-implementing fmtDate in the assertion.
   const ukD = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);

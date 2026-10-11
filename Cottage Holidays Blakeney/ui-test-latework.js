@@ -25,7 +25,7 @@ const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require t
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails++; };
-const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 const mk = (id, name, ci, co) => ({
     id: 'b' + id, dbId: id, name, email: name.split(' ')[0].toLowerCase() + '@example.com', phone: '07700 900' + id,
     checkIn: ci, checkOut: co, checkInTime: '15:00', checkOutTime: '10:00', adults: 2, children: 0,

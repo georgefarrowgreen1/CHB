@@ -9193,15 +9193,19 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   `setTimeout`s still fire (install fakes them too and the suite would hang waiting
   for ticks). Keep the pinned instant on the SAME calendar day so the node-side
   `d(n)` helper still agrees, and fix only the hour.
-  **THE SUITE KEEPS ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
-  night and four suites failed). From 22:00 UK time the lib sets every page's `Date`
-  back three hours by an init script (`shiftPageClock`, on `browser.newPage` and
-  `browser.newContext`; timers, `performance.now` and elapsed time untouched), and the
-  lib's `d()` reads the same clock, so fixtures built at the start and the page asked
-  later agree. Suites use the lib's `d` (38 private copies were converted); a helper that
-  runs IN THE PAGE (inside `page.evaluate`) must stay a plain `new Date()` one, since the
-  page's Date is the shifted one there. `CHB_LATE_SHIFT=1` forces the shift at any hour
-  to check the suites still pass on it. ui-test-yourstay is the
+  **A SUITE CAN KEEP ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
+  night and the day-sheet suites failed). A suite that calls the lib's **`keepDay()`**
+  (ui-test-offline and ui-test-simpletoday) runs, from 22:00 UK time, with every page's
+  `Date` set back three hours by an init script (`shiftPageClock`, on `browser.newPage`
+  and `browser.newContext`; timers, `performance.now` and elapsed time untouched), and
+  the lib's `d()` reads the same clock, so fixtures built at the start and the page asked
+  later agree. **OPT-IN, and that was learned the hard way**: shipped for every suite, a
+  run with the shift forced failed thirteen, because it moves only the PAGE's clock — the
+  devices' "Active now" compares the page's time with the server's, and yourstay's
+  `page.clock` pin of 23:59 was shifted to 20:59. Suites use the lib's `d` (38 private
+  copies were converted; without keepDay it is plain today); a helper that runs IN THE
+  PAGE (inside `page.evaluate`) must stay a plain `new Date()` one. `CHB_LATE_SHIFT=1`
+  forces the shift at any hour for the suites that asked. ui-test-yourstay is the
   exemplar: its checkout-time cases were asserted against the real clock, so
   "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
   now checks both ends of the day on purpose (case 10 is the far end, and removing

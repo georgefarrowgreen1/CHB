@@ -12,7 +12,8 @@
 const { boot } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
-const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+require('./ui-test-lib').keepDay(); // the page's clock keeps the fixtures' day past midnight
+const d = require('./ui-test-lib').d; // the harness's day, on that same clock
 
 (async () => {
   const { page, base, done } = await boot({ viewport: { width: 390, height: 900 } });

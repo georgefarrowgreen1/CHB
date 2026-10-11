@@ -13,7 +13,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
   const { page, base, done } = await boot({ viewport: { width: 1280, height: 950 } });
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 
   // Hannah left this morning (her code is still on the safe); Marcus arrives
   // TOMORROW — inside the 2-day reveal window, so the duty must be red.

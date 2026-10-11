@@ -21,7 +21,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e && e.message)));
 
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
   const mk = (id, name, inD, extra) => Object.assign({
     id, prop_key: '21a', name, email: `${name.split(' ')[0].toLowerCase()}@example.com`,
     phone: '07700 900123', address: '1 Lane', postcode: 'NR25 7AB',

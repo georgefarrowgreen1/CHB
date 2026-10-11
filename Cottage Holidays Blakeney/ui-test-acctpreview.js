@@ -7,7 +7,7 @@
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
-const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 
 const CUSTOMER = { name: 'Cara Nunn', email: 'cara@example.co' };
 const acctPayload = {

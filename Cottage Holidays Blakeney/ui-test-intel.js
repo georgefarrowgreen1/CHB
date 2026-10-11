@@ -13,7 +13,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 (async () => {
   const { page, browser, base, done } = await boot({ viewport: { width: 390, height: 844 } });
 
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
   const mk = (id, name, email, ci, co) => ({ id, prop_key: 'jollyboat', name, email, phone: '', check_in: ci, check_out: co, adults: 2, children: 0, payment: 'paid', agreed_total: 440, hold_status: 'none' });
   // Alice is a REPEAT guest (same email, two stays); Bob + Carol bound a
   // 3-night gap starting 8 days out; Carol is also the first-time control.

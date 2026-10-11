@@ -17,7 +17,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
 
 (async () => {
     const { browser, base, done } = await bootBrowser();
-    const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+    const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     const priced = { agreed_total: 400, agreed_per_night: 133.33, agreed_nights: 3, agreed_nightly: 400, agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0 };
     const ann = { name: 'Ann Able', email: 'ann@example.com', phone: '07700 900111', address: '1 Quay Street, Blakeney', postcode: 'NR25 7ND' };
     const bob = { name: 'Bob Best', email: 'bob@example.com', phone: '07700 900222', address: '2 High Street, Holt', postcode: 'NR25 6BN' };

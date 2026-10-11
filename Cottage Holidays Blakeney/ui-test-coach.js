@@ -12,7 +12,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 (async () => {
   const { page, browser, base, done } = await boot({ viewport: { width: 390, height: 844 } });
 
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
   const bookings = [{ id: 1, prop_key: 'jollyboat', name: 'Alice Harper', email: 'a@x.co', phone: '', check_in: d(3), check_out: d(6), adults: 2, children: 0, payment: 'paid', agreed_total: 440, hold_status: 'none' }];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
