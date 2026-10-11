@@ -113,12 +113,15 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   }, since, { timeout: 15000 }).catch(() => {});
   const sheetUp = () => page.waitForFunction(() => !!document.getElementById('offline-daysheet'), null, { timeout: 15000 }).catch(() => {});
   // the store is ENCRYPTED at rest — read through the decrypted mirror
-  const snap = () => page.evaluate(() => chbSnapRead(true));
+  const snap = () => page.evaluate(() => (typeof chbSnapRead === 'function' ? chbSnapRead(true) : null));
 
   // ── §1 a successful owner boot pre-warms the snapshot ─────────────────────
   console.log('§1 the snapshot is pre-warmed, deliberately');
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await settle();
+  // The back office loads after sign-in: under load 2.8s did not cover it, and the
+  // read below threw before a single check could fail by name.
+  await freshSnap(0);
   ok(await page.evaluate(() => localStorage.getItem('chb-was-admin')) === '1', 'a verified admin session stamps the boot hint');
   let s = await snap();
   ok(!!s && Array.isArray(s.rows), 'the day-sheet snapshot is written on a successful load');
