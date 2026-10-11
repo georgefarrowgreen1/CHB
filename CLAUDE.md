@@ -4442,7 +4442,9 @@ too (`guest-app.css`), and that card drops its Welcome book link (it is a tile t
 - Gates: ui-test-pay (§1–§11) and ui-test-paystay (every state on both pages), re-aims of ui-test-yourstay (rewritten
   around the merged card), -hig, -guestrepairs, -round8, -smallthings and -reach; layout-test's pay, pay-whole and
   pay-receipt scenes and the next-stay card on My stays; a11y-test's pay-receipt scene; test-payrail and integration
-  §19. Break-tested one rule at a time in throwaway copies of the app (BREAKS).
+  §19; test-autopay (the plan's words, the consent read at the moment of paying, and the off switch, which moved from
+  the stay card to the screen its Manage button opens). Eighteen rules were break-tested one at a time in throwaway
+  copies of the app, each failing its own named check.
 - **Not done, said plainly**: Apple Pay and Google Pay are stubbed in every suite (Square's SDK cannot load here), so
   the wallet sheets themselves are unverified on a device; the 3-D Secure challenge is stubbed; and the receipt names
   the card only when Square's answer carries card details.

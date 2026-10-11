@@ -603,16 +603,20 @@ chk('...after the ledger is written', strpos($paySrc, 'autopay_vault(') > strpos
 chk('...wrapped so it cannot fail the payment', preg_match('/try \{\s*require_once __DIR__ \. .\/autopay-lib\.php.;[\s\S]{0,700}\$vault = autopay_vault/', $paySrc) === 1);
 chk('the guest can turn it off from the screen that offered it', strpos($paySrc, "\$action === 'autopay_off'") !== false);
 $appSrc = file_get_contents(__DIR__ . '/app.js');
-// The consent card is a three-way decision now — the sum and the day still
-// live IN the words: the caption carries the sum, the lead and the one-payment
-// option carry the day.
-chk('the card names the sum and the day', preg_match('/The \$\{gbp\(t\.amount\)\} that.s left/', $appSrc) === 1 && preg_match('/taken automatically on \$\{fmtDate\(t\.due\)\}/', $appSrc) === 1);
+// The plan is a three-way decision (payPlanHtml), and the sum and the day live
+// IN the words: the caption carries the sum, the line under it the day, and the
+// one-payment option names the day it is taken.
+chk('the card names the sum and the day', strpos($appSrc, '`The ${gbp(t.amount)} balance`') !== false && strpos($appSrc, 'Due by ${escapeHtml(payDay(t.due))}. How would you like to pay it?') !== false && strpos($appSrc, "'Take it on ' + payDay(t.due)") !== false);
 chk('...and is only offered when there is something to schedule', strpos($appSrc, "s.autopayState === 'off'") !== false);
-chk('...read at the moment of paying, not from the render', strpos($appSrc, "autopay: payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly'") !== false);
-chk("...and the DEFAULT is \"I'll pay it myself\" — consent is opted into", strpos($appSrc, "payState.autopayChoice = 'self';") !== false);
-chk('My Stays shows an arranged balance as arranged, not as owing', strpos($appSrc, "b.autopayState === 'armed'") !== false);
-chk('...with the off switch beside it', strpos($appSrc, 'guestAutopayOff') !== false);
-chk('turning it off asks first, in terms of the consequence', preg_match("/glassConfirm\(\s*\"We'll stop collecting/", $appSrc) === 1);
+chk('...read at the moment of paying, not from the render', strpos($appSrc, "autopay: payState.mode === 'due' && (payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly')") !== false);
+chk("...and the DEFAULT is \"I'll pay it myself\" — consent is opted into", strpos($appSrc, "autopayChoice: 'self'") !== false);
+chk('My Stays shows an arranged balance as arranged, not as owing', strpos($appSrc, "if (b.autopayState === 'armed') return { state: 'arranged'") !== false);
+// The off switch lives on the screen My stays' Manage button opens (the pay
+// screen of an arranged plan), not on the stay card.
+chk('...whose Manage button opens the screen with the off switch', strpos($appSrc, "btn: card ? 'manage' : ''") !== false
+    && strpos($appSrc, "if (a.btn === 'manage') return `<button type=\"button\" class=\"\${c}\" \${chbAttrs('openPayView'") !== false
+    && strpos($appSrc, 'data-act="payTurnOff"') !== false);
+chk('turning it off asks first, in terms of the consequence', preg_match('/glassConfirm\(\s*`We won\'t take the \$\{gbp\(payFig\(payState\.s\)\.today\)\} automatically\. You\'ll pay it yourself[\s\S]{0,200}if \(!ok\) return;\s*try \{\s*await apiPost\(\'pay\.php\', \{ action: \'autopay_off\'/', $appSrc) === 1);
 
 // ============================================================
 //  THE THREE THINGS AUTOMATIC COLLECTION DID NOT SAY
@@ -1075,11 +1079,16 @@ chk('the collector notifies through the guarded send',
     strpos($apSrc2, "function_exists('send_autopay_failure')") !== false && strpos($apSrc2, 'send_autopay_failure($now, $why, $stopped, $today, $charge, $restNow)') !== false);
 // The account payload keeps a TROUBLED plan on the guest's card (states
 // 'retrying'/'stopped' + why + the retry day) — ui-test-yourstay drives the
-// rendering from a stubbed payload, so the server half is pinned here.
+// rendering from a stubbed payload, so the server half is pinned here. A
+// monthly plan's rows are booking_autopay_plan_view (pricing.php, shared with
+// the pay screen); a single collection in trouble is my-bookings' own block.
 $mbSrc = file_get_contents(__DIR__ . '/my-bookings.php');
+$prSrcAp = file_get_contents(__DIR__ . '/pricing.php');
 chk('the account payload keeps a troubled plan on the card',
-    strpos($mbSrc, "in_array(\$ap[0], ['armed', 'failed'], true)") !== false
-    && strpos($mbSrc, "'stopped' : (\$apAtt > 0 ? 'retrying' : 'on')") !== false);
+    strpos($mbSrc, '$apPlan = booking_autopay_plan_view($bk, $ap);') !== false
+    && strpos($prSrcAp, "if (!in_array(\$ap[0], ['armed', 'failed'], true) || \$apN <= 1") !== false
+    && strpos($prSrcAp, "'stopped' : (\$apAtt > 0 ? 'retrying' : 'on')") !== false
+    && strpos($mbSrc, "if (in_array(\$ap[0], ['armed', 'failed'], true) && \$apN <= 1 && \$apAtt1 > 0)") !== false);
 // The repair writes UNDER book_lock so a collection in flight can't walk it
 // back to 'stopped' — the collector holds the same lock across its read→write.
 chk('autopay_replace_card takes book_lock around its write',
