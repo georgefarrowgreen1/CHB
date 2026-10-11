@@ -19,6 +19,8 @@ require_once __DIR__ . '/people-lib.php';
 require_once __DIR__ . '/session-lib.php';
 // Every device a person is signed in on (admin_session_check asks it).
 require_once __DIR__ . '/devices-lib.php';
+// Private photos (the chat's, and wall photos waiting for approval) and their links.
+require_once __DIR__ . '/photo-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -352,48 +354,93 @@ function upload_pending_dir(): string
     }
     return $dir;
 }
-// A staged image goes public: the file and its WebP companion move into uploads/.
-// Returns the public path, or '' when there is nothing staged under that name.
+// A guest's wall photo goes public when it is approved: from the private folder
+// (or the staging folder) into uploads/. Returns the public path; one that is
+// already public comes back as it is; '' when there is nothing under that name.
+// Never a chat photo: those stay private for good.
 function upload_publish($rel): string
 {
-    if (!preg_match('#^uploads/pending/([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', (string) $rel, $m)) {
+    if (!preg_match('#^uploads/(?:pending/|private/)?(guest-[A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', (string) $rel, $m)) {
         return '';
     }
-    $from = __DIR__ . '/' . UPLOAD_PENDING_DIR . '/' . $m[1];
     $to = __DIR__ . '/uploads/' . $m[1];
-    if (!is_file($from) || !@rename($from, $to)) {
-        return '';
+    foreach ([UPLOAD_PRIVATE_DIR, UPLOAD_PENDING_DIR] as $dir) {
+        if (photo_move(__DIR__ . '/' . $dir . '/' . $m[1], $to)) {
+            return 'uploads/' . $m[1];
+        }
     }
-    if (is_file($from . '.webp')) {
-        @rename($from . '.webp', $to . '.webp');
-    }
-    return 'uploads/' . $m[1];
+    return is_file($to) ? 'uploads/' . $m[1] : '';
 }
-// ONE WAY TO DELETE AN UPLOADED IMAGE: the file, its WebP companion and every size
-// img.php cached of it. The path is rebuilt from its basename, so it can never
-// reach outside uploads/. Returns whether a file was removed.
+// ONE WAY TO DELETE AN UPLOADED IMAGE: the file and its WebP companion, wherever
+// it is (public, staged or private), and every size img.php cached of it. The path
+// is rebuilt from its basename, so it can never reach outside uploads/. Returns
+// whether a file was removed.
 function upload_delete($rel): bool
 {
-    if (!preg_match('#^uploads/(pending/)?([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', trim((string) $rel), $m)) {
+    if (!preg_match('#^uploads/(?:pending/|private/)?([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', trim((string) $rel), $m)) {
         return false;
     }
     // Only what a GUEST sent is deleted with their records: a chat photo, a wall
     // photo, a suggestion's picture. The owner's own uploads (galleries, the hero,
     // the host photo) are never reachable from here, whatever path reaches it.
-    if (!preg_match('/^(chat|guest|experience)-/', $m[2])) {
+    if (!preg_match('/^(chat|guest|experience)-/', $m[1])) {
         return false;
     }
-    $p = __DIR__ . '/uploads/' . $m[1] . $m[2];
     $gone = false;
-    foreach ([$p, $p . '.webp'] as $f) {
-        if (is_file($f) && @unlink($f)) {
-            $gone = true;
+    foreach (['uploads', UPLOAD_PENDING_DIR, UPLOAD_PRIVATE_DIR] as $dir) {
+        $p = __DIR__ . '/' . $dir . '/' . $m[1];
+        foreach ([$p, $p . '.webp'] as $f) {
+            if (is_file($f) && @unlink($f)) {
+                $gone = true;
+            }
         }
     }
-    foreach (glob(__DIR__ . '/uploads/cache/' . preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/' . $m[2]) . '.w*.webp') ?: [] as $c) {
+    foreach (glob(__DIR__ . '/uploads/cache/' . preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/' . $m[1]) . '.w*.webp') ?: [] as $c) {
         @unlink($c);
     }
     return $gone;
+}
+
+// PHOTOS SENT BEFORE THEY WERE PRIVATE. Every chat photo still in public uploads/
+// moves into the private folder, and so does every guest wall photo whose row is
+// not approved (approved ones stay public, on the wall). Their resized copies go.
+// Run after each deploy (migrate.php) and daily (self-repair); once everything has
+// moved it moves nothing. A wall photo is moved only when its row says it is
+// waiting: an unreadable table moves none, so an approved photo is never hidden.
+// Returns how many photos moved.
+function photos_make_private(): int
+{
+    $up = __DIR__ . '/uploads';
+    if (!is_dir($up)) {
+        return 0;
+    }
+    $waiting = null;
+    $moved = 0;
+    foreach (scandir($up) ?: [] as $f) {
+        if (!photo_name_ok($f) || !is_file($up . '/' . $f)) {
+            continue;
+        }
+        if (strncasecmp($f, 'guest-', 6) === 0) {
+            if ($waiting === null) {
+                try {
+                    $waiting = array_flip(db()->query("SELECT url FROM guest_photos WHERE status <> 'approved'")->fetchAll(PDO::FETCH_COLUMN));
+                } catch (\Throwable $e) {
+                    $waiting = [];
+                }
+            }
+            if (!isset($waiting['uploads/' . $f])) {
+                continue;
+            }
+        }
+        if (upload_private_dir() === '' || !photo_move($up . '/' . $f, __DIR__ . '/' . UPLOAD_PRIVATE_DIR . '/' . $f)) {
+            continue;
+        }
+        $moved++;
+        foreach (glob($up . '/cache/' . preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/' . $f) . '.w*.webp') ?: [] as $c) {
+            @unlink($c);
+        }
+    }
+    return $moved;
 }
 
 // A picture a guest's suggestion brought with it (uploads/experience-…) goes when

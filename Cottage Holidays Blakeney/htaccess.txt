@@ -105,6 +105,14 @@ RewriteRule ^review(/.*)?$ review.php [L]
 # fires for the .xml URL regardless of any stale static sitemap.xml file.
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
+# ---- Photos sent in the guest chat are private ----
+# They live in uploads/private/ and open only through photo.php's signed links,
+# which expire (photo-lib.php). The private and staging folders refuse every
+# request (each also carries its own deny-all .htaccess), and so do the old public
+# addresses of chat photos, and img.php's resized copies of them.
+RewriteRule (?i)^uploads/(private|pending)/ - [F,L]
+RewriteRule (?i)^uploads/(cache/uploads_)?chat- - [F,L]
+
 # ---- Serve smaller WebP images to browsers that support them ----
 # Every uploaded photo gets a same-name ".webp" companion (image-save.php on upload,
 # webp-backfill.php for older ones). When the browser sends "Accept: image/webp" AND

@@ -1545,6 +1545,16 @@ switch ($action) {
         $messages = $tids
             ? $grab('SELECT * FROM messages WHERE guest_id = ? OR thread_id IN (' . implode(',', array_fill(0, count($tids), '?')) . ') ORDER BY id', array_merge([$gid], $tids))
             : $grab('SELECT * FROM messages WHERE guest_id = ? ORDER BY id', [$gid]);
+        // A chat photo is private, so the export carries a link to it that works for
+        // a week, beside its stored name.
+        $site = rtrim(site_base_url(), '/') . '/';
+        foreach ($messages as &$mm) {
+            $pl = photo_link((string) ($mm['attachment'] ?? ''), PHOTO_MAIL_SECONDS);
+            if ($pl !== '') {
+                $mm['attachment_link'] = $site . $pl;
+            }
+        }
+        unset($mm);
         // The emails the owner wrote them: from the Inbox (the sent log) and from a
         // booking's page (kept with the booking's activity).
         $emailsToYou = $mine ? $grab('SELECT subject, body, sent_at FROM mail_sent WHERE to_email = ? ORDER BY id', [$email]) : [];
@@ -1574,7 +1584,13 @@ switch ($action) {
             'emails_to_you' => $emailsToYou,
             'reviews' => $grab('SELECT * FROM guest_reviews WHERE guest_id = ?', [$gid]),
             'reviews_from_a_link' => $leads,
-            'photos' => $grab('SELECT * FROM guest_photos WHERE guest_id = ?', [$gid]),
+            // A photo waiting for approval is private: a week's link to it, as for chat.
+            'photos' => array_map(
+                fn($ph) => ($ph['status'] ?? '') === 'approved' || photo_link((string) ($ph['url'] ?? '')) === ''
+                    ? $ph
+                    : $ph + ['link' => $site . photo_link((string) $ph['url'], PHOTO_MAIL_SECONDS)],
+                $grab('SELECT * FROM guest_photos WHERE guest_id = ?', [$gid]),
+            ),
             'passkeys' => $grab('SELECT label, created_at, last_used_at FROM guest_passkeys WHERE guest_id = ?', [$gid]),
             'newsletter' =>
                 $email !== ''
@@ -1663,9 +1679,8 @@ switch ($action) {
         if ($tids) {
             $try("UPDATE activity_log SET meta = NULL, summary = IF(action = 'message.guest' AND summary LIKE 'New chat message from %', 'New chat message', summary) WHERE entity = 'thread' AND entity_id IN (" . implode(',', array_fill(0, count($tids), '?')) . ')', $tids);
         }
-        // …and the photos in those conversations, which stayed on the site at their old
-        // address (the owner's emails to them still carry it). Found now, deleted once
-        // the messages have gone.
+        // …and the photos in those conversations (private, but kept until deleted).
+        // Found now, deleted once the messages have gone.
         $chatFiles = [];
         try {
             $fq = db()->prepare("SELECT attachment FROM messages WHERE (guest_id = ?" . ($tids ? ' OR thread_id IN (' . implode(',', array_fill(0, count($tids), '?')) . ')' : '') . ") AND attachment IS NOT NULL AND attachment <> ''");

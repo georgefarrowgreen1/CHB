@@ -11019,6 +11019,45 @@ ships as its own PR.
   integration §51 (the notes by permission), §52b (removed extras) and §77b (late replies through the real poll,
   webhook and Inbox list). Eleven mutations break-tested, each failing its own named check.
 
+### Step 2: chat photos stay in the chat; wall photos are private until approved
+
+- **A PRIVATE PHOTO OPENS ONLY THROUGH A SIGNED LINK THAT EXPIRES** (`photo-lib.php`, `photo.php`). A chat photo opened
+  for anyone with its address, for as long as the conversation existed, and was served `public` for 30 days; a guest's
+  wall photo was public from the moment it arrived. Both now live in `uploads/private/` (deny-all, made on first use)
+  and are served by `photo.php?f=<name>&exp=<time>&sig=<32 hex>` (HMAC over `photo|<name>|<exp>`). The link in the chat,
+  the Inbox and the moderation list works for 3 to 4 hours (`PHOTO_LINK_SECONDS`, the expiry rounded up to the next
+  whole hour so the link stays the same for an hour and the browser keeps its copy); the one in a guest's email for a
+  week (`PHOTO_MAIL_SECONDS`, and the email says so). An expired link answers 410 in words; a forged or stretched one,
+  or any name that is not `chat-`/`guest-`, answers 404.
+- **photo.php loads no database and starts no session** (`config.php` + `photo-lib.php` only), marks the answer
+  `Cache-Control: private` capped at the link's remaining life, and sends the WebP copy when the browser takes it. The
+  service worker never stores it (every `.php` but img.php passes through). test-auth-posture accepts `photo_check(`
+  as its token marker only while photo-lib's `photo_check` really compares with `hash_equals`.
+- **The stored name stays `uploads/<name>`** (`messages.attachment`, `guest_photos.url`): it is the photo's NAME, and
+  where the file is (private, staged, or public once a wall photo is approved) is photo-lib's business. So no data
+  migration. `chat_msgs` hands out `chat_photo_out()` (a signed link); a send moves the staged photo with
+  `upload_hold()` (pending → private); `upload_publish()` now takes only a `guest-` name, for approval (private →
+  public); `upload_delete()` looks in all three folders. A wall photo is staged, held privately on arrival, shown to
+  the owner through a signed link, and published by Approve.
+- **PHOTOS SENT BEFORE MOVE ACROSS** (`photos_make_private()`, db.php): after each deploy (migrate.php reports
+  `photos_made_private`) and daily (self-repair). Every chat photo in public uploads/ moves, its WebP copy with it and
+  its resized copies deleted; a wall photo moves only when its row says it is waiting, so an unreadable table moves
+  none and an approved photo is never hidden. A chat photo the move missed is moved by the first request for it
+  (`photo_file`). .htaccess refuses `uploads/(private|pending)/` and the old `uploads/chat-*` addresses (and their
+  `uploads/cache/` copies) BEFORE the WebP rule; img.php refuses a chat photo.
+- **The client**: the guest chat renders the link as it comes; `chatMsgSig` includes the first photo's link, so an
+  open chat redraws when the hour's link changes. The Inbox's "Photo" chip is now a link that opens the photo (it was
+  a dead chip since the one Inbox). "Download my data" carries a week's link beside each chat photo and each waiting
+  wall photo.
+- **Not done, said plainly**: a suggestion's picture (`experience-`) is still public before the owner publishes it;
+  its editor round-trips the image path, so it needs its own change. Deposit evidence photos are still public at an
+  unguessable name.
+- Gates: **test-photo.php** (39 checks: links, expiry at both ends, forgery, names, where the file is, the wiring),
+  integration **§85** (the real chat, photo.php's answers and headers, expiry, forgery, the Inbox, the wall photo
+  through approval, the deploy's move, the missed photo, deletion), §62 and §75 re-aimed to the private folder,
+  ui-test-inbox §12 (the Photo link), smoke-test (the redraw). Thirteen mutations break-tested, each failing its own
+  named check. NB php -S reads no .htaccess, so the private folder's refusal is test-photo's to check, not §85's.
+
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
   stack/build/view) + server capture (db.php exception/shutdown handlers) both

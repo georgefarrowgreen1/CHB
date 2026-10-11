@@ -292,11 +292,20 @@ if ($failed) {
     $first = reset($failed);
     log_activity('system', 'migrate.fail', 'Database update FAILED — ' . ($first['file'] ?? ''), ['severity' => 'action', 'entity' => 'migration', 'meta' => ['detail' => mb_substr((string) ($first['error'] ?? ''), 0, 150)]]);
 }
+// Files, not tables: photos sent before chat photos (and waiting wall photos) were
+// private move into the private folder. Runs after every deploy; once all have
+// moved it moves nothing (photos_make_private, db.php).
+$photosMoved = 0;
+try {
+    $photosMoved = photos_make_private();
+} catch (\Throwable $e) {
+}
 json_out(
     [
         'ok' => empty($failed),
         'mode' => $baseline ? 'baseline' : ($force ? 'force' : 'apply'),
         'migrations' => $report,
+        'photos_made_private' => $photosMoved,
     ],
     empty($failed) ? 200 : 500,
 );

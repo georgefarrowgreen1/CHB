@@ -2038,6 +2038,18 @@ if (typeof get('guestQuestionShaped') === 'function') {
 
 // ---- Guest chat: the owner's instant answers (chat-chips), read through ONE
 // sanitiser by the chat's buttons, the on-device matcher and the owner's preview.
+console.log('\n== A chat photo\'s link is refreshed in an open chat ==');
+if (typeof get('chatMsgSig') === 'function') {
+    // photo.php hands out a new signed link each hour; the poll redraws the thread
+    // only when its signature changes, so the photo's link has to be part of it.
+    const sig = get('chatMsgSig');
+    const msgs = (link) => [{ id: 1, role: 'guest', body: '', at: '2026-10-11 09:00:00', attachment: link }, { id: 2, role: 'admin', body: 'Lovely', at: '2026-10-11 09:05:00', attachment: '' }];
+    const a = 'photo.php?f=chat-0123456789ab.jpg&exp=1791734400&sig=' + 'a'.repeat(32);
+    const b = 'photo.php?f=chat-0123456789ab.jpg&exp=1791738000&sig=' + 'b'.repeat(32);
+    check('a new link for a photo redraws the thread', sig(msgs(a)) !== sig(msgs(b)));
+    check('…and the same link does not', sig(msgs(a)) === sig(msgs(a)));
+}
+
 console.log('\n== Guest chat instant answers ==');
 if (typeof get('chatQuickList') === 'function') {
     const sc = vm.runInContext('siteContent', ctx);

@@ -33377,7 +33377,7 @@ function ibItems(p) {
     p.threads.forEach((t) => {
         const full = __ibThreadMsgs[t.thread_id];
         if (full) {
-            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '', by: ibChatBy(m) }));
+            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '', photo: m.attachment || '', by: ibChatBy(m) }));
         } else if (t.last_at) {
             it.push({ who: t.last_role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(t.last_at), text: t.last_body || '', summary: true });
         }
@@ -33830,6 +33830,8 @@ function ibThreadHtml(p) {
         // An email's files open from where they are read: the same plain
         // download the old reader linked (mailbox.php forces octet-stream).
         if (it.files && it.files.length && it.uid != null) body += it.files.map((f) => `<a class="ib-file" href="mailbox.php?action=attachment&uid=${encodeURIComponent(String(it.uid))}&i=${f.i}" download>${IB_IC.clip}${ibEsc(f.name)}</a>`).join('');
+        // A chat photo opens through its signed link (photo.php), fresh with each load.
+        else if (it.photo && /^photo\.php\?/.test(it.photo)) body += `<a class="ib-file" href="${ibEsc(it.photo)}" target="_blank" rel="noopener">${IB_IC.clip}${ibEsc(it.attach || 'Photo')}</a>`;
         else if (it.attach) body += `<span class="ib-file">${IB_IC.clip}${ibEsc(it.attach)}</span>`;
         if (it.quoted) {
             const qid = `ib-q-${idx}`;

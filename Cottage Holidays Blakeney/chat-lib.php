@@ -461,10 +461,10 @@ if (!function_exists('chat_admin_reply')) {
                     $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId, 'guest') : '';
                     $msgId =
                         $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId, 'guest') : null;
-                    $photoUrl =
-                        $attachment !== '' && function_exists('site_base_url')
-                            ? rtrim(site_base_url(), '/') . '/' . $attachment
-                            : '';
+                    // The photo is private: the email carries a signed link that
+                    // works for a week (photo-lib.php), not its address on the site.
+                    $photoLink = $attachment !== '' && function_exists('photo_link') ? photo_link($attachment, PHOTO_MAIL_SECONDS) : '';
+                    $photoUrl = $photoLink !== '' && function_exists('site_base_url') ? rtrim(site_base_url(), '/') . '/' . $photoLink : '';
                     // Composed by guest_chat_body() in mailer.php — previewable, and the
                     // render gate proves it builds. Signed by the author while they are
                     // shown in the chat ("Sophia replied"), else by the business.

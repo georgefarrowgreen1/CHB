@@ -5280,7 +5280,7 @@ function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = fals
                 : 'You have a new message from Cottage Holidays Blakeney:') .
             "\n\n\"" .
             $message . '"' .
-            ($photoUrl !== '' ? "\n\nView photo: " . $photoUrl : '') .
+            ($photoUrl !== '' ? "\n\nView the photo (the link works for a week): " . $photoUrl : '') .
             "\n\n" . $reply . "\nCottage Holidays Blakeney",
         'html' => email_shell(
             $from !== '' ? $from . ' replied in your chat with Cottage Holidays Blakeney' : 'A message from Cottage Holidays Blakeney',
@@ -5290,7 +5290,7 @@ function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = fals
                 ($photoUrl !== ''
                     ? email_p(
                         '<a href="' . email_esc($photoUrl) . '" style="color:' . email_accent_ink() .
-                            ';text-decoration:underline;">View the photo</a>',
+                            ';text-decoration:underline;">View the photo</a> (the link works for a week)',
                     )
                     : '') .
                 email_p(
