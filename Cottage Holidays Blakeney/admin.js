@@ -1542,10 +1542,11 @@ function cmdkBookingActions(b, pk) {
         // with the outcome under the row. Chasing three balances stops being three
         // journeys. Cancelling returns null, so nothing is claimed and nothing is
         // pushed onto the undo stack.
-        const bKind = ps.deposit > 0.5 ? 'balance' : 'deposit';
+        // The hub's stage: `ps` is bookingDue (no `.deposit`), so this always said deposit.
+        const bKind = hubAskKind(ps, hasCheckedOut(b), b, null);
         acts.push({
             key: 'balance',
-            label: ps.deposit > 0.5 ? 'Request balance' : 'Request payment',
+            label: bKind === 'balance' ? 'Request balance' : 'Request payment',
             icon: cmdkActIcon('coin'),
             pending: 'Opening the email…',
             run: () => { closeCmdK(); requestPayment(b.id, bKind); },
@@ -1632,6 +1633,12 @@ function chbBulkMechanism(send) {
     if (card && !bank) return 'Each guest gets the standard balance-request email with their own secure pay link.';
     return `Each guest gets the standard balance-request email — a secure pay link for ${chbSayN(card)} of them, your bank details for the ${bank === 1 ? 'other' : 'other ' + chbSayN(bank)}.`;
 }
+// What one request in a batch asks for: the server's next payment, else the outstanding.
+function chbBulkAsks(x) {
+    const np = x && x.b && x.b.nextPayment;
+    if (np && Number(np.charge) > 0.005) return Math.round(Number(np.charge) * 100) / 100;
+    return Math.max(0, (x && x.ps && x.ps.balance) || 0);
+}
 async function chbBulkConfirm(rows, opts) {
     const o = opts || {};
     const { send, skip } = chbBulkSplit(rows, o.skipIf);
@@ -1655,9 +1662,9 @@ async function chbBulkConfirm(rows, opts) {
     // MONEY LINES ONLY WHEN THE ROWS CARRY MONEY — the arrival bulk (no
     // `ps`) listed every guest as £0.00 under "Total to chase: £0.00".
     const money = send.concat(skip).some((x) => x.ps && typeof x.ps.balance === 'number');
-    const total = send.reduce((s, x) => s + Math.max(0, (x.ps && x.ps.balance) || 0), 0);
+    const total = send.reduce((s, x) => s + chbBulkAsks(x), 0);
     const line = (x, note) =>
-        `${x.b.name || '(no name)'}${money ? ' — ' + gbp(Math.max(0, (x.ps && x.ps.balance) || 0)) : ''}` +
+        `${x.b.name || '(no name)'}${money ? ' — ' + gbp(chbBulkAsks(x)) : ''}` +
         `${x.pk ? ' · ' + ((propertyMeta[x.pk] || {}).name || x.pk) : ''}${note ? ' · ' + note : ''}`;
     const body = [
         `${o.title || 'Send balance requests'} to ${send.length} guest${send.length === 1 ? '' : 's'}?`,
@@ -1698,10 +1705,11 @@ async function chbBulkRun(rows, opts) {
         // the hub asked for the remainder.
         const kind = hubAskKind(bookingDue(x.pk, x.b), (x.b.checkOut || '') <= todayDashed(), x.b, x.ps);
         try {
+            let res = null;
             if (o.send) await o.send(x);
-            else await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
+            else res = await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
             sent++;
-            chased += Math.max(0, (x.ps && x.ps.balance) || 0);
+            chased += res && Number(res.amount) > 0 ? Number(res.amount) : chbBulkAsks(x);
         } catch (e) {
             if (e && e.code === 'already_sent') already.push(x);
             else failed.push(x);
@@ -5339,12 +5347,17 @@ function cmdkIntent(q) {
         }
         // "who's paid / paid in full / settled" — fully-paid bookings.
         if ((/\bpaid\b|paid in full|fully paid|settled|paid up/.test(q)) && !negative) {
-            const rows = withPs.filter((x) => x.ps.fullyPaid && x.ps.total > 0).sort(byIn);
+            // Paid in full means nothing owed, the refundable deposit included.
+            const rows = withPs
+                .filter((x) => x.ps.fullyPaid && x.ps.total > 0)
+                .map((x) => ({ ...x, due: bookingDue(x.pk, x.b) }))
+                .filter((x) => x.due.fullyPaid)
+                .sort(byIn);
             const n = rows.length;
             const pHead = !n ? nlgPick('paid0' + q, ['Nobody’s paid in full yet.', 'No one settled up so far.'])
                 : nlgPick('paidN' + q, [`${n} guest${n === 1 ? '' : 's'} all squared up in full.`, `${n === 1 ? 'One booking' : n + ' bookings'} paid in full.`, `${n} guest${n === 1 ? ' is' : 's are'} fully settled.`]);
             const head = ans(pHead, n ? 'Settled bookings' : 'Nothing settled yet', () => { closeCmdK(); openBookings(); });
-            return [head].concat(rows.map((x) => bk(x.pk, x.b, `Paid ${gbp(x.ps.total)} · ${propName(x.pk)}${x.b.checkIn ? ' · ' + fmtDate(x.b.checkIn) : ''}`)));
+            return [head].concat(rows.map((x) => bk(x.pk, x.b, `Paid ${gbp(x.due.paid)} · ${propName(x.pk)}${x.b.checkIn ? ' · ' + fmtDate(x.b.checkIn) : ''}`)));
         }
         // Default (owes / hasn't paid in full) — outstanding balances, led by the total
         // and the biggest single ower so the answer reads like a person, not a table.
@@ -11139,7 +11152,11 @@ function bookingInBalanceWindow(b) {
 // booking_deposit_settled. hubAskAmount already computes that figure, so it is
 // asked rather than restated. With no price summary there is nothing to derive
 // it from, so that call keeps the coarse test rather than guessing.
+// The server's stage first (b.nextPayment): this derivation counted the refundable
+// deposit into the first payment and the server does not.
 function hubAskKind(gt, past, b, ps) {
+    const np = b && b.nextPayment;
+    if (np && (np.kind === 'deposit' || np.kind === 'balance')) return np.kind;
     if (b && bookingInBalanceWindow(b)) return 'balance';
     const settled = ps ? hubAskAmount(b, ps, gt, 'deposit') <= 0.005 : gt.paid > 0;
     return settled || past ? 'balance' : 'deposit';
@@ -11171,6 +11188,8 @@ function hubDepositAsk(b, ps) {
 // The client mirror of booking_amount_due. The balance stage is everything still
 // outstanding, which is what gt.balance already is.
 function hubAskAmount(b, ps, gt, kind) {
+    const np = b && b.nextPayment;
+    if (np && np.kind === kind && Number(np.charge) > 0.005) return Math.round(Number(np.charge) * 100) / 100;
     if (kind !== 'deposit') return gt.balance;
     return Math.max(0, Math.round((hubDepositAsk(b, ps) - gt.paid) * 100) / 100);
 }
@@ -11216,8 +11235,12 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     // booking need from me?" without reading the whole screen.
     /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, capKey?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
     let next = null;
+    // Nothing for the card to take (the server's answer): no card ask, it would be refused.
+    const npNone = !!(b.nextPayment && !(Number(b.nextPayment.charge) > 0.005));
+    // The rental is settled and only the refundable deposit is left to take.
+    const depOnly = !!(b.nextPayment && Number(b.nextPayment.due) <= 0.005 && Number(b.nextPayment.damages) > 0.005);
     if (!gt.fullyPaid && !past) {
-        const canCard = squareAdminEnabled && b.email;
+        const canCard = squareAdminEnabled && b.email && !npNone;
         if (!(gt.paid > 0)) {
             next = {
                 // Named as the STAGE it is — the whole stay is stated by the
@@ -11237,11 +11260,13 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 // the deposit part-paid this said "balance remaining" over the
                 // DEPOSIT's remainder — the label naming one stage and the
                 // number another, the pair A2d fixed pointing the other way.
-                text: askKind === 'deposit'
-                    ? `${gbp(askAmt)} of the deposit still to come.`
-                    : `${gbp(askAmt)} balance remaining.`,
+                text: depOnly
+                    ? `${gbp(askAmt)} refundable deposit still to take.`
+                    : askKind === 'deposit'
+                        ? `${gbp(askAmt)} of the deposit still to come.`
+                        : `${gbp(askAmt)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
-                btn: canCard ? (askKind === 'deposit' ? 'Request the rest by card' : 'Request the balance by card') : 'Record a payment',
+                btn: canCard ? (depOnly ? 'Request it by card' : askKind === 'deposit' ? 'Request the rest by card' : 'Request the balance by card') : 'Record a payment',
                 btnShort: canCard ? 'Request by card' : 'Record payment',
                 fig: askAmt,
                 money: true,
@@ -11251,7 +11276,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
         // A finished stay that STILL owes money — the hub unification removed the
         // old Payments-card button, and every non-past money branch is gated on
         // !past, so this used to fall through to "All set". Chase the balance.
-        const canCard = squareAdminEnabled && b.email;
+        const canCard = squareAdminEnabled && b.email && !npNone;
         next = {
             // Always the balance stage here, so askAmt is gt.balance — carried
             // anyway, because the sticky reads `fig` on every money branch.
@@ -17805,13 +17830,18 @@ function pmOwedRow(pk, b) {
     const consent = !!(b.autopayConsentAt && !b.autopayRevokedAt && b.autopayDue);
     const declined = consent && (b.autopayAttempts || 0) >= 3;
     const first = !(dg.paid > 0.005);
-    const asked = String((first ? b.depositRequestedAt : b.balanceRemindedAt || b.balanceRequestedAt || b.depositRequestedAt) || '').slice(0, 10);
+    // The stage is the server's (b.nextPayment), as on the hub. Only the refundable
+    // deposit left (`depOnly`) is never chased by the scheduled emails.
+    const np = b.nextPayment;
+    const stage = np && (np.kind === 'deposit' || np.kind === 'balance') ? np.kind : first ? 'deposit' : 'balance';
+    const depOnly = !!(np && Number(np.due) <= 0.005 && Number(np.damages) > 0.005);
+    const asked = String((stage === 'deposit' ? b.depositRequestedAt : b.balanceRemindedAt || b.balanceRequestedAt || b.depositRequestedAt) || '').slice(0, 10);
     // A card on file pays itself on the day, so it is never overdue unless it was declined.
     const overdue = (!consent || declined) && (past || !!(due && ukShiftDays(due, 7) < today));
     return {
-        pk, b, dg, due, past, first, asked, overdue, declined,
+        pk, b, dg, due, past, first, stage, depOnly, asked, overdue, declined,
         auto: consent && !declined && !past,
-        dueNow: past || inWin || first,
+        dueNow: past || inWin || stage === 'deposit',
         arranged: bookingOwnerArranged(b),
     };
 }
@@ -17825,7 +17855,7 @@ function pmOwed() {
     return rows;
 }
 function pmPlan(r) {
-    const stage = r.first ? 'deposit' : 'balance';
+    const stage = r.depOnly ? 'refundable deposit' : r.stage || (r.first ? 'deposit' : 'balance');
     const dDue = pmIso(r.due);
     if (r.overdue) return { tone: 'bad', cap: 'Overdue', sub: r.past ? 'the stay is over' : 'was due ' + pmDm(dDue) };
     if (r.declined) return { tone: 'warn', cap: 'Card declined', sub: 'the card on file was declined' };
@@ -17840,7 +17870,9 @@ function pmPlan(r) {
             : { tone: 'warn', cap: 'Due now', sub: `${stage} · not asked yet` };
     }
     if (r.asked) return { tone: 'info', cap: 'Link sent', sub: dDue ? 'due ' + pmDm(dDue) : 'sent ' + pmDm(pmIso(r.asked)) };
-    const self = squareAdminEnabled && r.b.email;
+    // Only what the scheduled chaser picks up "goes by itself" (never payment 'paid').
+    const self = squareAdminEnabled && r.b.email && !r.depOnly && r.b.payment !== 'paid';
+    if (r.depOnly) return { tone: 'unk', cap: 'Not asked', sub: 'refundable deposit · ask for it' };
     return { tone: 'unk', cap: dDue ? 'Asks ' + pmDm(dDue) : 'Later', sub: self ? 'the balance email goes by itself' : dDue ? 'due ' + pmDm(dDue) : 'not asked yet' };
 }
 // Deposits waiting to go back: held, and the guest has left (or said they have).
@@ -18810,7 +18842,7 @@ function pmAskSheet() {
             ${pmWhoCard(r)}
             <div class="pm-sheet-acts"><button type="button" class="pm-btn second" data-pms="cancel">Cancel</button><button type="button" class="pm-btn primary" data-pms="save">Continue</button></div>`, async () => {
             pmSheetClose();
-            await requestPayment(r.b.id, r.first ? 'deposit' : 'balance');
+            await requestPayment(r.b.id, r.stage);
             pmRefresh();
         });
         /** @type {any} */ (s).__pick = (k, a) => { if (k === 'who') { pick = a; draw(); } };
@@ -20035,7 +20067,7 @@ const PM_ACT = {
     record(id) { pmMenuShow(false); pmRecordSheet(id || ''); },
     expense() { pmMenuShow(false); pmExpenseSheet(); },
     ask() { pmMenuShow(false); pmAskSheet(); },
-    async askone(id) { const b = findBookingById(id); const loc = b && findBookingLocation(id); const r = loc ? pmOwedRow(loc.propKey, b) : null; await requestPayment(id, r && r.first ? 'deposit' : 'balance'); pmRefresh(); },
+    async askone(id) { const b = findBookingById(id); const loc = b && findBookingLocation(id); const r = loc ? pmOwedRow(loc.propKey, b) : null; await requestPayment(id, r ? r.stage : 'balance'); pmRefresh(); },
     async remind(id) { await sendPaymentReminder(id); await loadData(); pmRender(); },
     async return(id) { await returnDeposit(id); pmRender(); pmLoad(true); },
     async keep(id) { await keepDeposit(id); pmRender(); pmLoad(true); },
@@ -21636,21 +21668,26 @@ async function saveDepositPct() {
     }
 }
 // Email the guest a secure pay link (deposit or balance).
+// The stage is the server's (nextPayment); the server ignores a named one, as the
+// link carries none. `kind` only labels an older server's booking.
 async function requestPayment(bookingId, kind, via) {
     const booking = findBookingById(bookingId);
     if (!booking) return false;
+    const np = booking.nextPayment;
+    const k = np && (np.kind === 'deposit' || np.kind === 'balance') ? np.kind : kind === 'balance' ? 'balance' : 'deposit';
     return await previewAndSendEmail({
         id: booking.dbId,
         kind: 'payment.request',
         to: booking.email,
-        sendLabel: `Send ${kind === 'balance' ? 'balance' : 'deposit'} request`,
-        fallbackConfirm: `Email ${booking.name || 'the guest'} a ${kind === 'balance' ? 'balance' : 'deposit'} payment request?`,
+        sendLabel: `Send ${k} request`,
+        fallbackConfirm: `Email ${booking.name || 'the guest'} a ${k} payment request?`,
         doSend: async () => {
             try {
-                const body = { action: 'request_payment', id: booking.dbId, kind };
+                const body = { action: 'request_payment', id: booking.dbId };
                 if (via) body.via = via; // the AI card's send is attributed in the log
                 const res = await apiPost('bookings.php', body);
-                toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
+                const said = (res && res.kind) === 'balance' ? 'Balance' : (res && res.kind) === 'deposit' ? 'Deposit' : k === 'balance' ? 'Balance' : 'Deposit';
+                toast(`${said} request sent — ${gbp(res.amount)}.`);
             } catch (e) {
                 // "It already went" is INFORMATION, not a failure — the guest has the
                 // email, which is what the owner wanted. It did not go NOW either way.
@@ -22135,13 +22172,16 @@ async function sendPaymentReminder(bookingId) {
     const loc = findBookingLocation(bookingId);
     if (!b || !loc) return;
     const gt = bookingDue(loc.propKey, b);
+    // The figure the reminder email will ask for (the server's next payment).
+    const np = b.nextPayment;
+    const fig = np && Number(np.charge) > 0.005 ? Number(np.charge) : gt.balance;
     const okGo = await glassConfirm(
-        `Nudge ${b.name || 'the guest'} about the ${gbp(gt.balance)} still to pay? This re-sends their payment link with reminder wording.`,
+        `Nudge ${b.name || 'the guest'} about the ${gbp(fig)} still to pay? This re-sends their payment link with reminder wording.`,
         'Send reminder',
     );
     if (!okGo) return;
     try {
-        const res = await apiPost('bookings.php', { action: 'request_payment', id: b.dbId, kind: 'balance', reminder: true });
+        const res = await apiPost('bookings.php', { action: 'request_payment', id: b.dbId, reminder: true });
         // UK-day stamp for the panel's "reminded <date>" until the next data load
         // brings the server's own (toISOString is a day behind 00:00–01:00 BST).
         b.balanceRemindedAt = todayDashed() + ' 00:00:00';

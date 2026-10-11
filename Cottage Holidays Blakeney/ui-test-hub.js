@@ -535,6 +535,77 @@ let approveWill409 = false;
   await page.evaluate(() => { const b = findBookingById('b1'); b.depositPaid = 0; b.payment = 'unpaid'; showDetails('21a', b); });
   await page.waitForTimeout(400);
 
+  // ---------- A2e. THE SERVER'S STAGE WINS (booking_next_payment) ----------
+  // The hub derived the stage itself and counted the refundable deposit into the
+  // first payment, which the server does not: a part-paid deposit read "£X of the
+  // deposit still to come" with a "Request the rest" button the server refused
+  // ("Nothing left to pay.") while the guest's own link asked for the balance. The
+  // booking now carries the server's answer (nextPayment) and the hub follows it.
+  console.log('A2e. the server\'s next payment decides the stage and the figure');
+  await page.evaluate((paid) => {
+    const b = findBookingById('b1');
+    b.depositPaid = paid; b.payment = 'deposit';
+    b.nextPayment = { kind: 'balance', due: 222.22, damages: 50, charge: 272.22 };
+    showDetails('21a', b);
+  }, planNum - 30);
+  await page.waitForTimeout(450);
+  ask = await askShape();
+  const srv = await askFig();
+  ok(ask.banKind === 'balance', `with the server's balance stage the hub asks for the balance, not the client's deposit (${ask.banKind})`);
+  ok(money(srv.ban) === '£272.22' && money(srv.sticky) === '£272.22', `…and quotes what the server will take (${srv.ban} / ${srv.sticky})`);
+  const sentReq = await page.evaluate(async () => {
+    const savedPrev = window.previewAndSendEmail;
+    const savedPost = window.apiPost;
+    let label = '';
+    let body = null;
+    window.previewAndSendEmail = async (o) => { label = o.sendLabel; await o.doSend(); return true; };
+    window.apiPost = async (ep, bd) => { body = bd; return { ok: true, amount: 272.22, kind: 'balance' }; };
+    try { await requestPayment('b1', 'deposit'); } finally { window.previewAndSendEmail = savedPrev; window.apiPost = savedPost; }
+    return { label, body };
+  });
+  ok(sentReq.label === 'Send balance request', `a request names the server's stage, whatever the caller passed (${sentReq.label})`);
+  ok(!!sentReq.body && !('kind' in sentReq.body), `…and posts no stage of its own — the plan decides, as it does for the link (${JSON.stringify(sentReq.body)})`);
+  const sentRem = await page.evaluate(async () => {
+    const savedConf = window.glassConfirm;
+    const savedPost = window.apiPost;
+    let msg = '';
+    let body = null;
+    window.glassConfirm = async (m) => { msg = m; return true; };
+    window.apiPost = async (ep, bd) => { body = bd; return { ok: true, amount: 272.22, kind: 'balance' }; };
+    try { await sendPaymentReminder('b1'); } finally { window.glassConfirm = savedConf; window.apiPost = savedPost; }
+    return { msg, body };
+  });
+  ok(/£272\.22/.test(sentRem.msg), `the reminder's confirm quotes what its email will ask for (${sentRem.msg.slice(0, 60)}…)`);
+  ok(!!sentRem.body && sentRem.body.reminder === true && !('kind' in sentRem.body), `…and it sends no stage either (it always sent 'balance')`);
+  // The rental settled with only the refundable deposit to take says so.
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    const p = b.agreedPrice || {};
+    b.depositPaid = Number(p.rentalTotal) || 390; b.payment = 'paid'; // the rental only: the £50 is still to take
+    b.nextPayment = { kind: 'balance', due: 0, damages: 50, charge: 50 };
+    showDetails('21a', b);
+  });
+  await page.waitForTimeout(450);
+  const depOnly = await page.evaluate(() => ({
+    text: ((document.querySelector('.bhub-payask .bhub-next-text') || {}).textContent || '').trim(),
+    btn: ((document.querySelector('.bhub-payask .bhub-next-btn') || {}).textContent || '').trim(),
+  }));
+  ok(/£50\.00 refundable deposit still to take/.test(depOnly.text), `only the refundable deposit left reads as that, not "balance remaining" (${depOnly.text})`);
+  // Nothing for the card to take (the server's own answer) offers no card request.
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.nextPayment = { kind: 'balance', due: 0, damages: 0, charge: 0 };
+    showDetails('21a', b);
+  });
+  await page.waitForTimeout(450);
+  const none = await page.evaluate(() => ({
+    req: !!document.querySelector('.bhub-payask [data-act="requestPayment"]'),
+    rec: !!document.querySelector('.bhub-payask [data-act="recordPayment"]'),
+  }));
+  ok(!none.req, `when the server has nothing to charge, no card request is offered (it would be refused)`);
+  await page.evaluate(() => { const b = findBookingById('b1'); b.depositPaid = 0; b.payment = 'unpaid'; b.nextPayment = null; showDetails('21a', b); });
+  await page.waitForTimeout(400);
+
   // b3 is paid in full → nothing left to ask for.
   await page.evaluate(() => showDetails('21a', findBookingById('b3')));
   await page.waitForTimeout(500);

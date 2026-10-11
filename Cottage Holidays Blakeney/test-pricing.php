@@ -208,7 +208,7 @@ $allowedDirectCalls = [
     // damages-deposit fallback moved inside booking_damages_amount so the guest's
     // ACCOUNT can name the same charge this screen makes. The ratchet only ever
     // falls — a NEW direct call here still fails, which is its whole job.
-    'mailer.php' => 1, // payment-request damages-deposit legacy fallback
+    'mailer.php' => 0, // the request's damages now come from booking_damages_due (round 8)
     'invoice.php' => 1, // legacy pre-snapshot fallback
     'square-webhook.php' => 1, // legacy pre-snapshot fallback
 ];

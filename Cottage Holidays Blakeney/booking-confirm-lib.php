@@ -120,7 +120,7 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             // WHEN the rest falls due, from this booking's own plan. The
             // confirmation stated how much was outstanding and never by when,
             // so the schedule the owner agreed existed only in the back office.
-            'balance_due_date' => booking_balance_due_date($b),
+            'balance_due_date' => booking_balance_due_shown($b),
             'grand_total' => $grand,
             // Suppress the owner copy on a re-send after a payment.
             'skip_owner' => $guestOnly,

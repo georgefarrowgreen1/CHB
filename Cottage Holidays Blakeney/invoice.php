@@ -610,7 +610,7 @@ echo render_invoice_html([
     'payments' => $payments,
     // booking_balance_due_date is the ONE derivation (custom date, else check-in
     // minus the window) the confirmation and the deposit ask both read.
-    'balance_due_date' => $balance > 0.001 ? uk_date(booking_balance_due_date($b)) : '',
+    'balance_due_date' => $balance > 0.001 ? uk_date(booking_balance_due_shown($b)) : '',
     'balance' => $balance,
     // A guest on the CARD rail can settle from the document they are reading.
     // On the bank/cash rail there is nothing to link to — payment_rail is the

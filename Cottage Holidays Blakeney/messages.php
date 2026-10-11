@@ -526,19 +526,25 @@ if ($isAdmin && empty($in['token'])) {
                 ]);
             } else {
                 resend_guard($bid, 'payment.request', (string) ($b['name'] ?? ''), 'payment request');
-                $res = request_booking_payment($b, 'balance');
+                // The plan's stage (null), as the booking page's request takes: the link
+                // carries none, so a 'balance' named here emailed the whole stay over a
+                // link that charged the deposit.
+                $res = request_booking_payment($b, null);
                 if (empty($res['ok'])) {
                     json_out(['error' => $res['error'] ?? 'Could not send the payment link.'], 400);
                 }
+                $askKind = ($res['kind'] ?? 'balance') === 'deposit' ? 'deposit' : 'balance';
                 try {
                     db()
-                        ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
+                        ->prepare($askKind === 'deposit'
+                            ? 'UPDATE bookings SET deposit_requested_at = COALESCE(deposit_requested_at, NOW()) WHERE id = ?'
+                            : 'UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
                         ->execute([$bid]);
                 } catch (\Throwable $e) {
                 }
                 $amt = isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '';
-                $note = 'Emailed you a secure link to pay your balance' . $amt . '.';
-                log_activity('payment', 'payment.request', 'Balance payment request emailed from chat — ' . ($b['name'] ?? ''), [
+                $note = 'Emailed you a secure link to pay your ' . $askKind . $amt . '.';
+                log_activity('payment', 'payment.request', ucfirst($askKind) . ' payment request emailed from chat — ' . ($b['name'] ?? ''), [
                     'prop_key' => $b['prop_key'] ?? '',
                     'entity' => 'booking',
                     'entity_id' => (string) $bid,

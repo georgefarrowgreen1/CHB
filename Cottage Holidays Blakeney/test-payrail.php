@@ -260,7 +260,7 @@ chk('…and the rental rail stays available raw for the callers that mean it',
 // rail — measured by deleting the payload line, which failed nothing until this.
 $mailW = (string) file_get_contents(__DIR__ . '/mailer.php');
 chk('request_booking_payment derives the charged deposit from the hold state',
-    preg_match("/function request_booking_payment[\s\S]{0,2500}\\\$depCharged = in_array\(\(\\\$b\['hold_status'\][\s\S]{0,120}'charged', 'captured', 'kept'/", $mailW) === 1);
+    preg_match("/function request_booking_payment[\s\S]{0,4000}\\\$depCharged = in_array\(\(\\\$b\['hold_status'\][\s\S]{0,120}'charged', 'captured', 'kept'/", $mailW) === 1);
 chk('…and actually sends it with the payload',
     preg_match("/function request_booking_payment[\s\S]{0,4000}'deposit_charged' => \\\$depCharged,/", $mailW) === 1);
 // The pay screen is the same fact on a different surface (its balance view read
@@ -291,7 +291,7 @@ chk('the confirmation credits a cash-collected deposit as paid',
 // and the composer must render it against a positive balance.
 $mlW = (string) file_get_contents(__DIR__ . '/mailer.php');
 chk('the confirmation payload carries the booking-derived due date',
-    preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $cfW) === 1);
+    preg_match("/'balance_due_date' => booking_balance_due_shown\(\\\$b\)/", $cfW) === 1);
 chk('…and the composer renders it only when something is actually outstanding',
     preg_match('/\$balNow > 0\.001 && !empty\(\$b\[.balance_due_date.\]\)/', $mlW) === 1);
 // SPOKEN, never a raw SQL stamp. The guest reads this deadline once and has to
@@ -421,8 +421,8 @@ chk('a booking with no check-in date keeps the requested kind', booking_payment_
 // endpoints need a DB to execute, so assert the source routes through the helper;
 // break-tested by restoring the client-trusting line.
 $bk = (string) file_get_contents(__DIR__ . '/bookings.php');
-chk('bookings.php derives the kind from the window, not the client',
-    strpos($bk, 'booking_payment_kind($b, $asked)') !== false);
+chk('bookings.php derives the kind from the plan, not the client',
+    strpos($bk, '$kind = booking_payment_kind($b);') !== false);
 chk('…and no longer takes the request kind as final',
     strpos($bk, "\$kind = (\$in['kind'] ?? 'deposit') === 'balance'") === false);
 $pay = (string) file_get_contents(__DIR__ . '/pay.php');
@@ -614,8 +614,8 @@ chk('the confirmation is deliberately NOT guarded, and says why',
 $msgS = (string) file_get_contents(__DIR__ . '/messages.php');
 chk('the chat\'s arrival and balance sends are guarded like the booking page\'s',
     strpos($msgS, "resend_guard(\$bid, 'email.arrival',") !== false && strpos($msgS, "resend_guard(\$bid, 'payment.request',") !== false);
-chk('…and the chat records its balance send under the booking page\'s name',
-    preg_match("/log_activity\('payment', 'payment\.request', 'Balance payment request emailed from chat/", $msgS) === 1 && strpos($msgS, "'email.balance'") === false);
+chk('…and the chat records its payment send under the booking page\'s name',
+    preg_match("/log_activity\('payment', 'payment\.request', ucfirst\(\\\$askKind\) \. ' payment request emailed from chat/", $msgS) === 1 && strpos($msgS, "'email.balance'") === false);
 chk('…and the refusal names the guest and when it went, rather than failing silently',
     preg_match('/has just gone to \' \. \(\$who.*chb_ago\(\$already\)/s', $dbS2) === 1);
 // THE REFUSAL HAS TO REACH THE OWNER. It answered 200 with an `error` key, and apiPost
@@ -1002,7 +1002,7 @@ chk('a manual deposit ask arms the recovery stamp without clobbering the first o
 // plan — the summary must carry booking_balance_due_date (custom date wins,
 // else standard), or the client line is decoration with no data.
 chk('the pay summary carries the plan-derived due date',
-    strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'balanceDueDate' => booking_balance_due_date(") !== false);
+    strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'balanceDueDate' => booking_balance_due_shown(") !== false);
 
 // ---- ONE pay link: no stage in the URL, the stage read off the booking -------
 //
@@ -1690,7 +1690,7 @@ chk('no date on file → no half-finished sentence',
 // real emails stayed silent — the helper-tested-alone trap this file exists for.
 $mailPlanW = (string) file_get_contents(__DIR__ . '/mailer.php');
 chk('request_booking_payment sends the booking-derived due date',
-    preg_match("/'balance_due_date' => function_exists\('booking_balance_due_date'\) \? booking_balance_due_date\(\\\$b\)/", $mailPlanW) === 1);
+    preg_match("/'balance_due_date' => function_exists\('booking_balance_due_shown'\) \? booking_balance_due_shown\(\\\$b\)/", $mailPlanW) === 1);
 
 // OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug): the weekly
 // digest's "Balances owed" line must skip the cash/bank rail exactly as
@@ -1723,7 +1723,7 @@ chk('the invoice issues its date in the house form, not date(\'j M Y\')',
     strpos($invW, "'issued' => uk_date(date('Y-m-d')),") !== false
     && strpos($invW, "date('j M Y')") === false);
 chk('...carries the booking-derived balance due date',
-    preg_match("/'balance_due_date' => \\\$balance > 0\\.001 \\? uk_date\\(booking_balance_due_date\\(\\\$b\\)\\)/", $invW) === 1);
+    preg_match("/'balance_due_date' => \\\$balance > 0\\.001 \\? uk_date\\(booking_balance_due_shown\\(\\\$b\\)\\)/", $invW) === 1);
 // (Whether the date REACHES the page is asserted in test-invoice.php §5, against
 //  the rendered output. It used to be pattern-matched here against the exact
 //  string concatenation that built the label, which is the ingredient and not the
@@ -1925,7 +1925,7 @@ chk('...and a settled booking still just says so',
 $payW = (string) file_get_contents(__DIR__ . '/pay.php');
 $apW = (string) file_get_contents(__DIR__ . '/autopay-lib.php');
 chk('pay.php gives its receipt the due date and the pay link',
-    preg_match("/'balance_due_date' => booking_balance_due_date\\(\\\$b\\),\\s*\\n\\s*'pay_url' =>/", $payW) === 1);
+    preg_match("/'balance_due_date' => booking_balance_due_shown\\(\\\$b\\),\\s*\\n\\s*'pay_url' =>/", $payW) === 1);
 chk('...and the autopay receipt gets the date but NO link (nothing to do)',
     preg_match("/'balance_due_date' => \\(string\\) \\(\\\$b\\['balance_due_date'\\] \\?\\? ''\\),/", $apW) === 1
     && strpos($noCmt($apW), 'pay_url') === false);
@@ -1951,8 +1951,8 @@ chk('a part-settled payment names what is still to collect, subject included',
     && strpos($oPaid['subject'], '£301.27 still to collect') !== false);
 $oFull = owner_payment_notice_body(['name' => 'Cara', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 301.27, 'status' => 'paid', 'balance' => 0]);
 chk('...and a settled one says so instead of both', strpos($oFull['subject'], '(paid in full)') !== false && strpos($oFull['text'], 'Still to collect') === false);
-chk('...with pay.php passing the figure that makes it possible',
-    preg_match("/send_owner_payment_notice\\(\\[[\\s\\S]{0,600}?'balance' => round\\(max\\(0, \\\$total - \\\$newPaid\\), 2\\),/", $payW) === 1);
+chk('...with pay.php passing the figure that makes it possible (the deposit still to take included)',
+    preg_match("/send_owner_payment_notice\\(\\[[\\s\\S]{0,800}?'balance' => round\\(max\\(0, \\\$total - \\\$newPaid\\) \\+ \\\$damNext, 2\\),/", $payW) === 1);
 
 // THE OWNER'S NOTE IS ATTRIBUTED, NOT PRESENTED AS THE SITE'S RULING.
 chk('an owner note is headed by the person who wrote it',
@@ -2304,6 +2304,99 @@ foreach (glob(__DIR__ . '/*.php') ?: [] as $pf) {
     }
 }
 chk('no SQL compares a date column with an empty string (' . (implode(', ', $dateHits) ?: 'none') . ')', !$dateHits);
+
+
+// ---- ONE STAGE FOR EVERY ASK (round 8, the money audit) ---------------------
+// The pay link carries no stage: pay.php derives one when it is opened. Every
+// request the back office sends must therefore name the SAME stage, or the email
+// and the link disagree — measured: a reminder said "£528.20 due" over a link that
+// took the £188.30 deposit, and a deposit ask for a booking whose deposit was paid
+// came back "Nothing left to pay." while £414.90 was owed.
+echo "\n== One stage for every ask ==\n";
+$S = function (array $o = []) {
+    return array_merge([
+        'prop_key' => 'jollyboat', 'adults' => 2, 'children' => 0,
+        'check_in' => date('Y-m-d', strtotime('+60 days')), 'check_out' => date('Y-m-d', strtotime('+63 days')),
+        'created_at' => date('Y-m-d', strtotime('-5 days')) . ' 10:00:00',
+        'agreed_total' => 453.20, 'agreed_nightly' => 440.0, 'agreed_txn_fee' => 13.20, 'agreed_booking_fee' => 75.0,
+        'price_override' => null, 'deposit_pct_override' => 25, 'deposit_amount_override' => null, 'balance_due_date' => null,
+        'deposit_paid' => 0, 'payment' => 'unpaid', 'hold_status' => 'none', 'hold_amount' => null,
+    ], $o);
+};
+$np0 = booking_next_payment($S());
+chk('a fresh booking: the deposit stage, £113.30 + the £75.00 refundable deposit = £188.30',
+    $np0['kind'] === 'deposit' && abs($np0['charge'] - 188.30) < 0.005);
+$np34 = booking_next_payment($S(['deposit_paid' => 113.30, 'payment' => 'deposit']));
+chk('the deposit paid (by card part payment or in cash) moves the stage to the balance: £339.90 + £75.00',
+    $np34['kind'] === 'balance' && abs($np34['due'] - 339.90) < 0.005 && abs($np34['damages'] - 75.0) < 0.005 && abs($np34['charge'] - 414.90) < 0.005);
+$np32 = booking_next_payment($S(['deposit_paid' => 453.20, 'payment' => 'paid']));
+chk('the rental settled with the refundable deposit still to take: £75.00 is still to pay',
+    abs($np32['due']) < 0.005 && abs($np32['charge'] - 75.0) < 0.005);
+$np24 = booking_next_payment($S(['deposit_paid' => 528.20, 'payment' => 'paid']));
+chk('…and once the deposit was handed over in cash too, nothing is left', $np24['charge'] <= 0.005);
+
+// The date a guest is TOLD, and the window that decides the stage, are different
+// questions: the window must keep the raw date or a booking made inside it would
+// be asked for a deposit on its first day.
+$inWin = $S(['check_in' => date('Y-m-d', strtotime('+10 days')), 'check_out' => date('Y-m-d', strtotime('+13 days')), 'created_at' => date('Y-m-d') . ' 09:00:00']);
+chk('a booking made inside the window is told its balance is due the day it was made, not weeks before',
+    booking_balance_due_shown($inWin) === date('Y-m-d') && booking_balance_due_date($inWin) < date('Y-m-d'));
+chk('…while the window still reads the raw date: the full amount is asked on day one',
+    booking_within_balance_window($inWin) && booking_payment_kind($inWin) === 'balance');
+chk('a booking made long before keeps the standard date',
+    booking_balance_due_shown($S()) === booking_balance_due_date($S()));
+chk('a custom due date is told as it is', booking_balance_due_shown($S(['balance_due_date' => '2031-01-05', 'created_at' => '2031-02-01 10:00:00'])) === '2031-01-05');
+
+// The deposit-only ask reads as the deposit, not as "£0.00 balance + £75.00".
+$dOnly = array_merge(bk('Bank transfer'), ['amount' => 0.0, 'damages' => 75.0, 'kind' => 'balance', 'paid' => 580.0, 'total' => 580.0]);
+$dReq = payment_request_body($dOnly, $URL, '#C79A64', $BANK);
+chk('a deposit-only request is headed as the refundable deposit, in both halves',
+    strpos($dReq['html'], 'Pay your refundable deposit') !== false && strpos($dReq['text'], 'refundable security deposit, returned after checkout') !== false);
+chk('…and never states a £0.00 balance or says the payment "also includes" it',
+    strpos($dReq['html'] . $dReq['text'], '£0.00 remaining balance') === false && strpos($dReq['text'], 'also includes') === false);
+$dRem = payment_reminder_body($dOnly, $URL, '#C79A64', $BANK);
+chk('…and so does its reminder', strpos($dRem['html'], 'A reminder about your refundable deposit') !== false && strpos($dRem['text'], 'the refundable deposit for your stay') !== false);
+
+// The receipt and the owner's alert after a payment that left the deposit to come.
+$rDep = payment_receipt_body([
+    'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'ref' => 'CHB-000042', 'kind' => 'deposit', 'partial' => true, 'amount' => 113.30, 'total' => 453.20,
+    'paid_so_far' => 113.30, 'balance' => 339.90, 'fully_paid' => false, 'deposit_charged' => 0,
+    'deposit_due_next' => 75.0, 'balance_due_date' => date('Y-m-d', strtotime('+30 days')),
+]);
+chk('the receipt names the refundable deposit still to come beside the balance (text half)',
+    strpos($rDep['text'], 'Remaining balance: £339.90 (plus your £75.00 refundable deposit)') !== false);
+chk('…and as a step of what is left (html half)', strpos($rDep['html'], 'Your £75.00 refundable deposit') !== false && strpos($rDep['html'], 'Taken with your next payment') !== false);
+$oDep = owner_payment_notice_body(['name' => 'Cara', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 339.90, 'status' => 'paid', 'balance' => 75.0]);
+chk('the owner is not told "paid in full" while the refundable deposit is still to collect',
+    strpos($oDep['subject'], '(paid in full)') === false && strpos($oDep['text'], 'Still to collect: £75.00') !== false);
+chk('pay.php works out the deposit still to take after the charge, and hands it to the receipt',
+    strpos($payW, '$damNext = $damagesDue > 0 ? 0.0 : (float) booking_damages_due(') !== false
+    && strpos($payW, "'deposit_due_next' => \$damNext,") !== false);
+
+// THE WIRING: every interactive caller lets the plan decide.
+$mlS = (string) file_get_contents(__DIR__ . '/mailer.php');
+$bkS = (string) file_get_contents(__DIR__ . '/bookings.php');
+$msS = (string) file_get_contents(__DIR__ . '/messages.php');
+chk('request_booking_payment derives the stage when none is named',
+    strpos($mlS, "\$kind = \$kind === null ? booking_payment_kind(\$b) :") !== false);
+chk('…takes the refundable deposit from booking_damages_due (cash counts against it)',
+    preg_match('/function request_booking_payment[\s\S]{0,2200}\$damages = function_exists\(\'booking_damages_due\'\) \? \(float\) booking_damages_due\(\$b, \$rate\)/', $mlS) === 1);
+chk('…and refuses only when the rental AND the deposit are settled',
+    strpos($mlS, "if (\$amt['due'] + \$damages <= 0.005) {") !== false && strpos($mlS, "if (\$amt['due'] <= 0) {") === false);
+$rpBlock = substr($bkS, (int) strpos($bkS, "if (\$action === 'request_payment')"), 4000);
+chk('the request endpoint never reads a stage from the client', strpos($rpBlock, "\$in['kind']") === false);
+chk('the email preview composes the stage the send will take', strpos($bkS, 'request_booking_payment($b, null); // no side effects') !== false);
+chk("the chat's pay link takes the plan's stage too", strpos($msS, 'request_booking_payment($b, null)') !== false);
+chk('the owner booking list carries the next payment, from the same helper the guest list uses',
+    strpos($bkS, "\$bk['next_payment'] = \$np;") !== false && strpos($bkS, 'booking_next_payment($bk, $npRates[') !== false);
+chk('every displayed due date is the told one (confirmation, invoice, My stays, pay screen, emails)',
+    substr_count((string) file_get_contents(__DIR__ . '/pay.php'), 'booking_balance_due_shown($b)') === 2
+    && strpos((string) file_get_contents(__DIR__ . '/invoice.php'), 'booking_balance_due_shown($b)') !== false
+    && strpos((string) file_get_contents(__DIR__ . '/my-bookings.php'), 'booking_balance_due_shown($bk)') !== false
+    && strpos((string) file_get_contents(__DIR__ . '/booking-confirm-lib.php'), 'booking_balance_due_shown($b)') !== false);
+chk('the confirmation\'s Payment row only says "Paid in full" when its balance is clear',
+    strpos($mlS, "(\$b['payment'] ?? 'unpaid') === 'paid' && \$balNow > 0.005") !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

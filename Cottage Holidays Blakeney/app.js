@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 779;
+const ADMIN_BUNDLE_V = 780;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -2085,9 +2085,8 @@ function mapBookingFromApi(row) {
         // my-bookings.php only — kept apart from balanceDueDate above, which is
         // the OVERRIDE and whose NULL means "site standard" to the owner side.
         balanceDueBy: row.balance_due_by ? String(row.balance_due_by).slice(0, 10) : '',
-        // The next payment the PLAN wants — {kind, due, damages, charge} from
-        // booking_next_payment; my-bookings.php only, so null on the owner path
-        // and on an older server (callers fall back to the balance).
+        // The next payment the plan wants ({kind, due, damages, charge}), on both
+        // paths; null on an older server (callers fall back to their own derivation).
         nextPayment: row.next_payment && typeof row.next_payment === 'object' ? row.next_payment : null,
         // booking_autopay_state — sent on BOTH paths now (bookings.php list too), so
         // the owner side can tell an ARRANGED balance from an unpaid one
@@ -22162,7 +22161,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night2';
+    const BUILD = 'r8night3';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -6758,8 +6758,10 @@ strip and the brief both move), the greeting line, the balances-to-chase answer,
 money overview, `chbOwedLater`, the owed family and the bulk chase it feeds, the per-row
 inline chase + its balance watcher, and the per-booking money lines in the search
 dossier/detail pill/record sub. **Deliberately
-NOT changed**: the questions that are genuinely about the rental — "who's put a deposit
-down" (`ps.deposit`) and "who's paid in full" (`ps.total`). The guest CHASE emails and
+NOT changed**: "who's put a deposit down" (`ps.deposit`), which is a rental question.
+("Who's paid in full" was left on the rental too, and round 8 moved it: a guest whose
+rental was settled with the £75 refundable deposit still to take was listed there AND
+under "who owes me money". It now also needs `bookingDue().fullyPaid`.) The guest CHASE emails and
 the pay screen were originally left on the rental frame under the same reasoning, and
 that half was REVISED at the owner's ask (screenshot): once the damages deposit had been
 CHARGED, the balance chase read "£175.00 already paid" of a "£700.00 total" at a guest
@@ -10635,6 +10637,34 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
   `data-act="openWaitlistHere"` now, reading `activeFrontProperty` (ui-test-cottagepage §6b).
 - **"Call to discuss" only with a real number**: `wireCallButtons` reads `gaPhone()` and hides the button when no
   `contact-phone` is set; the placeholder constants are gone (smoke-test scans for them).
+- **ONE STAGE FOR EVERY PAYMENT ASK: THE SERVER'S** (the money audit's findings 1–5). The pay link carries no stage
+  (pay.php derives one on open), and every back-office ask chose its own: the hub counted the refundable deposit into
+  the first payment, a reminder always said `'balance'`, Payments' "Ask to pay" went by whether anything was paid, and
+  search's action always said deposit. So a reminder emailed "£528.20 due" over a link taking £188.30, and a deposit
+  ask for a part-paid deposit was refused "Nothing left to pay." while £414.90 was owed. Now:
+  - `request_payment` ignores the client's `kind` (`booking_payment_kind($b)`, no hint), and so do the email preview
+    and the chat's pay link (`request_booking_payment($b, null)`). The scheduled chasers still name theirs: their
+    queries select for it.
+  - `request_booking_payment` takes the refundable deposit from `booking_damages_due` (cash counts against it) and
+    refuses only when the rental AND the deposit are settled — the rental paid with £75 still to take is £75 owed.
+    It answers `amount` = what the email asked for and `kind`.
+  - The owner's booking list carries `next_payment` (the same field my-bookings sends; left off a finished stay with
+    nothing to take), computed in the warmed-ledger window with the rates read once. `hubAskKind` / `hubAskAmount`,
+    `requestPayment`, `sendPaymentReminder`, `pmOwedRow`'s `stage`, the bulk confirm (`chbBulkAsks`) and its total
+    read it; the old derivation is the fallback. No card ask is offered when the server has nothing to charge.
+  - A deposit-only ask says so ("Pay your refundable deposit", never "£0.00 balance + £75.00").
+  - **The date a guest is TOLD is `booking_balance_due_shown`**: a booking made inside the window was emailed "due
+    Fri 25 Sep" for a stay booked on 5 Oct. Clamped to the day it was made, for display only — the window test and
+    the chaser's SQL keep the raw date, or a booking made inside the window would read as outside it on day one.
+  - After a payment, the receipt and the owner's alert count the deposit a slice left to take (`$damNext`), and the
+    confirmation's Payment row says "£75.00 to pay", not "Paid in full", above a £75 balance. Search's "who's paid in
+    full" needs `bookingDue().fullyPaid` too.
+  - Gates: test-payrail's "One stage for every ask" (the derivation per booking shape, the date, both emails, the
+    receipt, the alert, the wiring; four rules break-tested), ui-test-hub §A2e (the hub, sticky, request, reminder
+    and the edge states; two rules break-tested), search-test (the batch's asks and its total).
+  - **Not changed, and why**: the payments-due cron still never chases a booking whose rental is settled with only
+    the refundable deposit left (it selects `payment <> 'paid'`); starting new automatic emails to guests is the
+    owner's call, so Payments now says "refundable deposit · ask for it" there instead of "goes by itself".
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
