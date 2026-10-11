@@ -6128,6 +6128,34 @@ it_check("§83 the server's count of chats needing a reply equals the list's own
 $r = http($guest, 'POST', '/messages.php', ['action' => 'needs_reply_count']);
 it_check('§83 …and a guest is not told it', ($r['json']['count'] ?? null) === null, $r['raw']);
 
+// ── §84 a guest can correct their own name (round 8, guest audit #20) ──
+// The name is its own edit: correcting a typo must not ask for an address (a code-made
+// account has none), and a refused field must leave nothing half-saved.
+echo "\n== §84 the guest's own name ==\n";
+// A code-made account: a name and an email, no address yet — the real case.
+$rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Typo Nmae', 'name84@example.com', '07700 900084', '', '', ?, NOW())")->execute([password_hash('unused84 passphrase', PASSWORD_DEFAULT)]);
+$guest84 = [];
+http($guest84, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'name84@example.com']);
+$cSet('name84@example.com', '848484');
+http($guest84, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'name84@example.com', 'code' => '848484']);
+$s84 = http($guest84, 'POST', '/auth.php', ['action' => 'guest_status']);
+$g84 = $s84['json']['guest'] ?? [];
+it_check('§84 (fixture) a signed-in guest with no address yet', ($g84['email'] ?? '') === 'name84@example.com' && ($g84['address'] ?? 'x') === '', $s84['raw']);
+$r = http($guest84, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => 'Corrected Name84']);
+it_check('§84 a name sent on its own is saved, with no address asked for', $r['code'] === 200 && ($r['json']['guest']['name'] ?? '') === 'Corrected Name84', $r['raw']);
+it_check('§84 …and nothing else on the account moves', ($r['json']['guest']['phone'] ?? null) === ($g84['phone'] ?? null) && ($r['json']['guest']['address'] ?? null) === ($g84['address'] ?? null) && ($r['json']['guest']['postcode'] ?? null) === ($g84['postcode'] ?? null), $r['raw']);
+$r = http($guest84, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§84 the session reads the new name back', ($r['json']['guest']['name'] ?? '') === 'Corrected Name84', $r['raw']);
+$r = http($guest84, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => '   ']);
+it_check('§84 an empty name is refused in words', $r['code'] === 400 && stripos($r['json']['error'] ?? '', 'name') !== false, $r['raw']);
+$r = http($guest84, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => str_repeat('n', 161)]);
+it_check('§84 a name longer than the column is refused by name, not a database error', $r['code'] === 400 && stripos($r['json']['error'] ?? '', 'name') !== false, $r['raw']);
+$r = http($guest84, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => 'Half Saved84', 'phone' => '07700 900000', 'address' => '', 'postcode' => 'NR25 7ND']);
+$n84 = (string) $rootDb->query("SELECT name FROM guests WHERE email = " . $rootDb->quote((string) ($g84['email'] ?? '')))->fetchColumn();
+it_check('§84 a refused address leaves the name unsaved too (nothing is half-written)', $r['code'] === 400 && $n84 === 'Corrected Name84', $r['raw'] . ' / ' . $n84);
+$r = http($noJar, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => 'Nobody']);
+it_check('§84 nobody signed in changes nothing', $r['code'] === 401, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

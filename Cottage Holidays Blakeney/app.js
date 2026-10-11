@@ -3918,6 +3918,7 @@ function renderGuestAccount(dir) {
             `<h1 class="section-title ga-h1">Your details</h1><p class="ga-lead">Used for your bookings and to reach you about your stay.</p>` +
             `<div class="ga-group ga-hero">${gaAvaBtn(true)}<button type="button" class="ga-link ga-photolink" data-act="gaPhotoSheet">${g.avatar ? 'Change photo' : 'Add a photo'}</button></div>` +
             gaGroup([
+                gaRow({ t: 'Name', s: g.name || none, act: chbAttrs('gaEdit', 'name'), chev: true }),
                 gaRow({ t: 'Email', s: g.email || '', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true }),
                 gaRow({ t: 'Phone', s: g.phone || none, act: chbAttrs('gaEdit', 'phone'), chev: true }),
                 gaRow({ t: 'Address', s: g.address || none, act: chbAttrs('gaEdit', 'address'), chev: true }),
@@ -4651,6 +4652,33 @@ async function gaPhotoRemove() {
 // asked for all three at once rather than meeting that refusal.
 async function gaEdit(field) {
     const g = currentGuest || {};
+    // The name is its own edit: the server saves it alone, so a typo in it never
+    // waits on an address. Your bookings keep the name they were made under.
+    if (field === 'name') {
+        const nf = [{ id: 'name', label: 'Your name', type: 'text', value: g.name || '', autocomplete: 'name' }];
+        let nmsg = '';
+        for (;;) {
+            const v = await glassForm(nmsg, nf, { title: 'Your name', okLabel: 'Save' });
+            if (!v) return;
+            const name = String(v.name || '').trim();
+            nf[0].value = name;
+            if (!name) { nmsg = 'Please enter your name.'; continue; }
+            try {
+                const res = await apiPost('auth.php', { action: 'guest_update_profile', name });
+                currentGuest = res.guest || Object.assign({}, g, { name });
+                try {
+                    const last = JSON.parse(localStorage.getItem(GA_LAST) || 'null');
+                    if (last && last.email === currentGuest.email) authRemember(currentGuest);
+                } catch (e) {}
+                renderGuestAccount();
+                try { guestDockAvatarSync(); } catch (e) {}
+                toast('Saved');
+                return;
+            } catch (e) {
+                nmsg = "Couldn't save: " + (e.message || e);
+            }
+        }
+    }
     const full = !g.address || !isUkPostcode(g.postcode || '');
     const F = {
         phone: { id: 'phone', label: 'Phone', type: 'tel', value: g.phone || '', autocomplete: 'tel' },

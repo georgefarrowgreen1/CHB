@@ -36,7 +36,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
             if (route.request().method() === 'POST') posts.push({ url, body });
             if (url.includes('auth.php')) {
                 if (body.action === 'guest_status') return json({ ok: true, guest });
-                if (body.action === 'guest_update_profile') return json({ ok: true, guest: Object.assign({}, guest, { phone: body.phone, address: body.address, postcode: body.postcode }) });
+                if (body.action === 'guest_update_profile') return json({ ok: true, guest: Object.assign({}, guest, ...['name', 'phone', 'address', 'postcode'].filter((k) => k in body).map((k) => ({ [k]: body[k] }))) });
                 if (body.action === 'guest_change_password') return json({ ok: true });
                 if (body.action === 'guest_send_reset') return json({ ok: true, until: '12:30' });
                 if (body.action === 'guest_avatar_set') return json({ ok: true, avatar: 'abcdef0123' });
@@ -113,7 +113,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     console.log('§2 edit one fact');
     await page.evaluate(() => gaGo('details'));
     await page.waitForTimeout(300);
-    await page.click('#guest-account-body button.ga-row:nth-of-type(1)'); // Phone (the first BUTTON row)
+    await page.click('#guest-account-body .ga-row:has(.ga-t:text-is("Phone"))');
     await page.waitForSelector('#glass-dialog.open');
     const fieldCount = await page.evaluate(() => document.querySelectorAll('#glass-dialog-fields input, #glass-dialog-fields textarea').length);
     ok(fieldCount === 1, `editing the phone asks for the phone alone (${fieldCount} field)`);
@@ -124,6 +124,40 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     ok(!!up && up.body.phone === '07700 900999' && up.body.address === guest.address && up.body.postcode === guest.postcode,
         'the save carries the new phone with the address + postcode the server requires');
     ok(await page.evaluate(() => /07700 900999/.test(document.getElementById('guest-account-body').textContent)), 'the row shows the saved value');
+
+    // §2b A guest can correct their own name, on its own: a typo must not wait on an address.
+    console.log('§2b the name');
+    const nameRow = await page.evaluate(() => {
+        const r = [...document.querySelectorAll('#guest-account-body .ga-row')].find((x) => (x.querySelector('.ga-t') || {}).textContent === 'Name');
+        const rows = [...document.querySelectorAll('#guest-account-body .ga-row .ga-t')].map((e) => e.textContent);
+        return { button: !!r && r.matches('button'), s: r ? r.querySelector('.ga-s').textContent : '', first: rows[0] };
+    });
+    ok(nameRow.button && nameRow.s === guest.name && nameRow.first === 'Name', `Your details leads with the name, as a row that edits it (${JSON.stringify(nameRow)})`);
+    // A missing row fails the checks below by name rather than crashing the suite at the tap.
+    if (!nameRow.button) ok(false, 'editing the name: there is no Name row to tap');
+    else {
+        const before = posts.length;
+        await page.click('#guest-account-body .ga-row:has(.ga-t:text-is("Name"))');
+        await page.waitForSelector('#glass-dialog.open');
+        const nf = await page.evaluate(() => ({ n: document.querySelectorAll('#glass-dialog-fields input, #glass-dialog-fields textarea').length, v: (document.getElementById('gdf-name') || {}).value }));
+        ok(nf.n === 1 && nf.v === guest.name, `editing the name asks for the name alone, prefilled (${nf.n} field, "${nf.v}")`);
+        await page.waitForFunction(() => !!document.activeElement && !!document.activeElement.closest('#glass-dialog-fields'), null, { timeout: 3000 }).catch(() => {});
+        await page.fill('#gdf-name', '');
+        await answer(page, true);
+        await page.waitForTimeout(250);
+        const emptyRefused = await page.evaluate(() => document.getElementById('glass-dialog').classList.contains('open') && /enter your name/i.test(document.getElementById('glass-dialog').textContent));
+        ok(emptyRefused && posts.length === before, 'an empty name is refused in words, and nothing is sent');
+        await page.fill('#gdf-name', 'Gwendolyn Rees');
+        await answer(page, true);
+        await page.waitForTimeout(350);
+        const nup = posts.slice(before).find((p) => p.body.action === 'guest_update_profile');
+        ok(!!nup && nup.body.name === 'Gwendolyn Rees' && !('address' in nup.body) && !('phone' in nup.body) && !('postcode' in nup.body),
+            `the save carries the name alone (${nup && JSON.stringify(nup.body)})`);
+        ok(await page.evaluate(() => /Gwendolyn Rees/.test(document.getElementById('guest-account-body').textContent)), 'the row shows the new name');
+        await page.evaluate(() => gaGo(''));
+        await page.waitForTimeout(350);
+        ok(await page.evaluate(() => /^Hi, Gwendolyn$/.test(document.querySelector('#guest-account-body .ga-h1').textContent)), 'and You greets them by it');
+    }
 
     // §3
     console.log('§3 password');

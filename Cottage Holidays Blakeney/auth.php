@@ -1369,19 +1369,41 @@ switch ($action) {
         if (empty($_SESSION['guest_id'])) {
             json_out(['error' => 'Please sign in first'], 401);
         }
+        // A name sent on its own is its own edit: correcting a typo in your name must
+        // not ask for an address first. Everything is checked before anything is
+        // written, so a refused address never leaves a half-saved name behind.
+        $hasName = array_key_exists('name', $in);
+        $nameOnly = $hasName && !array_key_exists('phone', $in) && !array_key_exists('address', $in) && !array_key_exists('postcode', $in);
+        $newName = '';
+        if ($hasName) {
+            require_fits($in, ['name' => [160, 'Your name']]);
+            $newName = clean($in['name']);
+            if ($newName === '') {
+                json_out(['error' => 'Please enter your name'], 400);
+            }
+        }
         $phone = clean($in['phone'] ?? '');
         $address = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
-        require_fits($in, ['phone' => [60, 'Your phone number']]);
-        if ($address === '') {
-            json_out(['error' => 'Please enter your UK address'], 400);
+        if (!$nameOnly) {
+            require_fits($in, ['phone' => [60, 'Your phone number']]);
+            if ($address === '') {
+                json_out(['error' => 'Please enter your UK address'], 400);
+            }
+            if (!uk_postcode_valid($postcode)) {
+                json_out(['error' => 'Please enter a valid UK postcode'], 400);
+            }
         }
-        if (!uk_postcode_valid($postcode)) {
-            json_out(['error' => 'Please enter a valid UK postcode'], 400);
+        if ($hasName) {
+            // The account's name only. A booking keeps the name it was made under: it is
+            // the record of who booked, and the owner's screens read it from there.
+            db()->prepare('UPDATE guests SET name = ? WHERE id = ?')->execute([$newName, (int) $_SESSION['guest_id']]);
         }
-        db()
-            ->prepare('UPDATE guests SET phone = ?, address = ?, postcode = ? WHERE id = ?')
-            ->execute([$phone, $address, $postcode, (int) $_SESSION['guest_id']]);
+        if (!$nameOnly) {
+            db()
+                ->prepare('UPDATE guests SET phone = ?, address = ?, postcode = ? WHERE id = ?')
+                ->execute([$phone, $address, $postcode, (int) $_SESSION['guest_id']]);
+        }
         $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
         $stmt->execute([$_SESSION['guest_id']]);
         $gRow = $stmt->fetch() ?: null;
