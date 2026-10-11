@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 786;
+const ADMIN_BUNDLE_V = 787;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 408;
+const ADMIN_CSS_V = 409;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -480,7 +480,7 @@ const CHB_ACT_CAP = {
     'gu.approve': ['approveEnquiry', 'declineEnquiry', 'openEditEnquiry'],
     'gu.reviews': ['setReviewStatus', 'moderatePhoto', 'setLeadStatus', 'deleteLead'],
     'ks.see': ['openKeysafe', 'keysafeOpen'],
-    'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe'],
+    'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe', 'saveOpsNotes'],
     'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
     'mo.record': ['recordPayment', 'recordSquareOrphan', 'captureHold', 'odsPay'],
     'mo.refund': ['refundPayment', 'hubRefundPicker', 'releaseHold'],
@@ -16267,6 +16267,10 @@ document.addEventListener('keydown', (e) => {
     // picker or terms opened from the enquiry sheet) spend the OUTER sheet's
     // opener, dropping focus behind the still-open sheet.
     const openers = new WeakMap();
+    // An overlay that closed while its opener was busy (the dispatcher disables an
+    // async button while it works) still owes that button its focus. If the same
+    // overlay opens again first, the debt moves to it: its close pays it.
+    const owed = new WeakMap();
     const isOpen = (el) => el.classList.contains('open');
     const focusInto = (el) => {
         // The dialog already placed focus itself (glassDialog focuses its OK
@@ -16311,6 +16315,8 @@ document.addEventListener('keydown', (e) => {
             const pr = __chbPressed;
             if ((!ae || ae === document.body) && pr && pr.el && Date.now() - pr.t < 8000 && document.body.contains(pr.el)) ae = pr.el;
             if (ae && ae !== document.body && !el.contains(ae)) openers.set(el, ae);
+            else if (owed.has(el)) openers.set(el, owed.get(el));
+            owed.delete(el);
             setTimeout(() => {
                 if (isOpen(el)) focusInto(el);
             }, 60); // after the open transition
@@ -16342,12 +16348,20 @@ document.addEventListener('keydown', (e) => {
                 // …but only if focus is STILL lost then: the closer's own handler may
                 // have placed it deliberately (✨ Draft focuses the message box), and
                 // another overlay may have opened in the meantime.
-                if (document.activeElement !== tt) setTimeout(() => {
-                    const a2 = document.activeElement;
-                    const lost = !a2 || a2 === document.body || el.contains(a2);
-                    const otherOpen = Array.from(document.querySelectorAll(SEL)).some((o) => o !== el && isOpen(o));
-                    if (lost && !otherOpen) restore();
-                }, 400);
+                if (document.activeElement !== tt) {
+                    owed.set(el, tt);
+                    setTimeout(() => {
+                        // The same overlay opened again meanwhile (a shared dialog: cancel
+                        // one form, open the next): focus in it is its own, not lost, and
+                        // the debt went to it when it opened.
+                        if (owed.get(el) !== tt || isOpen(el)) return;
+                        owed.delete(el);
+                        const a2 = document.activeElement;
+                        const lost = !a2 || a2 === document.body || el.contains(a2);
+                        const otherOpen = Array.from(document.querySelectorAll(SEL)).some((o) => o !== el && isOpen(o));
+                        if (lost && !otherOpen) restore();
+                    }, 400);
+                }
             } else {
                 // No opener: keep focus inside whatever overlay is still open.
                 const still = Array.from(document.querySelectorAll(SEL)).filter((o) => o !== el && isOpen(o));
@@ -21721,7 +21735,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'autofill1011';
+    const BUILD = 'sec1reply';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

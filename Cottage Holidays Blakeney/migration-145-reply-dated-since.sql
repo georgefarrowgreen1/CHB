@@ -1,0 +1,14 @@
+-- ============================================================
+--  migration-145-reply-dated-since.sql — the day reply tokens got a lifetime.
+--
+--  Reply-by-email tokens now carry the week they were written, so an owner's
+--  works for 30 days and a guest's for 180 (db.php msg_reply_check). Tokens in
+--  emails sent before that carry no week; they get the same lifetimes counted
+--  from THIS day, which is recorded once, here, when the change is deployed.
+--
+--  Stored as a JSON string, as every content value is: content_value() decodes,
+--  and a bare 2026-10-12 is not JSON, so it would read back as nothing and an
+--  undated token would never expire. INSERT IGNORE: running it again keeps the day
+--  it recorded first.
+-- ============================================================
+INSERT IGNORE INTO content (item_key, item_value) VALUES ('reply-dated-since', CONCAT('"', CURDATE(), '"'));

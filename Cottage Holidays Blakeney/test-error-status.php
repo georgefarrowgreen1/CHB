@@ -351,6 +351,29 @@ es_ok('the probe really loaded db.php before it crashed', strpos((string) $out, 
 es_ok('the run exits non-zero', $rc !== 0);
 es_ok('…and says what crashed on stderr', strpos((string) $err, 'es-probe-crash') !== false);
 
+// THE SAME FOR A DATABASE THAT CANNOT BE REACHED. db() answered that with json_out,
+// which from the command line exits 0 — so a gate that reached the database by
+// mistake (the test config points nowhere) stopped at that line and passed.
+echo "\n-- a database that cannot be reached fails the command-line run --\n";
+$probe = tempnam(sys_get_temp_dir(), 'es-nodb-') . '.php';
+// A closed port on this machine, so the refusal is instant and needs no DNS. The
+// warning config.php gives for defining the host again is not what is measured.
+file_put_contents($probe, '<?php error_reporting(E_ALL & ~E_WARNING); define("DB_HOST", "127.0.0.1;port=1");'
+    . ' $_SERVER["SCRIPT_FILENAME"] = "probe.php"; require ' . var_export(__DIR__ . '/db.php', true) . ';'
+    . ' register_shutdown_function(function () { $f = session_save_path() . "/sess_" . session_id(); if (session_id() !== "" && is_file($f)) { @unlink($f); } });'
+    . ' echo "loaded\n"; db(); echo "carried on\n";');
+$proc = proc_open([PHP_BINARY, $probe], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+$out = stream_get_contents($pipes[1]);
+$err = stream_get_contents($pipes[2]);
+fclose($pipes[1]);
+fclose($pipes[2]);
+$rc = proc_close($proc);
+@unlink($probe);
+@unlink(substr($probe, 0, -4));
+es_ok('the probe really loaded db.php before asking for the database', strpos((string) $out, 'loaded') !== false);
+es_ok('the run stops there and exits non-zero', $rc !== 0 && strpos((string) $out, 'carried on') === false);
+es_ok('…and says so on stderr, not as a web answer', strpos((string) $err, 'Database connection failed') !== false && strpos((string) $out, '{"error"') === false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail ERROR-STATUS CHECK(S) FAILED \u{274C}\n";

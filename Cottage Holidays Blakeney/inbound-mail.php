@@ -67,6 +67,20 @@ if ($bodyRaw === '') {
     }
 }
 
+// Provider auth verdicts (Mailgun X-Mailgun-*, SendGrid dkim/spf, CloudMailin
+// spf/dkim). Only an explicit FAIL counts — absent fields leave the flow exactly as
+// before, so no working route breaks.
+function inb_auth_failed(): bool
+{
+    foreach (['dkim', 'DKIM', 'spf', 'SPF', 'X-Mailgun-Dkim-Check-Result', 'X-Mailgun-Spf'] as $k) {
+        $v = strtolower((string) ($_POST[$k] ?? ''));
+        if ($v !== '' && (strpos($v, 'fail') !== false || $v === 'softfail')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // A bare "email@x" or a "Name <email@x>" → the address only. Take the LAST <…>
 // group so a `"a <owner@allowed>" <evil@x>` spoof resolves to the real address.
 function inb_addr($s)
@@ -80,7 +94,26 @@ function inb_addr($s)
 // ---- Find the thread token: plus-address, In-Reply-To, headers or subject ----
 // reply+<tid>x<sig>@…  |  <msg.<tid>x<sig>@…>  |  anywhere the pattern appears
 $token = msg_reply_token_in([$recipient, $inReplyTo, $headersRaw, $subject]);
-[$threadId, $tokAud] = $token !== '' ? msg_reply_parse($token) : [0, ''];
+$tokChk = $token !== '' ? msg_reply_check($token, true) : ['tid' => 0, 'aud' => '', 'state' => 'invalid'];
+[$threadId, $tokAud] = $tokChk['state'] === 'ok' ? [$tokChk['tid'], $tokChk['aud']] : [0, ''];
+// A REPLY ON A TOKEN PAST ITS LIFETIME POSTS NOTHING, AND IS NOT LOST: yours (an owner
+// token, from one of your addresses) gets a note back saying so; the thread's own
+// guest's goes to whoever gets guest messages, since this route has no mailbox to
+// leave it in. Anyone else's is ignored, as before.
+if ($tokChk['state'] === 'expired' && !inb_auth_failed()) {
+    $lateFrom = inb_addr($from);
+    $lateTid = (int) $tokChk['tid'];
+    if ($tokChk['aud'] === 'owner' && $lateFrom !== '' && in_array($lateFrom, function_exists('people_mail_senders') ? people_mail_senders() : [], true)) {
+        chat_late_reply_owner($lateFrom, $lateTid);
+    } elseif ($tokChk['aud'] === 'guest' && mailbox_reply_is_guest($lateTid, $lateFrom)) {
+        $lateBody = strip_quoted_reply($bodyRaw);
+        if ($lateBody !== '') {
+            chat_late_reply_guest($lateTid, $lateBody);
+        }
+    }
+    echo 'expired';
+    exit();
+}
 if ($threadId <= 0) {
     echo 'no thread';
     exit();
@@ -112,18 +145,7 @@ if (!$asOwner && !$asGuest) {
     echo 'sender not allowed';
     exit();
 }
-// Provider auth verdicts (Mailgun X-Mailgun-*, SendGrid dkim/spf, CloudMailin
-// spf/dkim). Only act on an explicit FAIL — absent fields leave the flow
-// exactly as before, so no working route breaks.
-$authFail = false;
-foreach (['dkim', 'DKIM', 'spf', 'SPF', 'X-Mailgun-Dkim-Check-Result', 'X-Mailgun-Spf'] as $k) {
-    $v = strtolower((string) ($_POST[$k] ?? ''));
-    if ($v !== '' && (strpos($v, 'fail') !== false || $v === 'softfail')) {
-        $authFail = true;
-        break;
-    }
-}
-if ($authFail) {
+if (inb_auth_failed()) {
     echo 'sender failed email authentication';
     exit();
 }

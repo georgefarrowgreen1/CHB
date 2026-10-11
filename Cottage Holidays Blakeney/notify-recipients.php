@@ -12,6 +12,7 @@
 //  Admin only. The list is never exposed on the public content feed.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/mailer.php'; // whose old sign-in an address was (people_mail_removed_name)
 
 const NOTIFY_MAX = 15; // a sensible cap so the list can't grow unbounded
 
@@ -106,7 +107,17 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'notify-recipients.php') {
     $primary = defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL ? OWNER_NOTIFY_EMAIL : '';
 
     if ($action === 'list') {
-        json_out(['ok' => true, 'primary' => $primary, 'extras' => nr_load(), 'max' => NOTIFY_MAX]);
+        json_out(['ok' => true, 'primary' => $primary, 'extras' => nr_load(), 'stopped' => (object) people_mail_extras_stopped(), 'max' => NOTIFY_MAX]);
+    }
+
+    // A REMOVED PERSON'S OLD SIGN-IN IS NOT ADDED BACK. Copied here it would get every
+    // email the back office sends after their access had gone; giving the access back
+    // is the way to send them email again, with the emails chosen for them.
+    if ($action === 'add') {
+        $was = people_mail_removed_name($in['email'] ?? '');
+        if ($was !== '') {
+            json_out(['ok' => false, 'error' => 'That address was ' . $was . '’s sign-in, and ' . $was . '’s access was removed. To send ' . $was . ' these emails again, give the access back in Permissions.', 'code' => 'removed_person'], 409);
+        }
     }
 
     if ($action === 'add' || $action === 'remove') {
@@ -128,7 +139,7 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'notify-recipients.php') {
                 ['entity' => 'notify-emails'],
             );
         }
-        json_out(['ok' => true, 'extras' => $r['list']]);
+        json_out(['ok' => true, 'extras' => $r['list'], 'stopped' => (object) people_mail_extras_stopped()]);
     }
 
     json_out(['error' => 'Unknown action'], 400);

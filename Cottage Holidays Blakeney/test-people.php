@@ -120,7 +120,16 @@ ppl('the host card, saved replies and guest chat are everyday', $k('host-name') 
 ppl('what the back office remembers as you work is everyday', $k('duty-dismissed') === 'all' && $k('search-pins') === 'all' && $k('nlu-learned') === 'all');
 ppl('the home page and its menu are the website', $k('hero-title') === 'we.content' && $k('nav-home') === 'we.content' && $k('card1-title') === 'we.content' && $k('card-img-annex') === 'we.content' && $k('site-logo') === 'we.content');
 ppl('terms-title is the website, not a cottage text', $k('terms-title') === 'we.content');
-ppl('rules and rates are prices; cottage text, photos and notes are pages', $k('rules-21a') === 'co.prices' && $k('jollyboat-desc') === 'co.pages' && $k('images-pimpernel') === 'co.pages' && $k('21a-cancellation-policy') === 'co.prices' && $k('pricing-limits') === 'co.prices' && $k('ops-21a') === 'co.pages');
+ppl('rules and rates are prices; cottage text, photos and guest notes are pages', $k('rules-21a') === 'co.prices' && $k('jollyboat-desc') === 'co.pages' && $k('images-pimpernel') === 'co.pages' && $k('21a-cancellation-policy') === 'co.prices' && $k('pricing-limits') === 'co.prices' && $k('arrival-21a') === 'co.pages' && $k('welcome-21a') === 'co.pages');
+// THE PRIVATE COTTAGE NOTES hold key-safe codes, so they follow the door-code
+// permissions: Edit cottage pages reached them, and a website helper with door codes
+// switched off could read one.
+ppl('the private cottage notes are changed with Change door codes, read with See door codes', $k('ops-21a') === 'ks.change' && people_content_read_cap('ops-21a') === 'ks.see' && people_content_read_cap('arrival-21a') === 'co.pages' && people_cap_for('content.php', 'set', ['key' => 'ops-21a']) === 'ks.change');
+$helper = ['id' => 5, 'username' => 'tom', 'name' => 'Tom Webb', 'full_access' => 0, 'caps' => '', 'perms' => json_encode(['co.pages' => true, 'ks.see' => false, 'ks.change' => false]), 'auth_epoch' => 0, 'removed_at' => null, 'invited_at' => null];
+$plainHost = ['id' => 6, 'username' => 'ann', 'name' => 'Ann Lee', 'full_access' => 0, 'caps' => '', 'perms' => '{}', 'auth_epoch' => 0, 'removed_at' => null, 'invited_at' => null];
+ppl('(fixture) the helper edits cottage pages with door codes off; a plain Host has door codes', people_can($helper, 'co.pages') && !people_can($helper, 'ks.see') && people_can($plainHost, 'ks.see') && !people_can($plainHost, 'co.pages'));
+ppl('…so the helper reads the guest notes but not the private ones', people_content_readable($helper, 'arrival-21a') && !people_content_readable($helper, 'ops-21a'));
+ppl('…and a plain Host reads the private notes, not the pages', people_content_readable($plainHost, 'ops-21a') && !people_content_readable($plainHost, 'arrival-21a'));
 ppl('payment plans are Ask for money; the money marks are See the money', $k('plan-presets') === 'mo.ask' && $k('sweep-moved') === 'mo.view');
 // Replaying a stored undo posts a PRICE change as whoever taps Undo, so the list
 // is written only by people who could make that change themselves — otherwise a

@@ -754,7 +754,13 @@ const stub = (page) => page.route(/\.php/, (r) => {
             // admin stub suppresses the boot that renders the bar at all.
             await p2.addInitScript((th) => { try { localStorage.setItem('chb-theme', th); } catch (e) {} }, theme);
             await p2.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
-            await p2.waitForTimeout(1700);
+            // WAIT FOR THE COVER, NOT A CLOCK. #loading-overlay is an opaque #121316
+            // above everything until the boot reveals the page; after a fixed 1.7s on
+            // a busy runner the screenshots below caught the cover, so ground and ink
+            // were one pixel (rgb 18,19,22 at 1.00:1, in both themes): a failure about
+            // nothing.
+            const lifted = await p2.waitForFunction(() => !document.getElementById('loading-overlay'), null, { timeout: 15000 }).then(() => true, () => false);
+            ok(lifted, `(fixture) the loading cover has lifted (${theme})`);
             await p2.evaluate(() => { try { openProperty(Object.keys(propertyMeta)[0]); } catch (e) {} });
             await p2.waitForTimeout(900);
             const barUp = await p2.evaluate(() => { const e = document.querySelector('.prop-book-bar'); return !!(e && e.getClientRects().length); });

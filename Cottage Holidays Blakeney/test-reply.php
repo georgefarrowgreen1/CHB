@@ -33,8 +33,11 @@ chk(
 );
 // Tokens in ALREADY-SENT emails were 16-hex — they must keep verifying after
 // the widening to 32 (each length checks against its own recomputation).
+// (An undated token's lifetime counts from the day dated tokens shipped, which lives in
+// the database; these checks pass that day in, as today.)
+$today = intdiv(time(), 86400);
 $legacy = '42x' . substr(hash_hmac('sha256', 'msg-reply|42', APP_SECRET), 0, 16);
-chk('legacy 16-hex token still verifies', msg_reply_verify($legacy) === 42);
+chk('legacy 16-hex token still verifies', msg_reply_verify($legacy, null, $today) === 42);
 chk('current token is 32-hex', preg_match('/x[0-9a-f]{32}$/', $tok) === 1);
 chk('legacy token with wrong mac rejected', msg_reply_verify('42x' . str_repeat('0', 16)) === 0);
 
@@ -43,7 +46,7 @@ chk('legacy token with wrong mac rejected', msg_reply_verify('42x' . str_repeat(
 chk('token found in plus-recipient', msg_reply_verify(msg_reply_token_in(['reply+' . $tok . '@x.co.uk'])) === 42);
 chk('token found in In-Reply-To', msg_reply_verify(msg_reply_token_in(['', '<msg.' . $tok . '@x.co.uk>'])) === 42);
 chk('…read whole: all 32 hex, not the first 16', msg_reply_token_in(['<msg.' . $tok . '@x.co.uk>']) === $tok);
-chk('a legacy 16-hex token is still found and verifies', msg_reply_verify(msg_reply_token_in(['Re: hi [#' . $legacy . ']'])) === 42);
+chk('a legacy 16-hex token is still found and verifies', msg_reply_verify(msg_reply_token_in(['Re: hi [#' . $legacy . ']'], null, $today), null, $today) === 42);
 // Read as its first 16 hex, a current token with a forged second half passed as a
 // legacy one. Read whole, it is refused.
 chk('a current token with a forged second half is refused', msg_reply_verify(msg_reply_token_in(['<msg.' . substr($tok, 0, 19) . str_repeat('0', 16) . '@x.co.uk>'])) === 0);
@@ -72,6 +75,57 @@ foreach (['inbound-mail.php', 'mailbox-read.php'] as $f) {
 chk('the guest-facing chat email carries a GUEST token', preg_match("/msg_reply_token\\(\\\$threadId, 'guest'\\)/", (string) file_get_contents(__DIR__ . '/chat-lib.php')) === 1);
 chk('mailbox-read makes an admin reply only from an OWNER token', strpos((string) file_get_contents(__DIR__ . '/mailbox-read.php'), "\$senderOk && \$tokAud === 'owner'") !== false);
 
+echo "== Reply token lifetime ==\n";
+// A FIXED INSTANT, so the weeks fall the same way whenever this runs. A token from week
+// w is good while today <= w*7 + 6 + life: never fewer than `life` days after it was
+// written, at most six more. Both ends of a week are checked.
+$DAY = 86400;
+$now = 1791720000;
+$w = intdiv(intdiv($now, $DAY), 7);
+$first = ($w * 7) * $DAY + 3600; // the first day of that week
+$lastD = ($w * 7 + 6) * $DAY + 3600; // its last day
+$tF = msg_reply_token(42, 'owner', $first);
+$tL = msg_reply_token(42, 'owner', $lastD);
+chk('a token keeps its shape: <id>x<32 hex>', preg_match('/^42x[0-9a-f]{32}$/', $tL) === 1);
+chk('…and is the same all week, so an alert\'s subject tag (and its mail thread) holds', $tF === $tL);
+chk('…and a new one the next week', msg_reply_token(42, 'owner', $lastD + $DAY) !== $tL);
+chk('an owner token from a week\'s first day is good 36 days on', msg_reply_check($tF, false, $first + 36 * $DAY)['state'] === 'ok');
+chk('…and expired at 37', msg_reply_check($tF, true, $first + 37 * $DAY)['state'] === 'expired');
+chk('one from its last day is good 30 days on: never fewer than 30', msg_reply_check($tL, false, $lastD + 30 * $DAY)['state'] === 'ok');
+chk('…and expired at 31', msg_reply_check($tL, true, $lastD + 31 * $DAY)['state'] === 'expired');
+chk('an expired owner token authorises nothing', msg_reply_verify($tL, $lastD + 31 * $DAY) === 0 && msg_reply_parse($tL, $lastD + 31 * $DAY) === [0, '']);
+chk('the cheap check calls it invalid; the deep one recognises it, with its thread', msg_reply_check($tL, false, $lastD + 31 * $DAY)['state'] === 'invalid' && msg_reply_check($tL, true, $lastD + 31 * $DAY) === ['tid' => 42, 'aud' => 'owner', 'state' => 'expired']);
+$gL = msg_reply_token(42, 'guest', $lastD);
+chk('a guest token is good 180 days on', msg_reply_check($gL, false, $lastD + 180 * $DAY)['state'] === 'ok' && msg_reply_parse($gL, $lastD + 180 * $DAY) === [42, 'guest']);
+chk('…and expired at 181', msg_reply_check($gL, true, $lastD + 181 * $DAY) === ['tid' => 42, 'aud' => 'guest', 'state' => 'expired']);
+chk('a forged token is invalid, even to the deep check', msg_reply_check('42x' . str_repeat('ab', 16), true, $now)['state'] === 'invalid');
+chk('past the lookback a token is no longer recognised', msg_reply_check($tL, true, $lastD + (MSG_REPLY_LOOKBACK_WEEKS + 2) * 7 * $DAY)['state'] === 'invalid');
+// A token written now carries its week, so it works on its own, long after the
+// undated ones have stopped (the day passed in is 400 days before the change).
+$gone = intdiv($now, $DAY) - 400;
+chk('a new token carries its week: it works where an undated one has expired', msg_reply_check(msg_reply_token(42, 'owner', $now), false, $now, $gone)['state'] === 'ok' && msg_reply_check(msg_reply_token(42, 'guest', $now), false, $now, $gone)['state'] === 'ok');
+// Tokens in emails sent before tokens carried their week: the same lifetimes, from the
+// day the change shipped (passed in here; reply-dated-since in the database).
+$shipDay = intdiv($now, $DAY);
+$leg32 = '42x' . substr(hash_hmac('sha256', 'msg-reply|42', APP_SECRET), 0, 32);
+$leg16 = '42x' . substr(hash_hmac('sha256', 'msg-reply|42', APP_SECRET), 0, 16);
+$legG = '42y' . substr(hash_hmac('sha256', 'msg-reply-g|42', APP_SECRET), 0, 32);
+chk('an undated owner token works for 30 days after the change', msg_reply_check($leg32, false, $now + 30 * $DAY, $shipDay)['state'] === 'ok' && msg_reply_check($leg16, false, $now + 30 * $DAY, $shipDay)['state'] === 'ok');
+chk('…and is expired at 31', msg_reply_check($leg32, true, $now + 31 * $DAY, $shipDay)['state'] === 'expired' && msg_reply_check($leg16, true, $now + 31 * $DAY, $shipDay)['state'] === 'expired');
+chk('an undated guest token works for 180 days after the change, not 181', msg_reply_check($legG, false, $now + 180 * $DAY, $shipDay)['state'] === 'ok' && msg_reply_check($legG, true, $now + 181 * $DAY, $shipDay)['state'] === 'expired');
+// The finder prefers a working token, then a genuine expired one (so the reply can be
+// answered as late), and only then any token-shaped string.
+$late = $lastD + 31 * $DAY;
+chk('an expired token is found behind a decoy', msg_reply_token_in(['<msg.7x' . str_repeat('ab', 16) . '@x>', 'Re: [#' . $tL . ']'], $late) === $tL);
+$fresh = msg_reply_token(42, 'owner', $late);
+chk('…but a working token beats an expired one', msg_reply_token_in(['Re: [#' . $tL . ']', '<msg.' . $fresh . '@x>'], $late) === $fresh);
+// The routes answer an expired token rather than ignoring it.
+$mr = (string) file_get_contents(__DIR__ . '/mailbox-read.php');
+$im = (string) file_get_contents(__DIR__ . '/inbound-mail.php');
+$mb = (string) file_get_contents(__DIR__ . '/mailbox.php');
+chk('the poll checks deep and answers your late reply with a note', strpos($mr, 'msg_reply_check($tok, true)') !== false && strpos($mr, 'chat_late_reply_owner(') !== false);
+chk('the webhook answers both late replies', strpos($im, 'msg_reply_check($token, true)') !== false && strpos($im, 'chat_late_reply_owner(') !== false && strpos($im, 'chat_late_reply_guest(') !== false);
+chk('the Inbox sets aside your late reply', preg_match("/rChk\\['state'\\] === 'expired'/", $mb) === 1);
 echo "== Quoted-history stripping ==\n";
 $gmail =
     "Yes, 1-8 August is free — shall I pencil you in?\n\nOn Fri, 4 Jul 2026 at 10:12, Cottage Holidays <reply@x> wrote:\n> Someone sent you a message\n> \"is jollyboat free?\"";
@@ -385,7 +439,7 @@ chk('the reply poll passes the headers', preg_match('/\$isSelf = mailbox_is_self
 // OWNER token, a sender on the allow-list, and a chat that still exists (a reply
 // to a deleted chat is left as ordinary mail by the poll, so it must show here).
 chk('the list sets aside an owner reply the poll routes', strpos($mbxSrc, "\$rAud === 'owner'") !== false && strpos($mbxSrc, 'people_mail_senders()') !== false);
-chk('…only while its chat still exists', preg_match('/\$rAud === \'owner\'[\s\S]{0,400}FROM chat_threads WHERE id = \?[\s\S]{0,400}if \(\$rLive\) \{\s*\$ownHidden\+\+;/', $mbxSrc) === 1);
+chk('…only while its chat still exists', preg_match('/\$rAud === \'owner\'[\s\S]{0,400}FROM chat_threads WHERE id = \?[\s\S]{0,400}if \(\$rAside\) \{\s*\$ownHidden\+\+;/', $mbxSrc) === 1);
 // The addresses come through mailbox_from_addr, so the pairing must survive the
 // display form the mailbox actually reads ("Name <addr>").
 chk('a display-name From resolves to its address', mailbox_from_addr('Cottage Holidays Blakeney <info@example.test>') === 'info@example.test');
@@ -502,6 +556,12 @@ chk('a message not yet handled is not invented as handled', !in_array('uid-new',
 $mrd = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/mailbox-read.php'));
 chk('THE WIRING: the poll prunes to its listing only when the listing was read in full', (bool) preg_match('~if \(\$uclean\) \{\s*\$processed = mailbox_handled_keep\(\$processed, \$uidls\);~', $mrd));
 chk('…and the 2,000 cap is gone', strpos($mrd, '> 2000') === false);
+
+echo "== The notes a late reply earns ==\n";
+$n = owner_note_reply_expired('Wren Ashby');
+chk('the note back says what happened, and carries no reply code', strpos($n['subject'], 'Not sent') === 0 && strpos($n['text'], 'more than 30 days old') !== false && preg_match('/\\d+[xy][0-9a-f]{16}/', $n['subject'] . $n['text']) === 0);
+$n = owner_note_reply_stale('Wren Ashby', 'wren@example.com', 'We arrive at five.');
+chk('a guest\'s late reply reaches you with their words', strpos($n['text'], 'We arrive at five.') !== false && strpos($n['text'], 'wren@example.com') !== false);
 
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);
