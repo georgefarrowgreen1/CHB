@@ -26,7 +26,7 @@ const { bootBrowser } = require('./ui-test-lib');
 // todayDashed() reads Europe/London — measured at 00:12 BST: the last-morning
 // fixture rendered as already ended and "10 days to go" read 9. TZ is pinned to
 // Europe/London by ui-test-lib, so the local parts are the London ones.
-const d = (n) => { const x = new Date(); return new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate() + n, 12)).toISOString().slice(0, 10); };
+const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
 const GUEST = { id: 9, name: 'Priya Patel', email: 'p@x.co', phone: '', address: '', postcode: '' };
 const stay = (o) => Object.assign({ prop_key: 'jollyboat', propKey: 'jollyboat', name: 'Priya Patel', check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 400, agreed_total: 400, agreed_nightly: 390, agreed_txn_fee: 10, agreed_nights: 3, damages_deposit: 50, hold_status: 'charged', hold_amount: 50 }, o);
 const UPCOMING = [stay({ id: 71, check_in: d(10), check_out: d(13), payment: 'deposit', deposit_paid: 100, pay_token: 'tok71' })];

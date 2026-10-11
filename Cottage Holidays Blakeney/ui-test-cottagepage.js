@@ -332,7 +332,20 @@ let base;
                 window.__galleryImages = [src, src, src];
                 openLightbox(0);
             }, BRIGHT);
-            await page.waitForTimeout(700);
+            // WAIT FOR THE PHOTO TO SETTLE, not a clock: the box is measured
+            // below, and on a loaded runner a fixed 700ms caught the picture
+            // still decoding or mid-entrance, so the guard read a photo that
+            // was not yet where it rests.
+            await page.waitForFunction(() => {
+                const lb = document.getElementById('lightbox');
+                const im = /** @type {HTMLImageElement|null} */ (document.getElementById('lightbox-img'));
+                if (!lb || !lb.classList.contains('open') || !im || !im.complete || !im.naturalWidth) return false;
+                return document.getAnimations().every((a) => {
+                    const t = a.effect && /** @type {any} */ (a.effect).target;
+                    return !(t && lb.contains(t)) || a.playState !== 'running';
+                });
+            }, null, { timeout: 10000 }).catch(() => {});
+            await page.waitForTimeout(150);
             const geo = await page.evaluate(() => {
                 const lb = document.getElementById('lightbox');
                 const g = (s) => {

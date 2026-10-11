@@ -27,10 +27,42 @@ const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
 
+// THE SUITE KEEPS ITS DAY. A suite that starts shortly before midnight builds its
+// fixtures for one day and is then asked about them by a page whose clock has
+// rolled over to the next — CI ran 22:51–23:07 UTC on a BST night and six
+// day-sheet checks failed on exactly that. Started from 22:00 UK time, the pages
+// run on a clock set back three hours (DATE only: timers, performance.now and
+// elapsed-time arithmetic are untouched, so every Date.now() difference is the
+// same) and d() reads the same clock, so fixture and page agree for the life of
+// any suite. At any other hour the offset is 0 and nothing is installed.
+// CHB_LATE_SHIFT=1 forces the shift at any hour, to check every suite still passes
+// on the shifted clock without waiting for 10pm.
+const LATE_SHIFT_MS = (() => {
+    if (process.env.CHB_LATE_SHIFT === '1') return -3 * 3600e3;
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+    return h >= 22 ? -3 * 3600e3 : 0;
+})();
+// Runs IN THE PAGE (an init script, so before app.js reads the clock).
+function shiftPageClock(off) {
+    if (!off || window.__chbClockShift) return;
+    window.__chbClockShift = off;
+    const RealDate = Date;
+    // eslint-disable-next-line func-names
+    const Shifted = function (...args) {
+        if (!new.target) return new RealDate(RealDate.now() + off).toString();
+        return args.length ? new RealDate(...args) : new RealDate(RealDate.now() + off);
+    };
+    Shifted.prototype = RealDate.prototype;
+    Shifted.now = () => RealDate.now() + off;
+    Shifted.parse = RealDate.parse;
+    Shifted.UTC = RealDate.UTC;
+    window.Date = /** @type {any} */ (Shifted);
+}
+
 // Fixture dates are TODAY-relative (a fixed anchor rots as real time passes)
 // and formatted locally — toISOString() is UTC and slips a day near midnight.
 const d = (o) => {
-    const t = new Date();
+    const t = new Date(Date.now() + LATE_SHIFT_MS);
     const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + o);
     return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 };
@@ -74,7 +106,18 @@ async function bootBrowser() {
     // bootBrowser and open their own pages (ui-test-pay and ui-test-yourstay
     // among them), and a guarantee that only half the suites get is not one.
     const rawNewPage = browser.newPage.bind(browser);
-    browser.newPage = async (...a) => appReadyGoto(await rawNewPage(...a));
+    browser.newPage = async (...a) => {
+        const pg = await rawNewPage(...a);
+        if (LATE_SHIFT_MS) await pg.addInitScript(shiftPageClock, LATE_SHIFT_MS);
+        return appReadyGoto(pg);
+    };
+    // Pages made through a context of their own get the same clock.
+    const rawNewContext = browser.newContext.bind(browser);
+    browser.newContext = async (...a) => {
+        const ctx = await rawNewContext(...a);
+        if (LATE_SHIFT_MS) await ctx.addInitScript(shiftPageClock, LATE_SHIFT_MS);
+        return ctx;
+    };
     const base = `http://127.0.0.1:${port}`;
     const done = async (failures = 0) => {
         try {

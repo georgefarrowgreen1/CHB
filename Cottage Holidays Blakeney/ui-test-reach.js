@@ -42,7 +42,7 @@ const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at re
 const fails = [];
 const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails.push(m); };
 const today = new Date();
-const d = (n) => { const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
 
 // ---- fixtures -------------------------------------------------------------
 const props = [

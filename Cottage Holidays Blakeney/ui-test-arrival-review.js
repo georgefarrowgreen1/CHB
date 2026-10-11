@@ -21,7 +21,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e && e.message)));
 
-  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
   const mk = (id, name, inD, extra) => Object.assign({
     id, prop_key: '21a', name, email: `${name.split(' ')[0].toLowerCase()}@example.com`,
     phone: '', address: '1 Lane', postcode: 'NR25 7AB',

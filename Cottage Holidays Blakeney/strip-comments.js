@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // ============================================================================
-//  strip-comments.js — DEPLOY-TIME ONLY. Blanks full-line comments in the four
-//  assets every anonymous visitor downloads, and verifies the result is the same
-//  program before letting it ship.
+//  strip-comments.js — DEPLOY-TIME ONLY. Blanks full-line comments in the
+//  shipped scripts and stylesheets (TARGETS below), and verifies the result is
+//  the same program before letting it ship.
 //
 //  WHY. Measured with node-zlib at the level perf-budget.js uses: app.js
 //  261.1 -> 159.6KB (-103,901 B, 39%), app.css 71.5 -> 36.7KB (-35,556 B, 49%),
@@ -10,6 +10,9 @@
 //  (-3,416 B, 50%). Total -145.1KB gz on a 461.4KB guest payload — 31.4% — plus
 //  ~245KB of raw JS a phone no longer has to parse. This codebase's comments are
 //  load-bearing documentation; they simply have no business on a guest's phone.
+//  admin.js and admin.css joined later (measured 674.6 -> 515.0KB and
+//  136.6 -> 67.6KB gz, -228.5KB together): the owner downloads them again after
+//  every release that changes them, usually on a phone.
 //
 //  IT BLANKS LINES, IT DOES NOT DELETE THEM. Every stack-trace line number
 //  reported to client-error.php stays exact, which is what keeps the error log
@@ -143,7 +146,7 @@ function verifyCss(before, after, file) {
     return norm(before) === norm(after) ? null : `${file}: CSS content changed after stripping`;
 }
 
-const TARGETS = ['app.js', 'app.css', 'guest-app.js', 'guest-app.css'];
+const TARGETS = ['app.js', 'app.css', 'guest-app.js', 'guest-app.css', 'admin.js', 'admin.css'];
 
 function main() {
     const args = process.argv.slice(2);
@@ -180,4 +183,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { stripSource, verifyJs, verifyCss };
+module.exports = { stripSource, verifyJs, verifyCss, TARGETS };

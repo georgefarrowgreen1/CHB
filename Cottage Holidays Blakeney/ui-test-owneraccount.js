@@ -517,6 +517,9 @@ const ok = (b, m) => {
     // opens it and that a change still goes through from the account pages.
     await page.click(rowByTitle('#security-body', 'Change password'));
     await page.waitForFunction(() => { const o = document.getElementById('oa-pw-sheet'); return o && o.classList.contains('open') && document.activeElement && document.activeElement.id === 'oa-pw-cur'; }, null, { timeout: 15000 }).catch(() => {});
+    // …and AT REST: on a phone the sheet rises from the bottom edge, and CI clicked
+    // its button mid-rise ("Element is outside of the viewport").
+    await page.waitForFunction(() => { const o = document.getElementById('oa-pw-sheet'); return !o || o.getAnimations({ subtree: true }).every((a) => a.playState !== 'running' || a.effect.getTiming().iterations === Infinity); }, null, { timeout: 5000 }).catch(() => {});
     const pwf = await page.evaluate(() => ({ t: (document.getElementById('oa-pw-title') || {}).textContent, n: document.querySelectorAll('#oa-pw-sheet input[type="password"]').length, glass: document.getElementById('glass-dialog').classList.contains('open') }));
     ok(pwf.t === 'Change password' && pwf.n === 2 && !pwf.glass, `changing the password is one sheet of two boxes, not a pop-up form (${pwf.n})`);
     await page.fill('#oa-pw-cur', 'old-password-here');

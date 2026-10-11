@@ -51,7 +51,7 @@ const noComments = (c) => c.replace(/\/\*[\s\S]*?\*\//g, '');
 // Every rule as {sel, body} — a block regex, so a selector LIST is one entry and
 // can be split honestly rather than counted as one.
 const rules = (css) => [...noComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
-const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
 const PROPS = [
     { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, extra_adult_rate: 42, child_rate: 25, booking_fee: 75, transaction_pct: 3, max_adults: 4, max_children: 2, max_total: 6, sort_order: 1 },
     { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 120, extra_adult_rate: 40, child_rate: 25, booking_fee: 75, transaction_pct: 3, max_adults: 4, max_children: 2, max_total: 6, sort_order: 2 },

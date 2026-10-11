@@ -1303,8 +1303,8 @@ Found by the round-6 data-lifecycle review; each was reproduced before it was fi
   rating and note on a review-link lead. Deleting the account now also clears the activity log's copies of the
   words: the first line of every chat message, which the Activity log page shows and searches, and a booking
   page's emails in full. A guest's "New chat message from <name>" loses the name. The rows stay as the record.
-  **Not done, said plainly**: other audit lines still name the guest ("Emailed guest — <name>"), and every row
-  keeps the IP it came from. Gated in test-integration §19b and §70.
+  **Not done, said plainly**: other audit lines still name the guest ("Emailed guest — <name>"). Every row's IP is
+  cleared once it is 90 days old (round 8, the daily prune; §56). Gated in test-integration §19b and §70.
 - **A DELETED EXPENSE PUTS ITS BANK PAYMENT BACK TO SORT.** This is statements.php's own unmark, the split columns
   included. The payment used to read "Counted, as a cost" for a cost the books no longer held.
 - **A removed or private cottage tells its waitlist nothing** (`prop_is_marketable`, as the three nudges already did).
@@ -1442,7 +1442,9 @@ Found by the round-7 uploads review; each was reproduced before it was fixed.
   A guest's image is also brought down to 2000px on its long side (`image_fit_within`): a 40-megapixel phone photo
   was kept whole at 27MB.
 - **ONE WAY TO DELETE AN UPLOAD** (`upload_delete`): the file, its WebP companion and every size img.php cached,
-  rebuilt from the basename. Used by:
+  rebuilt from the basename. **It only ever removes what a guest sent** (`chat-`, `guest-`, `experience-` names),
+  and `chat_valid_attachment` only takes a `chat-` upload (round 8: naming a cottage's gallery photo as an
+  attachment put it on the message, and deleting the account deleted it from the site). Used by:
   - **Delete conversation** (the chat's photos);
   - **account deletion** (their chat photos; photos never approved, row and file; suggestions never published,
     picture and all; a published card keeps no name or address; their stashed notification text);
@@ -3657,9 +3659,9 @@ owner's side of the product barely moved. Gated by **`ui-test-backoffice-motion.
 - Budgets raised with the real figures: **admin.css 69300 → 70900**, **admin.js
   545900 → 547300**, **app.js 278200 → 278500** (the badge pop is the one motion that
   lives in the shared bundle). admin.css and admin.js are owner-only and
-  immutable-cached — the trade CLAUDE.md's own rule names as the cheap one — and note
-  that neither is in the deploy's comment-strip list, which covers the four guest
-  assets only, so those bytes are shipped bytes rather than prose.
+  immutable-cached — the trade CLAUDE.md's own rule names as the cheap one. (Both were
+  later added to the deploy's verified comment strip, so their prose no longer ships:
+  see "The round-8 overnight pass".)
 
 ## Today moves (owner-asked, built and pushed to main without tests or CI)
 
@@ -9189,7 +9191,16 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   `Date.now()`/`new Date()` and leaves the timers running, so the app's own
   `setTimeout`s still fire (install fakes them too and the suite would hang waiting
   for ticks). Keep the pinned instant on the SAME calendar day so the node-side
-  `d(n)` helper still agrees, and fix only the hour. ui-test-yourstay is the
+  `d(n)` helper still agrees, and fix only the hour.
+  **THE SUITE KEEPS ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
+  night and four suites failed). From 22:00 UK time the lib sets every page's `Date`
+  back three hours by an init script (`shiftPageClock`, on `browser.newPage` and
+  `browser.newContext`; timers, `performance.now` and elapsed time untouched), and the
+  lib's `d()` reads the same clock, so fixtures built at the start and the page asked
+  later agree. Suites use the lib's `d` (38 private copies were converted); a helper that
+  runs IN THE PAGE (inside `page.evaluate`) must stay a plain `new Date()` one, since the
+  page's Date is the shifted one there. `CHB_LATE_SHIFT=1` forces the shift at any hour
+  to check the suites still pass on it. ui-test-yourstay is the
   exemplar: its checkout-time cases were asserted against the real clock, so
   "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
   now checks both ends of the day on purpose (case 10 is the far end, and removing
@@ -10598,6 +10609,18 @@ timed, and each gate was break-tested against the old code.
   it guards. If this is ever revisited, compare the REMOTE FILE LISTING (`lftp cls`)
   against the staged set, which is a filesystem question with no HTTP semantics to
   misread.
+
+## The round-8 overnight pass
+
+Asked for as "go over the site's codebase and fully inspect, then overhaul and optimise everything" (owner asleep,
+permission given). Seven read-only audit lenses ran beside a full local gauntlet; what shipped:
+- **CI stability**: the browser suites keep their day across midnight (the lib's late clock shift, above) and the
+  checks that sampled a moving sheet, photo, spinner or pill now wait for it to rest.
+- **A chat attachment can only be a chat photo**, and `upload_delete` only removes what a guest sent (test-integration
+  §75). A guest's sign-out clears the service worker's image cache.
+- **The back-office bundle ships without its comments** (`strip-comments.js` TARGETS gained admin.js and admin.css:
+  -228.5KB gz per owner download, the same token-for-token verification; smoke-test §12g reads the list).
+- **The activity log clears a row's IP after 90 days** (§56).
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

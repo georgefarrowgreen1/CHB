@@ -4094,6 +4094,14 @@ $r = http($loStale, 'POST', '/auth.php', ['action' => 'admin_status']);
 it_check('§56 …and the old id is signed in as nobody', ($r['json']['admin'] ?? null) === false, $r['raw']);
 $cronSrc56 = preg_replace('#//[^\n]*#', '', (string) file_get_contents(__DIR__ . '/cron.php'));
 it_check('§56 the daily prune keeps history by age, not by a bare row count', strpos($cronSrc56, 'OFFSET 5000') === false && strpos($cronSrc56, 'INTERVAL 3 YEAR') !== false, '');
+it_check('§56 …and lets go of the address a row came from after 90 days', (bool) preg_match('/UPDATE activity_log SET ip = NULL WHERE ip IS NOT NULL AND created_at < \(NOW\(\) - INTERVAL 90 DAY\)/', $cronSrc56), '');
+// The statement itself, on the real schema (the source check cannot see a typo in SQL).
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec("INSERT INTO activity_log (actor, category, action, summary, ip, created_at) VALUES ('system', 'system', 'it56.old', '§56 old', '203.0.113.9', NOW() - INTERVAL 100 DAY), ('system', 'system', 'it56.new', '§56 new', '203.0.113.10', NOW() - INTERVAL 5 DAY)");
+$rootDb->exec('UPDATE activity_log SET ip = NULL WHERE ip IS NOT NULL AND created_at < (NOW() - INTERVAL 90 DAY)');
+it_check('§56 …an old row keeps its line and loses its address; a recent one keeps both',
+    $rootDb->query("SELECT ip FROM activity_log WHERE action = 'it56.old'")->fetchColumn() === null
+    && $rootDb->query("SELECT ip FROM activity_log WHERE action = 'it56.new'")->fetchColumn() === '203.0.113.10', '');
 
 // ── §57 the reads that run on every booking page, send and limit check can use an index ──
 // activity_log is kept for three years under a 200,000-row ceiling, and a booking
@@ -5062,9 +5070,16 @@ $exPubId75 = (int) $rootDb->lastInsertId();
 $rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute(['guest-ping-' . $gid75, json_encode(['title' => 'IT75-PING', 'body' => 'Your balance is due', 'at' => time()])]);
 clearstatcache();
 it_check('§75 (fixture) a sent chat photo, a photo waiting, one approved, two suggestions', $gFile75 !== '' && is_file($work . '/' . $gFile75) && is_file($work . '/' . $pend75), $gFile75 . ' ' . $gStaged75);
+// A SITE PHOTO IS NOT A CHAT ATTACHMENT. Naming a cottage's gallery image (its path is
+// in the public content feed) as one put it on the guest's message, and deleting the
+// account then deleted it from the cottage page, resized copies and all.
+$site75 = $mk75('gallery');
+$r = http($gj75, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Not mine to send', 'attachment' => $site75]);
+it_check('§75 a site photo named as a chat attachment is not attached', (int) $rootDb->query('SELECT COUNT(*) FROM messages WHERE attachment = ' . $rootDb->quote($site75))->fetchColumn() === 0, $r['raw']);
 $r = http($gj75, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
 clearstatcache();
 it_check('§75 deleting the account deletes its chat photos', $r['code'] === 200 && !is_file($work . '/' . $gFile75), $r['raw']);
+it_check('§75 …and leaves a site photo where it is', is_file($work . '/' . $site75), $site75);
 it_check('§75 …and a photo never shown, row and file, while an approved one stays on the wall without a name',
     !is_file($work . '/' . $pend75) && (int) $rootDb->query('SELECT COUNT(*) FROM guest_photos WHERE url = ' . $rootDb->quote($pend75))->fetchColumn() === 0
     && is_file($work . '/' . $appr75) && $rootDb->query('SELECT guest_name FROM guest_photos WHERE url = ' . $rootDb->quote($appr75))->fetchColumn() === 'Former guest', '');

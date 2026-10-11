@@ -17,7 +17,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
   const t = await bootBrowser();
-  const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
   let serverDismissed = {};
   const saves = [];
   // Opening a booking POSTs hub_bundle — the one signal that does not depend on how long

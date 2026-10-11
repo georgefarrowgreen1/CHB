@@ -1752,7 +1752,7 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     //  are enumerated here rather than trusted to the AST check in the deploy.
     {
         console.log('\n== 12g. The deploy-time comment strip ==');
-        const { stripSource, verifyJs } = require(path.join(__dirname, 'strip-comments.js'));
+        const { stripSource, verifyJs, TARGETS } = require(path.join(__dirname, 'strip-comments.js'));
         const cases = [
             ['a whole-line // comment goes', '// gone\nconst a = 1;', '\nconst a = 1;'],
             ['a TRAILING comment stays — the line has code', 'const a = 1; // kept\n', 'const a = 1; // kept\n'],
@@ -1772,8 +1772,13 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const tpl = 'const t = `\n// not a comment\n`;\nconst a = 1;';
         check('a //-looking line inside a template literal survives',
             stripSource(tpl, 'js').includes('// not a comment'), JSON.stringify(stripSource(tpl, 'js')));
-        // THE INVARIANT that keeps stack traces honest, on the real files.
-        ['app.js', 'guest-app.js', 'app.css', 'guest-app.css'].forEach((f) => {
+        // THE INVARIANT that keeps stack traces honest, on the real files — every
+        // file the deploy strips, read from the stripper's own list so a target
+        // added there is checked here the same day.
+        check('the stripper covers the guest assets and the back-office bundle',
+            ['app.js', 'guest-app.js', 'app.css', 'guest-app.css', 'admin.js', 'admin.css'].every((f) => TARGETS.includes(f)),
+            JSON.stringify(TARGETS));
+        TARGETS.forEach((f) => {
             const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
             const kind = f.endsWith('.css') ? 'css' : 'js';
             const out = stripSource(src, kind);
@@ -2433,6 +2438,12 @@ console.log('\n== 12i. Signing out leaves no unsent message to a guest on the de
     check('…with the boot hint, the day sheet and the deposit decisions', !ls.keys().some((k) => ['chb-was-admin', 'chb-daysheet', 'chb-dep-decisions'].includes(k)));
     check('…and nothing that is not the owner\'s session (theme, search habits, the guest sheet\'s memory)', ls.keys().join(',') === 'chb-cmdk-use,chb-last-guest,chb-theme');
     check('both ways out call it', /function forceAdminLogout\(\w*\) \{[\s\S]{0,300}chbOwnerDeviceForget\(\);/.test(appScript) && /async function logoutStaff\(\) \{[\s\S]{0,500}chbOwnerDeviceForget\(\);/.test(adminScript));
+    // A guest signing out clears the image cache by its PREFIX: the photos they were
+    // shown (their chat's included) are theirs too. The service worker's own name for
+    // that cache must keep the prefix, or the sweep silently matches nothing.
+    const swImg = (/const IMG_CACHE = '([^']+)'/.exec(fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8')) || [])[1] || '';
+    check(`a guest's sign-out sweeps the image cache, and sw.js still names it chb-img… (${swImg})`,
+        /^chb-img/.test(swImg) && /async function guestLogout\(\) \{[\s\S]{0,1600}\/\^chb-img\/\.test\(k\)[\s\S]{0,40}caches\.delete\(k\)/.test(appScript));
 }
 
 // ---- 12j. A photo link stays inside its url('…') ------------------------------

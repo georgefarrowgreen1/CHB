@@ -210,6 +210,9 @@ if ($isCron) {
         db()->exec(
             'DELETE FROM activity_log WHERE id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log ORDER BY id DESC LIMIT 1 OFFSET 200000) x)',
         );
+        // The ADDRESS a row came from is only worth keeping while something might
+        // need looking into; the row itself stays as the record.
+        db()->exec('UPDATE activity_log SET ip = NULL WHERE ip IS NOT NULL AND created_at < (NOW() - INTERVAL 90 DAY)');
     } catch (\Throwable $e) {
     }
 

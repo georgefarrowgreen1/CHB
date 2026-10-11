@@ -27,7 +27,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const { page, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
 
   // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
-  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
   // An AGE is seeded by hours-ago: the app floors elapsed hours into days, so a date
   // plus a fixed clock time reads a day short for part of every night.
   const hrsAgo = (h) => { const t = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, '0'); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:00`; };

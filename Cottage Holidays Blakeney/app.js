@@ -5756,6 +5756,14 @@ async function guestLogout() {
         localStorage.removeItem('chb-chat-token');
         localStorage.removeItem(ENQ_DRAFT_KEY);
     } catch (e) {}
+    // …and the photos they were shown, their chat's among them, leave the service
+    // worker's image cache (sw.js IMG_CACHE, matched by its prefix so a version bump
+    // there cannot leave this behind).
+    try {
+        if (window.caches) {
+            caches.keys().then((ks) => ks.filter((k) => /^chb-img/.test(k)).forEach((k) => caches.delete(k))).catch(() => {});
+        }
+    } catch (e) {}
     guestBookingsCache = [];
     myGuestReviews = {};
     __wbStays = null;
@@ -22151,7 +22159,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'msgscreen1';
+    const BUILD = 'r8night1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
