@@ -80,13 +80,18 @@ $deltaTxt = $dropPct === null ? '' : $arrow . abs($dropPct) . '%';
 
 $channels = is_array($a['channels'] ?? null) ? $a['channels'] : [];
 $topChannel = $channels ? $channels[0]['channel'] : '—';
+// The dashboard's own names (admin.js loadAnalytics). Every cottage page shares the
+// view id `view-21a`, which this map lacked, so the email read "Most-viewed page:
+// 21a" — the name of one cottage — for whichever cottage page led.
 $pageLabels = [
     'view-main' => 'Home',
     'view-cottages' => 'All cottages',
-    'view-experiences' => 'Experiences',
+    'view-experiences' => 'Things to do',
+    'view-21a' => 'A cottage page',
     'view-guest-bookings' => 'My stays',
     'view-pay' => 'Payment',
     'view-account' => 'Account',
+    'view-guest-account' => 'Account',
 ];
 $pageLabel = function ($p) use ($pageLabels) {
     return $pageLabels[$p] ?? ($p ? ucfirst(trim(str_replace(['view-', '-'], ['', ' '], $p))) : 'Home');

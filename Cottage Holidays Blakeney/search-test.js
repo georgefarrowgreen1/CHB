@@ -1557,7 +1557,7 @@ if (typeof ctx.cmdkBookClash === 'function') {
     check('block command warns when a GUEST is booked over the range', /⚠ Bob Carter is booked/.test(h), h);
     // Move / extend / shorten proposals.
     h = head('move bob back a week');
-    check('"move bob back a week" → computed dates + free verdict + editor route', /Move Bob Carter: \d{2}\/\d{2}\/\d{4} → \d{2}\/\d{2}\/\d{4} \(3 nights\) \| Free ✓/.test(h), h);
+    check('"move bob back a week" → computed dates + free verdict + editor route', /Move Bob Carter: \d{1,2}(?: [A-Z][a-z]{2}(?: \d{4})?)? ?– ?\d{1,2} [A-Z][a-z]{2} \d{4} \(3 nights\) \| Free ✓/.test(h), h);
     h = head(`move bob to ${d(19)}`);
     check('"move bob to <date>" keeps the stay length', /\(3 nights\)/.test(h), h);
     h = head('extend bob by 2 nights');
@@ -2375,6 +2375,23 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
             !depTap.some((d) => /Still In/.test(d.label)));
         check('a deposit-return duty carries an identity (deposit:<booking id>)', depTap.length > 0 && /^deposit:\d+$/.test(String(depTap[0].key)), depTap.map((d) => d.key).join(','));
         vm.runInContext('ukNowMinutes = __realUkNowMinutes;', ctx);
+
+        // A3b) A GUEST WHO LEFT OWING IS CHASED, NOT REFUNDED. They also got "Return
+        // their £50 deposit" beside the balance chase; until the balance is in (or the
+        // deposit is kept against it) the return waits — on Today, Payments and search
+        // alike (chbDepositBackDue is the one rule).
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[
+              {id:78,dbId:78,name:'Left Owing',email:'lo@x.co',checkIn:'${dFut(-6)}',checkOut:'${dFut(-2)}',adults:2,children:0,payment:'deposit',depositPaid:150,holdStatus:'charged',damagesDeposit:50,holdAmount:50,
+               agreedPrice:{total:400,perNight:380,nights:4,txnFee:20,damagesDeposit:50}},
+              {id:79,dbId:79,name:'Left Paid',email:'lp@x.co',checkIn:'${dFut(-6)}',checkOut:'${dFut(-2)}',adults:2,children:0,payment:'paid',depositPaid:400,holdStatus:'charged',damagesDeposit:50,holdAmount:50,
+               agreedPrice:{total:400,perNight:380,nights:4,txnFee:20,damagesDeposit:50}}];`, ctx);
+        const owingDuties = ctx.chbDuties().map((d) => d.kind + ':' + d.label);
+        check('a guest who left owing is chased for the balance…', owingDuties.some((x) => /^balance:.*Left Owing/.test(x)), owingDuties.join(' | '));
+        check('…and is NOT also a deposit to return', !owingDuties.some((x) => /^deposit:.*Left Owing/.test(x)), owingDuties.join(' | '));
+        check('…while a guest who left paid up is', owingDuties.some((x) => /^deposit:.*Left Paid/.test(x)), owingDuties.join(' | '));
+        check('Payments and search read the same rule', ctx.pmDepsBack().length === 1 && /deposits to return/i.test(JSON.stringify(ctx.cmdkIntent('money', ctx.todayDashed()) || [])),
+            JSON.stringify(ctx.pmDepsBack().map((x) => x.b.name)));
 
         // A4) THE GUEST REGISTER IS A DUTY. It is treated as one at booking level —
         // bookingFlow has a stage for it, the hub's next-action card asks for it — and

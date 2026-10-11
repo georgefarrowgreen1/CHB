@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=386">
+    <link rel="stylesheet" href="app.css?v=388">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -614,7 +614,7 @@
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
-        <span class="back-link"  role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-cottages">← Back to cottages</span>
+        <button type="button" class="ga-back prop-back" data-act="nav" data-view="view-cottages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Cottages</button>
         
         <div class="gallery-container">
             <div class="gallery-track" id="gallery-21a">
@@ -844,7 +844,7 @@
 
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
-                    <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" data-act-keydown="activate" data-act="enquireBack">← Back</span>
+                    <button type="button" class="ga-back" style="margin-bottom:8px;" data-act="enquireBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Back</button>
                     <!-- THE FORM ASSEMBLES ITSELF (enquireContinue adds .enq-landed).
                          The label/input pairs are wrapped so a label can never arrive
                          before its own field, and each group carries its own --efd
@@ -1773,7 +1773,7 @@
     <div id="newprop-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="newprop-title">
         <div class="glass-panel modal-box">
             <h3 id="newprop-title" style="font-family: var(--font-serif); font-size:var(--fs-display); margin-bottom: 6px;">Set up new property</h3>
-            <p id="newprop-sub" style="font-size:var(--fs-sub); color: var(--text-muted); margin: 0 0 18px;">These prices apply to this cottage. You can change them later in Manage → Preferences.</p>
+            <p id="newprop-sub" style="font-size:var(--fs-sub); color: var(--text-muted); margin: 0 0 18px;">These prices apply to this cottage. You can change them later on its page in Manage.</p>
 
             <label class="modal-label">Nightly price — couple (£)</label>
             <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-couple" placeholder="e.g. 120" data-act-input="updateModalPrice">
@@ -1896,11 +1896,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1202"></script>
+    <script defer src="app.js?v=1204"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=39"></script>
+    <script defer src="guest-app.js?v=41"></script>
 
 </body>
 </html>

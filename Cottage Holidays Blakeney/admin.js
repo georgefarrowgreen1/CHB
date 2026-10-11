@@ -260,15 +260,15 @@ function cmdkRegistry() {
         { id: 'today', label: 'Today', sub: 'Operations dashboard', icon: 'home', kw: 'home dashboard calendar timeline arrivals departures', go: () => tryAccessBackOffice() },
         { id: 'bookings', label: 'Bookings', sub: 'All bookings', icon: 'booking', kw: 'reservations stays guests list', go: () => openBookings() },
         { id: 'inbox', label: 'Inbox', sub: 'Enquiries, messages & email', icon: 'enquiry', kw: 'chat conversations', go: () => openInbox() },
-        { id: 'messages', label: 'Messages', sub: 'Guest chat folder', icon: 'message', kw: 'chat conversations inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('messages')) },
-        { id: 'email', label: 'Email', sub: 'Mailbox folder', icon: 'email', kw: 'mailbox sent compose inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('email')) },
+        { id: 'messages', label: 'Guest chats', sub: 'Each person’s chat, in the Inbox', icon: 'message', kw: 'chat conversations inbox messages', go: () => openInbox() },
+        { id: 'email', label: 'Email', sub: 'Each person’s emails, in the Inbox', icon: 'email', kw: 'mailbox sent compose inbox', go: () => openInbox() },
         { id: 'payments-area', label: 'Payments', sub: 'Money & reconciliation', icon: 'payment', kw: 'money accounts income deposits balances expenses owed', go: () => openAccounts() },
         { id: 'manage', label: 'Manage', sub: 'All settings', icon: 'gear', kw: 'settings admin', go: () => openArea() },
         { id: 'activity', label: 'Activity log', sub: 'Every change & action', icon: 'activity', kw: 'history audit errors', go: () => nav('view-activity-log') },
         // Manage sections — each `sec` opens #sec-<sec> via settingsOpen().
         { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', icon: 'house', kw: 'property add remove cottage price occupancy', sec: 'accom' },
         { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', icon: 'tag', kw: 'rates price season', sec: 'seasongrid' },
-        { id: 'pricing', label: 'Pricing', sub: 'Gap offers & demand-based price ideas', icon: 'tag', kw: 'pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity', sec: 'pricing' },
+        { id: 'pricing', label: 'Price ideas', sub: 'Gap offers & demand-based price ideas', icon: 'tag', kw: 'pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity', sec: 'pricing' },
         { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', icon: 'sync', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
         { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
@@ -278,10 +278,10 @@ function cmdkRegistry() {
         { id: 'photos', label: 'Guest photos', sub: 'Approve shared photos', kw: 'photo wall gallery', sec: 'photos' },
         { id: 'chat-away', label: 'Guest chat', sub: 'Away reply & instant answers', kw: 'automation away office hours faq quick reply bot instant answers chips', sec: 'chat-away' },
         { id: 'follow-ups', label: 'Follow-up emails', sub: 'Enquiry & guest nudges', kw: 'automation nudge reminder anniversary', sec: 'follow-ups' },
-        { id: 'guests', label: 'Guests', sub: 'Invite back, send a reset link', kw: 'guest account password reset user invite back', sec: 'guests' },
+        { id: 'guests', label: 'Guest list', sub: 'Invite back, send a reset link', kw: 'guest account password reset user invite back', sec: 'guests' },
         { id: 'newsletter', label: 'Newsletter', sub: 'Mailing list & broadcasts', kw: 'email marketing subscribers broadcast', sec: 'newsletter' },
         { id: 'waitlist', label: 'Waitlist', sub: 'Sold-out demand', kw: 'notify demand', sec: 'waitlist' },
-        { id: 'analytics', label: 'Analytics', sub: 'Visits & referrers', kw: 'stats traffic visitors', sec: 'analytics' },
+        { id: 'analytics', label: 'Analytics', sub: 'People, pages viewed & enquiries', kw: 'stats traffic visitors visits referrers', sec: 'analytics' },
         { id: 'acct', label: 'Your account', sub: 'Profile, alerts, sign-in & log out', kw: 'account me my profile appearance dark light mode theme layout search first classic log out sign out', sec: 'acct' },
         { id: 'host', label: 'Host profile', sub: 'Photo, bio & phone number', kw: 'bio about phone photo picture host card', sec: 'host' },
         { id: 'notify', label: 'Notifications', sub: 'Phone alerts & who gets emailed', kw: 'push alerts quiet hours email recipients', sec: 'notify' },
@@ -346,7 +346,7 @@ function cmdkActions(q) {
         A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
         A('block', 'Block out dates', 'Mark dates unavailable', 'block off close unavailable maintenance reserve hold', /block.{0,10}(date|off|out|calendar|time)|(add|make).{0,10}block|close.{0,8}date/, () => { closeCmdK(); openBlockDates(); }),
         A('rates', 'Change prices & rates', 'Nightly and seasonal pricing', 'price rate nightly cost charge seasonal summer holiday raise lower adjust set fee', /(change|edit|update|set|adjust|raise|lower|manage|amend).{0,14}(price|rate|pricing|cost|nightly|charge|fee)|season(al)? (rate|price)|price.{0,6}(change|update)/, toManage('seasongrid')),
-        A('email', 'Compose an email', 'Write a new message', 'send write mail email message compose new create make', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); }),
+        A('email', 'Email a guest', 'Find them in the Inbox and write in their conversation', 'send write mail email message compose new create make', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => { const q = document.getElementById('ib-q'); if (q) q.focus(); }); }),
         A('welcome', cName ? `Welcome guide — ${cName}` : 'Edit the welcome guide', 'In-stay guide: Wi-Fi, appliances, bins, tips', 'welcome book guide in stay wifi manual instructions house information handbook', /(edit|change|update|write|add).{0,18}(welcome|guide|in.?stay|house ?book|handbook)/, toAccom('welcome')),
         // TWO sections, two answers: the rules a guest OBSERVES, and the times
         // and limits the booking form ENFORCES. Asking for "house rules" used
@@ -371,16 +371,18 @@ function cmdkActions(q) {
         A('reviews', 'Approve reviews', 'Moderate guest reviews', 'review testimonial star approve moderate import google', /(approve|moderate|manage|import).{0,10}review/, toManage('reviews')),
         A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
         A('guests', 'Guests', 'Invite a guest back or send a reset link', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
-        A('away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'away auto reply out of office automation holiday', /(set|edit|turn on|enable).{0,12}(away|auto.?reply|out of office)/, toManage('chat-away')),
+        A('away', 'Away reply', 'Guest chat: the reply guests get out of hours', 'away auto reply out of office automation holiday', /(set|edit|turn on|enable).{0,12}(away|auto.?reply|out of office)/, toManage('chat-away')),
         A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-away')),
         A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
         A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
         // ---- One-tap "do it" actions (parity: everything you can do in the UI) ----
         A('expense', 'Add an expense', 'Log a cost against the books', 'expense cost spend receipt bill outgoing add log record purchase supplier', /(add|log|record|enter|new|put).{0,12}(expense|cost|receipt|bill|spend|outgoing|purchase)/, () => { cmdkOpenAccounts('expenses'); cmdkPoll(() => document.getElementById('exp-amount'), (el) => { try { el.scrollIntoView({ block: 'center' }); el.focus(); } catch (e) {} }, 40); }),
-        A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { cmdkOpenAccounts('income'); cmdkPoll(() => (typeof accountsReport !== 'undefined' && accountsReport) ? true : null, () => { if (typeof exportAccountsCSV === 'function') exportAccountsCSV(); }, 50); }),
+        A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { closeCmdK(); pmExport('csv'); }),
         A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
-        A('filterboard', `Filter the ${{ 'view-inbox': 'Inbox', 'view-accounts': 'Payments' }[typeof cmdkActiveWorkspace === 'function' ? cmdkActiveWorkspace() : ''] || 'Today'} board`, 'Dim everything on this screen that doesn’t match', 'filter today inbox payments board dim narrow highlight only show find on screen calendar timeline bookings enquiries emails expenses', /filter.{0,10}(today|inbox|payment|board|screen|calendar|timeline|booking|enquir|email|expense)|(dim|narrow|only ?show).{0,10}(board|today|inbox|payment|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|inbox|payments?|board|screen|calendar|timeline|bookings?|enquir(y|ies)|emails?|expenses?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
+        cmdkActiveWorkspace() === 'view-inbox'
+            ? A('filterboard', 'Search the Inbox', 'Show only the people who match', 'filter search inbox board narrow only show find on screen enquiries emails messages', /filter.{0,10}(inbox|board|screen|enquir|email|message)|(narrow|only ?show).{0,10}(board|inbox|match)/, () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|search|the|inbox|board|screen|enquir(y|ies)|emails?|messages?|for|by|only|show|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); })
+            : A('filterboard', 'Filter the Today board', 'Dim the bookings and calendar bars that don’t match', 'filter today board dim narrow highlight only show find on screen calendar timeline bookings', /filter.{0,10}(today|board|screen|calendar|timeline|booking)|(dim|narrow|only ?show).{0,10}(board|today|match)/, () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|board|screen|calendar|timeline|bookings?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /\b(income|tax|vat|revenues?|takings|earnings|accounts?|figures)\b.{0,10}(total|report|year|summary|view|show)?|\bview\b.{0,8}\b(income|accounts|tax)\b/, () => cmdkOpenAccounts('income')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing', 'Your prices, ideas and what guests search for', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => { closeCmdK(); openPricingCoach(); }),
@@ -1034,7 +1036,7 @@ function cmdkCommand(q, today) {
             : 'Free ✓ · opens the editor pre-filled — nothing changes until you save';
         if (andConfirm) pSub += ' · saving offers to re-send their confirmation';
         return cmd(
-            `${verb} ${b.name}: ${fmtDate(newIn)} → ${fmtDate(newOut)} (${nights} night${nights === 1 ? '' : 's'})`,
+            `${verb} ${b.name}: ${fmtStayRange(newIn, newOut)} (${nights} night${nights === 1 ? '' : 's'})`,
             pSub,
             () => { closeCmdK(); cmdkPrefillEditDates(b.id, newIn, newOut); },
         );
@@ -2028,7 +2030,7 @@ function cmdkSourceRecords() {
             const nm = propName(pk);
             const reason = ((bl.reason || bl.note || '') + '').trim();
             const ota = !!bl.source;
-            const dates = `${bl.checkIn ? fmtDate(bl.checkIn) : ''}${bl.checkOut ? ' → ' + fmtDate(bl.checkOut) : ''}`;
+            const dates = bl.checkIn && bl.checkOut ? fmtStayRange(bl.checkIn, bl.checkOut) : bl.checkIn ? fmtDate(bl.checkIn) : '';
             items.push({
                 type: 'external',
                 id: 'blk-' + (bl.id != null ? bl.id : pk + '-' + (bl.checkIn || '')),
@@ -4449,7 +4451,7 @@ function cmdkIntent(q) {
             const b = target.b, n = stayNights(b), nm = b.name || 'This guest';
             const head = ans(
                 `${nm} is ${b.checkOut && b.checkOut < today ? 'stayed' : 'staying'} ${nn(n, 'night')}`,
-                `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} at ${propName(target.pk)} · ${nn((b.adults || 0) + (b.children || 0) || b.adults || 2, 'guest')}`,
+                `${fmtStayRange(b.checkIn, b.checkOut)} at ${propName(target.pk)} · ${nn((b.adults || 0) + (b.children || 0) || b.adults || 2, 'guest')}`,
                 () => { closeCmdK(); openBookingHub(b.id); },
                 b.checkIn ? [calChip(b.checkIn)] : [],
             );
@@ -4526,7 +4528,7 @@ function cmdkIntent(q) {
                 if (!conf.length) {
                     return [ans(
                         `Yes — ${propName(ents.prop)} is free ${label}`,
-                        `${fmtDate(from)} → ${fmtDate(nightsEnd)} · no bookings or blocks`,
+                        `${fmtStayRange(from, nightsEnd)} · no bookings or blocks`,
                         () => { closeCmdK(); tryAccessBackOffice(); },
                         [calChip(from), { label: 'Add a booking here', run: () => { closeCmdK(); Promise.resolve(tryAccessBackOffice()).then(() => { try { tlAddAt(ents.prop, from); } catch (e) {} }); } }],
                     )];
@@ -4543,7 +4545,7 @@ function cmdkIntent(q) {
             const freeKs = chbFleetKeys().filter((k) => !conflictsFor(k).length);
             return [ans(
                 freeKs.length ? `${nn(freeKs.length, 'cottage')} free ${label}` : `Nothing free ${label}`,
-                freeKs.length ? freeKs.map(propName).join(', ') + ` · ${fmtDate(from)} → ${fmtDate(nightsEnd)}` : `All cottages have bookings or blocks ${label}`,
+                freeKs.length ? freeKs.map(propName).join(', ') + ` · ${fmtStayRange(from, nightsEnd)}` : `All cottages have bookings or blocks ${label}`,
                 () => { closeCmdK(); tryAccessBackOffice(); },
                 [calChip(from)],
             )];
@@ -4588,7 +4590,7 @@ function cmdkIntent(q) {
                     if (x) {
                         const head = ans(
                             `${gbp(x.p.total)} for ${nn(x.p.nights, 'night')} at ${propName(x.k)}`,
-                            `${fmtDate(qFrom)} → ${fmtDate(qTo)} · ${x.clash ? `⚠ taken then (${x.clash.name})` : 'free ✓ · tap to start the booking'} · £${Math.round(x.p.total / x.p.nights)}/night avg${x.p.damagesDeposit ? ` · + ${gbp(x.p.damagesDeposit)} refundable deposit` : ''}`,
+                            `${fmtStayRange(qFrom, qTo)} · ${x.clash ? `⚠ taken then (${x.clash.name})` : 'free ✓ · tap to start the booking'} · £${Math.round(x.p.total / x.p.nights)}/night avg${x.p.damagesDeposit ? ` · + ${gbp(x.p.damagesDeposit)} refundable deposit` : ''}`,
                             bookRun(x.k),
                         );
                         const alts = x.clash
@@ -4602,7 +4604,7 @@ function cmdkIntent(q) {
                     if (all.length) {
                         const cheapest = (free.length ? free : all).slice().sort((a, z) => a.p.total - z.p.total)[0];
                         const head = ans(
-                            `From ${gbp(cheapest.p.total)} — ${fmtDate(qFrom)} → ${fmtDate(qTo)}`,
+                            `From ${gbp(cheapest.p.total)} — ${fmtStayRange(qFrom, qTo)}`,
                             `${nn(free.length, 'cottage')} free of ${all.length} · ${adults} adult${adults === 1 ? '' : 's'}${children ? ` + ${children} child${children === 1 ? '' : 'ren'}` : ''}`,
                             bookRun(cheapest.k),
                         );
@@ -4678,7 +4680,7 @@ function cmdkIntent(q) {
                     const r = set[0];
                     const nights = Math.round((new Date(r.checkOut + 'T00:00:00') - new Date(r.checkIn + 'T00:00:00')) / 864e5);
                     if (askLong) {
-                        const head = ans(`${r.name} is staying ${nn(nights, 'night')}`, `${fmtDate(r.checkIn)} → ${fmtDate(r.checkOut)} at ${propName(r.pk)}`, r.open, [calChip(r.checkIn)]);
+                        const head = ans(`${r.name} is staying ${nn(nights, 'night')}`, `${fmtStayRange(r.checkIn, r.checkOut)} at ${propName(r.pk)}`, r.open, [calChip(r.checkIn)]);
                         if (r.b) head.actions = cmdkBookingActions(r.b, r.pk);
                         return [head];
                     }
@@ -5060,7 +5062,7 @@ function cmdkIntent(q) {
         // hasCheckedOut (time-aware) — from midnight on checkout day the guest is
         // still in until the checkout time; the WHEN answer already says so.
         // damageHeld, not hold_status: a cash-taken deposit is held too (see chbDuties).
-        const rows = flat.filter((x) => damageHeld(x.pk, x.b).held > 0.005 && hasCheckedOut(x.b)).sort(byOut);
+        const rows = flat.filter((x) => chbDepositBackDue(x.pk, x.b) > 0.005).sort(byOut);
         const n = rows.length;
         const lead = n ? chbSayFirst(rows[0].b.name) : '';
         const dHead = !n ? nlgPick('dret0' + q, ['No deposits to hand back right now.', 'Nothing to refund at the moment.'])
@@ -5206,20 +5208,29 @@ function cmdkIntent(q) {
     const toMng = (sec) => () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen(sec)); };
     const A = (id, label, sub, run) => ({ type: 'action', id, label, sub, run });
     if (/^\s*(the\s+)?(money|payments?|takings|finances?|accounts?|cash)\s*(overview|summary|dashboard)?\s*$/.test(q)) {
-        let outstanding = 0, owers = 0, held = 0, depN = 0;
+        let outstanding = 0, owers = 0, held = 0, back = 0, depN = 0;
         flat.forEach((x) => {
             const ps = bookingDue(x.pk, x.b);
             if (!ps.fullyPaid && ps.balance > 0.5) { outstanding += ps.balance; owers++; }
             // Same as the brief: swallowing here silently under-reports how much
-            // deposit money is being held.
-            try { const dh = damageHeld(x.pk, x.b); if (dh && dh.held > 0.5) { held += dh.held; depN++; } } catch (e) { chbSwallow(e, 'money-held'); }
+            // deposit money is being held. Only a guest who has LEFT is owed theirs
+            // back — the "deposits to return" answer's own rule (0f), so the row and
+            // the list it opens agree (it said £1,125 over a list of £225).
+            try {
+                const dh = damageHeld(x.pk, x.b);
+                if (dh && dh.held > 0.5) {
+                    held += dh.held;
+                    const due = chbDepositBackDue(x.pk, x.b);
+                    if (due > 0.5) { back += due; depN++; }
+                }
+            } catch (e) { chbSwallow(e, 'money-held'); }
         });
-        const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', held > 0.5 ? `${gbp(held)} deposits to return` : null].filter(Boolean).join(' · ');
+        const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', back > 0.5 ? `${gbp(back)} deposits to return` : held > 0.5 ? `${gbp(held)} deposits held` : null].filter(Boolean).join(' · ');
         const head = ans('Payments', facts, () => { closeCmdK(); openAccounts(); });
         return [head].concat([
             A('mdsr-open', 'Open Payments', 'Money & reconciliation', () => { closeCmdK(); openAccounts(); }),
             owers ? A('mdsr-owe', `Who owes money · ${owers}`, `${gbp(outstanding)} outstanding`, runQ('who owes me money')) : null,
-            depN ? A('mdsr-dep', 'Deposits to return', `${gbp(held)} to hand back`, runQ('deposits to return')) : null,
+            depN ? A('mdsr-dep', 'Deposits to return', `${gbp(back)} to hand back`, runQ('deposits to return')) : null,
             A('mdsr-rev', 'Revenue this month', 'Booked income', runQ('revenue this month')),
             A('mdsr-set', 'Payment settings', 'Square & deposit policy', toMng('payments')),
         ].filter(Boolean));
@@ -5244,8 +5255,8 @@ function cmdkIntent(q) {
         const n = typeof __nyChats === 'number' ? __nyChats : 0;
         const head = ans('Messages', n ? `${n} chat${n === 1 ? '' : 's'} waiting a reply` : 'Guest chats', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); });
         return [head].concat([
-            A('gdsr-open', 'Open Messages', 'Guest chat folder', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); }),
-            A('gdsr-away', 'Away auto-reply', 'Out-of-hours acknowledgement', toMng('chat-away')),
+            A('gdsr-open', 'Open the Inbox', 'Each guest’s chats, with their emails', () => { closeCmdK(); openInbox(); }),
+            A('gdsr-away', 'Away reply', 'Guest chat: the reply guests get out of hours', toMng('chat-away')),
             A('gdsr-ans', 'Instant chat answers', 'Auto-answers to chat chips', toMng('chat-away')),
         ]);
     }
@@ -5274,7 +5285,7 @@ function cmdkIntent(q) {
         const gHead = ans(gaps.length ? `${gaps.length} open window${gaps.length === 1 ? '' : 's'} · ${scope}` : `No gaps at ${scope} in the next 60 days`, gaps.length ? 'Next 60 days · tap one to see it on the calendar' : 'Fully booked', () => { closeCmdK(); if (typeof nav === 'function') nav('view-backoffice'); });
         return [gHead].concat(gaps.map((g) => ({
             type: 'answer', id: 'gap-' + g.propKey + '-' + g.from,
-            label: `${g.name} free ${fmtDate(g.from)} → ${fmtDate(g.to)}`,
+            label: `${g.name} free ${fmtStayRange(g.from, g.to)}`,
             sub: `${g.nights} night${g.nights === 1 ? '' : 's'} open`,
             run: () => cmdkJumpTimeline(g.from),
             chips: [{ label: 'Show on calendar', run: () => cmdkJumpTimeline(g.from) }, { label: 'Add booking', run: () => { closeCmdK(); if (typeof tlAddAt === 'function') tlAddAt(g.propKey, g.from); } }],
@@ -5608,7 +5619,7 @@ function helpTopics() {
             related: ['change-prices'] },
         { id: 'chase-balance', title: 'Chase an unpaid balance', cat: 'Money',
             kw: 'chase balance owed outstanding unpaid remind due money collect nudge',
-            steps: ['On Today, tap the “£… to collect” line under Bookings.', 'Open the booking and tap “Request balance” to email a secure pay link.', 'Today’s Needs-you strip also flags balances due within 21 days.'],
+            steps: ['On Today, tap the “£… to collect” pill beside the title to see who owes.', 'Open the booking and tap “Request the balance by card” to email a secure pay link.', 'Today’s Needs-you strip also flags balances due within 21 days.'],
             doIt: { label: 'Who needs to pay', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
             related: ['take-payment'] },
         { id: 'export-accountant', title: 'Export figures for my accountant', cat: 'Money',
@@ -5656,23 +5667,23 @@ function helpTopics() {
             // acted on it: approving emails the confirmation and the payment ask,
             // editing is deliberately silent, and declining emails nobody unless
             // you take the reply it offers.
-            steps: ['Open Inbox → Enquiries and pick one.', 'Approve to turn it into a booking (set the agreed price) — that emails the confirmation and the payment request. Editing is silent. Declining files it and emails nobody, so take the reply it offers if you want the guest told.'],
-            doIt: { label: 'Open Enquiries', run: view(() => { openInbox(); try { inboxFolder('enquiries'); } catch (e) {} }) },
+            steps: ['Open the Inbox: an enquiry waits near the top, tagged Decide. Tap the person.', 'Approve to turn it into a booking (set the agreed price) — that emails the confirmation and the payment request. Editing is silent. Declining files it and emails nobody, so take the reply it offers if you want the guest told.'],
+            doIt: { label: 'Open the Inbox', run: view(() => openInbox()) },
             related: ['send-email'] },
         { id: 'send-email', title: 'Email a guest', cat: 'Inbox',
             kw: 'send email guest message compose write mail contact confirmation',
-            steps: ['From a booking’s hub use the Emails card for one-tap branded emails (confirmation, balance, pre-arrival…).', 'For a free-form message use Inbox → Email.'],
-            doIt: { label: 'Open Email', run: view(() => { openInbox(); try { inboxFolder('email'); } catch (e) {} }) },
+            steps: ['On a booking’s page, tap the envelope beside the guest’s name to write to them.', 'For anyone else, open the Inbox, tap the person and reply in their conversation.'],
+            doIt: { label: 'Open the Inbox', run: view(() => openInbox()) },
             related: ['reply-enquiry'] },
         { id: 'guest-messages', title: 'Read & reply to guest chats', cat: 'Inbox',
             kw: 'message messages chat guest reply conversation thread talk respond',
-            steps: ['Open Inbox → Messages.', 'Pick a thread to reply; unread chats also show in Today’s Needs-you strip.'],
-            doIt: { label: 'Open Messages', run: view(() => { openInbox(); try { inboxFolder('messages'); } catch (e) {} }) },
+            steps: ['Open the Inbox: a guest’s chats sit with their emails and enquiries, one row per person.', 'Tap the person to read and reply; unread chats also show in Today’s Needs-you strip.'],
+            doIt: { label: 'Open the Inbox', run: view(() => openInbox()) },
             related: ['auto-reply'] },
         { id: 'auto-reply', title: 'Set an out-of-hours auto-reply', cat: 'Automation',
             kw: 'auto reply away message out of office automatic respond hours holiday acknowledge chat',
-            steps: ['Open Manage → Away auto-reply.', 'Turn it on and write the message guests get outside your hours.'],
-            doIt: { label: 'Open Away auto-reply', run: sec('chat-away') },
+            steps: ['Open Manage → Guest chat.', 'Under “When you’re away”, turn the reply on, set your hours and write the message guests get.'],
+            doIt: { label: 'Open Guest chat', run: sec('chat-away') },
             related: ['follow-ups'] },
         { id: 'follow-ups', title: 'Automatic follow-up emails', cat: 'Automation',
             kw: 'follow up followup nudge reminder automatic email enquiry chase anniversary review request',
@@ -5693,16 +5704,16 @@ function helpTopics() {
             doIt: { label: 'Open Sign-in & security', run: sec('security') } },
         { id: 'backup', title: 'Back up my data', cat: 'System',
             kw: 'backup back up download data database export save copy restore protect',
-            steps: ['Open Manage → Status.', 'Use the backup tool to download a copy of your database; automatic weekly backups also run.'],
-            doIt: { label: 'Open Status', run: sec('diagnostics') } },
+            steps: ['Open Manage → More tools → Backups.', 'Download a copy now, or set the passphrase for the encrypted copy emailed each week.'],
+            doIt: { label: 'Open Backups', run: sec('backups') } },
         { id: 'whats-broken', title: 'Something looks wrong — what do I check?', cat: 'System',
             kw: 'broken error problem wrong not working status health check fix issue diagnostics down',
-            steps: ['Open Manage → Status for a health check of email, payments, sync and updates.', 'Tap “Fix safe issues” to auto-repair the harmless ones; Today’s Needs-you strip flags anything needing you.'],
+            steps: ['Open Manage and tap the status pill beside the title for a health check of email, payments, sync and updates.', 'Tap “Fix safe issues” to auto-repair the harmless ones; Today’s Needs-you strip flags anything needing you.'],
             doIt: { label: 'Open Status', run: sec('diagnostics') },
             related: ['run-updates'] },
         { id: 'run-updates', title: 'Run updates / migrations', cat: 'System',
             kw: 'update updates migration migrate upgrade new features run system version',
-            steps: ['Open Manage → Status.', 'Open “More tools” and tap “Install updates” to apply any pending database updates safely.'],
+            steps: ['Open Manage and tap the status pill beside the title.', 'Under Tools, tap “Install updates” to apply any pending database updates safely.'],
             doIt: { label: 'Open Status', run: sec('diagnostics') } },
         { id: 'notifications', title: 'Get phone alerts for new bookings', cat: 'System',
             kw: 'notification notifications push alert phone new booking message enable turn on notify',
@@ -5715,8 +5726,8 @@ function helpTopics() {
             related: ['take-payment'] },
         { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
             kw: 'pricing coach suggest suggestion advice demand optimise increase revenue rate ideas smart',
-            steps: ['Open Manage → Pricing.', 'Ideas come from your own bookings and what guests search for — nothing changes until you tap Apply.'],
-            showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
+            steps: ['Open Manage → Price ideas.', 'Ideas come from your own bookings and what guests search for — nothing changes until you tap Apply.'],
+            showMe: { label: 'Open Price ideas', run: sec('pricing') },
             related: ['change-prices', 'seasonal-rates'] },
         { id: 'weekend-pricing', title: 'Charge more on weekends', cat: 'Money',
             kw: 'weekend friday saturday uplift surcharge more expensive percent price rate',
@@ -7667,16 +7678,16 @@ function cmdkJumpTimeline(iso) {
     if (typeof nav === 'function') nav('view-backoffice');
     cmdkPoll(() => document.getElementById('cal-body'), () => { if (typeof tlScrollToDate === 'function') tlScrollToDate(iso); }, 30);
 }
-// ---- Filter the whole Today board by a query: dim every booking row + timeline
-// bar that doesn't match, with a clearable banner. Uses the data-search haystack
-// on .bk-row / .tl-bar (name · cottage · pay state).
-// The board filter works on whichever workspace you're on — Today, Inbox or
-// Payments — dimming that view's [data-search] rows. (Function names keep the
-// "today" prefix for continuity, but they target the active workspace now.)
+// ---- Filter the Today board by a query: dim every booking row + timeline bar that
+// doesn't match, with a clearable banner (the data-search haystack on .bk-row /
+// .tl-bar: name · cottage · pay state). On the Inbox the same action puts the words
+// into the Inbox's own search, which narrows the one list for real: its old
+// [data-search] rows are kept hidden, so dimming them claimed matches nobody could
+// see. Payments has no list to narrow, so there the action names Today and goes to it.
 let __todayFilter = '';
 let __wsFilterView = 'view-backoffice';
 let __todayFilterSrc = ''; // kept for continuity — the search page's filter always shows the banner
-const CMDK_WORKSPACES = ['view-backoffice', 'view-inbox', 'view-accounts'];
+const CMDK_WORKSPACES = ['view-backoffice', 'view-inbox'];
 function cmdkActiveWorkspace() {
     const v = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.page-view.active') : null;
     const id = v ? v.id : '';
@@ -7690,20 +7701,26 @@ function paintTodayFilter() {
     view.querySelectorAll('[data-search]').forEach((el) => {
         const match = !q || (el.getAttribute('data-search') || '').indexOf(q) > -1;
         el.classList.toggle('cmdk-dim', !!q && !match);
-        // Count RECORDS, not DOM nodes: a direct booking shows as both an index
-        // row AND a timeline bar (`.tl-bar`, same data-bkid), so counting both
-        // reports "2 matches" for one guest. Skip the timeline mirror — except an
-        // external OTA bar (`.tl-ext`), which has no index row, so it's the only
-        // place that record appears and must be counted once.
-        if (match && !(el.classList.contains('tl-bar') && !el.classList.contains('tl-ext'))) shown++;
+        // Count RECORDS on screen, not DOM nodes: a direct booking shows as both an
+        // index row AND a timeline bar (same data-bkid), so the bar is skipped unless
+        // it is an external stay (`.tl-ext`), which has no row; a row that is not
+        // painted is not a match anyone can see.
+        if (match && el.getClientRects().length && !(el.classList.contains('tl-bar') && !el.classList.contains('tl-ext'))) shown++;
     });
     renderTodayFilterBar(q, shown);
     return shown;
 }
+// Today re-renders its rows on every data refresh, which drops the dimming while the
+// banner still says what is filtered; the two renderers call this as they finish.
+function todayFilterRepaint() {
+    if (__todayFilter && __wsFilterView === 'view-backoffice') { try { paintTodayFilter(); } catch (e) {} }
+}
 function applyTodayFilter(q) {
-    __todayFilter = (q || '').trim().toLowerCase();
-    __wsFilterView = cmdkActiveWorkspace();
+    const ws = cmdkActiveWorkspace();
     closeCmdK();
+    if (ws === 'view-inbox') { ibSearchFor(q); return; }
+    __todayFilter = (q || '').trim().toLowerCase();
+    __wsFilterView = ws;
     if (typeof nav === 'function' && ((document.querySelector('.page-view.active') || {}).id !== __wsFilterView)) nav(__wsFilterView);
     cmdkPoll(() => document.getElementById(__wsFilterView), () => {
         __todayFilterSrc = '';
@@ -10460,6 +10477,10 @@ function bkListSwapped(list) {
     return true;
 }
 function renderBookings() {
+    renderBookingsBody();
+    todayFilterRepaint();
+}
+function renderBookingsBody() {
     const list = document.getElementById('bookings-list');
     if (!list) return;
     const today = todayDashed();
@@ -13340,13 +13361,14 @@ function oaDevName(d) {
 // "Active now", "Active 12 minutes ago", "Last active yesterday".
 function oaDevSeen(d) {
     if (d.here) return 'Active now';
-    const t = d.seen ? new Date(String(d.seen).replace(' ', 'T')) : null;
+    // The server's times are London's wall clock, read as London's on any device.
+    const t = d.seen ? ukWallToDate(d.seen) : null;
     if (!t || isNaN(t.getTime())) return '';
-    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    const now = chbNow();
+    const mins = Math.round((now.getTime() - t.getTime()) / 60000);
     if (mins < 5) return 'Active now';
     if (mins < 60) return 'Active ' + mins + ' minutes ago';
-    // Rounded, not floored: the day the clocks go forward is 23 hours, midnight to midnight.
-    const days = Math.round((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    const days = ukDaysBetween(t, now);
     if (days <= 0) {
         const h = Math.max(1, Math.round(mins / 60));
         return 'Last active ' + h + (h === 1 ? ' hour' : ' hours') + ' ago';
@@ -13896,13 +13918,13 @@ function oaMailLanded(res) {
 // "active today at 9:41", "active 3 days ago" — when they were last here.
 function oaSeenWords(p) {
     if (p.you) return 'you';
-    const t = p.seen ? new Date(String(p.seen).replace(' ', 'T')) : null;
+    const t = p.seen ? ukWallToDate(p.seen) : null;
     if (!t || isNaN(t.getTime())) return 'not signed in yet';
-    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    const now = chbNow();
+    const mins = Math.round((now.getTime() - t.getTime()) / 60000);
     if (mins < 10) return 'here now';
-    const hm = t.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' }).replace(/^0/, '');
-    // Rounded, not floored: the day the clocks go forward is 23 hours, midnight to midnight.
-    const days = Math.round((new Date(new Date().toDateString()).getTime() - new Date(t.toDateString()).getTime()) / 86400000);
+    const hm = t.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', minute: '2-digit' }).replace(/^0/, '');
+    const days = ukDaysBetween(t, now);
     if (days <= 0) return 'active today at ' + hm;
     if (days === 1) return 'active yesterday';
     return 'active ' + (days < 7 ? days + ' days ago' : fmtDate(String(p.seen).split(' ')[0]));
@@ -14169,11 +14191,6 @@ async function oaSplitHost(k, id) {
     const c = (S.cottages || []).find((x) => x.k === k);
     if (Number((S.hosts || {})[k] || S.holder) === Number(id)) return;
     await oaSplitSave({ hosts: { [k]: Number(id) || 0 } }, `${c ? c.name : 'That cottage'}’s money goes to ${oaSplitFirst(id)}`);
-}
-async function oaSplitLinkAsk(id) {
-    await pmSplitLinkAsk(id);
-    __oaStill = true;
-    try { renderSplitSettings(); } finally { __oaStill = false; }
 }
 async function oaSplitUnlink(id, name) {
     const ok = await glassConfirm(`Stop counting payments to ${name} as paid to this person? Any already counted go back to sort.`, 'Unlink');
@@ -16642,6 +16659,10 @@ async function renderAccounts() {
     const content = document.getElementById('accounts-content');
     if (!sel || !content) return;
     const startYear = parseInt(sel.value, 10);
+    // The old Income & tax page's year box is empty now (the books page has its own):
+    // an expense save asked for accounts.php?year=NaN, which the server reads as tax
+    // year 0, and cached an empty report the CSV then exported.
+    if (!Number.isFinite(startYear)) return;
     content.innerHTML = skelRows(3);
 
     let rep;
@@ -17039,7 +17060,7 @@ function renderExpenses() {
                 <div class="u-win u-listcard xp-list">
                     ${items
                         .map(
-                            (x) => `<div class="xp-item" data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
+                            (x) => `<div class="xp-item">
                       <div class="xp-row">
                         <span class="xp-main"><span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}</span><span class="xp-sub">${fmtDate(x.date)}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].name || propertyMeta[x.prop_key].short) : ''}${x.recurring ? ' · recurring' : ''}</span></span>
                         <span class="feed-amt">${gbp(x.amount)}</span>
@@ -17875,13 +17896,25 @@ function pmPlan(r) {
     if (r.depOnly) return { tone: 'unk', cap: 'Not asked', sub: 'refundable deposit · ask for it' };
     return { tone: 'unk', cap: dDue ? 'Asks ' + pmDm(dDue) : 'Later', sub: self ? 'the balance email goes by itself' : dDue ? 'due ' + pmDm(dDue) : 'not asked yet' };
 }
-// Deposits waiting to go back: held, and the guest has left (or said they have).
+// A DEPOSIT TO HAND BACK: held, the guest has left (or said so), and they owe
+// nothing else. A guest who left owing £339.90 was also "Return their £75 deposit"
+// on Today, Payments and search while their booking page chased the balance; until
+// the balance is in, or the deposit is kept against it, the chase is the job.
+// Returns the sum to hand back, or 0. ONE rule for the duty, Payments and search.
+function chbDepositBackDue(pk, b) {
+    let h = null;
+    try { h = damageHeld(pk, b); } catch (e) { return 0; }
+    if (!h || !(h.held > 0.005) || !(hasCheckedOut(b) || b.guestCheckedOutAt)) return 0;
+    let owes = 0;
+    try { owes = Number(bookingDue(pk, b).balance) || 0; } catch (e) {}
+    return owes > 0.5 ? 0 : h.held;
+}
+// Deposits waiting to go back: held, the guest has left (or said they have), nothing else owed.
 function pmDepsBack() {
     const out = [];
     Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
-        let h = null;
-        try { h = damageHeld(pk, b); } catch (e) {}
-        if (h && h.held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) out.push({ pk, b, held: h.held });
+        const held = chbDepositBackDue(pk, b);
+        if (held > 0.005) out.push({ pk, b, held });
     }));
     return out;
 }
@@ -23924,14 +23957,15 @@ function chbDutiesAll() {
             // at 9:41 makes the deposit returnable at 9:41, not at the checkout
             // hour. Additive only — an untapped stay keeps the time-aware gate,
             // so nothing ever WAITS on a guest tapping.
-            if ((b.guestCheckedOutAt || hasCheckedOut(b)) && damageHeld(k, b).held > 0.005) {
+            const backDue = chbDepositBackDue(k, b);
+            if (backDue > 0.005) {
                 out.push({
                     kind: 'deposit', key: 'deposit:' + b.dbId, sev: 'warn', ic: 'deposit',
-                    label: `Return ${b.name || 'the guest'}’s ${'£' + (Math.round(damageHeld(k, b).held * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} deposit`,
+                    label: `Return ${b.name || 'the guest'}’s ${'£' + (Math.round(backDue * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} deposit`,
                     sub: !hasCheckedOut(b) && b.guestCheckedOutAt
                         ? `Left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'this morning'} ✓ (guest-declared) · ${pname(k)}`
                         : `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
-                    act: 'Return £' + (Math.round(damageHeld(k, b).held * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 }), go: chbAttrs('openBookingHub', String(b.id)),
+                    act: 'Return £' + (Math.round(backDue * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 }), go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
@@ -25305,13 +25339,17 @@ async function keysafeSetEnabled(pk, on) {
 // The rotate flow. Generating records NOTHING; the OK button is the owner's
 // "I've set the safe" and is the single act that writes the record — and
 // with it, releases the code to the next guest's booking page.
+// The codes a new one must not repeat: this safe's recent ones and every other
+// safe's current one. ONE list for both rotations — the offline one left the other
+// cottages out, so a no-signal rotation could hand one cottage another's code.
+function keysafeExclude(pk) {
+    const all = __keysafe || {};
+    const rec = all[pk] || { code: '', history: [] };
+    return [rec.code].concat((rec.history || []).map((h) => h.code)).concat(Object.keys(all).map((k) => (all[k] || {}).code));
+}
 async function keysafeRotate(pk) {
-    const rec = (__keysafe || {})[pk] || { code: '', history: [] };
     const next = keysafeNextBooking(pk);
-    const exclude = [rec.code]
-        .concat((rec.history || []).map((h) => h.code))
-        .concat(Object.keys(__keysafe || {}).map((k) => ((__keysafe || {})[k] || {}).code));
-    const gen = keysafeGen(exclude);
+    const gen = keysafeGen(keysafeExclude(pk));
     const nm = (propertyMeta[pk] || {}).name || pk;
     const td = todayDashed();
     const when = next && !next.ota
@@ -25359,9 +25397,8 @@ async function keysafeRotate(pk) {
 // Generates on-device, queues the confirm through the op ledger (exactly
 // once on replay) and updates the local mirror so the sheet's duty clears.
 async function odsKeysafe(pk) {
-    const rec = (__keysafe || {})[pk] || { code: '', history: [] };
     const next = keysafeNextBooking(pk) || ((chbSnapRead() || {}).rows || []).filter((r) => r.pk === pk && r.ci >= todayDashed() && (r.dbId || r.ota)).map((r) => ({ dbId: r.dbId || 0, name: r.nm, checkIn: r.ci, checkOut: r.co, ota: !!r.ota, ref: r.ota ? 'o:' + r.ci : 'b:' + r.dbId }))[0] || null;
-    const gen = keysafeGen([rec.code].concat((rec.history || []).map((h) => h.code)));
+    const gen = keysafeGen(keysafeExclude(pk));
     const nm = (propertyMeta[pk] || {}).name || pk;
     const vals = await glassForm(
         (next
@@ -28108,10 +28145,14 @@ function buildInsights(d) {
 function anaTool(icon, name, verb, attrs) {
     return `<div class="sp-tool"><button type="button" class="sp-tbtn" ${attrs}><span class="sp-sysic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon}"></path></svg></span><span class="sp-systext"><span class="sp-sysname">${name}</span></span><span class="sp-tend" aria-hidden="true"><span class="sp-tverb">${verb}</span><span class="sp-spin"></span><span class="sp-tmark"></span></span></button><div class="sp-tres" role="status" hidden></div></div>`;
 }
+// Only the window asked for LAST paints: tapping 12 months then 7 days ended on
+// 12 months when its answer landed second.
+let __anaAsk = 0;
 async function loadAnalytics(days = 30) {
     const wrap = document.getElementById('analytics-body');
     if (!wrap) return;
     days = [7, 30, 90, 365].includes(+days) ? +days : 30;
+    const ask = ++__anaAsk;
     // The switcher stays while a new window loads; only the figures below wait.
     const keep = wrap.querySelector('.ana-pick');
     wrap.innerHTML = (keep ? keep.outerHTML : '') + skelRows(3);
@@ -28119,9 +28160,11 @@ async function loadAnalytics(days = 30) {
     try {
         d = await apiGet('track.php?action=summary&days=' + days);
     } catch (e) {
+        if (ask !== __anaAsk) return;
         wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
         return;
     }
+    if (ask !== __anaAsk) return;
     __analyticsSummary = d; // stashed for the CSV export below
     const e = escapeHtml;
     const winDays = d.days || days;
@@ -28171,7 +28214,9 @@ async function loadAnalytics(days = 30) {
         tile(people, 'People', anaDelta(people, prevP, win)) +
         tile(views, 'Pages viewed', anaDelta(views, d.prevTotalViews || 0, win)) +
         tile(sent, sent === 1 ? 'Enquiry sent' : 'Enquiries sent', people > 0 ? Math.round((sent / people) * 1000) / 10 + '% of people' : '') +
-        tile(booked, 'Booked through the site', sent > 0 ? anaPct(booked, sent) + '% of enquiries' : '') +
+        // A share over 100% says nothing: bookings approved in the window from
+        // enquiries sent before it count as booked but not as sent.
+        tile(booked, 'Booked through the site', sent > 0 && booked <= sent ? anaPct(booked, sent) + '% of enquiries' : '') +
         `</div>`;
 
     // ---- worth knowing ----
@@ -28297,10 +28342,12 @@ async function loadAnalytics(days = 30) {
         anaTool('M12 4v11 M7 10l5 5 5-5 M5 20h14', 'Download these figures (CSV)', 'Save', 'data-act="exportAnalyticsCsv"') +
         `</div>`;
 
+    // A window reaching back before the first visit kept is only partly counted.
+    const since = d.firstSeen && d.firstSeen > ukShiftDays(todayDashed(), -winDays) ? d.firstSeen : '';
     wrap.innerHTML =
         seg +
         tiles +
-        `<p class="ana-note">A person is counted by device and connection, so one guest on a phone and a laptop counts twice.</p>` +
+        `<p class="ana-note">A person is counted by device and connection, so one guest on a phone and a laptop counts twice.${since ? ` Visits are counted from ${e(fmtDate(since))}.` : ''}</p>` +
         insHtml +
         chart +
         funnel +
@@ -31712,10 +31759,10 @@ function alPaintList() {
             const facts = [actor, (alDayLabel(day.key) === 'Today' ? 'Today' : alDayLabel(day.key)) + ' ' + time, cottage].filter(Boolean);
             const also = it.more.length ? `<span class="al-also">Also ${it.more.length === 1 ? 'once more' : it.more.length + ' more times'} earlier: ${it.more.slice(0, 3).map((m) => escapeHtml(m.label)).join(' · ')}</span>` : '';
             const link = e.entity === 'booking' && e.entity_id
-                ? `<button type="button" class="al-link" ${chbAttrs('openBookingHub', String(e.entity_id))}>Open the booking ›</button>`
+                ? `<button type="button" class="al-link" ${chbAttrs('openBookingHub', String(e.entity_id))}>Open the booking<span class="ny-chev"> ›</span></button>`
                 : '';
             const act = e.act && e.act.kind === 'square_orphan' && e.act.booking && e.act.payment
-                ? `<button type="button" class="al-link" ${chbAttrs('recordSquareOrphan', String(e.act.booking), String(e.act.payment))}>Record it on the booking ›</button>`
+                ? `<button type="button" class="al-link" ${chbAttrs('recordSquareOrphan', String(e.act.booking), String(e.act.payment))}>Record it on the booking<span class="ny-chev"> ›</span></button>`
                 : '';
             const open = st.open === k;
             const arrive = st.arrived && st.arrived.has(e.id || e.at + e.label);
@@ -32305,6 +32352,10 @@ function tlPlaceNowLine() {
     });
 }
 function renderCalendar() {
+    renderCalendarBody();
+    todayFilterRepaint();
+}
+function renderCalendarBody() {
     renderCalUpdated();
     const host = document.getElementById('cal-body');
     if (!host) return;
@@ -33529,6 +33580,18 @@ function ibListShell() {
         if (e.key === 'ArrowDown') { const r = /** @type {HTMLElement|null} */ (document.querySelector('#ib-rows .ib-row')); if (r) { e.preventDefault(); r.focus(); } }
     });
     clr.addEventListener('click', () => { __ibQ = ''; q.value = ''; clr.hidden = true; ibRenderList(); q.focus(); });
+}
+// The search window's "Search the Inbox" lands here: the words go into the Inbox's
+// own search box, and a phone's open conversation steps aside so the list shows.
+function ibSearchFor(q) {
+    ibListShell();
+    __ibQ = String(q || '').trim();
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('ib-q'));
+    const clr = document.getElementById('ib-q-clear');
+    if (inp) inp.value = __ibQ;
+    if (clr) clr.hidden = !__ibQ;
+    const root = ibRoot();
+    if (root && root.classList.contains('is-conv') && !ibWide()) ibClose(); else ibRenderList();
 }
 function ibRowHtml(p, mode) {
     const quiet = p.kind === 'auto';

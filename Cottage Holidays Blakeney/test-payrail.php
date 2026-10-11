@@ -269,6 +269,15 @@ chk('…and actually sends it with the payload',
 $payW = (string) file_get_contents(__DIR__ . '/pay.php');
 chk('the pay-screen summary carries the charged deposit',
     preg_match("/'depositCharged' => in_array\(\\\$holdStatus, \['charged', 'captured', 'kept'\]/", $payW) === 1);
+// …at the sum the card TOOK. An edit after the charge re-snapshots agreed_booking_fee
+// (£75 taken, edited to £100): the pay screen and the confirmation said £553.20 with
+// £213.30 paid while the invoice, My Stays and the hub said £528.20 with £188.30.
+chk('…at the sum the card TOOK (hold_amount), not an agreed figure an edit moved since',
+    strpos($payW, "? ((float) (\$b['hold_amount'] ?? 0) > 0 ? round((float) \$b['hold_amount'], 2) : \$holdAmount)") !== false);
+$bclW = (string) file_get_contents(__DIR__ . '/booking-confirm-lib.php');
+chk('the confirmation states the deposit the card took, once taken',
+    strpos($bclW, "in_array(\$holdStatus, ['charged', 'captured', 'kept'], true) && (float) (\$b['hold_amount'] ?? 0) > 0) {") !== false
+    && strpos($bclW, "\$deposit = round((float) \$b['hold_amount'], 2);") !== false);
 $appW = (string) file_get_contents(__DIR__ . '/app.js');
 chk('…and the client folds it into the total AND the paid figure',
     strpos($appW, 'Number(s.total) + dep + depCharged') !== false

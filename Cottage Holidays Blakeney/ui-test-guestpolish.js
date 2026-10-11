@@ -257,6 +257,55 @@ const REVIEWS = [
     ok(!!q && q.gap >= 12, `the first chip sits inside the row's padding, not on its edge (${q && q.gap}px, scrolled ${q && q.scroll})`);
     await page.close();
 
+    // ------------------------------------------------------------------
+    // §12 the guest side wears the one look: cards on the CARD radius (the sheet's 28/40
+    // was on the cottage cards, the host and booking cards, My stays and the suggestion
+    // box while the same card on Home was 20), the drawn-chevron back link, and a chosen
+    // chip or switch in the accent (Things to do's was ink, My stays' a faint tile at 40px).
+    console.log('§12 the one look on the guest side');
+    for (const width of [390, 1280]) {
+        page = await open({ width, guest: guestNoPw, bookings: stays });
+        const rLg = await page.evaluate(() => { const t = document.createElement('div'); t.style.borderRadius = 'var(--r-lg)'; document.body.appendChild(t); const v = parseFloat(getComputedStyle(t).borderTopLeftRadius); t.remove(); return v; });
+        const radii = {};
+        const grab = async (label, sel) => { radii[label] = await page.evaluate((q) => { const el = [...document.querySelectorAll(q)].find((x) => x.getClientRects().length); return el ? parseFloat(getComputedStyle(el).borderTopLeftRadius) : null; }, sel); };
+        await page.evaluate(() => nav('view-cottages')); await page.waitForTimeout(600);
+        await grab('cottage card', '#cottages .card');
+        await page.evaluate(() => openProperty('21a')); await page.waitForTimeout(800);
+        await grab('host card', '.host-card');
+        await grab('gallery', width < 900 ? '.gallery-container' : '.gallery-grid');
+        if (width >= 900) await grab('booking card', '#prop-reserve');
+        const back = await page.evaluate(() => { const b = document.querySelector('#view-21a > .ga-back'); return b ? { tag: b.tagName, svg: !!b.querySelector('svg'), text: b.textContent.trim() } : null; });
+        await page.evaluate(() => gaOpenStays()); await page.waitForTimeout(1000);
+        await grab('stay card', '.guest-booking.gb2');
+        await page.evaluate(() => nav('view-experiences')); await page.waitForTimeout(800);
+        await grab('suggestion box', '.exp-suggest');
+        const bad = Object.entries(radii).filter(([, v]) => v !== rLg);
+        ok(Object.keys(radii).length >= 5 && !bad.length, `[${width}] every card is on the card radius ${rLg}px (${JSON.stringify(radii)})`);
+        if (width < 900) {
+            ok(!!back && back.tag === 'BUTTON' && back.svg && back.text === 'Cottages', `the cottage page's way back is a drawn chevron naming Cottages (${JSON.stringify(back)})`);
+            ok(await page.evaluate(() => ![...document.querySelectorAll('.page-view .back-link')].some((b) => /←/.test(b.textContent) && !b.closest('.owner-only')) && !/←/.test((document.querySelector('#enquire-step-details .ga-back') || {}).textContent || '←')), 'no guest back link is a typed arrow');
+            const chip = await page.evaluate(() => {
+                const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+                const t = document.createElement('div'); t.style.color = acc; document.body.appendChild(t); const accRgb = getComputedStyle(t).color; t.remove();
+                const pill = document.querySelector('#exp-filters .chb-pill');
+                return { accRgb, pill: pill ? getComputedStyle(pill).backgroundColor : '' };
+            });
+            ok(!!chip.pill && chip.pill === chip.accRgb, `Things to do's chosen chip rides the accent (${chip.pill} vs ${chip.accRgb})`);
+            await page.evaluate(() => gaOpenStays()); await page.waitForTimeout(900);
+            const seg = await page.evaluate(() => {
+                const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+                const t = document.createElement('div'); t.style.color = acc; document.body.appendChild(t); const accRgb = getComputedStyle(t).color; t.remove();
+                const bs = [...document.querySelectorAll('#gb-seg .gb-seg-b')];
+                const on = bs.find((b) => b.classList.contains('is-on'));
+                return { n: bs.length, minH: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), on: on ? getComputedStyle(on).backgroundColor : '', accRgb };
+            });
+            ok(seg.n === 2 && seg.minH >= 44 && seg.on === seg.accRgb, `My stays' Upcoming | Past is 44px with the chosen side in the accent (${JSON.stringify(seg)})`);
+            await page.evaluate(() => openWelcomeBook('21a')); await page.waitForTimeout(400);
+            ok(await page.evaluate(() => /^Welcome book — /.test(document.getElementById('welcome-modal-title').textContent)), 'the welcome book is titled like its sibling sheets ("Welcome book — …")');
+        }
+        await page.close();
+    }
+
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST POLISH CHECKS PASSED');
     await done(fails);
 })();

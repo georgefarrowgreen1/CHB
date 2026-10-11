@@ -58,15 +58,27 @@ function pv_classify_ref($host)
     return ['channel' => 'Referral', 'name' => $host];
 }
 
+// How long the raw rows are kept. The page offers a 12-month window, and the rows
+// were cut at 180 days, so "12 months" showed six months of visits beside twelve
+// months of bookings. 400 days holds a full year with room to spare.
+const ANALYTICS_KEEP_DAYS = 400;
+
 // Build the full analytics summary for the trailing $days window.
 function analytics_summary($days)
 {
     $days = max(1, min(365, (int) $days));
 
-    // Opportunistic retention: keep ~180 days of raw rows.
-    db()->exec('DELETE FROM pageviews WHERE created_at < (NOW() - INTERVAL 180 DAY)');
+    // Opportunistic retention.
+    db()->exec('DELETE FROM pageviews WHERE created_at < (NOW() - INTERVAL ' . ANALYTICS_KEEP_DAYS . ' DAY)');
     try {
-        db()->exec('DELETE FROM search_log WHERE created_at < (NOW() - INTERVAL 180 DAY)');
+        db()->exec('DELETE FROM search_log WHERE created_at < (NOW() - INTERVAL ' . ANALYTICS_KEEP_DAYS . ' DAY)');
+    } catch (\Throwable $e) {
+    }
+    // The first row kept: a window reaching back before it is only partly counted,
+    // and the page says so rather than presenting the part as the whole.
+    $firstSeen = '';
+    try {
+        $firstSeen = (string) (db()->query('SELECT DATE(MIN(created_at)) FROM pageviews')->fetchColumn() ?: '');
     } catch (\Throwable $e) {
     }
 
@@ -99,6 +111,13 @@ function analytics_summary($days)
         'FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL ? DAY) AND created_at < (NOW() - INTERVAL ? DAY)';
     $prevTotal = (int) $qDays2("SELECT COUNT(*) $prevWindow")->fetchColumn();
     $prevUniq = (int) $qDays2("SELECT COUNT(DISTINCT ip_hash) $prevWindow")->fetchColumn();
+    // A window before this one that the kept rows do not wholly cover is no
+    // comparison: a year against the 35 days left of the year before would read
+    // as a tenfold rise. No delta beats a false one.
+    if ($days * 2 > ANALYTICS_KEEP_DAYS) {
+        $prevTotal = 0;
+        $prevUniq = 0;
+    }
 
     // Engagement depth — derived from existing rows, no extra tracking:
     //   bounce = visitors with exactly one page view in the window.
@@ -299,7 +318,8 @@ function analytics_summary($days)
         'weekViews' => $weekViews,
         'weekUnique' => $weekUnique,
         'prevWeekViews' => $prevWeek,
-        'daily' => array_map(fn($r) => ['date' => $r['d'], 'views' => (int) $r['c']], $daily),
+        'daily' => analytics_daily_filled($daily, $days),
+        'firstSeen' => $firstSeen,
         'topReferrers' => array_map(fn($r) => ['host' => $r['h'], 'count' => (int) $r['c']], $refs),
         'byCottage' => array_map(fn($r) => ['prop_key' => $r['p'], 'views' => (int) $r['c']], $byProp),
         'topPages' => array_map(
@@ -316,4 +336,32 @@ function analytics_summary($days)
         'siteBookings' => $siteBookingsN,
         'searchDemand' => $searchDemand,
     ];
+}
+
+// Every day of the window, a quiet day as 0: the chart skipped days with no views,
+// so "each week" grouped seven ROWS (sometimes ten days) and a gap vanished. The
+// dates are the database's own (the rows were grouped on its clock), from the day
+// the window opens to today.
+function analytics_daily_filled(array $rows, int $days): array
+{
+    $byDate = [];
+    foreach ($rows as $r) {
+        $byDate[(string) $r['d']] = (int) $r['c'];
+    }
+    try {
+        $st = db()->prepare('SELECT DATE(NOW() - INTERVAL ? DAY), CURDATE()');
+        $st->bindValue(1, $days, PDO::PARAM_INT);
+        $st->execute();
+        [$from, $to] = $st->fetch(PDO::FETCH_NUM);
+        $d = new DateTimeImmutable((string) $from);
+        $end = new DateTimeImmutable((string) $to);
+    } catch (\Throwable $e) {
+        return array_map(fn($k) => ['date' => $k, 'views' => $byDate[$k]], array_keys($byDate));
+    }
+    $out = [];
+    for ($i = 0; $d <= $end && $i < 400; $i++, $d = $d->modify('+1 day')) {
+        $k = $d->format('Y-m-d');
+        $out[] = ['date' => $k, 'views' => $byDate[$k] ?? 0];
+    }
+    return $out;
 }

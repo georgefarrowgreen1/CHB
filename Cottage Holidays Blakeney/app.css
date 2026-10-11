@@ -2227,7 +2227,7 @@ a.card {
 }
 .card-img {
   height: clamp(190px, 48vw, 250px);
-  border-radius: calc(var(--r-panel) - 15px);
+  border-radius: max(6px, calc(var(--r-lg) - 15px));
   background-size: cover;
   background-position: center;
   margin-bottom: 20px;
@@ -2242,7 +2242,7 @@ a.card {
            The wrap owns the rounding + the gap below, and clips the scaled image. */
 .card-img-wrap {
   overflow: hidden;
-  border-radius: calc(var(--r-panel) - 15px);
+  border-radius: max(6px, calc(var(--r-lg) - 15px));
   margin-bottom: 20px;
 }
 .card-img-wrap .card-img {
@@ -9726,9 +9726,12 @@ body.light-mode .feed-dot-bad {
   transform: scale(var(--sc, 0.97));
   transition: transform 80ms var(--in), filter 80ms var(--in);}
 .exp-chip.is-on {
-  background: var(--text-light);
-  color: var(--dark-grey);
-  border-color: var(--text-light);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.exp-chip.is-on .exp-cc {
+  opacity: 1;
 }
 /* An experience card has NO click handler — only the pills inside act — and it
    inherited .card's `cursor: pointer` plus .glass-panel's hover lift, so the
@@ -11977,13 +11980,13 @@ body.light-mode .hs-field:hover {
     padding: 14px;
   }
   .cottages-list .card-img-wrap {
-    border-radius: var(--r-md);
+    border-radius: max(6px, calc(var(--r-lg) - 14px));
     margin-bottom: 12px;
     overflow: hidden;
   }
   .cottages-list .card-img {
     height: clamp(230px, 21vw, 320px);
-    border-radius: var(--r-sm);
+    border-radius: max(6px, calc(var(--r-lg) - 14px));
     margin-bottom: 0;
   }
   .cottages-list .card-title {
@@ -12798,7 +12801,7 @@ body.light-mode .card {
 /* The photo fills the card top edge-to-edge; the frame gets out of the way. */
 body.light-mode .card-img-wrap,
 body.light-mode .card-img {
-  border-radius: calc(var(--r-panel) - 16px);
+  border-radius: max(6px, calc(var(--r-lg) - 16px));
 }
 body.light-mode .trust-strip {
   background: rgba(255, 255, 255, 0.66);
@@ -12947,7 +12950,7 @@ header nav a:active {
   transition: translate 320ms var(--sheet), width 320ms var(--sheet), height 320ms var(--sheet);
 }
 .chb-pill.armed { transition: none; }
-.exp-filters .chb-pill { background: var(--text-light); }
+.exp-filters .chb-pill { background: var(--accent); }
 #hs-month-chips .chb-pill { background: var(--accent); }
 .hs-mode .chb-pill { background: var(--accent); border-radius: var(--r-sm); }
 .exp-filters > .exp-chip,
@@ -13791,7 +13794,7 @@ div.ga-row {
 }
 .gb-seg-b {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -13802,8 +13805,11 @@ div.ga-row {
   cursor: pointer;
 }
 .gb-seg-b.is-on {
-  background: var(--well-bg);
-  color: var(--text-light);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.gb-seg-b.is-on .gb-seg-n {
+  color: inherit;
 }
 .gb-seg-n {
   font-weight: 500;
@@ -14508,3 +14514,12 @@ body:not(.has-booked):not(.owner-mode) .exp-back { display: none; }
 .ga-code.is-ok .ga-cell { border-color: var(--ok-text); }
 .ga-code input { position: absolute; inset: 0; width: 100%; opacity: 0; font-size: var(--fs-headline); border: 0; caret-color: transparent; }
 @media (prefers-reduced-motion: reduce) { .ga-astep, .ga-astep.is-back { animation: none; } }
+/* Cards take the card radius: .glass-panel sets the sheet's (28/40). A photo inside
+   keeps its corner concentric (.card-img-wrap and .card-img above). */
+:is(.card, .host-card, .my-stay-hub, .guest-booking, .exp-suggest).glass-panel,
+.prop-reserve, .gallery-container, .gallery-grid {
+  border-radius: var(--r-lg);
+}
+.prop-back {
+  margin-bottom: 8px;
+}

@@ -337,7 +337,8 @@ const CASES = [
     { q: 'block jollyboat next weekend', any: /[Bb]lock.*Jollyboat|Jollyboat.*[Bb]lock/ },
     // ---- Booking logic: quotes + move/extend proposals (shape-level) ----
     { q: 'how much for 3 nights from 20 december at jollyboat', head: /£[\d,.]+ for 3 nights at Jollyboat/ },
-    { q: 'move bob back a week', head: /Move Bob Carter: \d{2}\/\d{2}\/\d{4} → \d{2}\/\d{2}\/\d{4}/ },
+    // The house range (fmtStayRange, "28–31 Oct 2026"), never two DD/MM/YYYY dates and an arrow.
+    { q: 'move bob back a week', head: /Move Bob Carter: \d{1,2}(?: [A-Z][a-z]{2}(?: \d{4})?)? ?– ?\d{1,2} [A-Z][a-z]{2} \d{4}/ },
     { q: 'extend bob by 2 nights', head: /Extend Bob Carter: .*5 nights/ },
     // ---- Pricing: dated override command + suggestion surface (shape-level) ----
     { q: 'set jollyboat to £150 for 20 to 23 december', head: /Set Jollyboat to £150\/night · 20\/12\/\d{4}–22\/12\/\d{4}/ },

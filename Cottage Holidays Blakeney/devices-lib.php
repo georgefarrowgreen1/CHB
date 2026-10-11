@@ -212,10 +212,13 @@ function devices_trust_is(int $adminId, string $trustHash): bool
  */
 function devices_record(int $adminId, string $how): array
 {
-    $out = ['sid' => 0, 'new' => null, 'label' => ''];
+    $out = ['sid' => 0, 'new' => null, 'label' => '', 'keyless' => false];
     if ($adminId <= 0) {
         return $out;
     }
+    // A browser with no key of its own yet: one signed in before the list began
+    // looks exactly like a new device until it has been seen once.
+    $keyless = strlen(preg_replace('/[^a-f0-9]/', '', strtolower((string) ($_COOKIE[DEVICES_KEY_COOKIE] ?? '')))) !== 40;
     // Signing in again on top of a sign-in in this browser: the old row ends now
     // rather than lingering in the list for its lifetime.
     $prev = (int) ($_SESSION['admin_sess'] ?? 0);
@@ -237,7 +240,7 @@ function devices_record(int $adminId, string $how): array
         $sid = (int) db()->lastInsertId();
         $_SESSION['admin_sess'] = $sid;
         $new = devices_is_new((int) $c['same'] > 0, devices_trust_is($adminId, $trust), (int) $c['n'], $how, devices_staging());
-        $out = ['sid' => $sid, 'new' => $new, 'label' => $lab['label']];
+        $out = ['sid' => $sid, 'new' => $new, 'label' => $lab['label'], 'keyless' => $keyless];
     } catch (\Throwable $e) {
         // Not migrated yet, or the database is unwell: the sign-in stands, unrecorded.
     }
@@ -306,6 +309,20 @@ function devices_end(int $sid, string $why, int $by = 0, bool $forget = false): 
         return $s;
     } catch (\Throwable $e) {
         return null;
+    }
+}
+// Why a device's row ended ('' while it is open, or unknown).
+function devices_ended_why(int $sid): string
+{
+    if ($sid <= 0) {
+        return '';
+    }
+    try {
+        $q = db()->prepare('SELECT ended_why FROM admin_sessions WHERE id = ? AND ended_at IS NOT NULL');
+        $q->execute([$sid]);
+        return (string) ($q->fetchColumn() ?: '');
+    } catch (\Throwable $e) {
+        return '';
     }
 }
 // What a signed-out device leaves behind: its alerts, and its two-step trust.

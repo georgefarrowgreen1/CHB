@@ -331,6 +331,12 @@ function admin_complete_login($uid, array $extra = [], string $how = '', bool $p
     // before that list exists: a phone's address changes all day, so it called
     // the same phone "new" over and over.
     $isNew = $dev['new'] ?? null;
+    // …and while the list is young, a browser with no key yet may simply be one that
+    // signed in before the list began (a laptop used for years would get an urgent
+    // "if it wasn't you, sign it out"): the fingerprint answers for it then.
+    if ($isNew === true && !empty($dev['keyless']) && devices_partial(devices_began(), time(), CHB_SESSION_TTL)) {
+        $isNew = null;
+    }
     if ($isNew === null) {
         $isNew = $prevFp !== '' && $prevFp !== $fp;
     }

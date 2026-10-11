@@ -5461,7 +5461,8 @@ function weekly_analytics_body($d)
                 ['Most-viewed page', email_esc($d['topPage'])],
             ] + ($d['noResult'] > 0 ? [4 => ['Searches finding nothing free', (string) $d['noResult']]] : []),
         ) .
-        email_btn($d['siteUrl'], 'Open analytics') .
+        // Into the page itself (the push notifications' ?open= vocabulary), not the site root.
+        email_btn(rtrim((string) $d['siteUrl'], '/') . '/?open=settings:analytics', 'Open analytics') .
         email_p('You can switch this weekly email off in Manage.', true);
     return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week online', $inner, '#C6885E')];
 }

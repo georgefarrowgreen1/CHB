@@ -63,6 +63,13 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
         // collected (Square → hold_status 'charged'/'captured'/'kept'); a manual
         // cash/bank payment leaves it 'none', so it isn't counted.
         $holdStatus = $b['hold_status'] ?? 'none';
+        // ONCE TAKEN, the deposit is what the card took (hold_amount). An edit after
+        // the charge re-snapshots agreed_booking_fee, and this email then stated £100
+        // for a £75 charge while the invoice, My Stays and the hub said £75
+        // (damages_collected and the client's depositTakenAmt read hold_amount).
+        if (in_array($holdStatus, ['charged', 'captured', 'kept'], true) && (float) ($b['hold_amount'] ?? 0) > 0) {
+            $deposit = round((float) $b['hold_amount'], 2);
+        }
         $depAmt = in_array($holdStatus, ['returned', 'released'], true) ? 0.0 : (float) $deposit;
         $grand = round($total + $depAmt, 2);
         $rentalPaid = $b['payment'] === 'paid' ? $total : min($total, (float) ($b['deposit_paid'] ?? 0));
