@@ -1743,6 +1743,9 @@ let approveWill409 = false;
     await new Promise((r) => setTimeout(r, 60));
     document.querySelector('#booking-hub-content .bhub-menu-btn').click();
     await new Promise((r) => setTimeout(r, 60));
+    // Hit-tested at REST: a menu still growing in answers elementFromPoint with
+    // whatever is under it (failed once under load).
+    for (let i = 0; i < 60 && m.getAnimations().some((a) => a.playState === 'running'); i++) await new Promise((r) => setTimeout(r, 50));
     const items = [...m.querySelectorAll('[role="menuitem"]')];
     const bad = [];
     for (const it of items) {

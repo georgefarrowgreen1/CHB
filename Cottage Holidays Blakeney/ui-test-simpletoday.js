@@ -9,10 +9,9 @@
 //  §4 THE CALENDAR SAYS LESS: dates only (no ↺, no pips), today's number circled, a platform block
 //     is faint hatching with no outline, and no bar's words are struck by the playhead.
 //  §5 BOOKINGS: two tabs (Upcoming / Past), no ⋯, and who owes said ONCE in one line.
-const { boot } = require('./ui-test-lib');
+const { boot, todayAt } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
-require('./ui-test-lib').keepDay(); // the page's clock keeps the fixtures' day past midnight
 const d = require('./ui-test-lib').d; // the harness's day, on that same clock
 
 (async () => {
@@ -30,7 +29,7 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     let act = ''; try { act = JSON.parse(route.request().postData() || '{}').action || ''; } catch (e) {}
     if (url.includes('cron-status.php')) return json({ stale: false, everRan: true, ageHours: 3 });
-    if (url.includes('ical-import.php')) { return setTimeout(() => json({ ok: true }), 1500); }
+    if (url.includes('ical-import.php')) { return setTimeout(() => json({ ok: true, result: {} }), 1500); }
     if (url.includes('bookings.php')) {
       if (act === 'email_logs') return json({ ok: true, logs: {} });
       if (act === 'history') return json({ ok: true, history: [] });
@@ -38,6 +37,10 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
     }
     return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, feeds: [], cron: { stale: false, everRan: true, ageHours: 3 } });
   });
+  // THE TIME OF DAY IS PINNED (the start day, 14:15): the playhead's place and whether a
+  // stay checking out today still counts as upcoming both read the clock, and CI met
+  // the playhead 0.3px from a label at 00:03 while the count read one more before 10:00.
+  await page.clock.setFixedTime(todayAt(14, 15));
   const open = async () => {
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200);
@@ -158,6 +161,7 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   ok(!place.inList && place.rTop >= 16, `the bookings list is its own card, with no status row on top (first row's corner ${place.rTop}px)`);
   await page.evaluate((o) => {
     dbBookings['jollyboat'] = [Object.assign({}, dbBookings['jollyboat'][0], { id: 'b7', dbId: 7, name: 'Paid Guest', checkIn: o.f, checkOut: o.g, depositPaid: 640, payment: 'paid' })];
+    dbBookings['21a'] = []; // §4's stay leaves today: the count below is the one paid guest's alone
     renderBookings();
   }, { f: d(5), g: d(9) });
   const clear = await page.evaluate(() => {

@@ -12,7 +12,7 @@
 //   §10 words from the server are sanitised and escaped
 // The messages.php stub answers from `state`, so each section sets the facts it
 // is about and asks the REAL client to draw them.
-const { bootBrowser } = require('./ui-test-lib');
+const { bootBrowser, now } = require('./ui-test-lib');
 
 let fails = 0;
 const ok = (c, m) => {
@@ -25,7 +25,7 @@ const TEAM = [
     { id: 2, name: 'George', line: 'Bookings & Website', v: '' },
 ];
 const AT = (day, hm) => {
-    const t = new Date();
+    const t = new Date(now());
     const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + day);
     return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')} ${hm}:00`;
 };

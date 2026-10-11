@@ -44,7 +44,7 @@
 //  screenshot; only OPAQUE declared inks are taken from the CSSOM, and §2
 //  asserts the ink IS opaque before doing so.
 // ============================================================
-const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { bootBrowser, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const zlib = require('zlib');
 
 let fails = 0;
@@ -119,7 +119,7 @@ const CONTENT = {
 // A booked stretch NEXT month, so the calendar has a real .taken cell that is
 // not also .past (past dims to 0.3 and would be a different measurement).
 function bookedRange() {
-    const n = new Date();
+    const n = new Date(now());
     const y = n.getMonth() === 11 ? n.getFullYear() + 1 : n.getFullYear();
     const m = (n.getMonth() + 1) % 12;
     const p = (v) => String(v).padStart(2, '0');

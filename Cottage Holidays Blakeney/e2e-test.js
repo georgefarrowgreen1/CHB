@@ -21,10 +21,10 @@ const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const http = require('http');
 
-const PORT = 8199;
+// The harness's clock (its day keeps past midnight) and a port leased from the kernel.
+const { d, prepPage, freePort } = require('./ui-test-lib');
+let PORT = 0;
 const dir = __dirname;
-const today = new Date();
-const d = (n) => { const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 const props = [
   { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, extra_adult_rate: 42, child_rate: 25, booking_fee: 75, transaction_pct: 3, weekend_pct: 0, weekend_days: '5,6', max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
@@ -55,6 +55,7 @@ async function waitForServer(url, tries = 40) {
 }
 
 (async () => {
+  PORT = await freePort();
   const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
   const problems = [];
   const pass = (m) => console.log('  ✓ ' + m);
@@ -62,7 +63,7 @@ async function waitForServer(url, tries = 40) {
   try {
     await waitForServer(`http://127.0.0.1:${PORT}/index.html`);
     const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await prepPage(await browser.newPage({ viewport: { width: 1280, height: 900 } }));
 
     // Never register the service worker in tests (its cache layer would sit
     // between our stubs and the page).

@@ -59,6 +59,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
+  await require('./ui-test-lib').bootVerdict(page); // the boot's session check lands before the person is laid
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); window.__me = { id: 1, name: 'George Farrow', full: true }; localStorage.removeItem('chb-cmp-draft:booking:50'); });
   await page.evaluate(() => window.loadAdminBundle());
   await page.waitForTimeout(600);

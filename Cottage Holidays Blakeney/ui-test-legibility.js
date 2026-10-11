@@ -23,7 +23,7 @@
 // 360px is the width that matters for §2 and §3: it is the narrowest phone in
 // real use and the one where the rail runs out first. A gate written at 390
 // alone would pass over the case that bites.
-const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { boot, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 const d = require('./ui-test-lib').d; // the harness's day (today, UK)
@@ -172,7 +172,7 @@ const CUT_SUBS = () => {
     ok(r.hasNum && r.hasLine, `${label}: today's number and the playhead both paint`);
     ok(r.lineVsNum === 0, `${label}: the playhead does not strike through today's day number`);
   }
-  await page.clock.setFixedTime(new Date());
+  await page.clock.setFixedTime(new Date(now()));
   await page.evaluate(() => { dbBookings['jollyboat'] = []; });
   await reCal();
 

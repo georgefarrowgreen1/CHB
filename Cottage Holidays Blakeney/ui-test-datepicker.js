@@ -104,8 +104,10 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
       openDatePicker();
     });
     // Let the availability fetch land BEFORE fixing the view, or its repaint
-    // arrives after and the month under test is whichever one today falls in.
-    await page.waitForTimeout(400);
+    // arrives after and the month under test is whichever one today falls in. A
+    // wait on the STORE, not a clock: under load 400ms read "0 ranges".
+    await page.waitForFunction(() => (propertyAvailability['jollyboat'] || []).length === 5, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(120);
     await page.evaluate(() => { dpState.view = new Date(2026, 7, 1); renderDatePicker(); });
     await page.waitForTimeout(120);
     // The fixture must actually be in play — an empty month passes half of this
@@ -1653,6 +1655,10 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     await new Promise((r) => setTimeout(r, 200));
     openEnquireModal();
     await new Promise((r) => setTimeout(r, 400));
+    // Measured at REST: on a phone the sheet rises, and mid-rise the field read
+    // "top 1274 of 844" under load.
+    const box = document.querySelector('#enquire-modal .modal-box');
+    for (let i = 0; i < 60 && box && box.getAnimations().length; i++) await new Promise((r) => setTimeout(r, 50));
     const a = document.activeElement;
     const r = a ? a.getBoundingClientRect() : null;
     return { id: a ? a.id || a.tagName : '(none)', top: r ? Math.round(r.top) : -1, vh: window.innerHeight };

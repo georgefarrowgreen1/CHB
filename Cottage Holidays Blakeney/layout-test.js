@@ -33,7 +33,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8253;
+// The harness's clock (its day keeps past midnight) and a port leased from the kernel.
+const { d, prepPage, freePort } = require('./ui-test-lib');
+let PORT = 0;
 const dir = __dirname;
 // WebKit shots go in a subfolder so the two engine passes don't overwrite
 // each other inside the shared layout-shots CI artifact.
@@ -51,8 +53,6 @@ const experiences = [
 ];
 // Realistic admin data so the back-office panels render with content (a long
 // guest name + a long message are deliberate — they're what overhangs).
-const today = new Date();
-const d = (n) => { const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 const bookings = [
   { id: 1, prop_key: '21a', name: 'Alexandrina Featherstonehaugh-Smythe', email: 'a.feather@example.com', check_in: d(0), check_out: d(4), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 450, agreed_total: 450 },
   { id: 2, prop_key: 'pimpernel', name: 'Emma Wilson', email: 'e@x.com', check_in: d(4), check_out: d(9), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 1, payment: 'deposit', deposit_paid: 150, agreed_total: 640 },
@@ -145,6 +145,7 @@ async function waitForServer(url, tries = 40) {
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
+  PORT = await freePort();
   const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
   const problems = [];
   const pass = (m) => console.log('  ✓ ' + m);
@@ -156,7 +157,7 @@ async function waitForServer(url, tries = 40) {
     r.zero.length === 0 ? pass(`${label}: key content visibly sized`) : fail(`${label}: zero-sized ${r.zero.join(', ')}`);
   };
   const newPage = async (browser, vp, tag) => {
-    const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+    const page = await prepPage(await browser.newPage({ viewport: { width: vp.width, height: vp.height } }));
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript(() => {
       if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});

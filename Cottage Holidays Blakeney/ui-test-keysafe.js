@@ -7,7 +7,7 @@
 //     window is open, gone once the safe is confirmed
 //  §5 the offline shape: the day sheet's duty wiring, and a dead-link capture
 //     queues the confirm exactly once (one op_id across every attempt)
-const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { boot, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -61,7 +61,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // clock against that departure, so an unpinned run would flip §4's verdict
   // with CI's wall clock. Noon = the departing guest has gone; §4c drives
   // both sides of the boundary itself by overriding ukNowMinutes.
-  await page.clock.setFixedTime((() => { const t = new Date(); t.setHours(12, 0, 0, 0); return t; })());
+  await page.clock.setFixedTime((() => { const t = new Date(now()); t.setHours(12, 0, 0, 0); return t; })());
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });

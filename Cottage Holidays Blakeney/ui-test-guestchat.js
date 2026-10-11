@@ -92,6 +92,7 @@ const check = (cond, label) => {
     // Let the boot's own session check land first, or it signs the page back out
     // underneath the owner-mode this suite is about to set.
     await page.waitForTimeout(1500);
+    await require('./ui-test-lib').bootVerdict(page);
     await page.evaluate(() => {
         isAuthenticated = true;
         document.body.classList.add('owner-mode');
