@@ -27,21 +27,28 @@ const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
 
-// THE SUITE KEEPS ITS DAY. A suite that starts shortly before midnight builds its
-// fixtures for one day and is then asked about them by a page whose clock has
-// rolled over to the next — CI ran 22:51–23:07 UTC on a BST night and six
-// day-sheet checks failed on exactly that. Started from 22:00 UK time, the pages
-// run on a clock set back three hours (DATE only: timers, performance.now and
-// elapsed-time arithmetic are untouched, so every Date.now() difference is the
-// same) and d() reads the same clock, so fixture and page agree for the life of
-// any suite. At any other hour the offset is 0 and nothing is installed.
-// CHB_LATE_SHIFT=1 forces the shift at any hour, to check every suite still passes
-// on the shifted clock without waiting for 10pm.
-const LATE_SHIFT_MS = (() => {
+// THE SUITE KEEPS ITS DAY — for a suite that ASKS (keepDay()). A suite that starts
+// shortly before midnight builds its fixtures for one day and is then asked about
+// them by a page whose clock has rolled over to the next: CI ran 22:51–23:07 UTC on
+// a BST night and the day-sheet checks failed on exactly that. Started from 22:00
+// UK time, a suite that called keepDay() runs its pages on a clock set back three
+// hours (DATE only: timers, performance.now and elapsed-time arithmetic are
+// untouched) and d() reads the same clock, so fixture and page agree.
+// OPT-IN, because the shift moves only the PAGE's clock: a suite that compares the
+// page's time with the server's (the devices' "Active now") or pins its own with
+// page.clock (yourstay's 23:59) reads three hours wrong under it — measured, with the
+// shift on for every suite, thirteen failed. CHB_LATE_SHIFT=1 forces it at any hour
+// for the suites that asked, to check them on the shifted clock without waiting.
+let keepDayAsked = false;
+function keepDay() {
+    keepDayAsked = true;
+}
+function lateShiftMs() {
+    if (!keepDayAsked) return 0;
     if (process.env.CHB_LATE_SHIFT === '1') return -3 * 3600e3;
     const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     return h >= 22 ? -3 * 3600e3 : 0;
-})();
+}
 // Runs IN THE PAGE (an init script, so before app.js reads the clock).
 function shiftPageClock(off) {
     if (!off || window.__chbClockShift) return;
@@ -62,7 +69,7 @@ function shiftPageClock(off) {
 // Fixture dates are TODAY-relative (a fixed anchor rots as real time passes)
 // and formatted locally — toISOString() is UTC and slips a day near midnight.
 const d = (o) => {
-    const t = new Date(Date.now() + LATE_SHIFT_MS);
+    const t = new Date(Date.now() + lateShiftMs());
     const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + o);
     return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 };
@@ -108,14 +115,16 @@ async function bootBrowser() {
     const rawNewPage = browser.newPage.bind(browser);
     browser.newPage = async (...a) => {
         const pg = await rawNewPage(...a);
-        if (LATE_SHIFT_MS) await pg.addInitScript(shiftPageClock, LATE_SHIFT_MS);
+        const off = lateShiftMs();
+        if (off) await pg.addInitScript(shiftPageClock, off);
         return appReadyGoto(pg);
     };
     // Pages made through a context of their own get the same clock.
     const rawNewContext = browser.newContext.bind(browser);
     browser.newContext = async (...a) => {
         const ctx = await rawNewContext(...a);
-        if (LATE_SHIFT_MS) await ctx.addInitScript(shiftPageClock, LATE_SHIFT_MS);
+        const off = lateShiftMs();
+        if (off) await ctx.addInitScript(shiftPageClock, off);
         return ctx;
     };
     const base = `http://127.0.0.1:${port}`;
@@ -186,4 +195,4 @@ function appReadyGoto(page) {
     return page;
 }
 
-module.exports = { d, ok, boot, bootBrowser, freePort, appReadyGoto };
+module.exports = { d, ok, boot, bootBrowser, freePort, appReadyGoto, keepDay };

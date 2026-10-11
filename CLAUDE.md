@@ -5455,8 +5455,9 @@ section".** The "Your details" and "Account & security" pop-ups are GONE (markup
   says why; `gaResetLink`). **`guest_send_reset` now also serves a signed-in GUEST**, to their
   OWN address only — the body's email is ignored for a guest (test-integration §45).
   Passkeys are rows (`__gaPasskeys`, filled by `loadPasskeys`).
-- **Call us exists only when `contact-phone` is configured** — the CONTACT_PHONE_* fallbacks
-  are placeholders, and a row dialling them is worse than none.
+- **Call us exists only when `contact-phone` is configured** — a row dialling a made-up number is worse than none.
+  The enquiry form's "Call to discuss" follows the same rule (round 8: it dialled +440000000000; the fallback
+  constants are gone).
 - **Sign out and Delete ask first**; backing out sends nothing.
 - **My stays**: `#gb-seg` is an Upcoming | Past switch (`gbSeg`, `__gbSeg`) shown ONLY when
   both sides have stays; the panes are `#gb-pane-up` / `#gb-pane-past` (hidden, so textContent
@@ -9192,15 +9193,19 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   `setTimeout`s still fire (install fakes them too and the suite would hang waiting
   for ticks). Keep the pinned instant on the SAME calendar day so the node-side
   `d(n)` helper still agrees, and fix only the hour.
-  **THE SUITE KEEPS ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
-  night and four suites failed). From 22:00 UK time the lib sets every page's `Date`
-  back three hours by an init script (`shiftPageClock`, on `browser.newPage` and
-  `browser.newContext`; timers, `performance.now` and elapsed time untouched), and the
-  lib's `d()` reads the same clock, so fixtures built at the start and the page asked
-  later agree. Suites use the lib's `d` (38 private copies were converted); a helper that
-  runs IN THE PAGE (inside `page.evaluate`) must stay a plain `new Date()` one, since the
-  page's Date is the shifted one there. `CHB_LATE_SHIFT=1` forces the shift at any hour
-  to check the suites still pass on it. ui-test-yourstay is the
+  **A SUITE CAN KEEP ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
+  night and the day-sheet suites failed). A suite that calls the lib's **`keepDay()`**
+  (ui-test-offline and ui-test-simpletoday) runs, from 22:00 UK time, with every page's
+  `Date` set back three hours by an init script (`shiftPageClock`, on `browser.newPage`
+  and `browser.newContext`; timers, `performance.now` and elapsed time untouched), and
+  the lib's `d()` reads the same clock, so fixtures built at the start and the page asked
+  later agree. **OPT-IN, and that was learned the hard way**: shipped for every suite, a
+  run with the shift forced failed thirteen, because it moves only the PAGE's clock — the
+  devices' "Active now" compares the page's time with the server's, and yourstay's
+  `page.clock` pin of 23:59 was shifted to 20:59. Suites use the lib's `d` (38 private
+  copies were converted; without keepDay it is plain today); a helper that runs IN THE
+  PAGE (inside `page.evaluate`) must stay a plain `new Date()` one. `CHB_LATE_SHIFT=1`
+  forces the shift at any hour for the suites that asked. ui-test-yourstay is the
   exemplar: its checkout-time cases were asserted against the real clock, so
   "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
   now checks both ends of the day on purpose (case 10 is the far end, and removing
@@ -10621,6 +10626,15 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
 - **The back-office bundle ships without its comments** (`strip-comments.js` TARGETS gained admin.js and admin.css:
   -228.5KB gz per owner download, the same token-for-token verification; smoke-test §12g reads the list).
 - **The activity log clears a row's IP after 90 days** (§56).
+- **No ghost Messages panel on navigation.** `nav()` closes Messages before it switches the page, and
+  `chbCloseOverlay` played the exit animation on whatever it was given, so every navigation painted the closed chat
+  panel sliding away. It now returns at once unless the overlay is open or already closing (ui-test-overlays §8, a
+  MutationObserver across four navigations; break-tested).
+- **"Get notified if dates free up" opens on the cottage the guest is reading.** The link was wired as a phone
+  call (`data-act="pdCall"` with a `data-fn`), so it opened the waitlist on the first cottage in the list. It is
+  `data-act="openWaitlistHere"` now, reading `activeFrontProperty` (ui-test-cottagepage §6b).
+- **"Call to discuss" only with a real number**: `wireCallButtons` reads `gaPhone()` and hides the button when no
+  `contact-phone` is set; the placeholder constants are gone (smoke-test scans for them).
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

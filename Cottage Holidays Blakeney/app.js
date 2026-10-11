@@ -401,8 +401,10 @@ chbAct('bhubMenu', function (el, event) {
     bhubMenuToggle({ currentTarget: el, stopPropagation: function () { event.stopPropagation(); } });
 });
 // Waitlist from the front page (object arg → current front property).
-chbAct('openWaitlistHere', function () {
-    if (typeof openWaitlistModal === 'function') openWaitlistModal({ prop: window.activeFrontProperty });
+// activeFrontProperty is a top-level let, not on window.
+chbAct('openWaitlistHere', function (el, event) {
+    if (event) event.preventDefault(); // the cottage page's link is an href="#"
+    if (typeof openWaitlistModal === 'function') openWaitlistModal({ prop: activeFrontProperty });
 });
 // Coerce a data-arg string back to the literal type the inline call used, so
 // fn('diagnostics') stays a string but fn(1) / fn(true) pass a number / boolean
@@ -2719,16 +2721,16 @@ function applySavedTheme() {
 // Point both "Call to discuss" buttons at the configured phone number.
 // Prefers the value saved in Settings (siteContent['contact-phone']),
 // falling back to the constants above.
+// "Call to discuss" dials the configured number or is not shown (gaPhone's rule).
 function wireCallButtons() {
-    const cfg = (siteContent && siteContent['contact-phone']) || {};
-    const dial = (cfg.dial || CONTACT_PHONE_DIAL).replace(/\s+/g, '');
-    const display = cfg.display || CONTACT_PHONE_DISPLAY;
-    ['enq-call-btn', 'acct-call-btn', 'acct-call-btn-dd'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.setAttribute('href', 'tel:' + dial);
-        el.setAttribute('title', 'Call us on ' + display);
-    });
+    const ph = gaPhone();
+    const el = document.getElementById('enq-call-btn');
+    if (!el) return;
+    el.hidden = !ph;
+    el.style.display = ph ? 'block' : 'none'; // its inline display outranks [hidden]
+    if (!ph) return;
+    el.setAttribute('href', 'tel:' + ph.dial);
+    el.setAttribute('title', 'Call us on ' + ph.display);
 }
 
 // Build an .ics calendar file for a booking and download it. Works with
@@ -3852,8 +3854,8 @@ function gaRow(o) {
     return `<button type="button" class="${cls}" ${o.act}>${inner}</button>`;
 }
 const gaGroup = (rows, cap) => (cap ? `<h2 class="ga-cap">${escapeHtml(cap)}</h2>` : '') + `<div class="ga-group">${rows.join('')}</div>`;
-// The configured number only — the CONTACT_PHONE_* fallbacks are placeholders,
-// and a "Call us" row dialling a made-up number is worse than no row.
+// The configured number only: a "Call us" row (or the enquiry form's call button)
+// dialling a made-up number is worse than none.
 function gaPhone() {
     const cfg = (siteContent && siteContent['contact-phone']) || {};
     const dial = String(cfg.dial || '').replace(/\s+/g, '');
@@ -16808,8 +16810,6 @@ document.addEventListener('keydown', (e) => {
 // Phone number for the "Call to discuss" buttons. The live value is set in
 // Back Office → Settings & Fees and stored with site content; these are just
 // fallbacks used before content loads or if it was never set.
-const CONTACT_PHONE_DIAL = '+440000000000'; // fallback dial number
-const CONTACT_PHONE_DISPLAY = '01263 000000'; // fallback display number
 
 const dpState = { view: null, start: null, end: null }; // start/end are 'YYYY-MM-DD'
 // The shared date-picker runs in two modes: 'enquiry' (a single cottage, shading
@@ -22115,6 +22115,9 @@ function chbNudge(el) {
 const __chbCloseTimers = new WeakMap();
 function chbCloseOverlay(el) {
     if (!el) return;
+    // Not up, nothing to take down: nav() closes Messages on every navigation, and an
+    // exit played on a closed overlay paints it (the chat flashed on every tab).
+    if (!el.classList.contains('open') && !el.classList.contains('closing')) return;
     el.classList.remove('open');
     const prev = __chbCloseTimers.get(el);
     if (prev) clearTimeout(prev);
@@ -22159,7 +22162,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night1';
+    const BUILD = 'r8night2';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

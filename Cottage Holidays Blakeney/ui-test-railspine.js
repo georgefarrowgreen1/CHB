@@ -23,7 +23,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
     const { page, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
-    const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+    const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     const errs = [];
     page.on('pageerror', (e) => errs.push(e.message));
 

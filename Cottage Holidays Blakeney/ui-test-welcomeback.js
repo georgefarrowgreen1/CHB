@@ -12,7 +12,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
   const { browser, base, done } = await bootBrowser();
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 
   const openPage = async (guest, bookings) => {
     const page = await browser.newPage({ viewport: { width: 900, height: 900 } });

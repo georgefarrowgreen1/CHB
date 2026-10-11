@@ -40,7 +40,7 @@ const near = (x, y, tol) => x && y && Math.abs(x.r - y.r) <= (tol || 2) && Math.
 
 (async () => {
   const { browser, base, done: harnessDone } = await bootBrowser();
-  const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+  const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 
   // ============================================================
   //  THE PAY SCREEN (§1–§3)

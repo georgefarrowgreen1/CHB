@@ -42,7 +42,7 @@ const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at re
 const fails = [];
 const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails.push(m); };
 const today = new Date();
-const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 
 // ---- fixtures -------------------------------------------------------------
 const props = [

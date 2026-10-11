@@ -41,7 +41,7 @@ let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 // Local-formatted, never toISOString() — that is UTC and slips a day near midnight.
-const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
+const d = require('./ui-test-lib').d; // the harness's day (today, UK)
 // Enquiry age: the app FLOORS elapsed hours into days, so seed by hours-ago.
 const hrsAgo = (h) => { const t = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, '0'); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:00`; };
 

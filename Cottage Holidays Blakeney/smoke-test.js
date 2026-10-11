@@ -2442,6 +2442,10 @@ console.log('\n== 12i. Signing out leaves no unsent message to a guest on the de
     // shown (their chat's included) are theirs too. The service worker's own name for
     // that cache must keep the prefix, or the sweep silently matches nothing.
     const swImg = (/const IMG_CACHE = '([^']+)'/.exec(fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8')) || [])[1] || '';
+    // A call button dials the configured number or is not shown: the enquiry form's
+    // "Call to discuss" rang +440000000000 when no number was set.
+    check('no made-up phone number is left to dial, and the enquiry call button reads the configured one',
+        !/\+?440000000000|01263 000000/.test(appScript) && /function wireCallButtons\(\) \{[\s\S]{0,200}gaPhone\(\)/.test(appScript));
     check(`a guest's sign-out sweeps the image cache, and sw.js still names it chb-img… (${swImg})`,
         /^chb-img/.test(swImg) && /async function guestLogout\(\) \{[\s\S]{0,1600}\/\^chb-img\/\.test\(k\)[\s\S]{0,40}caches\.delete\(k\)/.test(appScript));
 }

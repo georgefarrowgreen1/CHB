@@ -155,7 +155,12 @@ const OVERLAYS = [
         await new Promise((r) => setTimeout(r, 60));
         openEnquireModal();
         const mid = { open: el.classList.contains('open'), painted: el.getClientRects().length > 0, pe: getComputedStyle(el).pointerEvents };
+        // Past the stale exit timer, then at REST: the entrance is a fade, and on a
+        // loaded machine its frames arrive late (opacity read mid-fade is not a defect).
         await new Promise((r) => setTimeout(r, 450));
+        for (let i = 0; i < 60 && el.getAnimations({ subtree: true }).some((a) => a.playState === 'running'); i++) {
+            await new Promise((r) => setTimeout(r, 50));
+        }
         return { backFound, mid, late: { open: el.classList.contains('open'), closing: el.classList.contains('closing'), painted: el.getClientRects().length > 0, opacity: getComputedStyle(el).opacity } };
     });
     check(reopen.backFound === false, 'Back finds nothing to close the instant after a close', String(reopen.backFound));
@@ -282,6 +287,32 @@ const OVERLAYS = [
     });
     check(!rm.open && !rm.closing && !rm.painted, 'under reduced motion a close is a close — no exit, gone at once', JSON.stringify(rm));
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    // ============================================================
+    // An overlay that was never open has no exit to play. nav() closes Messages on
+    // every navigation, and the exit painted the never-opened chat across the screen
+    // for ~300ms on every tab tap (found in round 8).
+    console.log('\n  §8 closing what was never open paints nothing');
+    const ghost = await page.evaluate(async () => {
+        const w = document.getElementById('chat-widget');
+        let painted = 0, closing = 0;
+        const mo = new MutationObserver(() => { if (w.classList.contains('closing')) closing++; });
+        mo.observe(w, { attributes: true, attributeFilter: ['class'] });
+        for (const v of ['view-cottages', 'view-main', 'view-experiences', 'view-main']) {
+            nav(v);
+            for (let i = 0; i < 6; i++) {
+                await new Promise((r) => requestAnimationFrame(r));
+                if (w.getClientRects().length && getComputedStyle(w).visibility !== 'hidden' && +getComputedStyle(w).opacity > 0.05) painted++;
+            }
+        }
+        const lone = document.getElementById('enquire-modal');
+        closeEnquireModal(); // a defensive close of a modal that is not up
+        const loneClosing = lone.classList.contains('closing');
+        mo.disconnect();
+        return { painted, closing, loneClosing };
+    });
+    check(ghost.closing === 0 && ghost.painted === 0, 'navigating never paints the chat that was not opened', JSON.stringify(ghost));
+    check(!ghost.loneClosing, 'a close of a modal that is not open starts no exit', JSON.stringify(ghost));
 
     console.log(fails ? `\n  OVERLAYS SUITE FAILED ❌ (${fails})` : '\n  OVERLAYS SUITE PASSED ✅');
     await t.done(fails);
