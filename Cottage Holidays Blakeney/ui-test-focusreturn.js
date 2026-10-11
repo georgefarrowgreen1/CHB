@@ -12,6 +12,8 @@
 //    D) The closed mobile menu is out of the Tab order (it sat off screen with
 //       three live links).
 //    E) The crown — the first Tab stop — shows a focus ring.
+//    F) A shared dialog opened again keeps its focus (a retry from its last
+//       close no longer pulls focus out of the new form).
 // ============================================================
 const { boot } = require('./ui-test-lib');
 
@@ -124,6 +126,40 @@ const { boot } = require('./ui-test-lib');
     });
     check(chatGround.open, '(fixture) the guest chat opened');
     check(chatGround.spread >= 844 && chatGround.shadow.indexOf(chatGround.bg) !== -1, `the open chat's own ground extends past its box (${chatGround.shadow})`);
+
+    // F: the shared dialog closes while its opener is busy (the dispatcher disables an
+    // async button while it works), so focus goes back to it on a retry 400ms later.
+    // If the SAME dialog opens again first (cancel one form, open the next), the retry
+    // used to read focus in it as lost and pull it out of the new form: found from a
+    // CI failure of ui-test-owneraccount's phone step.
+    const f = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+        const b = document.createElement('button');
+        b.id = 'fr-opener';
+        b.textContent = 'Open';
+        document.body.appendChild(b);
+        b.focus();
+        const p1 = glassForm('first', [{ id: 'fra', label: 'A' }]);
+        await wait(150);
+        b.disabled = true;
+        glassDialogResolve(false);
+        await p1;
+        const p2 = glassForm('second', [{ id: 'frx', label: 'X' }]);
+        await wait(150);
+        b.disabled = false;
+        const early = document.activeElement && document.activeElement.id;
+        await wait(500);
+        const late = document.activeElement && document.activeElement.id;
+        glassDialogResolve(false);
+        await p2;
+        await wait(450);
+        const after = document.activeElement && document.activeElement.id;
+        b.remove();
+        return { early, late, after };
+    });
+    check(f.early === 'gdf-frx', `(fixture) the second form has focus (${f.early})`);
+    check(f.late === 'gdf-frx', `a dialog opened again keeps its focus after the first one's retry (${f.late})`);
+    check(f.after === 'fr-opener', `…and closing it still hands focus back to the opener (${f.after})`);
 
     console.log(fails ? `\n  ${fails} CHECK(S) FAILED ❌` : '\n  FOCUS-RETURN TEST PASSED ✅');
     await t.done(fails);

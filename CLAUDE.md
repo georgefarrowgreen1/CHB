@@ -11008,6 +11008,12 @@ ships as its own PR.
   check to the database, and the gate went green with nothing after line 27 run. It writes to STDERR and exits 255
   now, like the exception handler. All 41 CI PHP gates still pass, so none was quietly relying on it.
   test-error-status gates it with a probe on a closed port.
+- **A FOCUS RETURN OWED BY A CLOSED OVERLAY MOVES TO IT WHEN IT REOPENS** (app.js focus manager, `owed`). Found by
+  this PR's CI: when a dialog closed while its opener was busy (the dispatcher disables an async button), focus went
+  back on a 400ms retry, and if the same shared dialog had opened again meanwhile (the phone form refusing a number
+  and reopening) the retry read focus in it as lost and pulled it out of the new form. The retry now stands down
+  when the overlay is open again, and the reopened overlay inherits the opener, so its own close still returns
+  focus. ui-test-focusreturn F, break-tested both halves.
 - Gates: test-reply (both ends of a week, the guest lifetime, undated grace, the finder, new tokens carrying their
   week, the wiring), test-people (the `ops-` caps), test-error-status, test-emails-render (the two notes), and
   integration §51 (the notes by permission), §52b (removed extras) and §77b (late replies through the real poll,

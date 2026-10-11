@@ -16267,6 +16267,10 @@ document.addEventListener('keydown', (e) => {
     // picker or terms opened from the enquiry sheet) spend the OUTER sheet's
     // opener, dropping focus behind the still-open sheet.
     const openers = new WeakMap();
+    // An overlay that closed while its opener was busy (the dispatcher disables an
+    // async button while it works) still owes that button its focus. If the same
+    // overlay opens again first, the debt moves to it: its close pays it.
+    const owed = new WeakMap();
     const isOpen = (el) => el.classList.contains('open');
     const focusInto = (el) => {
         // The dialog already placed focus itself (glassDialog focuses its OK
@@ -16311,6 +16315,8 @@ document.addEventListener('keydown', (e) => {
             const pr = __chbPressed;
             if ((!ae || ae === document.body) && pr && pr.el && Date.now() - pr.t < 8000 && document.body.contains(pr.el)) ae = pr.el;
             if (ae && ae !== document.body && !el.contains(ae)) openers.set(el, ae);
+            else if (owed.has(el)) openers.set(el, owed.get(el));
+            owed.delete(el);
             setTimeout(() => {
                 if (isOpen(el)) focusInto(el);
             }, 60); // after the open transition
@@ -16342,12 +16348,20 @@ document.addEventListener('keydown', (e) => {
                 // …but only if focus is STILL lost then: the closer's own handler may
                 // have placed it deliberately (✨ Draft focuses the message box), and
                 // another overlay may have opened in the meantime.
-                if (document.activeElement !== tt) setTimeout(() => {
-                    const a2 = document.activeElement;
-                    const lost = !a2 || a2 === document.body || el.contains(a2);
-                    const otherOpen = Array.from(document.querySelectorAll(SEL)).some((o) => o !== el && isOpen(o));
-                    if (lost && !otherOpen) restore();
-                }, 400);
+                if (document.activeElement !== tt) {
+                    owed.set(el, tt);
+                    setTimeout(() => {
+                        // The same overlay opened again meanwhile (a shared dialog: cancel
+                        // one form, open the next): focus in it is its own, not lost, and
+                        // the debt went to it when it opened.
+                        if (owed.get(el) !== tt || isOpen(el)) return;
+                        owed.delete(el);
+                        const a2 = document.activeElement;
+                        const lost = !a2 || a2 === document.body || el.contains(a2);
+                        const otherOpen = Array.from(document.querySelectorAll(SEL)).some((o) => o !== el && isOpen(o));
+                        if (lost && !otherOpen) restore();
+                    }, 400);
+                }
             } else {
                 // No opener: keep focus inside whatever overlay is still open.
                 const still = Array.from(document.querySelectorAll(SEL)).filter((o) => o !== el && isOpen(o));
