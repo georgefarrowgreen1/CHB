@@ -212,7 +212,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         // read most). #1027 found the preview screen quoting three wrong figures
         // while the live path was correct, which is exactly why every money email
         // needs to be lookable-at.
-        'enquiry_ack' => ['Enquiry acknowledgement', fn() => send_enquiry_ack($enqSample, false)],
+        'enquiry_ack' => ['Enquiry acknowledgement', fn() => send_enquiry_ack($enqSample)],
         'autopay_notice' => [
             'Automatic payment — advance notice',
             fn() => send_autopay_notice($autopaySample, $payUrl),

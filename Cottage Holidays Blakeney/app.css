@@ -3311,6 +3311,15 @@ a.card {
   text-align: center;
   margin: 0 0 4px;
 }
+/* FOLLOW THIS ENQUIRY: three states of one block (start, code, done), and the code
+   is the sign-in sheet's own six cells (.ga-code). */
+#enquire-modal .enq-follow-h { font-size: var(--fs-title); margin: 20px 0 8px; text-align: left; }
+.enq-follow-p { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.5; margin: 0 0 16px; text-wrap: pretty; }
+.enq-follow-p b { color: var(--text-light); font-weight: 600; overflow-wrap: anywhere; }
+.enq-follow-btn { width: 100%; padding: 16px; }
+.enq-follow .ga-code { margin: 0 0 16px; }
+.enq-follow-resend { display: block; margin: 8px auto 0; }
+#enq-follow [hidden] { display: none; }
 /* DESKTOP IS A MAC SHEET, NOT A TALLER PHONE. At 1280×900 the enquiry box is
    480×810 holding 1124px of form: 314px hidden on open, with Continue below the
    fold — the one control that moves the guest on was not on screen when the
@@ -13551,7 +13560,8 @@ div.ga-row {
   color: var(--info-text);
   font-weight: 600;
 }
-.ga-code {
+/* The door code on the You page (not the sign-in code's six cells, .ga-code). */
+.ga-doorcode {
   font-family: var(--font-serif);
   font-size: var(--fs-title);
   letter-spacing: 0.18em;
